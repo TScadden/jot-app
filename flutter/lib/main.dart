@@ -5,6 +5,7 @@ import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/coach_memory_store.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/launch_trace.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
@@ -57,6 +58,11 @@ void main() async {
     // Round 19c — same warm for Quick Log: cold starts seed last-known
     // categories / recents / count / membership instead of skeletons.
     QuickLogCache.instance.warmFromDisk(currentEmail: sessionEmail),
+    // R70 fix pass (Vera F1 / Juno C1) — same account-bound warm for
+    // the historical health store: a blob owned by a different
+    // account is dropped here instead of seeding another account's
+    // all-time history + Daily Scores into this session.
+    HealthHistoryStore.instance.warmFromDisk(currentEmail: sessionEmail),
   ]);
   LaunchTrace.instance.mark(LaunchTrace.cachesWarmed);
   // Round 52 — re-publish the widget on EVERY app start, once,
@@ -374,6 +380,10 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
   void _onSessionExpired() {
     unawaited(HomeDataCache.instance.clear());
     unawaited(QuickLogCache.instance.clear());
+    // R70 fix pass (Vera F1 / Juno C1) — the historical health store
+    // is account-bound too: session expiry leaves none of the expired
+    // account's all-time history or Daily Scores on device.
+    unawaited(HealthHistoryStore.instance.clear());
     // Vera R35 re-review HIGH 2: the Today Summary stores are
     // account-bound too — a session expiry must leave none of the
     // expired account's summary on device (R29b standard). Each
@@ -411,6 +421,9 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
   void _onLoginSuccess(String email) {
     unawaited(QuickLogCache.instance.clearIfOwnerMismatch(email));
     unawaited(HomeDataCache.instance.clearIfOwnerMismatch(email));
+    // R70 fix pass (Vera F1 / Juno C1) — same owner-mismatch
+    // enforcement for the historical health store.
+    unawaited(HealthHistoryStore.instance.clearIfOwnerMismatch(email));
     // Vera R35 re-review HIGH 2: the Round 35 Today Summary stores
     // join the same owner-mismatch enforcement — a previous
     // account's cached summary / plan state must be gone before
@@ -451,6 +464,9 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
   void _onRegisterSuccess(String email) {
     unawaited(QuickLogCache.instance.clearIfOwnerMismatch(email));
     unawaited(HomeDataCache.instance.clearIfOwnerMismatch(email));
+    // R70 fix pass (Vera F1 / Juno C1) — same owner-mismatch
+    // enforcement for the historical health store.
+    unawaited(HealthHistoryStore.instance.clearIfOwnerMismatch(email));
     // Vera R35 re-review HIGH 2: same owner-mismatch enforcement
     // as login (see _onLoginSuccess).
     unawaited(TodaySummaryCache.instance.clearIfOwnerMismatch(email));

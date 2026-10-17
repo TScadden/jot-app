@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
+import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weekly_snapshot.dart';
@@ -15,9 +16,24 @@ import 'test_helpers.dart';
 int _at(int y, int mo, int d, int h, [int min = 0]) =>
     DateTime(y, mo, d, h, min).millisecondsSinceEpoch;
 
+String _dateStrForTest(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
 List<WindowDay> _window() => sevenDayWindow();
 
 void main() {
+  // R70 WS2 — the union helper reads/writes the shared history
+  // store; reset it (in-memory backing) so cases stay isolated.
+  setUp(() {
+    final mem = <String, String>{};
+    HealthHistoryStore.instance.debugSetStore(
+      read: (k) async => mem[k],
+      write: (k, v) async => mem[k] = v,
+      delete: (k) async => mem.remove(k),
+    );
+    HealthHistoryStore.instance.debugReset();
+  });
+
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('daytimeHeartRateAvg', () {
@@ -443,6 +459,21 @@ void main() {
           case 'readHeartRateSamples':
             return hrSamples;
           case 'readRestingHrHistory':
+            return <Map<String, Object>>[];
+          case 'readSleepHistory':
+            // R70 WS2 — the snapshot's sleep now comes through the
+            // union helper's range read: serve the same per-day
+            // minutes the per-day reads served, for the last 7 days.
+            final now = DateTime.now();
+            return <Map<String, Object>>[
+              for (var i = 6; i >= 0; i--)
+                {
+                  'date': _dateStrForTest(now.subtract(Duration(days: i))),
+                  'mins': sleepMinutes,
+                  'deep': 60,
+                },
+            ];
+          case 'readSpikeCounts':
             return <Map<String, Object>>[];
           case 'readCaloriesHistory':
             return <Map<String, Object>>[];

@@ -8,6 +8,7 @@ import 'package:http/testing.dart';
 import 'package:tabs_lab/main.dart';
 import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/onboarding_store.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
@@ -87,6 +88,17 @@ class FakeSummaryHc extends HealthConnectService {
   Future<int?> readSleepMinutes(String dateStr) async =>
       sleepByDate[dateStr];
 
+  // R70 WS2 — trends now read sleep through the union helper's
+  // range read; the fake derives it from the same per-date map.
+  @override
+  Future<List<({String date, int mins, int deep})>> readSleepHistory(
+      int days) async {
+    final dates = sleepByDate.keys.toList()..sort();
+    return [
+      for (final d in dates) (date: d, mins: sleepByDate[d]!, deep: 0),
+    ];
+  }
+
   @override
   Future<List<({String date, int bpm})>> readRestingHrHistory(
           int days) async =>
@@ -108,6 +120,18 @@ QuickLogEntry entry(int id, int categoryId, String body, DateTime at) =>
     );
 
 void main() {
+  // R70 WS2 — the union helper reads/writes the shared history
+  // store; reset it (in-memory backing) so cases stay isolated.
+  setUp(() {
+    final mem = <String, String>{};
+    HealthHistoryStore.instance.debugSetStore(
+      read: (k) async => mem[k],
+      write: (k, v) async => mem[k] = v,
+      delete: (k) async => mem.remove(k),
+    );
+    HealthHistoryStore.instance.debugReset();
+  });
+
   group('buildTodayPlan — native summaryText (TodayViewModel port)', () {
     TodayPlanData build({
       List<SummaryMedication> meds = const [],

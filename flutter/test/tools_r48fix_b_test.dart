@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/tools/blood_pressure_tool_screen.dart';
@@ -221,6 +222,18 @@ class _BpServer {
 }
 
 void main() {
+  // R70 WS2 — the union helper reads/writes the shared history
+  // store; reset it (in-memory backing) so cases stay isolated.
+  setUp(() {
+    final mem = <String, String>{};
+    HealthHistoryStore.instance.debugSetStore(
+      read: (k) async => mem[k],
+      write: (k, v) async => mem[k] = v,
+      delete: (k) async => mem.remove(k),
+    );
+    HealthHistoryStore.instance.debugReset();
+  });
+
   // ── Vera F4: Sleep debt ───────────────────────────────────────────
 
   group('sleepDebtMinsOrNull (Vera F4)', () {

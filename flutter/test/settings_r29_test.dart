@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
+import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/data/heart_data_cache.dart';
 import 'package:tabs_lab/src/data/coach_memory_store.dart';
@@ -100,6 +101,16 @@ void seedRealCaches() {
     write: (k, v) async => cacheDisk[k] = v,
     delete: (k) async => cacheDisk.remove(k),
   );
+  // R70 fix pass A4: the historical health store joined the logout
+  // wipe — wire it to the same fake disk for the same FakeAsync
+  // reason (a real secure-storage channel's futures never complete
+  // under FakeAsync and the wipe would hang).
+  HealthHistoryStore.instance.debugSetStore(
+    read: (k) async => cacheDisk[k],
+    write: (k, v) async => cacheDisk[k] = v,
+    delete: (k) async => cacheDisk.remove(k),
+  );
+  HealthHistoryStore.instance.debugReset();
   HomeDataCache.instance.debugReset();
   HomeDataCache.instance.applyVitals(
       const TodayVitals(heartRate: 80), ownerEmail: 'a@example.com');

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
+import 'package:tabs_lab/src/data/health_history_queries.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
@@ -47,7 +48,12 @@ class KeyMetricsScreen extends StatefulWidget {
   final TabsBackend? backend;
   final HealthConnectService? healthConnect;
 
-  const KeyMetricsScreen({super.key, this.backend, this.healthConnect});
+  /// R70 WS2 — injectable union reader (store ∪ fresh HC). Null in
+  /// production (built from [healthConnect]).
+  final HealthHistoryQueries? historyQueries;
+
+  const KeyMetricsScreen(
+      {super.key, this.backend, this.healthConnect, this.historyQueries});
 
   @override
   State<KeyMetricsScreen> createState() => _KeyMetricsScreenState();
@@ -76,6 +82,25 @@ class _MetricsData {
 class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
   TabsBackend get _backend => widget.backend ?? TabsBackend();
   HealthConnectService get _hc => widget.healthConnect ?? HealthConnectService();
+
+  /// R70 WS2 — one union reader instance for the screen, so its
+  /// per-metric failure tracking (the service's error code) always
+  /// refers to the same HealthConnectService the union reads from.
+  late final HealthHistoryQueries _queries = widget.historyQueries ??
+      HealthHistoryQueries(hc: widget.healthConnect ?? HealthConnectService());
+
+  /// Union analogue of [_readGuarded]: a timed-out / throwing load,
+  /// or one whose result names failed metrics, reports failed —
+  /// a failed history read must never masquerade as empty history.
+  Future<({HistoryUnion? value, bool failed})> _unionGuarded(
+      Future<HistoryUnion> Function() call) async {
+    try {
+      final value = await call().timeout(const Duration(seconds: 10));
+      return (value: value, failed: value.failedMetrics.isNotEmpty);
+    } catch (_) {
+      return (value: null, failed: true);
+    }
+  }
 
   bool _loading = true;
   bool _exporting = false;
@@ -141,20 +166,17 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
 
     if (hcConnected) {
       // History sets for the selector/picker selectability (native
-      // checks historical HR, sleep, and calories).
-      final resting = await _guarded(() => _hc.readRestingHrHistory(7)) ??
-          const <({String date, int bpm})>[];
-      final sleep = await _guarded(() => _hc.readSleepHistory(7)) ??
-          const <({String date, int mins, int deep})>[];
-      final calories = await _guarded(() => _hc.readCaloriesHistory(7)) ??
-          const <({String date, int kcal})>[];
+      // checks historical HR, sleep, and calories). R70 WS2: from
+      // the union — the maps only carry real (positive) values.
+      final union = await _guarded(() => _queries.loadDays(7, metrics: {
+            HistoryMetric.restingHr,
+            HistoryMetric.sleep,
+            HistoryMetric.calories,
+          }));
       _datesWithData = {
-        for (final r in resting)
-          if (r.bpm > 0) r.date,
-        for (final r in sleep)
-          if (r.mins > 0) r.date,
-        for (final r in calories)
-          if (r.kcal > 0) r.date,
+        ...?union?.restingHr.keys,
+        ...?union?.sleepMinutes.keys,
+        ...?union?.calories.keys,
       };
     }
 
@@ -205,11 +227,13 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
       anyReadFailed = anyReadFailed || resting.failed;
       restingHr = nonZeroInt(resting.value);
       if (restingHr == null) {
-        final hist = await _readGuarded(() => _hc.readRestingHrHistory(7));
+        // R70 WS2 — the resting-HR history fallback reads the union
+        // (store ∪ fresh HC); a failed union read marks the date
+        // load failed exactly as a failed bridge read did (F5b).
+        final hist = await _unionGuarded(() =>
+            _queries.loadDays(7, metrics: {HistoryMetric.restingHr}));
         anyReadFailed = anyReadFailed || hist.failed;
-        final history = hist.value ?? const <({String date, int bpm})>[];
-        final rows = history.where((r) => r.date == key && r.bpm > 0);
-        if (rows.isNotEmpty) restingHr = rows.last.bpm;
+        restingHr = hist.value?.restingHr[key];
       }
 
       final weight = await _readGuarded(() => _hc.readLatestWeightKg());
@@ -285,18 +309,22 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
       // "No data" and a success report. Genuinely-empty history
       // (clean reads, no error code) still exports "No data" rows
       // exactly as before.
-      final hrRes =
-          await _readGuarded(() => _hc.readRestingHrHistory(resolvedDays));
-      final sleepRes =
-          await _readGuarded(() => _hc.readSleepHistory(resolvedDays));
-      var spikeFailed = false;
-      var spikeHistory = const <({String date, int count})>[];
-      if (includeSpikes && days != -1) {
-        final spikeRes = await _readGuarded(() => _hc.readSpikeCounts(days));
-        spikeFailed = spikeRes.failed;
-        spikeHistory = spikeRes.value ?? const <({String date, int count})>[];
-      }
-      if (hrRes.failed || sleepRes.failed || spikeFailed) {
+      //
+      // R70 WS2: the export reads through the union helper, so the
+      // CSV now reflects the store's full depth (the founder-facing
+      // payoff of WS1/WS2) — for "All Time" the store IS the range.
+      // The F5(a) discipline is preserved through the union's
+      // per-metric failure flags: any failed fresh read among the
+      // exported metrics aborts, exactly as before.
+      final unionRes = await _unionGuarded(() => _queries.loadDays(
+            resolvedDays,
+            metrics: {
+              HistoryMetric.restingHr,
+              HistoryMetric.sleep,
+              if (includeSpikes && days != -1) HistoryMetric.spikes,
+            },
+          ));
+      if (unionRes.failed || unionRes.value == null) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -306,23 +334,14 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
         );
         return;
       }
-      final hrHistory = hrRes.value ?? const <({String date, int bpm})>[];
-      final sleepHistory =
-          sleepRes.value ?? const <({String date, int mins, int deep})>[];
-
-      final avgHrByDate = <String, int>{
-        for (final r in hrHistory)
-          if (r.bpm > 0) r.date: r.bpm,
-      };
-      final sleepByDate = <String, int>{
-        for (final r in sleepHistory) r.date: r.mins,
-      };
-      final deepByDate = <String, int>{
-        for (final r in sleepHistory) r.date: r.deep,
-      };
-      final spikesByDate = <String, int>{
-        for (final r in spikeHistory) r.date: r.count,
-      };
+      final union = unionRes.value!;
+      // The union maps are already zero-filtered (a 0 biometric is
+      // a failed read); buildMetricsCsv renders missing as
+      // "No data", and a spike count of 0 stays real.
+      final avgHrByDate = union.restingHr;
+      final sleepByDate = union.sleepMinutes;
+      final deepByDate = union.deepSleepMinutes;
+      final spikesByDate = union.spikes;
 
       final List<String> dates;
       if (days == -1) {

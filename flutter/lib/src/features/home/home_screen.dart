@@ -3,7 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:tabs_lab/src/data/daily_score.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/data/health_history_queries.dart'
+    show historyDateStr;
+import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/launch_trace.dart';
@@ -12,6 +16,8 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/data/widget_sync.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
+import 'package:tabs_lab/src/features/home/daily_score_circle.dart';
+import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
@@ -114,6 +120,10 @@ class HomeScreen extends StatefulWidget {
   /// welcome flow (the shell owns that callback).
   final VoidCallback? onLogout;
 
+  /// R70 Daily Score — injectable for tests; defaults to the
+  /// shared history store singleton.
+  final HealthHistoryStore? healthHistoryStore;
+
   const HomeScreen(
       {super.key,
       this.email,
@@ -122,7 +132,8 @@ class HomeScreen extends StatefulWidget {
       this.healthConnectService,
       this.healthRepository,
       this.tabsBackend,
-      this.onLogout});
+      this.onLogout,
+      this.healthHistoryStore});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -183,6 +194,48 @@ class _HomeScreenState extends State<HomeScreen> {
 
   TabsBackend get _backend => widget.tabsBackend ?? _healthRepo.backend;
 
+  // ── R70 Daily Score ─────────────────────────────────────────────
+  /// Today's persisted Daily Score; null while the baseline is
+  /// still building (the header circle renders its building state
+  /// — never a number from nothing). Loaded behind first paint:
+  /// the compute trigger runs over the history store, then today's
+  /// row is read back.
+  int? _todayScore;
+
+  Future<void> _loadDailyScore() async {
+    try {
+      final store = widget.healthHistoryStore ?? HealthHistoryStore.instance;
+      final today = historyDateStr(DateTime.now());
+      // R70 fix pass (Vera F2) — TODAY RULE (see daily_score.dart):
+      // Home is an early trigger, so its compute run is cut off
+      // BEFORE today — it can backfill past days but must never
+      // freeze today as a partial score. Today is scored only by
+      // the post-capture engine run; this method then READS that
+      // persisted score back for the circle below.
+      await DailyScoreEngine(store: store)
+          .computeMissingScores(beforeDate: today);
+      final row = (await store.readAll())[today];
+      if (!mounted) return;
+      if (row?.dailyScore != _todayScore) {
+        setState(() => _todayScore = row?.dailyScore);
+      }
+    } catch (_) {
+      // The circle keeps its building state — never a fake number.
+    }
+  }
+
+  Future<void> _openDailyScore() async {
+    await Navigator.of(context).push(
+      SlidePageRoute(
+        reducedMotion: animationsDisabled(context),
+        builder: (_) =>
+            DailyScoreScreen(store: widget.healthHistoryStore),
+      ),
+    );
+    if (!mounted) return;
+    unawaited(_loadDailyScore());
+  }
+
   @override
   void initState() {
     super.initState();
@@ -215,6 +268,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadHealthData();
     _loadFeelingState();
     _loadCounters();
+    _loadDailyScore();
     // Round 60 — non-essentials defer until AFTER the first frame:
     // the widget publish and the weather fetch never compete with
     // first paint. Both were already fire-and-forget; they now also
@@ -447,6 +501,15 @@ class _HomeScreenState extends State<HomeScreen> {
         _hcStatusErrorCode = statusErrorCode;
       });
     }
+    // R70 fix pass (Vera F2) — a completed health-data load re-runs
+    // the Daily Score read: the load's fire-and-forget history
+    // capture (HealthRepository._triggerHistoryCapture) lands
+    // during/after this load, and its post-capture engine run is
+    // what scores today — the circle must pick that score up
+    // instead of staying frozen at whatever the initState race
+    // read. Every refresh path that calls _loadHealthData (the
+    // feeling check-in, the connections return) inherits this.
+    unawaited(_loadDailyScore());
   }
 
   /// Opens the data-connections screen — the one destination/flow
@@ -570,6 +633,13 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         actions: [
+          // R70 Daily Score — the score circle sits BESIDE the
+          // weather icon (founder spec). Null score = the
+          // baseline-building state. Tap opens the score history.
+          DailyScoreCircle(
+            score: _todayScore,
+            onTap: () => unawaited(_openDailyScore()),
+          ),
           // Weather: tap asks for device location (system dialog) and
           // upgrades the IP-based temp to GPS-based weather. Denial
           // falls back silently to the IP fetch.

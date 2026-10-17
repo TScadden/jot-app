@@ -8,6 +8,7 @@ import 'package:tabs_lab/src/data/coach_memory_store.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
+import 'package:tabs_lab/src/data/health_history_queries.dart';
 import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
@@ -2300,6 +2301,11 @@ class CoachChatScreen extends StatefulWidget {
   /// Null in production (a default [HealthConnectService] is used).
   final HealthConnectService? healthConnectService;
 
+  /// R70 WS2 — injectable union reader (store ∪ fresh HC) for the
+  /// context loader's historical numbers. Null in production
+  /// (built from [healthConnectService]).
+  final HealthHistoryQueries? historyQueries;
+
   /// Injectable coach-memory store (Round 55 Step 2). Null in
   /// production (the shared device-local instance is used).
   final CoachMemoryStore? coachMemoryStore;
@@ -2342,6 +2348,7 @@ class CoachChatScreen extends StatefulWidget {
     this.backend,
     this.notificationService,
     this.healthConnectService,
+    this.historyQueries,
     this.coachMemoryStore,
     this.knowledgeStore,
     this.accountEmail,
@@ -2528,26 +2535,33 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
       var bpRecords = <BpRecord>[];
       final connected = await _coachGuarded(() => hc.isConnected()) ?? false;
       if (connected) {
-        final sleepHist =
-            await _coachGuarded(() => hc.readSleepHistory(10)) ?? const [];
-        final sleepMap = <String, int>{
-          for (final r in sleepHist)
-            if (r.mins > 0) r.date: r.mins,
-        };
+        // R70 WS2 — the historical numbers come from the union
+        // (store ∪ fresh HC): same context format, deeper data.
+        // The sleep map spans 28 days so the debt computation
+        // (which itself takes the last 10 nights with data, the
+        // existing definition) and the context assembler (last 7
+        // nights) both see their full windows even when HC's own
+        // retention has thinned; resting HR / spikes keep their
+        // exact 7-day windows, so their definitions do not move.
+        final queries = widget.historyQueries ??
+            HealthHistoryQueries(hc: hc);
+        final sleepUnion = await _coachGuarded(() =>
+            queries.loadDays(28, metrics: {HistoryMetric.sleep}));
+        final sleepMap = sleepUnion?.sleepMinutes ?? const <String, int>{};
         sleepNights = [
           for (final e in sleepMap.entries) (date: e.key, mins: e.value),
         ];
         final debt = sleepDebtMinsOrNull(sleepMap, todayStr);
         if (debt != null && debt < 0) sleepDebt = -debt;
-        final restingHist =
-            await _coachGuarded(() => hc.readRestingHrHistory(7)) ?? const [];
-        final restingValid = restingHist.where((r) => r.bpm > 0).toList()
-          ..sort((a, b) => a.date.compareTo(b.date));
-        if (restingValid.isNotEmpty) {
-          restingLatest = restingValid.last.bpm;
-          restingDate = restingValid.last.date;
-          restingAvg = restingValid.fold<int>(0, (a, r) => a + r.bpm) /
-              restingValid.length;
+        final hrUnion = await _coachGuarded(() => queries.loadDays(7,
+            metrics: {HistoryMetric.restingHr, HistoryMetric.spikes}));
+        final restingMap = hrUnion?.restingHr ?? const <String, int>{};
+        final restingDates = restingMap.keys.toList()..sort();
+        if (restingDates.isNotEmpty) {
+          restingLatest = restingMap[restingDates.last];
+          restingDate = restingDates.last;
+          restingAvg = restingMap.values.fold<int>(0, (a, b) => a + b) /
+              restingMap.length;
         }
         final samples =
             await _coachGuarded(() => hc.readHeartRateSamples(todayStr)) ??
@@ -2558,13 +2572,10 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
           final v = await _coachGuarded(() => hc.readHrvRmssd(d));
           if (v != null && v > 0) hrv = v;
         }
-        final spikeCounts =
-            await _coachGuarded(() => hc.readSpikeCounts(7)) ?? const [];
-        if (spikeCounts.isNotEmpty) {
-          spikesTotal = spikeCounts.fold<int>(0, (a, r) => a + r.count);
-          for (final r in spikeCounts) {
-            if (r.date == todayStr) spikesToday = r.count;
-          }
+        final spikeMap = hrUnion?.spikes ?? const <String, int>{};
+        if (spikeMap.isNotEmpty) {
+          spikesTotal = spikeMap.values.fold<int>(0, (a, b) => a + b);
+          spikesToday = spikeMap[todayStr];
         }
         bpRecords = [
           ...?await _coachGuarded(() => hc.readBloodPressure(7)),

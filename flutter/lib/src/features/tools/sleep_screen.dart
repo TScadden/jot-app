@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
+import 'package:tabs_lab/src/data/health_history_queries.dart';
+import 'package:tabs_lab/src/data/sleep_need.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
@@ -35,6 +37,24 @@ import 'package:tabs_lab/src/theme/skeleton.dart';
 /// Founder's biometric rule: a 0 is a failed read — never charted,
 /// averaged, or displayed as real sleep. Missing → "--".
 ///
+/// R70 WS2 — history sources on this screen:
+/// - The Sleep Need section (below) is local-first: it refreshes
+///   the recent window through the union helper
+///   (`health_history_queries.dart`) and then reads the history
+///   STORE's full depth — that is what lets the personal need use
+///   up to 28 nights even when Health Connect's window has thinned.
+/// - The hero / Recent Nights / compare flows keep their per-day
+///   `readSleepMinutes` reads: they serve ARBITRARY picked dates
+///   (the picker goes back years), which a today-anchored range
+///   read cannot — per-day detail, deliberately left direct. Any
+///   store depth the union refresh surfaces for recent dates is
+///   folded into `_history` as a fallback fill.
+/// - Per-day stage detail for a picked night stays an HC read
+///   (`readSleepStages`), as before.
+/// - Typical sleep/rise windows are NOT shown: the store holds
+///   durations only, and the stage bridge read returns minutes +
+///   efficiency — no session start/end ever reaches Dart — so
+///   there is no clean source for windows. Omitted, never invented.
 /// Round 48 fix (the tools_team_b Sleep timeouts): every Health
 /// Connect read is wrapped in a timeout. Previously a single wedged
 /// channel call (unmocked in tests, stuck natively per the team
@@ -122,7 +142,12 @@ class SleepScreen extends StatefulWidget {
   /// Injectable for tests (a fake can override isConnected/readSleep*).
   final HealthConnectService? healthConnect;
 
-  const SleepScreen({super.key, this.backend, this.healthConnect});
+  /// R70 WS2 — injectable union reader for the Sleep Need section.
+  /// Null in production (built from [healthConnect]).
+  final HealthHistoryQueries? historyQueries;
+
+  const SleepScreen(
+      {super.key, this.backend, this.healthConnect, this.historyQueries});
 
   @override
   State<SleepScreen> createState() => _SleepScreenState();
@@ -131,6 +156,13 @@ class SleepScreen extends StatefulWidget {
 class _SleepScreenState extends State<SleepScreen> {
   late final TabsBackend _backend;
   late final HealthConnectService _hc;
+  late final HealthHistoryQueries _queries;
+
+  /// R70 — Personal Sleep Need state: the current estimate plus
+  /// the per-night evaluations for the balance bars. Null estimate
+  /// = insufficient data (the honest empty state renders).
+  SleepNeedEstimate? _sleepNeed;
+  List<SleepNightEvaluation> _needNights = const [];
 
   bool _loading = true;
   bool _refreshing = false;
@@ -158,6 +190,7 @@ class _SleepScreenState extends State<SleepScreen> {
     super.initState();
     _backend = widget.backend ?? TabsBackend();
     _hc = widget.healthConnect ?? HealthConnectService();
+    _queries = widget.historyQueries ?? HealthHistoryQueries(hc: _hc);
     _load();
   }
 
@@ -192,12 +225,61 @@ class _SleepScreenState extends State<SleepScreen> {
     ];
     await _readMinutesFor(dates);
     await _applySelected(_dateKey(today), useProfileFallback: true);
+    await _refreshSleepNeed();
     if (!mounted) return;
     setState(() {
       _connected = true;
       _loading = false;
       _refreshing = false;
     });
+  }
+
+  /// R70 — refreshes the Personal Sleep Need state from the
+  /// store's full depth: a union load first refreshes the recent
+  /// window into the store (and surfaces stored nights the per-day
+  /// reads missed), then the estimate + balance evaluations are
+  /// computed from store ∪ in-hand reads. Never throws — a failure
+  /// leaves the previous (or empty) state standing.
+  Future<void> _refreshSleepNeed() async {
+    try {
+      // Guarded like every other read on this screen: a wedged
+      // channel (unmocked in tests, stuck natively) must never
+      // hang the load — the section just keeps its prior state.
+      final union = await _guarded(
+        () => _queries.loadDays(90, metrics: {HistoryMetric.sleep}),
+      );
+      if (union == null) return;
+      final stored = await _guarded(() => _queries.store.readAll()) ?? const {};
+      final map = <String, int>{
+        for (final e in stored.entries)
+          if (e.value.sleepMinutes != null) e.key: e.value.sleepMinutes!,
+        ...union.sleepMinutes,
+        // Per-day reads already in hand are fresh HC values for
+        // their dates and win over both.
+        ..._history,
+      };
+      // Fold stored depth back into the working history (fill
+      // only — in-hand per-day values are never overwritten).
+      var filled = false;
+      for (final e in map.entries) {
+        if (!_history.containsKey(e.key)) {
+          _history[e.key] = e.value;
+          filled = true;
+        }
+      }
+      if (filled) {
+        final window = sevenDayWindow();
+        _nights = [
+          for (final d in window)
+            (dateStr: d.dateStr, dayLabel: d.dayLabel, mins: _history[d.dateStr]),
+        ];
+        _selectedMins ??= _history[_selectedDate];
+      }
+      _sleepNeed = estimateSleepNeed(map);
+      _needNights = evaluateRecentNights(map);
+    } catch (_) {
+      // The section renders its insufficient-data state.
+    }
   }
 
   /// Reads minutes for [dates] not already in [_history] (guarded,
@@ -287,6 +369,7 @@ class _SleepScreenState extends State<SleepScreen> {
     await _readMinutesFor(dates.toSet().toList());
     await _applySelected(_selectedDate,
         useProfileFallback: _isTodaySelected);
+    await _refreshSleepNeed();
     if (!mounted) return;
     setState(() => _refreshing = false);
   }
@@ -525,6 +608,8 @@ class _SleepScreenState extends State<SleepScreen> {
             _compareCard(),
           ],
           const SizedBox(height: 24),
+          _sleepNeedSection(),
+          const SizedBox(height: 24),
           const Text(
             'Sleep Stages',
             style: TextStyle(
@@ -652,6 +737,289 @@ class _SleepScreenState extends State<SleepScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  /// R70 — the Personal Sleep Need section, inside this existing
+  /// Sleep tool (no new surface): last night's asleep beside the
+  /// need that applied to it, tonight's need, and the week's
+  /// balance bars (per-night asleep minus that night's need).
+  /// Copy is plain and trend-framed — the need is a personal
+  /// estimate from his own recent nights, never a rating and
+  /// never a medical claim. With too few nights recorded, the
+  /// section shows an honest still-learning state, not a number.
+  Widget _sleepNeedSection() {
+    final estimate = _sleepNeed;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Sleep Need',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: NotelColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Your usual need, from your recent nights',
+          style: TextStyle(
+            fontSize: 13,
+            color: NotelColors.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: NotelColors.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: NotelColors.cardBorder),
+          ),
+          child: estimate == null
+              ? const Text(
+                  'Still learning your pattern. Your personal sleep need will show here once at least 7 nights are recorded.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.5,
+                    color: NotelColors.textSecondary,
+                  ),
+                )
+              : _sleepNeedBody(estimate),
+        ),
+      ],
+    );
+  }
+
+  Widget _sleepNeedBody(SleepNeedEstimate estimate) {
+    final latest = _needNights.isNotEmpty ? _needNights.last : null;
+    final maxScale = _needNights.fold<int>(
+      estimate.tonightNeedMinutes,
+      (a, e) => e.asleepMinutes > a ? e.asleepMinutes : a,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Labels in their own row, stretched to the tallest label
+        // (IntrinsicHeight); values in a second row beneath. The
+        // three figures share one value line even when a label
+        // wraps in its third of the card — probe-measured at 360dp,
+        // the wrapped labels pushed one figure's value 17dp above
+        // its siblings (Mira pass, Oct 17, 2026).
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: _needLabel('Last night asleep')),
+              Expanded(child: _needLabel('That night\'s need')),
+              Expanded(child: _needLabel('Tonight\'s need')),
+            ],
+          ),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Expanded(
+              child: _needValue(
+                latest != null ? _formatMins(latest.asleepMinutes) : '--',
+              ),
+            ),
+            Expanded(
+              child: _needValue(
+                latest?.needMinutes != null
+                    ? _formatMins(latest!.needMinutes!)
+                    : '--',
+              ),
+            ),
+            Expanded(
+              child: _needValue(_formatMins(estimate.tonightNeedMinutes)),
+            ),
+          ],
+        ),
+        if (estimate.recentDebtMinutes > 0) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Recent shortfall: ${_formatMins(estimate.recentDebtMinutes)} '
+            'across your last ${estimate.debtNightsUsed} recorded nights',
+            style: const TextStyle(
+              fontSize: 12,
+              color: NotelColors.textSecondary,
+            ),
+          ),
+        ],
+        if (_needNights.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          const Text(
+            'This week\'s balance',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: NotelColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          for (var i = 0; i < _needNights.length; i++) ...[
+            _needBarRow(
+              _needNights[i],
+              isLatest: i == _needNights.length - 1,
+              maxScale: maxScale,
+            ),
+            if (i < _needNights.length - 1) const SizedBox(height: 12),
+          ],
+        ],
+      ],
+    );
+  }
+
+  Widget _needLabel(String label) {
+    return Text(
+      label,
+      style: const TextStyle(
+        fontSize: 12,
+        color: NotelColors.textSecondary,
+      ),
+    );
+  }
+
+  Widget _needValue(String value) {
+    return Text(
+      value,
+      style: const TextStyle(
+        fontSize: 20,
+        fontWeight: FontWeight.bold,
+        color: NotelColors.textPrimary,
+      ),
+    );
+  }
+
+  Widget _needBarRow(
+    SleepNightEvaluation night, {
+    required bool isLatest,
+    required int maxScale,
+  }) {
+    final parsed = DateTime.tryParse(night.date);
+    const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final dayLabel =
+        parsed != null ? dayNames[parsed.weekday - 1] : night.date;
+    final balance = night.balanceMinutes;
+    final balanceText = balance == null
+        ? null
+        : '${balance >= 0 ? '+' : '-'}${_formatMins(balance.abs())}';
+    final fraction =
+        maxScale > 0 ? (night.asleepMinutes / maxScale).clamp(0.0, 1.0) : 0.0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            SizedBox(
+              width: 36,
+              child: Text(
+                dayLabel,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: isLatest ? FontWeight.bold : FontWeight.w500,
+                  color: NotelColors.textPrimary,
+                ),
+              ),
+            ),
+            Text(
+              _formatMins(night.asleepMinutes),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: isLatest
+                    ? NotelColors.textPrimary
+                    : NotelColors.textSecondary,
+              ),
+            ),
+            const Spacer(),
+            if (night.statusLabel != null)
+              Text(
+                night.statusLabel!,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: isLatest ? FontWeight.bold : FontWeight.w500,
+                  color: isLatest
+                      ? NotelColors.primaryText
+                      : NotelColors.textSecondary,
+                ),
+              ),
+            if (balanceText != null) ...[
+              const SizedBox(width: 8),
+              Text(
+                balanceText,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: NotelColors.textSecondary,
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 4),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final need = night.needMinutes;
+            final needFraction = (need != null && maxScale > 0)
+                ? (need / maxScale).clamp(0.0, 1.0)
+                : null;
+            return SizedBox(
+              height: 8,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: Stack(
+                      children: [
+                        Container(
+                            height: 8, color: NotelColors.surfaceHigh),
+                        FractionallySizedBox(
+                          widthFactor: fraction,
+                          child: Container(
+                            height: 8,
+                            // Measured (Mira pass, Oct 17, 2026): the
+                            // old non-latest fill — primary @ 55% over
+                            // the surfaceHigh track — composites to
+                            // 2.21:1 against the track, so the bar's
+                            // end was hard to read. Solid primary
+                            // measures 4.21:1 against the track; the
+                            // latest night takes primaryText (6.18:1),
+                            // the same latest highlight the Daily
+                            // Score chart uses.
+                            color: isLatest
+                                ? NotelColors.primaryText
+                                : NotelColors.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // This night's need as a marker line across the
+                  // bar: without it the bar showed asleep only and
+                  // the need comparison lived solely in the +/-
+                  // text. The marker protrudes 2dp above and below
+                  // onto the card surface, where textPrimary
+                  // measures 16.01:1.
+                  if (needFraction != null)
+                    Positioned(
+                      left: (needFraction * constraints.maxWidth - 1)
+                          .clamp(0.0, constraints.maxWidth - 2),
+                      top: -2,
+                      child: Container(
+                        width: 2,
+                        height: 12,
+                        color: NotelColors.textPrimary,
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 

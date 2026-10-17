@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
+import 'package:tabs_lab/src/data/health_history_queries.dart';
+import 'package:tabs_lab/src/data/health_history_sync.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weekly_snapshot.dart';
 
@@ -39,9 +43,39 @@ class HealthRepository {
   final HealthConnectService hc;
   final TabsBackend backend;
 
-  HealthRepository({HealthConnectService? hc, TabsBackend? backend})
-      : hc = hc ?? HealthConnectService(),
-        backend = backend ?? TabsBackend();
+  /// R70 WS1b — history capture hook (injectable for tests).
+  final HealthHistorySync historySync;
+
+  /// R70 WS2 — the local-first union reader (store ∪ fresh HC).
+  final HealthHistoryQueries historyQueries;
+
+  HealthRepository({
+    HealthConnectService? hc,
+    TabsBackend? backend,
+    HealthHistorySync? historySync,
+    HealthHistoryQueries? historyQueries,
+  }) : this._internal(
+          hc ?? HealthConnectService(),
+          backend ?? TabsBackend(),
+          historySync ?? HealthHistorySync.instance,
+          historyQueries,
+        );
+
+  HealthRepository._internal(
+    this.hc,
+    this.backend,
+    this.historySync,
+    HealthHistoryQueries? queries,
+  ) : historyQueries = queries ?? HealthHistoryQueries(hc: hc);
+
+  /// Fire-and-forget history capture after a successful connected
+  /// load. Behind the sync's 6h throttle, unawaited, and never
+  /// throws — home load latency and behavior are unchanged.
+  void _triggerHistoryCapture() {
+    try {
+      unawaited(historySync.capture());
+    } catch (_) {}
+  }
 
   Future<bool> _connected() async {
     try {
@@ -105,12 +139,16 @@ class HealthRepository {
     } catch (_) {
       // Nulls stand — the UI shows "--".
     }
-    return TodayVitals(
+    final vitals = TodayVitals(
       heartRate: heartRate,
       activeCalories: activeCalories,
       sleepMinutes: sleepMinutes,
       logCountToday: await logCountFuture,
     );
+    // R70 WS1b — values are computed; capture history behind the
+    // throttle without blocking the return.
+    _triggerHistoryCapture();
+    return vitals;
   }
 
   /// Round 60 fix (Vera blocker) — per-read error isolation for the
@@ -169,40 +207,38 @@ class HealthRepository {
         metric != SnapshotMetric.habitCompletion &&
         metric != SnapshotMetric.bloodPressure;
     if (!connected && hcOnly) return emptyMetricData(metric);
+    // R70 WS1b — a connected snapshot load also feeds the history
+    // store (throttled, fire-and-forget; the load below is
+    // fail-soft and never throws past its honest empty states).
+    if (connected) _triggerHistoryCapture();
     try {
       switch (metric) {
         case SnapshotMetric.sleepHours:
-          // Round 60 — the 7 per-day reads are independent: parallel
-          // (was a sequential loop, 7 × bridge latency at cold start).
-          final sleepReads = await Future.wait([
-            for (final d in dateStrs) hc.readSleepMinutes(d),
-          ]);
-          final mins = <String, int>{};
-          for (var i = 0; i < dateStrs.length; i++) {
-            final m = sleepReads[i];
-            if (m != null && m > 0) mins[dateStrs[i]] = m;
-          }
-          return buildSleepMetric(dateStrs, labels, mins);
+          // R70 WS2 — local-first union (store ∪ fresh HC range
+          // read) instead of 7 per-day bridge reads; the builder
+          // and its zero rule are unchanged, so identical inputs
+          // render identical output.
+          final union = await historyQueries.loadDays(7,
+              metrics: {HistoryMetric.sleep});
+          return buildSleepMetric(dateStrs, labels, union.sleepMinutes);
         case SnapshotMetric.restingHeartRate:
-          final history = await hc.readRestingHrHistory(7);
-          return buildRestingHrMetric(
-              dateStrs, labels, {for (final h in history) h.date: h.bpm});
+          final union = await historyQueries.loadDays(7,
+              metrics: {HistoryMetric.restingHr});
+          return buildRestingHrMetric(dateStrs, labels, union.restingHr);
         case SnapshotMetric.hrSpikes:
-          // Round 60 — same parallelization as sleepHours.
-          final spikeReads = await Future.wait([
-            for (final d in dateStrs) hc.readHeartRateSamples(d),
-          ]);
-          final counts = <String, int>{};
-          for (var i = 0; i < dateStrs.length; i++) {
-            final summary =
-                computeDailyHrSummary(dateStrs[i], spikeReads[i]);
-            counts[dateStrs[i]] = summary?.spikeCount ?? 0;
-          }
-          return buildSpikesMetric(dateStrs, labels, counts);
+          // R70 WS2 — spike counts come from the union (the store's
+          // counts are the readSpikeCounts bridge rule, the same
+          // computation WS1's capture stores). A day with no count
+          // in the map renders 0 via the builder, exactly as the
+          // old per-day sample computation rendered a sampled day
+          // with no spikes.
+          final union = await historyQueries.loadDays(7,
+              metrics: {HistoryMetric.spikes});
+          return buildSpikesMetric(dateStrs, labels, union.spikes);
         case SnapshotMetric.calories:
-          final history = await hc.readCaloriesHistory(7);
-          return buildCaloriesMetric(
-              dateStrs, labels, {for (final h in history) h.date: h.kcal});
+          final union = await historyQueries.loadDays(7,
+              metrics: {HistoryMetric.calories});
+          return buildCaloriesMetric(dateStrs, labels, union.calories);
         case SnapshotMetric.logs:
           final entries =
               await _loggedIn() ? await backend.fetchLogEntries() : <int>[];
