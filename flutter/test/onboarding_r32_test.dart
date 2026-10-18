@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -43,10 +44,34 @@ class FakeOnboardingBackend extends TabsBackend {
   final List<Map<String, dynamic>> profilePushes = [];
   List<QuickLogCategory>? pushedCategories;
 
+  // Reset-fix review pins (Vera BLOCKER/HIGH): model the REAL
+  // backend's 5-minute TTL pull cache — [stalePullBody] is served
+  // until [invalidateSyncPull] is called, exactly like the real
+  // per-instance cache — plus a throw mode (the resolver's catch
+  // branch) and a completer gate (a pull that stays in flight while
+  // the test changes the world underneath the resolver).
+  Map<String, dynamic>? stalePullBody;
+  bool throwOnPull = false;
+  Completer<Map<String, dynamic>?>? pullGate;
+  int invalidateCount = 0;
+  bool _pullInvalidated = false;
+
   FakeOnboardingBackend({super.sessionStore});
 
   @override
-  Future<Map<String, dynamic>?> fetchSyncPull() async => pullBody;
+  void invalidateSyncPull() {
+    invalidateCount++;
+    _pullInvalidated = true;
+  }
+
+  @override
+  Future<Map<String, dynamic>?> fetchSyncPull() async {
+    final gate = pullGate;
+    if (gate != null) return gate.future;
+    if (throwOnPull) throw StateError('pull transport failed');
+    if (stalePullBody != null && !_pullInvalidated) return stalePullBody;
+    return pullBody;
+  }
 
   @override
   Future<Map<String, dynamic>?> fetchProfile() async {
@@ -523,6 +548,100 @@ void main() {
       // Drain MainShell's mount timers before teardown.
       await tester.pumpWidget(const MaterialApp(home: SizedBox()));
       await tester.pump(const Duration(seconds: 5));
+    });
+
+    testWidgets(
+        're-login inside the pull TTL reads the FRESH body, not the '
+        'cached one (Vera BLOCKER regression)', (tester) async {
+      // The previous session's pull cached onboardingComplete=true
+      // on this backend instance; the account was then reset
+      // (server now false). Without the resolver invalidating the
+      // TTL cache before reading, the stale true body routes home
+      // and the reset is silently undone.
+      final session = FakeSessionStore();
+      final map = <String, String>{};
+      final backend = FakeOnboardingBackend(sessionStore: session)
+        ..stalePullBody = {
+          'profile': {'onboardingComplete': true},
+          'entries': <dynamic>[],
+          'categories': <dynamic>[],
+        }
+        ..pullBody = {
+          'profile': {'onboardingComplete': false},
+          'entries': <dynamic>[],
+          'categories': <dynamic>[],
+        };
+      await driveLogin(tester, session: session, map: map, backend: backend);
+      expect(backend.invalidateCount, greaterThanOrEqualTo(1));
+      expect(find.text('Privacy & Data Consent'), findsOneWidget);
+      expect(find.byType(MainShell), findsNothing);
+      expect(map['onboarding_complete'], 'false');
+    });
+
+    testWidgets(
+        'login pull throws → historic fallback: home, marked '
+        'complete', (tester) async {
+      final session = FakeSessionStore();
+      final map = <String, String>{};
+      final backend = FakeOnboardingBackend(sessionStore: session)
+        ..throwOnPull = true;
+      await driveLogin(tester, session: session, map: map, backend: backend);
+      expect(find.byType(MainShell), findsOneWidget);
+      expect(map['onboarding_complete'], 'true');
+      // Drain MainShell's mount timers before teardown.
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await tester.pump(const Duration(seconds: 5));
+    });
+
+    testWidgets(
+        'session expiry during a pending route resolution is not '
+        'overwritten back to home (Vera HIGH regression)',
+        (tester) async {
+      final session = FakeSessionStore();
+      final map = <String, String>{};
+      final backend = FakeOnboardingBackend(sessionStore: session)
+        ..pullGate = Completer<Map<String, dynamic>?>();
+      await _pumpAppFlow(
+        tester,
+        session: session,
+        onboardingMap: map,
+        backend: backend,
+        authApi: loginApi(),
+      );
+      await tester.tap(find.text('Log In'));
+      await tester.pumpAndSettle();
+      final fields = find.byType(TextField);
+      await tester.enterText(fields.at(0), 'reset@tabs.app');
+      await tester.enterText(fields.at(1), 'secret');
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Log In'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      // Routing is in flight: the resolving stage's loading screen
+      // is up and the login form is gone.
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byType(TextField), findsNothing);
+      // The backend kills the session mid-resolution (a definitive
+      // refresh failure inside the pull does exactly this: the
+      // wrapper clears the session store FIRST, then fires the
+      // expiry callback — simulated in that order).
+      await session.clear();
+      TabsBackend.onSessionExpired?.call();
+      await tester.pump();
+      expect(find.text('Register'), findsOneWidget);
+      // The pull finally answers — with a reset body, the most
+      // dangerous stale answer — and the resolver must NOT route.
+      backend.pullGate!.complete({
+        'profile': {'onboardingComplete': false},
+        'entries': <dynamic>[],
+        'categories': <dynamic>[],
+      });
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump();
+      expect(find.text('Register'), findsOneWidget);
+      expect(find.text('Privacy & Data Consent'), findsNothing);
+      expect(find.byType(MainShell), findsNothing);
+      expect(session.token, isNull);
     });
 
     testWidgets(
