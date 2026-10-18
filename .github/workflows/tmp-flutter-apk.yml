@@ -1,19 +1,189 @@
-name: tmp-flutter-apk
+# TEMP workflow — founder-review UNIVERSAL production APK (one-off).
+#
+# Builds exactly one artifact from the takeover-integration tree:
+#   flutter build apk --release --flavor prod
+#     --build-number=10092 --build-name=2.4
+#     --dart-define=TABS_PRODUCTION_BILLING=true
+# NO --split-per-abi, NO --target-platform: a single universal APK,
+# versionCode exactly 10092 (no per-ABI offset in this mode).
+#
+# Signing restore + verification mirror flutter-prod-aab.yml.
+# Archive-only: there is deliberately NO Play upload step.
+# This branch and workflow patch are deleted after the artifact is taken.
+
+name: TEMP universal review APK
+
 on:
   workflow_dispatch:
+    inputs:
+      version_code:
+        description: "versionCode for the production APK (integer, >= 10092)"
+        required: true
+        type: number
+        default: 10092
+      version_name:
+        description: "versionName for the production APK (e.g. 2.4)"
+        required: true
+        type: string
+        default: "2.4"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tmp-universal-apk
+  cancel-in-progress: false
+
+env:
+  PACKAGE_NAME: com.notel.notel
+  EXPECTED_LABEL: Tabs
+  EXPECTED_CERT_SHA256: "3E:6A:0B:3B:0B:95:DD:4D:09:34:C0:04:CA:A9:43:6D:E4:52:62:6F:1D:3A:B8:73:A0:39:FA:06:E3:BA:AD:CE"
+  MIN_VERSION_CODE: "10092"
+  FLUTTER_VERSION: "3.47.7"
+  PROD_APK_PATH: flutter/build/app/outputs/flutter-apk/app-prod-release.apk
+
 jobs:
-  verify:
+  build-universal-apk:
+    name: Build and verify universal production APK (archive-only)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Validate version inputs
+        env:
+          VERSION_CODE: ${{ inputs.version_code }}
+          VERSION_NAME: ${{ inputs.version_name }}
+        run: |
+          set -eu
+          case "$VERSION_CODE" in
+            ''|*[!0-9]*)
+              echo "::error::version_code '$VERSION_CODE' is not an integer."
+              exit 1
+              ;;
+          esac
+          if [ "$VERSION_CODE" -lt "$MIN_VERSION_CODE" ]; then
+            echo "::error::version_code $VERSION_CODE is below the minimum $MIN_VERSION_CODE (highest code on Play is 10091)."
+            exit 1
+          fi
+          echo "Building universal production APK: versionCode=$VERSION_CODE versionName=$VERSION_NAME"
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
-      - uses: subosito/flutter-action@v2
+          java-version: "17"
+
+      - name: Restore upload keystore and signing properties
+        env:
+          UPLOAD_KEYSTORE_BASE64: ${{ secrets.UPLOAD_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          set -eu
+          if [ -z "$UPLOAD_KEYSTORE_BASE64" ]; then
+            echo "::error::UPLOAD_KEYSTORE_BASE64 secret is not set."
+            exit 1
+          fi
+          if [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::KEYSTORE_PASSWORD secret is not set."
+            exit 1
+          fi
+          echo "$UPLOAD_KEYSTORE_BASE64" | base64 -d > flutter/android/app/upload-keystore.keystore
+          chmod 600 flutter/android/app/upload-keystore.keystore
+          # keyPassword == storePassword is intentional (PKCS12 quirk,
+          # verified 2026-09-29 on the native pipeline). Runner-local only.
+          {
+            printf '\n# CI-injected production signing (runner-local, never committed)\n'
+            printf 'tabsUpload.storeFile=%s/flutter/android/app/upload-keystore.keystore\n' "$GITHUB_WORKSPACE"
+            printf 'tabsUpload.storePassword=%s\n' "$KEYSTORE_PASSWORD"
+            printf 'tabsUpload.keyAlias=tabs-upload\n'
+            printf 'tabsUpload.keyPassword=%s\n' "$KEYSTORE_PASSWORD"
+          } >> flutter/android/gradle.properties
+          echo "Keystore restored and tabsUpload.* properties injected (values not printed)."
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.47.7'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
-      - run: cd flutter && flutter pub get
-      - run: cd flutter && flutter analyze
-      - run: cd flutter && flutter test
+
+      - name: Install dependencies
+        working-directory: flutter
+        run: flutter pub get
+
+      - name: Build universal production APK (plain, no split, no target-platform)
+        working-directory: flutter
+        run: |
+          flutter build apk --release --flavor prod \
+            --build-number="$VERSION_CODE" \
+            --build-name="$VERSION_NAME" \
+            --dart-define=TABS_PRODUCTION_BILLING=true
+
+      - name: Verify universal APK (package, versionCode EXACT, label, ABIs, signer, zip)
+        run: |
+          set -eu
+          if [ ! -s "$PROD_APK_PATH" ]; then
+            echo "::error::APK not found or empty: $PROD_APK_PATH"
+            exit 1
+          fi
+          echo "APK: $PROD_APK_PATH ($(stat -c%s "$PROD_APK_PATH") bytes)"
+          python3 - "$PROD_APK_PATH" <<'PYEOF'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as zf:
+              assert zf.testzip() is None, "corrupt zip entry"
+              names = zf.namelist()
+              abis = sorted({n.split("/")[1] for n in names if n.startswith("lib/") and n.count("/") >= 2})
+              print("lib ABIs present:", abis)
+              assert "arm64-v8a" in abis and "armeabi-v7a" in abis and "x86_64" in abis, "universal APK must carry all ABIs"
+          print("APK zip integrity OK")
+          PYEOF
+          AAPT2="$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)"
+          BADGING="$("$AAPT2" dump badging "$PROD_APK_PATH")"
+          echo "$BADGING" | head -4
+          PKG="$(printf '%s' "$BADGING" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")"
+          VC="$(printf '%s' "$BADGING" | sed -n "s/^package: name='[^']*' versionCode='\([^']*\)'.*/\1/p")"
+          VN="$(printf '%s' "$BADGING" | sed -n "s/^package: name='[^']*' versionCode='[^']*' versionName='\([^']*\)'.*/\1/p")"
+          LABEL="$(printf '%s' "$BADGING" | sed -n "s/^application-label:'\(.*\)'/\1/p" | head -1)"
+          NATIVE_CODE="$(printf '%s' "$BADGING" | grep '^native-code:' || true)"
+          echo "package=$PKG versionCode=$VC versionName=$VN label=$LABEL"
+          echo "$NATIVE_CODE"
+          [ "$PKG" = "$PACKAGE_NAME" ] || { echo "::error::package mismatch: $PKG"; exit 1; }
+          [ "$VC" = "$VERSION_CODE" ] || { echo "::error::versionCode must be EXACTLY $VERSION_CODE in universal mode, got $VC"; exit 1; }
+          [ "$VN" = "$VERSION_NAME" ] || { echo "::error::versionName mismatch: $VN"; exit 1; }
+          [ "$LABEL" = "$EXPECTED_LABEL" ] || { echo "::error::label mismatch: $LABEL"; exit 1; }
+          printf '%s' "$NATIVE_CODE" | grep -q "arm64-v8a" || { echo "::error::native-code missing arm64-v8a"; exit 1; }
+          printf '%s' "$NATIVE_CODE" | grep -q "armeabi-v7a" || { echo "::error::native-code missing armeabi-v7a"; exit 1; }
+          printf '%s' "$NATIVE_CODE" | grep -q "x86_64" || { echo "::error::native-code missing x86_64"; exit 1; }
+          APKSIGNER="$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)"
+          CERTS="$("$APKSIGNER" verify --print-certs "$PROD_APK_PATH")"
+          echo "$CERTS"
+          DIGEST_HEX="$(printf '%s\n' "$CERTS" | sed -n -e 's/^Signer #[0-9][0-9]* certificate SHA-256 digest: //p' -e 's/^V[0-9][0-9]*\(\.[0-9][0-9]*\)\{0,1\} Signer\( #[0-9][0-9]*\)\{0,1\}: certificate SHA-256 digest: //p' | sed 's/[[:space:]]//g' | tr '[:upper:]' '[:lower:]' | sort -u | head -1)"
+          ACTUAL="$(printf '%s' "$DIGEST_HEX" | tr '[:lower:]' '[:upper:]' | sed 's/\(..\)/\1:/g; s/:$//')"
+          echo "Signer SHA-256: $ACTUAL"
+          [ "$ACTUAL" = "$EXPECTED_CERT_SHA256" ] || { echo "::error::signer mismatch: $ACTUAL"; exit 1; }
+          {
+            echo "### Universal production APK verification"
+            echo "- package: \`$PKG\`"
+            echo "- versionCode: \`$VC\` (exact, universal mode)"
+            echo "- versionName: \`$VN\`"
+            echo "- label: \`$LABEL\`"
+            echo "- $NATIVE_CODE"
+            echo "- signer SHA-256: \`$ACTUAL\` (Play upload cert match)"
+            echo "- size: $(stat -c%s "$PROD_APK_PATH") bytes"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Universal APK verification: ALL CHECKS PASSED"
+
+      - name: Archive universal production APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: tabs-prod-review-universal-${{ inputs.version_code }}
+          path: ${{ env.PROD_APK_PATH }}
+          if-no-files-found: error
+
+      - name: Remove restored keystore and injected signing properties
+        if: always()
+        run: |
+          rm -f flutter/android/app/upload-keystore.keystore
+          git checkout -- flutter/android/gradle.properties || true
