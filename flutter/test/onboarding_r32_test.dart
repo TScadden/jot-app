@@ -425,6 +425,145 @@ void main() {
     });
   });
 
+  group('AppFlow login routing (reset-account-status fix)', () {
+    AuthApiClient loginApi() => AuthApiClient(
+          client: MockClient((request) async {
+            if (request.url.path == '/api/auth/login') {
+              return http.Response(
+                jsonEncode({
+                  'token': 'tok',
+                  'refreshToken': 'ref',
+                  'email': 'reset@tabs.app',
+                }),
+                200,
+              );
+            }
+            return http.Response('nf', 404);
+          }),
+        );
+
+    Future<void> driveLogin(
+      WidgetTester tester, {
+      required FakeSessionStore session,
+      required Map<String, String> map,
+      required FakeOnboardingBackend backend,
+    }) async {
+      await _pumpAppFlow(
+        tester,
+        session: session,
+        onboardingMap: map,
+        backend: backend,
+        authApi: loginApi(),
+      );
+      await tester.tap(find.text('Log In'));
+      await tester.pumpAndSettle();
+      final fields = find.byType(TextField);
+      await tester.enterText(fields.at(0), 'reset@tabs.app');
+      await tester.enterText(fields.at(1), 'secret');
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Log In'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump();
+    }
+
+    testWidgets(
+        'login with explicit server onboardingComplete=false routes '
+        'into onboarding (the reset account)', (tester) async {
+      final session = FakeSessionStore();
+      final map = <String, String>{};
+      final backend = FakeOnboardingBackend(sessionStore: session)
+        ..pullBody = {
+          'profile': {'onboardingComplete': false},
+          'entries': [
+            {'id': 1}
+          ],
+          'categories': [
+            {'id': 1}
+          ],
+        };
+      await driveLogin(tester, session: session, map: map, backend: backend);
+      expect(session.token, 'tok');
+      expect(find.text('Privacy & Data Consent'), findsOneWidget);
+      expect(find.byType(MainShell), findsNothing);
+      expect(map['onboarding_complete'], 'false');
+      expect(map['has_consented'], 'false');
+      expect(map['intro_consultation_seen'], 'false');
+    });
+
+    testWidgets(
+        'login with server onboardingComplete=true lands home and '
+        'marks complete (unchanged legacy behavior)', (tester) async {
+      final session = FakeSessionStore();
+      final map = <String, String>{};
+      final backend = FakeOnboardingBackend(sessionStore: session)
+        ..pullBody = {
+          'profile': {'onboardingComplete': true},
+          'entries': <dynamic>[],
+          'categories': <dynamic>[],
+        };
+      await driveLogin(tester, session: session, map: map, backend: backend);
+      expect(find.byType(MainShell), findsOneWidget);
+      expect(map['onboarding_complete'], 'true');
+      expect(map['has_consented'], 'true');
+      // Drain MainShell's mount timers before teardown.
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await tester.pump(const Duration(seconds: 5));
+    });
+
+    testWidgets(
+        'login with no profile in the pull lands home (legacy '
+        'accounts are never dropped into onboarding)', (tester) async {
+      final session = FakeSessionStore();
+      final map = <String, String>{};
+      final backend = FakeOnboardingBackend(sessionStore: session)
+        ..pullBody = {'entries': <dynamic>[], 'categories': <dynamic>[]};
+      await driveLogin(tester, session: session, map: map, backend: backend);
+      expect(find.byType(MainShell), findsOneWidget);
+      expect(map['onboarding_complete'], 'true');
+      // Drain MainShell's mount timers before teardown.
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await tester.pump(const Duration(seconds: 5));
+    });
+
+    testWidgets(
+        'cold start mid-re-onboarding: explicit server false beats '
+        'the has-data reconcile heuristic', (tester) async {
+      // A reset user who paused halfway through setup: server says
+      // false AND the account has entries — before the fix, the
+      // background reconcile marked the local flag complete from the
+      // data alone, so the NEXT cold start skipped the rest of
+      // onboarding entirely.
+      final session = FakeSessionStore()
+        ..token = 'tok'
+        ..email = 'reset@tabs.app';
+      final map = <String, String>{
+        'has_consented': 'true',
+        'intro_consultation_seen': 'true',
+        'onboarding_complete': 'false',
+      };
+      final backend = FakeOnboardingBackend(sessionStore: session)
+        ..pullBody = {
+          'profile': {'onboardingComplete': false},
+          'entries': [
+            {'id': 1}
+          ],
+          'categories': <dynamic>[],
+        };
+      await _pumpAppFlow(
+        tester,
+        session: session,
+        onboardingMap: map,
+        backend: backend,
+      );
+      expect(find.text('Next Step'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(map['onboarding_complete'], 'false');
+      // Drain the profile-setup placeholder rotation loop.
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await tester.pump(const Duration(seconds: 5));
+    });
+  });
+
   group('Onboarding steps', () {
     testWidgets('notification step: Allow requests permission and '
         'advances; Don\'t Allow advances without requesting',
