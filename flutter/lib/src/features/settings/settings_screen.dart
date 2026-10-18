@@ -5197,20 +5197,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// Native "Reset Account Status" dialog (SettingsScreen.kt:4005-
-  /// 4022): title "Delete Account?", confirm calls restartOnboarding
-  /// which deletes the account server-side and logs out.
+  /// "Reset Account Status" dialog — founder fix (Oct 2026),
+  /// deliberately diverging from native (SettingsScreen.kt:4005-
+  /// 4022, where the same label hid a "Delete Account?" dialog whose
+  /// confirm, `restartOnboarding`, deleted the account server-side;
+  /// the Round 29 port copied that). The label now tells the truth:
+  /// the reset clears the account's setup/onboarding status
+  /// server-side and logs out, so the next sign-in runs setup again —
+  /// the account, password, and data are NOT deleted (permanent
+  /// deletion lives in User Profile → "Permanently Delete Account &
+  /// Data"). Copy reviewed for scope accuracy (Juno).
   Future<void> _showResetAccountDialog() async {
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: NotelColors.surface,
-        title: const Text('Delete Account?',
+        title: const Text('Reset Account Status?',
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.bold)),
         content: const Text(
-            'This will permanently delete your account and all associated data from our servers. You will be logged out immediately and cannot undo this.',
+            'This will log you out and reset your account\'s setup status. The next time you sign in, you\'ll go through the app setup again, like a new account.\n\nYour account, password, and data are not deleted — everything will still be here when you finish setup.',
             style: TextStyle(color: NotelColors.textSecondary)),
         actions: [
           TextButton(
@@ -5219,19 +5226,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 style: TextStyle(color: NotelColors.textSecondary)),
           ),
           TextButton(
-            key: const ValueKey('confirm_reset_delete'),
+            key: const ValueKey('confirm_reset_account_status'),
             onPressed: () async {
               Navigator.of(ctx).pop();
-              final ok = await _actions.deleteAccount();
+              final ok = await _actions.resetAccountStatus();
               if (ok) {
                 widget.onLogout?.call();
               } else {
                 _snack(
-                    'Could not delete your account. Check your connection and try again.');
+                    'Could not reset your account status. Check your connection and try again.');
               }
             },
-            child: const Text('Delete Account',
-                style: TextStyle(color: Colors.red)),
+            child: const Text('Reset',
+                style: TextStyle(color: NotelColors.primary)),
           ),
         ],
       ),

@@ -10,7 +10,9 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/today_plan_store.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
 
-/// Round 29 — logout / delete-account flows, mirroring native
+/// Round 29 — logout / delete-account flows (plus the Oct 2026
+/// founder-fix [resetAccountStatus], which deliberately diverges
+/// from native — see its doc), mirroring native
 /// `SettingsViewModel.logout` (SettingsViewModel.kt:1148-1240) and
 /// `deleteAccount` → `LogRepository.deleteAccountData()`
 /// (LogRepository.kt:1432-1455) + `restartOnboarding` (:1082-1139):
@@ -129,6 +131,40 @@ class AccountActions {
     }
     await _clearEverything();
     return revoked;
+  }
+
+  /// Reset Account Status (founder fix, Oct 2026). Until now this
+  /// button was wired to [deleteAccount] — a faithful port of native,
+  /// whose `restartOnboarding` also deletes the account server-side
+  /// behind a "Reset Account Status" label. The founder's ruling:
+  /// reset must mean RESET, not delete — the account, its password,
+  /// and all its data survive; only the onboarding/setup status is
+  /// cleared, so the next sign-in runs the setup flow again.
+  ///
+  /// Mechanics: the server-side status is the profile field
+  /// `onboardingComplete` (`user_profiles.onboarding_complete`).
+  /// An explicit `false` push persists server-side (the profile
+  /// upsert's COALESCE keeps an explicit false; verified live), and
+  /// the sync pull + login responses then report it. Order mirrors
+  /// [deleteAccount]'s fail-closed shape: the server write lands
+  /// FIRST — on failure nothing changes locally and false returns.
+  /// On success the full logout wipe runs (refresh-token revoke
+  /// best-effort, session + every account-bound cache cleared;
+  /// AppFlow's logout path also wipes the on-device onboarding
+  /// flags), so the next login starts from the same clean slate as
+  /// a fresh registration. AppFlow's login routing honors the
+  /// explicit server `false` and enters onboarding instead of
+  /// marking the account complete (see main.dart).
+  Future<bool> resetAccountStatus() async {
+    var ok = false;
+    try {
+      ok = await _backend.postSyncProfile({'onboardingComplete': false});
+    } catch (_) {
+      ok = false;
+    }
+    if (!ok) return false;
+    await logout();
+    return true;
   }
 
   /// Native-parity delete: server first. On success, wipe locally and

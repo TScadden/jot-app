@@ -368,6 +368,15 @@ class _AppFlowState extends State<AppFlow>
       final body = await _tabsBackend.fetchSyncPull();
       if (body == null) return;
       final profile = body['profile'];
+      // Founder fix (Oct 2026): an EXPLICIT server false is
+      // authoritative — it means a reset account (Settings → Reset
+      // Account Status) or an account still mid-onboarding. The
+      // has-data heuristic below must not silently mark such an
+      // account complete behind its back on a cold start, or a
+      // reset user who pauses mid-setup would never finish it.
+      if (profile is Map && profile['onboardingComplete'] == false) {
+        return;
+      }
       final serverComplete =
           profile is Map && profile['onboardingComplete'] == true;
       final entries = body['entries'];
@@ -446,14 +455,57 @@ class _AppFlowState extends State<AppFlow>
     // loginWithGoogleAccount call setOnboardingComplete(true)), and
     // MainActivity's onLoginSuccess(true) branch also sets
     // hasConsented + introConsultationSeen before navigating home.
-    unawaited(_markOnboardingComplete());
-    setState(() {
-      _loggedInEmail = email;
-      _stage = _FlowStage.home;
-    });
-    // TAKEOVER Phase 4 — signing in on a fresh install/update is
-    // the other first-run door (see _kickFirstRunResync).
-    _kickFirstRunResync();
+    //
+    // Founder fix (Oct 2026) — one deliberate exception: when the
+    // account's server profile carries onboardingComplete EXPLICITLY
+    // false, the account was reset (Settings → Reset Account Status)
+    // or never finished setup, and the login routes into onboarding
+    // like a fresh registration instead. The routing resolves in
+    // _resolveLoginRoute; the owner-mismatch clears above have
+    // already run synchronously, so no previous-account snapshot can
+    // render on either destination.
+    unawaited(_resolveLoginRoute(email));
+  }
+
+  /// Founder fix (Oct 2026) — post-login routing. The reset state
+  /// is read from the sync pull (the same body
+  /// [_reconcileOnboardingFromServer] reconciles from): only an
+  /// explicit boolean `false` counts. A profile with the flag true,
+  /// null, or absent — every legacy account, including ones whose
+  /// profile row predates the flag — keeps the historic
+  /// mark-complete-and-go-home behavior, and a failed pull falls
+  /// back to it too: a reset user who signs in offline lands home
+  /// this once rather than being locked out of their data.
+  Future<void> _resolveLoginRoute(String email) async {
+    var serverReset = false;
+    try {
+      final body = await _tabsBackend.fetchSyncPull();
+      final profile = body?['profile'];
+      serverReset =
+          profile is Map && profile['onboardingComplete'] == false;
+    } catch (_) {
+      serverReset = false;
+    }
+    if (!mounted) return;
+    if (serverReset) {
+      unawaited(_stampFreshAccountOnboarding());
+      setState(() {
+        _loggedInEmail = email;
+        _onboardingStep = OnboardingStep.consent;
+        _stage = _FlowStage.onboarding;
+      });
+    } else {
+      unawaited(_markOnboardingComplete());
+      setState(() {
+        _loggedInEmail = email;
+        _stage = _FlowStage.home;
+      });
+      // TAKEOVER Phase 4 — signing in on a fresh install/update is
+      // the other first-run door (see _kickFirstRunResync). The
+      // onboarding branch needs no kick: landing home via
+      // _onOnboardingComplete kicks it there.
+      _kickFirstRunResync();
+    }
   }
 
   // TAKEOVER Phase 4 — first-run reminder continuity (Ivy P0 §3.2):

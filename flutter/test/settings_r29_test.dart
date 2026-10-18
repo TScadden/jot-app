@@ -793,6 +793,64 @@ void main() {
       expect(session.token, 'tok');
       expect(cachesCleared, isFalse);
     });
+
+    test(
+        'reset success pushes onboardingComplete=false first, then '
+        'wipes like logout', () async {
+      // Founder fix (Oct 2026): Reset Account Status must clear the
+      // SERVER-side status (profile onboardingComplete) and log out —
+      // the account itself is untouched (no delete call is made:
+      // FakeSettingsBackend.deleteResult stays true but unused).
+      final session = FakeSessionStore()
+        ..token = 'tok'
+        ..refreshToken = 'ref'
+        ..email = 'a@example.com';
+      final backend = FakeSettingsBackend(sessionStore: session);
+      final storeMap = <String, String>{'settings_theme_mode': 'LIGHT'};
+      seedRealCaches();
+      expectRealCachesSeeded();
+      final actions = AccountActions(
+        backend: backend,
+        sessionStore: session,
+        settingsStore: fakeStore(storeMap),
+      );
+      expect(await actions.resetAccountStatus(), isTrue);
+      expect(backend.profilePushes, [
+        equals({'onboardingComplete': false})
+      ]);
+      expect(session.token, isNull);
+      expect(session.refreshToken, isNull);
+      expectRealCachesEmpty();
+      expect(storeMap, isEmpty);
+    });
+
+    test(
+        'reset failure (status push fails) keeps the session and '
+        'caches untouched', () async {
+      // Fail-closed like delete: if the server never records the
+      // reset, the user stays signed in with everything intact —
+      // a local-only "reset" would be undone by the next login's
+      // server reconciliation anyway.
+      final session = FakeSessionStore()
+        ..token = 'tok'
+        ..refreshToken = 'ref'
+        ..email = 'a@example.com';
+      final backend = FakeSettingsBackend(sessionStore: session)
+        ..pushResult = false;
+      var cachesCleared = false;
+      final actions = AccountActions(
+        backend: backend,
+        sessionStore: session,
+        settingsStore: fakeStore(<String, String>{}),
+        clearCaches: () async => cachesCleared = true,
+      );
+      expect(await actions.resetAccountStatus(), isFalse);
+      expect(backend.profilePushes, [
+        equals({'onboardingComplete': false})
+      ]);
+      expect(session.token, 'tok');
+      expect(cachesCleared, isFalse);
+    });
   });
 
   group('Settings screen account flows', () {
@@ -828,6 +886,85 @@ void main() {
       await tester.pumpAndSettle();
       expect(session.token, isNull);
       expect(loggedOut, isTrue);
+    });
+
+    testWidgets(
+        'reset dialog: honest copy, confirm resets status server-side '
+        'and logs out — account NOT deleted', (tester) async {
+      final session = FakeSessionStore()
+        ..token = 'tok'
+        ..refreshToken = 'ref'
+        ..email = 'a@example.com';
+      final backend = FakeSettingsBackend(sessionStore: session);
+      var loggedOut = false;
+      final actions = AccountActions(
+        backend: backend,
+        sessionStore: session,
+        settingsStore: fakeStore(<String, String>{}),
+        clearCaches: () async {},
+      );
+      await pumpSettings(tester, host(screen(
+        backend: backend,
+        store: fakeStore(<String, String>{}),
+        actions: actions,
+        onLogout: () => loggedOut = true,
+      )));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('reset_account_status')));
+      await tester.pumpAndSettle();
+      // The old port showed native's "Delete Account?" dialog here;
+      // the reset dialog must say what a reset actually does.
+      expect(find.text('Reset Account Status?'), findsOneWidget);
+      expect(find.text('Delete Account?'), findsNothing);
+      expect(
+          find.textContaining('go through the app setup again'),
+          findsOneWidget);
+      expect(
+          find.textContaining('not deleted'), findsOneWidget);
+      await tester
+          .tap(find.byKey(const ValueKey('confirm_reset_account_status')));
+      await tester.pumpAndSettle();
+      expect(backend.profilePushes, [
+        equals({'onboardingComplete': false})
+      ]);
+      expect(session.token, isNull);
+      expect(loggedOut, isTrue);
+    });
+
+    testWidgets(
+        'reset dialog: server failure keeps the session and shows '
+        'the error', (tester) async {
+      final session = FakeSessionStore()
+        ..token = 'tok'
+        ..refreshToken = 'ref'
+        ..email = 'a@example.com';
+      final backend = FakeSettingsBackend(sessionStore: session)
+        ..pushResult = false;
+      var loggedOut = false;
+      final actions = AccountActions(
+        backend: backend,
+        sessionStore: session,
+        settingsStore: fakeStore(<String, String>{}),
+        clearCaches: () async {},
+      );
+      await pumpSettings(tester, host(screen(
+        backend: backend,
+        store: fakeStore(<String, String>{}),
+        actions: actions,
+        onLogout: () => loggedOut = true,
+      )));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('reset_account_status')));
+      await tester.pumpAndSettle();
+      await tester
+          .tap(find.byKey(const ValueKey('confirm_reset_account_status')));
+      await tester.pumpAndSettle();
+      expect(
+          find.text(
+              'Could not reset your account status. Check your connection and try again.'),
+          findsOneWidget);
+      expect(session.token, 'tok');
+      expect(loggedOut, isFalse);
     });
 
     testWidgets(
