@@ -26,6 +26,7 @@ import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/onboarding/onboarding_flow.dart';
 import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
 import 'package:tabs_lab/src/features/splash/splash_screen.dart';
+import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/notel_theme.dart';
 
 void main() async {
@@ -168,7 +169,7 @@ class AppFlow extends StatefulWidget {
   State<AppFlow> createState() => _AppFlowState();
 }
 
-enum _FlowStage { welcome, login, onboarding, home }
+enum _FlowStage { welcome, login, resolving, onboarding, home }
 
 class _AppFlowState extends State<AppFlow>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
@@ -214,6 +215,14 @@ class _AppFlowState extends State<AppFlow>
   // outcome-identical and keeps reset behavior exact.
   void _onLogout() {
     unawaited(_onboardingStore.clear());
+    // Founder fix (Oct 2026, Vera BLOCKER) — drop this flow's
+    // backend pull cache too: TabsBackend.fetchSyncPull serves a
+    // 5-minute TTL cache that is NOT keyed by account, so a stale
+    // body from the account that just signed out could otherwise
+    // answer the NEXT account's login routing (and, after a reset,
+    // silently undo it). The resolver also invalidates before
+    // reading; this is the defense-in-depth half.
+    _tabsBackend.invalidateSyncPull();
     setState(() {
       _loggedInEmail = null;
       _stage = _FlowStage.welcome;
@@ -463,7 +472,11 @@ class _AppFlowState extends State<AppFlow>
     // like a fresh registration instead. The routing resolves in
     // _resolveLoginRoute; the owner-mismatch clears above have
     // already run synchronously, so no previous-account snapshot can
-    // render on either destination.
+    // render on either destination. The stage moves to `resolving`
+    // synchronously, unmounting the login form so nothing on it can
+    // race the decision (Vera HIGH).
+    if (!mounted) return;
+    setState(() => _stage = _FlowStage.resolving);
     unawaited(_resolveLoginRoute(email));
   }
 
@@ -474,9 +487,18 @@ class _AppFlowState extends State<AppFlow>
   /// null, or absent — every legacy account, including ones whose
   /// profile row predates the flag — keeps the historic
   /// mark-complete-and-go-home behavior, and a failed pull falls
-  /// back to it too: a reset user who signs in offline lands home
-  /// this once rather than being locked out of their data.
+  /// back to it too rather than locking the user out of their data.
+  /// (On that fallback the local flags are stamped complete, so the
+  /// reset takes effect at the next logout → login cycle instead —
+  /// the server flag stays false until setup completes and pushes
+  /// true, so the reset is deferred, never lost.)
   Future<void> _resolveLoginRoute(String email) async {
+    // Vera BLOCKER: fetchSyncPull's TTL cache is per-instance and
+    // not keyed by account — without this, a login within 5 minutes
+    // of a previous session's pull reads the OLD account state (a
+    // reset performed moments ago would be silently undone, and a
+    // cached false could drop the next account into onboarding).
+    _tabsBackend.invalidateSyncPull();
     var serverReset = false;
     try {
       final body = await _tabsBackend.fetchSyncPull();
@@ -486,7 +508,21 @@ class _AppFlowState extends State<AppFlow>
     } catch (_) {
       serverReset = false;
     }
-    if (!mounted) return;
+    // Vera HIGH: while the pull was in flight the world can change
+    // — a definitive refresh failure inside this very pull fires
+    // _onSessionExpired → _onLogout (stage leaves `resolving`, the
+    // session is destroyed); routing on regardless would resurrect
+    // a dead session into home. Bail unless this login is still
+    // the live one: stage unchanged and a session token still
+    // stored.
+    if (!mounted || _stage != _FlowStage.resolving) return;
+    try {
+      final token = await _sessionStore.readToken();
+      if (token == null || token.trim().isEmpty) return;
+    } catch (_) {
+      return;
+    }
+    if (!mounted || _stage != _FlowStage.resolving) return;
     if (serverReset) {
       unawaited(_stampFreshAccountOnboarding());
       setState(() {
@@ -729,6 +765,17 @@ class _AppFlowState extends State<AppFlow>
             onRegisterSuccess: _onRegisterSuccess,
             authApi: widget.authApi,
             sessionStore: widget.sessionStore,
+          )
+        else if (_stage == _FlowStage.resolving)
+          // Founder fix (Oct 2026) — post-login routing is resolving
+          // (see _resolveLoginRoute). A plain loading screen, on
+          // purpose: the login form is unmounted so nothing on it
+          // (back, a second submit) can race the routing decision.
+          const Scaffold(
+            backgroundColor: NotelColors.background,
+            body: Center(
+              child: CircularProgressIndicator(color: NotelColors.primary),
+            ),
           )
         else if (_stage == _FlowStage.onboarding)
           OnboardingFlow(

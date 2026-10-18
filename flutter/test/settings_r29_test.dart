@@ -32,6 +32,17 @@ class FakeSettingsBackend extends TabsBackend {
   bool deleteResult = true;
   int invalidateCount = 0;
 
+  // Reset-fix review pins (Vera MEDIUM): a call counter so a test can
+  // prove the reset NEVER touches the delete endpoint, an ordered
+  // event log so push → revoke → wipe ordering is assertable, and a
+  // token probe so a test can prove the push ran while the session
+  // was still live (a logout-first implementation fails in
+  // production but would pass a naive fake).
+  int deleteCalls = 0;
+  final List<String> events = [];
+  String? Function()? tokenProbe;
+  String? tokenSeenAtPush;
+
   FakeSettingsBackend({super.sessionStore});
 
   @override
@@ -45,6 +56,8 @@ class FakeSettingsBackend extends TabsBackend {
   @override
   Future<bool> postSyncProfile(Map<String, dynamic> fields) async {
     profilePushes.add(fields);
+    events.add('push');
+    tokenSeenAtPush = tokenProbe?.call();
     return pushResult;
   }
 
@@ -53,10 +66,17 @@ class FakeSettingsBackend extends TabsBackend {
       {'success': true, 'nickname': nickname, 'tag': '4242'};
 
   @override
-  Future<bool> logoutAccount() async => logoutResult;
+  Future<bool> logoutAccount() async {
+    events.add('revoke');
+    return logoutResult;
+  }
 
   @override
-  Future<bool> deleteAccount() async => deleteResult;
+  Future<bool> deleteAccount() async {
+    deleteCalls++;
+    events.add('delete');
+    return deleteResult;
+  }
 }
 
 /// A session store whose clear() throws, simulating a secure-storage
@@ -814,14 +834,41 @@ void main() {
         sessionStore: session,
         settingsStore: fakeStore(storeMap),
       );
+      backend.tokenProbe = () => session.token;
       expect(await actions.resetAccountStatus(), isTrue);
       expect(backend.profilePushes, [
         equals({'onboardingComplete': false})
       ]);
+      // The one regression this fix exists to prevent: the reset
+      // must NEVER call the delete endpoint (Vera MEDIUM pin).
+      expect(backend.deleteCalls, 0);
+      // The push ran while the session was still live — a
+      // logout-first ordering would have pushed with no token and
+      // failed against the real server.
+      expect(backend.tokenSeenAtPush, 'tok');
       expect(session.token, isNull);
       expect(session.refreshToken, isNull);
       expectRealCachesEmpty();
       expect(storeMap, isEmpty);
+    });
+
+    test(
+        'reset ordering: status push → revoke → wipe, delete never '
+        'called', () async {
+      final session = FakeSessionStore()
+        ..token = 'tok'
+        ..refreshToken = 'ref'
+        ..email = 'a@example.com';
+      final backend = FakeSettingsBackend(sessionStore: session);
+      final actions = AccountActions(
+        backend: backend,
+        sessionStore: session,
+        settingsStore: fakeStore(<String, String>{}),
+        clearCaches: () async => backend.events.add('wipe'),
+      );
+      expect(await actions.resetAccountStatus(), isTrue);
+      expect(backend.events, ['push', 'revoke', 'wipe']);
+      expect(backend.deleteCalls, 0);
     });
 
     test(
@@ -848,6 +895,9 @@ void main() {
       expect(backend.profilePushes, [
         equals({'onboardingComplete': false})
       ]);
+      // Nothing after the failed push: no revoke, no wipe, no delete.
+      expect(backend.events, ['push']);
+      expect(backend.deleteCalls, 0);
       expect(session.token, 'tok');
       expect(cachesCleared, isFalse);
     });
@@ -921,6 +971,14 @@ void main() {
           findsOneWidget);
       expect(
           find.textContaining('not deleted'), findsOneWidget);
+      // Juno sign-off condition (Oct 2026): the dialog must disclose
+      // the device-only losses the logout wipe causes — no blanket
+      // "everything will still be here" promise.
+      expect(
+          find.textContaining('Coach memory is lost for good'),
+          findsOneWidget);
+      expect(
+          find.textContaining('past Daily Scores'), findsOneWidget);
       await tester
           .tap(find.byKey(const ValueKey('confirm_reset_account_status')));
       await tester.pumpAndSettle();

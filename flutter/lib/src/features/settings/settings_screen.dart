@@ -5206,7 +5206,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// server-side and logs out, so the next sign-in runs setup again —
   /// the account, password, and data are NOT deleted (permanent
   /// deletion lives in User Profile → "Permanently Delete Account &
-  /// Data"). Copy reviewed for scope accuracy (Juno).
+  /// Data"). Copy signed off by Juno (Oct 2026) with one required
+  /// wording change, landed verbatim: the second paragraph must not
+  /// promise "everything will still be here" — the logout wipe
+  /// destroys device-only data (Coach memory; on-device health
+  /// history incl. imported days and frozen Daily Scores), so the
+  /// copy names those losses explicitly.
   Future<void> _showResetAccountDialog() async {
     await showDialog<void>(
       context: context,
@@ -5217,7 +5222,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.bold)),
         content: const Text(
-            'This will log you out and reset your account\'s setup status. The next time you sign in, you\'ll go through the app setup again, like a new account.\n\nYour account, password, and data are not deleted — everything will still be here when you finish setup.',
+            'This will log you out and reset your account\'s setup status. The next time you sign in, you\'ll go through the app setup again, like a new account.\n\nYour account, password, and server-saved data are not deleted — your logs, profile, and files will still be here when you finish setup. Like any log-out, this clears data stored only on this device: Coach memory is lost for good, and device-only health history is cleared — recent days re-sync from Health Connect, but imported history and past Daily Scores don\'t come back.',
             style: TextStyle(color: NotelColors.textSecondary)),
         actions: [
           TextButton(
@@ -5229,7 +5234,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
             key: const ValueKey('confirm_reset_account_status'),
             onPressed: () async {
               Navigator.of(ctx).pop();
-              final ok = await _actions.resetAccountStatus();
+              // Same fault wrapper as the sibling account dialogs
+              // (R29b pattern): resetAccountStatus is internally
+              // fault-isolated, but a throw must still land on the
+              // honest error state, never on a dead button.
+              bool ok;
+              try {
+                ok = await _actions.resetAccountStatus();
+              } catch (_) {
+                ok = false;
+              }
               if (ok) {
                 widget.onLogout?.call();
               } else {

@@ -147,7 +147,14 @@ class AccountActions {
   /// upsert's COALESCE keeps an explicit false; verified live), and
   /// the sync pull + login responses then report it. Order mirrors
   /// [deleteAccount]'s fail-closed shape: the server write lands
-  /// FIRST — on failure nothing changes locally and false returns.
+  /// FIRST — on an ordinary failure nothing changes locally and
+  /// false returns. One named exception (Vera MEDIUM, Oct 2026 —
+  /// [deleteAccount] shares it): if the push's 401 ends in a
+  /// DEFINITIVE refresh failure, the backend layer itself clears
+  /// the session and fires the global session-expired logout before
+  /// the push reports failure, so the user lands logged out anyway.
+  /// That state is consistent, not corrupt: the server flag was
+  /// never written, so the next login routes home as usual.
   /// On success the full logout wipe runs (refresh-token revoke
   /// best-effort, session + every account-bound cache cleared;
   /// AppFlow's logout path also wipes the on-device onboarding
