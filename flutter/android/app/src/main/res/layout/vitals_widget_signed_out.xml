@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Round 50 — signed-out face: the same shell as the values face,
+     one centered quiet line, no numbers ever. Text color is
+     NotelColors.textSecondary (#7A8FAF) from
+     lib/src/theme/notel_colors.dart. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:gravity="center"
+    android:orientation="horizontal"
+    android:paddingStart="18dp"
+    android:paddingTop="12dp"
+    android:paddingEnd="18dp"
+    android:paddingBottom="12dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:text="Open Tabs to sign in"
+        android:textColor="#7A8FAF"
+        android:textSize="14sp" />
+</LinearLayout>

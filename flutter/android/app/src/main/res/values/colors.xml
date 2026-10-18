@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Round 69: launcher icon background, copied verbatim from the native
+         app's res/values/colors.xml (origin/main). Referenced by
+         mipmap-anydpi-v26/ic_launcher.xml and ic_launcher_round.xml. -->
+    <color name="tabs_icon_background">#1A1240</color>
+</resources>
