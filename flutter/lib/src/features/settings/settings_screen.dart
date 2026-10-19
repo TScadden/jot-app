@@ -539,8 +539,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   ///   [HRV_SAMPLES_PARTIAL]. 132 samples read, 29 days."
   /// - success: "Last HRV sync check: 132 samples read, 29 days."
   String _hrvDiagnosticsLine(CaptureDiagnostic d) {
-    final counts = '${d.sampleCount ?? 0} samples read, '
-        '${d.dayCount ?? 0} days.';
+    final samples = d.sampleCount ?? 0;
+    final days = d.dayCount ?? 0;
+    final counts = '$samples ${samples == 1 ? 'sample' : 'samples'} read, '
+        '$days ${days == 1 ? 'day' : 'days'}.';
     if (d.errorCode != null) {
       return 'Last HRV sync check: the read failed '
           '[${d.errorCode}]. $counts';

@@ -54,17 +54,17 @@ class HealthConnectService {
     'android.permission.health.READ_SLEEP': 'Sleep',
     'android.permission.health.READ_STEPS': 'Steps',
     'android.permission.health.READ_ACTIVE_CALORIES_BURNED':
-        'Active calories',
+        'Active calories burned',
     'android.permission.health.READ_TOTAL_CALORIES_BURNED':
-        'Total calories',
+        'Total calories burned',
     'android.permission.health.READ_BASAL_METABOLIC_RATE':
         'Basal metabolic rate',
     'android.permission.health.READ_WEIGHT': 'Weight',
     'android.permission.health.READ_HEIGHT': 'Height',
     'android.permission.health.READ_HEART_RATE_VARIABILITY':
         'Heart rate variability',
-    'android.permission.health.READ_RESPIRATORY_RATE': 'Breathing rate',
-    'android.permission.health.READ_OXYGEN_SATURATION': 'Blood oxygen',
+    'android.permission.health.READ_RESPIRATORY_RATE': 'Respiratory rate',
+    'android.permission.health.READ_OXYGEN_SATURATION': 'Oxygen saturation',
     'android.permission.health.READ_RESTING_HEART_RATE':
         'Resting heart rate',
     'android.permission.health.READ_POWER': 'Power',

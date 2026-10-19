@@ -367,11 +367,47 @@ void main() {
 
     test('static helpers: every required permission has a plain label',
         () {
-      // No required permission may fall back to its raw name.
+      // The FULL 15-label map is pinned: labels must match Health
+      // Connect's own data-type names, because the partial-grant
+      // copy tells the user to go "turn on <names>". Any future
+      // label drift fails here.
+      const expectedLabels = <String, String>{
+        'android.permission.health.READ_HEART_RATE': 'Heart rate',
+        'android.permission.health.READ_SLEEP': 'Sleep',
+        'android.permission.health.READ_STEPS': 'Steps',
+        'android.permission.health.READ_ACTIVE_CALORIES_BURNED':
+            'Active calories burned',
+        'android.permission.health.READ_TOTAL_CALORIES_BURNED':
+            'Total calories burned',
+        'android.permission.health.READ_BASAL_METABOLIC_RATE':
+            'Basal metabolic rate',
+        'android.permission.health.READ_WEIGHT': 'Weight',
+        'android.permission.health.READ_HEIGHT': 'Height',
+        'android.permission.health.READ_HEART_RATE_VARIABILITY':
+            'Heart rate variability',
+        'android.permission.health.READ_RESPIRATORY_RATE':
+            'Respiratory rate',
+        'android.permission.health.READ_OXYGEN_SATURATION':
+            'Oxygen saturation',
+        'android.permission.health.READ_RESTING_HEART_RATE':
+            'Resting heart rate',
+        'android.permission.health.READ_POWER': 'Power',
+        'android.permission.health.READ_BLOOD_PRESSURE': 'Blood pressure',
+        'android.permission.health.READ_HEALTH_DATA_HISTORY':
+            'Health data history',
+      };
+      expect(expectedLabels, hasLength(15));
+      expect(HealthConnectService.permissionLabels, expectedLabels);
+      expect(HealthConnectService.permissionLabels.keys.toSet(),
+          HealthConnectService.requiredPermissions);
+      // No required permission may fall back to its raw name, and
+      // every label equals the corrected expected string.
       for (final p in HealthConnectService.requiredPermissions) {
         expect(HealthConnectService.permissionLabel(p),
             isNot(startsWith('android.permission')),
             reason: '$p must have a plain-language label');
+        expect(HealthConnectService.permissionLabel(p), expectedLabels[p],
+            reason: '$p label must match the pinned map');
       }
       expect(
           HealthConnectService.permissionLabel(
@@ -513,6 +549,24 @@ void main() {
           historyStore: store, hc: _SettingsFakeHc(const []));
       await r51.openConnectedApps(tester);
       expect(find.text('Last HRV sync check: 132 samples read, 29 days.'),
+          findsOneWidget);
+    });
+
+    testWidgets('singular counts render "1 sample read, 1 day."',
+        (tester) async {
+      final disk = <String, String>{};
+      final store = diagStore(disk);
+      await store.recordCaptureDiagnostics(
+        failures: const {},
+        succeeded: const {'hrv'},
+        atMs: DateTime(2026, 10, 19, 12).millisecondsSinceEpoch,
+        hrvSampleCount: 1,
+        hrvDayCount: 1,
+      );
+      await pumpSettingsWithHistory(tester,
+          historyStore: store, hc: _SettingsFakeHc(const []));
+      await r51.openConnectedApps(tester);
+      expect(find.text('Last HRV sync check: 1 sample read, 1 day.'),
           findsOneWidget);
     });
 
