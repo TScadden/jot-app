@@ -1587,18 +1587,29 @@ class MainActivity : FlutterFragmentActivity() {
     /// where tier is the record origin's package-priority VALUE (no
     /// package names cross the bridge). Dart shape:
     /// [{t, ms, tier}] sorted ascending by t.
+    ///
+    /// Chunk isolation + partial contract mirror readSleepHistory
+    /// exactly (Defect 0 / the F11 class): each chunk reads in its
+    /// own try/catch, so one failing window (one bad chunk in a
+    /// 90-day first-capture backfill) can no longer zero the whole
+    /// read. Partial failure returns the surviving chunks' samples
+    /// in the sleep map shape {items, partialError}; if EVERY chunk
+    /// fails, the read still errors with the real exception class.
     private fun readHrvSamples(days: Int?, result: MethodChannel.Result) {
         val client = hcClientOrError(result) ?: return
         val n = (days ?: 30).coerceIn(1, 3650)
         lifecycleScope.launch {
-            try {
-                val zone = ZoneId.systemDefault()
-                val end = ZonedDateTime.now(zone).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
-                val start = end.minus(n.toLong(), ChronoUnit.DAYS)
-                val records = mutableListOf<HeartRateVariabilityRmssdRecord>()
-                var chunkEnd = end
-                while (chunkEnd.isAfter(start)) {
-                    val chunkStart = maxOf(start, chunkEnd.minus(31, ChronoUnit.DAYS))
+            val zone = ZoneId.systemDefault()
+            val end = ZonedDateTime.now(zone).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
+            val start = end.minus(n.toLong(), ChronoUnit.DAYS)
+            val records = mutableListOf<HeartRateVariabilityRmssdRecord>()
+            val chunkErrors = mutableListOf<String>()
+            var chunkCount = 0
+            var chunkEnd = end
+            while (chunkEnd.isAfter(start)) {
+                val chunkStart = maxOf(start, chunkEnd.minus(31, ChronoUnit.DAYS))
+                chunkCount++
+                try {
                     var pageToken: String? = null
                     do {
                         val response = client.readRecords(
@@ -1611,8 +1622,20 @@ class MainActivity : FlutterFragmentActivity() {
                         records.addAll(response.records)
                         pageToken = response.pageToken
                     } while (pageToken != null)
-                    chunkEnd = chunkStart
+                } catch (e: Exception) {
+                    chunkErrors.add(hcErrorDetails(e))
                 }
+                chunkEnd = chunkStart
+            }
+            if (chunkErrors.size == chunkCount) {
+                result.error(
+                    "HRV_SAMPLES_READ_FAILED",
+                    "Could not read heart rate variability samples.",
+                    chunkErrors.first()
+                )
+                return@launch
+            }
+            try {
                 val samples = nonMock(records)
                     .sortedBy { it.time }
                     .map { record ->
@@ -1622,7 +1645,16 @@ class MainActivity : FlutterFragmentActivity() {
                             "tier" to packagePriority(record.metadata.dataOrigin.packageName)
                         )
                     }
-                result.success(samples)
+                if (chunkErrors.isEmpty()) {
+                    result.success(samples)
+                } else {
+                    result.success(
+                        mapOf(
+                            "items" to samples,
+                            "partialError" to chunkErrors.first()
+                        )
+                    )
+                }
             } catch (e: Exception) {
                 result.error("HRV_SAMPLES_READ_FAILED", "Could not read heart rate variability samples.", hcErrorDetails(e))
             }

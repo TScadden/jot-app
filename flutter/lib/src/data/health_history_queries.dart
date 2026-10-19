@@ -351,6 +351,10 @@ class HealthHistoryQueries {
         if (readFailed()) {
           failed.add(HistoryMetric.hrv);
         } else {
+          // Partial data is data (Defect 0): the surviving chunks'
+          // samples are processed; the partial signal rides along
+          // as a warning, exactly like sleep above.
+          if (readPartial()) partial.add(HistoryMetric.hrv);
           final dailyHrv = attributeDailyHrv(
               samples, _datesInRange(startDate, endDate).toSet());
           for (final entry in dailyHrv.entries) {

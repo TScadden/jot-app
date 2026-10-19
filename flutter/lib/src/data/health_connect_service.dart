@@ -45,6 +45,63 @@ class HealthConnectService {
     'android.permission.health.READ_HEALTH_DATA_HISTORY',
   };
 
+  /// Plain-language label for every required permission (HRV grant
+  /// visibility fix): a partial grant must be able to NAME the data
+  /// type that is not shared, in words the founder recognizes —
+  /// never the raw `android.permission.health.*` string.
+  static const Map<String, String> permissionLabels = {
+    'android.permission.health.READ_HEART_RATE': 'Heart rate',
+    'android.permission.health.READ_SLEEP': 'Sleep',
+    'android.permission.health.READ_STEPS': 'Steps',
+    'android.permission.health.READ_ACTIVE_CALORIES_BURNED':
+        'Active calories',
+    'android.permission.health.READ_TOTAL_CALORIES_BURNED':
+        'Total calories',
+    'android.permission.health.READ_BASAL_METABOLIC_RATE':
+        'Basal metabolic rate',
+    'android.permission.health.READ_WEIGHT': 'Weight',
+    'android.permission.health.READ_HEIGHT': 'Height',
+    'android.permission.health.READ_HEART_RATE_VARIABILITY':
+        'Heart rate variability',
+    'android.permission.health.READ_RESPIRATORY_RATE': 'Breathing rate',
+    'android.permission.health.READ_OXYGEN_SATURATION': 'Blood oxygen',
+    'android.permission.health.READ_RESTING_HEART_RATE':
+        'Resting heart rate',
+    'android.permission.health.READ_POWER': 'Power',
+    'android.permission.health.READ_BLOOD_PRESSURE': 'Blood pressure',
+    'android.permission.health.READ_HEALTH_DATA_HISTORY':
+        'Health data history',
+  };
+
+  /// The plain-language label for one permission; an unrecognized
+  /// permission falls back to its raw name (visible, never silent).
+  static String permissionLabel(String permission) =>
+      permissionLabels[permission] ?? permission;
+
+  /// The required permissions NOT in [granted] — the missing set
+  /// behind a `partiallyConnected` status.
+  static Set<String> missingPermissions(Set<String> granted) =>
+      requiredPermissions.difference(granted);
+
+  /// The missing permissions' plain-language labels, in
+  /// [requiredPermissions] order (deterministic for display).
+  static List<String> missingPermissionLabels(Set<String> granted) => [
+        for (final p in requiredPermissions)
+          if (!granted.contains(p)) permissionLabel(p),
+      ];
+
+  /// The partial-grant copy for the Connected Apps / Data
+  /// Connections surfaces (HRV grant visibility fix), following
+  /// the [staleGrantMessage] pattern: plain language naming what
+  /// is missing and the exact remedy, no codes. One shared builder
+  /// so every surface words it identically.
+  static String missingPermissionsMessage(List<String> labels) {
+    final names = labels.join(', ');
+    return 'Some health data is not shared: $names. To fix it, '
+        'open Health Connect, tap App permissions, tap Tabs, '
+        'and turn on $names.';
+  }
+
   static const String _kGrantedKey = 'hc_granted_permissions';
   static const String _kConnectedAtKey = 'hc_connected_at';
 
@@ -152,6 +209,18 @@ class HealthConnectService {
     if (granted.isEmpty) return HealthConnectStatus.notConnected;
     return HealthConnectStatus.partiallyConnected;
   }
+
+  /// The required permissions not currently granted (live bridge
+  /// read, like [getGrantedPermissions]). Empty when fully granted.
+  /// Throws [HealthConnectException] when the bridge read fails —
+  /// callers surface it visibly, never swallow it.
+  Future<Set<String>> getMissingPermissions() async =>
+      missingPermissions(await getGrantedPermissions());
+
+  /// Plain-language labels for [getMissingPermissions] — the names
+  /// a partial-grant message shows.
+  Future<List<String>> getMissingPermissionLabels() async =>
+      missingPermissionLabels(await getGrantedPermissions());
 
   /// True when every required permission is currently granted.
   Future<bool> isConnected() async =>
@@ -529,13 +598,36 @@ class HealthConnectService {
   /// cross the bridge. Sorted ascending by `t`. Day attribution
   /// (local calendar date, top-tier average) lives in Dart:
   /// see [attributeDailyHrv]. Empty when unreadable.
+  ///
+  /// Defect 0 — the bridge reads each chunk in isolation (the
+  /// readSleepHistory contract): when some chunks fail, it returns
+  /// `{items: [...], partialError: "<details>"}` instead of a bare
+  /// list or a total failure — the samples that DID read are
+  /// returned and the partial failure is recorded in
+  /// [lastPartialErrorCode] (code `HRV_SAMPLES_PARTIAL`, details in
+  /// [lastReadErrorDetails]), exactly as the sleep history read
+  /// does. Only a failure of EVERY chunk errors the call.
   Future<List<({int t, double ms, int tier})>> readHrvSamples(
       int days) async {
     try {
-      final raw =
-          await _channel.invokeMethod<List>('readHrvSamples', {'days': days});
+      final raw = await _channel
+          .invokeMethod<dynamic>('readHrvSamples', {'days': days});
+      List<dynamic> items = const [];
+      if (raw is List) {
+        items = raw;
+      } else if (raw is Map) {
+        final s = raw['items'];
+        if (s is List) items = s;
+        final partial = raw['partialError'];
+        if (partial is String && partial.isNotEmpty) {
+          // Partial is NOT a failure: its own field, like
+          // HR_SAMPLES_PARTIAL / SLEEP_HISTORY_PARTIAL.
+          lastPartialErrorCode = 'HRV_SAMPLES_PARTIAL';
+          lastReadErrorDetails = partial;
+        }
+      }
       final out = <({int t, double ms, int tier})>[];
-      for (final item in raw ?? const []) {
+      for (final item in items) {
         if (item is Map) {
           final t = item['t'];
           final ms = item['ms'];
