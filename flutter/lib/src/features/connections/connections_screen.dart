@@ -39,6 +39,13 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
   bool _requesting = false;
   String? _error;
 
+  // HRV grant visibility — plain-language names of the data types
+  // NOT shared when the grant is partial (e.g. "Heart rate
+  // variability"), so the missing type is named here instead of a
+  // bare "Partially connected". Empty when fully granted or when
+  // the missing-set read failed.
+  List<String> _missingLabels = const [];
+
   @override
   void initState() {
     super.initState();
@@ -56,10 +63,25 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
     try {
       final status = await _service.getStatus();
       if (mounted) {
+        // The status lands FIRST, in its own setState: a slow or
+        // failing missing-set read below must never delay it.
         setState(() {
           _status = status;
           _error = null;
+          _missingLabels = const [];
         });
+      }
+      // Partial grant: also read WHICH types are missing, on its
+      // own guard — a failure here leaves the labels empty rather
+      // than disturbing the status just shown.
+      if (status == HealthConnectStatus.partiallyConnected) {
+        try {
+          final missingLabels =
+              await _service.getMissingPermissionLabels();
+          if (mounted) {
+            setState(() => _missingLabels = missingLabels);
+          }
+        } catch (_) {}
       }
     } on HealthConnectException catch (e) {
       if (mounted) {
@@ -90,11 +112,15 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
         _requesting = false;
         if (granted.containsAll(HealthConnectService.requiredPermissions)) {
           _status = HealthConnectStatus.connected;
+          _missingLabels = const [];
         } else if (granted.isEmpty) {
           _error = 'No permissions were granted.';
           _status = HealthConnectStatus.notConnected;
+          _missingLabels = const [];
         } else {
           _status = HealthConnectStatus.partiallyConnected;
+          _missingLabels =
+              HealthConnectService.missingPermissionLabels(granted);
         }
       });
     } on HealthConnectException catch (e) {
@@ -115,6 +141,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
       setState(() {
         _status = HealthConnectStatus.notConnected;
         _persistedConnected = false;
+        _missingLabels = const [];
       });
     }
   }
@@ -268,6 +295,21 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
                 _error!,
                 style: const TextStyle(
                   color: NotelColors.error,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+            // HRV grant visibility: a partial grant names the data
+            // types that are not shared + the exact remedy (plain
+            // language, STALE_GRANT copy pattern — no codes).
+            if (status == HealthConnectStatus.partiallyConnected &&
+                _missingLabels.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                HealthConnectService.missingPermissionsMessage(
+                    _missingLabels),
+                style: const TextStyle(
+                  color: NotelColors.warning,
                   fontSize: 13,
                 ),
               ),

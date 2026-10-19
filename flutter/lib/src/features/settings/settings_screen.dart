@@ -249,6 +249,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
   HealthConnectStatus? _hcStatus;
   String? _hcErrorCode;
 
+  // HRV grant visibility — when Health Connect is only partially
+  // granted, the plain-language names of the data types that are
+  // NOT shared (e.g. "Heart rate variability"), read live alongside
+  // _hcStatus so the Connected Apps card can name them instead of
+  // a generic "some permissions are missing". Empty when fully
+  // granted or when the missing-set read failed (the card then
+  // keeps its generic partial copy).
+  List<String> _hcMissingLabels = const [];
+
+  // Defect 1b — the last capture's HRV outcome from the history
+  // store's persisted diagnostics (code + sample/day counts),
+  // rendered as the Connected Apps diagnostics line so a capture
+  // problem is diagnosable from one screenshot. Null until a
+  // capture has recorded an HRV outcome.
+  CaptureDiagnostic? _hrvDiag;
+
   // Round 65 — Digital Knowledge Extraction state. _kProcessing is
   // native's isProcessingFile (the add buttons swap for the
   // "Gemini is reading your files..." row); _kError is native's
@@ -455,11 +471,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     try {
       final status = await _hc.getStatus();
+      // Defect 1b — the last capture's HRV outcome. Read from
+      // memory ONLY (no warm, no channel call on this path): the
+      // shared store is warmed at startup and by every capture,
+      // so its diagnostics are already in memory whenever a
+      // capture has run; an unwarmed store simply has no line yet.
+      final hs = widget.historyStore ?? HealthHistoryStore.instance;
+      final hrvDiag = hs.lastCaptureDiagnostics['hrv'];
       if (!mounted) return;
+      // The status lands FIRST, in its own setState: a slow or
+      // failing missing-set read below must never delay or block
+      // the status the founder sees.
       setState(() {
         _hcStatus = status;
         _hcErrorCode = null;
+        _hcMissingLabels = const [];
+        _hrvDiag = hrvDiag;
       });
+      // Partial grant: also read WHICH types are missing, on its
+      // own guard — a failure here must not flip the row to
+      // not-connected; it just leaves the labels empty and the
+      // card keeps its generic partial copy.
+      if (status == HealthConnectStatus.partiallyConnected) {
+        try {
+          final missingLabels = await _hc.getMissingPermissionLabels();
+          if (!mounted) return;
+          setState(() => _hcMissingLabels = missingLabels);
+        } catch (_) {}
+      }
     } on HealthConnectException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -490,6 +529,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     if (!mounted) return;
     await _loadConnectionState();
+  }
+
+  /// Defect 1b — the Connected Apps diagnostics line for one HRV
+  /// capture outcome. Exact wordings (Juno review):
+  /// - failed:  "Last HRV sync check: the read failed
+  ///   [HRV_SAMPLES_READ_FAILED]. 0 samples read, 0 days."
+  /// - partial: "Last HRV sync check: some data could not be read
+  ///   [HRV_SAMPLES_PARTIAL]. 132 samples read, 29 days."
+  /// - success: "Last HRV sync check: 132 samples read, 29 days."
+  String _hrvDiagnosticsLine(CaptureDiagnostic d) {
+    final counts = '${d.sampleCount ?? 0} samples read, '
+        '${d.dayCount ?? 0} days.';
+    if (d.errorCode != null) {
+      return 'Last HRV sync check: the read failed '
+          '[${d.errorCode}]. $counts';
+    }
+    if (d.partialCode != null) {
+      return 'Last HRV sync check: some data could not be read '
+          '[${d.partialCode}]. $counts';
+    }
+    return 'Last HRV sync check: $counts';
   }
 
   /// Reconciles the on-device notification schedules with the
@@ -3319,10 +3379,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
               style: TextStyle(
                   color: NotelColors.warning, fontSize: 12)),
           const SizedBox(height: 4),
-          const Text(
-              'Some health permissions are still missing. Grant the remaining permissions to sync everything.',
-              style:
-                  TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
+          // HRV grant visibility: when the missing set is known,
+          // NAME the data types that are not shared and give the
+          // exact remedy (HealthConnectService.missingPermissionsMessage,
+          // STALE_GRANT copy pattern — plain language, no codes);
+          // the generic line stays as the fallback when it is not.
+          if (_hcMissingLabels.isNotEmpty)
+            Text(
+                HealthConnectService.missingPermissionsMessage(
+                    _hcMissingLabels),
+                style: const TextStyle(
+                    color: NotelColors.textSecondary, fontSize: 12))
+          else
+            const Text(
+                'Some health permissions are still missing. Grant the remaining permissions to sync everything.',
+                style: TextStyle(
+                    color: NotelColors.textSecondary, fontSize: 12)),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
@@ -3363,6 +3435,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Text('Health Connect status check failed [$_hcErrorCode].',
               style:
                   const TextStyle(color: NotelColors.error, fontSize: 12)),
+        ],
+        // Defect 1b — diagnostics line: the last capture's HRV
+        // outcome (counts + any code) from the persisted capture
+        // diagnostics, so a missing-HRV recurrence is diagnosable
+        // from this one screenshot. Counts are operational
+        // metadata, not health values; codes ride in brackets like
+        // the status-check line above.
+        if (_hrvDiag != null) ...[
+          const SizedBox(height: 8),
+          Text(_hrvDiagnosticsLine(_hrvDiag!),
+              style: const TextStyle(
+                  color: NotelColors.textSecondary, fontSize: 12)),
         ],
       ]),
       const SizedBox(height: 24),
