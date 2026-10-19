@@ -762,9 +762,17 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
       String? notice;
       bool connected = false;
       try {
-        connected = await _hc.isConnected();
+        // Bounded (Vera F3, same defect class as the Heart wedge):
+        // a never-returning HC call used to leave this screen on
+        // its skeleton forever. The bound uses the shared
+        // readTimeout; expiry throws into the catch below and fails
+        // to the existing "query issue" notice.
+        connected =
+            await _hc.isConnected().timeout(HealthConnectService.readTimeout);
         if (connected) {
-          hcRecords = await _hc.readBloodPressure(30);
+          hcRecords = await _hc
+              .readBloodPressure(30)
+              .timeout(HealthConnectService.readTimeout);
         } else {
           notice = 'Health Connect is not connected. Showing manual readings only.';
         }

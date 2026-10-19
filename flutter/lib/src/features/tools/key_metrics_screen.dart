@@ -391,6 +391,16 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
                 'Export failed. The CSV could not be shared. Please try again.'),
           ),
         );
+      } else if (union.partialMetrics.isNotEmpty) {
+        // Partial history (Vera F2): the export went out with the
+        // data that could be read — it is NOT aborted — but the
+        // user is told some history may be missing.
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Exported with a warning: some history could not be read and may be missing from the CSV.'),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _exporting = false);

@@ -845,7 +845,7 @@ class MainActivity : FlutterFragmentActivity() {
         val client = try {
             HealthConnectClient.getOrCreate(this)
         } catch (e: Exception) {
-            result.error("CLIENT_UNAVAILABLE", e.message, null)
+            result.error("CLIENT_UNAVAILABLE", e.message, hcErrorDetails(e))
             return
         }
         lifecycleScope.launch {
@@ -889,15 +889,14 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     /// HC read hardening — instrument, don't swallow: the exception
-    /// class + message travel to Dart in the channel error DETAILS
-    /// slot, so the surfaced UI error identifies the real failure
-    /// (e.g. "SecurityException: ...", "IllegalStateException: ...").
-    /// Codes stay stable for UI pattern-matching. NEVER include
-    /// health values here — exception class/message only, and HC
-    /// exceptions do not carry record values.
+    /// CLASS ONLY travels to Dart in the channel error DETAILS slot,
+    /// so the surfaced UI error identifies the real failure type
+    /// (e.g. "SecurityException", "IllegalStateException") without
+    /// exposing raw exception text. Codes stay stable for UI
+    /// pattern-matching. Class name only — never the message, never
+    /// health values (Juno J1).
     private fun hcErrorDetails(e: Exception): String {
-        val msg = e.message?.takeIf { it.isNotBlank() } ?: "no message"
-        return "${e.javaClass.simpleName}: $msg"
+        return e.javaClass.simpleName.takeIf { it.isNotBlank() } ?: "Exception"
     }
 
     private fun packagePriority(packageName: String): Int = when (packageName) {
@@ -1032,20 +1031,25 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     /// Grant-state probe (Dart `probeReadAccess`): one tiny real
-    /// read — today's step total via the aggregate path. Success
-    /// proves reads genuinely work; a SecurityException here while
-    /// the grant list reports complete is the stale-grant signature.
-    /// No health values cross in either direction (success is a
-    /// boolean; failure carries exception class + message only).
+    /// RECORD-PATH read — StepsRecord over today, first page only,
+    /// results discarded (Vera F6: the defect lives in the record
+    /// path; aggregates answer even when readRecords throws, so an
+    /// aggregate probe could pass over a dead record layer). A
+    /// SecurityException here while the grant list reports complete
+    /// is the stale-grant signature. Success means THIS record read
+    /// worked — it is not proof every read works. No health values
+    /// cross the channel in either direction (success is a boolean;
+    /// failure carries the exception class only).
     private fun probeReadAccess(result: MethodChannel.Result) {
         val client = hcClientOrError(result) ?: return
         lifecycleScope.launch {
             try {
                 val (start, end) = dayRange("today")
-                client.aggregate(
-                    AggregateRequest(
-                        metrics = setOf(StepsRecord.COUNT_TOTAL),
-                        timeRangeFilter = TimeRangeFilter.between(start, end)
+                client.readRecords(
+                    ReadRecordsRequest(
+                        recordType = StepsRecord::class,
+                        timeRangeFilter = TimeRangeFilter.between(start, end),
+                        pageSize = 1
                     )
                 )
                 result.success(true)

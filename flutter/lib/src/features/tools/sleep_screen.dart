@@ -169,12 +169,18 @@ class _SleepScreenState extends State<SleepScreen> {
   bool _connected = false;
 
   /// HC read hardening — the last bridge read failure on this screen,
-  /// as a bracketed code + the native exception info (never health
-  /// values). Sleep reads used to fail closed to null/empty with the
-  /// error swallowed, so a dead read layer rendered as a blank
-  /// profile with nothing diagnosable (founder defect #3).
+  /// as a bracketed code + the native exception class only (never
+  /// health values). Sleep reads used to fail closed to null/empty
+  /// with the error swallowed, so a dead read layer rendered as a
+  /// blank profile with nothing diagnosable (founder defect #3).
   String? _readError;
 
+  /// Captures the minutes/stages failure signal. Called at the END
+  /// of [_applySelected] — immediately after the reads it describes
+  /// (Vera F5): capturing later is last-writer-wins, because the
+  /// Sleep Need union load resets the service's recorded code, and a
+  /// stages failure followed by a successful union read would render
+  /// blank with NO error (exactly defect #3).
   void _captureReadError() {
     final code = _hc.lastReadErrorCode;
     if (code == null) return;
@@ -182,6 +188,18 @@ class _SleepScreenState extends State<SleepScreen> {
     _readError = details != null
         ? '[$code] Could not read sleep data. ($details)'
         : '[$code] Could not read sleep data.';
+  }
+
+  /// Juno J4 partial copy for the Sleep Need union's partial signal
+  /// (kept separate from [_captureReadError] per Vera F2/F5): some
+  /// sleep history chunks could not be read, the rest is shown.
+  void _capturePartialError() {
+    if (_readError != null) return;
+    final code = _hc.lastPartialErrorCode ?? 'SLEEP_HISTORY_PARTIAL';
+    final details = _hc.lastReadErrorDetails;
+    _readError = details != null
+        ? '[$code] Some sleep data could not be read and may be missing. ($details)'
+        : '[$code] Some sleep data could not be read and may be missing.';
   }
 
   /// All real (positive) minutes read so far, dateStr → minutes.
@@ -240,12 +258,12 @@ class _SleepScreenState extends State<SleepScreen> {
       for (var i = 13; i >= 0; i--) _dateKey(today.subtract(Duration(days: i))),
     ];
     _hc.lastReadErrorCode = null;
+    _hc.lastPartialErrorCode = null;
     _hc.lastReadErrorDetails = null;
     _readError = null;
     await _readMinutesFor(dates);
     await _applySelected(_dateKey(today), useProfileFallback: true);
     await _refreshSleepNeed();
-    _captureReadError();
     if (!mounted) return;
     setState(() {
       _connected = true;
@@ -269,6 +287,9 @@ class _SleepScreenState extends State<SleepScreen> {
         () => _queries.loadDays(90, metrics: {HistoryMetric.sleep}),
       );
       if (union == null) return;
+      // Partial union signal (F2/F5, Juno J4 copy): some sleep
+      // history chunks could not be read — warn, don't blank.
+      if (union.partial(HistoryMetric.sleep)) _capturePartialError();
       final stored = await _guarded(() => _queries.store.readAll()) ?? const {};
       final map = <String, int>{
         for (final e in stored.entries)
@@ -364,11 +385,18 @@ class _SleepScreenState extends State<SleepScreen> {
       for (final d in window)
         (dateStr: d.dateStr, dayLabel: d.dayLabel, mins: _history[d.dateStr]),
     ];
+    // F5: capture the minutes/stages error NOW, before any later
+    // read (Sleep Need union) can reset the recorded code.
+    _captureReadError();
   }
 
   Future<void> _sync() async {
     if (_refreshing) return;
     setState(() => _refreshing = true);
+    _hc.lastReadErrorCode = null;
+    _hc.lastPartialErrorCode = null;
+    _hc.lastReadErrorDetails = null;
+    _readError = null;
     // Drop cached reads so the sync is a real re-read, not a replay.
     _history.clear();
     _backend.invalidateSyncPull();
@@ -397,6 +425,10 @@ class _SleepScreenState extends State<SleepScreen> {
   Future<void> _selectDate(String dateStr) async {
     if (dateStr == _selectedDate && !_loading) return;
     setState(() => _refreshing = true);
+    _hc.lastReadErrorCode = null;
+    _hc.lastPartialErrorCode = null;
+    _hc.lastReadErrorDetails = null;
+    _readError = null;
     await _readMinutesFor([dateStr]);
     await _applySelected(dateStr);
     if (!mounted) return;

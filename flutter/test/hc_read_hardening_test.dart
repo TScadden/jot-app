@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
+import 'package:tabs_lab/src/data/health_history_queries.dart';
+import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/heart_data_cache.dart';
 import 'package:tabs_lab/src/features/heart/heart_screen.dart';
 
@@ -42,11 +44,16 @@ const _channelName = HealthConnectService.channelName;
 HealthConnectService serviceWith({
   required MemorySecureStore store,
   Future<dynamic> Function(MethodCall call)? handler,
+  Duration? probeTimeoutOverride,
 }) {
   final channel = MethodChannel(_channelName);
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .setMockMethodCallHandler(channel, handler);
-  return HealthConnectService(channel: channel, store: store);
+  return HealthConnectService(
+    channel: channel,
+    store: store,
+    probeTimeoutOverride: probeTimeoutOverride,
+  );
 }
 
 String todayStr() {
@@ -59,6 +66,38 @@ String todayStr() {
 int todayMs(int hour) {
   final now = DateTime.now();
   return DateTime(now.year, now.month, now.day, hour).millisecondsSinceEpoch;
+}
+
+/// Fake service for the J4 partial-copy widget test: returns real
+/// samples and records a partial (some chunks failed).
+class PartialFakeHc extends HealthConnectService {
+  @override
+  Future<bool> isConnected() async => true;
+
+  @override
+  Future<List<HrSample>> readHeartRateSamples(String dateStr) async {
+    lastPartialErrorCode = 'HR_SAMPLES_PARTIAL';
+    lastReadErrorDetails = 'IllegalStateException';
+    return [HrSample(timeMs: todayMs(8), bpm: 80)];
+  }
+}
+
+/// Fake HC for the queries-level partial test (F2): sleep history
+/// returns rows AND records a partial.
+class PartialQueriesFakeHc extends HealthConnectService {
+  @override
+  Future<List<({String date, int mins, int deep})>> readSleepHistory(
+      int days) async {
+    lastPartialErrorCode = 'SLEEP_HISTORY_PARTIAL';
+    lastReadErrorDetails = 'IOException';
+    final now = DateTime.now();
+    final y = DateTime(now.year, now.month, now.day)
+        .subtract(const Duration(days: 1));
+    final ds = '${y.year.toString().padLeft(4, '0')}-'
+        '${y.month.toString().padLeft(2, '0')}-'
+        '${y.day.toString().padLeft(2, '0')}';
+    return [(date: ds, mins: 420, deep: 60)];
+  }
 }
 
 /// Fake service whose HR read NEVER returns — the defect #3 wedge.
@@ -85,7 +124,7 @@ class ProvisionalFakeHc extends HealthConnectService {
   @override
   Future<List<HrSample>> readHeartRateSamples(String dateStr) async {
     lastReadErrorCode = 'HR_SAMPLES_READ_FAILED';
-    lastReadErrorDetails = 'IllegalStateException: service wedged';
+    lastReadErrorDetails = 'IllegalStateException';
     return const [];
   }
 }
@@ -105,7 +144,7 @@ void main() {
         handler: (call) async => throw PlatformException(
           code: 'HR_SAMPLES_READ_FAILED',
           message: 'Could not read heart rate samples.',
-          details: 'SecurityException: READ_HEART_RATE not granted',
+          details: 'SecurityException',
         ),
       );
       final out = await service.readHeartRateSamples('2026-10-18');
@@ -122,7 +161,7 @@ void main() {
         handler: (call) async => throw PlatformException(
           code: 'SLEEP_STAGES_READ_FAILED',
           message: 'Could not read sleep stages.',
-          details: 'IllegalStateException: service not bound',
+          details: 'IllegalStateException',
         ),
       );
       final out = await service.readSleepStages('2026-10-18');
@@ -134,24 +173,27 @@ void main() {
   });
 
   group('chunk partial failure', () {
-    test('HR: partial map returns samples + HR_SAMPLES_PARTIAL', () async {
+    test('HR: partial map returns samples + partial field set, failure code null', () async {
       final service = serviceWith(
         store: MemorySecureStore(),
         handler: (call) async => {
           'samples': [
             {'t': todayMs(8), 'bpm': 72},
           ],
-          'partialError': 'IllegalStateException: chunk 2 failed',
+          'partialError': 'IllegalStateException',
         },
       );
       final out = await service.readHeartRateSamples(todayStr());
       expect(out, hasLength(1));
       expect(out.single.bpm, 72);
-      expect(service.lastReadErrorCode, 'HR_SAMPLES_PARTIAL');
+      // Partial is NOT a failure (F2): separate field, failure code
+      // stays null so union/callers never discard the data.
+      expect(service.lastPartialErrorCode, 'HR_SAMPLES_PARTIAL');
+      expect(service.lastReadErrorCode, isNull);
       expect(service.lastReadErrorDetails, contains('IllegalStateException'));
     });
 
-    test('sleep history: partial map returns days + SLEEP_HISTORY_PARTIAL',
+    test('sleep history: partial map returns days + partial field set, failure code null',
         () async {
       final service = serviceWith(
         store: MemorySecureStore(),
@@ -159,13 +201,14 @@ void main() {
           'items': [
             {'date': '2026-10-17', 'mins': 420, 'deep': 60},
           ],
-          'partialError': 'IOException: chunk failed',
+          'partialError': 'IOException',
         },
       );
       final out = await service.readSleepHistory(30);
       expect(out, hasLength(1));
       expect(out.single.mins, 420);
-      expect(service.lastReadErrorCode, 'SLEEP_HISTORY_PARTIAL');
+      expect(service.lastPartialErrorCode, 'SLEEP_HISTORY_PARTIAL');
+      expect(service.lastReadErrorCode, isNull);
     });
 
     test('HR: bare list (all chunks OK) leaves no error recorded', () async {
@@ -178,6 +221,7 @@ void main() {
       final out = await service.readHeartRateSamples(todayStr());
       expect(out, hasLength(1));
       expect(service.lastReadErrorCode, isNull);
+      expect(service.lastPartialErrorCode, isNull);
     });
   });
 
@@ -188,7 +232,7 @@ void main() {
         handler: (call) async => throw PlatformException(
           code: 'PROBE_READ_FAILED',
           message: 'Probe read failed.',
-          details: 'SecurityException: permission revoked',
+          details: 'SecurityException',
         ),
       );
       expect(await service.probeReadAccess(),
@@ -201,7 +245,7 @@ void main() {
         handler: (call) async => throw PlatformException(
           code: 'PROBE_READ_FAILED',
           message: 'Probe read failed.',
-          details: 'IOException: disk error',
+          details: 'IOException',
         ),
       );
       expect(await service.probeReadAccess(), HcReadProbeOutcome.failed);
@@ -219,7 +263,7 @@ void main() {
             throw PlatformException(
               code: 'PROBE_READ_FAILED',
               message: 'Probe read failed.',
-              details: 'SecurityException: stale grant',
+              details: 'SecurityException',
             );
           }
           return null;
@@ -230,7 +274,7 @@ void main() {
         throwsA(isA<HealthConnectException>()
             .having((e) => e.code, 'code', HealthConnectService.staleGrantCode)
             .having((e) => e.message, 'message',
-                contains('remove Tabs from the allowed apps'))),
+                contains('tap Remove access')),
       );
       // A blocked grant must never be stored as a healthy connection.
       expect(await store.read('hc_granted_permissions'), isNull);
@@ -252,6 +296,118 @@ void main() {
       final result = await service.requestPermissions();
       expect(result, containsAll(HealthConnectService.requiredPermissions));
       expect(await service.hasPersistedConnection(), isTrue);
+    });
+
+    test('F1(i): probe hangs → requestPermissions still returns + persists '
+        '(probe is internally timeout-bounded, expiry is soft)', () async {
+      final store = MemorySecureStore();
+      final granted = HealthConnectService.requiredPermissions.toList();
+      final service = serviceWith(
+        store: store,
+        probeTimeoutOverride: const Duration(milliseconds: 50),
+        handler: (call) {
+          if (call.method == 'requestPermissions') {
+            return Future.value(granted);
+          }
+          if (call.method == 'probeReadAccess') {
+            return Completer<dynamic>().future; // never returns
+          }
+          return Future.value(null);
+        },
+      );
+      final result = await service.requestPermissions();
+      expect(result, containsAll(HealthConnectService.requiredPermissions));
+      expect(await service.hasPersistedConnection(), isTrue);
+      expect(await service.probeReadAccess(), HcReadProbeOutcome.timedOut);
+    });
+
+    test('F1(ii): non-security probe failure at requestPermissions still '
+        'persists', () async {
+      final store = MemorySecureStore();
+      final granted = HealthConnectService.requiredPermissions.toList();
+      final service = serviceWith(
+        store: store,
+        handler: (call) async {
+          if (call.method == 'requestPermissions') return granted;
+          if (call.method == 'probeReadAccess') {
+            throw PlatformException(
+              code: 'PROBE_READ_FAILED',
+              message: 'Probe read failed.',
+              details: 'IOException',
+            );
+          }
+          return null;
+        },
+      );
+      final result = await service.requestPermissions();
+      expect(result, containsAll(HealthConnectService.requiredPermissions));
+      expect(await service.hasPersistedConnection(), isTrue);
+    });
+
+    test('J3: getStatus full grants + probe SecurityException → STALE_GRANT, '
+        'not persisted', () async {
+      final store = MemorySecureStore();
+      final granted = HealthConnectService.requiredPermissions.toList();
+      final service = serviceWith(
+        store: store,
+        handler: (call) async {
+          if (call.method == 'isAvailable') return true;
+          if (call.method == 'getGrantedPermissions') return granted;
+          if (call.method == 'probeReadAccess') {
+            throw PlatformException(
+              code: 'PROBE_READ_FAILED',
+              message: 'Probe read failed.',
+              details: 'SecurityException',
+            );
+          }
+          return null;
+        },
+      );
+      await expectLater(
+        service.getStatus(),
+        throwsA(isA<HealthConnectException>()
+            .having((e) => e.code, 'code', HealthConnectService.staleGrantCode)),
+      );
+      expect(await store.read('hc_granted_permissions'), isNull);
+    });
+
+    test('J3: getStatus full grants + probe OK → connected + persisted',
+        () async {
+      final store = MemorySecureStore();
+      final granted = HealthConnectService.requiredPermissions.toList();
+      final service = serviceWith(
+        store: store,
+        handler: (call) async {
+          if (call.method == 'isAvailable') return true;
+          if (call.method == 'getGrantedPermissions') return granted;
+          if (call.method == 'probeReadAccess') return true;
+          return null;
+        },
+      );
+      expect(await service.getStatus(), HealthConnectStatus.connected);
+      expect(await service.hasPersistedConnection(), isTrue);
+    });
+  });
+
+  group('queries-level partial handling (F2)', () {
+    test('partial sleep history: rows processed, metric NOT failed, '
+        'partialMetrics carries sleep', () async {
+      final values = <String, String>{};
+      final store = HealthHistoryStore.testInstance();
+      store.debugSetStore(
+        read: (k) async => values[k],
+        write: (k, v) async => values[k] = v,
+        delete: (k) async => values.remove(k),
+      );
+      store.debugReset();
+      final queries =
+          HealthHistoryQueries(hc: PartialQueriesFakeHc(), store: store);
+      final union =
+          await queries.loadDays(7, metrics: {HistoryMetric.sleep});
+      expect(union.failedMetrics, isEmpty);
+      expect(union.partialMetrics, contains(HistoryMetric.sleep));
+      expect(union.sleepMinutes.values, contains(420));
+      expect(union.deepSleepMinutes.values, contains(60));
     });
   });
 
@@ -290,6 +446,16 @@ void main() {
           hasLength(1));
     });
 
+    test('F9: failed apply on a cold date touches no cache state — '
+        'snapshot stays null and persist() writes nothing', () async {
+      final data = HeartDataCache.instance.apply('2026-10-18', const [],
+          ownerEmail: 'a@b.c', succeeded: false);
+      expect(data.samples, isEmpty);
+      expect(HeartDataCache.instance.snapshot('2026-10-18'), isNull);
+      expect(HeartDataCache.instance.hasDate('2026-10-18'), isFalse);
+      expect(HeartDataCache.instance.lastSyncAt, isNull);
+    });
+
     test('successful apply stamps lastSyncAt (unchanged behavior)', () {
       final t0 = DateTime(2026, 10, 18, 9);
       HeartDataCache.instance.apply(
@@ -300,6 +466,32 @@ void main() {
   });
 
   group('Heart screen hardening', () {
+    testWidgets(
+        'J4: partial read shows the partial sentence, not a total '
+        'failure, and still stamps the sync', (tester) async {
+      HeartDataCache.instance.debugReset();
+      final store = <String, String>{};
+      HeartDataCache.instance.debugSetStore(
+        read: (k) async => store[k],
+        write: (k, v) async => store[k] = v,
+        delete: (k) async => store.remove(k),
+      );
+      await tester.pumpWidget(MaterialApp(
+        home: HeartScreen(
+          email: 'a@b.c',
+          healthConnectService: PartialFakeHc(),
+          cache: HeartDataCache.instance,
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining(
+            '[HR_SAMPLES_PARTIAL] Some heart rate data could not be read and may be missing. (IllegalStateException)'),
+        findsOneWidget,
+      );
+      expect(HeartDataCache.instance.lastSyncAt, isNotNull);
+    });
+
     testWidgets(
         'wedged HR read → READ_TIMEOUT surfaces, spinner does not '
         'wedge forever, no sync stamped', (tester) async {

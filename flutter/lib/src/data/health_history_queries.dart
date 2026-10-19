@@ -23,7 +23,10 @@ import 'package:tabs_lab/src/data/health_history_store.dart';
 ///   values, never zero-filled placeholders.
 ///
 /// Failure handling: the HC service fails closed (empty / null)
-/// and records the failure in `lastReadErrorCode`. The union reads
+/// and records the failure in `lastReadErrorCode`; a PARTIAL read
+/// (some chunks missing, real rows returned) records
+/// `lastPartialErrorCode` instead and is reported in
+/// [HistoryUnion.partialMetrics] — never as a failure. The union reads
 /// SEQUENTIALLY and snapshots that code around each read so a
 /// failed metric is reported in [HistoryUnion.failedMetrics] —
 /// callers that must not mistake an outage for emptiness (the Key
@@ -70,6 +73,13 @@ class HistoryUnion {
   /// absent from the request is never in this set.
   final Set<HistoryMetric> failedMetrics;
 
+  /// Metrics whose fresh HC read returned PARTIAL data during this
+  /// load (some chunks missing — Vera F2): the rows ARE in the maps
+  /// above and the metric is NOT in [failedMetrics]; this set is
+  /// the warning signal for callers that surface completeness
+  /// (e.g. the Key Metrics CSV export).
+  final Set<HistoryMetric> partialMetrics;
+
   const HistoryUnion({
     required this.startDate,
     required this.endDate,
@@ -80,9 +90,12 @@ class HistoryUnion {
     this.spikes = const {},
     this.hrv = const {},
     this.failedMetrics = const {},
+    this.partialMetrics = const {},
   });
 
   bool failed(HistoryMetric metric) => failedMetrics.contains(metric);
+
+  bool partial(HistoryMetric metric) => partialMetrics.contains(metric);
 
   /// Every date that carries at least one metric in this union,
   /// sorted ascending — the export/report "actual depth" view.
@@ -188,6 +201,7 @@ class HealthHistoryQueries {
     };
 
     final failed = <HistoryMetric>{};
+    final partial = <HistoryMetric>{};
     if (!fetchFromHealthConnect) {
       return HistoryUnion(
         startDate: startDate,
@@ -250,9 +264,11 @@ class HealthHistoryQueries {
     }
 
     bool readFailed() => hc.lastReadErrorCode != null;
+    bool readPartial() => hc.lastPartialErrorCode != null;
 
     if (metrics.contains(HistoryMetric.restingHr)) {
       hc.lastReadErrorCode = null;
+      hc.lastPartialErrorCode = null;
       try {
         final rows = await hc.readRestingHrHistory(fetchDays);
         if (readFailed()) {
@@ -270,11 +286,16 @@ class HealthHistoryQueries {
 
     if (metrics.contains(HistoryMetric.sleep)) {
       hc.lastReadErrorCode = null;
+      hc.lastPartialErrorCode = null;
       try {
         final rows = await hc.readSleepHistory(fetchDays);
         if (readFailed()) {
           failed.add(HistoryMetric.sleep);
         } else {
+          // Partial data is data (F2): rows are processed; the
+          // partial signal rides along as a warning, never as a
+          // failed metric.
+          if (readPartial()) partial.add(HistoryMetric.sleep);
           for (final r in rows) {
             if (r.mins > 0) putFresh(r.date, sleep: r.mins);
             if (r.deep > 0) putFresh(r.date, deep: r.deep);
@@ -287,6 +308,7 @@ class HealthHistoryQueries {
 
     if (metrics.contains(HistoryMetric.calories)) {
       hc.lastReadErrorCode = null;
+      hc.lastPartialErrorCode = null;
       try {
         final rows = await hc.readCaloriesHistory(fetchDays);
         if (readFailed()) {
@@ -303,6 +325,7 @@ class HealthHistoryQueries {
 
     if (metrics.contains(HistoryMetric.spikes)) {
       hc.lastReadErrorCode = null;
+      hc.lastPartialErrorCode = null;
       try {
         final rows = await hc.readSpikeCounts(fetchDays);
         if (readFailed()) {
@@ -322,6 +345,7 @@ class HealthHistoryQueries {
       // R71 — ONE range read of raw HRV samples; day attribution +
       // the daily top-tier rule run in Dart (attributeDailyHrv).
       hc.lastReadErrorCode = null;
+      hc.lastPartialErrorCode = null;
       try {
         final samples = await hc.readHrvSamples(fetchDays);
         if (readFailed()) {
@@ -371,6 +395,7 @@ class HealthHistoryQueries {
       spikes: spikes,
       hrv: hrv,
       failedMetrics: failed,
+      partialMetrics: partial,
     );
   }
 

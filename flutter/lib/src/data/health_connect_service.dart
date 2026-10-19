@@ -79,18 +79,26 @@ class HealthConnectService {
   /// never revokes access or opens settings on the user's behalf;
   /// removing the app inside Health Connect is the user's tap.
   static const String staleGrantMessage =
-      'Health Connect shows Tabs as connected, but it is blocking '
-      'this app from reading your data. This can happen after an app '
-      'update or reinstall. To fix it, open Health Connect, go to '
-      'App permissions, remove Tabs from the allowed apps, then '
-      'return here and connect again.';
+      'Health Connect lists this app as having permission, but a '
+      'test read was blocked. This sometimes happens after an app '
+      'update or reinstall. To fix it, open Health Connect, tap '
+      'App permissions, tap this app, then tap Remove access. '
+      'Return here and connect again.';
 
   final MethodChannel _channel;
   final SecureStore _store;
 
-  HealthConnectService({MethodChannel? channel, SecureStore? store})
+  /// Probe bound for this instance — [readTimeout] in production;
+  /// tests inject a short override so a wedged-probe test does not
+  /// wait 30 real seconds. Only the probe is timed inside the
+  /// service (Vera F1); data reads are bounded by their callers.
+  final Duration _probeTimeout;
+
+  HealthConnectService(
+      {MethodChannel? channel, SecureStore? store, Duration? probeTimeoutOverride})
       : _channel = channel ?? const MethodChannel(channelName),
-        _store = store ?? const FlutterSecureStore();
+        _store = store ?? const FlutterSecureStore(),
+        _probeTimeout = probeTimeoutOverride ?? readTimeout;
 
   /// True when Health Connect is installed and available on this device.
   Future<bool> isAvailable() async {
@@ -128,6 +136,16 @@ class HealthConnectService {
     if (!available) return HealthConnectStatus.unavailable;
     final granted = await getGrantedPermissions();
     if (granted.containsAll(requiredPermissions)) {
+      // Grant-state probe before persisting (Juno J3): the defect
+      // #3 population never re-requests permissions, so the status
+      // path is where a blocked grant must surface. A SecurityException
+      // probe = stale grant: throw, do not persist. Any other probe
+      // outcome is soft and does not block the connected status.
+      final probe = await probeReadAccess();
+      if (probe == HcReadProbeOutcome.securityFailure) {
+        throw const HealthConnectException(
+            staleGrantCode, staleGrantMessage);
+      }
       await _persist(granted);
       return HealthConnectStatus.connected;
     }
@@ -189,24 +207,35 @@ class HealthConnectService {
     }
   }
 
-  /// Details of the most recent probe failure (exception class +
-  /// message only — never health values), for diagnostics.
+  /// Details of the most recent probe failure (exception class only — never health values), for diagnostics.
   String? lastProbeErrorDetails;
 
   /// Lightweight REAL read probe over the bridge (Kotlin
-  /// `probeReadAccess`: one tiny steps aggregate). Distinguishes a
-  /// working connection from a stale grant: when Health Connect
-  /// reports every permission granted but the probe is blocked with
-  /// a SecurityException, the grant is wedged and only removing +
+  /// `probeReadAccess`: one tiny record-path StepsRecord read, first
+  /// page only, results discarded). Distinguishes a working
+  /// connection from a stale grant: when Health Connect reports
+  /// every permission granted but the probe is blocked with a
+  /// SecurityException, the grant is wedged and only removing +
   /// re-granting the app inside Health Connect settings clears it.
+  /// A successful probe means THIS record read worked — it is not
+  /// proof every read works.
   ///
   /// NEVER throws — an unexpected probe failure is a soft [failed]
   /// outcome, not a blocked connection.
   Future<HcReadProbeOutcome> probeReadAccess() async {
     try {
-      await _channel.invokeMethod<bool>('probeReadAccess');
+      // Internally timeout-bounded (Vera F1): every caller
+      // (requestPermissions, getStatus) inherits the bound, so a
+      // wedged probe can never wedge the permission flow. Expiry is
+      // a SOFT timedOut — never a stale-grant verdict.
+      await _channel
+          .invokeMethod<bool>('probeReadAccess')
+          .timeout(_probeTimeout);
       lastProbeErrorDetails = null;
       return HcReadProbeOutcome.ok;
+    } on TimeoutException {
+      lastProbeErrorDetails = 'Probe read timed out.';
+      return HcReadProbeOutcome.timedOut;
     } on PlatformException catch (e) {
       final details = _detailsOf(e);
       lastProbeErrorDetails = details ?? e.code;
@@ -251,7 +280,7 @@ class HealthConnectService {
   // Each method returns null (or an empty list) on PlatformException /
   // MissingPluginException — the UI's "--"/empty states are the visible,
   // honest outcome. The failing exception's code is kept in
-  // [lastReadErrorCode] and the native exception class + message in
+  // [lastReadErrorCode] and the native exception class only in
   // [lastReadErrorDetails] (Kotlin passes them through the channel
   // error details — instrument, don't swallow), so a screenshot of
   // the surfaced error identifies the real failure. Health VALUES
@@ -264,6 +293,12 @@ class HealthConnectService {
   String? lastReadErrorCode;
   String? lastReadErrorDetails;
 
+  /// Code of the most recent PARTIAL read (`HR_SAMPLES_PARTIAL` /
+  /// `SLEEP_HISTORY_PARTIAL`): the read returned real data with some
+  /// chunks missing. Kept separate from [lastReadErrorCode] so
+  /// failure checks never discard partial data as an outage (F2).
+  String? lastPartialErrorCode;
+
   void _noteReadError(String code, [String? details]) {
     lastReadErrorCode = code;
     lastReadErrorDetails = details;
@@ -273,12 +308,14 @@ class HealthConnectService {
       _noteReadError(e.code, _detailsOf(e));
 
   /// The exception info Kotlin attached to a channel error: the
-  /// details slot carries `"<ExceptionClass>: <message>"`; fall back
-  /// to the error message when no details crossed.
+  /// details slot carries the exception CLASS ONLY (Juno J1 — raw
+  /// exception messages never reach the UI). Returns the details
+  /// string, or null when no details crossed; there is deliberately
+  /// NO fallback to the raw error message.
   static String? _detailsOf(PlatformException e) {
     final d = e.details;
     if (d is String && d.isNotEmpty) return d;
-    return e.message;
+    return null;
   }
 
   /// Raw intraday HR samples `[{t: epochMs, bpm}]`, distinct by time,
@@ -287,9 +324,9 @@ class HealthConnectService {
   /// Kotlin reads the day in 6-hour chunks: when some chunks fail,
   /// the bridge returns `{samples: [...], partialError: "<details>"}`
   /// instead of a bare list — the samples that DID read are returned
-  /// and the failure is recorded in [lastReadErrorCode] /
-  /// [lastReadErrorDetails] (code `HR_SAMPLES_PARTIAL`) so the UI can
-  /// show both the partial data and the error.
+  /// and the partial failure is recorded in [lastPartialErrorCode]
+  /// (code `HR_SAMPLES_PARTIAL`, details in [lastReadErrorDetails])
+  /// so the UI can show both the partial data and the warning.
   Future<List<HrSample>> readHeartRateSamples(String dateStr) async {
     try {
       final raw = await _channel
@@ -303,7 +340,11 @@ class HealthConnectService {
         if (s is List) items = s;
         final partial = raw['partialError'];
         if (partial is String && partial.isNotEmpty) {
-          _noteReadError('HR_SAMPLES_PARTIAL', partial);
+          // Partial is NOT a failure (Vera F2): it gets its own
+          // field so union/callers never mistake partial data for
+          // an outage. Details stay available for the UI warning.
+          lastPartialErrorCode = 'HR_SAMPLES_PARTIAL';
+          lastReadErrorDetails = partial;
         }
       }
       final out = <HrSample>[];
@@ -535,7 +576,8 @@ class HealthConnectService {
         if (s is List) items = s;
         final partial = raw['partialError'];
         if (partial is String && partial.isNotEmpty) {
-          _noteReadError('SLEEP_HISTORY_PARTIAL', partial);
+          lastPartialErrorCode = 'SLEEP_HISTORY_PARTIAL';
+          lastReadErrorDetails = partial;
         }
       }
       final out = <({String date, int mins, int deep})>[];

@@ -129,11 +129,10 @@ class HeartDataCache {
     if (!succeeded) {
       final existing = _byDate[dateStr];
       if (existing != null) return HeartDayData.fromSamples(existing);
-      // Nothing cached: keep the empty result renderable but do NOT
-      // record a sync time for a load that never happened.
-      _byDate[dateStr] = valid;
-      _diskDateStr = dateStr;
-      bindToAccount(ownerEmail);
+      // Nothing cached (Vera F9): return the empty result WITHOUT
+      // touching _byDate/_diskDateStr — a failed load must not move
+      // the disk pointer, so the disk-safety invariant lives here
+      // in the cache, not in callers remembering to skip persist().
       return HeartDayData.fromSamples(valid);
     }
     _byDate[dateStr] = valid;
