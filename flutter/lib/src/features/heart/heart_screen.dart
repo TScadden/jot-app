@@ -151,7 +151,20 @@ class _HeartScreenState extends State<HeartScreen> {
       // on success; reset it so only THIS call's failure can surface.
       _service.lastReadErrorCode = null;
       _service.lastReadErrorDetails = null;
-      final raw = await _service.readHeartRateSamples(_dateStr);
+      // Bounded wait (hardening #2): the bridge read itself had NO
+      // timeout, so a never-returning channel call wedged this
+      // screen's "Updating sync data..." spinner forever (defect
+      // #3). On expiry the read fails closed as READ_TIMEOUT with
+      // the error recorded on the service, and the failed-load path
+      // below surfaces it — never a permanent spinner.
+      final raw = await _service
+          .readHeartRateSamples(_dateStr)
+          .timeout(HealthConnectService.readTimeout, onTimeout: () {
+        _service.lastReadErrorCode = 'READ_TIMEOUT';
+        _service.lastReadErrorDetails =
+            'Health Connect did not respond in time. Please try again.';
+        return const <HrSample>[];
+      });
       if (!mounted) return;
       // readHeartRateSamples fails closed to an empty list with the
       // error code + native exception details kept on the service.

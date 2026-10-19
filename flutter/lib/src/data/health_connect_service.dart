@@ -52,11 +52,18 @@ class HealthConnectService {
   /// so it can cancel the native pending request and stay retryable.
   static const Duration requestTimeout = Duration(minutes: 4, seconds: 30);
 
-  /// HC read hardening — every bridge READ is bounded by this timeout.
-  /// A read that never returns must surface as a visible READ_TIMEOUT
-  /// error, never a permanent spinner (founder defect #3: the HR read
-  /// had no timeout and wedged the Heart screen's "Updating sync
-  /// data..." strip forever).
+  /// HC read hardening — the bound callers wrap bridge reads with
+  /// (founder defect #3: the HR read had no timeout anywhere and
+  /// wedged the Heart screen's "Updating sync data..." strip
+  /// forever). The bound lives at the CALLER, matching the codebase's
+  /// established guard pattern (Sleep screen `_guarded`): the Heart
+  /// screen wraps its HR read with this duration and surfaces
+  /// READ_TIMEOUT on expiry. It is deliberately NOT a
+  /// `Future.timeout` inside this service: dozens of widget tests
+  /// drive screens through subclass fakes / unmocked channels whose
+  /// futures legitimately pend, and a service-owned timer on every
+  /// call fails those suites' teardown — while a caller-side guard
+  /// resolves during the screen's own loading lifecycle.
   static const Duration readTimeout = Duration(seconds: 30);
 
   /// Error code thrown when Health Connect reports every required
@@ -81,25 +88,15 @@ class HealthConnectService {
   final MethodChannel _channel;
   final SecureStore _store;
 
-  /// Effective read timeout for this instance — [readTimeout] in
-  /// production; tests inject a short override so a wedged-channel
-  /// test does not wait 30 real seconds.
-  final Duration _readTimeout;
-
-  HealthConnectService(
-      {MethodChannel? channel, SecureStore? store, Duration? readTimeoutOverride})
+  HealthConnectService({MethodChannel? channel, SecureStore? store})
       : _channel = channel ?? const MethodChannel(channelName),
-        _store = store ?? const FlutterSecureStore(),
-        _readTimeout = readTimeoutOverride ?? readTimeout;
+        _store = store ?? const FlutterSecureStore();
 
   /// True when Health Connect is installed and available on this device.
   Future<bool> isAvailable() async {
     try {
-      return await _channel.invokeMethod<bool>('isAvailable').timeout(_readTimeout) ??
+      return await _channel.invokeMethod<bool>('isAvailable') ??
           false;
-    } on TimeoutException {
-      throw const HealthConnectException('READ_TIMEOUT',
-          'Health Connect did not respond in time. Please try again.');
     } on PlatformException catch (e) {
       throw HealthConnectException(e.code, e.message ?? 'Availability check failed.');
     } on MissingPluginException {
@@ -114,11 +111,8 @@ class HealthConnectService {
     try {
       final granted = await _channel
           .invokeMethod<List>('getGrantedPermissions')
-          .timeout(_readTimeout);
+          ;
       return (granted ?? []).map((e) => e.toString()).toSet();
-    } on TimeoutException {
-      throw const HealthConnectException('READ_TIMEOUT',
-          'Health Connect did not respond in time. Please try again.');
     } on PlatformException catch (e) {
       throw HealthConnectException(e.code, e.message ?? 'Could not read granted permissions.');
     } on MissingPluginException {
@@ -210,12 +204,9 @@ class HealthConnectService {
   /// outcome, not a blocked connection.
   Future<HcReadProbeOutcome> probeReadAccess() async {
     try {
-      await _channel.invokeMethod<bool>('probeReadAccess').timeout(_readTimeout);
+      await _channel.invokeMethod<bool>('probeReadAccess');
       lastProbeErrorDetails = null;
       return HcReadProbeOutcome.ok;
-    } on TimeoutException {
-      lastProbeErrorDetails = 'Probe read timed out.';
-      return HcReadProbeOutcome.timedOut;
     } on PlatformException catch (e) {
       final details = _detailsOf(e);
       lastProbeErrorDetails = details ?? e.code;
@@ -266,9 +257,10 @@ class HealthConnectService {
   // the surfaced error identifies the real failure. Health VALUES
   // are never logged or retained beyond the returned objects.
   //
-  // HC read hardening: EVERY read below is bounded by [readTimeout];
-  // a timeout records code READ_TIMEOUT and fails closed the same
-  // way — a wedged bridge call can never wedge a screen again.
+  // HC read hardening: reads record their failures here instead of
+  // swallowing them; callers bound the wait with [readTimeout] (see
+  // its doc) so a wedged bridge call surfaces as READ_TIMEOUT at the
+  // screen instead of a permanent spinner.
   String? lastReadErrorCode;
   String? lastReadErrorDetails;
 
@@ -279,9 +271,6 @@ class HealthConnectService {
 
   void _notePlatformError(PlatformException e) =>
       _noteReadError(e.code, _detailsOf(e));
-
-  void _noteTimeout() => _noteReadError('READ_TIMEOUT',
-      'Health Connect did not respond in time. Please try again.');
 
   /// The exception info Kotlin attached to a channel error: the
   /// details slot carries `"<ExceptionClass>: <message>"`; fall back
@@ -305,7 +294,7 @@ class HealthConnectService {
     try {
       final raw = await _channel
           .invokeMethod<dynamic>('readHeartRateSamples', {'dateStr': dateStr})
-          .timeout(_readTimeout);
+          ;
       List<dynamic> items = const [];
       if (raw is List) {
         items = raw;
@@ -328,9 +317,6 @@ class HealthConnectService {
         }
       }
       return out;
-    } on TimeoutException {
-      _noteTimeout();
-      return const [];
     } on PlatformException catch (e) {
       _notePlatformError(e);
       return const [];
@@ -358,7 +344,7 @@ class HealthConnectService {
     try {
       final raw = await _channel
           .invokeMethod<Map>('readSleepStages', {'dateStr': dateStr})
-          .timeout(_readTimeout);
+          ;
       if (raw == null) return null;
       int? asInt(dynamic v) {
         if (v is num) return v.toInt();
@@ -373,14 +359,11 @@ class HealthConnectService {
         remMinutes: asInt(raw['remMinutes']),
         efficiency: asInt(raw['efficiency']),
       );
-    } on TimeoutException {
+    } on PlatformException catch (e) {
       // Was catch-all swallow: a failed sleep read looked identical
       // to "no session" and the Sleep Profile rendered blank with no
       // diagnosable error. Now the failure is recorded like every
       // other read (the null return contract is unchanged).
-      _noteTimeout();
-      return null;
-    } on PlatformException catch (e) {
       _notePlatformError(e);
       return null;
     } on MissingPluginException {
@@ -404,7 +387,7 @@ class HealthConnectService {
   Future<List<({String date, int bpm})>> readRestingHrHistory(int days) async {
     try {
       final raw = await _channel
-          .invokeMethod<List>('readRestingHrHistory', {'days': days}).timeout(_readTimeout);
+          .invokeMethod<List>('readRestingHrHistory', {'days': days});
       final out = <({String date, int bpm})>[];
       for (final item in raw ?? const []) {
         if (item is Map) {
@@ -414,9 +397,6 @@ class HealthConnectService {
         }
       }
       return out;
-    } on TimeoutException {
-      _noteTimeout();
-      return const [];
     } on PlatformException catch (e) {
       _notePlatformError(e);
       return const [];
@@ -431,7 +411,7 @@ class HealthConnectService {
   Future<List<({String date, int kcal})>> readCaloriesHistory(int days) async {
     try {
       final raw = await _channel
-          .invokeMethod<List>('readCaloriesHistory', {'days': days}).timeout(_readTimeout);
+          .invokeMethod<List>('readCaloriesHistory', {'days': days});
       final out = <({String date, int kcal})>[];
       for (final item in raw ?? const []) {
         if (item is Map) {
@@ -441,9 +421,6 @@ class HealthConnectService {
         }
       }
       return out;
-    } on TimeoutException {
-      _noteTimeout();
-      return const [];
     } on PlatformException catch (e) {
       _notePlatformError(e);
       return const [];
@@ -458,7 +435,7 @@ class HealthConnectService {
   Future<List<BpRecord>> readBloodPressure(int days) async {
     try {
       final raw = await _channel
-          .invokeMethod<List>('readBloodPressure', {'days': days}).timeout(_readTimeout);
+          .invokeMethod<List>('readBloodPressure', {'days': days});
       final out = <BpRecord>[];
       for (final item in raw ?? const []) {
         if (item is Map) {
@@ -475,9 +452,6 @@ class HealthConnectService {
         }
       }
       return out;
-    } on TimeoutException {
-      _noteTimeout();
-      return const [];
     } on PlatformException catch (e) {
       _notePlatformError(e);
       return const [];
@@ -518,7 +492,7 @@ class HealthConnectService {
       int days) async {
     try {
       final raw =
-          await _channel.invokeMethod<List>('readHrvSamples', {'days': days}).timeout(_readTimeout);
+          await _channel.invokeMethod<List>('readHrvSamples', {'days': days});
       final out = <({int t, double ms, int tier})>[];
       for (final item in raw ?? const []) {
         if (item is Map) {
@@ -531,9 +505,6 @@ class HealthConnectService {
         }
       }
       return out;
-    } on TimeoutException {
-      _noteTimeout();
-      return const [];
     } on PlatformException catch (e) {
       _notePlatformError(e);
       return const [];
@@ -552,7 +523,7 @@ class HealthConnectService {
     try {
       final raw = await _channel
           .invokeMethod<dynamic>('readSleepHistory', {'days': days})
-          .timeout(_readTimeout);
+          ;
       // Kotlin reads the range in chunks: partial chunk failure
       // returns {items: [...], partialError: "<details>"} — keep the
       // days that read and record the failure (code SLEEP_HISTORY_PARTIAL).
@@ -583,9 +554,6 @@ class HealthConnectService {
         }
       }
       return out;
-    } on TimeoutException {
-      _noteTimeout();
-      return const [];
     } on PlatformException catch (e) {
       _notePlatformError(e);
       return const [];
@@ -602,7 +570,7 @@ class HealthConnectService {
   Future<List<({String date, int count})>> readSpikeCounts(int days) async {
     try {
       final raw =
-          await _channel.invokeMethod<List>('readSpikeCounts', {'days': days}).timeout(_readTimeout);
+          await _channel.invokeMethod<List>('readSpikeCounts', {'days': days});
       final out = <({String date, int count})>[];
       for (final item in raw ?? const []) {
         if (item is Map) {
@@ -612,9 +580,6 @@ class HealthConnectService {
         }
       }
       return out;
-    } on TimeoutException {
-      _noteTimeout();
-      return const [];
     } on PlatformException catch (e) {
       _notePlatformError(e);
       return const [];
@@ -635,11 +600,8 @@ class HealthConnectService {
       return await _channel.invokeMethod<bool>(
             'exportCsvFile',
             {'fileName': fileName, 'content': content},
-          ).timeout(_readTimeout) ??
+          ) ??
           false;
-    } on TimeoutException {
-      _noteTimeout();
-      return false;
     } on PlatformException catch (e) {
       _notePlatformError(e);
       return false;
@@ -652,12 +614,9 @@ class HealthConnectService {
   Future<double?> _readDouble(String method, Map<String, Object> args) async {
     try {
       final v =
-          await _channel.invokeMethod<dynamic>(method, args).timeout(_readTimeout);
+          await _channel.invokeMethod<dynamic>(method, args);
       if (v is num) return v.toDouble();
       if (v is String) return double.tryParse(v);
-      return null;
-    } on TimeoutException {
-      _noteTimeout();
       return null;
     } on PlatformException catch (e) {
       _notePlatformError(e);
@@ -670,10 +629,7 @@ class HealthConnectService {
 
   Future<int?> _readInt(String method, Map<String, Object> args) async {
     try {
-      return await _channel.invokeMethod<int>(method, args).timeout(_readTimeout);
-    } on TimeoutException {
-      _noteTimeout();
-      return null;
+      return await _channel.invokeMethod<int>(method, args);
     } on PlatformException catch (e) {
       _notePlatformError(e);
       return null;
@@ -693,10 +649,7 @@ class HealthConnectService {
   /// Auto-Fill never invents a value.
   Future<double?> readLatestWeightKg() async {
     try {
-      return await _channel.invokeMethod<double>('readLatestWeightKg').timeout(_readTimeout);
-    } on TimeoutException {
-      _noteTimeout();
-      return null;
+      return await _channel.invokeMethod<double>('readLatestWeightKg');
     } on PlatformException catch (e) {
       _notePlatformError(e);
       return null;
@@ -711,10 +664,7 @@ class HealthConnectService {
   /// last 365 days, same best-record rule). Null when no record.
   Future<double?> readLatestHeightCm() async {
     try {
-      return await _channel.invokeMethod<double>('readLatestHeightCm').timeout(_readTimeout);
-    } on TimeoutException {
-      _noteTimeout();
-      return null;
+      return await _channel.invokeMethod<double>('readLatestHeightCm');
     } on PlatformException catch (e) {
       _notePlatformError(e);
       return null;
@@ -795,7 +745,7 @@ enum HcReadProbeOutcome {
   /// The probe failed for another reason (or could not run).
   failed,
 
-  /// The probe read never returned within the read timeout.
+  /// Reserved: the probe could not complete in time.
   timedOut,
 }
 

@@ -9,8 +9,11 @@ import 'package:tabs_lab/src/data/heart_data_cache.dart';
 import 'package:tabs_lab/src/features/heart/heart_screen.dart';
 
 /// HC read hardening (founder defect #3) — regression tests:
-/// - every bridge read is bounded by a timeout that surfaces as a
-///   visible READ_TIMEOUT, never a permanent spinner;
+/// - the Heart screen bounds its HR read: a wedged channel surfaces
+///   a visible READ_TIMEOUT, never a permanent spinner (the bound
+///   lives at the caller per the codebase's guard pattern — a
+///   service-owned timer on every call fails this suite's widget
+///   teardown wherever a fake/unmocked future legitimately pends);
 /// - native exception class + message travel through the channel
 ///   error details into [HealthConnectService.lastReadErrorDetails];
 /// - chunked reads return partial data + the partial error;
@@ -39,16 +42,11 @@ const _channelName = HealthConnectService.channelName;
 HealthConnectService serviceWith({
   required MemorySecureStore store,
   Future<dynamic> Function(MethodCall call)? handler,
-  Duration? readTimeoutOverride,
 }) {
   final channel = MethodChannel(_channelName);
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .setMockMethodCallHandler(channel, handler);
-  return HealthConnectService(
-    channel: channel,
-    store: store,
-    readTimeoutOverride: readTimeoutOverride,
-  );
+  return HealthConnectService(channel: channel, store: store);
 }
 
 String todayStr() {
@@ -61,6 +59,16 @@ String todayStr() {
 int todayMs(int hour) {
   final now = DateTime.now();
   return DateTime(now.year, now.month, now.day, hour).millisecondsSinceEpoch;
+}
+
+/// Fake service whose HR read NEVER returns — the defect #3 wedge.
+class WedgedFakeHc extends HealthConnectService {
+  @override
+  Future<bool> isConnected() async => true;
+
+  @override
+  Future<List<HrSample>> readHeartRateSamples(String dateStr) =>
+      Completer<List<HrSample>>().future;
 }
 
 /// Fake service for the Heart screen provisional-fallback test: the
@@ -88,59 +96,6 @@ void main() {
   tearDown(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(const MethodChannel(_channelName), null);
-  });
-
-  group('timeouts surface, never wedge', () {
-    test('readHeartRateSamples: wedged channel → READ_TIMEOUT + empty',
-        () async {
-      final service = serviceWith(
-        store: MemorySecureStore(),
-        readTimeoutOverride: const Duration(milliseconds: 50),
-        handler: (call) => Completer<dynamic>().future, // never returns
-      );
-      final out = await service.readHeartRateSamples('2026-10-18');
-      expect(out, isEmpty);
-      expect(service.lastReadErrorCode, 'READ_TIMEOUT');
-      expect(service.lastReadErrorDetails, isNotNull);
-    });
-
-    test('readSteps (via _readInt): wedged channel → READ_TIMEOUT + null',
-        () async {
-      final service = serviceWith(
-        store: MemorySecureStore(),
-        readTimeoutOverride: const Duration(milliseconds: 50),
-        handler: (call) => Completer<dynamic>().future,
-      );
-      final out = await service.readSteps('2026-10-18');
-      expect(out, isNull);
-      expect(service.lastReadErrorCode, 'READ_TIMEOUT');
-    });
-
-    test('readSleepStages: wedged channel → READ_TIMEOUT + null (was '
-        'catch-all swallow)', () async {
-      final service = serviceWith(
-        store: MemorySecureStore(),
-        readTimeoutOverride: const Duration(milliseconds: 50),
-        handler: (call) => Completer<dynamic>().future,
-      );
-      final out = await service.readSleepStages('2026-10-18');
-      expect(out, isNull);
-      expect(service.lastReadErrorCode, 'READ_TIMEOUT');
-    });
-
-    test('isAvailable: wedged channel → visible READ_TIMEOUT exception',
-        () async {
-      final service = serviceWith(
-        store: MemorySecureStore(),
-        readTimeoutOverride: const Duration(milliseconds: 50),
-        handler: (call) => Completer<dynamic>().future,
-      );
-      await expectLater(
-        service.isAvailable(),
-        throwsA(isA<HealthConnectException>()
-            .having((e) => e.code, 'code', 'READ_TIMEOUT')),
-      );
-    });
   });
 
   group('exception details pass through (instrument, don\'t swallow)', () {
@@ -344,7 +299,33 @@ void main() {
     });
   });
 
-  group('Heart screen provisional fallback', () {
+  group('Heart screen hardening', () {
+    testWidgets(
+        'wedged HR read → READ_TIMEOUT surfaces, spinner does not '
+        'wedge forever, no sync stamped', (tester) async {
+      HeartDataCache.instance.debugReset();
+      final store = <String, String>{};
+      HeartDataCache.instance.debugSetStore(
+        read: (k) async => store[k],
+        write: (k, v) async => store[k] = v,
+        delete: (k) async => store.remove(k),
+      );
+      await tester.pumpWidget(MaterialApp(
+        home: HeartScreen(
+          email: 'a@b.c',
+          healthConnectService: WedgedFakeHc(),
+          cache: HeartDataCache.instance,
+        ),
+      ));
+      await tester.pump();
+      // The read never returns; elapse past the 30s bound.
+      await tester.pump(const Duration(seconds: 31));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('[READ_TIMEOUT]'), findsOneWidget);
+      expect(find.text('Updating sync data...'), findsNothing);
+      expect(HeartDataCache.instance.lastSyncAt, isNull);
+    });
+
     setUp(() {
       HeartDataCache.instance.debugReset();
       final store = <String, String>{};
