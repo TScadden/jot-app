@@ -15,6 +15,14 @@ import 'package:tabs_lab/src/data/health_history_store.dart';
 /// was < [throttle] ago, unless forced. The first-ever capture
 /// (empty store) is a forced full backfill. Capture NEVER throws —
 /// a failure must never break a screen.
+///
+/// Per-metric read failures are never swallowed either: each
+/// read's `lastReadErrorCode` is snapshotted and persisted to the
+/// store's capture diagnostics (see
+/// [HealthHistoryStore.recordCaptureDiagnostics]) — a failed HRV
+/// read leaves a visible trace instead of looking like no HRV.
+/// The HRV leg also records its outcome numbers there (partial
+/// code, raw sample count, attributed day count).
 class HealthHistorySync {
   static const Duration throttle = Duration(hours: 6);
 
@@ -96,19 +104,52 @@ class HealthHistorySync {
         );
       }
 
+      // Capture diagnostics (HRV visibility fix): the HC service
+      // fails closed — a failed read returns [] and records its
+      // code in `lastReadErrorCode` — and the capture used to
+      // never look, so e.g. an HRV read blocked by a missing grant
+      // (HRV_SAMPLES_READ_FAILED) vanished without a trace while
+      // markCaptured still stamped success. Mirror the queries
+      // layer: reset the code around each read, snapshot it right
+      // after, and persist the per-metric outcome to the store
+      // (failures recorded, successes clear their metric's entry).
+      final captureFailures = <String, String>{};
+      final captureSucceeded = <String>{};
+      void noteRead(String metric) {
+        final code = _hc.lastReadErrorCode;
+        if (code != null && code.isNotEmpty) {
+          captureFailures[metric] = code;
+        } else {
+          captureSucceeded.add(metric);
+        }
+      }
+
+      void resetReadCodes() {
+        _hc.lastReadErrorCode = null;
+        _hc.lastPartialErrorCode = null;
+      }
+
+      resetReadCodes();
       final hrHist = await _hc.readRestingHrHistory(180);
+      noteRead('restingHr');
       for (final r in hrHist) {
         put(r.date, hr: r.bpm);
       }
+      resetReadCodes();
       final calHist = await _hc.readCaloriesHistory(180);
+      noteRead('calories');
       for (final r in calHist) {
         put(r.date, kcal: r.kcal);
       }
+      resetReadCodes();
       final sleepHist = await _hc.readSleepHistory(90);
+      noteRead('sleep');
       for (final r in sleepHist) {
         put(r.date, sleep: r.mins, deep: r.deep);
       }
+      resetReadCodes();
       final spikeHist = await _hc.readSpikeCounts(isFirst ? 180 : 31);
+      noteRead('spikes');
       for (final r in spikeHist) {
         put(r.date, spikes: r.count);
       }
@@ -124,13 +165,33 @@ class HealthHistorySync {
         for (var i = 0; i < hrvWindowDays; i++)
           _historyDateStr(today.subtract(Duration(days: i))),
       };
+      resetReadCodes();
       final hrvSamples = await _hc.readHrvSamples(hrvWindowDays);
+      noteRead('hrv');
+      // Defect 1b — HRV outcome numbers: the partial code (the
+      // read returned data with chunks missing — Defect 0's new
+      // contract), the raw sample count the bridge returned, and
+      // the attributed day count are recorded alongside any error
+      // code, so a recurrence is diagnosable from the diagnostics
+      // record alone. Counts are operational metadata, not values.
+      final hrvPartialCode = _hc.lastPartialErrorCode;
       final dailyHrv = attributeDailyHrv(hrvSamples, hrvDates);
       for (final entry in dailyHrv.entries) {
         put(entry.key, hrv: entry.value);
       }
 
       await _store.mergeRefresh(byDate.values);
+      // A failed read leaves a visible trace even though the
+      // capture itself still completes (merge + throttle stamp
+      // unchanged): the diagnostics record is on the store.
+      await _store.recordCaptureDiagnostics(
+        failures: captureFailures,
+        succeeded: captureSucceeded,
+        atMs: now.millisecondsSinceEpoch,
+        hrvPartialCode: hrvPartialCode,
+        hrvSampleCount: hrvSamples.length,
+        hrvDayCount: dailyHrv.length,
+      );
       await _store.markCaptured(now.millisecondsSinceEpoch);
       // R70 Daily Score — after-capture compute trigger: any day
       // whose inputs now exist gets its (write-once) score. The

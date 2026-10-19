@@ -296,6 +296,94 @@ class DailyBiometrics {
       'kcal=$caloriesKcal, hrv=$hrvRmssdMs)';
 }
 
+/// One metric's last capture outcome, recorded by
+/// [HealthHistoryStore.recordCaptureDiagnostics] (HRV capture
+/// visibility fix). Contents are operational metadata only — the
+/// bridge error CODE (never health values, never exception text;
+/// Juno J1 rule), the partial-read code when some chunks failed,
+/// and outcome COUNTS — plus when the capture ran.
+///
+/// A failure entry exists for any metric whose last capture read
+/// failed; a metric's entry is cleared by its next successful
+/// read. The HRV leg is the exception (Defect 1b): its entry is
+/// written on EVERY capture, success included, carrying the raw
+/// sample count returned by the bridge and the number of days
+/// those samples attributed to — so a recurrence is diagnosable
+/// from the record (and the Connected Apps diagnostics line)
+/// instead of another code excavation.
+class CaptureDiagnostic {
+  /// Bridge error code of a FAILED read; null when the read
+  /// returned (fully or partially).
+  final String? errorCode;
+
+  /// Partial-read code (`HRV_SAMPLES_PARTIAL`) when the read
+  /// returned data with some chunks missing; null otherwise.
+  final String? partialCode;
+
+  /// Raw items the bridge read returned (HRV: samples). Counts
+  /// are operational metadata, not biometric values.
+  final int? sampleCount;
+
+  /// Days the returned items attributed to (HRV: days with a
+  /// daily value after Dart-side attribution).
+  final int? dayCount;
+
+  final int atMs; // epoch ms of the capture
+
+  const CaptureDiagnostic({
+    this.errorCode,
+    this.partialCode,
+    this.sampleCount,
+    this.dayCount,
+    required this.atMs,
+  });
+
+  Map<String, dynamic> toJson() => {
+        if (errorCode != null) 'code': errorCode,
+        if (partialCode != null) 'partialCode': partialCode,
+        if (sampleCount != null) 'samples': sampleCount,
+        if (dayCount != null) 'days': dayCount,
+        'atMs': atMs,
+      };
+
+  static CaptureDiagnostic? fromJson(dynamic raw) {
+    if (raw is! Map) return null;
+    final at = raw['atMs'];
+    if (at is! num) return null;
+    String? asCode(dynamic v) {
+      final s = v?.toString();
+      return (s == null || s.isEmpty) ? null : s;
+    }
+
+    int? asCount(dynamic v) => v is num ? v.toInt() : null;
+    return CaptureDiagnostic(
+      errorCode: asCode(raw['code']),
+      partialCode: asCode(raw['partialCode']),
+      sampleCount: asCount(raw['samples']),
+      dayCount: asCount(raw['days']),
+      atMs: at.toInt(),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is CaptureDiagnostic &&
+      other.errorCode == errorCode &&
+      other.partialCode == partialCode &&
+      other.sampleCount == sampleCount &&
+      other.dayCount == dayCount &&
+      other.atMs == atMs;
+
+  @override
+  int get hashCode =>
+      Object.hash(errorCode, partialCode, sampleCount, dayCount, atMs);
+
+  @override
+  String toString() => 'CaptureDiagnostic(code=$errorCode, '
+      'partial=$partialCode, samples=$sampleCount, days=$dayCount '
+      '@ $atMs)';
+}
+
 /// Outcome of one merge call.
 class HealthHistoryMergeResult {
   /// Dates that were not in the store before this merge.
@@ -355,6 +443,7 @@ class HealthHistoryStore {
     _days.clear();
     _ownerEmail = null;
     _lastCaptureMs = null;
+    _captureDiagnostics.clear();
     _warmed = false;
   }
 
@@ -365,6 +454,20 @@ class HealthHistoryStore {
   /// Epoch ms of the last successful Health Connect capture
   /// (persisted in the blob; drives the capture throttle).
   int? get lastCaptureMs => _lastCaptureMs;
+
+  final Map<String, CaptureDiagnostic> _captureDiagnostics = {};
+
+  /// Per-metric capture outcomes from the most recent captures,
+  /// keyed by metric name (`restingHr`, `calories`, `sleep`,
+  /// `spikes`, `hrv` — the capture's own names). Persisted in the
+  /// blob so a failed read leaves a trace that survives a restart:
+  /// before this record existed, a capture whose HRV read failed
+  /// looked exactly like a capture that found no HRV. Non-HRV
+  /// entries exist only for failures (cleared by the next
+  /// successful read); the HRV entry is written every capture and
+  /// carries its outcome counts (see [CaptureDiagnostic]).
+  Map<String, CaptureDiagnostic> get lastCaptureDiagnostics =>
+      Map.unmodifiable(_captureDiagnostics);
 
   // ── Account binding (sibling-cache contract) ───────────────────
 
@@ -475,6 +578,13 @@ class HealthHistoryStore {
       }
       final lc = map['lastCaptureMs'];
       if (lc is num) _lastCaptureMs = lc.toInt();
+      final diag = map['lastCaptureDiagnostics'];
+      if (diag is Map) {
+        for (final entry in diag.entries) {
+          final d = CaptureDiagnostic.fromJson(entry.value);
+          if (d != null) _captureDiagnostics[entry.key.toString()] = d;
+        }
+      }
       final rawOwner = map['ownerEmail'];
       if (rawOwner is String) _ownerEmail = _normalizeEmail(rawOwner);
     } catch (_) {
@@ -506,6 +616,11 @@ class HealthHistoryStore {
         jsonEncode({
           'ownerEmail': _ownerEmail,
           'lastCaptureMs': _lastCaptureMs,
+          if (_captureDiagnostics.isNotEmpty)
+            'lastCaptureDiagnostics': {
+              for (final e in _captureDiagnostics.entries)
+                e.key: e.value.toJson(),
+            },
           'days': {for (final d in dates) d: _days[d]!.toJson()},
         }),
       );
@@ -519,6 +634,64 @@ class HealthHistoryStore {
     await _ensureWarmed();
     _lastCaptureMs = epochMs;
     await persist();
+  }
+
+  /// Records one capture's per-metric read outcomes (HRV capture
+  /// visibility fix): every metric in [failures] gets a
+  /// [CaptureDiagnostic] with its bridge error code + [atMs], and
+  /// every metric in [succeeded] has any earlier entry cleared.
+  /// Codes only — callers pass `lastReadErrorCode`, never values
+  /// or exception text. Persists only when something changed.
+  /// Never throws (goes through [persist]).
+  ///
+  /// Defect 1b — the HRV outcome: when the capture ran its HRV leg
+  /// it also passes [hrvPartialCode] (null unless the read came
+  /// back partial), [hrvSampleCount] (raw samples the bridge
+  /// returned) and [hrvDayCount] (days they attributed to). The
+  /// `hrv` entry is then (re)written on EVERY capture — its
+  /// errorCode comes from [failures] (absent = the read returned)
+  /// — replacing, never stacking on, the previous capture's entry.
+  Future<void> recordCaptureDiagnostics({
+    required Map<String, String> failures,
+    required Set<String> succeeded,
+    required int atMs,
+    String? hrvPartialCode,
+    int? hrvSampleCount,
+    int? hrvDayCount,
+  }) async {
+    await _ensureWarmed();
+    var changed = false;
+    for (final metric in succeeded) {
+      if (metric == 'hrv') continue; // rewritten below, not cleared
+      if (_captureDiagnostics.remove(metric) != null) changed = true;
+    }
+    for (final entry in failures.entries) {
+      if (entry.key == 'hrv') continue; // rewritten below
+      if (entry.value.isEmpty) continue;
+      final next = CaptureDiagnostic(errorCode: entry.value, atMs: atMs);
+      if (_captureDiagnostics[entry.key] != next) {
+        _captureDiagnostics[entry.key] = next;
+        changed = true;
+      }
+    }
+    if (hrvSampleCount != null || failures.containsKey('hrv')) {
+      final next = CaptureDiagnostic(
+        errorCode: failures['hrv'],
+        partialCode: hrvPartialCode,
+        sampleCount: hrvSampleCount,
+        dayCount: hrvDayCount,
+        atMs: atMs,
+      );
+      if (_captureDiagnostics['hrv'] != next) {
+        _captureDiagnostics['hrv'] = next;
+        changed = true;
+      }
+    } else if (succeeded.contains('hrv')) {
+      // A successful HRV read with no outcome counts reported
+      // clears the failure entry like every other metric.
+      if (_captureDiagnostics.remove('hrv') != null) changed = true;
+    }
+    if (changed) await persist();
   }
 
   // ── Merges (merge-only, per-field, never-shrink) ───────────────
