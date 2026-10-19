@@ -168,6 +168,22 @@ class _SleepScreenState extends State<SleepScreen> {
   bool _refreshing = false;
   bool _connected = false;
 
+  /// HC read hardening — the last bridge read failure on this screen,
+  /// as a bracketed code + the native exception info (never health
+  /// values). Sleep reads used to fail closed to null/empty with the
+  /// error swallowed, so a dead read layer rendered as a blank
+  /// profile with nothing diagnosable (founder defect #3).
+  String? _readError;
+
+  void _captureReadError() {
+    final code = _hc.lastReadErrorCode;
+    if (code == null) return;
+    final details = _hc.lastReadErrorDetails;
+    _readError = details != null
+        ? '[$code] Could not read sleep data. ($details)'
+        : '[$code] Could not read sleep data.';
+  }
+
   /// All real (positive) minutes read so far, dateStr → minutes.
   final Map<String, int> _history = {};
 
@@ -223,9 +239,13 @@ class _SleepScreenState extends State<SleepScreen> {
     final dates = [
       for (var i = 13; i >= 0; i--) _dateKey(today.subtract(Duration(days: i))),
     ];
+    _hc.lastReadErrorCode = null;
+    _hc.lastReadErrorDetails = null;
+    _readError = null;
     await _readMinutesFor(dates);
     await _applySelected(_dateKey(today), useProfileFallback: true);
     await _refreshSleepNeed();
+    _captureReadError();
     if (!mounted) return;
     setState(() {
       _connected = true;
@@ -597,6 +617,16 @@ class _SleepScreenState extends State<SleepScreen> {
             const LinearProgressIndicator(
               color: NotelColors.primary,
               backgroundColor: Colors.transparent,
+            ),
+            const SizedBox(height: 16),
+          ],
+          if (_readError != null) ...[
+            Text(
+              _readError!,
+              style: const TextStyle(
+                fontSize: 13,
+                color: NotelColors.error,
+              ),
             ),
             const SizedBox(height: 16),
           ],

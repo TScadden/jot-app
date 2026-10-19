@@ -492,6 +492,7 @@ class MainActivity : FlutterFragmentActivity() {
                     "requestPermissions" -> requestHcPermissions(result)
                     "cancelRequest" -> cancelPendingRequest(result)
                     "getGrantedPermissions" -> getGrantedPermissions(result)
+                    "probeReadAccess" -> probeReadAccess(result)
                     "openHealthConnectSettings" -> openSettings(result)
                     // Round 13: typed Health Connect reads.
                     "readHeartRateSamples" -> readHeartRateSamples(call.argument<String>("dateStr"), result)
@@ -852,7 +853,7 @@ class MainActivity : FlutterFragmentActivity() {
                 val granted = client.permissionController.getGrantedPermissions()
                 result.success(granted.toList())
             } catch (e: Exception) {
-                result.error("GRANTED_CHECK_FAILED", e.message, null)
+                result.error("GRANTED_CHECK_FAILED", e.message, hcErrorDetails(e))
             }
         }
     }
@@ -882,9 +883,21 @@ class MainActivity : FlutterFragmentActivity() {
         return try {
             HealthConnectClient.getOrCreate(this)
         } catch (e: Exception) {
-            result.error("CLIENT_UNAVAILABLE", e.message, null)
+            result.error("CLIENT_UNAVAILABLE", e.message, hcErrorDetails(e))
             null
         }
+    }
+
+    /// HC read hardening — instrument, don't swallow: the exception
+    /// class + message travel to Dart in the channel error DETAILS
+    /// slot, so the surfaced UI error identifies the real failure
+    /// (e.g. "SecurityException: ...", "IllegalStateException: ...").
+    /// Codes stay stable for UI pattern-matching. NEVER include
+    /// health values here — exception class/message only, and HC
+    /// exceptions do not carry record values.
+    private fun hcErrorDetails(e: Exception): String {
+        val msg = e.message?.takeIf { it.isNotBlank() } ?: "no message"
+        return "${e.javaClass.simpleName}: $msg"
     }
 
     private fun packagePriority(packageName: String): Int = when (packageName) {
@@ -933,37 +946,111 @@ class MainActivity : FlutterFragmentActivity() {
         return result
     }
 
-    /// Paginated intraday HR read; samples flattened, distinct by time,
-    /// sorted ascending. Dart shape: [{t: epochMs, bpm}].
+    /// Intraday HR read, chunked: the day is read in 4 × 6-hour
+    /// windows, each paginated independently and each in its own
+    /// try/catch, so one failing window or record set cannot zero
+    /// the whole day (hardening: chunk + isolate). Samples flattened,
+    /// mock records dropped, distinct by time, sorted ascending —
+    /// semantics unchanged. Dart shapes:
+    /// - all chunks OK: [{t: epochMs, bpm}] (legacy bare list)
+    /// - some chunks failed: {samples: [...], partialError: details}
+    /// - every chunk failed: HR_SAMPLES_READ_FAILED with the first
+    ///   chunk's exception details, PLUS the outcome of an aggregate
+    ///   probe (BPM_AVG over the day, a different HC service path):
+    ///   if aggregates answer while record reads throw, the failure
+    ///   is isolated to the record-level read path; if the probe
+    ///   also throws, its exception is named too. Diagnostic only —
+    ///   aggregate values never substitute for samples.
     private fun readHeartRateSamples(dateStr: String?, result: MethodChannel.Result) {
         val client = hcClientOrError(result) ?: return
         lifecycleScope.launch {
-            try {
-                val (start, end) = dayRange(dateStr)
-                val records = mutableListOf<HeartRateRecord>()
-                var pageToken: String? = null
-                do {
-                    val response = client.readRecords(
-                        ReadRecordsRequest(
-                            recordType = HeartRateRecord::class,
-                            timeRangeFilter = TimeRangeFilter.between(start, end),
-                            pageToken = pageToken
+            val (dayStart, dayEnd) = dayRange(dateStr)
+            val records = mutableListOf<HeartRateRecord>()
+            val chunkErrors = mutableListOf<String>()
+            var chunkStart = dayStart
+            repeat(4) {
+                val chunkEnd = minOf(chunkStart.plus(6, ChronoUnit.HOURS), dayEnd)
+                try {
+                    var pageToken: String? = null
+                    do {
+                        val response = client.readRecords(
+                            ReadRecordsRequest(
+                                recordType = HeartRateRecord::class,
+                                timeRangeFilter = TimeRangeFilter.between(chunkStart, chunkEnd),
+                                pageToken = pageToken
+                            )
+                        )
+                        records.addAll(response.records)
+                        pageToken = response.pageToken
+                    } while (pageToken != null)
+                } catch (e: Exception) {
+                    chunkErrors.add(hcErrorDetails(e))
+                }
+                chunkStart = chunkEnd
+            }
+            if (chunkErrors.size == 4) {
+                // Total failure: discriminate the failing layer with
+                // one aggregate call before reporting.
+                val probe = try {
+                    client.aggregate(
+                        AggregateRequest(
+                            metrics = setOf(HeartRateRecord.BPM_AVG),
+                            timeRangeFilter = TimeRangeFilter.between(dayStart, dayEnd)
                         )
                     )
-                    records.addAll(response.records)
-                    pageToken = response.pageToken
-                } while (pageToken != null)
-                val samples = nonMock(records)
-                    .flatMap { record ->
-                        record.samples.map { sample ->
-                            sample.time.toEpochMilli() to sample.beatsPerMinute.toInt()
-                        }
+                    "aggregate probe: OK"
+                } catch (e2: Exception) {
+                    "aggregate probe: failed (${hcErrorDetails(e2)})"
+                }
+                result.error(
+                    "HR_SAMPLES_READ_FAILED",
+                    "Could not read heart rate samples.",
+                    "${chunkErrors.first()} | $probe"
+                )
+                return@launch
+            }
+            val samples = nonMock(records)
+                .flatMap { record ->
+                    record.samples.map { sample ->
+                        sample.time.toEpochMilli() to sample.beatsPerMinute.toInt()
                     }
-                    .distinctBy { it.first }
-                    .sortedBy { it.first }
-                result.success(samples.map { mapOf("t" to it.first, "bpm" to it.second) })
-            } catch (_: Exception) {
-                result.error("HR_SAMPLES_READ_FAILED", "Could not read heart rate samples.", null)
+                }
+                .distinctBy { it.first }
+                .sortedBy { it.first }
+                .map { mapOf("t" to it.first, "bpm" to it.second) }
+            if (chunkErrors.isEmpty()) {
+                result.success(samples)
+            } else {
+                result.success(
+                    mapOf(
+                        "samples" to samples,
+                        "partialError" to chunkErrors.first()
+                    )
+                )
+            }
+        }
+    }
+
+    /// Grant-state probe (Dart `probeReadAccess`): one tiny real
+    /// read — today's step total via the aggregate path. Success
+    /// proves reads genuinely work; a SecurityException here while
+    /// the grant list reports complete is the stale-grant signature.
+    /// No health values cross in either direction (success is a
+    /// boolean; failure carries exception class + message only).
+    private fun probeReadAccess(result: MethodChannel.Result) {
+        val client = hcClientOrError(result) ?: return
+        lifecycleScope.launch {
+            try {
+                val (start, end) = dayRange("today")
+                client.aggregate(
+                    AggregateRequest(
+                        metrics = setOf(StepsRecord.COUNT_TOTAL),
+                        timeRangeFilter = TimeRangeFilter.between(start, end)
+                    )
+                )
+                result.success(true)
+            } catch (e: Exception) {
+                result.error("PROBE_READ_FAILED", "Probe read failed.", hcErrorDetails(e))
             }
         }
     }
@@ -986,8 +1073,8 @@ class MainActivity : FlutterFragmentActivity() {
                 val active = response[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories?.toInt()
                 val total = response[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories?.toInt()
                 result.success(active ?: total)
-            } catch (_: Exception) {
-                result.error("CALORIES_READ_FAILED", "Could not read active calories.", null)
+            } catch (e: Exception) {
+                result.error("CALORIES_READ_FAILED", "Could not read active calories.", hcErrorDetails(e))
             }
         }
     }
@@ -1042,8 +1129,8 @@ class MainActivity : FlutterFragmentActivity() {
                 val minutesAsleep =
                     ChronoUnit.MINUTES.between(session.startTime, session.endTime).toInt() - awake
                 result.success(minutesAsleep)
-            } catch (_: Exception) {
-                result.error("SLEEP_READ_FAILED", "Could not read sleep session.", null)
+            } catch (e: Exception) {
+                result.error("SLEEP_READ_FAILED", "Could not read sleep session.", hcErrorDetails(e))
             }
         }
     }
@@ -1118,8 +1205,8 @@ class MainActivity : FlutterFragmentActivity() {
                         "efficiency" to efficiency
                     )
                 )
-            } catch (_: Exception) {
-                result.error("SLEEP_STAGES_READ_FAILED", "Could not read sleep stages.", null)
+            } catch (e: Exception) {
+                result.error("SLEEP_STAGES_READ_FAILED", "Could not read sleep stages.", hcErrorDetails(e))
             }
         }
     }
@@ -1147,8 +1234,8 @@ class MainActivity : FlutterFragmentActivity() {
                     .filter { packagePriority(it.metadata.dataOrigin.packageName) == maxPriority }
                     .maxByOrNull { it.time }
                 result.success(best?.beatsPerMinute?.toInt())
-            } catch (_: Exception) {
-                result.error("RHR_READ_FAILED", "Could not read resting heart rate.", null)
+            } catch (e: Exception) {
+                result.error("RHR_READ_FAILED", "Could not read resting heart rate.", hcErrorDetails(e))
             }
         }
     }
@@ -1226,8 +1313,8 @@ class MainActivity : FlutterFragmentActivity() {
                         .sortedBy { it.key }
                         .map { mapOf("date" to it.key, "bpm" to it.value) }
                 )
-            } catch (_: Exception) {
-                result.error("RHR_HISTORY_READ_FAILED", "Could not read resting heart rate history.", null)
+            } catch (e: Exception) {
+                result.error("RHR_HISTORY_READ_FAILED", "Could not read resting heart rate history.", hcErrorDetails(e))
             }
         }
     }
@@ -1261,8 +1348,8 @@ class MainActivity : FlutterFragmentActivity() {
                         mapOf("date" to date, "kcal" to (active ?: total ?: 0))
                     }
                 )
-            } catch (_: Exception) {
-                result.error("CALORIES_HISTORY_READ_FAILED", "Could not read calorie history.", null)
+            } catch (e: Exception) {
+                result.error("CALORIES_HISTORY_READ_FAILED", "Could not read calorie history.", hcErrorDetails(e))
             }
         }
     }
@@ -1300,8 +1387,8 @@ class MainActivity : FlutterFragmentActivity() {
                         }
                         .sortedByDescending { (it["t"] as Long) }
                 )
-            } catch (_: Exception) {
-                result.error("BP_READ_FAILED", "Could not read blood pressure records.", null)
+            } catch (e: Exception) {
+                result.error("BP_READ_FAILED", "Could not read blood pressure records.", hcErrorDetails(e))
             }
         }
     }
@@ -1338,8 +1425,8 @@ class MainActivity : FlutterFragmentActivity() {
                 )
                 val best = bestRecord(response.records) { it.time }
                 result.success(best?.weight?.inKilograms)
-            } catch (_: Exception) {
-                result.error("WEIGHT_READ_FAILED", "Could not read weight records.", null)
+            } catch (e: Exception) {
+                result.error("WEIGHT_READ_FAILED", "Could not read weight records.", hcErrorDetails(e))
             }
         }
     }
@@ -1362,8 +1449,8 @@ class MainActivity : FlutterFragmentActivity() {
                 )
                 val best = bestRecord(response.records) { it.time }
                 result.success(best?.height?.inMeters?.times(100.0))
-            } catch (_: Exception) {
-                result.error("HEIGHT_READ_FAILED", "Could not read height records.", null)
+            } catch (e: Exception) {
+                result.error("HEIGHT_READ_FAILED", "Could not read height records.", hcErrorDetails(e))
             }
         }
     }
@@ -1381,8 +1468,8 @@ class MainActivity : FlutterFragmentActivity() {
                     )
                 )
                 result.success(response[StepsRecord.COUNT_TOTAL]?.toInt())
-            } catch (_: Exception) {
-                result.error("STEPS_READ_FAILED", "Could not read steps.", null)
+            } catch (e: Exception) {
+                result.error("STEPS_READ_FAILED", "Could not read steps.", hcErrorDetails(e))
             }
         }
     }
@@ -1415,8 +1502,8 @@ class MainActivity : FlutterFragmentActivity() {
                 )
                 val best = bestRecord(response.records) { it.time }
                 result.success(best?.rate)
-            } catch (_: Exception) {
-                result.error("RESPIRATORY_READ_FAILED", "Could not read respiratory rate.", null)
+            } catch (e: Exception) {
+                result.error("RESPIRATORY_READ_FAILED", "Could not read respiratory rate.", hcErrorDetails(e))
             }
         }
     }
@@ -1440,8 +1527,8 @@ class MainActivity : FlutterFragmentActivity() {
                 val best = bestRecord(response.records) { it.time }
                 val raw = best?.percentage?.value
                 result.success(if (raw != null && raw <= 1.0) raw * 100.0 else raw)
-            } catch (_: Exception) {
-                result.error("OXYGEN_READ_FAILED", "Could not read oxygen saturation.", null)
+            } catch (e: Exception) {
+                result.error("OXYGEN_READ_FAILED", "Could not read oxygen saturation.", hcErrorDetails(e))
             }
         }
     }
@@ -1481,8 +1568,8 @@ class MainActivity : FlutterFragmentActivity() {
                     packagePriority(it.metadata.dataOrigin.packageName) == maxPriority
                 }
                 result.success(tier.map { it.heartRateVariabilityMillis }.average())
-            } catch (_: Exception) {
-                result.error("HRV_READ_FAILED", "Could not read heart rate variability.", null)
+            } catch (e: Exception) {
+                result.error("HRV_READ_FAILED", "Could not read heart rate variability.", hcErrorDetails(e))
             }
         }
     }
@@ -1532,8 +1619,8 @@ class MainActivity : FlutterFragmentActivity() {
                         )
                     }
                 result.success(samples)
-            } catch (_: Exception) {
-                result.error("HRV_SAMPLES_READ_FAILED", "Could not read heart rate variability samples.", null)
+            } catch (e: Exception) {
+                result.error("HRV_SAMPLES_READ_FAILED", "Could not read heart rate variability samples.", hcErrorDetails(e))
             }
         }
     }
@@ -1549,24 +1636,49 @@ class MainActivity : FlutterFragmentActivity() {
         val client = hcClientOrError(result) ?: return
         val n = (days ?: 30).coerceIn(1, 3650)
         lifecycleScope.launch {
-            try {
-                val zone = ZoneId.systemDefault()
-                val end = ZonedDateTime.now(zone).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
-                val start = end.minus(n.toLong(), ChronoUnit.DAYS)
-                val records = mutableListOf<SleepSessionRecord>()
-                var pageToken: String? = null
-                do {
-                    val response = client.readRecords(
-                        ReadRecordsRequest(
-                            recordType = SleepSessionRecord::class,
-                            timeRangeFilter = TimeRangeFilter.between(start, end),
-                            pageToken = pageToken
+            // Chunked + isolated like the HRV range read (and the HR
+            // day read): ≤31-day windows newest→oldest, each paginated
+            // in its own try/catch. One failing window cannot zero
+            // the whole history; partial failure returns the days
+            // that read plus the error (Dart map shape). If EVERY
+            // window fails, the read fails with the real exception.
+            val zone = ZoneId.systemDefault()
+            val end = ZonedDateTime.now(zone).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
+            val start = end.minus(n.toLong(), ChronoUnit.DAYS)
+            val records = mutableListOf<SleepSessionRecord>()
+            val chunkErrors = mutableListOf<String>()
+            var chunkCount = 0
+            var chunkEnd = end
+            while (chunkEnd.isAfter(start)) {
+                val chunkStart = maxOf(start, chunkEnd.minus(31, ChronoUnit.DAYS))
+                chunkCount++
+                try {
+                    var pageToken: String? = null
+                    do {
+                        val response = client.readRecords(
+                            ReadRecordsRequest(
+                                recordType = SleepSessionRecord::class,
+                                timeRangeFilter = TimeRangeFilter.between(chunkStart, chunkEnd),
+                                pageToken = pageToken
+                            )
                         )
-                    )
-                    records.addAll(response.records)
-                    pageToken = response.pageToken
-                } while (pageToken != null)
-
+                        records.addAll(response.records)
+                        pageToken = response.pageToken
+                    } while (pageToken != null)
+                } catch (e: Exception) {
+                    chunkErrors.add(hcErrorDetails(e))
+                }
+                chunkEnd = chunkStart
+            }
+            if (chunkErrors.size == chunkCount) {
+                result.error(
+                    "SLEEP_HISTORY_READ_FAILED",
+                    "Could not read sleep history.",
+                    chunkErrors.first()
+                )
+                return@launch
+            }
+            try {
                 fun dateOf(instant: Instant): String =
                     ZonedDateTime.ofInstant(instant, zone).toLocalDate().toString()
 
@@ -1608,9 +1720,18 @@ class MainActivity : FlutterFragmentActivity() {
                         "deep" to deep
                     )
                 }
-                result.success(out)
-            } catch (_: Exception) {
-                result.error("SLEEP_HISTORY_READ_FAILED", "Could not read sleep history.", null)
+                if (chunkErrors.isEmpty()) {
+                    result.success(out)
+                } else {
+                    result.success(
+                        mapOf(
+                            "items" to out,
+                            "partialError" to chunkErrors.first()
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                result.error("SLEEP_HISTORY_READ_FAILED", "Could not read sleep history.", hcErrorDetails(e))
             }
         }
     }
@@ -1680,8 +1801,8 @@ class MainActivity : FlutterFragmentActivity() {
                     counts.entries.sortedBy { it.key }
                         .map { mapOf("date" to it.key, "count" to it.value) }
                 )
-            } catch (_: Exception) {
-                result.error("SPIKE_COUNTS_READ_FAILED", "Could not read heart rate spikes.", null)
+            } catch (e: Exception) {
+                result.error("SPIKE_COUNTS_READ_FAILED", "Could not read heart rate spikes.", hcErrorDetails(e))
             }
         }
     }
@@ -1718,8 +1839,8 @@ class MainActivity : FlutterFragmentActivity() {
             }
             startActivity(Intent.createChooser(intent, "Share Biometrics CSV"))
             result.success(true)
-        } catch (_: Exception) {
-            result.error("CSV_EXPORT_FAILED", "Could not export the CSV file.", null)
+        } catch (e: Exception) {
+            result.error("CSV_EXPORT_FAILED", "Could not export the CSV file.", hcErrorDetails(e))
         }
     }
     // ── Round 54: calendar bridge (native CoachViewModel ports) ─────────

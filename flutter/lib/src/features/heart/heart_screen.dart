@@ -109,12 +109,23 @@ class _HeartScreenState extends State<HeartScreen> {
     await _checkConnectionAndLoad();
   }
 
+  /// True when the live connection check THREW and [_connected]
+  /// came from persisted state alone. A persisted fallback is
+  /// provisional: it may paint the connected layout for first paint,
+  /// but the load that follows is the real proof — if its reads fail,
+  /// the error surfaces even when cached data is on screen, instead
+  /// of the fallback silently masking dead reads (hardening #6).
+  bool _connectionProvisional = false;
+
   Future<void> _checkConnectionAndLoad() async {
     var connected = false;
+    var provisional = false;
     try {
       connected = await _service.isConnected();
     } catch (_) {
-      // Fall back to persisted state, like the connections screen.
+      // Fall back to persisted state, like the connections screen —
+      // but mark it provisional: only a successful read confirms it.
+      provisional = true;
       try {
         connected = await _service.hasPersistedConnection();
       } catch (_) {
@@ -122,7 +133,10 @@ class _HeartScreenState extends State<HeartScreen> {
       }
     }
     if (!mounted) return;
-    setState(() => _connected = connected);
+    setState(() {
+      _connected = connected;
+      _connectionProvisional = provisional && connected;
+    });
     if (connected) await _load();
   }
 
@@ -136,21 +150,42 @@ class _HeartScreenState extends State<HeartScreen> {
       // The service keeps the last read error code without clearing it
       // on success; reset it so only THIS call's failure can surface.
       _service.lastReadErrorCode = null;
+      _service.lastReadErrorDetails = null;
       final raw = await _service.readHeartRateSamples(_dateStr);
       if (!mounted) return;
       // readHeartRateSamples fails closed to an empty list with the
-      // error code kept on the service; surface it when we also have
-      // nothing cached to show.
+      // error code + native exception details kept on the service.
       final errCode = _service.lastReadErrorCode;
-      final data = _cache.apply(_dateStr, raw, ownerEmail: widget.email);
-      unawaited(_cache.persist());
+      final errDetails = _service.lastReadErrorDetails;
+      // A partial read (some day chunks failed) still delivered real
+      // data: it counts as a sync, but the error is shown alongside.
+      // A hard failure (no samples + an error) must NOT stamp the
+      // cache's lastSyncAt — "Synced just now" over a failed load is
+      // founder defect #3 — and must not be persisted as a fresh blob.
+      final partial = errCode != null && raw.isNotEmpty;
+      final failed = errCode != null && raw.isEmpty;
+      final data = _cache.apply(_dateStr, raw,
+          ownerEmail: widget.email, succeeded: !failed);
+      if (!failed) unawaited(_cache.persist());
       setState(() {
         _data = data;
         _lastSyncAt = _cache.lastSyncAt;
         _loading = false;
-        _error = (raw.isEmpty && data.samples.isEmpty && errCode != null)
-            ? '[$errCode] Could not read heart rate data.'
-            : null;
+        if (failed || partial) {
+          // Bracketed code + the real exception info (class +
+          // message from the bridge, never health values) so a
+          // screenshot diagnoses the failure.
+          _error = errDetails != null
+              ? '[$errCode] Could not read heart rate data. ($errDetails)'
+              : '[$errCode] Could not read heart rate data.';
+        } else if (_connectionProvisional && errCode == null) {
+          // The provisional persisted fallback just proved itself
+          // with a successful read — it is a real connection now.
+          _connectionProvisional = false;
+          _error = null;
+        } else {
+          _error = null;
+        }
       });
     } catch (_) {
       if (!mounted) return;

@@ -115,9 +115,27 @@ class HeartDataCache {
   /// Stores a completed load for [dateStr]. The series is filtered to
   /// valid samples first — zeros never reach the cache. Returns the
   /// derived data the UI should render.
+  ///
+  /// [succeeded] is false when the load FAILED (the bridge read
+  /// errored or timed out and [raw] is just its fail-closed empty
+  /// result): a failed load must never stamp [lastSyncAt] — the
+  /// Heart screen's "Synced … ago" line would otherwise claim
+  /// "Synced just now" over dead reads (founder defect #3) — and it
+  /// must not wipe a previously cached series for the date either.
+  /// The cached data (if any) is returned unchanged.
   HeartDayData apply(String dateStr, List<HrSample> raw,
-      {DateTime? now, String? ownerEmail}) {
+      {DateTime? now, String? ownerEmail, bool succeeded = true}) {
     final valid = validHrSamples(raw);
+    if (!succeeded) {
+      final existing = _byDate[dateStr];
+      if (existing != null) return HeartDayData.fromSamples(existing);
+      // Nothing cached: keep the empty result renderable but do NOT
+      // record a sync time for a load that never happened.
+      _byDate[dateStr] = valid;
+      _diskDateStr = dateStr;
+      bindToAccount(ownerEmail);
+      return HeartDayData.fromSamples(valid);
+    }
     _byDate[dateStr] = valid;
     _diskDateStr = dateStr;
     _lastSyncAt = now ?? DateTime.now();
