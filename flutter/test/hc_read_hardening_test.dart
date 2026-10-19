@@ -274,7 +274,7 @@ void main() {
         throwsA(isA<HealthConnectException>()
             .having((e) => e.code, 'code', HealthConnectService.staleGrantCode)
             .having((e) => e.message, 'message',
-                contains('tap Remove access')),
+                contains('tap Remove access'))),
       );
       // A blocked grant must never be stored as a healthy connection.
       expect(await store.read('hc_granted_permissions'), isNull);
