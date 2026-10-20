@@ -26,6 +26,13 @@ import 'package:tabs_lab/src/features/home/home_screen.dart';
 ///   mid-flight of a non-forced run chains its own forced run
 ///   behind it (never silently downgraded); a forced call during
 ///   a forced run joins it.
+/// - Delta-2: the flight state is STATIC/shared, because
+///   production defaults build a fresh sync per call (Home,
+///   DailyScoreScreen, DailyScoreRefresher) while other paths
+///   use the singleton — per-instance state was four flight
+///   domains and the dedupe never engaged in production. Two
+///   DISTINCT `withDeps` syncs on the same store must therefore
+///   dedupe and chain exactly like one instance.
 
 class _FakeStore {
   final Map<String, String> values = {};
@@ -115,6 +122,16 @@ Future<void> _flush() async {
 }
 
 void main() {
+  // Delta-2 housekeeping: the flight state is now static/shared,
+  // so a capture pended by one test must never leak into the
+  // next — reset it around every test in this file.
+  setUp(() {
+    HealthHistorySync.debugResetFlight();
+  });
+  tearDown(() {
+    HealthHistorySync.debugResetFlight();
+  });
+
   group('single-flight capture', () {
     test('concurrent non-forced captures share ONE run', () async {
       final store = _fakeStore(_FakeStore());
@@ -164,6 +181,60 @@ void main() {
       expect(await forced, isTrue);
       expect(await forcedJoin, isTrue);
       expect(hc.restingHrCalls, 2);
+    });
+
+    test(
+        'V-2 delta-2 wiring: two DISTINCT withDeps syncs on the '
+        'SAME store share one flight — concurrent non-forced calls '
+        'run exactly one HC read run, and a forced call on the '
+        'second instance chains (not parallel, not downgraded)',
+        () async {
+      final store = _fakeStore(_FakeStore());
+      final hc = _GatedHc();
+      final syncA = HealthHistorySync.withDeps(hc: hc, store: store);
+      final syncB = HealthHistorySync.withDeps(hc: hc, store: store);
+      expect(identical(syncA, syncB), isFalse);
+
+      // Concurrent non-forced calls ACROSS instances: one run.
+      final first = syncA.capture();
+      final second = syncB.capture();
+      await _flush();
+      expect(hc.restingHrCalls, 1); // one HC read run, not two
+
+      hc.gates[0].complete(const []);
+      expect(await first, isTrue);
+      expect(await second, isTrue);
+      expect(hc.restingHrCalls, 1);
+      await _flush();
+
+      // A non-forced run started on one instance, then a forced
+      // call on the OTHER instance: it chains behind the shared
+      // flight — it does not run in parallel and is not
+      // downgraded to the in-flight non-forced run.
+      final nonForced = syncB.capture();
+      await _flush();
+      expect(hc.restingHrCalls, 2);
+
+      final forced = syncA.capture(force: true);
+      await _flush();
+      expect(hc.restingHrCalls, 2);
+
+      hc.gates[1].complete(const []);
+      expect(await nonForced, isTrue);
+      await _flush();
+      // The chained forced run now starts its own capture.
+      expect(hc.restingHrCalls, 3);
+
+      // A forced call on the second instance during that forced
+      // run joins it, cross-instance.
+      final forcedJoin = syncB.capture(force: true);
+      await _flush();
+      expect(hc.restingHrCalls, 3);
+
+      hc.gates[2].complete(const []);
+      expect(await forced, isTrue);
+      expect(await forcedJoin, isTrue);
+      expect(hc.restingHrCalls, 3);
     });
   });
 

@@ -123,6 +123,39 @@ void main() {
   });
 
   test(
+      'V-1 delta-2: a notifier WITH onTap initializing FIRST (after '
+      'a bootstrap reset) starts the bootstrap itself — plugin '
+      'initialize count stays exactly 1 through a later reminder '
+      'initialize, and a score-payload tap still routes', () async {
+    final plugin = FlutterLocalNotificationsPlugin();
+    final tappedDates = <String>[];
+
+    // Bootstrap state is reset (setUp) — the state a failed
+    // bootstrap attempt leaves behind once its in-flight guard
+    // clears. NO bootstrap call happens before the notifier: the
+    // foreground notifier is the first caller, and it must start
+    // the bootstrap (with the dispatching callback) rather than
+    // taking a callback-less own-initialize.
+    final notifier = LocalDailyScoreReadyNotifier(
+      plugin: plugin,
+      onTap: tappedDates.add,
+    );
+    await notifier.initialize();
+    expect(initializeCalls, hasLength(1));
+
+    // A subsequent reminder-service initialize joins the same
+    // bootstrap run — no second plugin initialize.
+    final reminders = LocalReminderNotificationService(plugin: plugin);
+    await reminders.initialize();
+    expect(initializeCalls, hasLength(1));
+
+    // The one initialize carried the dispatching callback: a
+    // score-payload tap still routes to the notifier's handler.
+    await simulateTap('2026-10-20');
+    expect(tappedDates, ['2026-10-20']);
+  });
+
+  test(
       'MF-8: score-ready notification is tap-to-view only — '
       'approved title/body, no number, private visibility, date '
       'payload', () async {

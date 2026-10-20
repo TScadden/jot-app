@@ -223,16 +223,26 @@ class LocalDailyScoreReadyNotifier implements DailyScoreReadyNotifier {
   /// receive score-notification taps; the background isolate
   /// constructs without one (it only posts).
   ///
-  /// Tap routing (V-1 correction): the notifier does NOT install
-  /// its own plugin response callback in the foreground — the
-  /// app-level [NotificationBootstrap] owns plugin.initialize with
-  /// the one dispatching callback, and this initialize only
-  /// REGISTERS [_onTap] as the score-payload handler with it.
-  /// When the bootstrap has run (or is in flight), this joins it
-  /// and skips plugin.initialize entirely. Only when no bootstrap
-  /// exists in this isolate (the background isolate, which only
-  /// posts) does it initialize the plugin itself, with no
-  /// callback.
+  /// Tap routing (V-1 correction, delta-2): the notifier does
+  /// NOT install its own plugin response callback in the
+  /// foreground — the app-level [NotificationBootstrap] owns
+  /// plugin.initialize with the one dispatching callback, and this
+  /// initialize only REGISTERS [_onTap] as the score-payload
+  /// handler with it.
+  ///
+  /// The branch discriminates on this isolate's ROLE, which the
+  /// construction already encodes: a notifier WITH [_onTap] is a
+  /// foreground notifier, so it ALWAYS starts/joins the bootstrap
+  /// — even when no bootstrap attempt is currently recorded (a
+  /// previous bootstrap attempt that failed fast clears the
+  /// bootstrap's in-flight guard, and taking the callback-less
+  /// branch then would leave the whole session with no
+  /// dispatching callback). The callback-less own-initialize is
+  /// reserved strictly for a notifier WITHOUT [_onTap] — the
+  /// background posting isolate, which only posts — and only
+  /// when no bootstrap has started in this isolate; a no-callback
+  /// notifier that finds a bootstrap in flight still joins it
+  /// rather than wiping its callback.
   Future<void> initialize() async {
     if (_initialized) return;
     final onTap = _onTap;
@@ -247,7 +257,7 @@ class LocalDailyScoreReadyNotifier implements DailyScoreReadyNotifier {
         importance: Importance.defaultImportance,
       ),
     );
-    if (NotificationBootstrap.initializationStarted) {
+    if (onTap != null || NotificationBootstrap.initializationStarted) {
       await NotificationBootstrap.initialize(_plugin);
     } else {
       await _plugin.initialize(

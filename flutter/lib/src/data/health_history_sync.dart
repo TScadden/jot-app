@@ -71,7 +71,7 @@ class HealthHistorySync {
     if (now != null) _now = now;
   }
 
-  // ── Single-flight (V-2 correction) ──────────────────────────
+  // ── Single-flight (V-2 correction, delta-2) ─────────────────
   //
   // Repeated snapshot triggers (Home's _loadDailyScore fires from
   // several lifecycle points) used to stack CONCURRENT captures:
@@ -85,8 +85,30 @@ class HealthHistorySync {
   //   that run to finish, then starts its own forced run (the
   //   refresh button's semantics are preserved: its capture is
   //   never silently downgraded to the in-flight throttled run).
-  Future<bool>? _inFlightCapture;
-  bool _inFlightForced = false;
+  //
+  // The flight state is STATIC — shared across ALL instances in
+  // the isolate (delta-2): production defaults construct a FRESH
+  // [HealthHistorySync.withDeps] per call (Home's
+  // _loadDailyScore, DailyScoreScreen, DailyScoreRefresher),
+  // while HealthRepository and the background runner use
+  // [instance] — as instance fields those were four separate
+  // flight domains and the dedupe never engaged in production.
+  // Shared state makes any instance's in-flight run the one run
+  // every other instance joins or chains behind. The chained
+  // forced run is started by the instance that received the
+  // forced call, exactly as before.
+  static Future<bool>? _inFlightCapture;
+  static bool _inFlightForced = false;
+
+  /// Test hook (the [debugSetDeps] pattern): clear the shared
+  /// single-flight state so tests that pend a capture cannot
+  /// leak an in-flight run into the next test. Production code
+  /// never calls this — a live run's own identity cleanup in
+  /// [_trackFlight] is the only clearing path there.
+  static void debugResetFlight() {
+    _inFlightCapture = null;
+    _inFlightForced = false;
+  }
 
   /// The WS2-facing entry point: fire-and-forget safe, never throws.
   /// Returns true when a capture actually ran.
