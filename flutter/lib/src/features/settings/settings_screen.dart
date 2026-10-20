@@ -265,6 +265,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // capture has recorded an HRV outcome.
   CaptureDiagnostic? _hrvDiag;
 
+  // Daily Score background scoring (founder amendment #2) — the
+  // Health Connect BACKGROUND read grant's live state for the
+  // Connected Apps card below. Null until the first check lands;
+  // read on the same isolated path as the other Connected Apps
+  // state so one failing read never resets the page.
+  bool? _bgScoreAccess;
+
   // Round 65 — Digital Knowledge Extraction state. _kProcessing is
   // native's isProcessingFile (the add buttons swap for the
   // "Gemini is reading your files..." row); _kError is native's
@@ -499,6 +506,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           setState(() => _hcMissingLabels = missingLabels);
         } catch (_) {}
       }
+      // Background read grant — its own guard, like the missing-set
+      // read above: a failure leaves the last-known state and never
+      // touches the connection status.
+      try {
+        final bg = await _hc.hasBackgroundAccess();
+        if (!mounted) return;
+        setState(() => _bgScoreAccess = bg);
+      } catch (_) {}
     } on HealthConnectException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -529,6 +544,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     if (!mounted) return;
     await _loadConnectionState();
+  }
+
+  /// Hands off to Health Connect settings — the only place the
+  /// background read grant can be given (founder amendment #2).
+  /// Failures surface with their code; the grant state re-reads
+  /// the next time this page's state loads.
+  Future<void> _openHcSettingsForBackground() async {
+    try {
+      await _hc.openHealthConnectSettings();
+    } on HealthConnectException catch (e) {
+      _snack('Could not open Health Connect settings [${e.code}]');
+    } catch (_) {
+      _snack('Could not open Health Connect settings [UNKNOWN]');
+    }
   }
 
   /// Defect 1b — the Connected Apps diagnostics line for one HRV
@@ -3449,6 +3478,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Text(_hrvDiagnosticsLine(_hrvDiag!),
               style: const TextStyle(
                   color: NotelColors.textSecondary, fontSize: 12)),
+        ],
+      ]),
+      const SizedBox(height: 24),
+      _sectionLabel('DAILY SCORE'),
+      // Founder amendment #2 — the background-scoring enablement
+      // surface. The background read grant lives ONLY in Health
+      // Connect settings (it is never in the runtime request set),
+      // so this card explains it and hands off there; Tabs itself
+      // never prompts for it. Copy is draft — Juno finalizes.
+      _card([
+        const Text('Daily Score in the Background',
+            style: TextStyle(
+                color: NotelColors.textPrimary,
+                fontWeight: FontWeight.w500)),
+        const SizedBox(height: 4),
+        if (_bgScoreAccess == true)
+          const Text(
+              'Background access is on. Tabs can check Health Connect a few times a day, and will let you know when a new Daily Score is ready.',
+              style:
+                  TextStyle(color: NotelColors.textSecondary, fontSize: 12))
+        else
+          const Text(
+              'Tabs can build your Daily Score in the background, so it is ready even on days you do not open the app. Android keeps this permission separate: in Health Connect settings, open Tabs and turn on background access.',
+              style:
+                  TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
+        if (_bgScoreAccess != true) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              key: const ValueKey('open_hc_settings_background'),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: NotelColors.surfaceHigh,
+                  foregroundColor: NotelColors.textPrimary),
+              onPressed: _openHcSettingsForBackground,
+              child: const Text('Open Health Connect Settings',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
         ],
       ]),
       const SizedBox(height: 24),

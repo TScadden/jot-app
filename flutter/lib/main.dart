@@ -12,6 +12,7 @@ import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/launch_trace.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
+import 'package:tabs_lab/src/data/daily_score_background.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/onboarding_store.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
@@ -22,6 +23,7 @@ import 'package:tabs_lab/src/data/today_summary.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/data/widget_sync.dart';
 import 'package:tabs_lab/src/features/auth/login_screen.dart';
+import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/onboarding/onboarding_flow.dart';
 import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
@@ -559,6 +561,11 @@ class _AppFlowState extends State<AppFlow>
 
   void _kickFirstRunResync() {
     _firstRunResyncFuture ??= _runFirstRunResync();
+    // Every home landing funnels through here (cold-start restore,
+    // sign-in, onboarding completion): a stashed Daily Score
+    // notification tap is delivered on the same landing.
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _deliverPendingScoreTap());
   }
 
   Future<void> _runFirstRunResync() async {
@@ -667,6 +674,11 @@ class _AppFlowState extends State<AppFlow>
         widget.tabsBackend ?? TabsBackend(sessionStore: _sessionStore);
     TabsBackend.onSessionExpired = _onSessionExpired;
     unawaited(_restoreSession());
+    // Daily Score background scoring (founder amendment #2) —
+    // register the periodic WorkManager task and arm the
+    // score-ready notification tap routing. Both are best-effort
+    // and silent: neither may block or break app start.
+    unawaited(_initScoreBackground());
     // Takeover Phase 2 — production billing sync triggers (native
     // parity: sync on BillingClient connect + on ON_RESUME). Inert
     // unless the runtime package/flavor gate says this is the
@@ -691,6 +703,54 @@ class _AppFlowState extends State<AppFlow>
         });
       },
     );
+  }
+
+  // ── Daily Score background (founder amendment #2) ──────────────
+  //
+  // The score-ready notifier this flow owns for tap routing (the
+  // background isolate owns its own posting-only instance). A tap
+  // carries the scored day as its payload; it opens that day's
+  // score detail once the flow is home — a tap that arrives during
+  // welcome/login/onboarding is stashed and delivered on the home
+  // landing, never dropped and never pushed over the auth flow.
+  LocalDailyScoreReadyNotifier? _scoreNotifier;
+  String? _pendingScoreTapDate;
+
+  Future<void> _initScoreBackground() async {
+    unawaited(DailyScoreBackgroundScheduler.register());
+    try {
+      final notifier =
+          LocalDailyScoreReadyNotifier(onTap: _onScoreNotificationTap);
+      _scoreNotifier = notifier;
+      await notifier.initialize();
+      final launchDate = await notifier.launchScorePayload();
+      if (launchDate != null) _onScoreNotificationTap(launchDate);
+    } catch (_) {
+      // Silent: score notifications are an enhancement; the app
+      // must start identically without them.
+    }
+  }
+
+  void _onScoreNotificationTap(String date) {
+    _pendingScoreTapDate = date;
+    if (_stage == _FlowStage.home) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _deliverPendingScoreTap());
+    }
+  }
+
+  void _deliverPendingScoreTap() {
+    final date = _pendingScoreTapDate;
+    if (date == null || !mounted || _stage != _FlowStage.home) return;
+    _pendingScoreTapDate = null;
+    unawaited(Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => DailyScoreDayScreen(
+          store: HealthHistoryStore.instance,
+          date: date,
+        ),
+      ),
+    ));
   }
 
   // Takeover Phase 2 — app-lifetime billing sync (start + resume).
