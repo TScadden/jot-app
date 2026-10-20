@@ -186,6 +186,23 @@ class HealthConnectService {
     }
   }
 
+  /// The background-read permission (founder amendment #2, Oct 20,
+  /// 2026). DECLARED in the manifest so Health Connect can grant it,
+  /// but NEVER part of [requiredPermissions] and never in the
+  /// runtime request set: it is a Dart-side gate, granted by the
+  /// user inside Health Connect settings (app permissions →
+  /// additional access). Background scoring checks it via
+  /// [hasBackgroundAccess] and stays silently off without it.
+  static const String backgroundPermission =
+      'android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND';
+
+  /// Whether the background-read grant is present in the live
+  /// granted set. Throws [HealthConnectException] when the bridge
+  /// read fails — background callers treat a failure as "unknown",
+  /// never as granted.
+  Future<bool> hasBackgroundAccess() async =>
+      (await getGrantedPermissions()).contains(backgroundPermission);
+
   /// Live status: availability + granted-set check. Persists the granted
   /// set when everything required is granted.
   Future<HealthConnectStatus> getStatus() async {

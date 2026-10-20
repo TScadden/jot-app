@@ -23,8 +23,11 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <!-- Round 12: Health Connect. The 14 record-type reads + history, exactly
          matching the native app's manifest. READ_HEALTH_DATA_IN_BACKGROUND is
-         intentionally NOT declared/requested here — background access is a
-         separate Dart-side gate granted via Health Connect settings. -->
+         DECLARED (Daily Score background scoring, Oct 20, 2026) so Health
+         Connect can grant it, but it is NEVER requested at runtime and is
+         NOT in the Dart required-permissions set — it stays a Dart-side
+         gate, granted by the user via Health Connect settings only. -->
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
     <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
     <uses-permission android:name="android.permission.health.READ_SLEEP" />
     <uses-permission android:name="android.permission.health.READ_STEPS" />
