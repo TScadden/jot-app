@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/billing_play_store.dart';
 import 'package:tabs_lab/src/data/coach_memory_store.dart';
@@ -71,6 +72,26 @@ void main() async {
     HealthHistoryStore.instance.warmFromDisk(currentEmail: sessionEmail),
   ]);
   LaunchTrace.instance.mark(LaunchTrace.cachesWarmed);
+  // V-1 correction — the ONE app-level notification bootstrap:
+  // plugin.initialize for the foreground isolate happens here,
+  // once, with the dispatching response callback (score payloads
+  // route to the Daily Score tap handler; anything else keeps
+  // the reminder service's previous no-op behavior). Both
+  // notification services join this initialization instead of
+  // initializing on their own — a screen building a fresh
+  // reminder service can no longer wipe score tap routing
+  // in-session. Fire-and-forget: app start never blocks on it,
+  // and a failure leaves the in-flight state cleared so the
+  // first service use retries.
+  unawaited(() async {
+    try {
+      await NotificationBootstrap.initialize(
+          FlutterLocalNotificationsPlugin());
+    } catch (_) {
+      // Silent: notifications are an enhancement; the app must
+      // start identically without them.
+    }
+  }());
   // Round 52 — re-publish the widget on EVERY app start, once,
   // unawaited: a signed-in snapshot when a session exists and the
   // warmed cache holds one, the signed-out payload otherwise. This
@@ -721,6 +742,10 @@ class _AppFlowState extends State<AppFlow>
     try {
       _scoreNotifier =
           LocalDailyScoreReadyNotifier(onTap: _onScoreNotificationTap);
+      // V-1: initialize() registers the tap handler with the
+      // app-level NotificationBootstrap (which owns the plugin's
+      // one dispatching callback) and joins its initialization —
+      // it does not install a callback of its own.
       await _scoreNotifier!.initialize();
       final launchDate = await _scoreNotifier!.launchScorePayload();
       if (launchDate != null) _onScoreNotificationTap(launchDate);

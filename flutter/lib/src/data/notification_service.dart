@@ -1,7 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
+
+import 'daily_score_background.dart' show LocalDailyScoreReadyNotifier;
 
 /// Round 30 — local notification scheduling for the Settings reminder
 /// toggles, mirroring the native app.
@@ -56,6 +59,108 @@ class NotificationServiceException implements Exception {
   const NotificationServiceException(this.code);
   @override
   String toString() => 'NotificationServiceException($code)';
+}
+
+/// V-1 correction (Vera MAJOR) — the ONE app-level owner of
+/// `FlutterLocalNotificationsPlugin.initialize` in the foreground
+/// isolate.
+///
+/// flutter_local_notifications is a singleton: EVERY initialize()
+/// call replaces the response callback wholesale. Before this
+/// bootstrap existed, [LocalReminderNotificationService.initialize]
+/// initialized with NO callback and is reached from ordinary
+/// screens (Settings, Reminders, Progress Reports, Coach,
+/// onboarding — each building fresh service instances), so any of
+/// those screens erased the Daily Score notifier's tap callback
+/// in-session: foreground/backgrounded score taps then did
+/// nothing (only terminated-state taps survived, via the launch
+/// details).
+///
+/// The rule now: `main()` runs [initialize] once, with ONE
+/// dispatching callback. A payload matching
+/// [LocalDailyScoreReadyNotifier.isScorePayload] routes to the
+/// score tap handler the notifier registers via
+/// [registerScoreTapHandler]; anything else keeps the reminder
+/// service's previous behavior — no callback, i.e. a no-op.
+/// Both services SKIP their own plugin.initialize once the
+/// bootstrap has run (they call [initialize], which joins the
+/// in-flight run or no-ops). The background isolate never runs
+/// this bootstrap (WorkManager's entry point is separate), so
+/// the score notifier's posting-only initialize there is
+/// unaffected.
+class NotificationBootstrap {
+  NotificationBootstrap._();
+
+  static bool _initialized = false;
+  static Future<void>? _initializing;
+  static void Function(String date)? _scoreTapHandler;
+
+  /// Whether the foreground plugin.initialize has completed.
+  static bool get isInitialized => _initialized;
+
+  /// Whether a bootstrap initialize has been started (completed
+  /// or still in flight) in this isolate.
+  static bool get initializationStarted =>
+      _initialized || _initializing != null;
+
+  /// Registers the Daily Score notification tap handler (the
+  /// notifier's `onTap`). Registration is independent of plugin
+  /// initialization order: the dispatching callback reads this
+  /// at tap time.
+  static void registerScoreTapHandler(void Function(String date) handler) {
+    _scoreTapHandler = handler;
+  }
+
+  /// The dispatching response callback handed to the plugin —
+  /// also directly callable in tests.
+  static void dispatchNotificationResponse(NotificationResponse response) {
+    final payload = response.payload;
+    if (LocalDailyScoreReadyNotifier.isScorePayload(payload)) {
+      _scoreTapHandler?.call(payload!);
+    }
+    // Anything else: the reminder service's previous no-op
+    // behavior — reminder taps carry no routing.
+  }
+
+  /// Initializes the plugin ONCE for this isolate with the
+  /// dispatching callback. Concurrent callers share the in-flight
+  /// run; later callers no-op. A failure clears the in-flight
+  /// state so a later call can retry, and is reported as
+  /// [NotificationServiceException] `INIT_FAILED`, matching the
+  /// reminder service's existing failure contract.
+  static Future<void> initialize(FlutterLocalNotificationsPlugin plugin) {
+    if (_initialized) return Future<void>.value();
+    final inFlight = _initializing;
+    if (inFlight != null) return inFlight;
+    final run = _run(plugin);
+    _initializing = run;
+    return run;
+  }
+
+  static Future<void> _run(FlutterLocalNotificationsPlugin plugin) async {
+    try {
+      final ok = await plugin.initialize(
+        const InitializationSettings(
+          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        ),
+        onDidReceiveNotificationResponse: dispatchNotificationResponse,
+      );
+      if (ok != true) {
+        throw const NotificationServiceException('INIT_FAILED');
+      }
+      _initialized = true;
+    } catch (_) {
+      _initializing = null;
+      throw const NotificationServiceException('INIT_FAILED');
+    }
+  }
+
+  @visibleForTesting
+  static void debugReset() {
+    _initialized = false;
+    _initializing = null;
+    _scoreTapHandler = null;
+  }
 }
 
 /// One event-counter reminder to arm (or cancel).
@@ -320,14 +425,14 @@ class LocalReminderNotificationService implements ReminderNotificationService {
       } catch (_) {
         _zoneReady = false;
       }
-      final ok = await _plugin.initialize(
-        const InitializationSettings(
-          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-        ),
-      );
-      if (ok != true) {
-        throw const NotificationServiceException('INIT_FAILED');
-      }
+      // V-1: plugin.initialize belongs to the app-level bootstrap
+      // (see [NotificationBootstrap]) — it installs the ONE
+      // dispatching response callback. Calling initialize here
+      // joins the bootstrap's run (or starts it, when a screen is
+      // somehow the first caller) and NEVER replaces the
+      // callback, so initializing the reminder service can no
+      // longer wipe Daily Score tap routing in-session.
+      await NotificationBootstrap.initialize(_plugin);
       _initialized = true;
     } on NotificationServiceException {
       rethrow;
