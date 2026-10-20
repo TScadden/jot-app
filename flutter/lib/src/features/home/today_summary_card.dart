@@ -821,7 +821,7 @@ class _SlideAwayRowSlotState extends State<_SlideAwayRowSlot>
     return SizeTransition(
       key: const Key('slide-away-slot'),
       sizeFactor: _size,
-      axisAlignment: -1,
+      alignment: Alignment.topCenter,
       child: ClipRect(
         child: SlideTransition(
           key: const Key('slide-away-transition'),
