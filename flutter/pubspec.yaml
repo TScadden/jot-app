@@ -48,7 +48,7 @@ dependencies:
   # 2026): periodic WorkManager task running the snapshot + gated
   # scoring pipeline with the app closed. Platform-deferred
   # execution only — no exact alarms.
-  workmanager: ^0.9.0
+  workmanager: ^0.10.9
   # Health Connect bridge as a local plugin package: the generated
   # plugin registrant registers HealthConnectBridgePlugin on EVERY
   # FlutterEngine (main + WorkManager background), so the channel
