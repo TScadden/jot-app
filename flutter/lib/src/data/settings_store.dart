@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -50,6 +52,16 @@ class SettingsStore {
       'progress_report_appointment_date';
   static const reportAppointmentTypeKey =
       'progress_report_appointment_type';
+  // Counter-mutation durability (Oct 2026) — locally persisted
+  // deleted-event-counter tombstones (native parity:
+  // `deletedEventCounterIds` in NotelPreferences, filtered in
+  // SyncManager's pull merge). Device-only, like every key in this
+  // store: the ids are the user's own counter ids, are never sent
+  // to the server, and are wiped by [clear] on logout / account
+  // deletion with the rest of the account-bound state.
+  static const deletedCounterIdsKey = 'settings_deleted_counter_ids';
+  static const deletedCounterOwnerKey =
+      'settings_deleted_counter_owner';
 
   Future<String?> Function(String key) _read =
       (key) => const FlutterSecureStorage().read(key: key);
@@ -210,6 +222,111 @@ class SettingsStore {
   Future<void> setReportAppointmentType(String v) =>
       _write(reportAppointmentTypeKey, v);
 
+  // ── Counter delete tombstones (Oct 2026) ──────────────────────
+
+  static String? _normalizeOwner(String? email) {
+    final e = email?.trim().toLowerCase();
+    return (e == null || e.isEmpty) ? null : e;
+  }
+
+  /// The locally persisted deleted-counter ids owned by
+  /// [ownerEmail] (the session account email; null when unknown).
+  ///
+  /// Account binding (following the HomeDataCache owner pattern,
+  /// adapted to this data's risk): a POSITIVE owner mismatch — a
+  /// stored owner that is a DIFFERENT account — drops the set
+  /// (ids deleted, the current account bound in its place) and
+  /// returns empty, so one account's tombstones can never hide
+  /// another account's counters. A set with NO recorded owner is
+  /// ADOPTED instead (the current owner is stamped, the ids kept):
+  /// it can only have been written by an email-less surface of
+  /// this same install, counter ids are per-account timestamps,
+  /// and the hard account-separation guarantee is [clear], which
+  /// wipes these keys on every logout / account deletion. When
+  /// [ownerEmail] is unknown the stored set is returned as-is.
+  /// Never throws.
+  Future<Set<String>> getDeletedCounterIds({String? ownerEmail}) async {
+    try {
+      final owner = _normalizeOwner(ownerEmail);
+      final raw = await _read(deletedCounterIdsKey);
+      if (raw == null || raw.isEmpty) return const {};
+      Set<String> ids;
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is! List) return const {};
+        ids = decoded.map((e) => '$e').where((e) => e.isNotEmpty).toSet();
+      } catch (_) {
+        return const {};
+      }
+      if (ids.isEmpty) return const {};
+      if (owner != null) {
+        final storedOwner =
+            _normalizeOwner(await _read(deletedCounterOwnerKey));
+        if (storedOwner != null && storedOwner != owner) {
+          // Another account's set: drop it and bind the current
+          // account (HomeDataCache clearIfOwnerMismatch pattern).
+          try {
+            await _delete(deletedCounterIdsKey);
+          } catch (_) {}
+          try {
+            await _write(deletedCounterOwnerKey, owner);
+          } catch (_) {}
+          return const {};
+        }
+        if (storedOwner == null) {
+          // Unowned set: adopt it for the current account.
+          try {
+            await _write(deletedCounterOwnerKey, owner);
+          } catch (_) {}
+        }
+      }
+      return ids;
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  /// Persists the tombstone set for [ownerEmail]. An empty set
+  /// deletes the ids key (the owner key is kept/updated so the
+  /// binding survives for the next write). Never throws.
+  Future<void> setDeletedCounterIds(Set<String> ids,
+      {String? ownerEmail}) async {
+    final owner = _normalizeOwner(ownerEmail);
+    try {
+      if (ids.isEmpty) {
+        await _delete(deletedCounterIdsKey);
+      } else {
+        final sorted = ids.toList()..sort();
+        await _write(deletedCounterIdsKey, jsonEncode(sorted));
+      }
+    } catch (_) {}
+    if (owner != null) {
+      try {
+        await _write(deletedCounterOwnerKey, owner);
+      } catch (_) {}
+    }
+  }
+
+  /// Adds one id to the tombstone set (idempotent). Never throws.
+  Future<void> addDeletedCounterId(String id, {String? ownerEmail}) async {
+    if (id.isEmpty) return;
+    final ids = await getDeletedCounterIds(ownerEmail: ownerEmail);
+    if (ids.contains(id)) return;
+    await setDeletedCounterIds({...ids, id}, ownerEmail: ownerEmail);
+  }
+
+  /// Removes one id from the tombstone set. Used to roll a
+  /// tombstone back when the delete push itself failed — the
+  /// counter was never deleted server-side, so nothing may hide it.
+  /// Never throws.
+  Future<void> removeDeletedCounterId(String id,
+      {String? ownerEmail}) async {
+    final ids = await getDeletedCounterIds(ownerEmail: ownerEmail);
+    if (!ids.contains(id)) return;
+    await setDeletedCounterIds({...ids}..remove(id),
+        ownerEmail: ownerEmail);
+  }
+
   /// Wipes every settings key. Called on logout / account deletion so a
   /// next account never inherits this account's on-device choices.
   Future<void> clear() async {
@@ -228,6 +345,8 @@ class SettingsStore {
       reportLastExportKey,
       reportAppointmentDateKey,
       reportAppointmentTypeKey,
+      deletedCounterIdsKey,
+      deletedCounterOwnerKey,
     ]) {
       try {
         await _delete(k);

@@ -218,6 +218,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   SettingsProfileData _data = const SettingsProfileData();
   bool _loaded = false;
 
+  /// Counter-mutation durability (Oct 2026): true once a real sync
+  /// pull (or a counter save built on one) has populated [_data].
+  /// A later load whose pull FAILS (null body) must keep the
+  /// last-known [_data] instead of resetting the whole screen to
+  /// factory defaults — the founder's "all counters disappeared
+  /// ~1s after a tap" flicker was exactly that reset landing when
+  /// the post-push reload pull failed.
+  bool _hasRealData = false;
+
   // Device-only settings (SettingsStore).
   bool _showNavLabels = true;
   String _themeMode = 'DARK';
@@ -369,7 +378,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
-  Future<void> _load() async {
+  /// Counter-mutation durability (Oct 2026): [reportLoadFailure]
+  /// is false only for the reload [_pushProfile] runs right after
+  /// it has already shown its own save-error snack — the user gets
+  /// exactly one honest error, never two queued ones.
+  Future<void> _load({bool reportLoadFailure = true}) async {
     final results = await Future.wait<dynamic>([
       _backend.fetchSyncPull(),
       _store.getShowNavLabels(),
@@ -379,8 +392,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _store.getLastSyncTimeMs(),
     ]);
     if (!mounted) return;
-    final data = SettingsProfileData.fromPull(
-        results[0] as Map<String, dynamic>?);
+    final body = results[0] as Map<String, dynamic>?;
+    final SettingsProfileData data;
+    if (body == null) {
+      // Defect B fix: a failed pull NEVER blanks the screen. Once
+      // real data has loaded, keep it whole (every Settings field,
+      // counters included) AND surface the failure with a snack —
+      // the list the user sees is their last-known data, never a
+      // silent factory-default empty list. A first-ever load with
+      // no data yet sits on defaults with no snack, exactly like
+      // every other screen's honest empty state (a snack here would
+      // also queue ahead of — and hide — the action errors this
+      // screen shows for the failure the user actually caused).
+      data = _hasRealData ? _data : const SettingsProfileData();
+      if (reportLoadFailure && _hasRealData) {
+        _snack('Could not load your settings. '
+            'Check your connection and try again.');
+      }
+    } else {
+      data = SettingsProfileData.fromPull(body);
+      _hasRealData = true;
+    }
     setState(() {
       _data = data;
       _showNavLabels = results[1] as bool;
@@ -394,6 +426,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _contextSeeded = true;
       }
     });
+    if (body != null) {
+      // Defect D — the delete-tombstone filter runs on its OWN
+      // isolated path AFTER the data lands (the Round 51 pattern):
+      // tombstoned ids are filtered out of the rendered list and
+      // tombstones the server no longer carries are pruned, without
+      // ever blocking or blanking the load above.
+      unawaited(_filterTombstonedCountersInPlace());
+    }
     // Round 65 — load the account-bound extracted-text cache, then
     // backfill any document that has no cached text (native
     // SettingsViewModel.init → backfillDocumentExtractions). The
@@ -668,9 +708,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return true;
   }
 
-  Future<void> _reloadFromServer() async {
+  Future<void> _reloadFromServer({bool reportLoadFailure = true}) async {
     _backend.invalidateSyncPull();
-    await _load();
+    await _load(reportLoadFailure: reportLoadFailure);
   }
 
   void _snack(String msg) {
@@ -768,7 +808,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _backend.invalidateSyncPull();
     } else {
       _snack('Could not save. Check your connection and try again.');
-      await _reloadFromServer();
+      // The save error above IS the honest surface for this
+      // failure; the reload's own load-failure snack is suppressed
+      // so the user never gets two queued errors for one failure.
+      await _reloadFromServer(reportLoadFailure: false);
     }
     return ok;
   }
@@ -4341,24 +4384,183 @@ class _SettingsScreenState extends State<SettingsScreen> {
   List<EventCounterItem> get _counters =>
       _data.eventCounters.map(EventCounterItem.fromMap).toList();
 
-  Future<void> _saveCounters(List<EventCounterItem> counters,
-      {List<Map<String, dynamic>>? history}) async {
-    final raw =
-        jsonEncode(counters.map((c) => c.toMap()).toList());
+  /// The account that owns this screen's local tombstones — the
+  /// widget email, read SYNCHRONOUSLY on purpose: the session-store
+  /// email read is a secure-storage channel call, and the Round 51
+  /// lesson is that such a read must never sit on a blocking path
+  /// (an unguarded one once silently discarded this screen's whole
+  /// load). Surfaces constructed without an email (the Research
+  /// conditions flow) run unbound; the store ADOPTS an unowned set
+  /// for the first account that reads it with an email, and logout
+  /// wipes it either way (SettingsStore.clear).
+  String? get _tombstoneOwnerEmail {
+    final e = widget.email;
+    return (e != null && e.trim().isNotEmpty) ? e : null;
+  }
+
+  /// Defect D — applies the locally persisted delete tombstones to
+  /// a pulled profile: counters whose id is tombstoned are removed
+  /// from the list (BY ID ONLY — a row missing the `isArchived` key
+  /// passes through untouched apart from that check), and
+  /// tombstones whose id the pulled list no longer carries are
+  /// pruned from the store (native self-cleaning). Filtering runs
+  /// on the RAW pulled maps so no other key is rewritten here.
+  /// Never throws: a store failure returns [data] unfiltered.
+  Future<SettingsProfileData> _applyCounterTombstones(
+      SettingsProfileData data) async {
+    try {
+      final owner = _tombstoneOwnerEmail;
+      final tombstones =
+          await _store.getDeletedCounterIds(ownerEmail: owner);
+      if (tombstones.isEmpty) return data;
+      final rawCounters = data.eventCounters;
+      final serverIds =
+          rawCounters.map((m) => '${m['id'] ?? ''}').toSet();
+      final stillNeeded = pruneCounterTombstones(tombstones, serverIds);
+      if (stillNeeded.length != tombstones.length) {
+        await _store.setDeletedCounterIds(stillNeeded,
+            ownerEmail: owner);
+      }
+      if (stillNeeded.isEmpty) return data;
+      final filtered = rawCounters
+          .where((m) => !stillNeeded.contains('${m['id'] ?? ''}'))
+          .toList();
+      if (filtered.length == rawCounters.length) return data;
+      return data.copyWith(eventCountersRaw: jsonEncode(filtered));
+    } catch (_) {
+      return data;
+    }
+  }
+
+  /// Defect D — the [_load] post-pass: filters tombstoned counters
+  /// out of the CURRENT [_data] once the load has landed. If a save
+  /// or a newer load changed the counters while the filter ran,
+  /// that newer state wins and this pass does nothing.
+  Future<void> _filterTombstonedCountersInPlace() async {
+    final before = _data;
+    final filtered = await _applyCounterTombstones(before);
+    if (!mounted) return;
+    if (filtered.eventCountersRaw == before.eventCountersRaw) return;
+    if (_data.eventCountersRaw != before.eventCountersRaw) return;
+    setState(() => _data = _data.copyWith(
+        eventCountersRaw: filtered.eventCountersRaw));
+  }
+
+  /// Defect D — records a deleted counter's tombstone locally.
+  /// Never throws; never leaves the device (SettingsStore is
+  /// on-device secure storage, wiped on logout with the other
+  /// account-bound state).
+  Future<void> _recordCounterTombstone(String id) async {
+    try {
+      await _store.addDeletedCounterId(id,
+          ownerEmail: _tombstoneOwnerEmail);
+    } catch (_) {}
+  }
+
+  /// Rolls a tombstone back when its delete push failed — the
+  /// counter was never deleted server-side, so nothing may hide it.
+  Future<void> _rollbackCounterTombstone(String id) async {
+    try {
+      await _store.removeDeletedCounterId(id,
+          ownerEmail: _tombstoneOwnerEmail);
+    } catch (_) {}
+  }
+
+  /// Counter-mutation durability (Oct 2026) — the single choke
+  /// point for EVERY event-counter save (archive / unarchive /
+  /// edit / create / end-and-save), rewritten after the founder's
+  /// mutations never persisted:
+  ///
+  /// 1. RE-PULL FRESH FIRST (the standing whole-blob rule): the
+  ///    cached pull is invalidated and the profile is re-read; the
+  ///    mutation is computed against THAT list, never against the
+  ///    possibly-stale [_data] snapshot the old code spliced onto.
+  ///    Callers pass their INTENT as [transform], which is applied
+  ///    to the fresh list — so a concurrent pull landing at any
+  ///    point (including the epoch-checked re-issue inside the
+  ///    backend) can never resurrect or drop a counter the splice
+  ///    did not intend.
+  /// 2. A failed fresh pull ABORTS the save with the honest
+  ///    save-error snack — no push is fired onto a stale base.
+  /// 3. For an end/delete, the id's tombstone is recorded locally
+  ///    at save time (before the push, so no stale body landing
+  ///    during the push can be applied unfiltered); a failed push
+  ///    rolls it back.
+  /// 4. [_data] is set from the PUSHED state only after the push
+  ///    succeeds. On failure the save-error snack shows and a
+  ///    reload runs; [_load] keeps the last-known data if that
+  ///    reload also fails — the list never blanks and never claims
+  ///    a save the server did not take.
+  ///
+  /// [historyTransform] likewise receives the FRESH history (and
+  /// the fresh counters, so the end-and-save handler can tell
+  /// whether its counter is really being removed) and returns the
+  /// history to push, or null to leave history untouched.
+  /// Returns true only when the push landed.
+  Future<bool> _saveCounters(
+    List<EventCounterItem> Function(List<EventCounterItem> freshCounters)
+        transform, {
+    List<Map<String, dynamic>>? Function(
+            List<Map<String, dynamic>> freshHistory,
+            List<EventCounterItem> freshCounters)?
+        historyTransform,
+    String? deletedCounterId,
+  }) async {
+    _backend.invalidateSyncPull();
+    final body = await _backend.fetchSyncPull();
+    if (body == null) {
+      _snack('Could not save. Check your connection and try again.');
+      return false;
+    }
+    final freshData = await _applyCounterTombstones(
+        SettingsProfileData.fromPull(body));
+    final freshCounters =
+        freshData.eventCounters.map(EventCounterItem.fromMap).toList();
+    final counters = transform(freshCounters);
+    final raw = jsonEncode(counters.map((c) => c.toMap()).toList());
     final fields = <String, dynamic>{'eventCounters': raw};
     String? historyRaw;
-    if (history != null) {
-      historyRaw = jsonEncode(history);
-      fields['counterHistory'] = historyRaw;
+    if (historyTransform != null) {
+      final newHistory =
+          historyTransform(freshData.counterHistory, freshCounters);
+      if (newHistory != null) {
+        historyRaw = jsonEncode(newHistory);
+        fields['counterHistory'] = historyRaw;
+      }
     }
-    setState(() {
-      _data = _data.copyWith(
-          eventCountersRaw: raw, counterHistoryRaw: historyRaw);
-    });
-    await _pushProfile(fields);
+    if (deletedCounterId != null) {
+      await _recordCounterTombstone(deletedCounterId);
+    }
+    // This save deliberately does NOT route through _pushProfile:
+    // on failure the tombstone rollback must land BEFORE (and
+    // independently of) the best-effort reload _pushProfile runs,
+    // whose _load continues into unrelated subsystems (knowledge
+    // cache, connection state, reminder sync) that must never gate
+    // the rollback. Success/failure handling otherwise mirrors
+    // _pushProfile exactly: invalidate the pull cache on success;
+    // on failure show the same save-error snack and reload (which
+    // keeps last-known data if it also fails — see _load).
+    final ok = await _backend.postSyncProfile(fields);
+    if (!ok) {
+      if (deletedCounterId != null) {
+        await _rollbackCounterTombstone(deletedCounterId);
+      }
+      _snack('Could not save. Check your connection and try again.');
+      await _reloadFromServer(reportLoadFailure: false);
+      return false;
+    }
+    _backend.invalidateSyncPull();
+    if (mounted) {
+      setState(() {
+        _data = _data.copyWith(
+            eventCountersRaw: raw, counterHistoryRaw: historyRaw);
+        _hasRealData = true;
+      });
+    }
     // Native arms/cancels the counter's 9 AM alarm in the same save
     // (SettingsViewModel.kt:1270); re-sync all event schedules.
     await _syncReminders();
+    return true;
   }
 
   List<Widget> _countersPage() {
@@ -4523,12 +4725,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             icon: Icon(archived ? Icons.unarchive : Icons.archive,
                 size: 18, color: NotelColors.textSecondary),
             onPressed: () async {
-              final updated = _counters
+              // Intent only — _saveCounters applies the toggle to
+              // the FRESH list (toggling the fresh row's own flag,
+              // not the possibly-stale rendered row's).
+              await _saveCounters((fresh) => fresh
                   .map((x) => x.id == c.id
                       ? x.copyWith(isArchived: !x.isArchived)
                       : x)
-                  .toList();
-              await _saveCounters(updated);
+                  .toList());
             },
           ),
           IconButton(
@@ -4548,18 +4752,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
             icon: const Icon(Icons.stop_circle,
                 size: 18, color: NotelColors.textSecondary),
             onPressed: () async {
-              // Native endCounterAndSave: remove + append to history.
-              final remaining =
-                  _counters.where((x) => x.id != c.id).toList();
-              final history = [
-                {
-                  'name': c.name,
-                  'targetDate': c.targetDate,
-                  'endedAt': DateTime.now().millisecondsSinceEpoch,
+              // Native endCounterAndSave: remove + append to
+              // history — computed against the FRESH lists inside
+              // _saveCounters, with the delete tombstone recorded
+              // at save time (deletedCounterId).
+              await _saveCounters(
+                (fresh) => fresh.where((x) => x.id != c.id).toList(),
+                historyTransform: (freshHistory, freshCounters) {
+                  // Prepend the history entry only when the fresh
+                  // list really still carries the counter — if a
+                  // concurrent save already ended it, a second
+                  // entry would duplicate the first.
+                  final matches =
+                      freshCounters.where((x) => x.id == c.id).toList();
+                  if (matches.isEmpty) return null;
+                  final target = matches.first;
+                  return [
+                    {
+                      'name': target.name,
+                      'targetDate': target.targetDate,
+                      'endedAt': DateTime.now().millisecondsSinceEpoch,
+                    },
+                    ...freshHistory,
+                  ].take(20).toList();
                 },
-                ..._data.counterHistory,
-              ].take(20).toList();
-              await _saveCounters(remaining, history: history);
+                deletedCounterId: c.id,
+              );
             },
           ),
         ],
@@ -4661,9 +4879,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 if (name.isEmpty) return;
                 final ms = DateTime(date.year, date.month, date.day)
                     .millisecondsSinceEpoch;
-                final counters = _counters;
+                final bool ok;
                 if (existing != null) {
-                  await _saveCounters(counters
+                  ok = await _saveCounters((fresh) => fresh
                       .map((x) => x.id == existing.id
                           ? x.copyWith(
                               name: name,
@@ -4673,25 +4891,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           : x)
                       .toList());
                 } else {
-                  // Native dedupes duplicate names with (2), (3)…
-                  final names = counters.map((x) => x.name).toSet();
-                  var unique = name;
-                  var suffix = 2;
-                  while (names.contains(unique)) {
-                    unique = '$name ($suffix)';
-                    suffix++;
-                  }
-                  counters.add(EventCounterItem(
-                    id: '${DateTime.now().millisecondsSinceEpoch}',
-                    name: unique,
-                    targetDate: ms,
-                    isUp: isUp,
-                    autoUp: autoUp,
-                    isFavorite: counters.isEmpty,
-                  ));
-                  await _saveCounters(counters);
+                  ok = await _saveCounters((fresh) {
+                    // Native dedupes duplicate names with (2), (3)…
+                    // — against the FRESH list, inside the transform.
+                    final names = fresh.map((x) => x.name).toSet();
+                    var unique = name;
+                    var suffix = 2;
+                    while (names.contains(unique)) {
+                      unique = '$name ($suffix)';
+                      suffix++;
+                    }
+                    return [
+                      ...fresh,
+                      EventCounterItem(
+                        id: '${DateTime.now().millisecondsSinceEpoch}',
+                        name: unique,
+                        targetDate: ms,
+                        isUp: isUp,
+                        autoUp: autoUp,
+                        isFavorite: fresh.isEmpty,
+                      ),
+                    ];
+                  });
                 }
-                if (ctx.mounted) Navigator.of(ctx).pop();
+                // A failed save keeps the dialog open with the
+                // error already shown — never pop as if it saved.
+                if (ok && ctx.mounted) Navigator.of(ctx).pop();
               },
               child: const Text('Save',
                   style: TextStyle(color: NotelColors.primary)),
