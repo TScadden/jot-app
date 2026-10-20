@@ -3486,7 +3486,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // surface. The background read grant lives ONLY in Health
       // Connect settings (it is never in the runtime request set),
       // so this card explains it and hands off there; Tabs itself
-      // never prompts for it. Copy is draft — Juno finalizes.
+      // never prompts for it. Copy is Juno-final (correction
+      // round): the strings make NO claim that background Health
+      // Connect checking works on device today, and the unknown
+      // grant state (MF-10: not yet read, or the read threw)
+      // renders a neutral checking line — no grant claim and no
+      // enablement button until the state is known.
       _card([
         const Text('Daily Score in the Background',
             style: TextStyle(
@@ -3495,15 +3500,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const SizedBox(height: 4),
         if (_bgScoreAccess == true)
           const Text(
-              'Background access is on. Tabs can check Health Connect a few times a day, and will let you know when a new Daily Score is ready.',
+              'Background access is on. Tabs can work on your Daily Score in the background a few times a day at most, and Android may delay that work to save battery. When a background run creates a new Daily Score, Tabs can notify you if notifications are turned on for Tabs.',
+              style:
+                  TextStyle(color: NotelColors.textSecondary, fontSize: 12))
+        else if (_bgScoreAccess == false)
+          const Text(
+              'Tabs can build your Daily Score in the background, so a score may be ready even on days you do not open the app. Android may delay background work to save battery, so a score is not guaranteed by a set time. To allow it, tap Open Health Connect Settings below, then tap Tabs, App permissions, Additional access, and turn on Background access.',
               style:
                   TextStyle(color: NotelColors.textSecondary, fontSize: 12))
         else
-          const Text(
-              'Tabs can build your Daily Score in the background, so it is ready even on days you do not open the app. Android keeps this permission separate: in Health Connect settings, open Tabs and turn on background access.',
+          const Text('Checking background access…',
               style:
                   TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
-        if (_bgScoreAccess != true) ...[
+        if (_bgScoreAccess == false) ...[
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,

@@ -447,10 +447,11 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       // The concept's 14-day chart card (Juno C5 heading).
       expect(find.text('Last 14 scored days'), findsOneWidget);
-      // Juno C4: the "How this score works" body, verbatim.
+      // Juno MF-2 (correction round): the "How this score works"
+      // body, verbatim — supersedes the C4 draft wording.
       expect(
         find.text(
-            'Each day is compared with your own recent baseline: the most recent 28 days with data before it. Sleep counts 40%, HRV 35%, and resting heart rate 25%, counting only the parts with at least 7 baseline days. HRV is measured as RMSSD, among the most-studied signals in physiology. A day is scored once and does not change on its own. You can refresh a scored day from its detail screen.'),
+            'Each day is compared with your own recent baseline: the most recent 28 days with data before it. Sleep counts 40%, HRV 35%, and resting heart rate 25%, counting only the parts with at least 7 baseline days. HRV is measured as RMSSD, among the most-studied signals in physiology. A day is scored once and does not change on its own. You can refresh a day from its detail screen.'),
         findsOneWidget,
       );
       // Newest scored day first: Oct 16, 2026 was a Friday.

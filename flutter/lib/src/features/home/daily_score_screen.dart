@@ -259,7 +259,7 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
           ),
           SizedBox(height: 4),
           Text(
-            'Each day is compared with your own recent baseline: the most recent 28 days with data before it. Sleep counts 40%, HRV 35%, and resting heart rate 25%, counting only the parts with at least 7 baseline days. HRV is measured as RMSSD, among the most-studied signals in physiology. A day is scored once and does not change on its own. You can refresh a scored day from its detail screen.',
+            'Each day is compared with your own recent baseline: the most recent 28 days with data before it. Sleep counts 40%, HRV 35%, and resting heart rate 25%, counting only the parts with at least 7 baseline days. HRV is measured as RMSSD, among the most-studied signals in physiology. A day is scored once and does not change on its own. You can refresh a day from its detail screen.',
             style: TextStyle(fontSize: 13, color: NotelColors.textSecondary),
           ),
         ],
@@ -585,8 +585,8 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
       _refreshFailureCodes = outcome.newFailureCodes;
       _refreshNotice =
           outcome.status == DailyScoreRefreshStatus.noChange
-              ? 'Still no score for this day: not enough health '
-                  'data is stored for it yet.'
+              ? 'Still no score for this day: not enough stored '
+                  'health data to score it yet.'
               : null;
     });
   }
@@ -594,8 +594,7 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
   void _showRefreshError(String code) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content:
-            Text('Could not refresh this score. Please try again. [$code]'),
+        content: Text('Could not refresh. Please try again. [$code]'),
       ),
     );
   }
@@ -604,11 +603,14 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
   /// the no-score state: a capture failure (the score — or the
   /// pending state — was left untouched), the per-metric failures
   /// the last capture newly recorded, and the no-score notice.
+  /// Because BOTH the scored detail and the no-score builder
+  /// (pending today + past unscored days) render these lines,
+  /// every Juno-final string here reads true in all three states.
   List<Widget> _refreshNotices() => [
         if (_refreshErrorCode != null) ...[
           const SizedBox(height: 16),
           Text(
-            'Refresh failed. This score was not changed. '
+            'Refresh failed. Nothing was changed. '
             '[$_refreshErrorCode]',
             style: const TextStyle(fontSize: 12, color: NotelColors.error),
           ),
@@ -616,9 +618,9 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
         if (_refreshFailureCodes.isNotEmpty) ...[
           const SizedBox(height: 16),
           Text(
-            'Some data could not be refreshed: '
+            'Some data could not be read in this refresh: '
             '${_refreshFailureCodes.entries.map((e) => '${_captureMetricLabels[e.key] ?? e.key} [${e.value}]').join(', ')}'
-            '. This score was updated from the data that is stored.',
+            '. Any score shown uses only the data that is stored.',
             style: const TextStyle(fontSize: 12, color: NotelColors.warning),
           ),
         ],
@@ -646,11 +648,11 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
       children: [
         Text(
           isToday
-              ? 'Today\'s score is waiting for today\'s health data '
-                  'to arrive. It will be scored once sleep, HRV, and '
-                  'resting heart rate have all come in. Or tap '
-                  'refresh to score it now from the data already '
-                  'stored.'
+              ? 'Today\'s score is waiting for today\'s health data. '
+                  'Tabs can score today once sleep, HRV, and resting '
+                  'heart rate are all available and counted. You can '
+                  'also tap refresh to score it now from the data '
+                  'already stored.'
               : 'No score stored for this day.',
           style: const TextStyle(
               fontSize: 13, color: NotelColors.textSecondary),
@@ -832,9 +834,9 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
         ..._refreshNotices(),
         const SizedBox(height: 16),
         const Text(
-          'This score reflects the data stored for this day. It '
-          'does not change on its own, and it updates only when '
-          'you refresh it.',
+          'This score uses the data stored for this day and your '
+          'baseline from earlier days. It does not change on its '
+          'own. It changes only when you refresh it.',
           style: TextStyle(fontSize: 12, color: NotelColors.textSecondary),
         ),
         const SizedBox(height: 16),

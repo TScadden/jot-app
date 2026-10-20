@@ -25,11 +25,12 @@ import 'package:tabs_lab/src/features/home/home_screen.dart';
 ///   re-scores the viewed day ONLY, leaves the score untouched on
 ///   capture failure or a null recomputation, and carries any
 ///   newly recorded per-metric read failures in its outcome.
-/// - The day detail shows the refresh control on scored days
-///   only, disables it in flight, and re-renders from the
-///   persisted record after a refresh; the history list and the
-///   Home face pick the refreshed number up on return through
-///   their existing reload paths.
+/// - The day detail shows the refresh control in every loaded
+///   day-detail state (scored days, unscored days, and today's
+///   pending state — the amended scope), disables it in flight,
+///   and re-renders from the persisted record after a refresh;
+///   the history list and the Home face pick the refreshed
+///   number up on return through their existing reload paths.
 
 /// In-memory fake for the store's storage functions (same shape
 /// as daily_score_r70_test.dart).
@@ -447,8 +448,8 @@ void main() {
       await tester.pump();
       expect(find.text('No score stored for this day.'), findsOneWidget);
       expect(
-          find.text('Still no score for this day: not enough health '
-              'data is stored for it yet.'),
+          find.text('Still no score for this day: not enough stored '
+              'health data to score it yet.'),
           findsOneWidget);
       expect((await store.readAll())['2026-10-16']!.dailyScore, isNull);
     });
@@ -467,8 +468,13 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump();
       expect(find.textContaining('[CAPTURE_FAILED]'), findsWidgets);
+      // MF-5 pins both surfaces: the SnackBar and this inline line.
       expect(
-          find.text('Refresh failed. This score was not changed. '
+          find.text('Could not refresh. Please try again. '
+              '[CAPTURE_FAILED]'),
+          findsOneWidget);
+      expect(
+          find.text('Refresh failed. Nothing was changed. '
               '[CAPTURE_FAILED]'),
           findsOneWidget);
       expect(find.text('Daily Score: 62 · Good'), findsOneWidget);
@@ -501,9 +507,55 @@ void main() {
       await tester.pump();
       expect(find.text('Daily Score: 100 · Great'), findsOneWidget);
       expect(
-          find.text('Some data could not be refreshed: Sleep '
-              '[SLEEP_HISTORY_READ_FAILED]. This score was updated '
-              'from the data that is stored.'),
+          find.text('Some data could not be read in this refresh: '
+              'Sleep [SLEEP_HISTORY_READ_FAILED]. Any score shown '
+              'uses only the data that is stored.'),
+          findsOneWidget);
+    });
+
+    testWidgets(
+        'MF-4: the diagnostic line also renders in the no-score '
+        'state (it must read true in all three states)',
+        (tester) async {
+      final fake = _FakeStore();
+      final store = _fakeStore(fake);
+      await store.mergeRefresh([
+        const DailyBiometrics(date: '2026-10-16', restingHrBpm: 60),
+      ]);
+      final refresher = DailyScoreRefresher.withCapture(
+        store: store,
+        capture: ({bool force = false}) async {
+          await store.recordCaptureDiagnostics(
+            failures: const {'hrv': 'HRV_SAMPLES_READ_FAILED'},
+            succeeded: const {},
+            atMs: 999,
+          );
+          return true;
+        },
+      );
+      await pumpDetail(tester,
+          store: store, date: '2026-10-16', refresher: refresher);
+      await tester.tap(find.byKey(const ValueKey('daily-score-refresh')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump();
+      expect(find.text('No score stored for this day.'), findsOneWidget);
+      expect(
+          find.text('Some data could not be read in this refresh: '
+              'HRV [HRV_SAMPLES_READ_FAILED]. Any score shown uses '
+              'only the data that is stored.'),
+          findsOneWidget);
+    });
+
+    testWidgets('MF-1: the scored day detail footer is the final '
+        'Juno string', (tester) async {
+      final store = await _seededStore(_FakeStore());
+      await pumpDetail(tester, store: store, date: _target);
+      expect(
+          find.text('This score uses the data stored for this day '
+              'and your baseline from earlier days. It does not '
+              'change on its own. It changes only when you refresh '
+              'it.'),
           findsOneWidget);
     });
   });
@@ -525,6 +577,18 @@ void main() {
       ));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
+      // MF-2 pin: the how-it-works card carries the final Juno
+      // string verbatim.
+      expect(
+          find.text('Each day is compared with your own recent '
+              'baseline: the most recent 28 days with data before '
+              'it. Sleep counts 40%, HRV 35%, and resting heart rate '
+              '25%, counting only the parts with at least 7 baseline '
+              'days. HRV is measured as RMSSD, among the most-studied '
+              'signals in physiology. A day is scored once and does '
+              'not change on its own. You can refresh a day from its '
+              'detail screen.'),
+          findsOneWidget);
       // Target row first (newest scored), showing 62 before.
       expect(find.text('Fri, Oct 16'), findsOneWidget);
       expect(find.text('62'), findsWidgets);
@@ -959,9 +1023,10 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       expect(
           find.text('Today\'s score is waiting for today\'s health '
-              'data to arrive. It will be scored once sleep, HRV, '
-              'and resting heart rate have all come in. Or tap '
-              'refresh to score it now from the data already stored.'),
+              'data. Tabs can score today once sleep, HRV, and '
+              'resting heart rate are all available and counted. You '
+              'can also tap refresh to score it now from the data '
+              'already stored.'),
           findsOneWidget);
       expect(find.text('No score stored for this day.'), findsNothing);
       expect(find.byKey(const ValueKey('daily-score-refresh')),
