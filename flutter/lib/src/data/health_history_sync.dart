@@ -30,22 +30,35 @@ class HealthHistorySync {
   HealthHistorySync._internal()
       : _hc = HealthConnectService(),
         _store = HealthHistoryStore.instance,
-        _now = DateTime.now;
+        _now = DateTime.now,
+        _readTimeout = HealthConnectService.readTimeout;
 
-  /// Injectable for tests / WS2 wiring.
+  /// Injectable for tests / WS2 wiring. [readTimeoutOverride]
+  /// shortens the per-read bound (see [captureFromHealthConnect])
+  /// so a wedged-read test does not wait the production 30 s —
+  /// the same pattern as the HC service's probe timeout override.
   factory HealthHistorySync.withDeps({
     HealthConnectService? hc,
     HealthHistoryStore? store,
     DateTime Function()? now,
+    Duration? readTimeoutOverride,
   }) =>
-      HealthHistorySync._(hc ?? HealthConnectService(),
-          store ?? HealthHistoryStore.instance, now ?? DateTime.now);
+      HealthHistorySync._(
+          hc ?? HealthConnectService(),
+          store ?? HealthHistoryStore.instance,
+          now ?? DateTime.now,
+          readTimeoutOverride ?? HealthConnectService.readTimeout);
 
-  HealthHistorySync._(this._hc, this._store, this._now);
+  HealthHistorySync._(this._hc, this._store, this._now, this._readTimeout);
 
   HealthConnectService _hc;
   HealthHistoryStore _store;
   DateTime Function() _now;
+
+  /// The bound applied to every Health Connect read inside a
+  /// capture (V-2): [HealthConnectService.readTimeout] in
+  /// production.
+  final Duration _readTimeout;
 
   /// Test hook: swap the dependencies of the shared instance.
   void debugSetDeps({
@@ -58,10 +71,59 @@ class HealthHistorySync {
     if (now != null) _now = now;
   }
 
+  // ── Single-flight (V-2 correction) ──────────────────────────
+  //
+  // Repeated snapshot triggers (Home's _loadDailyScore fires from
+  // several lifecycle points) used to stack CONCURRENT captures:
+  // the throttle stamps only at the END of a run, so parallel
+  // callers all passed the check and all read Health Connect.
+  // Now one run is shared:
+  // - a non-forced call while a run is in flight JOINS that run
+  //   (same future, no second read);
+  // - a forced call while a FORCED run is in flight joins it;
+  // - a forced call while a NON-forced run is in flight waits for
+  //   that run to finish, then starts its own forced run (the
+  //   refresh button's semantics are preserved: its capture is
+  //   never silently downgraded to the in-flight throttled run).
+  Future<bool>? _inFlightCapture;
+  bool _inFlightForced = false;
+
   /// The WS2-facing entry point: fire-and-forget safe, never throws.
   /// Returns true when a capture actually ran.
-  Future<bool> capture({bool force = false}) =>
-      captureFromHealthConnect(force: force);
+  Future<bool> capture({bool force = false}) {
+    final inFlight = _inFlightCapture;
+    if (inFlight != null) {
+      if (!force || _inFlightForced) return inFlight;
+      // Forced call arriving mid-flight of a non-forced run:
+      // chain a fresh forced run behind it.
+      final chained = inFlight.then((_) => _startCapture(force: true));
+      _trackFlight(chained, forced: true);
+      return chained;
+    }
+    return _startCapture(force: force);
+  }
+
+  Future<bool> _startCapture({required bool force}) {
+    final run = captureFromHealthConnect(force: force);
+    _trackFlight(run, forced: force);
+    return run;
+  }
+
+  void _trackFlight(Future<bool> run, {required bool forced}) {
+    _inFlightCapture = run;
+    _inFlightForced = forced;
+    unawaited(run.then((_) {
+      if (identical(_inFlightCapture, run)) {
+        _inFlightCapture = null;
+        _inFlightForced = false;
+      }
+    }, onError: (_) {
+      if (identical(_inFlightCapture, run)) {
+        _inFlightCapture = null;
+        _inFlightForced = false;
+      }
+    }));
+  }
 
   /// Reads the Health Connect windows and merge-refreshes them into
   /// the history store:
@@ -129,26 +191,46 @@ class HealthHistorySync {
         _hc.lastPartialErrorCode = null;
       }
 
+      // V-2 — every read is bounded by the HC service's
+      // readTimeout, per that service's contract ("callers bound
+      // reads with readTimeout"): the sync is a caller and now
+      // bounds its own reads. A timeout degrades EXACTLY like a
+      // failed read — empty result, `READ_TIMEOUT` recorded in
+      // the metric's diagnostics via noteRead below, the capture
+      // completes, and the screens score from store truth and
+      // render. Without the bound, one wedged bridge read stalled
+      // the snapshot-first loads (Home face, score history)
+      // indefinitely.
+      Future<List<T>> boundedRead<T>(Future<List<T>> read) async {
+        try {
+          return await read.timeout(_readTimeout);
+        } on TimeoutException {
+          _hc.lastReadErrorCode = 'READ_TIMEOUT';
+          return <T>[];
+        }
+      }
+
       resetReadCodes();
-      final hrHist = await _hc.readRestingHrHistory(180);
+      final hrHist = await boundedRead(_hc.readRestingHrHistory(180));
       noteRead('restingHr');
       for (final r in hrHist) {
         put(r.date, hr: r.bpm);
       }
       resetReadCodes();
-      final calHist = await _hc.readCaloriesHistory(180);
+      final calHist = await boundedRead(_hc.readCaloriesHistory(180));
       noteRead('calories');
       for (final r in calHist) {
         put(r.date, kcal: r.kcal);
       }
       resetReadCodes();
-      final sleepHist = await _hc.readSleepHistory(90);
+      final sleepHist = await boundedRead(_hc.readSleepHistory(90));
       noteRead('sleep');
       for (final r in sleepHist) {
         put(r.date, sleep: r.mins, deep: r.deep);
       }
       resetReadCodes();
-      final spikeHist = await _hc.readSpikeCounts(isFirst ? 180 : 31);
+      final spikeHist =
+          await boundedRead(_hc.readSpikeCounts(isFirst ? 180 : 31));
       noteRead('spikes');
       for (final r in spikeHist) {
         put(r.date, spikes: r.count);
@@ -166,7 +248,8 @@ class HealthHistorySync {
           _historyDateStr(today.subtract(Duration(days: i))),
       };
       resetReadCodes();
-      final hrvSamples = await _hc.readHrvSamples(hrvWindowDays);
+      final hrvSamples =
+          await boundedRead(_hc.readHrvSamples(hrvWindowDays));
       noteRead('hrv');
       // Defect 1b — HRV outcome numbers: the partial code (the
       // read returned data with chunks missing — Defect 0's new

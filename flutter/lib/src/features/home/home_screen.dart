@@ -270,8 +270,17 @@ class _HomeScreenState extends State<HomeScreen> {
     await Navigator.of(context).push(
       SlidePageRoute(
         reducedMotion: animationsDisabled(context),
-        builder: (_) =>
-            DailyScoreScreen(store: widget.healthHistoryStore),
+        builder: (_) => DailyScoreScreen(
+          store: widget.healthHistoryStore,
+          // Thread Home's snapshot capture through: in production
+          // both default to the same real sync; in tests the
+          // injected capture governs the pushed screen too, so a
+          // screen pump never falls back to a real-channel capture
+          // (whose reads legitimately pend — and, since the V-2
+          // read bound, would leave the bound's timer pending at
+          // teardown).
+          snapshotCapture: widget.dailyScoreSnapshotCapture,
+        ),
       ),
     );
     if (!mounted) return;
