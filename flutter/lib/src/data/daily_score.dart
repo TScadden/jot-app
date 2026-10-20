@@ -73,19 +73,43 @@
 /// components contributed is derived from which persisted
 /// component fields are non-null.
 ///
-/// TODAY RULE (R70 fix pass, Vera F2): the CURRENT calendar day is
-/// scored ONLY by the post-capture engine run in
-/// `health_history_sync.dart` — the one run that happens after a
-/// Health Connect capture has merged the day's fullest data. Every
-/// OTHER compute trigger (Home, the score history screen) must
-/// pass `beforeDate:` = today to
-/// [DailyScoreEngine.computeMissingScores], so an early trigger
-/// can never freeze today as a partial score (e.g. sleep-only,
-/// before capture adds today's HRV / resting HR) under the
-/// write-once rule. Triggers that never run the engine (the Sleep
-/// screen's Sleep Need estimate, the union reader in
-/// `health_history_queries.dart`) persist no scores and need no
-/// cutoff.
+/// SNAPSHOT-FIRST (founder amendment, Oct 20, 2026): a NEW score
+/// is never computed from stale store state when a fresher Health
+/// Connect capture is obtainable. Every compute trigger first
+/// runs/awaits a capture (the snapshot) covering the days it is
+/// about to score: the post-capture engine run has this shape by
+/// construction, and the other triggers (Home, the history
+/// screen) await a capture before their compute runs. Those
+/// snapshot captures stay subject to the capture's normal rules
+/// (the 6h throttle) — only the refresh button forces a capture.
+/// When a snapshot is throttled/skipped, the trigger scores from
+/// the store exactly as the last completed capture left it.
+///
+/// TODAY RULE (R70 fix pass Vera F2, amended Oct 20, 2026): the
+/// CURRENT calendar day is scored ONLY by the post-capture engine
+/// run in `health_history_sync.dart` — the one run that happens
+/// after a Health Connect capture has merged the day's freshest
+/// data — and, since the amendment, ONLY WHEN THE DAY IS COMPLETE:
+/// all three components available (each component's value present
+/// AND its counting rule satisfied — see
+/// [DailyScoreComputation.hasAllComponents]). An incomplete today
+/// is NOT scored: no number, no frozen partial; the day stays
+/// pending and later captures retry, and the first capture that
+/// finds the day complete scores it, once. Every OTHER compute
+/// trigger (Home, the score history screen) must pass
+/// `beforeDate:` = today to
+/// [DailyScoreEngine.computeMissingScores] (after awaiting its
+/// snapshot capture, whose own post-capture run is the today
+/// scorer above), so an early trigger can never freeze today
+/// itself. The refresh button is exempt from the gate by founder
+/// direction: it scores the viewed day immediately from its
+/// forced snapshot, complete or not. DAY-BOUNDARY FALLBACK: once
+/// a day is no longer today, the gate no longer applies to it —
+/// it scores with whatever the store holds at its first post-day
+/// snapshot, partial components honestly absent. Triggers that
+/// never run the engine (the Sleep screen's Sleep Need estimate,
+/// the union reader in `health_history_queries.dart`) persist no
+/// scores and need no cutoff.
 library;
 
 import 'package:tabs_lab/src/data/health_history_store.dart';
@@ -250,6 +274,15 @@ class DailyScoreComputation {
   /// The rounded whole-number daily score that gets persisted.
   int get dailyScore => dailyExact.round();
 
+  /// Completeness (founder amendment, Oct 20, 2026): ALL THREE
+  /// component scores are non-null — each component's value is
+  /// present for the day AND its counting rule is satisfied (the
+  /// sleep night evaluated against a personal need, ≥
+  /// [baselineMinDays] baseline days for HRV / resting HR). This
+  /// is the gate automatic scoring applies to the current day.
+  bool get hasAllComponents =>
+      sleepScore != null && hrvScore != null && restingHrScore != null;
+
   int? get sleepScoreRounded => sleepScore?.round();
   int? get hrvScoreRounded => hrvScore?.round();
   int? get restingHrScoreRounded => restingHrScore?.round();
@@ -363,7 +396,21 @@ class DailyScoreEngine {
   /// or after it are never scored by this run. Per the TODAY RULE
   /// in the file header, every trigger except the post-capture run
   /// passes today here, so only the post-capture run scores today.
-  Future<int> computeMissingScores({String? beforeDate}) async {
+  ///
+  /// [completeOnlyDate] is the completeness gate (founder
+  /// amendment, Oct 20, 2026): the day named here — the current
+  /// day, passed by the post-capture run — is scored ONLY when
+  /// its computation [DailyScoreComputation.hasAllComponents]. An
+  /// incomplete gated day is skipped (left pending for a later
+  /// capture to retry); the gate applies to that one day only and
+  /// never blocks any other day in the same run. Days after the
+  /// gated day are past the day boundary by definition of the
+  /// caller naming its own today, and score under the fallback:
+  /// whatever the store holds.
+  Future<int> computeMissingScores({
+    String? beforeDate,
+    String? completeOnlyDate,
+  }) async {
     try {
       final days = await store.readAll();
       var written = 0;
@@ -374,6 +421,9 @@ class DailyScoreEngine {
         if (days[date]!.dailyScore != null) continue; // write-once
         final computation = computeDailyScore(days, date);
         if (computation == null) continue;
+        if (date == completeOnlyDate && !computation.hasAllComponents) {
+          continue; // gate: today stays pending until complete
+        }
         final ok = await store.persistScore(
           date,
           dailyScore: computation.dailyScore,

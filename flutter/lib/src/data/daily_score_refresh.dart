@@ -35,6 +35,15 @@
 ///     through [HealthHistoryStore.replaceScore] — no other day's
 ///     persisted score is touched by the rescore.
 ///
+/// GATE EXEMPTION (founder amendment, Oct 20, 2026): automatic
+/// scoring gates the CURRENT day on completeness (all three
+/// components available — see the TODAY RULE in
+/// `daily_score.dart`); an incomplete today stays pending. The
+/// refresh is exempt: it scores the viewed day immediately from
+/// its forced snapshot, complete or not — including today in its
+/// pending state. After a manual refresh scores a day, write-once
+/// resumes: automatic runs never re-score it.
+///
 /// Diagnostics: if the capture recorded NEW per-metric read
 /// failures (bridge error codes in the store's capture
 /// diagnostics that were not there — or not current — before this
