@@ -184,11 +184,16 @@ class LocalDailyScoreReadyNotifier implements DailyScoreReadyNotifier {
   final void Function(String date)? _onTap;
   bool _initialized = false;
 
-  LocalDailyScoreReadyNotifier({
+  factory LocalDailyScoreReadyNotifier({
     FlutterLocalNotificationsPlugin? plugin,
     void Function(String date)? onTap,
-  })  : _plugin = plugin ?? FlutterLocalNotificationsPlugin(),
-        _onTap = onTap;
+  }) =>
+      LocalDailyScoreReadyNotifier._(
+        plugin ?? FlutterLocalNotificationsPlugin(),
+        onTap,
+      );
+
+  LocalDailyScoreReadyNotifier._(this._plugin, this._onTap);
 
   /// A score notification's payload is exactly its date
   /// (yyyy-MM-dd) — anything else is not ours.
@@ -283,7 +288,7 @@ class DailyScoreBackgroundRunner {
   final DailyScoreReadyNotifier _notifier;
   final DateTime Function() _now;
 
-  DailyScoreBackgroundRunner({
+  factory DailyScoreBackgroundRunner({
     required HealthHistoryStore store,
     required Future<bool> Function() hasBackgroundAccess,
     required Future<bool> Function() probeChannel,
@@ -291,13 +296,26 @@ class DailyScoreBackgroundRunner {
     required Future<int> Function(String beforeDate) scorePastDays,
     required DailyScoreReadyNotifier notifier,
     DateTime Function()? now,
-  })  : _store = store,
-        _hasBackgroundAccess = hasBackgroundAccess,
-        _probeChannel = probeChannel,
-        _runCapture = runCapture,
-        _scorePastDays = scorePastDays,
-        _notifier = notifier,
-        _now = now ?? DateTime.now;
+  }) =>
+      DailyScoreBackgroundRunner._(
+        store,
+        hasBackgroundAccess,
+        probeChannel,
+        runCapture,
+        scorePastDays,
+        notifier,
+        now ?? DateTime.now,
+      );
+
+  DailyScoreBackgroundRunner._(
+    this._store,
+    this._hasBackgroundAccess,
+    this._probeChannel,
+    this._runCapture,
+    this._scorePastDays,
+    this._notifier,
+    this._now,
+  );
 
   factory DailyScoreBackgroundRunner.production() {
     final store = HealthHistoryStore.instance;

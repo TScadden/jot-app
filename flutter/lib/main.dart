@@ -719,11 +719,10 @@ class _AppFlowState extends State<AppFlow>
   Future<void> _initScoreBackground() async {
     unawaited(DailyScoreBackgroundScheduler.register());
     try {
-      final notifier =
+      _scoreNotifier =
           LocalDailyScoreReadyNotifier(onTap: _onScoreNotificationTap);
-      _scoreNotifier = notifier;
-      await notifier.initialize();
-      final launchDate = await notifier.launchScorePayload();
+      await _scoreNotifier!.initialize();
+      final launchDate = await _scoreNotifier!.launchScorePayload();
       if (launchDate != null) _onScoreNotificationTap(launchDate);
     } catch (_) {
       // Silent: score notifications are an enhancement; the app
