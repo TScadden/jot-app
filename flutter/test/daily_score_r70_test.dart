@@ -442,7 +442,7 @@ void main() {
       // Juno C4: the "How this score works" body, verbatim.
       expect(
         find.text(
-            'Each day is compared with your own recent baseline: the most recent 28 days with data before it. Sleep counts 40%, HRV 35%, and resting heart rate 25%, counting only the parts with at least 7 baseline days. HRV is measured as RMSSD, among the most-studied signals in physiology. A day is scored once and never changes.'),
+            'Each day is compared with your own recent baseline: the most recent 28 days with data before it. Sleep counts 40%, HRV 35%, and resting heart rate 25%, counting only the parts with at least 7 baseline days. HRV is measured as RMSSD, among the most-studied signals in physiology. A day is scored once and does not change on its own. You can refresh a scored day from its detail screen.'),
         findsOneWidget,
       );
       // Newest scored day first: Oct 16, 2026 was a Friday.

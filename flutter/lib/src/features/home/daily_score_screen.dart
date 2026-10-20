@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/daily_score.dart';
+import 'package:tabs_lab/src/data/daily_score_refresh.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart'
     show historyDateStr;
 import 'package:tabs_lab/src/data/health_history_store.dart';
@@ -27,8 +28,10 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 ///
 /// Data honesty:
 /// - The list, the chart, and the scores shown come from the
-///   PERSISTED store records (write-once — history as shown is
-///   history as scored).
+///   PERSISTED store records (write-once for every automatic
+///   path — history as shown is history as scored, until the
+///   founder explicitly refreshes a day from its detail screen;
+///   see [DailyScoreRefresher]).
 /// - A day detail's baselines are recomputed deterministically
 ///   from the store data on/before that day via the same pure
 ///   [computeDailyScore] the engine uses; the persisted score
@@ -88,7 +91,11 @@ class DailyScoreScreen extends StatefulWidget {
   /// Injectable for tests; defaults to the shared store.
   final HealthHistoryStore? store;
 
-  const DailyScoreScreen({super.key, this.store});
+  /// Injectable for tests: the day detail's refresh orchestration.
+  /// Defaults to a [DailyScoreRefresher] over the screen's store.
+  final DailyScoreRefresher? refresher;
+
+  const DailyScoreScreen({super.key, this.store, this.refresher});
 
   @override
   State<DailyScoreScreen> createState() => _DailyScoreScreenState();
@@ -180,7 +187,8 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
           'Your score appears once at least 7 earlier days exist '
           'for one part of the score: sleep, HRV, or resting heart '
           'rate. From then on, each day is scored once, against '
-          'your own recent baseline.',
+          'your own recent baseline, and a scored day changes '
+          'only when you refresh it.',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 13, color: NotelColors.textSecondary),
         ),
@@ -232,7 +240,7 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
           ),
           SizedBox(height: 4),
           Text(
-            'Each day is compared with your own recent baseline: the most recent 28 days with data before it. Sleep counts 40%, HRV 35%, and resting heart rate 25%, counting only the parts with at least 7 baseline days. HRV is measured as RMSSD, among the most-studied signals in physiology. A day is scored once and never changes.',
+            'Each day is compared with your own recent baseline: the most recent 28 days with data before it. Sleep counts 40%, HRV 35%, and resting heart rate 25%, counting only the parts with at least 7 baseline days. HRV is measured as RMSSD, among the most-studied signals in physiology. A day is scored once and does not change on its own. You can refresh a scored day from its detail screen.',
             style: TextStyle(fontSize: 13, color: NotelColors.textSecondary),
           ),
         ],
@@ -278,6 +286,25 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
     );
   }
 
+  /// Opens a day detail and, on return, reloads the list (the
+  /// same pattern Home uses after the score screen pops), so a
+  /// score refreshed in the detail shows in the list without
+  /// re-entering the screen.
+  Future<void> _openDay(String date) async {
+    await Navigator.of(context).push(
+      SlidePageRoute(
+        reducedMotion: animationsDisabled(context),
+        builder: (_) => DailyScoreDayScreen(
+          store: _store,
+          date: date,
+          refresher: widget.refresher,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    await _load();
+  }
+
   Widget _dayRow(_ScoredDay day) {
     final row = day.row;
     final delta = day.trendDelta;
@@ -288,13 +315,7 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
         borderRadius: BorderRadius.circular(16),
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () => unawaited(Navigator.of(context).push(
-            SlidePageRoute(
-              reducedMotion: animationsDisabled(context),
-              builder: (_) =>
-                  DailyScoreDayScreen(store: _store, date: row.date),
-            ),
-          )),
+          onTap: () => unawaited(_openDay(row.date)),
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 48),
             child: Padding(
@@ -411,16 +432,39 @@ class _ScoreBarsPainter extends CustomPainter {
       oldDelegate.scores != scores;
 }
 
+/// Plain names for the capture's metric keys, for surfacing
+/// per-metric refresh failures to the user (the capture records
+/// diagnostics under its own internal names — see
+/// [HealthHistoryStore.lastCaptureDiagnostics]).
+const Map<String, String> _captureMetricLabels = {
+  'restingHr': 'Resting heart rate',
+  'calories': 'Calories',
+  'sleep': 'Sleep',
+  'spikes': 'Heart rate spikes',
+  'hrv': 'HRV',
+};
+
 /// Day detail: the day's persisted score, its trend vs the
 /// previous scored day, and per-component inputs vs baselines.
+///
+/// A scored day also carries the founder-directed refresh control
+/// (Oct 20, 2026): tapping it force-captures Health Connect and
+/// re-scores THIS day from the store's updated data, through
+/// [DailyScoreRefresher] — the one user-initiated exception to
+/// write-once scoring. Automatic behavior is unchanged.
 class DailyScoreDayScreen extends StatefulWidget {
   final HealthHistoryStore store;
   final String date;
+
+  /// Injectable for tests; defaults to a [DailyScoreRefresher]
+  /// over [store].
+  final DailyScoreRefresher? refresher;
 
   const DailyScoreDayScreen({
     super.key,
     required this.store,
     required this.date,
+    this.refresher,
   });
 
   @override
@@ -432,6 +476,17 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
   DailyBiometrics? _previousScored;
   DailyScoreComputation? _computation;
   bool _loaded = false;
+
+  late final DailyScoreRefresher _refresher =
+      widget.refresher ?? DailyScoreRefresher(store: widget.store);
+
+  /// Refresh state: in-flight flag (the control disables and shows
+  /// progress; further taps are ignored), the last capture-failure
+  /// code to surface, and the per-metric failure codes the last
+  /// refresh's capture newly recorded.
+  bool _refreshing = false;
+  String? _refreshErrorCode;
+  Map<String, String> _refreshFailureCodes = const {};
 
   @override
   void initState() {
@@ -466,8 +521,56 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
     }
   }
 
+  /// The refresh tap: re-score this day from freshly captured
+  /// data (see [DailyScoreRefresher] for the full semantics).
+  /// Ignored while a refresh is already in flight. On success the
+  /// screen reloads from the persisted record, so the number, the
+  /// components, and the delta line all re-render from the store.
+  /// On capture failure the displayed score stays untouched and
+  /// the error is shown plainly, code included.
+  Future<void> _onRefresh() async {
+    if (_refreshing) return;
+    setState(() {
+      _refreshing = true;
+      _refreshErrorCode = null;
+      _refreshFailureCodes = const {};
+    });
+    final outcome = await _refresher.refresh(widget.date);
+    if (!mounted) return;
+    if (outcome.status == DailyScoreRefreshStatus.captureFailed) {
+      setState(() {
+        _refreshing = false;
+        _refreshErrorCode = dailyScoreRefreshCaptureFailedCode;
+      });
+      _showRefreshError(dailyScoreRefreshCaptureFailedCode);
+      return;
+    }
+    // Re-read the store first (the refreshed record is what the
+    // screen renders), then surface any per-metric read failures
+    // the capture recorded — the rescore proceeded from store
+    // truth, so these explain what could NOT be refreshed.
+    await _load();
+    if (!mounted) return;
+    setState(() {
+      _refreshing = false;
+      _refreshFailureCodes = outcome.newFailureCodes;
+    });
+  }
+
+  void _showRefreshError(String code) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content:
+            Text('Could not refresh this score. Please try again. [$code]'),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // The refresh control exists only for a scored day — an
+    // unscored day has no score to reload.
+    final showRefresh = _loaded && _row?.dailyScore != null;
     return Scaffold(
       backgroundColor: NotelColors.background,
       appBar: AppBar(
@@ -481,6 +584,24 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
             color: NotelColors.textPrimary,
           ),
         ),
+        actions: [
+          if (showRefresh)
+            IconButton(
+              key: const ValueKey('daily-score-refresh'),
+              tooltip: 'Refresh score',
+              // Material's IconButton tap target is 48dp by
+              // default. In flight the control disables (further
+              // taps ignored) and swaps to a progress indicator.
+              onPressed: _refreshing ? null : () => unawaited(_onRefresh()),
+              icon: _refreshing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh, color: NotelColors.primary),
+            ),
+        ],
       ),
       body: !_loaded
           ? const SizedBox.shrink()
@@ -617,10 +738,28 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
             ],
           ),
         ),
+        if (_refreshErrorCode != null) ...[
+          const SizedBox(height: 16),
+          Text(
+            'Refresh failed. This score was not changed. '
+            '[$_refreshErrorCode]',
+            style: const TextStyle(fontSize: 12, color: NotelColors.error),
+          ),
+        ],
+        if (_refreshFailureCodes.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text(
+            'Some data could not be refreshed: '
+            '${_refreshFailureCodes.entries.map((e) => '${_captureMetricLabels[e.key] ?? e.key} [${e.value}]').join(', ')}'
+            '. This score was updated from the data that is stored.',
+            style: const TextStyle(fontSize: 12, color: NotelColors.warning),
+          ),
+        ],
         const SizedBox(height: 16),
         const Text(
-          'Scored once from the data stored for this day. Later '
-          'changes to earlier days do not change this score.',
+          'This score reflects the data stored for this day. It '
+          'does not change on its own, and it updates only when '
+          'you refresh it.',
           style: TextStyle(fontSize: 12, color: NotelColors.textSecondary),
         ),
         const SizedBox(height: 16),
