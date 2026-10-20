@@ -75,20 +75,25 @@ class DailyBiometrics {
   /// the per-day `readHrvRmssd`.
   final double? hrvRmssdMs;
 
-  // ── R70 Daily Score fields (score engine ONLY) ───────────────
+  // ── R70 Daily Score fields (score write paths ONLY) ──────────
   //
-  // Written exclusively by the Daily Score engine through
-  // [HealthHistoryStore.persistScore], which is write-once: once
-  // [dailyScore] is set it is never recomputed or rewritten, so
-  // later baseline drift never rewrites history. Captures and
-  // imports NEVER touch these fields: neither merge mode includes
-  // them in its field set (the merges carry the EXISTING values
-  // through untouched), and [sanitized] strips them from every
-  // incoming row, so even a hand-built row carrying scores cannot
-  // smuggle them in through a merge. 0 is a legitimate score here
-  // — the biometric zero rule does NOT apply to score fields.
-  // Which components contributed to a day's score is derived from
-  // which of the component fields are non-null.
+  // Written exclusively through the store's two score write paths:
+  // [HealthHistoryStore.persistScore] (the engine's write-once
+  // first scoring) and [HealthHistoryStore.replaceScore] (the
+  // founder-directed, user-initiated refresh — the ONLY path that
+  // may ever rewrite a score, and only on an explicit tap; see
+  // replaceScore's doc). Automatic behavior stays write-once:
+  // once [dailyScore] is set no capture, import, or engine run
+  // recomputes or rewrites it, so later baseline drift never
+  // rewrites history. Captures and imports NEVER touch these
+  // fields: neither merge mode includes them in its field set
+  // (the merges carry the EXISTING values through untouched), and
+  // [sanitized] strips them from every incoming row, so even a
+  // hand-built row carrying scores cannot smuggle them in through
+  // a merge. 0 is a legitimate score here — the biometric zero
+  // rule does NOT apply to score fields. Which components
+  // contributed to a day's score is derived from which of the
+  // component fields are non-null.
 
   /// The day's Daily Score, 0–100 (rounded whole number).
   final int? dailyScore;
@@ -152,8 +157,9 @@ class DailyBiometrics {
 
   /// A copy with the four score fields set EXACTLY as given
   /// (nulls included — a non-contributing component stays null).
-  /// Used only by the score engine's write path
-  /// ([HealthHistoryStore.persistScore]); the biometric fields are
+  /// Used only by the store's two score write paths
+  /// ([HealthHistoryStore.persistScore] and
+  /// [HealthHistoryStore.replaceScore]); the biometric fields are
   /// carried through untouched.
   DailyBiometrics withScores({
     required int? dailyScore,
@@ -240,9 +246,10 @@ class DailyBiometrics {
   ///
   /// The score fields are also STRIPPED here (set to null): this
   /// is the chokepoint every capture/import row passes through, so
-  /// no merge can ever write a score — the score engine's
-  /// [HealthHistoryStore.persistScore] is the only write path, and
-  /// it does not go through [sanitized].
+  /// no merge can ever write a score — scores are written only by
+  /// [HealthHistoryStore.persistScore] and
+  /// [HealthHistoryStore.replaceScore], and neither goes through
+  /// [sanitized].
   DailyBiometrics sanitized() => DailyBiometrics(
         date: date,
         restingHrBpm:
@@ -799,14 +806,22 @@ class HealthHistoryStore {
         daysTouched: daysTouched);
   }
 
-  // ── Daily Score write path (score engine ONLY) ─────────────────
+  // ── Daily Score write paths ────────────────────────────────────
+  //
+  // Exactly two methods may write the score fields:
+  // [persistScore] (write-once, the engine's first scoring of a
+  // day) and [replaceScore] (the user-initiated refresh overwrite
+  // — see its doc; nothing automatic may call it).
 
   /// Write-once score persistence: sets the four score fields on
   /// the stored day [date] and persists. Returns false — writing
   /// nothing — when the day is not in the store or already holds a
-  /// score. A persisted score is NEVER recomputed or rewritten:
-  /// later baseline drift must not rewrite history, and a day
-  /// computed from a partial component set stays as computed.
+  /// score. A persisted score is never recomputed or rewritten by
+  /// any AUTOMATIC path: later baseline drift must not rewrite
+  /// history, and a day computed from a partial component set
+  /// stays as computed. The single exception is the founder's
+  /// explicit refresh tap, which goes through [replaceScore],
+  /// never through here.
   Future<bool> persistScore(
     String date, {
     required int dailyScore,
@@ -827,10 +842,47 @@ class HealthHistoryStore {
     return true;
   }
 
+  /// ⚠ USER-INITIATED REFRESH ONLY — the one score overwrite path.
+  ///
+  /// Replaces the four score fields on the stored day [date] with
+  /// the values given (nulls included, exactly as [persistScore]
+  /// writes them) and persists. Returns false — writing nothing —
+  /// when the day is not in the store.
+  ///
+  /// Founder direction (Oct 20, 2026): scores stay write-once for
+  /// every automatic behavior, but the founder can tap Refresh on
+  /// a day's detail screen to re-score THAT day from the data the
+  /// store holds after a forced capture — the deliberate exception
+  /// that lets him verify late-arriving HRV / resting HR / sleep
+  /// actually lands. The Daily Score engine must NEVER call this
+  /// method, and no capture, import, or background path may call
+  /// it either: the only caller is the refresh orchestration
+  /// (`DailyScoreRefresher`), invoked from the day detail's
+  /// refresh button handler.
+  Future<bool> replaceScore(
+    String date, {
+    required int dailyScore,
+    int? scoreSleep,
+    int? scoreHrv,
+    int? scoreRestingHr,
+  }) async {
+    await _ensureWarmed();
+    final existing = _days[date];
+    if (existing == null) return false;
+    _days[date] = existing.withScores(
+      dailyScore: dailyScore,
+      scoreSleep: scoreSleep,
+      scoreHrv: scoreHrv,
+      scoreRestingHr: scoreRestingHr,
+    );
+    await persist();
+    return true;
+  }
+
   // NOTE: _fieldCount / _fieldCountChanged deliberately count the
   // six biometric fields ONLY — merges never gain or lose a day
   // because of score fields, and score writes go through
-  // [persistScore], never through a merge.
+  // [persistScore] / [replaceScore], never through a merge.
   static int _fieldCount(DailyBiometrics d) =>
       (d.restingHrBpm != null ? 1 : 0) +
       (d.sleepMinutes != null ? 1 : 0) +

@@ -59,11 +59,18 @@
 /// D's HRV and resting HR, and baselines from days strictly
 /// before D.
 ///
-/// WRITE-ONCE: computed scores are persisted through
-/// [HealthHistoryStore.persistScore] and are never recomputed or
-/// rewritten — a day computed from a partial component set stays
-/// as computed, and later baseline drift never rewrites history.
-/// Which components contributed is derived from which persisted
+/// WRITE-ONCE (automatic paths): computed scores are persisted
+/// through [HealthHistoryStore.persistScore] and are never
+/// recomputed or rewritten by any automatic path — a day computed
+/// from a partial component set stays as computed, and later
+/// baseline drift never rewrites history. The ONE exception is
+/// deliberate and user-initiated (founder direction, Oct 20,
+/// 2026): tapping Refresh on a day's detail screen re-scores THAT
+/// day through `DailyScoreRefresher`
+/// ([HealthHistoryStore.replaceScore]), so the founder can verify
+/// late-arriving data actually lands. Nothing automatic — no
+/// capture, import, or engine run — ever takes that path. Which
+/// components contributed is derived from which persisted
 /// component fields are non-null.
 ///
 /// TODAY RULE (R70 fix pass, Vera F2): the CURRENT calendar day is
@@ -201,8 +208,11 @@ List<double>? _baselineValues(
 /// component scores and daily score, plus the inputs and baselines
 /// behind them — the detail screen renders actual-vs-baseline from
 /// exactly these fields (recomputed deterministically from store
-/// data ≤ the day; the PERSISTED score itself is write-once and is
-/// what the record shows).
+/// data ≤ the day; the PERSISTED score itself is what the record
+/// shows and changes only through the write paths on the store —
+/// the engine's write-once [HealthHistoryStore.persistScore], or
+/// the founder's explicit refresh via
+/// [HealthHistoryStore.replaceScore]).
 class DailyScoreComputation {
   final String date;
 
@@ -331,10 +341,14 @@ DailyScoreComputation? computeDailyScore(
 
 /// Drives score computation over a [HealthHistoryStore]: computes
 /// every stored day that does not yet hold a score and whose
-/// inputs now exist, skipping any day already scored — write-once,
-/// enforced again inside [HealthHistoryStore.persistScore]. Which
-/// days a run may score is bounded by the caller's `beforeDate`
-/// cutoff (see the TODAY RULE in the file header).
+/// inputs now exist, skipping any day already scored — write-once
+/// for automatic runs, enforced again inside
+/// [HealthHistoryStore.persistScore]. The engine NEVER rewrites a
+/// scored day and NEVER calls [HealthHistoryStore.replaceScore]:
+/// re-scoring a scored day is the refresh button's job alone, via
+/// `DailyScoreRefresher`. Which days a run may score is bounded by
+/// the caller's `beforeDate` cutoff (see the TODAY RULE in the
+/// file header).
 class DailyScoreEngine {
   final HealthHistoryStore store;
 
