@@ -1704,6 +1704,14 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
           knowledgeStore: widget.knowledgeStore,
           accountEmail: _resolvedAccountEmail ?? widget.accountEmail,
           calendarService: _calendar,
+          // Vera F4 — the tombstone read stays with the store's
+          // owner (this screen); the chat resolves the set lazily
+          // at approve time so it is as fresh as the push it
+          // guards.
+          counterTombstoneIds: () => _settingsStore
+              .getDeletedCounterIds(
+                  ownerEmail:
+                      _resolvedAccountEmail ?? widget.accountEmail),
           calendarConnected: _calConnected,
           calendarEmail: _calEmail,
           sessionId: session?.id,
@@ -2328,6 +2336,16 @@ class CoachChatScreen extends StatefulWidget {
   /// Injectable calendar bridge (Round 54). Null in production.
   final CalendarService? calendarService;
 
+  /// Injectable counter-tombstone resolver (correction round,
+  /// Vera F4): returns the account's locally persisted
+  /// deleted-counter ids (SettingsStore, owned by the parent
+  /// screen, which holds the store seam — the same value/seam
+  /// pattern as calendarConnected / calendarEmail). The counter
+  /// approval calls it at approve time and filters its spliced
+  /// rows through the set before pushing. Null resolves to the
+  /// empty set.
+  final Future<Set<String>> Function()? counterTombstoneIds;
+
   /// Native's sign-in-based Google Calendar flag (SettingsStore).
   /// False (the default) keeps Round 48's not-connected treatment
   /// exactly; true enables the connected prompt branch, live
@@ -2357,6 +2375,7 @@ class CoachChatScreen extends StatefulWidget {
     this.knowledgeStore,
     this.accountEmail,
     this.calendarService,
+    this.counterTombstoneIds,
     this.calendarConnected = false,
     this.calendarEmail = '',
     this.sessionId,
@@ -3383,6 +3402,14 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
   /// only when this is the first counter. isUp is set when the
   /// target day is already past, so the counter reads as days-since
   /// immediately; a future target reads as days-until.
+  ///
+  /// Correction round (Vera F4): this approval is a whole-blob
+  /// eventCounters writer OUTSIDE Settings' _saveCounters, so it
+  /// upholds the same invariant itself — the spliced rows are
+  /// filtered through the local delete-tombstone set BEFORE the
+  /// push. Without that, approving a counter while a tombstone is
+  /// active would re-push the deleted id server-side and cement
+  /// the resurrection the tombstone exists to prevent.
   Future<CoachApprovalOutcome> _approveCounter(
       CoachParsedContent parsed) async {
     try {
@@ -3409,6 +3436,29 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
         return const CoachApprovalOutcome.failure();
       }
       final rows = decodeCoachProfileBlobRaw(profile['eventCounters']);
+      // Vera F4 — tombstone filter (see the doc comment above).
+      // The set is resolved at approve time through the parent's
+      // seam; filterDeletedCounters is the shared authority — it
+      // runs on parsed items only to decide WHICH ids survive,
+      // and the RAW rows are then kept verbatim (the Vera F6 raw
+      // pattern — non-Map rows and unknown keys are never
+      // rewritten here).
+      final tombstones = await (widget.counterTombstoneIds?.call() ??
+          Future<Set<String>>.value(const <String>{}));
+      if (tombstones.isNotEmpty) {
+        final survivingIds = filterDeletedCounters(
+          [
+            for (final row in rows)
+              if (coachRawRowMap(row) != null)
+                EventCounterItem.fromMap(coachRawRowMap(row)!),
+          ],
+          tombstones,
+        ).map((c) => c.id).toSet();
+        rows.removeWhere((row) {
+          final m = coachRawRowMap(row);
+          return m != null && !survivingIds.contains('${m['id'] ?? ''}');
+        });
+      }
       final names = <String>{
         for (final row in rows)
           if (coachRawRowMap(row) != null)

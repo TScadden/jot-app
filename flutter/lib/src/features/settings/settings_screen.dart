@@ -227,6 +227,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// the post-push reload pull failed.
   bool _hasRealData = false;
 
+  /// Correction round (Vera F1): true while a counter save is in
+  /// flight. The counter action buttons disable on it — a second
+  /// tap during a save must never fire a second save (with the old
+  /// fresh-row toggle, a double-tap archived then un-archived,
+  /// reproducing the founder's "archive did not stick" symptom).
+  bool _counterSaveInFlight = false;
+
+  /// Correction round (Juno C1): whether this screen session's
+  /// last load/save outcome CONFIRMS the on-screen data matches
+  /// the server. The counters page "Synced" chip renders only
+  /// while this is true; a failed load (kept-data or first-ever)
+  /// or an aborted/failed save drops it to the not-synced state
+  /// until the next successful pull/push. Session-only view
+  /// state: a fresh screen starts unconfirmed until its first
+  /// load lands.
+  bool _syncConfirmed = false;
+
   // Device-only settings (SettingsStore).
   bool _showNavLabels = true;
   String _themeMode = 'DARK';
@@ -413,6 +430,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       data = SettingsProfileData.fromPull(body);
       _hasRealData = true;
     }
+    // Juno C1: the Synced chip follows the load outcome — a kept-
+    // data or first-ever failed load is NOT a synced state.
+    _syncConfirmed = body != null;
     setState(() {
       _data = data;
       _showNavLabels = results[1] as bool;
@@ -806,7 +826,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final ok = await _backend.postSyncProfile(fields);
     if (ok) {
       _backend.invalidateSyncPull();
+      // Juno C1: a landed push confirms sync; a failed one drops
+      // the chip until the next successful pull/push (the reload
+      // below re-confirms only if its own pull lands).
+      _syncConfirmed = true;
     } else {
+      _syncConfirmed = false;
       _snack('Could not save. Check your connection and try again.');
       // The save error above IS the honest surface for this
       // failure; the reload's own load-failure snack is suppressed
@@ -4390,9 +4415,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// lesson is that such a read must never sit on a blocking path
   /// (an unguarded one once silently discarded this screen's whole
   /// load). Surfaces constructed without an email (the Research
-  /// conditions flow) run unbound; the store ADOPTS an unowned set
-  /// for the first account that reads it with an email, and logout
-  /// wipes it either way (SettingsStore.clear).
+  /// conditions flow) run unbound: the store ADOPTS an unowned set
+  /// for the first account that reads it with an email, but since
+  /// the correction round (Juno C2) a null-owner read of a set
+  /// BOUND to an account returns empty, so a previous account's
+  /// tombstones can never filter this surface's counters. Wipe
+  /// paths, stated exactly (Vera F7): explicit logout / account
+  /// deletion wipes the keys via SettingsStore.clear; a forced
+  /// session expiry wipes just the two tombstone keys via
+  /// SettingsStore.clearDeletedCounterIds (main.dart).
   String? get _tombstoneOwnerEmail {
     final e = widget.email;
     return (e != null && e.trim().isNotEmpty) ? e : null;
@@ -4448,8 +4479,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// Defect D — records a deleted counter's tombstone locally.
   /// Never throws; never leaves the device (SettingsStore is
-  /// on-device secure storage, wiped on logout with the other
-  /// account-bound state).
+  /// on-device secure storage; the tombstone keys are wiped by
+  /// SettingsStore.clear on explicit logout / account deletion
+  /// and by clearDeletedCounterIds on a forced session expiry).
   Future<void> _recordCounterTombstone(String id) async {
     try {
       await _store.addDeletedCounterId(id,
@@ -4466,10 +4498,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (_) {}
   }
 
-  /// Counter-mutation durability (Oct 2026) — the single choke
-  /// point for EVERY event-counter save (archive / unarchive /
+  /// Counter-mutation durability (Oct 2026) — the choke point for
+  /// every SETTINGS event-counter save (archive / unarchive /
   /// edit / create / end-and-save), rewritten after the founder's
-  /// mutations never persisted:
+  /// mutations never persisted. Correction round (Vera F4): this
+  /// is not literally the only whole-blob eventCounters writer —
+  /// the Health Coach's counter approval also pushes the blob.
+  /// The real invariant every whole-blob eventCounters writer
+  /// upholds: splice onto a FRESH, TOMBSTONE-FILTERED base (the
+  /// Coach filters its spliced rows through the same tombstone
+  /// set before pushing), so no writer can resurrect a locally
+  /// deleted counter or drop a concurrent one.
   ///
   /// 1. RE-PULL FRESH FIRST (the standing whole-blob rule): the
   ///    cached pull is invalidated and the profile is re-read; the
@@ -4506,9 +4545,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
         historyTransform,
     String? deletedCounterId,
   }) async {
+    // Vera F1 — save-in-flight guard: a second counter save while
+    // one is already running is refused outright (the row buttons
+    // are also disabled on [_counterSaveInFlight], but a tap that
+    // lands before the disabling frame must not queue a second
+    // mutation behind the first).
+    if (_counterSaveInFlight) return false;
+    _counterSaveInFlight = true;
+    if (mounted) setState(() {});
+    try {
+      return await _saveCountersGuarded(transform,
+          historyTransform: historyTransform,
+          deletedCounterId: deletedCounterId);
+    } finally {
+      _counterSaveInFlight = false;
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<bool> _saveCountersGuarded(
+    List<EventCounterItem> Function(List<EventCounterItem> freshCounters)
+        transform, {
+    List<Map<String, dynamic>>? Function(
+            List<Map<String, dynamic>> freshHistory,
+            List<EventCounterItem> freshCounters)?
+        historyTransform,
+    String? deletedCounterId,
+  }) async {
     _backend.invalidateSyncPull();
     final body = await _backend.fetchSyncPull();
     if (body == null) {
+      // Juno C1: an aborted save is not a synced state.
+      _syncConfirmed = false;
       _snack('Could not save. Check your connection and try again.');
       return false;
     }
@@ -4545,6 +4613,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (deletedCounterId != null) {
         await _rollbackCounterTombstone(deletedCounterId);
       }
+      // Juno C1: a failed save drops the Synced chip until the
+      // next successful pull/push (the reload below re-confirms
+      // it only if its own pull lands).
+      _syncConfirmed = false;
       _snack('Could not save. Check your connection and try again.');
       await _reloadFromServer(reportLoadFailure: false);
       return false;
@@ -4555,6 +4627,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _data = _data.copyWith(
             eventCountersRaw: raw, counterHistoryRaw: historyRaw);
         _hasRealData = true;
+        _syncConfirmed = true;
       });
     }
     // Native arms/cancels the counter's 9 AM alarm in the same save
@@ -4573,12 +4646,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           _sectionLabel('EVENT COUNTERS'),
-          const Row(
+          // Juno C1 — the chip tells the truth about THIS session:
+          // 'Synced' only after a load/save outcome that confirms
+          // the on-screen data matches the server; a failed load
+          // or an aborted/failed save shows 'Not synced' until the
+          // next successful pull/push.
+          Row(
+            key: const ValueKey('counters_sync_chip'),
             children: [
-              Icon(Icons.cloud_done, color: NotelColors.primary, size: 16),
-              SizedBox(width: 4),
-              Text('Synced',
-                  style: TextStyle(
+              Icon(
+                  _syncConfirmed ? Icons.cloud_done : Icons.cloud_off,
+                  color: _syncConfirmed
+                      ? NotelColors.primary
+                      : NotelColors.textSecondary,
+                  size: 16),
+              const SizedBox(width: 4),
+              Text(_syncConfirmed ? 'Synced' : 'Not synced',
+                  style: const TextStyle(
                       color: NotelColors.textSecondary,
                       fontSize: 10,
                       fontWeight: FontWeight.w500)),
@@ -4596,7 +4680,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               // R49 SE6/S2: 48dp height, matching this page's own
               // 48dp counter-row buttons (stock default is 40).
               minimumSize: const Size(64, 48)),
-          onPressed: () => _showCounterDialog(null),
+          onPressed:
+              _counterSaveInFlight ? null : () => _showCounterDialog(null),
           icon: const Icon(Icons.add, color: NotelColors.primary),
           label: const Text('Add New Counter'),
         ),
@@ -4724,16 +4809,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const BoxConstraints(minWidth: 48, minHeight: 48),
             icon: Icon(archived ? Icons.unarchive : Icons.archive,
                 size: 18, color: NotelColors.textSecondary),
-            onPressed: () async {
-              // Intent only — _saveCounters applies the toggle to
-              // the FRESH list (toggling the fresh row's own flag,
-              // not the possibly-stale rendered row's).
-              await _saveCounters((fresh) => fresh
-                  .map((x) => x.id == c.id
-                      ? x.copyWith(isArchived: !x.isArchived)
-                      : x)
-                  .toList());
-            },
+            // Vera F1 — disabled while a counter save is in flight.
+            onPressed: _counterSaveInFlight
+                ? null
+                : () async {
+                    // ABSOLUTE intent captured from the RENDERED
+                    // row: this tap means "set isArchived to the
+                    // opposite of what I see". _saveCounters applies
+                    // that absolute value to the fresh row — never
+                    // a toggle of the fresh row's own flag, which a
+                    // double-tap or concurrent archive would flip
+                    // back (the founder's un-archive symptom).
+                    final targetArchived = !c.isArchived;
+                    await _saveCounters((fresh) => fresh
+                        .map((x) => x.id == c.id
+                            ? x.copyWith(isArchived: targetArchived)
+                            : x)
+                        .toList());
+                  },
           ),
           IconButton(
             key: ValueKey('counter_edit_${c.id}'),
@@ -4742,7 +4835,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const BoxConstraints(minWidth: 48, minHeight: 48),
             icon: const Icon(Icons.edit,
                 size: 18, color: NotelColors.textSecondary),
-            onPressed: () => _showCounterDialog(c),
+            onPressed:
+                _counterSaveInFlight ? null : () => _showCounterDialog(c),
           ),
           IconButton(
             key: ValueKey('counter_end_${c.id}'),
@@ -4751,34 +4845,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const BoxConstraints(minWidth: 48, minHeight: 48),
             icon: const Icon(Icons.stop_circle,
                 size: 18, color: NotelColors.textSecondary),
-            onPressed: () async {
-              // Native endCounterAndSave: remove + append to
-              // history — computed against the FRESH lists inside
-              // _saveCounters, with the delete tombstone recorded
-              // at save time (deletedCounterId).
-              await _saveCounters(
-                (fresh) => fresh.where((x) => x.id != c.id).toList(),
-                historyTransform: (freshHistory, freshCounters) {
-                  // Prepend the history entry only when the fresh
-                  // list really still carries the counter — if a
-                  // concurrent save already ended it, a second
-                  // entry would duplicate the first.
-                  final matches =
-                      freshCounters.where((x) => x.id == c.id).toList();
-                  if (matches.isEmpty) return null;
-                  final target = matches.first;
-                  return [
-                    {
-                      'name': target.name,
-                      'targetDate': target.targetDate,
-                      'endedAt': DateTime.now().millisecondsSinceEpoch,
-                    },
-                    ...freshHistory,
-                  ].take(20).toList();
-                },
-                deletedCounterId: c.id,
-              );
-            },
+            onPressed: _counterSaveInFlight
+                ? null
+                : () async {
+                    // Native endCounterAndSave: remove + append to
+                    // history — computed against the FRESH lists
+                    // inside _saveCounters, with the delete
+                    // tombstone recorded at save time
+                    // (deletedCounterId).
+                    await _saveCounters(
+                      (fresh) => fresh.where((x) => x.id != c.id).toList(),
+                      historyTransform: (freshHistory, freshCounters) {
+                        // Prepend the history entry only when the
+                        // fresh list really still carries the
+                        // counter — if a concurrent save already
+                        // ended it, a second entry would duplicate
+                        // the first.
+                        final matches = freshCounters
+                            .where((x) => x.id == c.id)
+                            .toList();
+                        if (matches.isEmpty) return null;
+                        final target = matches.first;
+                        return [
+                          {
+                            'name': target.name,
+                            'targetDate': target.targetDate,
+                            'endedAt':
+                                DateTime.now().millisecondsSinceEpoch,
+                          },
+                          ...freshHistory,
+                        ].take(20).toList();
+                      },
+                      deletedCounterId: c.id,
+                    );
+                  },
           ),
         ],
       ),
@@ -5412,9 +5512,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(() {
         _lastSyncMs = now;
         _data = SettingsProfileData.fromPull(body);
+        // Vera F2: a manual sync IS a real data load — it must
+        // set the same durability state _load sets, or a later
+        // failed load would treat this data as never-loaded and
+        // blank the screen to defaults (Defect B side door).
+        _hasRealData = true;
+        _syncConfirmed = true;
       });
+      // Vera F2: the tombstone post-pass _load runs — a counter
+      // deleted locally must not reappear via Sync Now while its
+      // tombstone is still active.
+      unawaited(_filterTombstonedCountersInPlace());
       _snack('Sync complete!');
     } else {
+      _syncConfirmed = false;
       _snack('Sync failed. Check your connection and try again.');
     }
   }
@@ -5428,9 +5539,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     setState(() => _recovering = false);
     if (body != null) {
-      setState(() => _data = SettingsProfileData.fromPull(body));
+      setState(() {
+        _data = SettingsProfileData.fromPull(body);
+        // Vera F2: same durability state as _load / Sync Now.
+        _hasRealData = true;
+        _syncConfirmed = true;
+      });
+      unawaited(_filterTombstonedCountersInPlace());
       _snack('Recovered your latest data from the server.');
     } else {
+      _syncConfirmed = false;
       _snack('Recovery failed. Check your connection and try again.');
     }
   }

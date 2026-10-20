@@ -294,19 +294,36 @@ class TabsBackend {
   /// One epoch-checked sync-pull GET: records the profile-mutation
   /// epoch at start; when the body lands after a successful profile
   /// push (epoch moved), the body predates that push — discard it
-  /// and re-issue the GET exactly once. [fetchEpoch] is the epoch
-  /// at which the fetch that produced [body] STARTED, so callers
-  /// can refuse to cache a body that predates the latest push.
+  /// and re-issue the GET. The re-issue LOOPS while the epoch keeps
+  /// moving (bounded at [_maxPullReissues] re-issues): a second
+  /// push landing during the first re-issue must not let a body
+  /// that predates it be delivered as fresh (Vera F3 — bulk
+  /// archive in quick succession hit exactly that window).
+  /// [fetchEpoch] is the epoch at which the fetch that produced
+  /// [body] STARTED, so callers can refuse to cache a body that
+  /// predates the latest push. If the bound is exhausted with the
+  /// epoch STILL moving, delivery is refused outright (null body —
+  /// the caller's ordinary failed-pull path) rather than handing
+  /// out a body known to predate the latest push: a non-null body
+  /// from this method always started at the current epoch.
+  static const int _maxPullReissues = 3;
+
   Future<({Map<String, dynamic>? body, int fetchEpoch})>
       _getSyncPullEpochChecked() async {
-    final startEpoch = _profileMutationEpoch;
+    var fetchEpoch = _profileMutationEpoch;
     var body = await _getJson('/api/sync/pull');
-    if (body != null && _profileMutationEpoch != startEpoch) {
-      final retryEpoch = _profileMutationEpoch;
+    var reissues = 0;
+    while (body != null &&
+        _profileMutationEpoch != fetchEpoch &&
+        reissues < _maxPullReissues) {
+      reissues++;
+      fetchEpoch = _profileMutationEpoch;
       body = await _getJson('/api/sync/pull');
-      return (body: body, fetchEpoch: retryEpoch);
     }
-    return (body: body, fetchEpoch: startEpoch);
+    if (body != null && _profileMutationEpoch != fetchEpoch) {
+      return (body: null, fetchEpoch: fetchEpoch);
+    }
+    return (body: body, fetchEpoch: fetchEpoch);
   }
 
   Future<({Map<String, dynamic>? body, int fetchEpoch})>
