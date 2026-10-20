@@ -421,17 +421,36 @@ void main() {
       expect(find.text('Daily Score: 62 · Good'), findsOneWidget);
     });
 
-    testWidgets('no score stored: no refresh control', (tester) async {
+    testWidgets(
+        'no score stored: refresh control IS shown (amended scope) '
+        'and a data-less tap ends in the honest no-score notice',
+        (tester) async {
       final fake = _FakeStore();
       final store = _fakeStore(fake);
       await store.mergeRefresh([
         const DailyBiometrics(date: '2026-10-16', restingHrBpm: 60),
       ]);
-      await pumpDetail(tester, store: store, date: '2026-10-16');
+      // A capture that lands nothing: the day has no baselines, so
+      // no score can be computed even from the fresh snapshot.
+      final refresher = DailyScoreRefresher.withCapture(
+        store: store,
+        capture: ({bool force = false}) async => true,
+      );
+      await pumpDetail(tester,
+          store: store, date: '2026-10-16', refresher: refresher);
       expect(find.text('No score stored for this day.'), findsOneWidget);
       expect(find.byKey(const ValueKey('daily-score-refresh')),
-          findsNothing);
-      expect(find.byIcon(Icons.refresh), findsNothing);
+          findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('daily-score-refresh')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump();
+      expect(find.text('No score stored for this day.'), findsOneWidget);
+      expect(
+          find.text('Still no score for this day: not enough health '
+              'data is stored for it yet.'),
+          findsOneWidget);
+      expect((await store.readAll())['2026-10-16']!.dailyScore, isNull);
     });
 
     testWidgets('capture failure: error shown with its code, '
@@ -581,6 +600,437 @@ void main() {
       expect(find.text('Great'), findsOneWidget);
     });
   });
+  // ── Founder amendment (Oct 20, 2026): snapshot-first +
+  // completeness gate for today + day-boundary fallback ─────────
+
+  group('gate: engine completeness rule for today', () {
+    // Dynamic "today" so the gated date is a real today.
+    String todayStr() {
+      final n = DateTime.now();
+      return _ds(DateTime(n.year, n.month, n.day));
+    }
+
+    Future<HealthHistoryStore> seedAllMetrics(
+      _FakeStore fake, {
+      required String lastPrior,
+      int priorCount = 28,
+    }) async {
+      final store = _fakeStore(fake);
+      await store.mergeRefresh([
+        for (final d in _priorDates(lastPrior, priorCount))
+          DailyBiometrics(
+              date: d,
+              sleepMinutes: 480,
+              restingHrBpm: 60,
+              hrvRmssdMs: 40),
+        DailyBiometrics(
+            date: lastPrior,
+            sleepMinutes: 480,
+            restingHrBpm: 60,
+            hrvRmssdMs: 40),
+      ]);
+      return store;
+    }
+
+    test(
+        'morning: sleep-only today is NOT scored by the gated '
+        'post-capture run (stays pending)', () async {
+      final today = todayStr();
+      final fake = _FakeStore();
+      final store = await seedAllMetrics(fake,
+          lastPrior: _ds(DateTime.now().subtract(const Duration(days: 1))));
+      await store.mergeRefresh([
+        DailyBiometrics(date: today, sleepMinutes: 420),
+      ]);
+      final written = await DailyScoreEngine(store: store)
+          .computeMissingScores(completeOnlyDate: today);
+      expect(written, greaterThan(0)); // past days still scored
+      final row = (await store.readAll())[today]!;
+      expect(row.sleepMinutes, 420);
+      expect(row.dailyScore, isNull); // pending: no frozen partial
+    });
+
+    test('complete today scores in the gated run, once', () async {
+      final today = todayStr();
+      final fake = _FakeStore();
+      final store = await seedAllMetrics(fake,
+          lastPrior: _ds(DateTime.now().subtract(const Duration(days: 1))));
+      await store.mergeRefresh([
+        DailyBiometrics(
+            date: today,
+            sleepMinutes: 480,
+            restingHrBpm: 60,
+            hrvRmssdMs: 40),
+      ]);
+      await DailyScoreEngine(store: store)
+          .computeMissingScores(completeOnlyDate: today);
+      var row = (await store.readAll())[today]!;
+      // Sleep 480/480 → 100; HRV at baseline → 70; RHR → 70.
+      expect(row.dailyScore, 82);
+      expect(row.scoreSleep, isNotNull);
+      expect(row.scoreHrv, isNotNull);
+      expect(row.scoreRestingHr, isNotNull);
+      // Write-once under the gate: drift today's data and re-run —
+      // the scored day never re-scores automatically.
+      await store.mergeRefresh([
+        DailyBiometrics(date: today, hrvRmssdMs: 90),
+      ]);
+      await DailyScoreEngine(store: store)
+          .computeMissingScores(completeOnlyDate: today);
+      row = (await store.readAll())[today]!;
+      expect(row.dailyScore, 82);
+    });
+
+    test(
+        'day-boundary fallback: yesterday incomplete scores with '
+        'what the store holds at its first post-day run', () async {
+      final today = todayStr();
+      final yesterday =
+          _ds(DateTime.now().subtract(const Duration(days: 1)));
+      final fake = _FakeStore();
+      final store = await seedAllMetrics(fake,
+          lastPrior: _ds(DateTime.now().subtract(const Duration(days: 2))));
+      // Yesterday: sleep only, forever (the Oct 10/12 shape).
+      await store.mergeRefresh([
+        DailyBiometrics(date: yesterday, sleepMinutes: 480),
+      ]);
+      await store.mergeRefresh([
+        DailyBiometrics(date: today, sleepMinutes: 420),
+      ]);
+      await DailyScoreEngine(store: store)
+          .computeMissingScores(completeOnlyDate: today);
+      final all = await store.readAll();
+      // Yesterday scored sleep-only (480 of 480 need → 100), its
+      // missing components honestly absent ("Not counted").
+      expect(all[yesterday]!.dailyScore, 100);
+      expect(all[yesterday]!.scoreSleep, 100);
+      expect(all[yesterday]!.scoreHrv, isNull);
+      expect(all[yesterday]!.scoreRestingHr, isNull);
+      // Gate does not leak: incomplete today stayed pending in
+      // the same run.
+      expect(all[today]!.dailyScore, isNull);
+    });
+
+    test(
+        'past day with a permanently missing component scores at '
+        'its first post-day snapshot (no HRV anywhere)', () async {
+      final fake = _FakeStore();
+      final store = _fakeStore(fake);
+      await store.mergeRefresh([
+        for (final d in _priorDates('2026-10-16', 28))
+          DailyBiometrics(date: d, sleepMinutes: 480, restingHrBpm: 60),
+        const DailyBiometrics(
+            date: '2026-10-16', sleepMinutes: 480, restingHrBpm: 54),
+      ]);
+      await DailyScoreEngine(store: store)
+          .computeMissingScores(completeOnlyDate: '2026-10-20');
+      final row = (await store.readAll())['2026-10-16']!;
+      expect(row.dailyScore, 100); // sleep 100 + RHR 100, renormalized
+      expect(row.scoreHrv, isNull); // honestly not counted
+    });
+  });
+
+  group('gate: sync morning → later the same day', () {
+    test(
+        'sleep-only morning capture leaves today pending; a later '
+        'capture with HRV + resting HR scores it complete, once',
+        () async {
+      final fake = _FakeStore();
+      final store = _fakeStore(fake);
+      var now = DateTime(2026, 10, 20, 8);
+      const today = '2026-10-20';
+      await store.mergeRefresh([
+        for (final d in _priorDates(today, 28))
+          DailyBiometrics(
+              date: d,
+              sleepMinutes: 480,
+              restingHrBpm: 60,
+              hrvRmssdMs: 40),
+      ]);
+      final hc = _GateFakeHc();
+      hc.sleep = const [(date: today, mins: 420, deep: 60)];
+      final sync =
+          HealthHistorySync.withDeps(hc: hc, store: store, now: () => now);
+
+      // Morning open: the snapshot finds sleep only → no score.
+      expect(await sync.capture(), isTrue);
+      var row = (await store.readAll())[today]!;
+      expect(row.sleepMinutes, 420);
+      expect(row.dailyScore, isNull);
+
+      // Later: HRV + resting HR land; the next capture (throttle
+      // passed) finds the day complete and scores it.
+      hc.hr = const [(date: today, bpm: 60)];
+      hc.hrvSamples = [
+        (t: DateTime(2026, 10, 20, 3).millisecondsSinceEpoch, ms: 40.0, tier: 100),
+      ];
+      now = now.add(const Duration(hours: 7));
+      expect(await sync.capture(), isTrue);
+      row = (await store.readAll())[today]!;
+      // Sleep 420/480 → 87.5; HRV 70; RHR 70 → 77.
+      expect(row.dailyScore, 77);
+      expect(row.scoreSleep, isNotNull);
+      expect(row.scoreHrv, isNotNull);
+      expect(row.scoreRestingHr, isNotNull);
+
+      // Scored once: later drift never re-scores it automatically.
+      hc.hr = const [(date: today, bpm: 45)];
+      now = now.add(const Duration(hours: 7));
+      expect(await sync.capture(), isTrue);
+      expect((await store.readAll())[today]!.dailyScore, 77);
+    });
+  });
+
+  group('snapshot-first triggers', () {
+    testWidgets(
+        'history screen awaits its snapshot before computing: a '
+        'day only the snapshot makes scoreable appears scored',
+        (tester) async {
+      final fake = _FakeStore();
+      final store = _fakeStore(fake);
+      // Six HRV baseline days only — the target cannot score
+      // until a seventh baseline day exists.
+      await store.mergeRefresh([
+        for (final d in _priorDates(_target, 6))
+          DailyBiometrics(date: d, hrvRmssdMs: 40),
+        const DailyBiometrics(date: _target, hrvRmssdMs: 40),
+      ]);
+      expect(computeDailyScore(await store.readAll(), _target), isNull);
+      var snapshotCalls = 0;
+      final forces = <bool>[];
+      Future<bool> snapshot({bool force = false}) async {
+        snapshotCalls++;
+        forces.add(force);
+        // The snapshot lands the seventh baseline day.
+        await store.mergeRefresh([
+          DailyBiometrics(
+              date: _priorDates(_target, 7).first, hrvRmssdMs: 40),
+        ]);
+        return true;
+      }
+
+      await tester.pumpWidget(MaterialApp(
+        home: DailyScoreScreen(store: store, snapshotCapture: snapshot),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump();
+      expect(snapshotCalls, greaterThanOrEqualTo(1));
+      expect(forces, everyElement(isFalse)); // never forced here
+      expect((await store.readAll())[_target]!.dailyScore, 70);
+      expect(find.text('Fri, Oct 16'), findsOneWidget);
+    });
+
+    testWidgets(
+        'Home awaits its snapshot before reading today: data the '
+        'snapshot completes shows as the number', (tester) async {
+      final fake = _FakeStore();
+      final store = _fakeStore(fake);
+      final now = DateTime.now();
+      final todayStr = _ds(DateTime(now.year, now.month, now.day));
+      await store.mergeRefresh([
+        for (final d in _priorDates(todayStr, 28))
+          DailyBiometrics(
+              date: d,
+              sleepMinutes: 480,
+              restingHrBpm: 60,
+              hrvRmssdMs: 40),
+        DailyBiometrics(date: todayStr, sleepMinutes: 480),
+      ]);
+      final forces = <bool>[];
+      // A snapshot with a real capture's shape: merge the fresh
+      // data, then the post-capture gated engine run.
+      Future<bool> snapshot({bool force = false}) async {
+        forces.add(force);
+        await store.mergeRefresh([
+          DailyBiometrics(
+              date: todayStr, restingHrBpm: 60, hrvRmssdMs: 40),
+        ]);
+        await DailyScoreEngine(store: store)
+            .computeMissingScores(completeOnlyDate: todayStr);
+        return true;
+      }
+
+      final mockWeather = MockClient((request) async {
+        if (request.url.host == 'ipinfo.io') {
+          return http.Response(
+              '{"city":"Orem","loc":"40.2969,-111.6946","country":"US"}',
+              200);
+        }
+        return http.Response(
+            '{"current":{"temperature_2m":55.0,"weather_code":2,"is_day":1}}',
+            200);
+      });
+      await tester.pumpWidget(MaterialApp(
+        home: HomeScreen(
+          weatherApi: WeatherApiClient(client: mockWeather),
+          healthHistoryStore: store,
+          dailyScoreSnapshotCapture: snapshot,
+        ),
+      ));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      // Sleep 100, HRV 70, RHR 70 → 82, scored by the snapshot's
+      // post-capture run and read back by Home.
+      expect(find.text('82'), findsOneWidget);
+      expect(forces, isNotEmpty);
+      expect(forces, everyElement(isFalse));
+    });
+  });
+
+  group('pending state surfaces', () {
+    Future<HealthHistoryStore> seedPendingToday(_FakeStore fake) async {
+      final store = _fakeStore(fake);
+      final now = DateTime.now();
+      final todayStr = _ds(DateTime(now.year, now.month, now.day));
+      await store.mergeRefresh([
+        for (final d in _priorDates(todayStr, 28))
+          DailyBiometrics(
+              date: d,
+              sleepMinutes: 480,
+              restingHrBpm: 60,
+              hrvRmssdMs: 40),
+        DailyBiometrics(date: todayStr, sleepMinutes: 420),
+      ]);
+      // Past days score (plain run, past dates only matter here);
+      // today stays unscored — the gate's pending state.
+      await DailyScoreEngine(store: store)
+          .computeMissingScores(completeOnlyDate: todayStr);
+      assert((await store.readAll())[todayStr]!.dailyScore == null);
+      return store;
+    }
+
+    testWidgets(
+        'Home face: sleep-only today shows Waiting, no number, '
+        'and today stays unscored', (tester) async {
+      final fake = _FakeStore();
+      final store = await seedPendingToday(fake);
+      final now = DateTime.now();
+      final todayStr = _ds(DateTime(now.year, now.month, now.day));
+      final mockWeather = MockClient((request) async {
+        if (request.url.host == 'ipinfo.io') {
+          return http.Response(
+              '{"city":"Orem","loc":"40.2969,-111.6946","country":"US"}',
+              200);
+        }
+        return http.Response(
+            '{"current":{"temperature_2m":55.0,"weather_code":2,"is_day":1}}',
+            200);
+      });
+      await tester.pumpWidget(MaterialApp(
+        home: HomeScreen(
+          weatherApi: WeatherApiClient(client: mockWeather),
+          healthHistoryStore: store,
+        ),
+      ));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.byType(DailyScoreCircle), findsOneWidget);
+      expect(find.text('Waiting'), findsOneWidget);
+      expect(find.text('Building'), findsNothing);
+      // The morning snapshot (default wiring, empty test channel)
+      // must not have frozen a partial score either.
+      expect((await store.readAll())[todayStr]!.dailyScore, isNull);
+    });
+
+    testWidgets(
+        'day detail for a pending today shows the waiting copy '
+        'and the refresh control', (tester) async {
+      final fake = _FakeStore();
+      final store = await seedPendingToday(fake);
+      final now = DateTime.now();
+      final todayStr = _ds(DateTime(now.year, now.month, now.day));
+      await tester.pumpWidget(MaterialApp(
+        home: DailyScoreDayScreen(store: store, date: todayStr),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(
+          find.text('Today\'s score is waiting for today\'s health '
+              'data to arrive. It will be scored once sleep, HRV, '
+              'and resting heart rate have all come in. Or tap '
+              'refresh to score it now from the data already stored.'),
+          findsOneWidget);
+      expect(find.text('No score stored for this day.'), findsNothing);
+      expect(find.byKey(const ValueKey('daily-score-refresh')),
+          findsOneWidget);
+    });
+
+    testWidgets(
+        'refresh during pending today scores immediately from '
+        'the snapshot data, complete or not', (tester) async {
+      final fake = _FakeStore();
+      final store = await seedPendingToday(fake);
+      final now = DateTime.now();
+      final todayStr = _ds(DateTime(now.year, now.month, now.day));
+      // The forced capture lands nothing new: the refresh must
+      // still score today sleep-only (420 of 480 need → 88).
+      final refresher = DailyScoreRefresher.withCapture(
+        store: store,
+        capture: ({bool force = false}) async => true,
+      );
+      await tester.pumpWidget(MaterialApp(
+        home: DailyScoreDayScreen(
+            store: store, date: todayStr, refresher: refresher),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.byKey(const ValueKey('daily-score-refresh')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump();
+      final row = (await store.readAll())[todayStr]!;
+      expect(row.dailyScore, 88);
+      expect(row.scoreSleep, 88);
+      expect(row.scoreHrv, isNull);
+      expect(row.scoreRestingHr, isNull);
+      expect(find.text('Daily Score: 88 · Great'), findsOneWidget);
+      expect(find.text('Not counted'), findsNWidgets(2));
+      // Write-once resumes: a later gated automatic run with
+      // drifted data never re-scores the manually scored day.
+      await store.mergeRefresh([
+        DailyBiometrics(date: todayStr, sleepMinutes: 100),
+      ]);
+      await DailyScoreEngine(store: store)
+          .computeMissingScores(completeOnlyDate: todayStr);
+      expect((await store.readAll())[todayStr]!.dailyScore, 88);
+    });
+  });
+}
+
+/// Fake HC source for the gate's sync-level test: mutable windows
+/// so a test can land data between captures.
+class _GateFakeHc extends HealthConnectService {
+  List<({String date, int bpm})> hr = const [];
+  List<({String date, int mins, int deep})> sleep = const [];
+  List<({int t, double ms, int tier})> hrvSamples = const [];
+
+  @override
+  Future<List<({String date, int bpm})>> readRestingHrHistory(
+          int days) async =>
+      hr;
+
+  @override
+  Future<List<({String date, int kcal})>> readCaloriesHistory(
+          int days) async =>
+      const [];
+
+  @override
+  Future<List<({String date, int mins, int deep})>> readSleepHistory(
+          int days) async =>
+      sleep;
+
+  @override
+  Future<List<({String date, int count})>> readSpikeCounts(
+          int days) async =>
+      const [];
+
+  @override
+  Future<List<({int t, double ms, int tier})>> readHrvSamples(
+          int days) async =>
+      hrvSamples;
 }
 
 /// Fake HC source whose every window is empty; counts its reads
