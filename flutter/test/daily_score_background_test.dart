@@ -10,7 +10,9 @@ import 'package:tabs_lab/src/data/health_history_sync.dart';
 /// (non-forced, throttle SHARED with the foreground), applies the
 /// Amendment-#1 gate, falls back to past-day store-only scoring
 /// when no snapshot ran, and posts exactly ONE notification per
-/// run that created scores — for the most recent newly scored day.
+/// run that created scores — for the most recent newly scored day,
+/// and ONLY when the background grant is verified granted (MF-9):
+/// an unverifiable grant scores silently, with no notification.
 ///
 /// The HC channel reality: the channel is registered on the main
 /// engine only, so from a background isolate the probe fails and
@@ -218,8 +220,8 @@ void main() {
 
     test(
         'channel unreachable (background engine): no capture is '
-        'attempted, past-day fallback scores from the store, one '
-        'notification', () async {
+        'attempted, past-day fallback scores from the store, and '
+        'NO notification (MF-9: grant unverifiable)', () async {
       await store.mergeRefresh([
         for (final d in _priorDates('2026-10-19', 28))
           DailyBiometrics(
@@ -253,8 +255,11 @@ void main() {
       final row = (await store.readAll())['2026-10-19']!;
       expect(row.dailyScore, isNotNull);
       expect(row.scoreHrv, isNull); // honestly not counted
-      expect(notifier.calls, hasLength(1));
-      expect(notifier.calls.single.date, '2026-10-19');
+      // MF-9: the scores stand, but with the channel unavailable
+      // the grant cannot be verified, so NO notification posts.
+      expect(outcome.newlyScoredDates, ['2026-10-19']);
+      expect(outcome.notifiedDate, isNull);
+      expect(notifier.calls, isEmpty);
       // Today is NOT scored without a snapshot.
       expect((await store.readAll())[_today], isNull);
     });
@@ -301,8 +306,9 @@ void main() {
     });
 
     test(
-        'long-gap catch-up: several past days score, ONE '
-        'notification for the most recent', () async {
+        'long-gap catch-up with a VERIFIED grant: several past '
+        'days score, ONE notification for the most recent',
+        () async {
       await store.mergeRefresh([
         for (final d in _priorDates(_today, 28))
           DailyBiometrics(
@@ -310,13 +316,40 @@ void main() {
       ]);
       await DailyScoreEngine(store: store)
           .computeMissingScores(beforeDate: '2026-10-18');
-      final outcome = await _runner(
-              store: store, hc: hc, notifier: notifier, channel: false)
-          .run();
+      final outcome =
+          await _runner(store: store, hc: hc, notifier: notifier).run();
       expect(outcome.newlyScoredDates,
           ['2026-10-18', '2026-10-19']);
       expect(notifier.calls, hasLength(1));
       expect(notifier.calls.single.date, '2026-10-19');
+    });
+
+    test(
+        'MF-9: grant read fails with the channel available — the '
+        'run still scores from the capture, but posts NO '
+        'notification (grant unverifiable)', () async {
+      _fillWindows(hc, todayComplete: true);
+      final sync =
+          HealthHistorySync.withDeps(hc: hc, store: store, now: () => _now);
+      final runner = DailyScoreBackgroundRunner(
+        store: store,
+        hasBackgroundAccess: () async =>
+            throw StateError('grant read failed'),
+        probeChannel: () async => true,
+        runCapture: () => sync.capture(),
+        scorePastDays: (before) => DailyScoreEngine(store: store)
+            .computeMissingScores(beforeDate: before),
+        notifier: notifier,
+        now: () => _now,
+      );
+      final outcome = await runner.run();
+      expect(outcome.channelAvailable, isTrue);
+      expect(outcome.grantPresent, isNull); // unverifiable
+      expect(outcome.captureRan, isTrue);
+      expect((await store.readAll())[_today]!.dailyScore, isNotNull);
+      expect(outcome.newlyScoredDates, isNotEmpty);
+      expect(outcome.notifiedDate, isNull);
+      expect(notifier.calls, isEmpty);
     });
 
     test(
@@ -381,8 +414,7 @@ void main() {
   });
 
   group('score-ready notification', () {
-    test('payload is exactly a date, and the number stays out by '
-        'default', () {
+    test('payload is exactly a date; friendly date formats', () {
       expect(LocalDailyScoreReadyNotifier.isScorePayload('2026-10-20'),
           isTrue);
       expect(LocalDailyScoreReadyNotifier.isScorePayload('reminders'),
@@ -390,9 +422,10 @@ void main() {
       expect(LocalDailyScoreReadyNotifier.isScorePayload(null), isFalse);
       expect(LocalDailyScoreReadyNotifier.friendlyDate('2026-10-20'),
           'Oct 20');
-      // Privacy-safer default (Juno rules on final wording): the
-      // score number is NOT in the notification body until flipped.
-      expect(LocalDailyScoreReadyNotifier.includeScoreInBody, isFalse);
+      // MF-8 (Juno Ruling 1): there is NO number-bearing body
+      // variant to flip — the notifier is tap-to-view only. The
+      // posted title/body/visibility are pinned against the real
+      // plugin in notification_bootstrap_test.dart.
     });
 
     test('scheduler registration fails soft without a platform',

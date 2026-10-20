@@ -32,6 +32,11 @@
 //    (Otto's one-per-run ruling — no catch-up floods). An existing
 //    score is never re-notified; the foreground refresh button path
 //    has no notifier at all, so a manual refresh never notifies.
+//    MF-9 GRANT GATE (Juno, correction round): the notification
+//    additionally requires a VERIFIED granted state. When the
+//    grant cannot be verified (channel unavailable, or the grant
+//    read failed), the run may still compute scores from
+//    already-stored data but posts NO notification.
 //
 // ─────────────────────────────────────────────────────────────────────
 // THE CHANNEL REALITY (read before assuming background reads work)
@@ -64,6 +69,7 @@ import 'daily_score.dart';
 import 'health_connect_service.dart';
 import 'health_history_store.dart';
 import 'health_history_sync.dart';
+import 'notification_service.dart';
 
 /// yyyy-MM-dd in local time — the store's date format (same shape
 /// as health_history_sync's private formatter).
@@ -163,17 +169,19 @@ abstract class DailyScoreReadyNotifier {
 
 /// The production notifier (flutter_local_notifications).
 ///
-/// PRIVACY DEFAULT (Juno rules on the final wording): the score
-/// NUMBER is not in the notification text — lock-screen visible
-/// text says a score is ready and names the day; the number is
-/// tap-to-view in the app. Including the number is a one-line
-/// change: flip [includeScoreInBody] (the score is already plumbed
-/// into [showScoreReady]).
+/// PRIVACY (Juno Ruling 1, correction round): the score NUMBER is
+/// never in the notification text — the notification is
+/// tap-to-view only (the title plus "Tap to see your Daily Score
+/// for {day}."). There is deliberately NO number-bearing body
+/// variant in this class: a built number path must not ship as
+/// one-flip dead code, so including the score in notification
+/// text requires a NEW Juno review before any such code is
+/// written. The Android notification visibility is private, so
+/// the body is hidden on a secure lock screen.
 class LocalDailyScoreReadyNotifier implements DailyScoreReadyNotifier {
   static const String channelId = 'daily_score_ready';
   static const String channelName = 'Daily Score';
   static const int notificationId = 7301;
-  static const bool includeScoreInBody = false;
 
   static const _months = [
     'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -214,8 +222,23 @@ class LocalDailyScoreReadyNotifier implements DailyScoreReadyNotifier {
   /// Idempotent. In the foreground, pass [onTap] at construction to
   /// receive score-notification taps; the background isolate
   /// constructs without one (it only posts).
+  ///
+  /// Tap routing (V-1 correction): the notifier does NOT install
+  /// its own plugin response callback in the foreground — the
+  /// app-level [NotificationBootstrap] owns plugin.initialize with
+  /// the one dispatching callback, and this initialize only
+  /// REGISTERS [_onTap] as the score-payload handler with it.
+  /// When the bootstrap has run (or is in flight), this joins it
+  /// and skips plugin.initialize entirely. Only when no bootstrap
+  /// exists in this isolate (the background isolate, which only
+  /// posts) does it initialize the plugin itself, with no
+  /// callback.
   Future<void> initialize() async {
     if (_initialized) return;
+    final onTap = _onTap;
+    if (onTap != null) {
+      NotificationBootstrap.registerScoreTapHandler(onTap);
+    }
     await _android?.createNotificationChannel(
       const AndroidNotificationChannel(
         channelId,
@@ -224,15 +247,15 @@ class LocalDailyScoreReadyNotifier implements DailyScoreReadyNotifier {
         importance: Importance.defaultImportance,
       ),
     );
-    await _plugin.initialize(
-      const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-      ),
-      onDidReceiveNotificationResponse: (response) {
-        final payload = response.payload;
-        if (isScorePayload(payload)) _onTap?.call(payload!);
-      },
-    );
+    if (NotificationBootstrap.initializationStarted) {
+      await NotificationBootstrap.initialize(_plugin);
+    } else {
+      await _plugin.initialize(
+        const InitializationSettings(
+          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        ),
+      );
+    }
     _initialized = true;
   }
 
@@ -252,13 +275,14 @@ class LocalDailyScoreReadyNotifier implements DailyScoreReadyNotifier {
   @override
   Future<void> showScoreReady(String date, {int? score}) async {
     await initialize();
-    final body = includeScoreInBody && score != null
-        ? 'Your Daily Score for ${friendlyDate(date)} is $score. Tap to see it.'
-        : 'Tap to see your Daily Score for ${friendlyDate(date)}.';
+    // Tap-to-view only (Juno Ruling 1): the score number never
+    // appears in notification text — [score] remains in the
+    // interface for the runner's call and is intentionally not
+    // rendered here. See the class doc before changing this.
     await _plugin.show(
       notificationId,
       'Your Daily Score is ready',
-      body,
+      'Tap to see your Daily Score for ${friendlyDate(date)}.',
       const NotificationDetails(
         android: AndroidNotificationDetails(
           channelId,
@@ -267,6 +291,9 @@ class LocalDailyScoreReadyNotifier implements DailyScoreReadyNotifier {
               'Lets you know when a new Daily Score is ready.',
           importance: Importance.defaultImportance,
           priority: Priority.defaultPriority,
+          // Juno hardening: the body is hidden on a secure lock
+          // screen.
+          visibility: NotificationVisibility.private,
         ),
       ),
       payload: date,
@@ -400,7 +427,12 @@ class DailyScoreBackgroundRunner {
       final after = await _scoredDates();
       final newly = after.difference(before).toList()..sort();
       String? notifiedDate;
-      if (newly.isNotEmpty) {
+      // MF-9: notify ONLY on a verified granted state. `grant`
+      // is true only when the channel answered AND the grant read
+      // returned granted; it is null whenever the grant could not
+      // be verified (no channel, or the read threw) — the scores
+      // above still stand, but no notification is posted.
+      if (newly.isNotEmpty && grant == true) {
         notifiedDate = newly.last; // one notification, most recent
         final days = await _store.readAll();
         await _notifier.showScoreReady(
