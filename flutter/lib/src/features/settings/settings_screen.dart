@@ -829,7 +829,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // Juno C1: a landed push confirms sync; a failed one drops
       // the chip until the next successful pull/push (the reload
       // below re-confirms only if its own pull lands).
-      _syncConfirmed = true;
+      //
+      // Delta re-review (Juno C1 residual): postSyncProfile is
+      // FIELD-PARTIAL — a landed push confirms only the fields it
+      // sent, never eventCounters. So a push may confirm the chip
+      // only when this session already holds real pulled data
+      // ([_hasRealData]): the on-screen counters then came from
+      // an actual pull (or a counter save built on one) and this
+      // push did not touch them. When the first-ever load failed
+      // (_hasRealData false, counters still never-loaded
+      // defaults), a landed NON-counter push (medications,
+      // conditions, a toggle, the debounced Personal Context
+      // push) must NOT flip the chip to Synced over a counter
+      // list that was never pulled.
+      _syncConfirmed = _hasRealData;
     } else {
       _syncConfirmed = false;
       _snack('Could not save. Check your connection and try again.');
