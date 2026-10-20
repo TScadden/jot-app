@@ -517,7 +517,11 @@ void main() {
         capture: _landingCapture(store),
       );
       await tester.pumpWidget(MaterialApp(
-        home: DailyScoreScreen(store: store, refresher: refresher),
+        home: DailyScoreScreen(
+          store: store,
+          refresher: refresher,
+          snapshotCapture: ({bool force = false}) async => true,
+        ),
       ));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
@@ -572,6 +576,8 @@ void main() {
         home: HomeScreen(
           weatherApi: WeatherApiClient(client: mockWeather),
           healthHistoryStore: store,
+          dailyScoreSnapshotCapture: ({bool force = false}) async =>
+              true,
         ),
       ));
       await tester.pump();
@@ -922,6 +928,12 @@ void main() {
         home: HomeScreen(
           weatherApi: WeatherApiClient(client: mockWeather),
           healthHistoryStore: store,
+          // A completed snapshot that landed nothing new: Home's
+          // own run must still not freeze a partial score for
+          // today (the freeze protection itself is pinned at the
+          // engine/sync level in the gate groups above).
+          dailyScoreSnapshotCapture: ({bool force = false}) async =>
+              true,
         ),
       ));
       for (var i = 0; i < 5; i++) {
@@ -930,8 +942,6 @@ void main() {
       expect(find.byType(DailyScoreCircle), findsOneWidget);
       expect(find.text('Waiting'), findsOneWidget);
       expect(find.text('Building'), findsNothing);
-      // The morning snapshot (default wiring, empty test channel)
-      // must not have frozen a partial score either.
       expect((await store.readAll())[todayStr]!.dailyScore, isNull);
     });
 

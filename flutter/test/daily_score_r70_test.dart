@@ -49,6 +49,12 @@ HealthHistoryStore _fakeStore(_FakeStore fake) {
   return store;
 }
 
+/// Instant snapshot capture for screen pumps (amendment, Oct 20,
+/// 2026): the screens await a snapshot capture before computing,
+/// and an unmocked Health Connect channel's futures legitimately
+/// pend in widget tests — so pumps inject a completed one.
+Future<bool> _instantSnapshot({bool force = false}) async => true;
+
 void main() {
   group('formula: sleep component', () {
     test('linear below need, capped at need, no bonus above', () {
@@ -434,7 +440,9 @@ void main() {
     testWidgets('history lists scored days incl. a partial-component day',
         (tester) async {
       final store = await seededStore();
-      await tester.pumpWidget(MaterialApp(home: DailyScoreScreen(store: store)));
+      await tester.pumpWidget(MaterialApp(
+          home: DailyScoreScreen(
+              store: store, snapshotCapture: _instantSnapshot)));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       // The concept's 14-day chart card (Juno C5 heading).
@@ -489,7 +497,8 @@ void main() {
       await tester.pumpWidget(MaterialApp(
         home: MediaQuery(
           data: const MediaQueryData(disableAnimations: true),
-          child: DailyScoreScreen(store: store),
+          child: DailyScoreScreen(
+              store: store, snapshotCapture: _instantSnapshot),
         ),
       ));
       await tester.pump();
@@ -530,6 +539,7 @@ void main() {
         home: HomeScreen(
           weatherApi: WeatherApiClient(client: mockWeather),
           healthHistoryStore: store,
+          dailyScoreSnapshotCapture: _instantSnapshot,
         ),
       ));
       await tester.pump();
