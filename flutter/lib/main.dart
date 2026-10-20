@@ -659,9 +659,10 @@ class _AppFlowState extends State<AppFlow>
     // session-expiry gap on this path too — the same targeted wipe
     // runs here. (The sibling cache clears are expiry-path only,
     // matching native's decline, which likewise leaves them.)
-    try {
-      await SettingsStore().clearDeletedCounterIds();
-    } catch (_) {}
+    // Fire-and-forget, exactly like _onSessionExpired: the wipe is
+    // best-effort and must never gate the route change on a
+    // storage-channel round-trip (the method itself never throws).
+    unawaited(SettingsStore().clearDeletedCounterIds());
     try {
       await _onboardingStore.setHasConsented(false);
       await _onboardingStore.setIntroConsultationSeen(false);
