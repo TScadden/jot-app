@@ -229,9 +229,12 @@ tasks.configureEach {
 }
 
 // Round 12: Health Connect client for the connections screen permission flow.
-// Version matches the native app (1.1.0-alpha09).
+// Version matches the native app (1.1.0-alpha09). The dependency now
+// arrives via the health_connect_bridge plugin (an `api` dependency
+// there): the bridge handlers live in the plugin, and MainActivity
+// still compiles against PermissionController for the Activity-owned
+// permission launcher it registers in onCreate.
 dependencies {
-    implementation("androidx.health.connect:connect-client:1.1.0-alpha09")
     // Round 30: desugaring runtime for flutter_local_notifications.
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

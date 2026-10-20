@@ -1,0 +1,23 @@
+name: health_connect_bridge
+description: >-
+  Local Flutter plugin carrying the Tabs Health Connect MethodChannel
+  bridge. Implemented as a plugin (not MainActivity handlers) so the
+  generated plugin registrant registers it on every FlutterEngine —
+  the main engine and the WorkManager background engine alike.
+version: 0.0.1
+publish_to: 'none'
+
+environment:
+  sdk: ^3.13.5
+  flutter: '>=3.3.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.notel.notel.playground.flutter.health_connect_bridge
+        pluginClass: HealthConnectBridgePlugin
