@@ -142,6 +142,16 @@ void main() {
     await tester.runAsync(() => AccountActions.clearDefaultCaches());
     expect(fake.values.containsKey(HealthHistoryStore.storageKey), isFalse);
     expect(await store.readAll(), isEmpty);
+
+    // V-2 drain (correction round): Home's snapshot capture now
+    // bounds every Health Connect read at 30 s
+    // (HealthConnectService.readTimeout); this harness leaves the
+    // bridge channel unmocked, so the reads pend and each bound
+    // must elapse before the fake-async teardown accepts the
+    // test. All assertions above are already final.
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(seconds: 30));
+    }
   });
 
   // R70 fix pass B3 (Vera F2 sequence): a partial today must NOT be

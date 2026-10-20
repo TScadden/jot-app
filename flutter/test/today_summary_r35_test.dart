@@ -2708,6 +2708,16 @@ void main() {
       expect(cacheMem.map.containsKey(TodaySummaryCache.storageKey),
           isFalse);
       expect(planMem.map.containsKey(TodayPlanStore.storageKey), isFalse);
+
+      // V-2 drain (correction round): Home's snapshot capture now
+      // bounds every Health Connect read at 30 s
+      // (HealthConnectService.readTimeout); this harness leaves
+      // the bridge channel unmocked, so the reads pend and each
+      // bound must elapse before the fake-async teardown accepts
+      // the test. All assertions above are already final.
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(seconds: 30));
+      }
     });
   });
 }

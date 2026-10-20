@@ -524,6 +524,16 @@ void main() {
       // Flush the 20s HTTP-timeout timers the stalled calls armed.
       await tester.pump(const Duration(seconds: 21));
       await tester.pump();
+      // V-2 drain (correction round): Home's Daily Score snapshot
+      // capture bounds every Health Connect read at 30 s
+      // (HealthConnectService.readTimeout); the bridge never
+      // completes here by design, so each read's bound must
+      // elapse before the fake-async teardown accepts the test.
+      // The paint assertions above are already final — the score
+      // load was never part of what this test measures.
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(seconds: 30));
+      }
     });
 
     testWidgets(
@@ -563,6 +573,13 @@ void main() {
           reason: 'one Home mount = one sync pull on the wire');
       expect(LaunchTrace.instance.has(LaunchTrace.homeFreshData),
           isTrue);
+      // V-2 drain (correction round): see the sibling test above
+      // — the snapshot capture's per-read 30 s bounds (bridge
+      // channel unmocked here) must elapse before teardown. The
+      // landing assertions above are already final.
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(seconds: 30));
+      }
     });
   });
 }
