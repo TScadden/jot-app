@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -64,12 +65,10 @@ TodaySummaryCache cacheWith(MemoryStore s) {
 }
 
 /// Lets real-async completions land in the fake-async test zone:
-/// the Today Summary dust dissolve has a chain of real-async hops
-/// (frame paint → snapshot toImage → slot mount → toByteData
-/// sampling), and each hop's completion lands on the real event
-/// loop while its continuation needs a fake-zone pump. Interleave
-/// the two, several rounds, or the dissolve sits mid-chain
-/// forever under fake async.
+/// some loader flows have real-async hops whose completions land
+/// on the real event loop while their continuations need a
+/// fake-zone pump. Interleave the two, several rounds, or a flow
+/// can sit mid-chain forever under fake async.
 Future<void> bridgeRealAsync(WidgetTester tester) async {
   for (var i = 0; i < 4; i++) {
     await tester.pump();
@@ -1766,7 +1765,7 @@ void main() {
       expect(find.text('Not enough data yet'), findsNothing);
     });
 
-    testWidgets('habit toggle tap posts the log and the row dusts '
+    testWidgets('habit toggle tap posts the log and the row slides '
         'away (founder check-off rule supersedes the R35 '
         'completed-row display)', (tester) async {
       var habitLogged = false;
@@ -1837,8 +1836,8 @@ void main() {
       expect(serverEntries.single['body'], 'Completed habit: Stretch');
       expect(serverEntries.single['categoryId'], 4);
       // Founder check-off rule: the checked item leaves the view
-      // (dust dissolve), and since it was the LAST plan item the
-      // section auto-collapses to its header after the dissolve.
+      // (slide-away), and since it was the LAST plan item the
+      // section auto-collapses to its header after the slide.
       expect(find.text('Stretch'), findsNothing);
       expect(find.text("Today's Plan"), findsNothing);
       expect(find.text('Everything planned for today is complete'),
@@ -2051,7 +2050,7 @@ void main() {
     });
   });
 
-  group('Item 4 — check-off dust dissolve (founder)', () {
+  group('Item 4 — check-off slide-away (founder)', () {
     Future<void> pumpMotionCard(
       WidgetTester tester, {
       required http.Client client,
@@ -2156,28 +2155,27 @@ void main() {
       });
     }
 
-    // Reaches the live dissolve. The snapshot chain has TWO
-    // real-async hops (RepaintBoundary.toImage, then the slot's
-    // toByteData sampling): each completion lands on the real
-    // event loop, which the fake-async zone blocks, and each
-    // handler continuation then needs a fake-zone pump to run.
-    // So interleave: real window (completion lands) → pump
-    // (continuation runs, next hop starts). Plain pump() calls
-    // don't advance the fake clock, so the capture's 500ms
-    // fake-timeout can't preempt the real capture here. Stops at
-    // first sighting of the particles: still mid-flight.
-    Future<void> pumpUntilDust(WidgetTester tester) async {
-      for (var i = 0; i < 6; i++) {
-        await tester.runAsync(
-            () => Future<void>.delayed(const Duration(milliseconds: 250)));
-        await tester.pump();
-        if (find.byKey(const Key('dust-particles')).evaluate().isNotEmpty) {
-          return;
+    // Advances the check-off flow (write → reload → slot mount)
+    // in small fake-clock steps and stops the FIRST time the
+    // slide-away slot is on screen with its slide part-way through
+    // — still mid-flight. Returns the slide offset observed at
+    // that moment (null when the slot never appeared).
+    Future<double?> pumpUntilSlide(WidgetTester tester) async {
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        final slot = find.byKey(const Key('slide-away-slot'));
+        if (slot.evaluate().isNotEmpty) {
+          final transition = tester.widget<SlideTransition>(
+              find.byKey(const Key('slide-away-transition')));
+          final dx = transition.position.value.dx;
+          if (dx > 0) return dx;
         }
       }
+      return null;
     }
 
-    testWidgets('check-off dusts: particle overlay appears, the '
+    testWidgets('check-off slides away: the slide slot appears '
+        'with the row sliding right and no dust overlay ever, the '
         'item leaves the view, remaining rows stay and the section '
         'stays expanded', (tester) async {
       await pumpMotionCard(tester,
@@ -2185,10 +2183,20 @@ void main() {
       expect(find.text('Salt pills'), findsOneWidget);
       expect(find.text('Water bottle'), findsOneWidget);
       await tester.tap(find.byIcon(Icons.radio_button_unchecked).first);
-      await pumpUntilDust(tester);
-      expect(find.byKey(const Key('dust-particles')), findsOneWidget);
+      final midDx = await pumpUntilSlide(tester);
+      // The slot is up and the row is part-way out: offset strictly
+      // between resting and fully off (slides right, toward +1).
+      expect(find.byKey(const Key('slide-away-slot')), findsOneWidget);
+      expect(midDx, isNotNull);
+      expect(midDx!, greaterThan(0));
+      expect(midDx, lessThan(1));
+      // The exiting row is still the one rendering 'Salt pills',
+      // and the dust overlay NEVER appears.
+      expect(find.text('Salt pills'), findsOneWidget);
+      expect(find.byKey(const Key('dust-particles')), findsNothing);
       expect(find.text('Water bottle'), findsOneWidget);
       await tester.pumpAndSettle();
+      expect(find.byKey(const Key('slide-away-slot')), findsNothing);
       expect(find.byKey(const Key('dust-particles')), findsNothing);
       expect(find.text('Salt pills'), findsNothing);
       expect(find.text('Water bottle'), findsOneWidget);
@@ -2198,13 +2206,14 @@ void main() {
     });
 
     testWidgets('checking the LAST remaining item collapses the '
-        'section after the dissolve finishes', (tester) async {
+        'section after the slide finishes', (tester) async {
       await pumpMotionCard(tester, client: reminderClient());
       await tester.tap(find.byIcon(Icons.radio_button_unchecked));
-      await pumpUntilDust(tester);
-      // Mid-dissolve the section is still open — collapse waits for
-      // the dust to finish.
-      expect(find.byKey(const Key('dust-particles')), findsOneWidget);
+      final midDx = await pumpUntilSlide(tester);
+      // Mid-slide the section is still open — collapse waits for
+      // the slide to finish.
+      expect(midDx, isNotNull);
+      expect(find.byKey(const Key('slide-away-slot')), findsOneWidget);
       expect(find.text("Today's Plan"), findsOneWidget);
       await tester.pumpAndSettle();
       expect(find.text('Salt pills'), findsNothing);
@@ -2215,12 +2224,13 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('reduced motion: instant removal, no particles; '
+    testWidgets('reduced motion: instant removal, no slide slot; '
         'the last-item collapse is immediate', (tester) async {
       await pumpMotionCard(tester,
           client: reminderClient(), disableAnimations: true);
       await tester.tap(find.byIcon(Icons.radio_button_unchecked));
       await tester.pump();
+      expect(find.byKey(const Key('slide-away-slot')), findsNothing);
       expect(find.byKey(const Key('dust-particles')), findsNothing);
       expect(find.text('Salt pills'), findsNothing);
       expect(find.text("Today's Plan"), findsNothing);
@@ -2235,6 +2245,7 @@ void main() {
           disableAnimations: true);
       await tester.tap(find.byIcon(Icons.radio_button_unchecked).first);
       await tester.pumpAndSettle();
+      expect(find.byKey(const Key('slide-away-slot')), findsNothing);
       expect(find.byKey(const Key('dust-particles')), findsNothing);
       expect(find.text('Salt pills'), findsNothing);
       expect(find.text('Water bottle'), findsOneWidget);
@@ -2265,16 +2276,19 @@ void main() {
       expect(reducedMem.map, animatedBlob);
     });
 
-    testWidgets('a second check-off mid-dissolve finalizes the '
+    testWidgets('a second check-off mid-slide finalizes the '
         'first instantly and loses neither write', (tester) async {
       final planMem = MemoryStore();
       await pumpMotionCard(tester,
           client: reminderClient(second: true), planMem: planMem);
       await tester.tap(find.byIcon(Icons.radio_button_unchecked).first);
-      await pumpUntilDust(tester);
-      expect(find.byKey(const Key('dust-particles')), findsOneWidget);
-      // Second row's toggle is live while the first still dusts.
-      await tester.tap(find.byIcon(Icons.radio_button_unchecked));
+      final midDx = await pumpUntilSlide(tester);
+      expect(midDx, isNotNull);
+      expect(find.byKey(const Key('slide-away-slot')), findsOneWidget);
+      // Second row's toggle is live while the first still slides.
+      // (.last: the exiting slot still renders the first row's —
+      // inert — toggle icon ahead of it in the tree.)
+      await tester.tap(find.byIcon(Icons.radio_button_unchecked).last);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(find.text('Salt pills'), findsNothing);
@@ -2289,8 +2303,9 @@ void main() {
       expect(state.completedReminderIds, containsAll(<int>[5, 6]));
     });
 
-    testWidgets('med Take dusts the dose row after posting the '
-        'entry; Skip on another med does the same', (tester) async {
+    testWidgets('med Take slides the dose row away after posting '
+        'the entry; Skip on another med does the same',
+        (tester) async {
       final posted = <String>[];
       // Stateful: posted entries land in the pull (R41 derives the
       // dose state from them, so the reload must see them).
@@ -2375,6 +2390,19 @@ void main() {
         '[Corrected to Skipped] Took Pyridostigmine 60 mg',
       ]);
       expect(tester.takeException(), isNull);
+    });
+
+    test('source scan: no dust effect remains in the card', () {
+      // Founder directive (Oct 20, 2026): the check-off
+      // disintegration effect is REMOVED, not just unrendered —
+      // no particle model, painter, snapshot capture, or dust
+      // naming may survive in the card's source.
+      final source = File('lib/src/features/home/today_summary_card.dart')
+          .readAsStringSync()
+          .toLowerCase();
+      expect(source, isNot(contains('dust')));
+      expect(source, isNot(contains('particle')));
+      expect(source, isNot(contains('disintegrat')));
     });
   });
 

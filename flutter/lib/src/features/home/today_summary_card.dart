@@ -1,11 +1,6 @@
 import 'dart:async';
-import 'dart:math' as math;
-import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
-import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -52,23 +47,24 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///   native's Loading spinner — the load is one bridge round-trip,
 ///   the card starts collapsed, and live comparisons replace the
 ///   text the moment they land.
-/// - Check-off "snap" dissolve (founder directive, R35 fix pass —
-///   native has NO per-item check-off exit animation; its only
-///   AnimatedVisibility wraps the whole expanded section,
-///   TodayScreen.kt:550-554, and completed items stay visible at
-///   0.5 alpha): checking an item off IN THIS CARD dusts it — the
-///   row is snapshotted (RepaintBoundary), sampled into a bounded
-///   particle grid in the row's own colors, and disintegrates with
-///   an upward/rightward drift while its footprint is held; then
-///   the gap closes smoothly and the item is gone from this card
-///   instance's view. Presentation only: the check-off persists
-///   through the exact same loader writes as before, BEFORE the
-///   dissolve starts, so navigating away mid-dust never loses it.
-///   Reduced motion (animationsDisabled) removes the item
-///   instantly, no particles.
+/// - Check-off slide-away (founder directive, Oct 20, 2026 —
+///   supersedes the R35 check-off dissolve effect, which is
+///   REMOVED; native has NO per-item check-off exit animation at
+///   all — its only AnimatedVisibility wraps the whole expanded
+///   section, TodayScreen.kt:550-554, and completed items stay
+///   visible at 0.5 alpha): checking an item off IN THIS CARD
+///   slides the row out to the right while its height collapses
+///   (see [_SlideAwayRowSlot]: 300ms, the app's standard slide
+///   duration; slide eased with easeIn — the app's exit curve —
+///   and the height collapse with easeInOut), then the item is
+///   gone from this card instance's view. Presentation only: the
+///   check-off persists through the exact same loader writes as
+///   before, BEFORE the slide starts, so navigating away
+///   mid-slide never loses it. Reduced motion
+///   (animationsDisabled) removes the item instantly, no slide.
 ///   Section rule (founder): the card auto-collapses ONLY when a
 ///   check-off removes the LAST remaining plan item, and only after
-///   the dissolve finishes; otherwise the section stays open.
+///   the slide finishes; otherwise the section stays open.
 /// - Round 41 (founder, supersedes the R35 completed-row display):
 ///   a completed/resolved item NEVER renders — not dimmed, not
 ///   struck through, no Undo affordance. `buildTodayPlan` already
@@ -117,131 +113,69 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
   /// its view-model scope; a double-tap must not double-post).
   String? _actingItemId;
 
-  /// Dust dissolve state (see the class doc). At most one row dusts
-  /// at a time; a second check-off finalizes the active dust
-  /// instantly before its own dissolve begins.
+  /// Slide-away exit state (see the class doc). At most one row
+  /// slides out at a time; a second check-off finalizes the
+  /// active slide instantly before its own slide begins.
   final Set<String> _goneItemIds = <String>{};
-  final Map<String, GlobalKey> _rowKeys = <String, GlobalKey>{};
-  String? _dustItemId;
+  String? _exitingItemId;
 
-  /// The dusting row's index in the rendered list, captured before
-  /// its check-off write: after the reload the item is already
-  /// excluded from the plan data (Round 41), so the slot is
-  /// INSERTED at this index instead of replacing a rendered row.
-  int _dustIndex = 0;
-  ui.Image? _dustImage;
-  double _dustHeight = 0;
-  final GlobalKey<_DustRowSlotState> _dustSlotKey =
-      GlobalKey<_DustRowSlotState>();
+  /// The exiting row's data (Round 41's post-check-off reload
+  /// already excludes it from the plan data) and its index in the
+  /// rendered list, captured before the check-off write, so the
+  /// slide slot is INSERTED at the row's position rather than
+  /// substituted for a rendered row.
+  TodayPlanItem? _exitingItem;
+  int _exitingIndex = 0;
+  final GlobalKey<_SlideAwayRowSlotState> _exitSlotKey =
+      GlobalKey<_SlideAwayRowSlotState>();
 
-  GlobalKey _rowKeyFor(String itemId) =>
-      _rowKeys.putIfAbsent(itemId, () => GlobalKey());
-
-  /// Snapshots the row for [itemId] as currently painted (the
-  /// pre-check-off appearance). Best-effort: null when the row is
-  /// not mounted/painted — the caller then removes the item
-  /// instantly instead of dusting it.
-  Future<({ui.Image image, double height})?> _captureRow(
-      String itemId) async {
-    try {
-      final ro = _rowKeyFor(itemId).currentContext?.findRenderObject();
-      if (ro is! RenderRepaintBoundary || !ro.attached) return null;
-      // The tap lands mid-frame: the boundary is usually still
-      // marked needs-paint, and toImage asserts against capturing
-      // an unpainted layer. Wait out the current frame — the busy
-      // state the handler sets next doesn't change the row's
-      // appearance, so the snapshot still shows the row exactly
-      // as the user saw it when they tapped.
-      await SchedulerBinding.instance.endOfFrame;
-      if (!ro.attached) return null;
-      final height = ro.size.height;
-      final image = await ro.toImage(pixelRatio: 1.0);
-      return (image: image, height: height);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  /// Resolves the row snapshot for a check-off, bounded so a
-  /// stalled capture can never delay the write for long. This MUST
-  /// complete before the write + reload: Round 41's reload excludes
-  /// the checked item, unmounting its RepaintBoundary, and a
-  /// pending `toImage` on an unmounted boundary never lands (the
-  /// R35 flow could resolve the snapshot after the persist because
-  /// the completed row stayed mounted). A painted boundary needs
-  /// one frame; on timeout/failure the caller removes the item
-  /// instantly instead of dusting it.
-  Future<({ui.Image image, double height})?> _resolveCapture(
-      String itemId) async {
-    if (animationsDisabled(context)) return null;
-    try {
-      return await _captureRow(itemId).timeout(
-        const Duration(milliseconds: 500),
-        onTimeout: () => null,
-      );
-    } catch (_) {
-      return null;
-    }
-  }
-
-  /// Post-persist step of a check-off: dust the row from its
-  /// already-resolved [shot], or remove it instantly when there is
-  /// none (reduced motion / capture failed). The write has ALREADY
-  /// landed when this runs — presentation only from here, so an
-  /// unmount anywhere below loses nothing. [index] is the row's
-  /// position in the rendered list, captured before the write; the
-  /// item is marked gone immediately so a stale plan that still
-  /// carries it never double-renders it alongside its dust slot.
-  void _dissolveOrVanish(
-    String itemId,
-    ({ui.Image image, double height})? shot,
-    int index,
-  ) {
-    if (!mounted || _goneItemIds.contains(itemId)) {
-      shot?.image.dispose();
+  /// Post-persist step of a check-off: slide the row out (after
+  /// persist), or remove it instantly when reduced motion is on.
+  /// The write has ALREADY landed when this runs — presentation
+  /// only from here, so an unmount anywhere below loses nothing.
+  /// [index] is the row's position in the rendered list, captured
+  /// before the write; the item is marked gone immediately so a
+  /// stale plan that still carries it never double-renders it
+  /// alongside its slide slot.
+  void _slideOrVanish(TodayPlanItem item, int index) {
+    if (!mounted || _goneItemIds.contains(item.id)) return;
+    if (animationsDisabled(context)) {
+      _vanishItem(item.id);
       return;
     }
-    if (shot != null && !animationsDisabled(context)) {
-      // One dust at a time: finalize the active one instantly.
-      _dustSlotKey.currentState?.finalizeNow();
-      setState(() {
-        _goneItemIds.add(itemId);
-        _dustItemId = itemId;
-        _dustIndex = index;
-        _dustImage = shot.image;
-        _dustHeight = shot.height;
-      });
-      return;
-    }
-    _vanishItem(itemId);
+    // One exit at a time: finalize the active one instantly.
+    _exitSlotKey.currentState?.finalizeNow();
+    setState(() {
+      _goneItemIds.add(item.id);
+      _exitingItem = item;
+      _exitingItemId = item.id;
+      _exitingIndex = index;
+    });
   }
 
-  /// Instant removal (reduced motion / no snapshot): the item
-  /// leaves the view now, and the last-item collapse rule applies
-  /// immediately.
+  /// Instant removal (reduced motion): the item leaves the view
+  /// now, and the last-item collapse rule applies immediately.
   void _vanishItem(String itemId) {
-    _dustSlotKey.currentState?.finalizeNow();
+    _exitSlotKey.currentState?.finalizeNow();
     if (!mounted) return;
     setState(() {
       _goneItemIds.add(itemId);
-      if (_dustItemId == itemId) {
-        _dustItemId = null;
-        _dustImage?.dispose();
-        _dustImage = null;
+      if (_exitingItemId == itemId) {
+        _exitingItem = null;
+        _exitingItemId = null;
       }
     });
     _collapseIfLastRemoved(itemId);
   }
 
-  /// Slot callback: the dissolve + gap-close finished.
-  void _onDustGone(String itemId) {
+  /// Slot callback: the slide + gap-close finished.
+  void _onExitGone(String itemId) {
     if (!mounted) return;
     setState(() {
       _goneItemIds.add(itemId);
-      if (_dustItemId == itemId) {
-        _dustItemId = null;
-        _dustImage?.dispose();
-        _dustImage = null;
+      if (_exitingItemId == itemId) {
+        _exitingItem = null;
+        _exitingItemId = null;
       }
     });
     _collapseIfLastRemoved(itemId);
@@ -249,7 +183,8 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
 
   /// Founder section rule: auto-collapse ONLY when a check-off has
   /// removed the last remaining plan item. Any items left — visible
-  /// or still dusting — keep the section exactly as open as it was.
+  /// or still sliding out — keep the section exactly as open as it
+  /// was.
   /// Round 41: the reloaded plan already EXCLUDES the removed item,
   /// so an empty list is exactly the collapse case (the R35
   /// early-return on empty assumed the completed item still sat in
@@ -261,15 +196,9 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
         .where((i) =>
             i.id != removedId &&
             !_goneItemIds.contains(i.id) &&
-            i.id != _dustItemId)
+            i.id != _exitingItemId)
         .length;
     if (remaining == 0) setState(() => _expanded = false);
-  }
-
-  @override
-  void dispose() {
-    _dustImage?.dispose();
-    super.dispose();
   }
 
   @override
@@ -366,15 +295,13 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
   Future<void> _onToggleItem(TodayPlanItem item) async {
     if (_actingItemId != null) return;
     // Round 41: rendered rows are never completed, so a toggle is
-    // always a check-off and always dissolves on success. The
-    // snapshot + list index are taken NOW, while the row is still
-    // painted in its pre-check-off state — and the snapshot is
-    // RESOLVED before the write, because the reload after the
-    // write unmounts the row (see _resolveCapture).
+    // always a check-off and always slides away on success. The
+    // list index is captured NOW, while the row is still rendered;
+    // the slide itself starts only after the write + reload land
+    // (see _slideOrVanish).
     final index =
         (_data?.plan.items ?? const <TodayPlanItem>[]).indexOf(item);
     setState(() => _actingItemId = item.id);
-    final shot = await _resolveCapture(item.id);
     var ok = false;
     try {
       switch (item.kind) {
@@ -390,34 +317,28 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
       if (mounted) setState(() => _actingItemId = null);
     }
     // The write has landed and the one-action guard is released —
-    // the dissolve is pure presentation from here and can never
-    // block or double-fire an action. A FAILED write leaves the
-    // row exactly as it was: no dissolve, no phantom completion
-    // (and its unused snapshot is disposed with the row kept).
-    if (ok) {
-      _dissolveOrVanish(item.id, shot, index);
-    } else {
-      shot?.image.dispose();
-    }
+    // the slide is pure presentation from here and can never block
+    // or double-fire an action. A FAILED write leaves the row
+    // exactly as it was: no slide, no phantom completion.
+    if (ok) _slideOrVanish(item, index);
   }
 
   Future<void> _onMedAction(TodayPlanItem item, DoseStatus status) async {
     if (_actingItemId != null) return;
     // Only Take/Skip render on a plan row (Round 41 removed the
     // completed row and its Undo) — both resolve the dose, so the
-    // row dusts. Snapshot resolved before the write (see
-    // _resolveCapture).
+    // row slides away. The index is captured before the write;
+    // the slide starts after the write + reload land.
     final index =
         (_data?.plan.items ?? const <TodayPlanItem>[]).indexOf(item);
     setState(() => _actingItemId = item.id);
-    final shot = await _resolveCapture(item.id);
     try {
       await _loader.setMedicationAction(item, status);
       await _load(includeTrends: false);
     } finally {
       if (mounted) setState(() => _actingItemId = null);
     }
-    _dissolveOrVanish(item.id, shot, index);
+    _slideOrVanish(item, index);
   }
 
   @override
@@ -431,35 +352,38 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
     // Rendered plan rows (Round 41): the plan data already excludes
     // completed items; _goneItemIds additionally hides an item whose
     // check-off landed but whose reload served a stale plan. The
-    // dust slot is INSERTED at the checked-off row's captured index
+    // slide slot is INSERTED at the checked-off row's captured index
     // — the item itself is no longer in the data to substitute for.
     final visibleItems = (data?.plan.items ?? const <TodayPlanItem>[])
         .where((i) => !_goneItemIds.contains(i.id))
         .toList();
-    final dusting = _dustItemId != null && _dustImage != null;
+    final exiting = _exitingItem;
     final planRows = <Widget>[];
     if (data != null) {
-      Widget dustSlot() => _DustRowSlot(
-            key: _dustSlotKey,
-            image: _dustImage!,
-            height: _dustHeight,
-            onGone: () => _onDustGone(_dustItemId!),
+      Widget slideSlot() => _SlideAwayRowSlot(
+            key: _exitSlotKey,
+            onGone: () => _onExitGone(_exitingItemId!),
+            child: _PlanItemRow(
+              item: exiting!,
+              busy: true,
+              onToggle: () {},
+              onMedAction: (_) {},
+            ),
           );
       for (var idx = 0; idx < visibleItems.length; idx++) {
-        if (dusting && idx == _dustIndex) planRows.add(dustSlot());
+        if (exiting != null && idx == _exitingIndex) {
+          planRows.add(slideSlot());
+        }
         final item = visibleItems[idx];
-        planRows.add(RepaintBoundary(
-          key: _rowKeyFor(item.id),
-          child: _PlanItemRow(
-            item: item,
-            busy: _actingItemId == item.id,
-            onToggle: () => _onToggleItem(item),
-            onMedAction: (s) => _onMedAction(item, s),
-          ),
+        planRows.add(_PlanItemRow(
+          item: item,
+          busy: _actingItemId == item.id,
+          onToggle: () => _onToggleItem(item),
+          onMedAction: (s) => _onMedAction(item, s),
         ));
       }
-      if (dusting && _dustIndex >= visibleItems.length) {
-        planRows.add(dustSlot());
+      if (exiting != null && _exitingIndex >= visibleItems.length) {
+        planRows.add(slideSlot());
       }
     }
     return Container(
@@ -827,156 +751,57 @@ class _PlanItemRow extends StatelessWidget {
   }
 }
 
-/// One dust particle sampled from the row snapshot: a cell of the
-/// row, in the row's own color, with a randomized gentle
-/// upward/rightward drift.
-class _DustParticle {
-  final Offset origin;
-  final Color color;
-  final Offset drift; // total displacement over its active phase
-  final double size;
-  final double delay; // 0..~0.38 — the disintegration sweeps L→R
-
-  const _DustParticle({
-    required this.origin,
-    required this.color,
-    required this.drift,
-    required this.size,
-    required this.delay,
-  });
-}
-
-/// Samples [image]'s pixels into a bounded particle grid (cell
-/// grows until the count fits the cap, so a wide row stays smooth
-/// on device). Fully transparent cells (the row's rounded corners)
-/// are skipped. Deterministic seed — the founder's rows should
-/// dust the same way every time, and tests stay stable.
-List<_DustParticle> _buildDustParticles(ui.Image image, ByteData rgba) {
-  final w = image.width;
-  final h = image.height;
-  if (w <= 0 || h <= 0) return const [];
-  final bytes =
-      rgba.buffer.asUint8List(rgba.offsetInBytes, rgba.lengthInBytes);
-  var cell = 6;
-  while ((w / cell).ceil() * (h / cell).ceil() > 640 && cell < 24) {
-    cell += 2;
-  }
-  final rand = math.Random(0x5eed);
-  final out = <_DustParticle>[];
-  for (var y = 0; y < h; y += cell) {
-    for (var x = 0; x < w; x += cell) {
-      final cx = math.min(x + cell ~/ 2, w - 1);
-      final cy = math.min(y + cell ~/ 2, h - 1);
-      final i = (cy * w + cx) * 4;
-      if (i + 3 >= bytes.length) continue;
-      final a = bytes[i + 3];
-      if (a < 24) continue;
-      out.add(_DustParticle(
-        origin: Offset(cx.toDouble(), cy.toDouble()),
-        color: Color.fromARGB(a, bytes[i], bytes[i + 1], bytes[i + 2]),
-        drift: Offset(
-          10 + rand.nextDouble() * 48,
-          -(14 + rand.nextDouble() * 46),
-        ),
-        size: math.max(2.0, cell * (0.55 + rand.nextDouble() * 0.5)),
-        delay: 0.30 * (cx / w) + rand.nextDouble() * 0.08,
-      ));
-    }
-  }
-  return out;
-}
-
-class _DustPainter extends CustomPainter {
-  final List<_DustParticle> particles;
-  final Animation<double> progress;
-
-  _DustPainter(this.particles, this.progress) : super(repaint: progress);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final t = progress.value;
-    final paint = Paint();
-    for (final p in particles) {
-      final local =
-          ((t - p.delay) / (1 - p.delay)).clamp(0.0, 1.0);
-      final pos = p.origin +
-          p.drift * local +
-          Offset(0, -18 * local * local); // gentle lift as it thins
-      final fade = math.pow(1 - local, 1.35).toDouble();
-      paint.color = p.color.withValues(alpha: p.color.a * fade);
-      final s = p.size * (1 - 0.5 * local);
-      canvas.drawRect(
-        Rect.fromCenter(center: pos, width: s, height: s),
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _DustPainter old) =>
-      old.particles != particles;
-}
-
-/// The dissolving row's slot: holds the row's exact footprint
-/// while the snapshot's particles disintegrate (~1.1s), then
-/// collapses the gap smoothly (200ms) and reports [onGone].
-/// [finalizeNow] ends it instantly (a second check-off supersedes
-/// it) — the check-off itself was persisted before the slot ever
-/// appeared, so ending early loses nothing.
-class _DustRowSlot extends StatefulWidget {
-  final ui.Image image;
-  final double height;
+/// The checked-off row's exit slot: holds the row's position in
+/// the list while the row slides out to the right and its height
+/// collapses, so the rows below settle up smoothly. One transition
+/// drives both: 300ms (the app's standard slide duration,
+/// slide_page_route.dart) — the slide uses Curves.easeIn (the app's
+/// exit curve for slides: "easeOut in / easeIn back") and the
+/// height collapse uses Curves.easeInOut (the card's own
+/// expand/collapse curve). No bounce, no spring. [finalizeNow] ends
+/// it instantly (a second check-off supersedes it) — the check-off
+/// itself was persisted before the slot ever appeared, so ending
+/// early loses nothing.
+class _SlideAwayRowSlot extends StatefulWidget {
+  final Widget child;
   final VoidCallback onGone;
 
-  const _DustRowSlot({
+  const _SlideAwayRowSlot({
     super.key,
-    required this.image,
-    required this.height,
+    required this.child,
     required this.onGone,
   });
 
   @override
-  State<_DustRowSlot> createState() => _DustRowSlotState();
+  State<_SlideAwayRowSlot> createState() => _SlideAwayRowSlotState();
 }
 
-class _DustRowSlotState extends State<_DustRowSlot>
+class _SlideAwayRowSlotState extends State<_SlideAwayRowSlot>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1100),
+    duration: const Duration(milliseconds: 300),
   );
-  List<_DustParticle>? _particles;
-  bool _collapsing = false;
+  late final Animation<Offset> _slide = Tween<Offset>(
+    begin: Offset.zero,
+    end: const Offset(1, 0),
+  ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
+  late final Animation<double> _size = Tween<double>(
+    begin: 1,
+    end: 0,
+  ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   bool _gone = false;
 
   @override
   void initState() {
     super.initState();
     _controller.addStatusListener((status) {
-      if (status == AnimationStatus.completed && mounted && !_gone) {
-        setState(() => _collapsing = true);
-      }
+      if (status == AnimationStatus.completed) finalizeNow();
     });
-    unawaited(_sample());
+    _controller.forward();
   }
 
-  Future<void> _sample() async {
-    try {
-      final bd =
-          await widget.image.toByteData(format: ui.ImageByteFormat.rawRgba);
-      if (!mounted) return;
-      if (bd == null) {
-        finalizeNow();
-        return;
-      }
-      setState(() => _particles = _buildDustParticles(widget.image, bd));
-      _controller.forward();
-    } catch (_) {
-      if (mounted) finalizeNow();
-    }
-  }
-
-  /// Ends the dissolve immediately (superseded by a newer
+  /// Ends the slide-away immediately (superseded by a newer
   /// check-off). Idempotent.
   void finalizeNow() {
     if (_gone) return;
@@ -993,26 +818,17 @@ class _DustRowSlotState extends State<_DustRowSlot>
 
   @override
   Widget build(BuildContext context) {
-    final particles = _particles;
-    return AnimatedContainer(
-      key: const Key('dust-slot'),
-      height: _collapsing ? 0 : widget.height,
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeInOut,
-      onEnd: finalizeNow,
-      child: particles == null
-          // Still sampling the snapshot: the row itself stays on
-          // screen (as its captured image) so the footprint never
-          // flashes empty before the dust starts.
-          ? SizedBox.expand(
-              child: RawImage(image: widget.image, fit: BoxFit.fill),
-            )
-          : SizedBox.expand(
-              child: CustomPaint(
-                key: const Key('dust-particles'),
-                painter: _DustPainter(particles, _controller),
-              ),
-            ),
+    return SizeTransition(
+      key: const Key('slide-away-slot'),
+      sizeFactor: _size,
+      axisAlignment: -1,
+      child: ClipRect(
+        child: SlideTransition(
+          key: const Key('slide-away-transition'),
+          position: _slide,
+          child: widget.child,
+        ),
+      ),
     );
   }
 }
