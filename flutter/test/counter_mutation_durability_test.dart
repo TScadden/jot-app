@@ -857,6 +857,71 @@ void main() {
     });
   });
 
+  group('Correction round — Juno C1 residual (field-partial push)',
+      () {
+    testWidgets(
+        'failed first load, then a successful NON-counter save '
+        '(debounced Personal Context push): the counters chip '
+        'still shows Not synced — a field-partial push confirms '
+        'nothing about eventCounters, which were never pulled',
+        (tester) async {
+      final server = FakeCounterServer(counters: _twelveCounters());
+      final store = _session();
+      final storeMap = <String, String>{};
+      final a = server.backend(store);
+
+      // Juno's exact sequence, step 1: the first-ever load fails.
+      // The session sits on never-loaded defaults (_hasRealData
+      // false, counters empty) and the chip honestly says so.
+      server.failAllPulls = true;
+      await _pumpSettings(tester, a, storeMap);
+      expect(find.text('No counters yet.'), findsOneWidget);
+      expect(find.text('Not synced'), findsOneWidget);
+      expect(find.text('Synced'), findsNothing);
+      final pullsAfterFailedLoad = server.pullCount;
+
+      // Step 2: connectivity returns — but NO reload/pull happens.
+      // The user instead saves a NON-counter field: the Personal
+      // Context text, whose debounced save routes through
+      // _pushProfile({'userContext': ...}).
+      server.failAllPulls = false;
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pumpAndSettle();
+      final contextField =
+          find.byKey(const ValueKey('personal_context_field'));
+      await tester.ensureVisible(contextField);
+      await tester.enterText(contextField, 'Recovering well this week.');
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+
+      // The push landed, and it was field-partial: userContext
+      // only, no eventCounters — and still no pull has ever
+      // succeeded (no pull at all since the failed first load).
+      expect(server.pushes, hasLength(1));
+      expect(server.pushes.single.containsKey('userContext'), isTrue);
+      expect(server.pushes.single.containsKey('eventCounters'),
+          isFalse);
+      expect(server.pullCount, pullsAfterFailedLoad,
+          reason: 'the counter list was never pulled in this '
+              'session');
+
+      // Step 3: open Event Counters. Pre-fix, _pushProfile set
+      // _syncConfirmed = true unconditionally, so the chip showed
+      // cloud_done + 'Synced' over the never-pulled default list.
+      await tester.tap(find.text('Event Counters'));
+      await tester.pumpAndSettle();
+      final chip = find.byKey(const ValueKey('counters_sync_chip'));
+      expect(chip, findsOneWidget);
+      expect(
+          find.descendant(of: chip, matching: find.text('Not synced')),
+          findsOneWidget);
+      expect(
+          find.descendant(of: chip, matching: find.text('Synced')),
+          findsNothing);
+      expect(find.text('No counters yet.'), findsOneWidget);
+    });
+  });
+
   group('Correction round — F8 dialog pins', () {
     testWidgets(
         'a failed CREATE counter save keeps the dialog open, fires '
