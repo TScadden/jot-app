@@ -97,6 +97,7 @@ Future<void> pumpChat(
   required List<CoachChatMessage> messages,
   List<Map<String, dynamic>> pullCategories = const [],
   CoachMemoryStore? memory,
+  Set<String>? counterTombstones,
 }) async {
   tester.view.physicalSize = const Size(1200, 2000);
   tester.view.devicePixelRatio = 1.0;
@@ -108,6 +109,9 @@ Future<void> pumpChat(
         backend: backend,
         notificationService: FakeReminderNotificationService(),
         coachMemoryStore: memory,
+        counterTombstoneIds: counterTombstones == null
+            ? null
+            : () async => counterTombstones,
         accountEmail: 'user@example.com',
         sessionId: 's1',
         sessionTitle: 'Chat',
@@ -912,6 +916,52 @@ void main() {
       expect(added['isUp'], isTrue); // a past date counts up (since)
       expect(added['isArchived'], isFalse);
       expect(added['isFavorite'], isFalse); // not the first counter
+      expect(find.text('✓ Counter Created'), findsOneWidget);
+    });
+
+    testWidgets(
+        'Vera F4: approve filters tombstoned rows out of the '
+        'spliced blob — a locally deleted counter is NOT re-pushed '
+        'server-side by a Coach counter approval', (tester) async {
+      final log = <http.BaseRequest>[];
+      final kept = EventCounterItem(
+        id: 'kept',
+        name: 'Kept',
+        targetDate: ms(DateTime(2026, 11, 1)),
+      ).toMap();
+      final dead = EventCounterItem(
+        id: 'dead',
+        name: 'Deleted Earlier',
+        targetDate: ms(DateTime(2026, 12, 1)),
+      ).toMap();
+      // 'dead' was deleted in Settings; its tombstone is active
+      // while a stale pull body still carries the row. The chat
+      // receives the tombstone set through the parent's resolver
+      // seam (the SettingsStore read itself is pinned by the
+      // counter-durability store tests).
+      await pumpChat(
+        tester,
+        backend: backendWith(serverClient(log, profile: {
+          'eventCounters': jsonEncode([kept, dead]),
+        })),
+        counterTombstones: {'dead'},
+        messages: [
+          coachMsg('Track it? [PROPOSE_COUNTER:New thing|2027-01-15]'),
+        ],
+      );
+      await tester.ensureVisible(find.text('Approve'));
+      await tester.tap(find.text('Approve'));
+      await tester.pumpAndSettle();
+
+      final rows = lastProfileField(log, 'eventCounters') as List;
+      final ids = [for (final r in rows) (r as Map)['id']];
+      expect(ids, isNot(contains('dead')),
+          reason: 'the tombstoned id must not be re-pushed');
+      expect(ids.first, 'kept');
+      expect(rows, hasLength(2)); // kept + the new counter
+      final added = rows[1] as Map<String, dynamic>;
+      expect(added['name'], 'New thing');
+      expect(added['isFavorite'], isFalse); // a live counter exists
       expect(find.text('✓ Counter Created'), findsOneWidget);
     });
 

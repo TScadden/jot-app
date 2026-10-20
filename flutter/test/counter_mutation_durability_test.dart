@@ -2,14 +2,21 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:tabs_lab/main.dart';
+import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
+import 'package:tabs_lab/src/data/onboarding_store.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
+import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
+import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 import 'test_helpers.dart';
 
@@ -58,8 +65,14 @@ class FakeCounterServer {
   int pushCount = 0;
   final List<Map<String, dynamic>> pushes = [];
 
-  Completer<void>? _holdCompleter;
-  bool _holdNextPull = false;
+  /// Holds are a QUEUE (correction round, Vera F3 test): each
+  /// armed hold captures the next pull that starts, and
+  /// [releaseHeldPull] releases the OLDEST held pull — so a test
+  /// can hold a pull, arm the NEXT pull's hold too, then release
+  /// them one at a time (two pushes landing during one logical
+  /// pull, across its epoch re-issue).
+  final List<Completer<void>> _heldPulls = [];
+  int _holdsArmed = 0;
 
   FakeCounterServer({
     required List<Map<String, dynamic>> counters,
@@ -70,13 +83,13 @@ class FakeCounterServer {
   /// The next GET /api/sync/pull captures its snapshot, then waits
   /// until [releaseHeldPull] before responding.
   void holdNextPull() {
-    _holdCompleter = Completer<void>();
-    _holdNextPull = true;
+    _holdsArmed++;
   }
 
   void releaseHeldPull() {
-    _holdCompleter?.complete();
-    _holdCompleter = null;
+    if (_heldPulls.isNotEmpty) {
+      _heldPulls.removeAt(0).complete();
+    }
   }
 
   Map<String, dynamic> _pullBodySnapshot() => {
@@ -103,9 +116,11 @@ class FakeCounterServer {
           // Snapshot at request START — a held pull delivers this
           // body even if a push lands while it is in flight.
           final snapshot = _pullBodySnapshot();
-          if (_holdNextPull) {
-            _holdNextPull = false;
-            await _holdCompleter!.future;
+          if (_holdsArmed > 0) {
+            _holdsArmed--;
+            final completer = Completer<void>();
+            _heldPulls.add(completer);
+            await completer.future;
           }
           if (failAllPulls ||
               (failPullsAfterCount != null && n > failPullsAfterCount!)) {
@@ -259,6 +274,72 @@ void main() {
           isTrue,
           reason: 'stale body must never be cached as fresh');
     });
+
+    test(
+        'Vera F3: TWO pushes during one in-flight pull — the second '
+        'lands during the epoch re-issue; the delivered body must '
+        'reflect BOTH pushes (the re-issue loops while the epoch '
+        'moves)', () async {
+      final server = FakeCounterServer(counters: _twelveCounters());
+      final store = _session();
+      final a = server.backend(store);
+      final b = server.backend(store);
+
+      List<Map<String, dynamic>> archivedBody(List<String> ids) =>
+          _twelveCounters()
+              .map((c) => ids.contains(c['id'])
+                  ? {...c, 'isArchived': true}
+                  : c)
+              .toList();
+
+      // B starts a slow pull (snapshot: nothing archived) and it
+      // is held in flight.
+      server.holdNextPull();
+      final slowPull = b.fetchSyncPull();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(server.pullCount, 1);
+
+      // Push 1 lands while pull 1 is in flight.
+      expect(
+          await a.postSyncProfile(
+              {'eventCounters': jsonEncode(archivedBody(['c3']))}),
+          isTrue);
+
+      // Arm the hold for the re-issue pull BEFORE releasing pull
+      // 1, then release: the re-issue starts (snapshotting the
+      // post-push-1 state) and is itself held.
+      server.holdNextPull();
+      server.releaseHeldPull();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(server.pullCount, 2,
+          reason: 'the stale landing was discarded and re-issued');
+
+      // Push 2 lands DURING the re-issue — the window Vera F3
+      // names (bulk archive in quick succession).
+      expect(
+          await a.postSyncProfile(
+              {'eventCounters': jsonEncode(archivedBody(['c3', 'c5']))}),
+          isTrue);
+
+      // The re-issued pull now lands with a body that predates
+      // push 2. The single-re-issue code delivered exactly this
+      // body as fresh; the loop must re-issue AGAIN.
+      server.releaseHeldPull();
+      final body = await slowPull;
+
+      final counters = (jsonDecode(
+              (body!['profile'] as Map)['eventCounters'] as String)
+          as List)
+          .cast<Map<String, dynamic>>();
+      expect(counters.firstWhere((c) => c['id'] == 'c3')['isArchived'],
+          isTrue);
+      expect(counters.firstWhere((c) => c['id'] == 'c5')['isArchived'],
+          isTrue,
+          reason: 'a body predating the second push must never be '
+              'delivered as fresh');
+      expect(server.pullCount, 3,
+          reason: 'initial pull + two epoch re-issues');
+    });
   });
 
   group('Founder sequence (widget, faithful server)', () {
@@ -320,8 +401,16 @@ void main() {
       await _pumpSettings(tester, b, storeMap);
       expect(find.text('ARCHIVED'), findsOneWidget);
       expect(find.text('Counter 3'), findsOneWidget);
+      // F8 (correction round): the archived row renders MUTED —
+      // its name in textSecondary, an active row's in textPrimary.
+      // (Replaces the vacuous isNot(equals(null)) color assertion.)
       final name = tester.widget<Text>(find.text('Counter 3'));
-      expect(name.style!.color, isNot(equals(null)));
+      expect(name.style!.color, NotelColors.textSecondary);
+      final activeName = tester.widget<Text>(find.text('Counter 1'));
+      expect(activeName.style!.color, NotelColors.textPrimary);
+      // Juno C1: a successful load confirms the Synced chip.
+      expect(find.text('Synced'), findsOneWidget);
+      expect(find.text('Not synced'), findsNothing);
       expect(find.text('No counters yet.'), findsNothing);
       // c3 is in the archived card: its archive button now offers
       // Unarchive, like the other archived rows.
@@ -329,6 +418,73 @@ void main() {
       expect(find.byTooltip('Archive counter'), findsNWidgets(11));
       // The no-isArchived-key row still renders after re-entry.
       expect(find.text('Counter 7'), findsOneWidget);
+    });
+
+    testWidgets(
+        'Vera F1: double-tap on archive during an in-flight save '
+        'archives exactly once — the buttons disable while the '
+        'save runs and the intent is absolute, never a fresh-row '
+        'toggle that flips back', (tester) async {
+      final server = FakeCounterServer(counters: _twelveCounters());
+      final store = _session();
+      final storeMap = <String, String>{};
+      final a = server.backend(store);
+
+      await _pumpSettings(tester, a, storeMap);
+      expect(find.text('Counter 3'), findsOneWidget);
+
+      // Hold the save's fresh re-pull so the save stays in flight
+      // across the second tap.
+      server.holdNextPull();
+      await tester.tap(find.byKey(const ValueKey('counter_archive_c3')));
+      await tester.pump();
+      await tester.pump();
+
+      // While the save runs, every counter action button is
+      // disabled (the save-in-flight guard).
+      expect(
+          tester
+              .widget<IconButton>(
+                  find.byKey(const ValueKey('counter_archive_c3')))
+              .onPressed,
+          isNull);
+      expect(
+          tester
+              .widget<IconButton>(
+                  find.byKey(const ValueKey('counter_edit_c3')))
+              .onPressed,
+          isNull);
+      expect(
+          tester
+              .widget<IconButton>(
+                  find.byKey(const ValueKey('counter_end_c3')))
+              .onPressed,
+          isNull);
+
+      // The double-tap (and a stray End tap) hit disabled buttons:
+      // nothing queues behind the running save.
+      await tester.tap(find.byKey(const ValueKey('counter_archive_c3')));
+      await tester.tap(find.byKey(const ValueKey('counter_end_c4')));
+      await tester.pump();
+
+      server.releaseHeldPull();
+      await tester.pumpAndSettle();
+
+      // Exactly ONE push fired, and it archived c3 — with the old
+      // fresh-row toggle, the second save un-archived it again.
+      expect(server.pushCount, 1);
+      final serverC3 =
+          server.serverCounters.firstWhere((c) => c['id'] == 'c3');
+      expect(serverC3['isArchived'], isTrue);
+      expect(server.serverCounters.any((c) => c['id'] == 'c4'), isTrue);
+      expect(find.text('ARCHIVED'), findsOneWidget);
+      // The guard cleared when the save finished: buttons live again.
+      expect(
+          tester
+              .widget<IconButton>(
+                  find.byKey(const ValueKey('counter_archive_c3')))
+              .onPressed,
+          isNotNull);
     });
 
     testWidgets(
@@ -452,6 +608,10 @@ void main() {
       // c3 is still active (its button still offers Archive).
       expect(find.byTooltip('Archive counter'), findsNWidgets(12));
       expect(find.text('No counters yet.'), findsNothing);
+      // Juno C1: an aborted save drops the Synced chip until the
+      // next successful pull/push.
+      expect(find.text('Synced'), findsNothing);
+      expect(find.text('Not synced'), findsOneWidget);
     });
   });
 
@@ -578,6 +738,362 @@ void main() {
       expect(
           await store.getDeletedCounterIds(ownerEmail: 'other@tabs.app'),
           isEmpty);
+    });
+  });
+
+  group('Correction round — Vera F2 (Sync Now / Recover parity)', () {
+    testWidgets(
+        'Sync Now runs the tombstone post-pass: a deleted counter '
+        'with an active tombstone does NOT reappear after Sync Now '
+        'even when the synced body still carries its id',
+        (tester) async {
+      final server = FakeCounterServer(counters: _twelveCounters());
+      final store = _session();
+      final storeMap = <String, String>{};
+      final a = server.backend(store);
+
+      await _pumpSettings(tester, a, storeMap);
+      // Delete c5 for real: the server drops it, the tombstone is
+      // recorded locally.
+      await tester.tap(find.byKey(const ValueKey('counter_end_c5')));
+      await tester.pumpAndSettle();
+      expect(server.serverCounters.any((c) => c['id'] == 'c5'), isFalse);
+      expect(
+          await fakeStore(storeMap)
+              .getDeletedCounterIds(ownerEmail: _email),
+          {'c5'});
+
+      // The server body goes stale (a lagging replica still
+      // carries c5) — exactly the body a Sync Now would land.
+      server.eventCountersRaw = jsonEncode(_twelveCounters());
+
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sync Settings'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('sync_now_button')));
+      await tester.pumpAndSettle();
+      expect(find.text('Sync complete!'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Event Counters'));
+      await tester.pumpAndSettle();
+      // The pre-fix _manualSync set _data straight from the pull:
+      // c5 was back. The post-pass must have filtered it.
+      expect(find.text('Counter 5'), findsNothing);
+      expect(find.byKey(const ValueKey('counter_row_c5')), findsNothing);
+      expect(find.text('Counter 4'), findsOneWidget);
+      // Tombstone still active: the synced body still carries c5.
+      expect(
+          await fakeStore(storeMap)
+              .getDeletedCounterIds(ownerEmail: _email),
+          {'c5'});
+      // Juno C1: the successful sync confirms the chip.
+      expect(find.text('Synced'), findsOneWidget);
+    });
+
+    testWidgets(
+        'Defect B side door: load fails at open, Sync Now succeeds, '
+        'then a save fails AND its reload pull fails — the screen '
+        'keeps the SYNCED data instead of resetting to defaults',
+        (tester) async {
+      final server = FakeCounterServer(counters: _twelveCounters());
+      final store = _session();
+      final storeMap = <String, String>{};
+      final a = server.backend(store);
+
+      // First-ever load fails: honest defaults, not-synced chip.
+      server.failAllPulls = true;
+      await _pumpSettings(tester, a, storeMap);
+      expect(find.text('No counters yet.'), findsOneWidget);
+      expect(find.text('Not synced'), findsOneWidget);
+      expect(find.text('Synced'), findsNothing);
+
+      // Sync Now succeeds and becomes this session's real data.
+      server.failAllPulls = false;
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sync Settings'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('sync_now_button')));
+      await tester.pumpAndSettle();
+      expect(find.text('Sync complete!'), findsOneWidget);
+      // Flush the sync snack so the save-error snack below is the
+      // one in the tree when asserted (the messenger QUEUES snacks;
+      // a queued one is not yet rendered).
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Event Counters'));
+      await tester.pumpAndSettle();
+      for (var i = 1; i <= 12; i++) {
+        expect(find.text('Counter $i'), findsOneWidget);
+      }
+      expect(find.text('Synced'), findsOneWidget);
+
+      // A save whose push fails and whose reload pull ALSO fails.
+      // Pre-fix, _manualSync never set _hasRealData, so the failed
+      // reload reset the screen to factory defaults — every
+      // counter gone. The save's own fresh pull still succeeds.
+      server.failPush = true;
+      server.failPullsAfterCount = server.pullCount + 1;
+      await tester.tap(find.byKey(const ValueKey('counter_end_c5')));
+      await tester.pumpAndSettle();
+
+      expect(
+          find.text('Could not save. Check your connection and try again.'),
+          findsOneWidget);
+      expect(find.text('No counters yet.'), findsNothing);
+      for (var i = 1; i <= 12; i++) {
+        expect(find.text('Counter $i'), findsOneWidget,
+            reason: 'Counter $i must survive on the synced '
+                'last-known data');
+      }
+      // Juno C1: kept-data after a failed load/save is NOT synced.
+      expect(find.text('Not synced'), findsOneWidget);
+      expect(find.text('Synced'), findsNothing);
+    });
+  });
+
+  group('Correction round — F8 dialog pins', () {
+    testWidgets(
+        'a failed CREATE counter save keeps the dialog open, fires '
+        'no push, and creates nothing', (tester) async {
+      final server = FakeCounterServer(counters: _twelveCounters());
+      final store = _session();
+      final storeMap = <String, String>{};
+      final a = server.backend(store);
+
+      await _pumpSettings(tester, a, storeMap);
+      await tester.tap(find.byKey(const ValueKey('add_counter')));
+      await tester.pumpAndSettle();
+      expect(find.text('New Counter'), findsOneWidget);
+      await tester.enterText(
+          find.byKey(const ValueKey('counter_name_field')), 'Dentist');
+
+      // The save's fresh pull fails → the save aborts.
+      server.failAllPulls = true;
+      final pushesBefore = server.pushCount;
+      await tester.tap(find.byKey(const ValueKey('counter_save')));
+      await tester.pumpAndSettle();
+
+      expect(server.pushCount, pushesBefore);
+      // The dialog is STILL open with the typed name intact.
+      expect(find.text('New Counter'), findsOneWidget);
+      expect(
+          tester
+              .widget<TextField>(
+                  find.byKey(const ValueKey('counter_name_field')))
+              .controller!
+              .text,
+          'Dentist');
+      expect(server.serverCounters.length, 12);
+    });
+
+    testWidgets(
+        'a failed EDIT counter save keeps the dialog open and the '
+        'server row unchanged', (tester) async {
+      final server = FakeCounterServer(counters: _twelveCounters());
+      final store = _session();
+      final storeMap = <String, String>{};
+      final a = server.backend(store);
+
+      await _pumpSettings(tester, a, storeMap);
+      await tester.tap(find.byKey(const ValueKey('counter_edit_c3')));
+      await tester.pumpAndSettle();
+      expect(find.text('Edit Counter'), findsOneWidget);
+      await tester.enterText(
+          find.byKey(const ValueKey('counter_name_field')), 'Renamed');
+
+      server.failAllPulls = true;
+      final pushesBefore = server.pushCount;
+      await tester.tap(find.byKey(const ValueKey('counter_save')));
+      await tester.pumpAndSettle();
+
+      expect(server.pushCount, pushesBefore);
+      expect(find.text('Edit Counter'), findsOneWidget);
+      expect(
+          server.serverCounters.firstWhere((c) => c['id'] == 'c3')['name'],
+          'Counter 3');
+    });
+  });
+
+  group('Correction round — Juno C2 (tombstone account separation)',
+      () {
+    test('a null-owner read of a BOUND set returns empty and does '
+        'NOT drop it; a null-owner read of an UNOWNED set returns '
+        'it as-is', () async {
+      final map = <String, String>{};
+      final store = fakeStore(map);
+      await store.setDeletedCounterIds({'c5'},
+          ownerEmail: 'first@tabs.app');
+      // The Research → Settings case: an email-less reader must
+      // not see (and so cannot apply) another account's bound set.
+      expect(await store.getDeletedCounterIds(), isEmpty);
+      // ...and the set survives for its real owner.
+      expect(
+          await store.getDeletedCounterIds(ownerEmail: 'first@tabs.app'),
+          {'c5'});
+
+      final map2 = <String, String>{};
+      final store2 = fakeStore(map2);
+      await store2.setDeletedCounterIds({'c7'});
+      expect(await store2.getDeletedCounterIds(), {'c7'});
+    });
+
+    test('clearDeletedCounterIds wipes exactly the two tombstone '
+        'keys and leaves the other settings keys', () async {
+      final map = <String, String>{};
+      final store = fakeStore(map);
+      await store.setDeletedCounterIds({'c5'}, ownerEmail: _email);
+      await store.setThemeMode('LIGHT');
+      await store.clearDeletedCounterIds();
+      expect(map.containsKey(SettingsStore.deletedCounterIdsKey),
+          isFalse);
+      expect(map.containsKey(SettingsStore.deletedCounterOwnerKey),
+          isFalse);
+      expect(map[SettingsStore.themeModeKey], 'LIGHT');
+      expect(await store.getDeletedCounterIds(ownerEmail: _email),
+          isEmpty);
+    });
+
+    testWidgets(
+        'cross-account Research surface: Settings constructed with '
+        'NO email does not apply a previous account\'s bound '
+        'tombstones — the counter renders', (tester) async {
+      final server = FakeCounterServer(counters: _twelveCounters());
+      final store = _session();
+      final storeMap = <String, String>{};
+      final a = server.backend(store);
+      // A previous account deleted c5 on this device; its bound
+      // tombstone set is on disk. The server (this account) still
+      // carries c5 as a live counter.
+      await fakeStore(storeMap).setDeletedCounterIds({'c5'},
+          ownerEmail: 'previous@tabs.app');
+
+      // The Research → Settings construction: no email threaded.
+      tester.view.physicalSize = const Size(1080, 3400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(
+        home: SettingsScreen(
+          backend: a,
+          settingsStore: fakeStore(storeMap),
+          notificationService: FakeReminderNotificationService(),
+          openEventCounters: true,
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Counter 5'), findsOneWidget);
+      expect(find.byKey(const ValueKey('counter_row_c5')),
+          findsOneWidget);
+      // The previous account's set was NOT dropped by the
+      // email-less read either — it is intact for its owner.
+      expect(
+          await fakeStore(storeMap).getDeletedCounterIds(
+              ownerEmail: 'previous@tabs.app'),
+          {'c5'});
+    });
+
+    testWidgets(
+        'forced session expiry wipes the tombstone keys (and only '
+        'those) from SettingsStore', (tester) async {
+      // The AppFlow expiry handler constructs a REAL SettingsStore,
+      // so the secure-storage channel is mocked with an in-memory
+      // map seeded with the expired account's tombstones.
+      final secure = <String, String>{
+        SettingsStore.deletedCounterIdsKey: '["c5"]',
+        SettingsStore.deletedCounterOwnerKey: _email,
+        SettingsStore.themeModeKey: 'LIGHT',
+      };
+      const channel =
+          MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        final args = call.arguments is Map
+            ? (call.arguments as Map).cast<String, dynamic>()
+            : const <String, dynamic>{};
+        switch (call.method) {
+          case 'read':
+            return secure[args['key']];
+          case 'write':
+            secure['${args['key']}'] = '${args['value']}';
+            return null;
+          case 'delete':
+            secure.remove(args['key']);
+            return null;
+          case 'deleteAll':
+            secure.clear();
+            return null;
+          case 'readAll':
+            return Map<String, String>.of(secure);
+          case 'containsKey':
+            return secure.containsKey(args['key']);
+        }
+        return null;
+      });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null);
+        TabsBackend.onSessionExpired = null;
+      });
+
+      final session = FakeSessionStore()
+        ..token = 'fake-token-expiry'
+        ..refreshToken = 'fake-refresh-expiry'
+        ..email = _email;
+      await tester.pumpWidget(MaterialApp(
+        home: AppFlow(
+          authApi: AuthApiClient(
+              client: MockClient((_) async => http.Response('{}', 200))),
+          sessionStore: session,
+          onboardingStore: OnboardingStore.withStorage(
+            read: (k) async => null,
+            write: (k, v) async {},
+            delete: (k) async {},
+          ),
+          weatherApi: WeatherApiClient(
+              client: MockClient((request) async {
+            if (request.url.host == 'ipinfo.io') {
+              return http.Response(
+                  '{"city":"Orem","loc":"40.2969,-111.6946","country":"US"}',
+                  200);
+            }
+            return http.Response(
+                '{"current":{"temperature_2m":61.0,"weather_code":2,"is_day":1}}',
+                200);
+          })),
+          notificationService: FakeReminderNotificationService(),
+        ),
+      ));
+      // Past the splash; the legacy session (no onboarding state)
+      // restores to Home.
+      await tester.pump(const Duration(milliseconds: 1850));
+      await tester.pump(const Duration(milliseconds: 650));
+      await tester.pump();
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(secure.containsKey(SettingsStore.deletedCounterIdsKey),
+          isTrue);
+
+      // The backend declares the session expired.
+      TabsBackend.onSessionExpired?.call();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump();
+
+      expect(find.byType(WelcomeScreen), findsOneWidget);
+      expect(secure.containsKey(SettingsStore.deletedCounterIdsKey),
+          isFalse,
+          reason: 'expiry must wipe the tombstone ids key');
+      expect(secure.containsKey(SettingsStore.deletedCounterOwnerKey),
+          isFalse,
+          reason: 'expiry must wipe the tombstone owner key');
+      expect(secure[SettingsStore.themeModeKey], 'LIGHT',
+          reason: 'the targeted wipe leaves device prefs alone');
+      await tester.pump(const Duration(milliseconds: 300));
     });
   });
 }
