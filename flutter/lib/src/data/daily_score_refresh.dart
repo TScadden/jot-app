@@ -112,19 +112,28 @@ class DailyScoreRefresher {
   final HealthHistoryStore store;
   final ScoreCapture _capture;
 
+  DailyScoreRefresher._(this.store, this._capture);
+
   /// Production wiring: the capture runs through a
   /// [HealthHistorySync] bound to [store], so the forced capture,
   /// its diagnostics, and the rescore all act on the same store
   /// the screen is showing.
-  DailyScoreRefresher({required this.store, HealthHistorySync? sync})
-      : _capture = (sync ?? HealthHistorySync.withDeps(store: store)).capture;
+  factory DailyScoreRefresher({
+    required HealthHistoryStore store,
+    HealthHistorySync? sync,
+  }) =>
+      DailyScoreRefresher._(
+        store,
+        (sync ?? HealthHistorySync.withDeps(store: store)).capture,
+      );
 
   /// Test wiring: inject the capture directly (a fake that lands
-  /// new data in [store], fails, or stalls, as the case needs).
-  DailyScoreRefresher.withCapture({
-    required this.store,
+  /// new data in the store, fails, or stalls, as the case needs).
+  factory DailyScoreRefresher.withCapture({
+    required HealthHistoryStore store,
     required ScoreCapture capture,
-  }) : _capture = capture;
+  }) =>
+      DailyScoreRefresher._(store, capture);
 
   /// Re-scores [date] per the semantics in the file header. Never
   /// throws — a refresh failure must never break the detail
