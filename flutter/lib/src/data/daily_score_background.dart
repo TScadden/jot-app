@@ -140,8 +140,8 @@ class DailyScoreBackgroundOutcome {
   /// The day the single notification named, when one was posted.
   final String? notifiedDate;
 
-  /// Why the run stopped early, when it did: 'no-store',
-  /// 'grant-absent', or 'error'. Null for a full run.
+  /// Why the run stopped early, when it did: 'grant-absent' or
+  /// 'error'. Null for a full run.
   final String? skippedReason;
 
   const DailyScoreBackgroundOutcome({
@@ -352,10 +352,9 @@ class DailyScoreBackgroundRunner {
   Future<DailyScoreBackgroundOutcome> run() async {
     try {
       await _store.warmFromDisk();
-      if ((await _store.readAll()).isEmpty) {
-        return const DailyScoreBackgroundOutcome(
-            skippedReason: 'no-store');
-      }
+      // An empty store (fresh install, post-logout) is NOT an
+      // early exit: the first-ever capture is exactly what fills
+      // it, and every other path over an empty store is a no-op.
       final before = await _scoredDates();
 
       // Channel probe FIRST: it decides what the grant answer can

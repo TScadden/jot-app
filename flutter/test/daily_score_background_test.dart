@@ -352,10 +352,12 @@ void main() {
       expect(notifier.calls.single.date, '2026-10-19');
     });
 
-    test('empty store: the run is a silent no-op', () async {
+    test('empty store: the run is a silent no-op (no scores, no '
+        'notification)', () async {
       final outcome =
           await _runner(store: store, hc: hc, notifier: notifier).run();
-      expect(outcome.skippedReason, 'no-store');
+      expect(outcome.newlyScoredDates, isEmpty);
+      expect(outcome.notifiedDate, isNull);
       expect(notifier.calls, isEmpty);
     });
   });
