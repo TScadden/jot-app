@@ -5,10 +5,13 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:tabs_lab/src/data/billing_service.dart';
 import 'package:tabs_lab/src/data/daily_score.dart';
+import 'package:tabs_lab/src/data/daily_score_refresh.dart'
+    show ScoreCapture;
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart'
     show historyDateStr;
 import 'package:tabs_lab/src/data/health_history_store.dart';
+import 'package:tabs_lab/src/data/health_history_sync.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/launch_trace.dart';
@@ -125,6 +128,12 @@ class HomeScreen extends StatefulWidget {
   /// shared history store singleton.
   final HealthHistoryStore? healthHistoryStore;
 
+  /// Daily Score snapshot capture (founder amendment, Oct 20,
+  /// 2026) — injectable for tests; defaults to a non-forced capture
+  /// through a [HealthHistorySync] bound to the score store, run
+  /// before the score load computes anything.
+  final ScoreCapture? dailyScoreSnapshotCapture;
+
   /// The app-owned billing service (single instance), forwarded
   /// to the Settings screen pushed from the counter slot.
   final BillingService? billingService;
@@ -139,6 +148,7 @@ class HomeScreen extends StatefulWidget {
       this.tabsBackend,
       this.onLogout,
       this.healthHistoryStore,
+      this.dailyScoreSnapshotCapture,
       this.billingService});
 
   @override
@@ -201,29 +211,55 @@ class _HomeScreenState extends State<HomeScreen> {
   TabsBackend get _backend => widget.tabsBackend ?? _healthRepo.backend;
 
   // ── R70 Daily Score ─────────────────────────────────────────────
-  /// Today's persisted Daily Score; null while the baseline is
-  /// still building (the header circle renders its building state
-  /// — never a number from nothing). Loaded behind first paint:
-  /// the compute trigger runs over the history store, then today's
-  /// row is read back.
+  /// Today's persisted Daily Score; null while no score exists
+  /// for today (the header circle renders its building or pending
+  /// state — never a number from nothing). Loaded behind first
+  /// paint: the snapshot capture runs first, the compute trigger
+  /// runs over the history store, then today's row is read back.
   int? _todayScore;
+
+  /// True when today is unscored but the score system is active
+  /// (a scored day exists, or a component already counts for
+  /// today): the completeness gate's pending state — today's
+  /// score is waiting for today's health data to arrive. False
+  /// while the baseline itself is still building.
+  bool _todayScorePending = false;
 
   Future<void> _loadDailyScore() async {
     try {
       final store = widget.healthHistoryStore ?? HealthHistoryStore.instance;
       final today = historyDateStr(DateTime.now());
-      // R70 fix pass (Vera F2) — TODAY RULE (see daily_score.dart):
-      // Home is an early trigger, so its compute run is cut off
-      // BEFORE today — it can backfill past days but must never
-      // freeze today as a partial score. Today is scored only by
-      // the post-capture engine run; this method then READS that
-      // persisted score back for the circle below.
+      // SNAPSHOT-FIRST (founder amendment, Oct 20, 2026; TODAY
+      // RULE in daily_score.dart): before computing anything,
+      // await a Health Connect capture — the snapshot — so a new
+      // score is never computed from stale store state when
+      // fresher data is obtainable. The capture stays under its
+      // normal rules (NON-forced, 6h throttle; only the score
+      // refresh button forces one): when it is throttled or
+      // skipped, this load scores from the store exactly as the
+      // last completed capture left it. The capture's own
+      // post-capture engine run is the only automatic run that
+      // may score today, and only when today is complete.
+      final snapshot = widget.dailyScoreSnapshotCapture ??
+          HealthHistorySync.withDeps(store: store).capture;
+      await snapshot(force: false);
+      // Home's OWN compute run is still cut off BEFORE today — it
+      // backfills past days (day-boundary fallback) but never
+      // scores today itself.
       await DailyScoreEngine(store: store)
           .computeMissingScores(beforeDate: today);
-      final row = (await store.readAll())[today];
+      final all = await store.readAll();
+      final row = all[today];
       if (!mounted) return;
-      if (row?.dailyScore != _todayScore) {
-        setState(() => _todayScore = row?.dailyScore);
+      final score = row?.dailyScore;
+      final pending = score == null &&
+          (all.values.any((r) => r.dailyScore != null) ||
+              computeDailyScore(all, today) != null);
+      if (score != _todayScore || pending != _todayScorePending) {
+        setState(() {
+          _todayScore = score;
+          _todayScorePending = pending;
+        });
       }
     } catch (_) {
       // The circle keeps its building state — never a fake number.
@@ -642,9 +678,12 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           // R70 Daily Score — the score circle sits BESIDE the
           // weather icon (founder spec). Null score = the
-          // baseline-building state. Tap opens the score history.
+          // baseline-building state, or the pending state while
+          // today waits for its data to complete. Tap opens the
+          // score history.
           DailyScoreCircle(
             score: _todayScore,
+            pending: _todayScorePending,
             onTap: () => unawaited(_openDailyScore()),
           ),
           // Weather: tap asks for device location (system dialog) and

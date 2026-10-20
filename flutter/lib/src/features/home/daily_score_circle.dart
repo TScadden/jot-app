@@ -218,14 +218,28 @@ class _ScoreFacePainter extends CustomPainter {
 /// The Home header pairing: the face beside the weather action,
 /// with the "Daily Score" label and the band-word chip next to it
 /// (concept language at the real header's scale). A null [score]
-/// renders the baseline-building state — pulsing empty face, dash,
-/// "Building" chip, no number.
+/// renders an honest no-number state — pulsing empty face, dash:
+/// the baseline-building state ("Building" chip) by default, or,
+/// when [pending] is set, the completeness-gate pending state
+/// ("Waiting" chip): the baseline exists but today's score is
+/// waiting for today's health data to arrive (founder amendment,
+/// Oct 20, 2026).
 class DailyScoreCircle extends StatefulWidget {
-  /// Today's persisted score, or null while the baseline builds.
+  /// Today's persisted score, or null while no score exists.
   final int? score;
+
+  /// True when today is unscored because it is not yet complete
+  /// (the gate's pending state), rather than because the baseline
+  /// is still building. Only meaningful when [score] is null.
+  final bool pending;
   final VoidCallback? onTap;
 
-  const DailyScoreCircle({super.key, required this.score, this.onTap});
+  const DailyScoreCircle({
+    super.key,
+    required this.score,
+    this.pending = false,
+    this.onTap,
+  });
 
   @override
   State<DailyScoreCircle> createState() => _DailyScoreCircleState();
@@ -294,7 +308,9 @@ class _DailyScoreCircleState extends State<DailyScoreCircle>
     return Semantics(
       button: true,
       label: score == null
-          ? 'Daily Score, building baseline'
+          ? (widget.pending
+              ? 'Daily Score, waiting for today\'s health data'
+              : 'Daily Score, building baseline')
           : 'Daily Score $score, ${band!.label}',
       child: InkWell(
         onTap: widget.onTap,
@@ -332,7 +348,7 @@ class _DailyScoreCircleState extends State<DailyScoreCircle>
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        band?.label ?? 'Building',
+                        band?.label ?? (widget.pending ? 'Waiting' : 'Building'),
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.bold,

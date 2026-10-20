@@ -7,6 +7,7 @@ import 'package:tabs_lab/src/data/daily_score_refresh.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart'
     show historyDateStr;
 import 'package:tabs_lab/src/data/health_history_store.dart';
+import 'package:tabs_lab/src/data/health_history_sync.dart';
 import 'package:tabs_lab/src/features/home/daily_score_circle.dart';
 import 'package:tabs_lab/src/features/home/daily_score_vocabulary.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart'
@@ -95,7 +96,14 @@ class DailyScoreScreen extends StatefulWidget {
   /// Defaults to a [DailyScoreRefresher] over the screen's store.
   final DailyScoreRefresher? refresher;
 
-  const DailyScoreScreen({super.key, this.store, this.refresher});
+  /// Injectable for tests: the snapshot capture run before the
+  /// history's compute trigger (founder amendment, Oct 20, 2026).
+  /// Defaults to a non-forced capture through a sync bound to the
+  /// screen's store.
+  final ScoreCapture? snapshotCapture;
+
+  const DailyScoreScreen(
+      {super.key, this.store, this.refresher, this.snapshotCapture});
 
   @override
   State<DailyScoreScreen> createState() => _DailyScoreScreenState();
@@ -115,11 +123,22 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
 
   Future<void> _load() async {
     try {
-      // Opening the history also runs the compute trigger, so a
-      // day whose inputs landed since the last Home load appears.
-      // R70 fix pass (Vera F2) — TODAY RULE (see daily_score.dart):
-      // this is an early trigger, cut off BEFORE today; only the
-      // post-capture engine run scores the current day.
+      // SNAPSHOT-FIRST (founder amendment, Oct 20, 2026): opening
+      // the history first awaits a Health Connect capture — the
+      // snapshot — so a new score is never computed from stale
+      // store state when fresher data is obtainable. The capture
+      // stays under its normal rules (NON-forced, 6h throttle;
+      // only the day detail's refresh button forces one): when it
+      // is throttled or skipped, this load scores from the store
+      // exactly as the last completed capture left it. The
+      // capture's own post-capture run is the only automatic run
+      // that may score today, and only when today is complete.
+      final snapshot = widget.snapshotCapture ??
+          HealthHistorySync.withDeps(store: _store).capture;
+      await snapshot(force: false);
+      // This screen's own compute run stays cut off BEFORE today
+      // (TODAY RULE, daily_score.dart): it backfills past days
+      // under the day-boundary fallback but never scores today.
       await DailyScoreEngine(store: _store).computeMissingScores(
           beforeDate: historyDateStr(DateTime.now()));
       final all = await _store.readAll();
@@ -447,11 +466,13 @@ const Map<String, String> _captureMetricLabels = {
 /// Day detail: the day's persisted score, its trend vs the
 /// previous scored day, and per-component inputs vs baselines.
 ///
-/// A scored day also carries the founder-directed refresh control
+/// The screen also carries the founder-directed refresh control
 /// (Oct 20, 2026): tapping it force-captures Health Connect and
 /// re-scores THIS day from the store's updated data, through
 /// [DailyScoreRefresher] — the one user-initiated exception to
-/// write-once scoring. Automatic behavior is unchanged.
+/// write-once scoring, and exempt from the completeness gate, so
+/// it also appears on unscored days and on today's pending state.
+/// Automatic behavior is unchanged.
 class DailyScoreDayScreen extends StatefulWidget {
   final HealthHistoryStore store;
   final String date;
@@ -482,11 +503,13 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
 
   /// Refresh state: in-flight flag (the control disables and shows
   /// progress; further taps are ignored), the last capture-failure
-  /// code to surface, and the per-metric failure codes the last
-  /// refresh's capture newly recorded.
+  /// code to surface, the per-metric failure codes the last
+  /// refresh's capture newly recorded, and the honest no-score
+  /// notice when a refresh could not produce a score.
   bool _refreshing = false;
   String? _refreshErrorCode;
   Map<String, String> _refreshFailureCodes = const {};
+  String? _refreshNotice;
 
   @override
   void initState() {
@@ -534,10 +557,13 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
       _refreshing = true;
       _refreshErrorCode = null;
       _refreshFailureCodes = const {};
+      _refreshNotice = null;
     });
     final outcome = await _refresher.refresh(widget.date);
     if (!mounted) return;
     if (outcome.status == DailyScoreRefreshStatus.captureFailed) {
+      // Any existing score stays untouched; a pending today
+      // simply stays pending. The error shows plainly either way.
       setState(() {
         _refreshing = false;
         _refreshErrorCode = dailyScoreRefreshCaptureFailedCode;
@@ -548,12 +574,20 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
     // Re-read the store first (the refreshed record is what the
     // screen renders), then surface any per-metric read failures
     // the capture recorded — the rescore proceeded from store
-    // truth, so these explain what could NOT be refreshed.
+    // truth, so these explain what could NOT be refreshed. A
+    // no-change outcome (no score could be computed even from the
+    // fresh snapshot) surfaces as an honest notice, never a
+    // fabricated number.
     await _load();
     if (!mounted) return;
     setState(() {
       _refreshing = false;
       _refreshFailureCodes = outcome.newFailureCodes;
+      _refreshNotice =
+          outcome.status == DailyScoreRefreshStatus.noChange
+              ? 'Still no score for this day: not enough health '
+                  'data is stored for it yet.'
+              : null;
     });
   }
 
@@ -566,11 +600,75 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
     );
   }
 
+  /// The refresh outcome lines, shared by the scored detail and
+  /// the no-score state: a capture failure (the score — or the
+  /// pending state — was left untouched), the per-metric failures
+  /// the last capture newly recorded, and the no-score notice.
+  List<Widget> _refreshNotices() => [
+        if (_refreshErrorCode != null) ...[
+          const SizedBox(height: 16),
+          Text(
+            'Refresh failed. This score was not changed. '
+            '[$_refreshErrorCode]',
+            style: const TextStyle(fontSize: 12, color: NotelColors.error),
+          ),
+        ],
+        if (_refreshFailureCodes.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text(
+            'Some data could not be refreshed: '
+            '${_refreshFailureCodes.entries.map((e) => '${_captureMetricLabels[e.key] ?? e.key} [${e.value}]').join(', ')}'
+            '. This score was updated from the data that is stored.',
+            style: const TextStyle(fontSize: 12, color: NotelColors.warning),
+          ),
+        ],
+        if (_refreshNotice != null) ...[
+          const SizedBox(height: 16),
+          Text(
+            _refreshNotice!,
+            style: const TextStyle(
+                fontSize: 12, color: NotelColors.textSecondary),
+          ),
+        ],
+      ];
+
+  /// The no-score state. For TODAY this is the completeness
+  /// gate's pending state (founder amendment, Oct 20, 2026): an
+  /// honest "waiting for data" message, no number — the bare
+  /// "No score stored" line is not enough for today. Past
+  /// unscored days keep the plain line. Either way the refresh
+  /// control stays available: a tap scores the day immediately
+  /// from a forced snapshot when any data exists for it.
+  Widget _buildNoScore() {
+    final isToday = widget.date == historyDateStr(DateTime.now());
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text(
+          isToday
+              ? 'Today\'s score is waiting for today\'s health data '
+                  'to arrive. It will be scored once sleep, HRV, and '
+                  'resting heart rate have all come in. Or tap '
+                  'refresh to score it now from the data already '
+                  'stored.'
+              : 'No score stored for this day.',
+          style: const TextStyle(
+              fontSize: 13, color: NotelColors.textSecondary),
+        ),
+        ..._refreshNotices(),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // The refresh control exists only for a scored day — an
-    // unscored day has no score to reload.
-    final showRefresh = _loaded && _row?.dailyScore != null;
+    // The refresh control shows in every loaded state where a
+    // score could result (founder amendment, Oct 20, 2026):
+    // scored days, unscored days with a store row, and today's
+    // pending state — a forced snapshot can land data for any of
+    // them, and a tap that still finds nothing ends in the honest
+    // no-score state with the outcome surfaced.
+    final showRefresh = _loaded;
     return Scaffold(
       backgroundColor: NotelColors.background,
       appBar: AppBar(
@@ -606,14 +704,7 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
       body: !_loaded
           ? const SizedBox.shrink()
           : _row?.dailyScore == null
-              ? const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text(
-                    'No score stored for this day.',
-                    style: TextStyle(
-                        fontSize: 13, color: NotelColors.textSecondary),
-                  ),
-                )
+              ? _buildNoScore()
               : _buildDetail(),
     );
   }
@@ -738,23 +829,7 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
             ],
           ),
         ),
-        if (_refreshErrorCode != null) ...[
-          const SizedBox(height: 16),
-          Text(
-            'Refresh failed. This score was not changed. '
-            '[$_refreshErrorCode]',
-            style: const TextStyle(fontSize: 12, color: NotelColors.error),
-          ),
-        ],
-        if (_refreshFailureCodes.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          Text(
-            'Some data could not be refreshed: '
-            '${_refreshFailureCodes.entries.map((e) => '${_captureMetricLabels[e.key] ?? e.key} [${e.value}]').join(', ')}'
-            '. This score was updated from the data that is stored.',
-            style: const TextStyle(fontSize: 12, color: NotelColors.warning),
-          ),
-        ],
+        ..._refreshNotices(),
         const SizedBox(height: 16),
         const Text(
           'This score reflects the data stored for this day. It '
