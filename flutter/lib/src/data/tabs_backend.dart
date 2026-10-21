@@ -44,12 +44,40 @@ class TabsBackend {
   Map<String, dynamic>? _syncPullCache;
   DateTime? _syncPullAt;
 
+  /// The profile-mutation epoch at which the fetch that produced
+  /// [_syncPullCache] STARTED (see [_profileMutationEpoch]). The
+  /// cached body is served only while this still equals the current
+  /// epoch: a body whose fetch started before the latest successful
+  /// profile push is never served as fresh, on ANY instance.
+  int _syncPullCacheEpoch = -1;
+
+  /// Counter-mutation durability (Oct 2026) — app-wide profile
+  /// mutation epoch. STATIC for the same reason as the Round 31
+  /// refresh slot and the Round 60 in-flight pull slot: the app
+  /// constructs ~20 [TabsBackend] instances over ONE stored
+  /// session, so a per-instance counter could not see a push made
+  /// through another instance.
+  ///
+  /// Every SUCCESSFUL [postSyncProfile] bumps it. A sync-pull fetch
+  /// records the epoch when it STARTS; if the epoch has moved by
+  /// the time the body lands, that body predates the push, so it is
+  /// discarded and the GET is re-issued exactly once (bounded — no
+  /// loop) — see [_getSyncPullEpochChecked]. Before this, a GET
+  /// that started before a profile push could land after it and be
+  /// stamped fresh for the full 5-minute TTL by [fetchSyncPull];
+  /// a surface loading from that instance then rendered pre-push
+  /// state (the founder's archive/delete "reverting"), and a later
+  /// whole-blob save built on that snapshot overwrote the server
+  /// and made the revert permanent.
+  static int _profileMutationEpoch = 0;
+
   /// Round 19 — drops the cached sync pull so the next read hits the
   /// server. Called after local writes (log save/repeat/delete,
   /// category add/delete) so counts and lists refresh honestly.
   void invalidateSyncPull() {
     _syncPullCache = null;
     _syncPullAt = null;
+    _syncPullCacheEpoch = -1;
   }
 
   final http.Client _client;
@@ -255,23 +283,66 @@ class TabsBackend {
   /// arrives after the fetch lands makes its own request (or hits
   /// its per-instance TTL cache first, in [fetchSyncPull]), so no
   /// stale body can ever be served from here.
-  static final Map<(String, String?), Future<Map<String, dynamic>?>>
-      _syncPullInFlight = {};
+  static final Map<
+      (String, String?),
+      Future<
+          ({
+            Map<String, dynamic>? body,
+            int fetchEpoch,
+          })>> _syncPullInFlight = {};
 
-  Future<Map<String, dynamic>?> _fetchSyncPullShared() async {
+  /// One epoch-checked sync-pull GET: records the profile-mutation
+  /// epoch at start; when the body lands after a successful profile
+  /// push (epoch moved), the body predates that push — discard it
+  /// and re-issue the GET. The re-issue LOOPS while the epoch keeps
+  /// moving (bounded at [_maxPullReissues] re-issues): a second
+  /// push landing during the first re-issue must not let a body
+  /// that predates it be delivered as fresh (Vera F3 — bulk
+  /// archive in quick succession hit exactly that window).
+  /// [fetchEpoch] is the epoch at which the fetch that produced
+  /// [body] STARTED, so callers can refuse to cache a body that
+  /// predates the latest push. If the bound is exhausted with the
+  /// epoch STILL moving, delivery is refused outright (null body —
+  /// the caller's ordinary failed-pull path) rather than handing
+  /// out a body known to predate the latest push: a non-null body
+  /// from this method always started at the current epoch.
+  static const int _maxPullReissues = 3;
+
+  Future<({Map<String, dynamic>? body, int fetchEpoch})>
+      _getSyncPullEpochChecked() async {
+    var fetchEpoch = _profileMutationEpoch;
+    var body = await _getJson('/api/sync/pull');
+    var reissues = 0;
+    while (body != null &&
+        _profileMutationEpoch != fetchEpoch &&
+        reissues < _maxPullReissues) {
+      reissues++;
+      fetchEpoch = _profileMutationEpoch;
+      body = await _getJson('/api/sync/pull');
+    }
+    if (body != null && _profileMutationEpoch != fetchEpoch) {
+      return (body: null, fetchEpoch: fetchEpoch);
+    }
+    return (body: body, fetchEpoch: fetchEpoch);
+  }
+
+  Future<({Map<String, dynamic>? body, int fetchEpoch})>
+      _fetchSyncPullSharedRecord() async {
     String? token;
     try {
       token = await _sessionStore.readToken();
     } catch (_) {
       // Unreadable store → behave exactly as the pre-Round-60 code
-      // (the read inside _sendAuthed surfaces the same outcome).
-      return _getJson('/api/sync/pull');
+      // (the read inside _sendAuthed surfaces the same outcome),
+      // still epoch-checked.
+      return _getSyncPullEpochChecked();
     }
     final key = (_baseUrl, token);
     final inFlight = _syncPullInFlight[key];
     if (inFlight != null) return inFlight;
-    late final Future<Map<String, dynamic>?> future;
-    future = _getJson('/api/sync/pull').whenComplete(() {
+    late final Future<({Map<String, dynamic>? body, int fetchEpoch})>
+        future;
+    future = _getSyncPullEpochChecked().whenComplete(() {
       if (identical(_syncPullInFlight[key], future)) {
         _syncPullInFlight.remove(key);
       }
@@ -280,20 +351,33 @@ class TabsBackend {
     return future;
   }
 
+  Future<Map<String, dynamic>?> _fetchSyncPullShared() async =>
+      (await _fetchSyncPullSharedRecord()).body;
+
   /// Round 18 — the full sync-pull body, cached in memory for
   /// [syncPullTtl]. Null on any failure.
+  ///
+  /// Counter-mutation durability (Oct 2026): the cached body is
+  /// served only while the epoch recorded when its fetch started
+  /// still equals the current profile-mutation epoch — a successful
+  /// profile push on ANY instance makes every older cached body
+  /// unservable, not just this instance's (the pre-fix per-instance
+  /// invalidation in `_pushProfile` could not see other instances).
   Future<Map<String, dynamic>?> fetchSyncPull() async {
     final cached = _syncPullCache;
     final at = _syncPullAt;
     if (cached != null &&
         at != null &&
+        _syncPullCacheEpoch == _profileMutationEpoch &&
         DateTime.now().difference(at) < syncPullTtl) {
       return cached;
     }
-    final body = await _fetchSyncPullShared();
+    final result = await _fetchSyncPullSharedRecord();
+    final body = result.body;
     if (body != null) {
       _syncPullCache = body;
       _syncPullAt = DateTime.now();
+      _syncPullCacheEpoch = result.fetchEpoch;
     }
     return body;
   }
@@ -1032,8 +1116,17 @@ class TabsBackend {
   // - `DELETE api/auth/delete-account` (:580-581) → GenericResponse.
 
   /// Round 29 — partial profile push via `POST /api/sync/profile`.
-  Future<bool> postSyncProfile(Map<String, dynamic> fields) =>
-      _postJson('/api/sync/profile', fields);
+  ///
+  /// Counter-mutation durability (Oct 2026): a successful push bumps
+  /// the app-wide profile-mutation epoch (see [_profileMutationEpoch])
+  /// — any sync pull that started before this push is discarded on
+  /// landing and re-issued once, and every TTL-cached pull body from
+  /// before this push becomes unservable on every instance.
+  Future<bool> postSyncProfile(Map<String, dynamic> fields) async {
+    final ok = await _postJson('/api/sync/profile', fields);
+    if (ok) _profileMutationEpoch++;
+    return ok;
+  }
 
   /// Round 29 — nickname update. Returns the decoded body on HTTP 200
   /// (callers check `success`), null on any failure.

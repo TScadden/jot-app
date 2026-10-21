@@ -444,6 +444,16 @@ class _AppFlowState extends State<AppFlow>
     unawaited(CoachMemoryStore.instance.clear());
     // Round 65: cached extracted document text is account-bound too.
     unawaited(KnowledgeExtractionStore.instance.clear());
+    // Correction round (Juno C2): the SettingsStore counter-delete
+    // TOMBSTONES are account-bound too, and this path previously
+    // never touched SettingsStore — a forced expiry left the
+    // expired account's tombstone keys on device, where an
+    // email-less surface (Research → Settings) could read them
+    // against a different account. Targeted wipe of just the two
+    // tombstone keys: session expiry must not reset the device's
+    // theme / nav preferences (the full SettingsStore.clear runs
+    // on explicit logout / account deletion via AccountActions).
+    unawaited(SettingsStore().clearDeletedCounterIds());
     // Round 52 — single widget-clear funnel: HomeDataCache.clear()
     // above IS the widget clear (it fire-and-forgets
     // WidgetSync.clear()); the Round 50 duplicate explicit call
@@ -672,6 +682,15 @@ class _AppFlowState extends State<AppFlow>
     try {
       await _sessionStore.clear();
     } catch (_) {}
+    // Correction round (Juno C2): consent decline ends the session
+    // like a logout, and the counter-delete tombstones shared the
+    // session-expiry gap on this path too — the same targeted wipe
+    // runs here. (The sibling cache clears are expiry-path only,
+    // matching native's decline, which likewise leaves them.)
+    // Fire-and-forget, exactly like _onSessionExpired: the wipe is
+    // best-effort and must never gate the route change on a
+    // storage-channel round-trip (the method itself never throws).
+    unawaited(SettingsStore().clearDeletedCounterIds());
     try {
       await _onboardingStore.setHasConsented(false);
       await _onboardingStore.setIntroConsultationSeen(false);

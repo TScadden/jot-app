@@ -14,6 +14,7 @@ import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_history_sync.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
+import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/launch_trace.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -119,6 +120,15 @@ class HomeScreen extends StatefulWidget {
   /// [HealthRepository]'s backend so Home shares one sync-pull cache.
   final TabsBackend? tabsBackend;
 
+  /// Injectable for tests (counter-mutation durability, Oct 2026);
+  /// defaults to the real on-device store. Home's counter load reads
+  /// the locally persisted deleted-counter tombstones from here (the
+  /// same store Settings writes at delete time) so a pulled list
+  /// that still carries a deleted id cannot resurrect it on Home
+  /// either. Forwarded to the Settings screen pushed from the
+  /// counter slot so both surfaces share one store in tests.
+  final SettingsStore? settingsStore;
+
   /// Round 34 — forwarded to the Settings screen pushed from the
   /// counter slot, so a logout started there still exits to the
   /// welcome flow (the shell owns that callback).
@@ -146,6 +156,7 @@ class HomeScreen extends StatefulWidget {
       this.healthConnectService,
       this.healthRepository,
       this.tabsBackend,
+      this.settingsStore,
       this.onLogout,
       this.healthHistoryStore,
       this.dailyScoreSnapshotCapture,
@@ -358,16 +369,66 @@ class _HomeScreenState extends State<HomeScreen> {
       final body = await _backend.fetchSyncPull();
       if (body == null) return;
       final data = SettingsProfileData.fromPull(body);
-      final active = activeEventCounters(
-          data.eventCounters.map(EventCounterItem.fromMap));
+      final counters =
+          data.eventCounters.map(EventCounterItem.fromMap).toList();
+      final active = activeEventCounters(counters);
       final cache = HomeDataCache.instance;
       final changed = cache.applyCounters(active, ownerEmail: widget.email);
       unawaited(cache.persist());
       if (!mounted) return;
       if (changed) setState(() => _counters = active);
+      // Counter-mutation durability (Oct 2026) — the delete
+      // tombstones Settings records are applied on an isolated
+      // post-pass (the same shared helpers, settings_profile.dart),
+      // never awaited on this load path: the tombstone store is
+      // secure storage, and a storage read must never block or
+      // stall the counters render (the Round 51 lesson). The pass
+      // filters a locally deleted id out of the just-loaded list,
+      // prunes tombstones the server no longer carries, and
+      // re-lands the filtered list in the cache + UI.
+      unawaited(_filterCountersTombstones(
+          allCounters: counters, activeCounters: active));
     } catch (_) {
       // Keep whatever the cache seeded — never invent counters.
     }
+  }
+
+  /// The [_loadCounters] tombstone post-pass. [allCounters] is the
+  /// full pulled list (pruning judges against it — an archived
+  /// tombstoned counter is not in the active list but still counts
+  /// as carried by the server); [activeCounters] is what the load
+  /// rendered. If a newer load has replaced the counters while this
+  /// pass ran, the newer state wins and this pass does nothing.
+  /// Best-effort throughout: any failure leaves the loaded list as
+  /// it is.
+  Future<void> _filterCountersTombstones({
+    required List<EventCounterItem> allCounters,
+    required List<EventCounterItem> activeCounters,
+  }) async {
+    try {
+      final store = widget.settingsStore ?? SettingsStore();
+      final tombstones =
+          await store.getDeletedCounterIds(ownerEmail: widget.email);
+      if (tombstones.isEmpty) return;
+      final stillNeeded = pruneCounterTombstones(
+          tombstones, allCounters.map((c) => c.id));
+      if (stillNeeded.length != tombstones.length) {
+        await store.setDeletedCounterIds(stillNeeded,
+            ownerEmail: widget.email);
+      }
+      if (stillNeeded.isEmpty || !mounted) return;
+      String idsOf(List<EventCounterItem> l) =>
+          l.map((c) => c.id).join('|');
+      if (idsOf(_counters) != idsOf(activeCounters)) return;
+      final filtered =
+          activeEventCounters(filterDeletedCounters(allCounters, stillNeeded));
+      if (idsOf(filtered) == idsOf(activeCounters)) return;
+      final cache = HomeDataCache.instance;
+      cache.applyCounters(filtered, ownerEmail: widget.email);
+      unawaited(cache.persist());
+      if (!mounted) return;
+      setState(() => _counters = filtered);
+    } catch (_) {}
   }
 
   /// Round 34 — the counter slot's tap: pushes Settings opened
@@ -383,6 +444,7 @@ class _HomeScreenState extends State<HomeScreen> {
           email: widget.email,
           onLogout: widget.onLogout,
           backend: _backend,
+          settingsStore: widget.settingsStore,
           healthConnectService: widget.healthConnectService,
           billingService: widget.billingService,
           openEventCounters: true,

@@ -379,3 +379,35 @@ class EventCounterItem {
 List<EventCounterItem> activeEventCounters(
         Iterable<EventCounterItem> counters) =>
     counters.where((c) => !c.isArchived).toList();
+
+// ── Counter delete tombstones (Oct 2026, native parity) ──────────
+//
+// Native solved this exact resurrection class in SyncManager.kt:
+// its pull merge is `(localList + tombstoneFilteredServer)` with
+// `deletedEventCounterIds` persisted locally and self-cleaned once
+// the server stops carrying the id. The Flutter port dropped that
+// protection; these helpers are its Flutter form, shared by the
+// Settings load and Home's counter load. The tombstone set itself
+// is persisted account-bound in SettingsStore
+// (`getDeletedCounterIds` / `setDeletedCounterIds`) and holds ONLY
+// the user's own counter ids — it never leaves the device.
+//
+// Filtering is BY ID ONLY: a pulled row that is missing the
+// `isArchived` key (native-era encoding) passes through untouched
+// apart from the id check.
+
+/// Drops every counter whose id is tombstoned. Order preserved.
+List<EventCounterItem> filterDeletedCounters(
+        Iterable<EventCounterItem> counters, Set<String> tombstones) =>
+    tombstones.isEmpty
+        ? counters.toList()
+        : counters.where((c) => !tombstones.contains(c.id)).toList();
+
+/// The tombstones that are still needed after seeing a pulled
+/// server list: exactly those whose id the server list STILL
+/// carries. A tombstone whose id is absent from the pulled list
+/// has done its job (the delete has fully propagated) and is
+/// pruned — the native self-cleaning rule.
+Set<String> pruneCounterTombstones(
+        Set<String> tombstones, Iterable<String> serverCounterIds) =>
+    tombstones.intersection(serverCounterIds.toSet());
