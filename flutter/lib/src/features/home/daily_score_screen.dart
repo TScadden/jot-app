@@ -612,7 +612,15 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
     // refresh's keep-alive-failure flag, taken exactly once.
     final keepAliveFailed = _owner.consumeKeepAliveFailure(date);
     _entrySettled = true;
-    if (outcome == null) return;
+    if (outcome == null) {
+      // A flag with no outcome is the late-start-failure case
+      // (the owner's start resolved only after its outcome was
+      // already consumed): Juno's line still surfaces, alone.
+      if (keepAliveFailed && mounted) {
+        setState(() => _refreshKeepAliveFailed = true);
+      }
+      return;
+    }
     // Deferred surfacing (Juno ruling): INLINE ONLY — the live
     // SnackBar belongs to completions this screen witnessed.
     await _surfaceOutcome(outcome,
@@ -639,7 +647,14 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
     // line once for this refresh too.
     final keepAliveFailed = _owner.consumeKeepAliveFailure(widget.date);
     if (outcome == null) {
-      setState(() {});
+      // No outcome: either a plain state change (re-render), or
+      // a LATE keep-alive flag for an outcome this screen already
+      // surfaced — Juno's line renders then, on its own.
+      if (keepAliveFailed) {
+        setState(() => _refreshKeepAliveFailed = true);
+      } else {
+        setState(() {});
+      }
       return;
     }
     unawaited(_surfaceOutcome(outcome,

@@ -2,8 +2,8 @@
   package="com.notel.notel.playground.flutter.health_connect_bridge">
   <!-- Refresh keep-alive (founder-directed Oct 20, 2026): the
        foreground-service permissions for RefreshKeepAliveService.
-       Type "health" is Juno-ruled (Ruling 4): dataSync was
-       considered and rejected as untruthful. These merge into the
+       Type "health" is Juno-ruled (Ruling 4): the data-sync
+       type was considered and rejected as untruthful. These merge into the
        host app's manifest; no Health Connect permission changes. -->
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />

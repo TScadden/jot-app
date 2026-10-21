@@ -99,6 +99,10 @@ class _MockKeepAliveChannel {
   bool failStart = false;
   String? pendingTap;
 
+  /// When set, start calls return this completer's future
+  /// instead of answering immediately (a hung channel).
+  Completer<bool>? startGate;
+
   List<MethodCall> get starts =>
       calls.where((c) => c.method == 'startRefreshKeepAlive').toList();
   List<MethodCall> get stops =>
@@ -110,6 +114,7 @@ class _MockKeepAliveChannel {
       calls.add(call);
       switch (call.method) {
         case 'startRefreshKeepAlive':
+          if (startGate != null) return startGate!.future;
           if (failStart) {
             throw PlatformException(
               code: 'FGS_START_FAILED',
@@ -267,6 +272,31 @@ void main() {
       expect(captureCalls, 1);
       expect(mock.starts, hasLength(1));
       expect(mock.stops, hasLength(1));
+    });
+
+    test(
+        'a start that resolves only AFTER settle (hung channel) '
+        'and failed attaches its flag to the still-pending '
+        'outcome when it lands', () async {
+      final store = await _seededStore(_FakeStore());
+      mock.startGate = Completer<bool>();
+      final owner = ownerFor(store, _landingCapture(store));
+      final outcome = await owner.startRefresh(_target);
+      // The refresh settled normally WITHOUT waiting on the
+      // start: outcome recorded, stop fired, no flag yet.
+      expect(outcome!.status, DailyScoreRefreshStatus.refreshed);
+      expect(mock.stops, hasLength(1));
+      expect(owner.hasPendingOutcome(_target), isTrue);
+      expect(owner.hasPendingKeepAliveFailure(_target), isFalse);
+      // The start finally reports failure (the wrapper maps the
+      // channel error to false): the flag attaches to the pending
+      // outcome, consume-once as usual.
+      mock.startGate!.complete(false);
+      await Future<void>.delayed(Duration.zero);
+      expect(owner.hasPendingKeepAliveFailure(_target), isTrue);
+      expect(owner.consumeOutcome(_target), isNotNull);
+      expect(owner.consumeKeepAliveFailure(_target), isTrue);
+      expect(owner.consumeKeepAliveFailure(_target), isFalse);
     });
 
     test(

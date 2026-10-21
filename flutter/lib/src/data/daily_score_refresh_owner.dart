@@ -69,18 +69,32 @@
 /// (see refresh_keep_alive.dart) to protect the process, so the
 /// refresh also survives the user swiping Tabs from Recents —
 /// the one lifecycle event that used to kill it with the process.
-/// The start is requested WITHOUT blocking the refresh on it; on
+/// The start is requested WITHOUT blocking the refresh on it and
+/// its result is tracked by a completion callback, never awaited:
+/// a platform-channel reply is real-async, and gating the
+/// settle / notify on it would change the owner's completion
+/// timing for every listener (and wedge fake-async widget tests
+/// that await a flight directly). In practice the start resolves
+/// in milliseconds at the START of a flight whose capture runs
+/// for seconds, so the result is known long before settle; on
 /// settle (every outcome, including the defensive catch) the
-/// owner asks the service to stop. When the start FAILS, the
-/// refresh proceeds in-process exactly as before and the failure
-/// is recorded against the flight (Juno Ruling 3): alongside a
-/// generation-valid recorded outcome, a parallel consume-once
-/// keep-alive-failure flag is recorded ([consumeKeepAliveFailure]
-/// — in-memory only, same hygiene as the stripped outcome
-/// records: a date-keyed boolean, nothing persisted, cleared by
-/// [clear] with everything else). Force-stop stays a hard kill:
-/// nothing here attempts to survive it.
+/// owner fires the stop on the same channel — channel sends are
+/// ordered, so the native side always sees start before stop.
+/// When the start FAILS, the refresh proceeds in-process exactly
+/// as before and the failure is recorded against the flight
+/// (Juno Ruling 3): alongside a generation-valid recorded
+/// outcome, a parallel consume-once keep-alive-failure flag is
+/// recorded ([consumeKeepAliveFailure] — in-memory only, same
+/// hygiene as the stripped outcome records: a date-keyed boolean,
+/// nothing persisted, cleared by [clear] with everything else).
+/// A start that resolves only AFTER settle (a hung channel) and
+/// failed attaches its flag to that flight's outcome record if
+/// it is still pending, and notifies again so a mounted day
+/// screen can still surface the line. Force-stop stays a hard
+/// kill: nothing here attempts to survive it.
 library;
+
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
@@ -159,10 +173,11 @@ class DailyScoreRefreshOwner {
   /// date, no codes, no values (the UI string is a constant).
   final Set<String> _pendingKeepAliveFailures = {};
 
-  /// The in-flight refresh's keep-alive start, fired when the
-  /// flight was claimed and awaited only at settle (the refresh
-  /// itself never waits on it — see [_run]). Null when idle.
-  Future<bool>? _keepAliveStart;
+  /// The in-flight refresh's keep-alive start tracking, fired
+  /// when the flight was claimed. Its future's completion is
+  /// observed through a callback into [done]/[ok] — never
+  /// awaited (see the file header). Null when idle.
+  _KeepAliveFlight? _keepAliveFlight;
 
   /// Bumped by [clear]: a refresh that started before a clear has
   /// a stale generation, and its outcome is discarded on settle
@@ -220,19 +235,24 @@ class DailyScoreRefreshOwner {
     final generation = _generation;
     _refreshingDate = date;
     // Keep-alive: the flight is claimed, so request the native
-    // start for this date WITHOUT blocking the refresh on it —
-    // the channel call fires now and runs concurrently with the
-    // refresh; only its RESULT is collected, at settle in [_run].
+    // start for this date WITHOUT blocking the refresh on it.
     // The wrapper never throws, so this future always completes
-    // with a plain success/failure answer.
-    _keepAliveStart = _keepAlive.start(date);
-    final future = _run(date, generation);
+    // with a plain success/failure answer; the flight object
+    // observes that completion by callback (never awaited — see
+    // the file header).
+    final flight = _KeepAliveFlight(_keepAlive.start(date));
+    _keepAliveFlight = flight;
+    final future = _run(date, generation, flight);
     _inFlight = future;
     _notify();
     return future;
   }
 
-  Future<DailyScoreRefreshOutcome> _run(String date, int generation) async {
+  Future<DailyScoreRefreshOutcome> _run(
+    String date,
+    int generation,
+    _KeepAliveFlight keepAliveFlight,
+  ) async {
     DailyScoreRefreshOutcome outcome;
     try {
       outcome = await _refresher.refresh(date);
@@ -242,19 +262,17 @@ class DailyScoreRefreshOwner {
       );
     }
     // Settle the keep-alive for EVERY outcome (success, capture
-    // failure, the defensive catch above): collect the start's
-    // result — it has run concurrently since the flight was
-    // claimed, and awaiting it here also orders the stop AFTER
-    // the start, never before it — then ask the service to stop
-    // (dismissing its notification). A clear() that invalidated
-    // this flight changes none of this: the stop still fires.
-    var keepAliveFailed = false;
-    final start = _keepAliveStart;
-    _keepAliveStart = null;
-    if (start != null) {
-      keepAliveFailed = !(await start);
+    // failure, the defensive catch above): fire the stop on the
+    // same channel the start went out on (ordered sends: the
+    // native side always processes start before stop), which is
+    // what dismisses the notification. The stop's reply is not
+    // awaited — nothing in the settle depends on it, and a
+    // clear() that invalidated this flight changes none of this:
+    // the stop still fires.
+    if (identical(_keepAliveFlight, keepAliveFlight)) {
+      _keepAliveFlight = null;
     }
-    await _keepAlive.stop();
+    unawaited(_keepAlive.stop());
     // This run IS the in-flight refresh (single-flight: no other
     // run can have replaced it), so settling always frees the
     // flight slot — even when a clear invalidated the outcome.
@@ -266,18 +284,34 @@ class DailyScoreRefreshOwner {
       // pending record never holds health values. The outcome
       // returned to this run's direct caller keeps its computation
       // (that hand-off is transient, never stored here).
-      _pendingOutcomes[date] = DailyScoreRefreshOutcome(
+      final recorded = DailyScoreRefreshOutcome(
         status: outcome.status,
         newFailureCodes: outcome.newFailureCodes,
       );
+      _pendingOutcomes[date] = recorded;
       // Juno Ruling 3: a failed keep-alive start rides THIS
       // refresh's recorded outcome as its own consume-once flag.
       // A successful start records nothing (a later success shows
       // nothing; a later failure records its own flag afresh).
-      if (keepAliveFailed) {
-        _pendingKeepAliveFailures.add(date);
+      if (keepAliveFlight.done) {
+        if (!keepAliveFlight.ok) {
+          _pendingKeepAliveFailures.add(date);
+        } else {
+          _pendingKeepAliveFailures.remove(date);
+        }
       } else {
-        _pendingKeepAliveFailures.remove(date);
+        // The start has not resolved even by settle (a hung
+        // channel): if it eventually reports failure while THIS
+        // flight's outcome record is still pending, attach the
+        // flag then and notify again so the line can surface.
+        // Identity + generation checks keep a later refresh's
+        // record (or a cleared owner's state) untouched.
+        keepAliveFlight.future.then((ok) {
+          if (ok || generation != _generation) return;
+          if (!identical(_pendingOutcomes[date], recorded)) return;
+          _pendingKeepAliveFailures.add(date);
+          _notify();
+        });
       }
     }
     _notify();
@@ -348,6 +382,23 @@ class DailyScoreRefreshOwner {
     _ownerEmail = null;
     _inFlight = null;
     _refreshingDate = null;
-    _keepAliveStart = null;
+    _keepAliveFlight = null;
+  }
+}
+
+/// One flight's keep-alive start, tracked by callback: [future]
+/// is the wrapper's never-throwing start call; [done]/[ok] are
+/// filled the moment it completes, whenever in the flight that
+/// lands (in practice: milliseconds in, long before settle).
+class _KeepAliveFlight {
+  final Future<bool> future;
+  bool done = false;
+  bool ok = false;
+
+  _KeepAliveFlight(this.future) {
+    future.then((value) {
+      done = true;
+      ok = value;
+    });
   }
 }
