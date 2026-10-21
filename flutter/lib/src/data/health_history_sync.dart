@@ -148,13 +148,14 @@ class HealthHistorySync {
   }
 
   /// Reads the Health Connect windows and merge-refreshes them into
-  /// the history store:
-  /// - resting HR: 180 days (`readRestingHrHistory`)
-  /// - calories: 180 days (`readCaloriesHistory`)
-  /// - sleep + deep: 90 days (`readSleepHistory`)
-  /// - spikes: 180 days on the first-ever backfill only,
-  ///   31 days on routine captures (`readSpikeCounts` is the
-  ///   expensive raw-sample compute)
+  /// the history store. The reads run CRITICAL-FIRST — resting HR,
+  /// sleep, HRV, then the sibling reads (calories, spikes) — so the
+  /// score-critical reads are never delayed behind the siblings,
+  /// and never contend with zombie native reads a sibling's Dart
+  /// timeout left behind (a Dart timeout does not cancel the
+  /// native read):
+  /// - resting HR: full window 180 days (`readRestingHrHistory`)
+  /// - sleep + deep: full window 90 days (`readSleepHistory`)
   /// - HRV: ONE range read (`readHrvSamples`) over 90 days on the
   ///   first-ever capture, 31 days on routine captures; raw samples
   ///   are attributed to local calendar days and reduced to the
@@ -162,6 +163,21 @@ class HealthHistorySync {
   ///   range window retro-fills HRV for days the store already
   ///   holds from other metrics (merge-only: stored values are
   ///   never erased, only refreshed/filled).
+  /// - calories: full window 180 days (`readCaloriesHistory`)
+  /// - spikes: 180 days on the first-ever backfill only,
+  ///   31 days on routine captures (`readSpikeCounts` is the
+  ///   expensive raw-sample compute)
+  ///
+  /// Resting HR / calories / sleep windows are GAP-AWARE on
+  /// routine captures: the full window above applies on the
+  /// first-ever capture and whenever the store carries no
+  /// last-capture stamp; a routine capture instead reads
+  /// `clamp(ceil(gapDays) + 2, 31, fullCap)` days, where gapDays
+  /// is the time since the last capture — only the gap plus
+  /// margin needs re-reading, floored at 31 days so the score's
+  /// 28-day baseline window is always fully re-read. The spikes
+  /// and HRV windows are not gap-aware (fixed first/routine
+  /// windows, above).
   Future<bool> captureFromHealthConnect({bool force = false}) async {
     try {
       await _store.warmFromDisk();
@@ -172,6 +188,29 @@ class HealthHistorySync {
         final age = now.millisecondsSinceEpoch - last;
         if (age >= 0 && age < throttle.inMilliseconds) return false;
       }
+
+      // Gap-aware routine windows (resting HR / calories /
+      // sleep only — spikes and HRV keep their fixed
+      // first/routine windows): routine captures only need to
+      // cover the gap since the last capture plus margin,
+      // floored at 31 days so the score's 28-day baseline window
+      // is always fully re-read; first/absent-stamp captures
+      // keep the full backfill.
+      int windowDays(int fullCap) {
+        final lastCaptureMs = last;
+        if (isFirst || lastCaptureMs == null) return fullCap;
+        final gapDays =
+            ((now.millisecondsSinceEpoch - lastCaptureMs) / 86400000)
+                .ceil();
+        final days = gapDays + 2;
+        if (days < 31) return 31;
+        if (days > fullCap) return fullCap;
+        return days;
+      }
+
+      final restingHrWindowDays = windowDays(180);
+      final caloriesWindowDays = windowDays(180);
+      final sleepWindowDays = windowDays(90);
 
       final byDate = <String, DailyBiometrics>{};
       void put(String date,
@@ -232,30 +271,22 @@ class HealthHistorySync {
         }
       }
 
+      // Critical-first order: resting HR → sleep → HRV, then
+      // the sibling reads (calories, spikes). Each read's block
+      // (reset / bounded read / note / put loop) moves intact.
       resetReadCodes();
-      final hrHist = await boundedRead(_hc.readRestingHrHistory(180));
+      final hrHist =
+          await boundedRead(_hc.readRestingHrHistory(restingHrWindowDays));
       noteRead('restingHr');
       for (final r in hrHist) {
         put(r.date, hr: r.bpm);
       }
       resetReadCodes();
-      final calHist = await boundedRead(_hc.readCaloriesHistory(180));
-      noteRead('calories');
-      for (final r in calHist) {
-        put(r.date, kcal: r.kcal);
-      }
-      resetReadCodes();
-      final sleepHist = await boundedRead(_hc.readSleepHistory(90));
+      final sleepHist =
+          await boundedRead(_hc.readSleepHistory(sleepWindowDays));
       noteRead('sleep');
       for (final r in sleepHist) {
         put(r.date, sleep: r.mins, deep: r.deep);
-      }
-      resetReadCodes();
-      final spikeHist =
-          await boundedRead(_hc.readSpikeCounts(isFirst ? 180 : 31));
-      noteRead('spikes');
-      for (final r in spikeHist) {
-        put(r.date, spikes: r.count);
       }
 
       // HRV — ONE range read of raw samples; day attribution +
@@ -283,6 +314,21 @@ class HealthHistorySync {
       final dailyHrv = attributeDailyHrv(hrvSamples, hrvDates);
       for (final entry in dailyHrv.entries) {
         put(entry.key, hrv: entry.value);
+      }
+
+      resetReadCodes();
+      final calHist =
+          await boundedRead(_hc.readCaloriesHistory(caloriesWindowDays));
+      noteRead('calories');
+      for (final r in calHist) {
+        put(r.date, kcal: r.kcal);
+      }
+      resetReadCodes();
+      final spikeHist =
+          await boundedRead(_hc.readSpikeCounts(isFirst ? 180 : 31));
+      noteRead('spikes');
+      for (final r in spikeHist) {
+        put(r.date, spikes: r.count);
       }
 
       await _store.mergeRefresh(byDate.values);
