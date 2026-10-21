@@ -112,7 +112,15 @@ class _HeartScreenState extends State<HeartScreen> {
   Future<void> _checkConnectionAndLoad() async {
     var connected = false;
     try {
-      connected = await _service.isConnected();
+      // Bounded (same defect class as the BP screen's check and the
+      // Heart read wedge): a stalled HC platform call used to leave
+      // _connected null forever — no date pill, no load, all "--".
+      // The bound uses the shared readTimeout; expiry throws
+      // TimeoutException into the catch below, which falls through
+      // to the persisted fallback exactly like any other failure.
+      connected = await _service
+          .isConnected()
+          .timeout(HealthConnectService.readTimeout);
     } catch (_) {
       // Fall back to persisted state, like the connections screen.
       // The fallback only PAINTS the connected layout: the load
@@ -343,62 +351,65 @@ class _HeartScreenState extends State<HeartScreen> {
           ),
         ),
         actions: [
-          if (connected == true) ...[
-            // Date selector pill (native: Surface radius 20,
-            // surfaceHigh fill, textSecondary @20% border).
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Center(
-                child: Material(
-                  color: NotelColors.surfaceHigh,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    side: BorderSide(
-                      color: NotelColors.textSecondary.withValues(alpha: 0.2),
-                    ),
+          // Date selector pill (native: Surface radius 20,
+          // surfaceHigh fill, textSecondary @20% border). Always
+          // visible — NOT gated on the connection verdict: a
+          // stalled or negative check must never take the day
+          // picker away. (The refresh button below stays gated
+          // on connected, exactly as before.)
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Center(
+              child: Material(
+                color: NotelColors.surfaceHigh,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  side: BorderSide(
+                    color: NotelColors.textSecondary.withValues(alpha: 0.2),
                   ),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: _pickDate,
-                    // R49 HE2: hit area ≥48dp tall (was ≈30dp);
-                    // glyphs and pill padding unchanged.
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(minHeight: 48),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              heartDateLabel(_dateStr, _todayStr),
-                              style: const TextStyle(
-                                color: NotelColors.textPrimary,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
-                              ),
+                ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: _pickDate,
+                  // R49 HE2: hit area ≥48dp tall (was ≈30dp);
+                  // glyphs and pill padding unchanged.
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 48),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            heartDateLabel(_dateStr, _todayStr),
+                            style: const TextStyle(
+                              color: NotelColors.textPrimary,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
                             ),
-                            const SizedBox(width: 4),
-                            const Icon(
-                              Icons.keyboard_arrow_down,
-                              color: NotelColors.textSecondary,
-                              size: 16,
-                            ),
-                          ],
-                        ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(
+                            Icons.keyboard_arrow_down,
+                            color: NotelColors.textSecondary,
+                            size: 16,
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ),
               ),
             ),
+          ),
+          if (connected == true)
             IconButton(
               onPressed: _loading ? null : () => unawaited(_load()),
               icon: const Icon(Icons.refresh,
                   size: 24, color: NotelColors.textSecondary),
               tooltip: 'Refresh',
             ),
-          ],
         ],
       ),
       body: connected == false

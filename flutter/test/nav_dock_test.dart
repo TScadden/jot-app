@@ -63,10 +63,21 @@ void main() {
     await settleDock(tester);
     expect(find.text('Today'), findsNothing);
 
-    // Heart -> blank.
+    // Heart -> the real Heart screen. Its AppBar title shows, and
+    // its date pill reads "Today" in EVERY connection state — the
+    // pill is no longer gated on the connection verdict
+    // (fix/heart-day-picker). This step used to expect no "Today"
+    // here and passed only because the gated pill was missing,
+    // which was the very defect that package fixed. Home's own
+    // "Today" header is offstage on this tab, so the single match
+    // is the Heart pill.
     await tester.tap(dockIcon(Icons.favorite));
     await settleDock(tester);
-    expect(find.text('Today'), findsNothing);
+    expect(
+        find.descendant(
+            of: find.byType(AppBar), matching: find.text('Heart')),
+        findsOneWidget);
+    expect(find.text('Today'), findsOneWidget);
 
     // Settings -> blank.
     await tester.tap(dockIcon(Icons.settings));

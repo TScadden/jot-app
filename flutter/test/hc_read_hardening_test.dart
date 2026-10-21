@@ -110,6 +110,36 @@ class WedgedFakeHc extends HealthConnectService {
       Completer<List<HrSample>>().future;
 }
 
+/// Fake service whose connection check NEVER returns — the stalled
+/// Health Connect platform call behind the missing date pill
+/// (production VC 10097: no pill, no load, all "--").
+class PendingCheckFakeHc extends HealthConnectService {
+  @override
+  Future<bool> isConnected() => Completer<bool>().future;
+}
+
+/// Fake service that reports disconnected.
+class DisconnectedFakeHc extends HealthConnectService {
+  @override
+  Future<bool> isConnected() async => false;
+}
+
+/// Fake service whose connection check stalls forever, but whose
+/// persisted state says connected and whose HR read returns promptly:
+/// once the check is bounded, the timeout must settle the screen into
+/// the persisted-fallback state (connected body + refresh affordance).
+class StalledCheckFallbackFakeHc extends HealthConnectService {
+  @override
+  Future<bool> isConnected() => Completer<bool>().future;
+
+  @override
+  Future<bool> hasPersistedConnection() async => true;
+
+  @override
+  Future<List<HrSample>> readHeartRateSamples(String dateStr) async =>
+      [HrSample(timeMs: todayMs(8), bpm: 80)];
+}
+
 /// Fake service for the Heart screen provisional-fallback test: the
 /// live check throws, persisted state says connected, and the read
 /// fails with a recorded bridge error.
@@ -559,6 +589,97 @@ void main() {
       );
       // And the failed load did not re-stamp the sync time.
       expect(HeartDataCache.instance.lastSyncAt, seededAt);
+    });
+  });
+
+  group('Heart day picker availability (fix/heart-day-picker)', () {
+    setUp(() {
+      HeartDataCache.instance.debugReset();
+      final store = <String, String>{};
+      HeartDataCache.instance.debugSetStore(
+        read: (k) async => store[k],
+        write: (k, v) async => store[k] = v,
+        delete: (k) async => store.remove(k),
+      );
+    });
+
+    // The date pill is identified by its label ("Today" for the
+    // default selected date) plus its chevron glyph.
+    Finder datePill() => find.ancestor(
+          of: find.text('Today'),
+          matching: find.byType(InkWell),
+        );
+
+    testWidgets(
+        '(a) date pill renders while the connection check is still '
+        'pending', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: HeartScreen(
+          email: 'a@b.c',
+          healthConnectService: PendingCheckFakeHc(),
+          cache: HeartDataCache.instance,
+        ),
+      ));
+      await tester.pump();
+      // The check has not landed, yet the pill is on screen (its
+      // onTap opens the date picker).
+      expect(datePill(), findsOneWidget);
+      expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
+      // The refresh button stays gated on a landed "connected"
+      // verdict, exactly as before.
+      expect(find.byIcon(Icons.refresh), findsNothing);
+      // Drain the bound's timer so the test leaves nothing pending:
+      // the check settles into the fallback (this fake's persisted
+      // state is empty → disconnected) and the pill survives that too.
+      await tester.pump(HealthConnectService.readTimeout +
+          const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(datePill(), findsOneWidget);
+    });
+
+    testWidgets('(b) date pill renders when disconnected',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: HeartScreen(
+          email: 'a@b.c',
+          healthConnectService: DisconnectedFakeHc(),
+          cache: HeartDataCache.instance,
+        ),
+      ));
+      await tester.pumpAndSettle();
+      // Disconnected body paints…
+      expect(find.text('Connect Vital Signs'), findsOneWidget);
+      // …and the pill is still in the AppBar.
+      expect(datePill(), findsOneWidget);
+      expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
+      expect(find.byIcon(Icons.refresh), findsNothing);
+    });
+
+    testWidgets(
+        '(c) stalled isConnected settles via the timeout into the '
+        'persisted-fallback state — no perpetual pending',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: HeartScreen(
+          email: 'a@b.c',
+          healthConnectService: StalledCheckFallbackFakeHc(),
+          cache: HeartDataCache.instance,
+        ),
+      ));
+      await tester.pump();
+      // Still pending: no refresh affordance yet.
+      expect(find.byIcon(Icons.refresh), findsNothing);
+      // Elapse past the shared 30s read bound (fake async — no real
+      // waiting): the TimeoutException lands in the existing catch,
+      // the persisted fallback (true) paints the connected layout,
+      // and the load runs.
+      await tester.pump(HealthConnectService.readTimeout +
+          const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.refresh), findsOneWidget);
+      expect(datePill(), findsOneWidget);
+      expect(find.text('Connect Vital Signs'), findsNothing);
+      expect(HeartDataCache.instance.lastSyncAt, isNotNull);
     });
   });
 }
