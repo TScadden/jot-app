@@ -14,6 +14,7 @@ import 'package:tabs_lab/src/data/launch_trace.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/daily_score_background.dart';
+import 'package:tabs_lab/src/data/daily_score_refresh_owner.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/onboarding_store.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
@@ -433,6 +434,11 @@ class _AppFlowState extends State<AppFlow>
     // is account-bound too: session expiry leaves none of the expired
     // account's all-time history or Daily Scores on device.
     unawaited(HealthHistoryStore.instance.clear());
+    // Refresh-scope fix (Oct 20, 2026): the app-scoped Daily
+    // Score refresh owner's pending outcomes are in-memory only,
+    // but they are account-bound too — session expiry drops them
+    // (and invalidates any in-flight refresh) alongside the store.
+    DailyScoreRefreshOwner.instance.clear();
     // Vera R35 re-review HIGH 2: the Today Summary stores are
     // account-bound too — a session expiry must leave none of the
     // expired account's summary on device (R29b standard). Each
@@ -483,6 +489,11 @@ class _AppFlowState extends State<AppFlow>
     // R70 fix pass (Vera F1 / Juno C1) — same owner-mismatch
     // enforcement for the historical health store.
     unawaited(HealthHistoryStore.instance.clearIfOwnerMismatch(email));
+    // Refresh-scope fix (Oct 20, 2026): same enforcement for the
+    // refresh owner's in-memory pending outcomes — synchronous,
+    // so a previous account's deferred outcome is gone before the
+    // shell mounts, exactly like the store's memory wipe above.
+    DailyScoreRefreshOwner.instance.clearIfOwnerMismatch(email);
     // Vera R35 re-review HIGH 2: the Round 35 Today Summary stores
     // join the same owner-mismatch enforcement — a previous
     // account's cached summary / plan state must be gone before
@@ -638,6 +649,9 @@ class _AppFlowState extends State<AppFlow>
     // R70 fix pass (Vera F1 / Juno C1) — same owner-mismatch
     // enforcement for the historical health store.
     unawaited(HealthHistoryStore.instance.clearIfOwnerMismatch(email));
+    // Refresh-scope fix (Oct 20, 2026): same enforcement for the
+    // refresh owner's in-memory pending outcomes.
+    DailyScoreRefreshOwner.instance.clearIfOwnerMismatch(email);
     // Vera R35 re-review HIGH 2: same owner-mismatch enforcement
     // as login (see _onLoginSuccess).
     unawaited(TodaySummaryCache.instance.clearIfOwnerMismatch(email));

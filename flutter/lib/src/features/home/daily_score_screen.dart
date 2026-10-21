@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/daily_score.dart';
 import 'package:tabs_lab/src/data/daily_score_refresh.dart';
+import 'package:tabs_lab/src/data/daily_score_refresh_owner.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart'
     show historyDateStr;
 import 'package:tabs_lab/src/data/health_history_store.dart';
@@ -92,9 +93,9 @@ class DailyScoreScreen extends StatefulWidget {
   /// Injectable for tests; defaults to the shared store.
   final HealthHistoryStore? store;
 
-  /// Injectable for tests: the day detail's refresh orchestration.
-  /// Defaults to a [DailyScoreRefresher] over the screen's store.
-  final DailyScoreRefresher? refresher;
+  /// Injectable for tests: the day detail's app-scoped refresh
+  /// owner. Defaults to [DailyScoreRefreshOwner.instance].
+  final DailyScoreRefreshOwner? refreshOwner;
 
   /// Injectable for tests: the snapshot capture run before the
   /// history's compute trigger (founder amendment, Oct 20, 2026).
@@ -103,7 +104,7 @@ class DailyScoreScreen extends StatefulWidget {
   final ScoreCapture? snapshotCapture;
 
   const DailyScoreScreen(
-      {super.key, this.store, this.refresher, this.snapshotCapture});
+      {super.key, this.store, this.refreshOwner, this.snapshotCapture});
 
   @override
   State<DailyScoreScreen> createState() => _DailyScoreScreenState();
@@ -316,7 +317,7 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
         builder: (_) => DailyScoreDayScreen(
           store: _store,
           date: date,
-          refresher: widget.refresher,
+          refreshOwner: widget.refreshOwner,
         ),
       ),
     );
@@ -463,6 +464,14 @@ const Map<String, String> _captureMetricLabels = {
   'hrv': 'HRV',
 };
 
+/// The busy reason shown (tooltip + semantics label, verbatim —
+/// Juno ruling, Oct 20, 2026) on a day's refresh control while a
+/// refresh for a DIFFERENT day is in flight: refreshes are
+/// single-flight app-wide, so this day's control is disabled with
+/// the reason stated, never silently idle or silently missing.
+const String dailyScoreRefreshBusyOtherDayReason =
+    'A refresh is already running for another day.';
+
 /// Day detail: the day's persisted score, its trend vs the
 /// previous scored day, and per-component inputs vs baselines.
 ///
@@ -473,19 +482,32 @@ const Map<String, String> _captureMetricLabels = {
 /// write-once scoring, and exempt from the completeness gate, so
 /// it also appears on unscored days and on today's pending state.
 /// Automatic behavior is unchanged.
+///
+/// Refresh STATE is not the screen's (founder-directed Oct 20,
+/// 2026): the app-scoped [DailyScoreRefreshOwner] owns the
+/// in-flight flag and the outcome. The screen renders its control
+/// from the owner's state (busy during ANY refresh — this day's
+/// shows its own progress, another day's shows the disabled
+/// control with [dailyScoreRefreshBusyOtherDayReason]), consumes
+/// outcomes the owner records for this date, and can be unmounted
+/// mid-refresh without cancelling, losing, or duplicating
+/// anything: an outcome that completes while the user is
+/// elsewhere is surfaced inline, once, on the next entry to this
+/// day (Juno's deferred-surfacing ruling — inline only, no
+/// SnackBar on entry).
 class DailyScoreDayScreen extends StatefulWidget {
   final HealthHistoryStore store;
   final String date;
 
-  /// Injectable for tests; defaults to a [DailyScoreRefresher]
-  /// over [store].
-  final DailyScoreRefresher? refresher;
+  /// Injectable for tests; defaults to the app-scoped
+  /// [DailyScoreRefreshOwner.instance].
+  final DailyScoreRefreshOwner? refreshOwner;
 
   const DailyScoreDayScreen({
     super.key,
     required this.store,
     required this.date,
-    this.refresher,
+    this.refreshOwner,
   });
 
   @override
@@ -498,23 +520,122 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
   DailyScoreComputation? _computation;
   bool _loaded = false;
 
-  late final DailyScoreRefresher _refresher =
-      widget.refresher ?? DailyScoreRefresher(store: widget.store);
+  /// The app-scoped refresh owner: in-flight state and outcomes
+  /// live there, never in this State, so leaving this screen
+  /// mid-refresh loses nothing.
+  late final DailyScoreRefreshOwner _owner =
+      widget.refreshOwner ?? DailyScoreRefreshOwner.instance;
 
-  /// Refresh state: in-flight flag (the control disables and shows
-  /// progress; further taps are ignored), the last capture-failure
-  /// code to surface, the per-metric failure codes the last
-  /// refresh's capture newly recorded, and the honest no-score
-  /// notice when a refresh could not produce a score.
-  bool _refreshing = false;
+  /// The surfaced outcome of the last refresh of THIS day that
+  /// this screen consumed from the owner: the capture-failure code,
+  /// the per-metric failure codes its capture newly recorded, and
+  /// the honest no-score notice when a refresh produced no score
+  /// for a still-unscored day. (In-flight state is NOT mirrored
+  /// here — the build reads it from the owner directly.)
   String? _refreshErrorCode;
   Map<String, String> _refreshFailureCodes = const {};
   String? _refreshNotice;
 
+  /// False until the entry load + entry consume have run. The
+  /// listener does not consume outcomes before then: anything
+  /// already recorded when this screen opened is a DEFERRED
+  /// outcome (it completed before entry, or during the entry
+  /// load) and must surface inline-only, so the entry path —
+  /// never the listener — is its one consumer.
+  bool _entrySettled = false;
+
   @override
   void initState() {
     super.initState();
-    unawaited(_load());
+    _owner.addListener(_onOwnerChanged);
+    unawaited(_loadAndConsumePending());
+  }
+
+  @override
+  void dispose() {
+    _owner.removeListener(_onOwnerChanged);
+    super.dispose();
+  }
+
+  /// Entry: load from the store, then consume any outcome a
+  /// refresh of this day completed while the user was elsewhere.
+  /// Consuming REMOVES the record (the owner's consume-once), so
+  /// the deferred surfacing below renders exactly once — never
+  /// again on rotation, back-and-return, or a later entry.
+  Future<void> _loadAndConsumePending() async {
+    await _load();
+    if (!mounted) return;
+    final outcome = _owner.consumeOutcome(widget.date);
+    _entrySettled = true;
+    if (outcome == null) return;
+    // Deferred surfacing (Juno ruling): INLINE ONLY — the live
+    // SnackBar belongs to completions this screen witnessed.
+    await _surfaceOutcome(outcome, witnessed: false);
+  }
+
+  /// Owner state changed: a refresh started somewhere (re-render
+  /// this day's control from the owner's busy state), or one
+  /// completed. A completion for THIS day while this screen is
+  /// mounted is consumed and surfaced exactly as the screen has
+  /// always reacted (reload; SnackBar on capture failure).
+  void _onOwnerChanged() {
+    if (!mounted) return;
+    if (!_entrySettled) {
+      // Still entering: only the busy state can have changed.
+      // Any outcome recorded for this date belongs to the entry
+      // consume (deferred, inline-only) — see [_entrySettled].
+      setState(() {});
+      return;
+    }
+    final outcome = _owner.consumeOutcome(widget.date);
+    if (outcome == null) {
+      setState(() {});
+      return;
+    }
+    unawaited(_surfaceOutcome(outcome, witnessed: true));
+  }
+
+  /// Renders one consumed refresh [outcome] for this day. On
+  /// capture failure the displayed score stays untouched and the
+  /// error is shown plainly, code included — plus the SnackBar
+  /// when this screen [witnessed] the completion (a deferred
+  /// failure surfaces inline only, Juno ruling). Otherwise the
+  /// screen first reloads from the persisted record, then
+  /// surfaces any per-metric read failures the capture recorded
+  /// (the rescore proceeded from store truth, so these explain
+  /// what could NOT be refreshed), and — only while the day still
+  /// has no score — the honest no-score notice: a no-change
+  /// outcome for a day that HAS a score needs no notice (Juno
+  /// ruling), and a successful refresh needs none either (the new
+  /// number is the outcome).
+  Future<void> _surfaceOutcome(
+    DailyScoreRefreshOutcome outcome, {
+    required bool witnessed,
+  }) async {
+    if (outcome.status == DailyScoreRefreshStatus.captureFailed) {
+      if (!mounted) return;
+      setState(() {
+        _refreshErrorCode = dailyScoreRefreshCaptureFailedCode;
+        _refreshFailureCodes = const {};
+        _refreshNotice = null;
+      });
+      if (witnessed) {
+        _showRefreshError(dailyScoreRefreshCaptureFailedCode);
+      }
+      return;
+    }
+    await _load();
+    if (!mounted) return;
+    setState(() {
+      _refreshErrorCode = null;
+      _refreshFailureCodes = outcome.newFailureCodes;
+      _refreshNotice =
+          outcome.status == DailyScoreRefreshStatus.noChange &&
+                  _row?.dailyScore == null
+              ? 'Still no score for this day: not enough stored '
+                  'health data to score it yet.'
+              : null;
+    });
   }
 
   Future<void> _load() async {
@@ -544,51 +665,88 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
     }
   }
 
-  /// The refresh tap: re-score this day from freshly captured
-  /// data (see [DailyScoreRefresher] for the full semantics).
-  /// Ignored while a refresh is already in flight. On success the
-  /// screen reloads from the persisted record, so the number, the
-  /// components, and the delta line all re-render from the store.
-  /// On capture failure the displayed score stays untouched and
-  /// the error is shown plainly, code included.
-  Future<void> _onRefresh() async {
-    if (_refreshing) return;
+  /// The refresh tap: asks the owner to re-score this day from
+  /// freshly captured data (see [DailyScoreRefresher] for the
+  /// full semantics). The owner REFUSES while any refresh is in
+  /// flight app-wide, so a tap can never start a second forced
+  /// capture. The screen does not await the refresh: the owner
+  /// notifies on completion and [_onOwnerChanged] surfaces the
+  /// outcome — and if the user leaves first, the outcome waits in
+  /// the owner for the next entry to this day.
+  void _onRefresh() {
+    // A fresh tap supersedes any deferred outcome still recorded
+    // for this day: consume and discard it so its lines never
+    // render alongside the new refresh's own outcome.
+    _owner.consumeOutcome(widget.date);
+    final started = _owner.startRefresh(widget.date);
+    if (started == null) return; // refused: a refresh is in flight
     setState(() {
-      _refreshing = true;
       _refreshErrorCode = null;
       _refreshFailureCodes = const {};
       _refreshNotice = null;
     });
-    final outcome = await _refresher.refresh(widget.date);
-    if (!mounted) return;
-    if (outcome.status == DailyScoreRefreshStatus.captureFailed) {
-      // Any existing score stays untouched; a pending today
-      // simply stays pending. The error shows plainly either way.
-      setState(() {
-        _refreshing = false;
-        _refreshErrorCode = dailyScoreRefreshCaptureFailedCode;
-      });
-      _showRefreshError(dailyScoreRefreshCaptureFailedCode);
-      return;
+  }
+
+  /// The refresh control, rendered from the OWNER's state:
+  ///
+  /// - This day is refreshing: disabled + progress (further taps
+  ///   are refused by the owner regardless).
+  /// - ANOTHER day is refreshing: disabled + progress, carrying
+  ///   [dailyScoreRefreshBusyOtherDayReason] as BOTH its tooltip
+  ///   and its semantics label, with semantics exposing the
+  ///   control as a disabled button with that reason (Juno
+  ///   ruling: bare disabled+spinner is not enough, and the
+  ///   control must stay in the tree, not vanish).
+  /// - Idle: the refresh button.
+  ///
+  /// Re-entering the refreshing day mid-flight therefore shows
+  /// its busy state, never an idle button over the stale score.
+  Widget _refreshControl() {
+    if (_owner.isRefreshingDate(widget.date)) {
+      return IconButton(
+        key: const ValueKey('daily-score-refresh'),
+        tooltip: 'Refresh score',
+        // Material's IconButton tap target is 48dp by default.
+        // In flight the control disables and swaps to a progress
+        // indicator.
+        onPressed: null,
+        icon: const SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
     }
-    // Re-read the store first (the refreshed record is what the
-    // screen renders), then surface any per-metric read failures
-    // the capture recorded — the rescore proceeded from store
-    // truth, so these explain what could NOT be refreshed. A
-    // no-change outcome (no score could be computed even from the
-    // fresh snapshot) surfaces as an honest notice, never a
-    // fabricated number.
-    await _load();
-    if (!mounted) return;
-    setState(() {
-      _refreshing = false;
-      _refreshFailureCodes = outcome.newFailureCodes;
-      _refreshNotice =
-          outcome.status == DailyScoreRefreshStatus.noChange
-              ? 'Still no score for this day: not enough stored '
-                  'health data to score it yet.'
-              : null;
-    });
+    if (_owner.isRefreshing) {
+      return SizedBox(
+        key: const ValueKey('daily-score-refresh'),
+        width: 48,
+        height: 48,
+        child: Tooltip(
+          message: dailyScoreRefreshBusyOtherDayReason,
+          child: Semantics(
+            button: true,
+            enabled: false,
+            label: dailyScoreRefreshBusyOtherDayReason,
+            child: const ExcludeSemantics(
+              child: Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    return IconButton(
+      key: const ValueKey('daily-score-refresh'),
+      tooltip: 'Refresh score',
+      onPressed: _onRefresh,
+      icon: const Icon(Icons.refresh, color: NotelColors.primary),
+    );
   }
 
   void _showRefreshError(String code) {
@@ -685,22 +843,7 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
           ),
         ),
         actions: [
-          if (showRefresh)
-            IconButton(
-              key: const ValueKey('daily-score-refresh'),
-              tooltip: 'Refresh score',
-              // Material's IconButton tap target is 48dp by
-              // default. In flight the control disables (further
-              // taps ignored) and swaps to a progress indicator.
-              onPressed: _refreshing ? null : () => unawaited(_onRefresh()),
-              icon: _refreshing
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.refresh, color: NotelColors.primary),
-            ),
+          if (showRefresh) _refreshControl(),
         ],
       ),
       body: !_loaded

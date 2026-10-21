@@ -1,4 +1,5 @@
 import 'package:tabs_lab/src/data/coach_memory_store.dart';
+import 'package:tabs_lab/src/data/daily_score_refresh_owner.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/heart_data_cache.dart';
@@ -80,6 +81,13 @@ class AccountActions {
     // deletion must leave none of it on device.
     try {
       await HealthHistoryStore.instance.clear();
+    } catch (_) {}
+    // Refresh-scope fix (Oct 20, 2026): the refresh owner's
+    // pending outcomes live only in memory, but they belong to
+    // the account too — logout / account deletion drops them
+    // (and invalidates any in-flight refresh) with the store.
+    try {
+      DailyScoreRefreshOwner.instance.clear();
     } catch (_) {}
     // Round 65: cached extracted document text is account-bound
     // device-local medical text — the same wipe covers it.
