@@ -200,6 +200,44 @@ void main() {
       expect(run.hc.windows['hrv'], 31);
     });
 
+    test('routine capture 100.5 days after the last requests '
+        '103/103/90 — fractional gap ceils and sleep hits its '
+        'lower cap first', () async {
+      // 100.5 days in ms: exactly half a day past 100 days.
+      final gapMs = (100.5 * _dayMs).round();
+      final run = await _runCapture(
+        seed: true,
+        lastCaptureMs: _now.millisecondsSinceEpoch - gapMs,
+      );
+      // ceil(100.5) = 101, + 2 = 103. RHR / calories caps are
+      // 180, so both take 103; sleep's cap is 90, so it clamps
+      // down to 90 — the divergent-cap case.
+      expect(run.hc.windows['restingHr'], 103);
+      expect(run.hc.windows['calories'], 103);
+      expect(run.hc.windows['sleep'], 90);
+      // Unchanged legs: routine windows as before.
+      expect(run.hc.windows['spikes'], 31);
+      expect(run.hc.windows['hrv'], 31);
+    });
+
+    test('routine capture with a future lastCaptureMs (clock '
+        'skew) floors all gap-aware windows at 31', () async {
+      final run = await _runCapture(
+        seed: true,
+        lastCaptureMs: _now.millisecondsSinceEpoch + 2 * _dayMs,
+      );
+      // _runCapture already asserted the capture returned true
+      // (forced, so the throttle does not short-circuit on the
+      // future stamp). gap = -2 days: ceil(-2) + 2 = 0, floored
+      // at 31 for all three gap-aware windows.
+      expect(run.hc.windows['restingHr'], 31);
+      expect(run.hc.windows['calories'], 31);
+      expect(run.hc.windows['sleep'], 31);
+      // Unchanged legs: routine windows as before.
+      expect(run.hc.windows['spikes'], 31);
+      expect(run.hc.windows['hrv'], 31);
+    });
+
     test('non-empty store with lastCaptureMs == null requests '
         'full windows', () async {
       // Seeded (non-empty) but never marked captured: the
