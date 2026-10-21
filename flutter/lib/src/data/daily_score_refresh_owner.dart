@@ -63,12 +63,30 @@
 /// process lives. There is deliberately NO persisted in-flight
 /// marker (that option is report-flag-only and would need a fresh
 /// Juno ruling before being built).
+///
+/// KEEP-ALIVE (founder-directed Oct 20, 2026): while a refresh
+/// runs, the owner asks the native keep-alive foreground service
+/// (see refresh_keep_alive.dart) to protect the process, so the
+/// refresh also survives the user swiping Tabs from Recents —
+/// the one lifecycle event that used to kill it with the process.
+/// The start is requested WITHOUT blocking the refresh on it; on
+/// settle (every outcome, including the defensive catch) the
+/// owner asks the service to stop. When the start FAILS, the
+/// refresh proceeds in-process exactly as before and the failure
+/// is recorded against the flight (Juno Ruling 3): alongside a
+/// generation-valid recorded outcome, a parallel consume-once
+/// keep-alive-failure flag is recorded ([consumeKeepAliveFailure]
+/// — in-memory only, same hygiene as the stripped outcome
+/// records: a date-keyed boolean, nothing persisted, cleared by
+/// [clear] with everything else). Force-stop stays a hard kill:
+/// nothing here attempts to survive it.
 library;
 
 import 'package:flutter/foundation.dart';
 
 import 'package:tabs_lab/src/data/daily_score_refresh.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
+import 'package:tabs_lab/src/data/refresh_keep_alive.dart';
 
 /// Called whenever the owner's observable state changes: a refresh
 /// started, a refresh completed (outcome recorded), or the owner
@@ -81,8 +99,10 @@ typedef DailyScoreRefreshListener = void Function();
 /// contract.
 class DailyScoreRefreshOwner {
   final DailyScoreRefresher _refresher;
+  final RefreshKeepAlive _keepAlive;
 
-  DailyScoreRefreshOwner._(this._refresher);
+  DailyScoreRefreshOwner._(this._refresher,
+      [this._keepAlive = RefreshKeepAlive.instance]);
 
   /// The shared app-scope owner, bound to the shared store's
   /// refresher — the [HealthHistoryStore.instance] pattern.
@@ -94,19 +114,26 @@ class DailyScoreRefreshOwner {
   /// (a screen's injected store seam flows through here).
   factory DailyScoreRefreshOwner({
     required DailyScoreRefresher refresher,
+    RefreshKeepAlive? keepAlive,
   }) =>
-      DailyScoreRefreshOwner._(refresher);
+      DailyScoreRefreshOwner._(
+          refresher, keepAlive ?? RefreshKeepAlive.instance);
 
   /// Test wiring: a fresh, non-singleton owner over a refresher
   /// built from [capture], mirroring
   /// [DailyScoreRefresher.withCapture] — a counting fake capture
   /// injected here proves the single-flight guarantee.
+  /// [keepAlive] lets a test drive the keep-alive through a mock
+  /// platform channel; production tests that omit it ride the
+  /// default bridge channel like the app does.
   factory DailyScoreRefreshOwner.withCapture({
     required HealthHistoryStore store,
     required ScoreCapture capture,
+    RefreshKeepAlive? keepAlive,
   }) =>
       DailyScoreRefreshOwner._(
         DailyScoreRefresher.withCapture(store: store, capture: capture),
+        keepAlive ?? RefreshKeepAlive.instance,
       );
 
   final List<DailyScoreRefreshListener> _listeners = [];
@@ -123,6 +150,19 @@ class DailyScoreRefreshOwner {
   /// a status, and bracketed error codes only — no computation,
   /// no health values (Juno ruling 5).
   final Map<String, DailyScoreRefreshOutcome> _pendingOutcomes = {};
+
+  /// Dates whose recorded outcome's refresh had a FAILED
+  /// keep-alive start (Juno Ruling 3). A parallel consume-once
+  /// slot next to [_pendingOutcomes]: the day screen consumes it
+  /// together with [consumeOutcome] and renders Juno's line once
+  /// for that refresh. Holds dates only — a boolean fact keyed by
+  /// date, no codes, no values (the UI string is a constant).
+  final Set<String> _pendingKeepAliveFailures = {};
+
+  /// The in-flight refresh's keep-alive start, fired when the
+  /// flight was claimed and awaited only at settle (the refresh
+  /// itself never waits on it — see [_run]). Null when idle.
+  Future<bool>? _keepAliveStart;
 
   /// Bumped by [clear]: a refresh that started before a clear has
   /// a stale generation, and its outcome is discarded on settle
@@ -179,6 +219,13 @@ class DailyScoreRefreshOwner {
     if (_inFlight != null) return null;
     final generation = _generation;
     _refreshingDate = date;
+    // Keep-alive: the flight is claimed, so request the native
+    // start for this date WITHOUT blocking the refresh on it —
+    // the channel call fires now and runs concurrently with the
+    // refresh; only its RESULT is collected, at settle in [_run].
+    // The wrapper never throws, so this future always completes
+    // with a plain success/failure answer.
+    _keepAliveStart = _keepAlive.start(date);
     final future = _run(date, generation);
     _inFlight = future;
     _notify();
@@ -194,6 +241,20 @@ class DailyScoreRefreshOwner {
         status: DailyScoreRefreshStatus.captureFailed,
       );
     }
+    // Settle the keep-alive for EVERY outcome (success, capture
+    // failure, the defensive catch above): collect the start's
+    // result — it has run concurrently since the flight was
+    // claimed, and awaiting it here also orders the stop AFTER
+    // the start, never before it — then ask the service to stop
+    // (dismissing its notification). A clear() that invalidated
+    // this flight changes none of this: the stop still fires.
+    var keepAliveFailed = false;
+    final start = _keepAliveStart;
+    _keepAliveStart = null;
+    if (start != null) {
+      keepAliveFailed = !(await start);
+    }
+    await _keepAlive.stop();
     // This run IS the in-flight refresh (single-flight: no other
     // run can have replaced it), so settling always frees the
     // flight slot — even when a clear invalidated the outcome.
@@ -209,6 +270,15 @@ class DailyScoreRefreshOwner {
         status: outcome.status,
         newFailureCodes: outcome.newFailureCodes,
       );
+      // Juno Ruling 3: a failed keep-alive start rides THIS
+      // refresh's recorded outcome as its own consume-once flag.
+      // A successful start records nothing (a later success shows
+      // nothing; a later failure records its own flag afresh).
+      if (keepAliveFailed) {
+        _pendingKeepAliveFailures.add(date);
+      } else {
+        _pendingKeepAliveFailures.remove(date);
+      }
     }
     _notify();
     return outcome;
@@ -221,6 +291,20 @@ class DailyScoreRefreshOwner {
   DailyScoreRefreshOutcome? consumeOutcome(String date) =>
       _pendingOutcomes.remove(date);
 
+  /// Whether the recorded outcome for [date] carries a failed
+  /// keep-alive start (Juno Ruling 3). Peeking never consumes.
+  bool hasPendingKeepAliveFailure(String date) =>
+      _pendingKeepAliveFailures.contains(date);
+
+  /// Takes the keep-alive-failure flag recorded for [date], if
+  /// any, removing it in the same step (consume-once, mirroring
+  /// [consumeOutcome] — the day screen consumes the two together
+  /// so Juno's line renders exactly once for that refresh, on
+  /// both the witnessed and the deferred surfacing path).
+  /// Returns true exactly when a flag was recorded and taken.
+  bool consumeKeepAliveFailure(String date) =>
+      _pendingKeepAliveFailures.remove(date);
+
   /// Drops every pending outcome and invalidates any in-flight
   /// refresh (its outcome will be discarded when it settles; the
   /// in-flight flag itself clears on settle so the single-flight
@@ -231,6 +315,7 @@ class DailyScoreRefreshOwner {
   void clear() {
     _generation++;
     _pendingOutcomes.clear();
+    _pendingKeepAliveFailures.clear();
     _ownerEmail = null;
     _notify();
   }
@@ -259,8 +344,10 @@ class DailyScoreRefreshOwner {
   void debugReset() {
     _generation++;
     _pendingOutcomes.clear();
+    _pendingKeepAliveFailures.clear();
     _ownerEmail = null;
     _inFlight = null;
     _refreshingDate = null;
+    _keepAliveStart = null;
   }
 }

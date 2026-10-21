@@ -65,4 +65,7 @@ dependencies {
     // ActivityResultLauncher / ActivityResultRegistry types for the
     // Activity-owned permission-launcher bridge.
     implementation("androidx.activity:activity:1.9.3")
+    // ContextCompat.startForegroundService for the refresh
+    // keep-alive service start.
+    implementation("androidx.core:core:1.13.1")
 }

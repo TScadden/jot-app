@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Environment
 import android.os.SystemClock
+import android.util.Log
+import androidx.core.content.ContextCompat
 import android.provider.MediaStore
 import androidx.activity.result.ActivityResultLauncher
 import androidx.health.connect.client.HealthConnectClient
@@ -128,6 +130,41 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
         fun deliverPermissionResult(granted: Set<String>) {
             pendingPermissionPlugin?.onPermissionResult(granted)
         }
+
+        // ── Refresh keep-alive tap bridge (Oct 20, 2026) ─────────
+        // Namespaced intent-extra key carrying the refresh date on
+        // the keep-alive notification's tap intent (built by
+        // RefreshKeepAliveService) and on any MainActivity intent
+        // that delivers that tap.
+        const val SCORE_TAP_DATE_EXTRA =
+            "com.notel.notel.playground.flutter.health_connect_bridge.SCORE_TAP_DATE"
+
+        // The date from a keep-alive notification tap, held until
+        // Dart takes it via takePendingScoreTap (consume-once).
+        // Static like the permission-launcher bridge: the tap can
+        // land on an Activity whose engine's plugin instance is a
+        // different object than the one that started the service,
+        // and a cold start may publish before any Dart calls in.
+        @Volatile
+        private var pendingScoreTapDate: String? = null
+
+        /// MainActivity forwards its intent from BOTH onCreate and
+        /// onNewIntent (singleTop reuse delivers taps to a live
+        /// Activity through onNewIntent only). A missing / blank
+        /// extra publishes nothing and never clears a held date.
+        fun publishScoreTapFromIntent(intent: Intent?) {
+            val date = intent?.getStringExtra(SCORE_TAP_DATE_EXTRA)
+            if (!date.isNullOrBlank()) {
+                pendingScoreTapDate = date
+            }
+        }
+
+        /// Consume-once read for the plugin instance Dart calls.
+        fun takePendingScoreTapDate(): String? {
+            val date = pendingScoreTapDate
+            pendingScoreTapDate = null
+            return date
+        }
     }
 
     private lateinit var applicationContext: Context
@@ -218,6 +255,14 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
+            // Refresh keep-alive (Oct 20, 2026): foreground-service
+            // keep-alive for a manual Daily Score refresh + its
+            // notification-tap seam. See RefreshKeepAliveService.
+            "startRefreshKeepAlive" -> startRefreshKeepAlive(
+                call.argument<String>("date"), result
+            )
+            "stopRefreshKeepAlive" -> stopRefreshKeepAlive(result)
+            "takePendingScoreTap" -> result.success(takePendingScoreTapDate())
             "isAvailable" -> checkAvailability(result)
             "requestPermissions" -> requestHcPermissions(result)
             "cancelRequest" -> cancelPendingRequest(result)
@@ -258,6 +303,60 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                 result
             )
             else -> result.notImplemented()
+        }
+    }
+
+    // ── Refresh keep-alive ───────────────────────────────────────
+    // No silent failures (team lesson): every failure returns a
+    // structured channel error Dart can catch. Start failures map
+    // on the Dart side to the single code FGS_START_FAILED (Juno
+    // Ruling 3); the native exception CLASS ONLY goes to logcat
+    // and to the error details slot — never a message, never any
+    // health value (this path carries none anyway: the only
+    // argument is the refresh date).
+
+    private fun startRefreshKeepAlive(date: String?, result: MethodChannel.Result) {
+        if (date.isNullOrBlank()) {
+            result.error(
+                "FGS_START_FAILED",
+                "Refresh keep-alive start needs a date.",
+                "IllegalArgumentException"
+            )
+            return
+        }
+        try {
+            val intent = Intent(
+                applicationContext,
+                RefreshKeepAliveService::class.java
+            ).apply {
+                action = RefreshKeepAliveService.ACTION_START
+                putExtra(SCORE_TAP_DATE_EXTRA, date)
+            }
+            // A second start while running re-delivers to the same
+            // service (idempotent: it rebuilds its one notification
+            // with the newest date extra).
+            ContextCompat.startForegroundService(applicationContext, intent)
+            result.success(true)
+        } catch (e: Exception) {
+            // Includes SecurityException (e.g. foreground-service
+            // start restrictions): Juno Ruling 3 — Dart proceeds
+            // in-process and surfaces the failure on the outcome.
+            Log.e("RefreshKeepAlive", "start failed: ${e.javaClass.simpleName}")
+            result.error("FGS_START_FAILED", "Refresh keep-alive could not start.", e.javaClass.simpleName)
+        }
+    }
+
+    private fun stopRefreshKeepAlive(result: MethodChannel.Result) {
+        try {
+            // stopService is a no-op when the service is not
+            // running, which makes stop idempotent by construction.
+            applicationContext.stopService(
+                Intent(applicationContext, RefreshKeepAliveService::class.java)
+            )
+            result.success(true)
+        } catch (e: Exception) {
+            Log.e("RefreshKeepAlive", "stop failed: ${e.javaClass.simpleName}")
+            result.error("FGS_STOP_FAILED", "Refresh keep-alive could not stop.", e.javaClass.simpleName)
         }
     }
 

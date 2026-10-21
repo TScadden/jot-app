@@ -128,8 +128,24 @@ class MainActivity : FlutterFragmentActivity() {
     private var pendingCalendarResult: MethodChannel.Result? = null
     private var pendingCalendarSince: Long = 0L
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // Refresh keep-alive tap (Oct 20, 2026): this Activity is
+        // singleTop, so a tap on the keep-alive notification while
+        // the app is alive arrives HERE, not in onCreate. Forward
+        // the date extra to the plugin (the same Activity→plugin
+        // publish seam as the HC permission launcher below); Dart
+        // consumes it via the plugin's takePendingScoreTap.
+        setIntent(intent)
+        HealthConnectBridgePlugin.publishScoreTapFromIntent(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Refresh keep-alive tap, cold-start half: a tap that
+        // launched the app carries the refresh date extra on this
+        // intent (see onNewIntent for the live-delivery half).
+        HealthConnectBridgePlugin.publishScoreTapFromIntent(intent)
         // Vera LOW backstop: a migration export left in cacheDir by
         // a previous session (chooser never returned, process died,
         // or a build predating the cleanup) is deleted on launch —

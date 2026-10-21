@@ -15,6 +15,7 @@ import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/daily_score_background.dart';
 import 'package:tabs_lab/src/data/daily_score_refresh_owner.dart';
+import 'package:tabs_lab/src/data/refresh_keep_alive.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/onboarding_store.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
@@ -786,6 +787,25 @@ class _AppFlowState extends State<AppFlow>
       // Silent: score notifications are an enhancement; the app
       // must start identically without them.
     }
+    // Refresh keep-alive tap (Oct 20, 2026): the cold-start half
+    // of the same consumption — a keep-alive notification tap
+    // that launched the app left its date with the plugin
+    // (MainActivity forwarded the intent extra in onCreate).
+    // Consumed here, alongside the score-ready launch payload
+    // above, and fed into the SAME tap destination. Best-effort:
+    // the wrapper never throws, and no notification plugin is
+    // initialized here (the bootstrap owns the one initialize).
+    await _consumeKeepAliveTap();
+  }
+
+  /// Takes a pending keep-alive notification tap date from the
+  /// plugin, if one is held, and routes it exactly like a
+  /// score-ready tap: stashed until the flow is home, then the
+  /// day's score detail opens (see _onScoreNotificationTap /
+  /// _deliverPendingScoreTap).
+  Future<void> _consumeKeepAliveTap() async {
+    final date = await RefreshKeepAlive.instance.takePendingScoreTap();
+    if (date != null) _onScoreNotificationTap(date);
   }
 
   void _onScoreNotificationTap(String date) {
@@ -846,6 +866,12 @@ class _AppFlowState extends State<AppFlow>
     // checkSubscriptionStatus).
     if (state == AppLifecycleState.resumed) {
       _billingSync?.onResumed();
+      // Refresh keep-alive tap, live half: a tap delivered to
+      // the running singleTop MainActivity (onNewIntent) while
+      // the app was backgrounded is consumed on resume and
+      // routed to the same day-detail destination as a
+      // score-ready tap.
+      unawaited(_consumeKeepAliveTap());
     }
   }
 

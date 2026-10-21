@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/daily_score.dart';
 import 'package:tabs_lab/src/data/daily_score_refresh.dart';
 import 'package:tabs_lab/src/data/daily_score_refresh_owner.dart';
+import 'package:tabs_lab/src/data/refresh_keep_alive.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart'
     show historyDateStr;
 import 'package:tabs_lab/src/data/health_history_store.dart';
@@ -536,6 +537,13 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
   Map<String, String> _refreshFailureCodes = const {};
   String? _refreshNotice;
 
+  /// Whether the last refresh of THIS day surfaced here had a
+  /// failed keep-alive start (Juno Ruling 3): renders Juno's exact
+  /// line as its own line AFTER the refresh's own outcome lines,
+  /// once — the flag it came from is consumed together with the
+  /// outcome, on both the witnessed and deferred paths.
+  bool _refreshKeepAliveFailed = false;
+
   /// False until the entry load + entry consume have run. The
   /// listener does not consume outcomes before then: anything
   /// already recorded when this screen opened is a DEFERRED
@@ -577,6 +585,7 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
     _refreshErrorCode = null;
     _refreshFailureCodes = const {};
     _refreshNotice = null;
+    _refreshKeepAliveFailed = false;
     unawaited(_loadAndConsumePending());
   }
 
@@ -599,11 +608,15 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
     // date's own entry path owns consuming and settling.
     if (!mounted || epoch != _entryEpoch) return;
     final outcome = _owner.consumeOutcome(date);
+    // Consumed together with the outcome (Juno Ruling 3): this
+    // refresh's keep-alive-failure flag, taken exactly once.
+    final keepAliveFailed = _owner.consumeKeepAliveFailure(date);
     _entrySettled = true;
     if (outcome == null) return;
     // Deferred surfacing (Juno ruling): INLINE ONLY — the live
     // SnackBar belongs to completions this screen witnessed.
-    await _surfaceOutcome(outcome, witnessed: false);
+    await _surfaceOutcome(outcome,
+        witnessed: false, keepAliveFailed: keepAliveFailed);
   }
 
   /// Owner state changed: a refresh started somewhere (re-render
@@ -621,11 +634,16 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
       return;
     }
     final outcome = _owner.consumeOutcome(widget.date);
+    // Consumed together with the outcome (Juno Ruling 3), exactly
+    // as on the entry path — the witnessed path renders Juno's
+    // line once for this refresh too.
+    final keepAliveFailed = _owner.consumeKeepAliveFailure(widget.date);
     if (outcome == null) {
       setState(() {});
       return;
     }
-    unawaited(_surfaceOutcome(outcome, witnessed: true));
+    unawaited(_surfaceOutcome(outcome,
+        witnessed: true, keepAliveFailed: keepAliveFailed));
   }
 
   /// Renders one consumed refresh [outcome] for this day. On
@@ -644,6 +662,7 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
   Future<void> _surfaceOutcome(
     DailyScoreRefreshOutcome outcome, {
     required bool witnessed,
+    required bool keepAliveFailed,
   }) async {
     if (outcome.status == DailyScoreRefreshStatus.captureFailed) {
       if (!mounted) return;
@@ -651,6 +670,7 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
         _refreshErrorCode = dailyScoreRefreshCaptureFailedCode;
         _refreshFailureCodes = const {};
         _refreshNotice = null;
+        _refreshKeepAliveFailed = keepAliveFailed;
       });
       if (witnessed) {
         _showRefreshError(dailyScoreRefreshCaptureFailedCode);
@@ -662,6 +682,7 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
     setState(() {
       _refreshErrorCode = null;
       _refreshFailureCodes = outcome.newFailureCodes;
+      _refreshKeepAliveFailed = keepAliveFailed;
       _refreshNotice =
           outcome.status == DailyScoreRefreshStatus.noChange &&
                   _row?.dailyScore == null
@@ -711,12 +732,14 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
     // for this day: consume and discard it so its lines never
     // render alongside the new refresh's own outcome.
     _owner.consumeOutcome(widget.date);
+    _owner.consumeKeepAliveFailure(widget.date);
     final started = _owner.startRefresh(widget.date);
     if (started == null) return; // refused: a refresh is in flight
     setState(() {
       _refreshErrorCode = null;
       _refreshFailureCodes = const {};
       _refreshNotice = null;
+      _refreshKeepAliveFailed = false;
     });
   }
 
@@ -821,6 +844,17 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
             _refreshNotice!,
             style: const TextStyle(
                 fontSize: 12, color: NotelColors.textSecondary),
+          ),
+        ],
+        // Juno Ruling 3 — LAST, as its own line, never merged
+        // with the refresh's own outcome lines above: one
+        // non-modal line when this refresh's keep-alive start
+        // failed. No dialog, toast, or banner.
+        if (_refreshKeepAliveFailed) ...[
+          const SizedBox(height: 16),
+          const Text(
+            dailyScoreRefreshKeepAliveFailedLine,
+            style: TextStyle(fontSize: 12, color: NotelColors.warning),
           ),
         ],
       ];

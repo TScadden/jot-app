@@ -1,3 +1,21 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
   package="com.notel.notel.playground.flutter.health_connect_bridge">
+  <!-- Refresh keep-alive (founder-directed Oct 20, 2026): the
+       foreground-service permissions for RefreshKeepAliveService.
+       Type "health" is Juno-ruled (Ruling 4): dataSync was
+       considered and rejected as untruthful. These merge into the
+       host app's manifest; no Health Connect permission changes. -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
+  <application>
+    <!-- stopWithTask="false": swiping Tabs from Recents leaves the
+         service, its notification, and the process (with the Dart
+         refresh running in it) alive. Force-stop remains a hard
+         kill by design. Not exported; foreground type health. -->
+    <service
+      android:name=".RefreshKeepAliveService"
+      android:exported="false"
+      android:stopWithTask="false"
+      android:foregroundServiceType="health" />
+  </application>
 </manifest>
