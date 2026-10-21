@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:tabs_lab/src/data/daily_score.dart';
 import 'package:tabs_lab/src/data/daily_score_refresh.dart';
+import 'package:tabs_lab/src/data/daily_score_refresh_owner.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_history_sync.dart';
@@ -31,6 +32,21 @@ import 'package:tabs_lab/src/features/home/home_screen.dart';
 ///   and re-renders from the persisted record after a refresh;
 ///   the history list and the Home face pick the refreshed
 ///   number up on return through their existing reload paths.
+/// - Refresh STATE is app-scoped (founder-directed Oct 20, 2026,
+///   refresh-scope fix): [DailyScoreRefreshOwner] holds the one
+///   in-flight refresh and its outcome. A second start is refused
+///   on any day (counting fake capture: exactly one forced
+///   capture); unmounting the originating screen loses nothing —
+///   the store write lands, and an outcome that completes while
+///   the user is elsewhere is surfaced INLINE ONLY, once, on the
+///   next entry to that day (Juno's deferred-surfacing rulings:
+///   no SnackBar on entry, no surfacing at all for success while
+///   away, the no-score line only where the day still has no
+///   score, and another day's busy control carries the reason
+///   "A refresh is already running for another day." as tooltip
+///   AND semantics label on a disabled control). Pending outcomes
+///   are in-memory only and are dropped by the owner's clear /
+///   owner-mismatch hooks (logout / account switch).
 
 /// In-memory fake for the store's storage functions (same shape
 /// as daily_score_r70_test.dart).
@@ -346,11 +362,11 @@ void main() {
       WidgetTester tester, {
       required HealthHistoryStore store,
       required String date,
-      DailyScoreRefresher? refresher,
+      DailyScoreRefreshOwner? owner,
     }) async {
       await tester.pumpWidget(MaterialApp(
         home: DailyScoreDayScreen(
-            store: store, date: date, refresher: refresher),
+            store: store, date: date, refreshOwner: owner),
       ));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
@@ -373,12 +389,12 @@ void main() {
     testWidgets('tap refresh: the number and components re-render '
         'from the persisted record', (tester) async {
       final store = await _seededStore(_FakeStore());
-      final refresher = DailyScoreRefresher.withCapture(
+      final owner = DailyScoreRefreshOwner.withCapture(
         store: store,
         capture: _landingCapture(store),
       );
       await pumpDetail(tester,
-          store: store, date: _target, refresher: refresher);
+          store: store, date: _target, owner: owner);
       expect(find.text('Daily Score: 62 · Good'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('daily-score-refresh')));
       await tester.pump();
@@ -394,7 +410,7 @@ void main() {
       final store = await _seededStore(_FakeStore());
       final completer = Completer<bool>();
       var captureCalls = 0;
-      final refresher = DailyScoreRefresher.withCapture(
+      final owner = DailyScoreRefreshOwner.withCapture(
         store: store,
         capture: ({bool force = false}) {
           captureCalls++;
@@ -402,7 +418,7 @@ void main() {
         },
       );
       await pumpDetail(tester,
-          store: store, date: _target, refresher: refresher);
+          store: store, date: _target, owner: owner);
       final control = find.byKey(const ValueKey('daily-score-refresh'));
       await tester.tap(control);
       await tester.pump();
@@ -433,12 +449,12 @@ void main() {
       ]);
       // A capture that lands nothing: the day has no baselines, so
       // no score can be computed even from the fresh snapshot.
-      final refresher = DailyScoreRefresher.withCapture(
+      final owner = DailyScoreRefreshOwner.withCapture(
         store: store,
         capture: ({bool force = false}) async => true,
       );
       await pumpDetail(tester,
-          store: store, date: '2026-10-16', refresher: refresher);
+          store: store, date: '2026-10-16', owner: owner);
       expect(find.text('No score stored for this day.'), findsOneWidget);
       expect(find.byKey(const ValueKey('daily-score-refresh')),
           findsOneWidget);
@@ -457,12 +473,12 @@ void main() {
     testWidgets('capture failure: error shown with its code, '
         'displayed score untouched', (tester) async {
       final store = await _seededStore(_FakeStore());
-      final refresher = DailyScoreRefresher.withCapture(
+      final owner = DailyScoreRefreshOwner.withCapture(
         store: store,
         capture: ({bool force = false}) async => false,
       );
       await pumpDetail(tester,
-          store: store, date: _target, refresher: refresher);
+          store: store, date: _target, owner: owner);
       await tester.tap(find.byKey(const ValueKey('daily-score-refresh')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
@@ -488,7 +504,7 @@ void main() {
         'plainly alongside the updated score', (tester) async {
       final store = await _seededStore(_FakeStore());
       final landing = _landingCapture(store);
-      final refresher = DailyScoreRefresher.withCapture(
+      final owner = DailyScoreRefreshOwner.withCapture(
         store: store,
         capture: ({bool force = false}) async {
           await store.recordCaptureDiagnostics(
@@ -500,7 +516,7 @@ void main() {
         },
       );
       await pumpDetail(tester,
-          store: store, date: _target, refresher: refresher);
+          store: store, date: _target, owner: owner);
       await tester.tap(find.byKey(const ValueKey('daily-score-refresh')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
@@ -522,7 +538,7 @@ void main() {
       await store.mergeRefresh([
         const DailyBiometrics(date: '2026-10-16', restingHrBpm: 60),
       ]);
-      final refresher = DailyScoreRefresher.withCapture(
+      final owner = DailyScoreRefreshOwner.withCapture(
         store: store,
         capture: ({bool force = false}) async {
           await store.recordCaptureDiagnostics(
@@ -534,7 +550,7 @@ void main() {
         },
       );
       await pumpDetail(tester,
-          store: store, date: '2026-10-16', refresher: refresher);
+          store: store, date: '2026-10-16', owner: owner);
       await tester.tap(find.byKey(const ValueKey('daily-score-refresh')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
@@ -564,14 +580,14 @@ void main() {
     testWidgets('history list reloads on return from the day detail',
         (tester) async {
       final store = await _seededStore(_FakeStore());
-      final refresher = DailyScoreRefresher.withCapture(
+      final owner = DailyScoreRefreshOwner.withCapture(
         store: store,
         capture: _landingCapture(store),
       );
       await tester.pumpWidget(MaterialApp(
         home: DailyScoreScreen(
           store: store,
-          refresher: refresher,
+          refreshOwner: owner,
           snapshotCapture: ({bool force = false}) async => true,
         ),
       ));
@@ -1042,13 +1058,13 @@ void main() {
       final todayStr = _ds(DateTime(now.year, now.month, now.day));
       // The forced capture lands nothing new: the refresh must
       // still score today sleep-only (420 of 480 need → 88).
-      final refresher = DailyScoreRefresher.withCapture(
+      final owner = DailyScoreRefreshOwner.withCapture(
         store: store,
         capture: ({bool force = false}) async => true,
       );
       await tester.pumpWidget(MaterialApp(
         home: DailyScoreDayScreen(
-            store: store, date: todayStr, refresher: refresher),
+            store: store, date: todayStr, refreshOwner: owner),
       ));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
@@ -1071,6 +1087,385 @@ void main() {
       await DailyScoreEngine(store: store)
           .computeMissingScores(completeOnlyDate: todayStr);
       expect((await store.readAll())[todayStr]!.dailyScore, 88);
+    });
+  });
+
+  // ── Refresh-scope fix (founder-directed Oct 20, 2026): the
+  // app-scoped owner — single-flight, unmount-safe outcomes,
+  // deferred inline-only surfacing (Juno rulings) ─────────────
+
+  group('owner: single-flight + outcome records', () {
+    test(
+        'a second start is refused on the SAME day and on a '
+        'DIFFERENT day; exactly one forced capture runs', () async {
+      final store = await _seededStore(_FakeStore());
+      final completer = Completer<bool>();
+      var captureCalls = 0;
+      final forces = <bool>[];
+      final owner = DailyScoreRefreshOwner.withCapture(
+        store: store,
+        capture: ({bool force = false}) {
+          captureCalls++;
+          forces.add(force);
+          return completer.future;
+        },
+      );
+      final first = owner.startRefresh(_target);
+      expect(first, isNotNull);
+      expect(owner.isRefreshing, isTrue);
+      expect(owner.refreshingDate, _target);
+      expect(owner.isRefreshingDate(_target), isTrue);
+      expect(owner.isRefreshingDate('2026-10-15'), isFalse);
+      // Refused — no queueing, no second forced capture.
+      expect(owner.startRefresh(_target), isNull);
+      expect(owner.startRefresh('2026-10-15'), isNull);
+      completer.complete(true);
+      final outcome = await first!;
+      expect(outcome.status, DailyScoreRefreshStatus.refreshed);
+      expect(captureCalls, 1);
+      expect(forces, [true]);
+      expect(owner.isRefreshing, isFalse);
+      expect(owner.refreshingDate, isNull);
+      // The outcome is recorded for consume-once surfacing.
+      expect(owner.hasPendingOutcome(_target), isTrue);
+      expect(owner.consumeOutcome(_target), isNotNull);
+      expect(owner.hasPendingOutcome(_target), isFalse);
+      expect(owner.consumeOutcome(_target), isNull);
+      // And the owner accepts a fresh refresh once idle.
+      final second = owner.startRefresh(_target);
+      expect(second, isNotNull);
+      await second!;
+      expect(captureCalls, 2);
+    });
+
+    test(
+        'clear drops a recorded outcome (logout / session expiry '
+        'leaves nothing to surface)', () async {
+      final store = await _seededStore(_FakeStore());
+      final owner = DailyScoreRefreshOwner.withCapture(
+        store: store,
+        capture: _landingCapture(store),
+      );
+      await owner.startRefresh(_target);
+      expect(owner.hasPendingOutcome(_target), isTrue);
+      owner.clear();
+      expect(owner.hasPendingOutcome(_target), isFalse);
+      expect(owner.consumeOutcome(_target), isNull);
+    });
+
+    test(
+        'clear invalidates an in-flight refresh: its outcome is '
+        'discarded when it settles, never recorded', () async {
+      final store = await _seededStore(_FakeStore());
+      final completer = Completer<bool>();
+      final owner = DailyScoreRefreshOwner.withCapture(
+        store: store,
+        capture: ({bool force = false}) => completer.future,
+      );
+      final flight = owner.startRefresh(_target);
+      expect(flight, isNotNull);
+      owner.clear();
+      completer.complete(true);
+      await flight!;
+      // The flight slot frees on settle (single-flight is never
+      // weakened), but nothing was recorded for the next account.
+      expect(owner.isRefreshing, isFalse);
+      expect(owner.hasPendingOutcome(_target), isFalse);
+      expect(owner.consumeOutcome(_target), isNull);
+    });
+
+    test(
+        'owner mismatch: the first stamp and the same account '
+        'keep outcomes; a different account drops them', () async {
+      final store = await _seededStore(_FakeStore());
+      final owner = DailyScoreRefreshOwner.withCapture(
+        store: store,
+        capture: _landingCapture(store),
+      );
+      await owner.startRefresh(_target);
+      expect(owner.hasPendingOutcome(_target), isTrue);
+      expect(owner.clearIfOwnerMismatch(null), isFalse);
+      expect(owner.clearIfOwnerMismatch('a@example.test'), isFalse);
+      expect(owner.hasPendingOutcome(_target), isTrue);
+      expect(owner.clearIfOwnerMismatch('a@example.test'), isFalse);
+      expect(owner.hasPendingOutcome(_target), isTrue);
+      expect(owner.clearIfOwnerMismatch('b@example.test'), isTrue);
+      expect(owner.hasPendingOutcome(_target), isFalse);
+    });
+  });
+
+  group('owner: screens across navigation', () {
+    Future<void> pumpDetail(
+      WidgetTester tester, {
+      required HealthHistoryStore store,
+      required String date,
+      DailyScoreRefreshOwner? owner,
+    }) async {
+      await tester.pumpWidget(MaterialApp(
+        home: DailyScoreDayScreen(
+            store: store, date: date, refreshOwner: owner),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump();
+    }
+
+    Future<void> pumpElsewhere(WidgetTester tester) async {
+      await tester.pumpWidget(const MaterialApp(
+        home: Scaffold(body: Text('elsewhere')),
+      ));
+      await tester.pump();
+    }
+
+    testWidgets(
+        'refresh started → originating screen unmounts → refresh '
+        'completes: the store holds the new score; re-entry shows '
+        'it with NO extra surfacing (success while away)',
+        (tester) async {
+      final store = await _seededStore(_FakeStore());
+      final completer = Completer<bool>();
+      final landing = _landingCapture(store);
+      final owner = DailyScoreRefreshOwner.withCapture(
+        store: store,
+        capture: ({bool force = false}) async {
+          await completer.future;
+          return landing(force: force);
+        },
+      );
+      await pumpDetail(tester, store: store, date: _target, owner: owner);
+      await tester.tap(find.byKey(const ValueKey('daily-score-refresh')));
+      await tester.pump();
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      // Leave the day entirely while the capture still runs.
+      await pumpElsewhere(tester);
+      completer.complete(true);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump();
+      // The owner's future lived outside the widget: the write
+      // landed even though no screen was listening.
+      expect((await store.readAll())[_target]!.dailyScore, 100);
+      expect(owner.isRefreshing, isFalse);
+      // Re-enter: the refreshed number is simply there — Juno:
+      // no toast, banner, badge, or "refreshed" caption.
+      await pumpDetail(tester, store: store, date: _target, owner: owner);
+      expect(find.text('Daily Score: 100 · Great'), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
+      expect(find.textContaining('Refresh failed'), findsNothing);
+      expect(find.textContaining('Some data could not be read'),
+          findsNothing);
+      expect(find.textContaining('Still no score'), findsNothing);
+    });
+
+    testWidgets(
+        're-entering the refreshing day mid-flight shows the '
+        'busy/disabled control, not an idle button', (tester) async {
+      final store = await _seededStore(_FakeStore());
+      final completer = Completer<bool>();
+      var captureCalls = 0;
+      final owner = DailyScoreRefreshOwner.withCapture(
+        store: store,
+        capture: ({bool force = false}) {
+          captureCalls++;
+          return completer.future;
+        },
+      );
+      await pumpDetail(tester, store: store, date: _target, owner: owner);
+      await tester.tap(find.byKey(const ValueKey('daily-score-refresh')));
+      await tester.pump();
+      // Pop and re-open the same day: a brand-new State, while
+      // the owner's refresh still runs.
+      await pumpDetail(tester, store: store, date: _target, owner: owner);
+      final control = find.byKey(const ValueKey('daily-score-refresh'));
+      expect(control, findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byIcon(Icons.refresh), findsNothing);
+      final button = tester.widget<IconButton>(control);
+      expect(button.onPressed, isNull);
+      completer.complete(true);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump();
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(captureCalls, 1); // still exactly one forced capture
+      expect(find.text('Daily Score: 62 · Good'), findsOneWidget);
+    });
+
+    testWidgets(
+        'while one day refreshes, ANOTHER day\'s control is '
+        'disabled WITH the reason (tooltip + semantics label)',
+        (tester) async {
+      final store = await _seededStore(_FakeStore());
+      final completer = Completer<bool>();
+      final owner = DailyScoreRefreshOwner.withCapture(
+        store: store,
+        capture: ({bool force = false}) => completer.future,
+      );
+      // The owner is app-scoped: a refresh can be in flight
+      // before this day's screen is even opened.
+      final flight = owner.startRefresh(_target);
+      expect(flight, isNotNull);
+      await pumpDetail(
+          tester, store: store, date: '2026-10-15', owner: owner);
+      final control = find.byKey(const ValueKey('daily-score-refresh'));
+      // The control stays in the tree, disabled, showing progress.
+      expect(control, findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byIcon(Icons.refresh), findsNothing);
+      // Verbatim reason as the tooltip…
+      expect(find.byTooltip(dailyScoreRefreshBusyOtherDayReason),
+          findsOneWidget);
+      // …and as the semantics label of a DISABLED button (Juno
+      // ruling: the reason must be exposed, not just implied).
+      final semantics = tester.widget<Semantics>(
+        find.byWidgetPredicate((w) =>
+            w is Semantics &&
+            w.properties.label == dailyScoreRefreshBusyOtherDayReason),
+      );
+      expect(semantics.properties.button, isTrue);
+      expect(semantics.properties.enabled, isFalse);
+      // When the flight ends, this day's control is a normal
+      // idle refresh button again.
+      completer.complete(true);
+      await flight!;
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump();
+      expect(find.byTooltip('Refresh score'), findsOneWidget);
+      expect(find.byIcon(Icons.refresh), findsOneWidget);
+    });
+
+    testWidgets(
+        'capture failure while away: old score untouched; on '
+        'return the failure surfaces INLINE ONCE, with no '
+        'SnackBar; a second entry does not re-show it',
+        (tester) async {
+      final store = await _seededStore(_FakeStore());
+      final completer = Completer<bool>();
+      final owner = DailyScoreRefreshOwner.withCapture(
+        store: store,
+        capture: ({bool force = false}) => completer.future,
+      );
+      await pumpDetail(tester, store: store, date: _target, owner: owner);
+      await tester.tap(find.byKey(const ValueKey('daily-score-refresh')));
+      await tester.pump();
+      await pumpElsewhere(tester);
+      completer.complete(false);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump();
+      expect((await store.readAll())[_target]!.dailyScore, 62);
+      expect(owner.hasPendingOutcome(_target), isTrue);
+      // Return: the failure is there, inline, exactly the
+      // standing string — and NO SnackBar on entry (Juno ruling).
+      await pumpDetail(tester, store: store, date: _target, owner: owner);
+      expect(
+          find.text('Refresh failed. Nothing was changed. '
+              '[CAPTURE_FAILED]'),
+          findsOneWidget);
+      expect(find.text('Daily Score: 62 · Good'), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
+      expect(
+          find.text('Could not refresh. Please try again. '
+              '[CAPTURE_FAILED]'),
+          findsNothing);
+      expect(owner.hasPendingOutcome(_target), isFalse); // consumed
+      // Leave and re-enter: never shown again.
+      await pumpElsewhere(tester);
+      await pumpDetail(tester, store: store, date: _target, owner: owner);
+      expect(find.textContaining('Refresh failed'), findsNothing);
+      expect(find.text('Daily Score: 62 · Good'), findsOneWidget);
+    });
+
+    testWidgets(
+        'per-metric failure while away: the qualification line '
+        'surfaces inline on return EVEN THOUGH a score was '
+        'produced — and only once', (tester) async {
+      final store = await _seededStore(_FakeStore());
+      final landing = _landingCapture(store);
+      final owner = DailyScoreRefreshOwner.withCapture(
+        store: store,
+        capture: ({bool force = false}) async {
+          await store.recordCaptureDiagnostics(
+            failures: const {'sleep': 'SLEEP_HISTORY_READ_FAILED'},
+            succeeded: const {},
+            atMs: 999,
+          );
+          return landing(force: force);
+        },
+      );
+      // The refresh runs with no day screen mounted at all.
+      final flight = owner.startRefresh(_target);
+      expect(flight, isNotNull);
+      final outcome = await flight!;
+      expect(outcome.status, DailyScoreRefreshStatus.refreshed);
+      expect((await store.readAll())[_target]!.dailyScore, 100);
+      await pumpDetail(tester, store: store, date: _target, owner: owner);
+      expect(find.text('Daily Score: 100 · Great'), findsOneWidget);
+      expect(
+          find.text('Some data could not be read in this refresh: '
+              'Sleep [SLEEP_HISTORY_READ_FAILED]. Any score shown '
+              'uses only the data that is stored.'),
+          findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
+      // Consumed on first render: a later entry does not re-show.
+      await pumpElsewhere(tester);
+      await pumpDetail(tester, store: store, date: _target, owner: owner);
+      expect(find.textContaining('Some data could not be read'),
+          findsNothing);
+    });
+
+    testWidgets('a deferred outcome is shown only on its own day',
+        (tester) async {
+      final store = await _seededStore(_FakeStore());
+      final owner = DailyScoreRefreshOwner.withCapture(
+        store: store,
+        capture: ({bool force = false}) async => false,
+      );
+      final flight = owner.startRefresh(_target);
+      expect(flight, isNotNull);
+      await flight!;
+      expect(owner.hasPendingOutcome(_target), isTrue);
+      // Another day neither shows it nor consumes it.
+      await pumpDetail(
+          tester, store: store, date: '2026-10-15', owner: owner);
+      expect(find.textContaining('Refresh failed'), findsNothing);
+      expect(owner.hasPendingOutcome(_target), isTrue);
+      // Its own day shows it.
+      await pumpDetail(tester, store: store, date: _target, owner: owner);
+      expect(
+          find.text('Refresh failed. Nothing was changed. '
+              '[CAPTURE_FAILED]'),
+          findsOneWidget);
+    });
+
+    testWidgets(
+        'no-change while away for a day that HAS a score: no '
+        'deferred notice at all (Juno ruling)', (tester) async {
+      // A store whose target row is scored but has no baselines,
+      // so the recomputation is null → noChange.
+      final fake = _FakeStore();
+      final bare = _fakeStore(fake);
+      await bare.mergeRefresh([
+        const DailyBiometrics(date: '2026-10-16', restingHrBpm: 60),
+      ]);
+      await bare.persistScore('2026-10-16', dailyScore: 42);
+      final owner = DailyScoreRefreshOwner.withCapture(
+        store: bare,
+        capture: ({bool force = false}) async => true,
+      );
+      final flight = owner.startRefresh('2026-10-16');
+      expect(flight, isNotNull);
+      final outcome = await flight!;
+      expect(outcome.status, DailyScoreRefreshStatus.noChange);
+      await pumpDetail(
+          tester, store: bare, date: '2026-10-16', owner: owner);
+      // The standing score renders; the "Still no score" line
+      // must NOT — the day has a score.
+      expect(find.textContaining('Still no score'), findsNothing);
+      expect(find.textContaining('Refresh failed'), findsNothing);
+      expect(find.byType(SnackBar), findsNothing);
+      expect((await bare.readAll())['2026-10-16']!.dailyScore, 42);
     });
   });
 }
