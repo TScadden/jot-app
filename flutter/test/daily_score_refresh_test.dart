@@ -1175,6 +1175,81 @@ void main() {
     });
 
     test(
+        'clear during a flight does NOT free the flight slot: a '
+        'start attempted during the still-running pre-clear '
+        'flight is refused, and exactly one forced capture runs '
+        'in total', () async {
+      final store = await _seededStore(_FakeStore());
+      final completer = Completer<bool>();
+      var captureCalls = 0;
+      final owner = DailyScoreRefreshOwner.withCapture(
+        store: store,
+        capture: ({bool force = false}) {
+          captureCalls++;
+          return completer.future;
+        },
+      );
+      final flight = owner.startRefresh(_target);
+      expect(flight, isNotNull);
+      owner.clear();
+      // The pre-clear capture is still running: clear invalidated
+      // its OUTCOME, never its flight — a new start here would be
+      // a second concurrent forced capture, so it is refused.
+      expect(owner.isRefreshing, isTrue);
+      expect(owner.startRefresh(_target), isNull);
+      expect(owner.startRefresh('2026-10-15'), isNull);
+      expect(captureCalls, 1); // exactly one forced capture total
+      completer.complete(true);
+      await flight!;
+      // After the pre-clear run settles: nothing was recorded,
+      // and the flight slot is finally free.
+      expect(owner.isRefreshing, isFalse);
+      expect(owner.hasPendingOutcome(_target), isFalse);
+      expect(owner.consumeOutcome(_target), isNull);
+      final next = owner.startRefresh(_target);
+      expect(next, isNotNull);
+      await next!;
+      expect(captureCalls, 2);
+    });
+
+    test(
+        'a recorded pending outcome is STRIPPED to status + new '
+        'failure codes only: no computation is held (Juno ruling '
+        '5)', () async {
+      final store = await _seededStore(_FakeStore());
+      final landing = _landingCapture(store);
+      final owner = DailyScoreRefreshOwner.withCapture(
+        store: store,
+        capture: ({bool force = false}) async {
+          await store.recordCaptureDiagnostics(
+            failures: const {'sleep': 'SLEEP_HISTORY_READ_FAILED'},
+            succeeded: const {},
+            atMs: 999,
+          );
+          return landing(force: force);
+        },
+      );
+      final produced = await owner.startRefresh(_target);
+      // The outcome the refresh PRODUCED carries its computation
+      // (health values: asleep minutes, HRV, resting HR,
+      // baselines) — which is exactly why the stored record must
+      // not hold this object as-is.
+      expect(produced, isNotNull);
+      expect(produced!.status, DailyScoreRefreshStatus.refreshed);
+      expect(produced.computation, isNotNull);
+      expect(produced.newFailureCodes,
+          {'sleep': 'SLEEP_HISTORY_READ_FAILED'});
+      // The RECORDED pending outcome keeps the status and the
+      // bracketed failure codes — and nothing else.
+      final recorded = owner.consumeOutcome(_target);
+      expect(recorded, isNotNull);
+      expect(recorded!.status, DailyScoreRefreshStatus.refreshed);
+      expect(recorded.newFailureCodes,
+          {'sleep': 'SLEEP_HISTORY_READ_FAILED'});
+      expect(recorded.computation, isNull);
+    });
+
+    test(
         'owner mismatch: the first stamp and the same account '
         'keep outcomes; a different account drops them', () async {
       final store = await _seededStore(_FakeStore());

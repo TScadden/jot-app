@@ -544,10 +544,39 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
   /// never the listener — is its one consumer.
   bool _entrySettled = false;
 
+  /// Bumped on every in-place re-dating (see [didUpdateWidget]):
+  /// an entry load started for a superseded date must not consume
+  /// or settle the entry for the date now shown.
+  int _entryEpoch = 0;
+
   @override
   void initState() {
     super.initState();
     _owner.addListener(_onOwnerChanged);
+    unawaited(_loadAndConsumePending());
+  }
+
+  /// Production navigation pushes a fresh route per day, but a
+  /// retained State whose [DailyScoreDayScreen.date] changes in
+  /// place must not keep showing (or consuming for) the old day:
+  /// reset every entry-scoped field and run the same
+  /// load-then-consume entry path a fresh mount runs, for the
+  /// NEW date. Without this, an in-place re-date silently renders
+  /// the previous day's score and never surfaces the new day's
+  /// deferred outcome.
+  @override
+  void didUpdateWidget(DailyScoreDayScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.date == widget.date) return;
+    _entryEpoch++;
+    _entrySettled = false;
+    _row = null;
+    _previousScored = null;
+    _computation = null;
+    _loaded = false;
+    _refreshErrorCode = null;
+    _refreshFailureCodes = const {};
+    _refreshNotice = null;
     unawaited(_loadAndConsumePending());
   }
 
@@ -563,9 +592,13 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
   /// the deferred surfacing below renders exactly once — never
   /// again on rotation, back-and-return, or a later entry.
   Future<void> _loadAndConsumePending() async {
+    final epoch = _entryEpoch;
+    final date = widget.date;
     await _load();
-    if (!mounted) return;
-    final outcome = _owner.consumeOutcome(widget.date);
+    // A re-date superseded this entry while it loaded: the new
+    // date's own entry path owns consuming and settling.
+    if (!mounted || epoch != _entryEpoch) return;
+    final outcome = _owner.consumeOutcome(date);
     _entrySettled = true;
     if (outcome == null) return;
     // Deferred surfacing (Juno ruling): INLINE ONLY — the live

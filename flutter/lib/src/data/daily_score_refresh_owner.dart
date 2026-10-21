@@ -39,11 +39,15 @@
 /// outcome.
 ///
 /// PRIVACY / HYGIENE (Juno ruling 5): the pending records hold a
-/// date, a status, and bracketed error codes ONLY — the
-/// [DailyScoreRefreshOutcome] shape itself (it carries no health
-/// values; the one computation it can hold exists only in this
-/// in-memory hand-off and is never read back for display — day
-/// screens re-derive everything from the store). Records are IN
+/// date, a status, and bracketed error codes ONLY. The outcome a
+/// refresh produces can carry a [DailyScoreComputation] — health
+/// values (asleep minutes, HRV, resting HR, baselines) — so the
+/// record stored here is a STRIPPED copy: status and
+/// [DailyScoreRefreshOutcome.newFailureCodes] only, computation
+/// dropped at record time (see [_run]). Nothing reads a recorded
+/// computation back: day screens use only the status and failure
+/// codes and re-derive everything they display from the store.
+/// Records are IN
 /// MEMORY ONLY: never persisted, never logged, never sent
 /// off-device. They are cleared on logout and account switch via
 /// [clear] (wired alongside the [HealthHistoryStore] clears in
@@ -115,7 +119,9 @@ class DailyScoreRefreshOwner {
   String? _refreshingDate;
 
   /// Completed outcomes awaiting consumption, keyed by date.
-  /// Dates, statuses, and error codes only (Juno ruling 5).
+  /// Each record is a stripped copy holding the date (the key),
+  /// a status, and bracketed error codes only — no computation,
+  /// no health values (Juno ruling 5).
   final Map<String, DailyScoreRefreshOutcome> _pendingOutcomes = {};
 
   /// Bumped by [clear]: a refresh that started before a clear has
@@ -194,7 +200,15 @@ class DailyScoreRefreshOwner {
     _inFlight = null;
     _refreshingDate = null;
     if (generation == _generation) {
-      _pendingOutcomes[date] = outcome;
+      // Record the STRIPPED outcome only (Juno ruling 5): status
+      // + newly recorded failure codes, computation dropped — the
+      // pending record never holds health values. The outcome
+      // returned to this run's direct caller keeps its computation
+      // (that hand-off is transient, never stored here).
+      _pendingOutcomes[date] = DailyScoreRefreshOutcome(
+        status: outcome.status,
+        newFailureCodes: outcome.newFailureCodes,
+      );
     }
     _notify();
     return outcome;
