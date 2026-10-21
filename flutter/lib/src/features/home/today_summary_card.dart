@@ -72,7 +72,7 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///   before this card mounted is simply absent, and the founder's
 ///   undo is deleting the check-off's log entry in History (the
 ///   next load restores the item). Because the reload after a
-///   check-off already excludes the item, the dissolve slot is
+///   check-off already excludes the item, the slide-away slot is
 ///   inserted at the row's captured index rather than substituted
 ///   for a rendered row. When nothing remains but things were
 ///   planned, the expanded plan area shows the completed message
