@@ -1191,6 +1191,13 @@ void main() {
       );
       final flight = owner.startRefresh(_target);
       expect(flight, isNotNull);
+      // Let the refresher reach its capture (it first snapshots
+      // the store): the forced capture is now genuinely running,
+      // suspended on the completer — the still-running pre-clear
+      // flight this pin is about.
+      await Future<void>.delayed(Duration.zero);
+      expect(captureCalls, 1);
+      expect(owner.isRefreshing, isTrue);
       owner.clear();
       // The pre-clear capture is still running: clear invalidated
       // its OUTCOME, never its flight — a new start here would be
