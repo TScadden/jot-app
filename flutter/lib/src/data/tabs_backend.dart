@@ -32,9 +32,37 @@ import 'package:tabs_lab/src/data/session_store.dart';
 /// Any failure — no token, non-200, malformed body, transport error —
 /// yields the honest empty outcome: null / empty lists. The UI turns
 /// those into "--"/empty states; nothing is invented.
+
+/// How an authenticated send ended without an HTTP response
+/// (report-pdf fix): the classification [TabsBackend.postAiDetailed]
+/// plumbs to the report pipeline so its failure reason is truthful
+/// (Juno Ruling 3). Server/exception text is never part of it.
+enum AiTransportFailure {
+  /// The transport's own timeout fired before any response.
+  timeout,
+
+  /// A request was attempted, no HTTP response arrived, and the
+  /// attempt did not time out (socket/DNS/TLS/client failure).
+  noResponse,
+
+  /// No request was attempted: there is no stored session token.
+  noSession,
+}
+
 class TabsBackend {
   static const String defaultBaseUrl = 'https://api.jottracker.com';
   static const Duration requestTimeout = Duration(seconds: 20);
+
+  /// The AI report call's dedicated transport budget
+  /// ([postAiDetailed] only — every other call keeps the shared
+  /// [requestTimeout]). Native caps each report attempt at 60s,
+  /// and server evidence for the Oct 22, 2026 incident shows a
+  /// successful `/api/ai/report` generation taking up to ~31s:
+  /// at the shared 20s the transport killed legitimate in-flight
+  /// generations and the failure was then mislabelled
+  /// "no connection". 60s matches native's per-attempt cap (and
+  /// the report pipeline's own 60s outer guard).
+  static const Duration aiRequestTimeout = Duration(seconds: 60);
 
   /// Round 18 — in-memory cache for the (large) sync pull so the 16
   /// tools share one fetch per session window instead of each firing
@@ -156,25 +184,51 @@ class TabsBackend {
   /// original response — including the original 401 when the refresh
   /// fails temporarily or definitively).
   Future<http.Response?> _sendAuthed(
-      Future<http.Response> Function(String token) send) async {
+          Future<http.Response> Function(String token) send) async =>
+      (await _sendAuthedDetailed(send)).response;
+
+  /// The detailed form of [_sendAuthed]: identical behaviour, but a
+  /// null response carries its classification (report-pdf fix, Juno
+  /// Ruling 3). The shared transport timeout's own TimeoutException
+  /// is a TIMEOUT — the pre-fix `catch (_)` collapsed it, and every
+  /// other transport failure, into an indistinguishable null that
+  /// the report pipeline then labelled "no connection". A missing
+  /// session is [AiTransportFailure.noSession] (no request was
+  /// attempted at all), never a connection failure. Only
+  /// [postAiDetailed] consumes the classification; every other
+  /// caller keeps the plain null contract via [_sendAuthed].
+  Future<({http.Response? response, AiTransportFailure? failure})>
+      _sendAuthedDetailed(
+    Future<http.Response> Function(String token) send, {
+    Duration timeout = requestTimeout,
+  }) async {
     final token = await _sessionStore.readToken();
-    if (token == null || token.trim().isEmpty) return null;
+    if (token == null || token.trim().isEmpty) {
+      return (response: null, failure: AiTransportFailure.noSession);
+    }
     http.Response response;
     try {
-      response = await send(token).timeout(requestTimeout);
+      response = await send(token).timeout(timeout);
+    } on TimeoutException {
+      return (response: null, failure: AiTransportFailure.timeout);
     } catch (_) {
-      return null;
+      return (response: null, failure: AiTransportFailure.noResponse);
     }
-    if (response.statusCode != 401) return response;
+    if (response.statusCode != 401) return (response: response, failure: null);
     final outcome = await _refreshSingleFlight(failedToken: token);
     if (outcome is _RefreshSucceeded) {
       try {
-        return await send(outcome.token).timeout(requestTimeout);
+        return (
+          response: await send(outcome.token).timeout(timeout),
+          failure: null,
+        );
+      } on TimeoutException {
+        return (response: null, failure: AiTransportFailure.timeout);
       } catch (_) {
-        return null;
+        return (response: null, failure: AiTransportFailure.noResponse);
       }
     }
-    return response;
+    return (response: response, failure: null);
   }
 
   /// Single-flight entry point: the first 401 starts the refresh;
@@ -783,27 +837,46 @@ class TabsBackend {
   /// `GeminiService.getMedicalReportSummaryFromSnapshot`): native
   /// captures the HTTP status + the server's `error`/`message` field
   /// so its failure-reason mapping can tell a 401 from a 429 from a
-  /// 5xx. Returns `(statusCode: null, ...)` when there is no stored
-  /// token or the transport failed (native's connection-failure
-  /// class). The server error text is returned for INTERNAL mapping
-  /// only — callers must map it to a plain-language reason and never
-  /// render it (native `AiFailureReasons` reads only the status).
+  /// 5xx. Returns `(statusCode: null, ...)` when no HTTP response
+  /// arrived, with `transportFailure` classifying why: the shared
+  /// transport timeout, a genuine no-response transport failure, or
+  /// no stored session (no request attempted). The server error
+  /// text is returned for INTERNAL mapping only — callers must map
+  /// it to a plain-language reason and never render it (native
+  /// `AiFailureReasons` reads only the status).
   Future<
       ({
         int? statusCode,
         Map<String, dynamic>? body,
         String? serverError,
-      })> postAiDetailed(String path, Map<String, dynamic> body) async {
-    final response = await _sendAuthed((token) => _client.post(
-          Uri.parse('$_baseUrl$path'),
-          headers: {
-            'Authorization': 'Bearer $token',
-            'Content-Type': 'application/json',
-          },
-          body: jsonEncode(body),
-        ));
+        AiTransportFailure? transportFailure,
+      })> postAiDetailed(String path, Map<String, dynamic> body,
+          {Duration? timeoutOverride}) async {
+    // This call — and only this call — runs on the dedicated
+    // [aiRequestTimeout] budget (60s, native's per-attempt cap);
+    // the shared 20s [requestTimeout] is unchanged for every
+    // other call. Its timeout (and every other no-response
+    // outcome) is CLASSIFIED instead of collapsed to a bare null
+    // (Juno Ruling 3). [timeoutOverride] is a test seam.
+    final sent = await _sendAuthedDetailed(
+      (token) => _client.post(
+        Uri.parse('$_baseUrl$path'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(body),
+      ),
+      timeout: timeoutOverride ?? aiRequestTimeout,
+    );
+    final response = sent.response;
     if (response == null) {
-      return (statusCode: null, body: null, serverError: null);
+      return (
+        statusCode: null,
+        body: null,
+        serverError: null,
+        transportFailure: sent.failure,
+      );
     }
     Map<String, dynamic>? decoded;
     try {
@@ -813,7 +886,12 @@ class TabsBackend {
       decoded = null;
     }
     if (response.statusCode == 200) {
-      return (statusCode: 200, body: decoded, serverError: null);
+      return (
+        statusCode: 200,
+        body: decoded,
+        serverError: null,
+        transportFailure: null,
+      );
     }
     // Native error extraction (GeminiService): `error`, else
     // `message`, else the raw body.
@@ -827,6 +905,7 @@ class TabsBackend {
       statusCode: response.statusCode,
       body: null,
       serverError: serverError,
+      transportFailure: null,
     );
   }
 
