@@ -6,8 +6,9 @@
 // DESIGN
 //
 // A periodic WorkManager task (platform-deferred, Doze-aware — NOT
-// clockwork) runs [DailyScoreBackgroundRunner] a few times a day in a
-// headless background isolate, with the app never opened:
+// clockwork; a 30-minute period is REQUESTED, founder directive,
+// Oct 22, 2026) runs [DailyScoreBackgroundRunner] in a headless
+// background isolate, with the app never opened:
 //
 // 1. GRANT GATE. Background Health Connect reads are a SEPARATE grant
 //    (READ_HEALTH_DATA_IN_BACKGROUND), given in Health Connect
@@ -21,6 +22,13 @@
 //    store, so foreground and background captures share it and never
 //    double-run. The capture's own post-capture engine run carries
 //    the Amendment-#1 gate (today scores only when complete).
+//    JUNO RULING (Oct 22, 2026, C1/C2/F2): the 30-minute wake
+//    cadence does NOT relax this — background-originated captures
+//    stay non-forced under the shared 6h throttle (the app-open
+//    throttle bypass is foreground-only and is never borrowed
+//    here), so between captures the wakes do only the probe, this
+//    throttled invocation, the past-day fallback (3), and the
+//    notification logic (4).
 // 3. PAST-DAY FALLBACK. When the capture does not run (throttled
 //    out, failed, or the HC channel unreachable from this isolate),
 //    the runner may still score PAST days only (beforeDate: today)
@@ -39,29 +47,33 @@
 //    already-stored data but posts NO notification.
 //
 // ─────────────────────────────────────────────────────────────────────
-// THE CHANNEL REALITY (read before assuming background reads work)
+// THE CHANNEL REALITY (corrected Oct 22, 2026 — the NO_CHANNEL
+// account this section used to carry is stale at this head)
 //
-// The Health Connect MethodChannel handlers are registered in
-// MainActivity.configureFlutterEngine — for the MAIN engine only.
-// WorkManager's background engine registers the pub plugins (secure
-// storage, local notifications) via GeneratedPluginRegistrant, but
-// NOT this app-defined channel: HC calls from the background isolate
-// fail with NO_CHANNEL. The runner therefore PROBES availability
-// first and treats an unreachable channel exactly like a throttled
-// capture (past-day fallback from store state; NO capture attempt,
-// so the shared throttle is never poisoned by a capture that could
-// not read). Store-only past-day scoring, the diff, and the
-// notification all work end-to-end today; background TODAY scoring
-// activates automatically the moment the HC bridge is registered on
-// the background engine (a FlutterPlugin extraction of the
-// MainActivity bridge — tracked as follow-up native work; it is NOT
-// claimed working on a device by this package).
+// The Health Connect MethodChannel handlers now live in
+// HealthConnectBridgePlugin (local plugin package
+// flutter/plugins/health_connect_bridge): its onAttachedToEngine
+// registers the channel on EVERY FlutterEngine in the process, and
+// GeneratedPluginRegistrant registers the plugin on the WorkManager
+// background engine as well as the main engine (see the plugin's
+// header and flutter/pubspec.yaml's dependency note). HC calls
+// from the background isolate therefore have a registered handler
+// at this head. The runner STILL PROBES availability first and
+// treats an unreachable channel exactly like a throttled capture
+// (past-day fallback from store state; NO capture attempt, so the
+// shared throttle is never poisoned by a capture that could not
+// read) — the probe remains the guard for any engine where the
+// handler does not answer. This is a documentation correction
+// only: no background read behavior changed with it.
 //
 // Battery honesty: periodic WorkManager work is opportunistic.
-// With an 8h requested period, Android may batch or defer runs
-// under Doze/app standby; "a few times a day" is the design intent,
-// not a schedule guarantee. No exact alarms, no wake locks.
+// A 30-minute period is REQUESTED (founder directive, Oct 22,
+// 2026); Android may batch or defer runs under Doze/app standby,
+// so actual wakes may be far less frequent — the requested period
+// is not a schedule guarantee and no run is promised every
+// 30 minutes. No exact alarms, no wake locks.
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:workmanager/workmanager.dart';
 
@@ -83,25 +95,81 @@ class DailyScoreBackgroundScheduler {
   static const String uniqueName = 'tabs-daily-score-background';
   static const String taskName = 'dailyScoreSnapshotAndScore';
 
-  /// Nominal cadence: every 8 hours ("a few times a day"). See the
-  /// battery-honesty note in the file header — actual runs are
-  /// platform-deferred.
-  static const Duration period = Duration(hours: 8);
+  /// Requested cadence: every 30 minutes (founder directive,
+  /// Oct 22, 2026). This is the period REQUESTED from the
+  /// platform — see the battery-honesty note in the file header:
+  /// actual runs are platform-deferred and are NOT guaranteed
+  /// every 30 minutes.
+  static const Duration period = Duration(minutes: 30);
 
-  /// Registers the periodic task (foreground call; `keep` policy
-  /// makes repeat calls across launches a no-op). Best-effort and
-  /// silent: background scoring is an enhancement, and a scheduling
-  /// failure must never surface in the foreground. Returns whether
-  /// registration was issued without an error.
+  // Injectable bridge (unit tests): replaces the Workmanager
+  // plugin calls so the requested frequency + existing-work
+  // policy can be verified without a platform. Null in production.
+  static Future<void> Function()? _initializeOverride;
+  static Future<void> Function(
+    String uniqueName,
+    String taskName, {
+    Duration? frequency,
+    ExistingPeriodicWorkPolicy? existingWorkPolicy,
+  })? _registerPeriodicOverride;
+
+  @visibleForTesting
+  static void debugSetWorkmanagerBridge({
+    required Future<void> Function() initialize,
+    required Future<void> Function(
+      String uniqueName,
+      String taskName, {
+      Duration? frequency,
+      ExistingPeriodicWorkPolicy? existingWorkPolicy,
+    }) registerPeriodic,
+  }) {
+    _initializeOverride = initialize;
+    _registerPeriodicOverride = registerPeriodic;
+  }
+
+  @visibleForTesting
+  static void debugResetWorkmanagerBridge() {
+    _initializeOverride = null;
+    _registerPeriodicOverride = null;
+  }
+
+  /// Registers the periodic task (foreground call). The policy is
+  /// `update` (Juno ruling, Oct 22, 2026, C6 — migration-critical):
+  /// repeat registrations REPLACE the existing schedule, so the
+  /// 30-minute period supersedes the previously registered 8-hour
+  /// schedule on existing installs; the old `keep` policy made
+  /// repeat registrations no-ops and would have retained the 8h
+  /// schedule forever. `ExistingPeriodicWorkPolicy.update` is
+  /// offered by the workmanager version resolved in this tree
+  /// (workmanager 0.10.10 / platform interface 0.10.5, per
+  /// pubspec.lock). Best-effort and silent: background scoring is
+  /// an enhancement, and a scheduling failure must never surface
+  /// in the foreground. Returns whether registration was issued
+  /// without an error.
   static Future<bool> register() async {
     try {
-      await Workmanager().initialize(dailyScoreBackgroundDispatcher);
-      await Workmanager().registerPeriodicTask(
-        uniqueName,
-        taskName,
-        frequency: period,
-        existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
-      );
+      final initializeOverride = _initializeOverride;
+      if (initializeOverride != null) {
+        await initializeOverride();
+      } else {
+        await Workmanager().initialize(dailyScoreBackgroundDispatcher);
+      }
+      final registerOverride = _registerPeriodicOverride;
+      if (registerOverride != null) {
+        await registerOverride(
+          uniqueName,
+          taskName,
+          frequency: period,
+          existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
+        );
+      } else {
+        await Workmanager().registerPeriodicTask(
+          uniqueName,
+          taskName,
+          frequency: period,
+          existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
+        );
+      }
       return true;
     } catch (_) {
       return false;
@@ -368,6 +436,10 @@ class DailyScoreBackgroundRunner {
           return false;
         }
       },
+      // Juno ruling (Oct 22, 2026, C1/C2/F2): deliberately the
+      // PLAIN capture — non-forced and governed by the shared 6h
+      // throttle. The background runner never calls the app-open
+      // bypass (captureOnAppOpen) and never forces.
       runCapture: () => sync.capture(),
       scorePastDays: (beforeDate) => DailyScoreEngine(store: store)
           .computeMissingScores(beforeDate: beforeDate),

@@ -12,9 +12,16 @@ import 'package:tabs_lab/src/data/health_history_store.dart';
 /// shrinks — the Sep 30, 2026 lesson).
 ///
 /// Throttle: captures are skipped when the last successful capture
-/// was < [throttle] ago, unless forced. The first-ever capture
-/// (empty store) is a forced full backfill. Capture NEVER throws —
-/// a failure must never break a screen.
+/// was < [throttle] ago, unless forced — or unless the capture is
+/// an app-open capture ([captureOnAppOpen], founder directive,
+/// Oct 22, 2026: "we sync every time the app is opened and every
+/// 30 minutes in the background"). The throttle relaxation is
+/// SCOPED to that foreground entry point: every other non-forced
+/// caller — the background runner included — stays governed by
+/// the shared [throttle] stamp exactly as before (Juno ruling,
+/// Oct 22, 2026, C1/C2). The first-ever capture (empty store) is
+/// a forced full backfill. Capture NEVER throws — a failure must
+/// never break a screen.
 ///
 /// Per-metric read failures are never swallowed either: each
 /// read's `lastReadErrorCode` is snapshotted and persisted to the
@@ -80,6 +87,8 @@ class HealthHistorySync {
   // Now one run is shared:
   // - a non-forced call while a run is in flight JOINS that run
   //   (same future, no second read);
+  // - an app-open call ([captureOnAppOpen]) while a run is in
+  //   flight joins it too — it never chains;
   // - a forced call while a FORCED run is in flight joins it;
   // - a forced call while a NON-forced run is in flight waits for
   //   that run to finish, then starts its own forced run (the
@@ -125,8 +134,41 @@ class HealthHistorySync {
     return _startCapture(force: force);
   }
 
-  Future<bool> _startCapture({required bool force}) {
-    final run = captureFromHealthConnect(force: force);
+  /// The app-open entry point (founder directive, Oct 22, 2026):
+  /// every app open — cold start and return-from-background —
+  /// syncs, so an open-triggered capture is NOT skipped by the
+  /// [throttle]. It is deliberately a DISTINCT intent from
+  /// `force`:
+  /// - it runs the identical capture (same five reads, same
+  ///   merge-only store writes, same post-capture engine run,
+  ///   same TODAY RULE, same diagnostics, same end-of-run stamp);
+  /// - while ANY run is in flight it JOINS that run — it never
+  ///   chains a second run behind it (force's chain-a-second-run
+  ///   behavior belongs to the day-detail refresh button alone),
+  ///   so one app open produces exactly one capture attempt even
+  ///   when Home, the score history, and the health repository
+  ///   all attempt one in the same open (they use the plain
+  ///   throttled [capture]: they join this run in flight, or are
+  ///   throttled by the stamp this run leaves behind);
+  /// - an open run counts as NON-forced for flight purposes: a
+  ///   forced refresh arriving during it still chains behind it,
+  ///   exactly as it does behind any non-forced run.
+  ///
+  /// FOREGROUND ONLY (Juno ruling, Oct 22, 2026, F1/F2): callers
+  /// invoke this synchronously at cold start / resume, while the
+  /// app is actually foregrounded, and the read executes in that
+  /// foreground window — it is never scheduled for later, and no
+  /// background path may call it.
+  Future<bool> captureOnAppOpen() {
+    final inFlight = _inFlightCapture;
+    if (inFlight != null) return inFlight;
+    return _startCapture(force: false, bypassThrottle: true);
+  }
+
+  Future<bool> _startCapture(
+      {required bool force, bool bypassThrottle = false}) {
+    final run =
+        captureFromHealthConnect(force: force, bypassThrottle: bypassThrottle);
     _trackFlight(run, forced: force);
     return run;
   }
@@ -178,13 +220,19 @@ class HealthHistorySync {
   /// 28-day baseline window is always fully re-read. The spikes
   /// and HRV windows are not gap-aware (fixed first/routine
   /// windows, above).
-  Future<bool> captureFromHealthConnect({bool force = false}) async {
+  /// [bypassThrottle] is the app-open intent (see
+  /// [captureOnAppOpen]): it skips ONLY the throttle check below —
+  /// nothing else about the run changes. Direct callers outside
+  /// the sync's own entry points should not pass it; [force] keeps
+  /// its exact prior meaning for its existing callers.
+  Future<bool> captureFromHealthConnect(
+      {bool force = false, bool bypassThrottle = false}) async {
     try {
       await _store.warmFromDisk();
       final now = _now();
       final isFirst = (await _store.dayCount()) == 0;
       final last = _store.lastCaptureMs;
-      if (!force && !isFirst && last != null) {
+      if (!force && !bypassThrottle && !isFirst && last != null) {
         final age = now.millisecondsSinceEpoch - last;
         if (age >= 0 && age < throttle.inMilliseconds) return false;
       }

@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/daily_score.dart';
 import 'package:tabs_lab/src/data/daily_score_background.dart';
+import 'package:workmanager/workmanager.dart'
+    show ExistingPeriodicWorkPolicy;
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_history_sync.dart';
@@ -14,11 +16,14 @@ import 'package:tabs_lab/src/data/health_history_sync.dart';
 /// and ONLY when the background grant is verified granted (MF-9):
 /// an unverifiable grant scores silently, with no notification.
 ///
-/// The HC channel reality: the channel is registered on the main
-/// engine only, so from a background isolate the probe fails and
-/// the runner degrades to the store-only fallback. These tests pin
-/// both shapes with fakes; on-device background HC reads are NOT
-/// claimed (see daily_score_background.dart's header).
+/// The HC channel reality (corrected Oct 22, 2026): the bridge
+/// now lives in the health_connect_bridge plugin, registered on
+/// every FlutterEngine (main + WorkManager background), so the
+/// probe can answer true from a background isolate; when it does
+/// not answer, the runner degrades to the store-only fallback.
+/// These tests pin both shapes with fakes; on-device background
+/// HC reads are NOT claimed (see daily_score_background.dart's
+/// header).
 
 class _FakeStore {
   final Map<String, String> values = {};
@@ -385,6 +390,38 @@ void main() {
       expect(notifier.calls.single.date, '2026-10-19');
     });
 
+    test(
+        'Juno C2: an APP-OPEN capture stamps the shared throttle '
+        'and the background run stays governed by it — the '
+        'foreground bypass never leaks into the background path',
+        () async {
+      final sync =
+          HealthHistorySync.withDeps(hc: hc, store: store, now: () => _now);
+      _fillWindows(hc, todayComplete: true, skipLastPrior: true);
+      // Foreground app-open capture runs (bypassing the throttle
+      // for ITSELF) and stamps the shared store.
+      expect(await sync.captureOnAppOpen(), isTrue);
+      final callsAfterOpen = hc.readCalls;
+      expect(callsAfterOpen, greaterThan(0));
+      await store.mergeRefresh([
+        const DailyBiometrics(date: '2026-10-19', sleepMinutes: 500),
+      ]);
+      final outcome = await _runner(
+              store: store, hc: hc, notifier: notifier, sync: sync)
+          .run();
+      // The background capture was throttled out by the open
+      // run's stamp: no fresh background reads (C1/C2), and the
+      // wake did only its fallback work (C3) — yesterday scored
+      // from stored data and the one notification still posted
+      // under the verified grant (C4).
+      expect(outcome.captureAttempted, isTrue);
+      expect(outcome.captureRan, isFalse);
+      expect(hc.readCalls, callsAfterOpen);
+      expect((await store.readAll())['2026-10-19']!.dailyScore,
+          isNotNull);
+      expect(notifier.calls.single.date, '2026-10-19');
+    });
+
     test('empty store: the run is a silent no-op (no scores, no '
         'notification)', () async {
       final outcome =
@@ -430,6 +467,58 @@ void main() {
 
     test('scheduler registration fails soft without a platform',
         () async {
+      expect(await DailyScoreBackgroundScheduler.register(), isFalse);
+    });
+  });
+
+  group('scheduler registration (sync cadence, Oct 22, 2026)', () {
+    tearDown(() {
+      DailyScoreBackgroundScheduler.debugResetWorkmanagerBridge();
+    });
+
+    test('requested period is 30 minutes', () {
+      expect(DailyScoreBackgroundScheduler.period,
+          const Duration(minutes: 30));
+    });
+
+    test(
+        'register() issues the 30-minute frequency with the '
+        'UPDATE policy, so the new period replaces the old 8h '
+        'schedule on existing installs (C6)', () async {
+      var initializeCalls = 0;
+      String? seenUniqueName;
+      String? seenTaskName;
+      Duration? seenFrequency;
+      ExistingPeriodicWorkPolicy? seenPolicy;
+      DailyScoreBackgroundScheduler.debugSetWorkmanagerBridge(
+        initialize: () async {
+          initializeCalls++;
+        },
+        registerPeriodic: (uniqueName, taskName,
+            {frequency, existingWorkPolicy}) async {
+          seenUniqueName = uniqueName;
+          seenTaskName = taskName;
+          seenFrequency = frequency;
+          seenPolicy = existingWorkPolicy;
+        },
+      );
+      expect(await DailyScoreBackgroundScheduler.register(), isTrue);
+      expect(initializeCalls, 1);
+      expect(seenUniqueName, DailyScoreBackgroundScheduler.uniqueName);
+      expect(seenTaskName, DailyScoreBackgroundScheduler.taskName);
+      expect(seenFrequency, const Duration(minutes: 30));
+      expect(seenPolicy, ExistingPeriodicWorkPolicy.update);
+      expect(seenPolicy, isNot(ExistingPeriodicWorkPolicy.keep));
+    });
+
+    test('register() stays best-effort: a bridge failure is '
+        'swallowed into false', () async {
+      DailyScoreBackgroundScheduler.debugSetWorkmanagerBridge(
+        initialize: () async {},
+        registerPeriodic: (uniqueName, taskName,
+                {frequency, existingWorkPolicy}) async =>
+            throw StateError('no platform'),
+      );
       expect(await DailyScoreBackgroundScheduler.register(), isFalse);
     });
   });
