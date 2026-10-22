@@ -495,15 +495,27 @@ enum AiRetryClass { connection, serverError, fatal }
 class AiFailure {
   final int? httpStatus;
 
-  /// True when the call produced no HTTP response at all (no token,
-  /// transport failure, or the backend's shared timeout).
+  /// True when a request was actually attempted, no HTTP response
+  /// arrived, and the attempt did not time out (Juno Ruling 3:
+  /// `no connection` is ONLY this case — never a default for
+  /// unclassified failures, and timeout takes precedence).
   final bool noResponse;
 
   /// True when the attempt itself timed out before any response
-  /// (native's `withTimeoutOrNull` null case).
+  /// (the pipeline's 60s guard, or the backend transport's own
+  /// timeout — both classify identically).
   final bool timedOut;
 
-  const AiFailure({this.httpStatus, this.noResponse = false, this.timedOut = false});
+  /// True when no request was attempted because there is no stored
+  /// session (Juno Ruling 3: a local no-token failure must never be
+  /// labelled "no connection").
+  final bool noSession;
+
+  const AiFailure(
+      {this.httpStatus,
+      this.noResponse = false,
+      this.timedOut = false,
+      this.noSession = false});
 
   AiRetryClass get retryClass {
     if (timedOut) return AiRetryClass.connection;
@@ -531,8 +543,11 @@ class AiFailure {
         AiRetryClass.fatal => Duration.zero,
       };
 
+  /// Juno Ruling 3's closed set, derived SOLELY from the timedOut
+  /// flag / a received HTTP status / the no-response / no-session
+  /// signals — never from server error text or exception messages.
   String get plainReason {
-    if (timedOut) return 'network timeout after 60s';
+    if (timedOut) return 'network timeout';
     final code = httpStatus;
     if (code == 401) return 'HTTP 401 (signed out?)';
     if (code == 429) return 'HTTP 429 (try again later)';
@@ -540,6 +555,7 @@ class AiFailure {
       return 'HTTP $code (server error)';
     }
     if (code != null) return 'HTTP $code (request failed)';
+    if (noSession) return 'not signed in';
     if (noResponse) return 'no connection';
     return 'unknown error';
   }
@@ -682,12 +698,21 @@ class ReportDataCollector {
         pullFailed ? DataSourceStatus.error : DataSourceStatus.success,
         profile.conditions.length);
 
-    // 4. Medications — ACTIVE only (not deleted, isPresent), the
-    // shared R39 model's own filter.
+    // 4. Medications — ACTIVE only under the shared R39 model's
+    // own filter: not deleted and not archived
+    // (`!isDeleted && !isArchived`, where isArchived is the
+    // explicit stamp OR `!isPresent` — medications.dart). Applied
+    // HERE as well as at the page's profile-input build, so a
+    // caller that hands the collector an unfiltered list still
+    // cannot leak an archived/deleted row into the snapshot, and
+    // the Data Availability count below counts this same filtered
+    // list (Juno Ruling 1).
+    final activeMedications =
+        activeMedicationEntries(profile.activeMedications);
     meta(
         'medications',
         pullFailed ? DataSourceStatus.error : DataSourceStatus.success,
-        profile.activeMedications.length);
+        activeMedications.length);
 
     // 5. Knowledge documents.
     List<String> docs = const [];
@@ -821,7 +846,7 @@ class ReportDataCollector {
       userWeightLbs: profile.weightLbs,
       userGender: profile.gender,
       conditions: profile.conditions,
-      medications: profile.activeMedications,
+      medications: activeMedications,
       knowledgeDocuments: docs,
       heartRateSeries: hr,
       sleepSeries: sleep,
@@ -860,6 +885,12 @@ class ReportReady extends ReportOutcome {
   final String savedPath;
   final bool isRawFallback;
   final String? aiFailureReason;
+
+  /// Whether the automatic Downloads copy of these exact bytes
+  /// landed (Juno Ruling 2: the attempt finishes before the share
+  /// confirmation is shown and its outcome is carried here). Null
+  /// when no Downloads attempt was wired for this generation.
+  final bool? downloadsSaved;
   const ReportReady({
     required this.snapshot,
     required this.pdfBytes,
@@ -867,6 +898,7 @@ class ReportReady extends ReportOutcome {
     required this.savedPath,
     required this.isRawFallback,
     this.aiFailureReason,
+    this.downloadsSaved,
   });
 }
 
@@ -886,8 +918,17 @@ class ReportGenerationPipeline {
   final TabsBackend backend;
 
   /// Injected AI call (defaults to the backend's detailed POST).
-  final Future<({int? statusCode, Map<String, dynamic>? body, String? serverError})>
-      Function(Map<String, dynamic> body)? aiCall;
+  /// `transportFailure` carries the backend's classification of a
+  /// no-response outcome (timeout / no-response / no-session — see
+  /// [AiTransportFailure]); null when a response arrived or the
+  /// outcome is unclassified.
+  final Future<
+      ({
+        int? statusCode,
+        Map<String, dynamic>? body,
+        String? serverError,
+        AiTransportFailure? transportFailure,
+      })> Function(Map<String, dynamic> body)? aiCall;
 
   /// Injected backoff delay (tests pass a no-op).
   final Future<void> Function(Duration d) delay;
@@ -910,6 +951,16 @@ class ReportGenerationPipeline {
         renderPdf,
     required Future<String> Function(List<int> bytes, String fileName)
         savePdf,
+
+    /// The automatic Downloads copy (Juno Ruling 2): invoked with
+    /// the SAME bytes + file name right after [savePdf] succeeds —
+    /// the PDF is never regenerated for it — and awaited before
+    /// the ready outcome returns, so the share confirmation can
+    /// disclose its result. A false return or a throw is a failed
+    /// copy only: generation still completes, and the failure
+    /// never becomes the generic export-failure message.
+    Future<bool> Function(List<int> bytes, String fileName)?
+        saveToDownloads,
     void Function(ReportStage stage)? onStage,
     bool Function()? isCancelled,
     DateTime? now,
@@ -942,20 +993,45 @@ class ReportGenerationPipeline {
       while (attempt < maxAttempts) {
         attempt++;
         if (cancelled()) return const ReportFailed('Cancelled');
-        ({int? statusCode, Map<String, dynamic>? body, String? serverError})
-            res;
+        ({
+          int? statusCode,
+          Map<String, dynamic>? body,
+          String? serverError,
+          AiTransportFailure? transportFailure,
+        }) res;
         var timedOut = false;
         try {
-          // Native caps each attempt at 60s; the Flutter backend's
-          // shared transport timeout (20s) fires first in practice
-          // and surfaces as a no-response connection failure.
+          // Native caps each attempt at 60s; this outer guard is
+          // that cap, and the backend's AI transport budget now
+          // matches it (postAiDetailed runs on the dedicated 60s
+          // aiRequestTimeout — the shared 20s timeout no longer
+          // kills legitimate in-flight generations; server
+          // evidence showed a successful generation taking up to
+          // ~31s). Whichever of the two 60s bounds fires first,
+          // the classification is the same: postAiDetailed reports
+          // a transport timeout as AiTransportFailure.timeout (a
+          // timeout, NOT a "no connection"), a genuine no-response
+          // transport failure as .noResponse, and a missing
+          // session as .noSession (Juno Ruling 3). A throw out of
+          // the call itself is unclassified and lands as
+          // `unknown error`, never as a guessed "no connection".
           res = await call(buildAiReportRequest(snapshot))
               .timeout(const Duration(seconds: 60));
         } on TimeoutException {
           timedOut = true;
-          res = (statusCode: null, body: null, serverError: null);
+          res = (
+            statusCode: null,
+            body: null,
+            serverError: null,
+            transportFailure: null,
+          );
         } catch (_) {
-          res = (statusCode: null, body: null, serverError: null);
+          res = (
+            statusCode: null,
+            body: null,
+            serverError: null,
+            transportFailure: null,
+          );
         }
         final result = res.body?['result'];
         if (res.statusCode == 200 && result is String) {
@@ -964,8 +1040,11 @@ class ReportGenerationPipeline {
         }
         final failure = AiFailure(
           httpStatus: res.statusCode,
-          noResponse: res.statusCode == null,
-          timedOut: timedOut,
+          noResponse:
+              res.transportFailure == AiTransportFailure.noResponse,
+          noSession: res.transportFailure == AiTransportFailure.noSession,
+          timedOut: timedOut ||
+              res.transportFailure == AiTransportFailure.timeout,
         );
         aiFailureReason = failure.plainReason;
         if (failure.retryClass == AiRetryClass.fatal) break;
@@ -1004,6 +1083,19 @@ class ReportGenerationPipeline {
       return ReportFailed(reportExportFailureMessage,
           allowRawFallback: true, snapshot: snapshot);
     }
+    // Juno Ruling 2: the Downloads attempt finishes BEFORE the
+    // ready outcome (and therefore before the share confirmation),
+    // over the same bytes — never a regeneration. Its failure is
+    // carried on the outcome, never a generation failure.
+    bool? downloadsSaved;
+    final downloads = saveToDownloads;
+    if (downloads != null) {
+      try {
+        downloadsSaved = await downloads(bytes, fileName);
+      } catch (_) {
+        downloadsSaved = false;
+      }
+    }
     return ReportReady(
       snapshot: snapshot,
       pdfBytes: bytes,
@@ -1011,6 +1103,7 @@ class ReportGenerationPipeline {
       savedPath: savedPath,
       isRawFallback: isRaw,
       aiFailureReason: forceRawFallback ? null : aiFailureReason,
+      downloadsSaved: downloadsSaved,
     );
   }
 }
