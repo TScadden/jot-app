@@ -224,9 +224,10 @@ class _HomeScreenState extends State<HomeScreen> {
   // ── R70 Daily Score ─────────────────────────────────────────────
   /// Today's persisted Daily Score; null while no score exists
   /// for today (the header circle renders its building or pending
-  /// state — never a number from nothing). Loaded behind first
-  /// paint: the snapshot capture runs first, the compute trigger
-  /// runs over the history store, then today's row is read back.
+  /// state — never a number from nothing). Paint-first (Oct 22,
+  /// 2026): today's row is read from the store and painted as
+  /// soon as it lands; the snapshot capture + compute trigger
+  /// then refresh it in the background (see [_loadDailyScore]).
   int? _todayScore;
 
   /// True when today is unscored but the score system is active
@@ -237,9 +238,71 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _todayScorePending = false;
 
   Future<void> _loadDailyScore() async {
+    final store = widget.healthHistoryStore ?? HealthHistoryStore.instance;
+    final today = historyDateStr(DateTime.now());
+
+    // Derives today's score + pending flag from a store read —
+    // the exact expressions this load has always used — and
+    // paints only when they actually changed (no flicker on
+    // repeated calls). Display derivation only: writes nothing.
+    void paintFrom(Map<String, DailyBiometrics> all) {
+      final row = all[today];
+      final score = row?.dailyScore;
+      final pending = score == null &&
+          (all.values.any((r) => r.dailyScore != null) ||
+              computeDailyScore(all, today) != null);
+      if (score != _todayScore || pending != _todayScorePending) {
+        setState(() {
+          _todayScore = score;
+          _todayScorePending = pending;
+        });
+      }
+    }
+
+    // BACKGROUND REFRESH: the existing snapshot → compute →
+    // re-read chain, unchanged and in the same order, runs
+    // behind the painted score and repaints on a change. Its
+    // start is single-shot per load, kicked by whichever lands
+    // first: the first paint completing (the normal case — the
+    // chain then starts right after the paint), or the end of
+    // the first frame. The frame kick exists so a first store
+    // read that never lands cannot strand the chain behind it:
+    // at base this load's first await WAS the snapshot, so the
+    // capture (and its app-wide single-flight) always started
+    // from this call even when the store read behind it wedged.
+    Future<void>? chain;
+    Future<void> startChain() => chain ??= _refreshDailyScoreChain(
+        store: store, today: today, paintFrom: paintFrom);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(startChain());
+    });
+
+    // PAINT-FIRST (Oct 22, 2026): read the store and paint
+    // today's stored score immediately, before the snapshot.
+    // A due capture used to hold the header circle in its
+    // no-number building state for the reads' full duration
+    // even when today's score was already sitting in the store.
+    // This paint performs NO computeMissingScores run and
+    // persists nothing.
     try {
-      final store = widget.healthHistoryStore ?? HealthHistoryStore.instance;
-      final today = historyDateStr(DateTime.now());
+      final all = await store.readAll();
+      if (!mounted) return;
+      paintFrom(all);
+    } catch (_) {
+      // The circle keeps its building state — never a fake number.
+    }
+    await startChain();
+  }
+
+  /// The background half of [_loadDailyScore]: the snapshot →
+  /// compute → re-read chain exactly as this load always ran it,
+  /// repainting through [paintFrom] when it lands.
+  Future<void> _refreshDailyScoreChain({
+    required HealthHistoryStore store,
+    required String today,
+    required void Function(Map<String, DailyBiometrics>) paintFrom,
+  }) async {
+    try {
       // SNAPSHOT-FIRST (founder amendment, Oct 20, 2026; TODAY
       // RULE in daily_score.dart): before computing anything,
       // await a Health Connect capture — the snapshot — so a new
@@ -260,20 +323,11 @@ class _HomeScreenState extends State<HomeScreen> {
       await DailyScoreEngine(store: store)
           .computeMissingScores(beforeDate: today);
       final all = await store.readAll();
-      final row = all[today];
       if (!mounted) return;
-      final score = row?.dailyScore;
-      final pending = score == null &&
-          (all.values.any((r) => r.dailyScore != null) ||
-              computeDailyScore(all, today) != null);
-      if (score != _todayScore || pending != _todayScorePending) {
-        setState(() {
-          _todayScore = score;
-          _todayScorePending = pending;
-        });
-      }
+      paintFrom(all);
     } catch (_) {
-      // The circle keeps its building state — never a fake number.
+      // The circle keeps whatever is painted (the stored score,
+      // or its building state) — never a fake number.
     }
   }
 

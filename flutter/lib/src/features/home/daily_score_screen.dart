@@ -123,10 +123,47 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
     unawaited(_load());
   }
 
+  /// Builds the newest-first scored-day list from a store read
+  /// (readAll is ascending by date).
+  List<_ScoredDay> _scoredDaysFrom(Map<String, DailyBiometrics> all) {
+    final scored = [
+      for (final row in all.values)
+        if (row.dailyScore != null) row,
+    ];
+    final out = <_ScoredDay>[];
+    for (var i = scored.length - 1; i >= 0; i--) {
+      out.add(_ScoredDay(scored[i], i > 0 ? scored[i - 1] : null));
+    }
+    return out;
+  }
+
   Future<void> _load() async {
+    // PAINT-FIRST (Oct 22, 2026): paint the PERSISTED store scores
+    // immediately, before any capture or compute. A due capture
+    // used to leave this screen literally blank (SizedBox.shrink)
+    // for the reads' full duration — the founder opened the app
+    // and saw no data until a manual forced refresh. The first
+    // paint performs NO compute and persists nothing: it is a
+    // plain store read, exactly the history as last scored.
     try {
-      // SNAPSHOT-FIRST (founder amendment, Oct 20, 2026): opening
-      // the history first awaits a Health Connect capture — the
+      final all = await _store.readAll();
+      if (!mounted) return;
+      setState(() {
+        _days = _scoredDaysFrom(all);
+        _loaded = true;
+      });
+    } catch (_) {
+      // Same defined state the old single-chain catch produced:
+      // loaded, empty — the building state.
+      if (!mounted) return;
+      setState(() => _loaded = true);
+    }
+    // BACKGROUND REFRESH: the existing snapshot → compute →
+    // re-read chain, unchanged and in the same order, now runs
+    // behind the painted list and repaints when it lands.
+    try {
+      // SNAPSHOT-FIRST (founder amendment, Oct 20, 2026): the
+      // compute below first awaits a Health Connect capture — the
       // snapshot — so a new score is never computed from stale
       // store state when fresher data is obtainable. The capture
       // stays under its normal rules (NON-forced, 6h throttle;
@@ -144,22 +181,16 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
       await DailyScoreEngine(store: _store).computeMissingScores(
           beforeDate: historyDateStr(DateTime.now()));
       final all = await _store.readAll();
-      final scored = [
-        for (final row in all.values)
-          if (row.dailyScore != null) row,
-      ]; // readAll is ascending by date
-      final out = <_ScoredDay>[];
-      for (var i = scored.length - 1; i >= 0; i--) {
-        out.add(_ScoredDay(scored[i], i > 0 ? scored[i - 1] : null));
-      }
       if (!mounted) return;
       setState(() {
-        _days = out;
+        _days = _scoredDaysFrom(all);
         _loaded = true;
       });
     } catch (_) {
+      // The painted stored days stay up — a failed background
+      // chain never blanks a painted screen.
       if (!mounted) return;
-      setState(() => _loaded = true);
+      if (!_loaded) setState(() => _loaded = true);
     }
   }
 
@@ -180,7 +211,7 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
         ),
       ),
       body: !_loaded
-          ? const SizedBox.shrink()
+          ? const Center(child: CircularProgressIndicator())
           : _days.isEmpty
               ? _buildBuildingState()
               : _buildHistory(),
