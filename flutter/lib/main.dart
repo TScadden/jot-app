@@ -9,6 +9,7 @@ import 'package:tabs_lab/src/data/first_run_sync.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
+import 'package:tabs_lab/src/data/health_history_sync.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/launch_trace.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
@@ -373,6 +374,8 @@ class _AppFlowState extends State<AppFlow>
         // first run after install/update until proven otherwise:
         // rebuild the reminder schedules once (see _kickFirstRunResync).
         _kickFirstRunResync();
+        // App-open sync: a cold start landing home is an app open.
+        _triggerAppOpenCapture();
       }
     } catch (_) {
       // Unreadable store → fresh-install behavior (welcome).
@@ -586,6 +589,9 @@ class _AppFlowState extends State<AppFlow>
       // onboarding branch needs no kick: landing home via
       // _onOnboardingComplete kicks it there.
       _kickFirstRunResync();
+      // App-open sync: signing in lands home — an app open for
+      // this session.
+      _triggerAppOpenCapture();
     }
   }
 
@@ -601,6 +607,30 @@ class _AppFlowState extends State<AppFlow>
   // retries. Never throws into the flow: landing home is never
   // blocked on notification scheduling.
   Future<void>? _firstRunResyncFuture;
+
+  // App-open sync (founder directive, Oct 22, 2026: "we sync every
+  // time the app is opened and every 30 minutes in the
+  // background"). This flow is the SOLE app-open trigger: it fires
+  // on every home landing (cold-start session restore, sign-in,
+  // onboarding completion — the _kickFirstRunResync doors) and on
+  // every resume while home (see didChangeAppLifecycleState). The
+  // other foreground capture callers (Home's snapshot load, the
+  // Daily Score history, HealthRepository) deliberately keep the
+  // plain throttled capture: in the same open they either join
+  // this run in flight through the sync's shared single-flight, or
+  // are throttled by the stamp this run leaves — so one open
+  // produces exactly ONE capture attempt, never stacked or chained
+  // duplicates.
+  //
+  // FOREGROUND ONLY (Juno ruling, Oct 22, 2026, F1): the trigger
+  // fires synchronously while the app is foregrounded and the
+  // capture reads in that window; nothing is scheduled for later
+  // execution, and the background runner never uses this path.
+  // Fire-and-forget: capture never throws, and landing home is
+  // never blocked on a sync.
+  void _triggerAppOpenCapture() {
+    unawaited(HealthHistorySync.instance.captureOnAppOpen());
+  }
 
   void _kickFirstRunResync() {
     _firstRunResyncFuture ??= _runFirstRunResync();
@@ -684,6 +714,8 @@ class _AppFlowState extends State<AppFlow>
     // TAKEOVER Phase 4 — landing home via a resumed onboarding is
     // also a first-run door (see _kickFirstRunResync).
     _kickFirstRunResync();
+    // App-open sync: landing home from onboarding is an app open.
+    _triggerAppOpenCapture();
   }
 
   // Round 32 — consent declined (the decline dialog's "Log Out").
@@ -866,6 +898,13 @@ class _AppFlowState extends State<AppFlow>
     // checkSubscriptionStatus).
     if (state == AppLifecycleState.resumed) {
       _billingSync?.onResumed();
+      // App-open sync (founder directive, Oct 22, 2026): a return
+      // from background while home is an app open — trigger the
+      // open capture NOW, in the foreground (Juno F1), through
+      // the shared single-flight. Resumes into welcome / login /
+      // onboarding do not capture; those flows capture when they
+      // land home.
+      if (_stage == _FlowStage.home) _triggerAppOpenCapture();
       // Refresh keep-alive tap, live half: a tap delivered to
       // the running singleTop MainActivity (onNewIntent) while
       // the app was backgrounded is consumed on resume and
