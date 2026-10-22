@@ -302,6 +302,16 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                 call.argument<String>("content"),
                 result
             )
+            // Report Downloads copy (report-pdf fix): the byte
+            // sibling of exportCsvFile's Downloads hand-off — same
+            // channel, MediaStore Downloads write, but no share
+            // sheet and no cache file: the PDF bytes arrive from
+            // Dart exactly as generated/shared.
+            "savePdfToDownloads" -> savePdfToDownloads(
+                call.argument<String>("fileName"),
+                call.argument<ByteArray>("bytes"),
+                result
+            )
             else -> result.notImplemented()
         }
     }
@@ -1500,6 +1510,67 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
             result.success(true)
         } catch (e: Exception) {
             result.error("CSV_EXPORT_FAILED", "Could not export the CSV file.", hcErrorDetails(e))
+        }
+    }
+
+    /// Report PDF Downloads copy (report-pdf fix, Juno Ruling 2's
+    /// native half): writes [bytes] — the exact bytes Dart generated
+    /// and will share, never a regeneration — into the public
+    /// Downloads collection via MediaStore, scoped-storage
+    /// compliant, with NO storage permission requested. Not
+    /// Activity-bound (no share sheet), so it also works whenever
+    /// the plugin is attached. Success only when the bytes are
+    /// fully written and the row is published (IS_PENDING cleared);
+    /// a partial write deletes its row so Downloads never keeps a
+    /// truncated copy. Pre-Android-10 devices have no permission-
+    /// free Downloads path (MediaStore relative paths start at Q),
+    /// so they fail honestly with DOWNLOADS_SAVE_FAILED instead of
+    /// the app requesting a broad storage permission.
+    private fun savePdfToDownloads(fileName: String?, bytes: ByteArray?, result: MethodChannel.Result) {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) {
+            result.error("DOWNLOADS_SAVE_FAILED", "Could not save the PDF to Downloads.", null)
+            return
+        }
+        val name = fileName?.takeIf { it.isNotBlank() }
+        if (name == null || bytes == null || bytes.isEmpty()) {
+            result.error("DOWNLOADS_SAVE_FAILED", "Could not save the PDF to Downloads.", null)
+            return
+        }
+        val resolver = applicationContext.contentResolver
+        var uri: android.net.Uri? = null
+        try {
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            if (uri == null) {
+                result.error("DOWNLOADS_SAVE_FAILED", "Could not save the PDF to Downloads.", null)
+                return
+            }
+            val stream = resolver.openOutputStream(uri)
+            if (stream == null) {
+                resolver.delete(uri, null, null)
+                result.error("DOWNLOADS_SAVE_FAILED", "Could not save the PDF to Downloads.", null)
+                return
+            }
+            stream.use { it.write(bytes) }
+            val publish = ContentValues().apply {
+                put(MediaStore.MediaColumns.IS_PENDING, 0)
+            }
+            resolver.update(uri, publish, null, null)
+            result.success(true)
+        } catch (e: Exception) {
+            // Never leave a partial/pending row behind on failure.
+            if (uri != null) {
+                try {
+                    resolver.delete(uri, null, null)
+                } catch (_: Exception) {
+                }
+            }
+            result.error("DOWNLOADS_SAVE_FAILED", "Could not save the PDF to Downloads.", hcErrorDetails(e))
         }
     }
 }
