@@ -24,11 +24,16 @@ class FakeBackend extends TabsBackend {
   List<BpRecord> bp = const [];
   bool pullFails = false;
   int aiCalls = 0;
-  ({int? statusCode, Map<String, dynamic>? body, String? serverError})
-      aiResponse = (
+  ({
+    int? statusCode,
+    Map<String, dynamic>? body,
+    String? serverError,
+    AiTransportFailure? transportFailure,
+  }) aiResponse = (
     statusCode: 200,
     body: {'result': '[SECTION] USER SUMMARY\nAll good.'},
     serverError: null,
+    transportFailure: null,
   );
 
   FakeBackend() : super(sessionStore: FakeSessionStore());
@@ -52,7 +57,9 @@ class FakeBackend extends TabsBackend {
         int? statusCode,
         Map<String, dynamic>? body,
         String? serverError,
-      })> postAiDetailed(String path, Map<String, dynamic> body) async {
+        AiTransportFailure? transportFailure,
+      })> postAiDetailed(String path, Map<String, dynamic> body,
+      {Duration? timeoutOverride}) async {
     aiCalls++;
     return aiResponse;
   }
@@ -342,7 +349,9 @@ void main() {
     });
     test('plain reasons are fixed strings mapped from status only', () {
       expect(const AiFailure(timedOut: true).plainReason,
-          'network timeout after 60s');
+          'network timeout');
+      expect(const AiFailure(noSession: true).plainReason, 'not signed in');
+      expect(const AiFailure().plainReason, 'unknown error');
       expect(const AiFailure(httpStatus: 401).plainReason,
           'HTTP 401 (signed out?)');
       expect(const AiFailure(httpStatus: 429).plainReason,
@@ -587,7 +596,12 @@ void main() {
     test('HTTP 500 retries once (2 attempts) then raw fallback', () async {
       final backend = FakeBackend()
         ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)]
-        ..aiResponse = (statusCode: 500, body: null, serverError: 'x');
+        ..aiResponse = (
+          statusCode: 500,
+          body: null,
+          serverError: 'x',
+          transportFailure: null,
+        );
       String? seenReason;
       bool? seenRaw;
       final outcome = await run(backend,
@@ -603,10 +617,36 @@ void main() {
       expect(outcome.aiFailureReason, 'HTTP 500 (server error)');
     });
 
+    test('transport timeout (backend-classified) is NOT no connection',
+        () async {
+      // Report-pdf fix (Juno Ruling 3): the backend's shared 20s
+      // transport timeout used to collapse into a bare null and be
+      // labelled "no connection". Classified as a timeout it must
+      // produce the timeout reason — and keep the connection
+      // retry class (4 attempts).
+      final backend = FakeBackend()
+        ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)]
+        ..aiResponse = (
+          statusCode: null,
+          body: null,
+          serverError: null,
+          transportFailure: AiTransportFailure.timeout,
+        );
+      final outcome = await run(backend);
+      expect(backend.aiCalls, 4);
+      expect(outcome, isA<ReportReady>());
+      expect((outcome as ReportReady).aiFailureReason, 'network timeout');
+    });
+
     test('HTTP 401 fails fast (1 attempt), reason signed out', () async {
       final backend = FakeBackend()
         ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)]
-        ..aiResponse = (statusCode: 401, body: null, serverError: 'x');
+        ..aiResponse = (
+          statusCode: 401,
+          body: null,
+          serverError: 'x',
+          transportFailure: null,
+        );
       final outcome = await run(backend);
       expect(backend.aiCalls, 1);
       expect((outcome as ReportReady).aiFailureReason,
@@ -787,6 +827,11 @@ void main() {
               store: store,
               healthConnectService: FakeHc(),
               savePdf: (bytes, name) async => '/tmp/$name',
+              // Report-pdf fix: the Downloads seam is injected
+              // (an unmocked platform channel never completes in a
+              // widget test); false = the copy could not land, as
+              // on a device without the bridge.
+              saveToDownloads: (bytes, name) async => false,
               sharePdf: (bytes, name) async => shared = true,
             ),
           ]),
@@ -812,11 +857,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(shared, isFalse);
       expect(await store.getReportLastExportMs(), 0);
-      // Saved-file transparency: declining to share still tells the
-      // user the PDF is saved in the app.
+      // Saved-file transparency (Juno Ruling 2): declining to share
+      // still tells the user the PDF is saved in the app — with the
+      // save-failed Downloads wording, since the injected seam
+      // reports the copy could not land.
       expect(
           find.text(
-              'Report saved in the app. Export again any time to share it.'),
+              'Report saved in the app. It could not be saved to Downloads. Export again any time to share it.'),
           findsOneWidget);
     });
 
