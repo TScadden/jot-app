@@ -2340,11 +2340,105 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _pushProfile({'medications': raw});
   }
 
+  /// Report-pdf fix (write-path audit, Oct 22, 2026) — the shared
+  /// fresh-pull splice standard for EVERY medication mutation on
+  /// this screen (the Tools Medications tab's `_mutateDoc`, Vera
+  /// R48 F1; Lists/Notes/BP run the same discipline):
+  ///
+  /// 1. invalidate the cached pull and re-pull the FRESHEST
+  ///    profile — a failed pull is a visible error + reload, and
+  ///    NOTHING is pushed;
+  /// 2. [splice] runs against the FRESH document and returns the
+  ///    RAW ROWS to push, or null when its target cannot be
+  ///    resolved unambiguously there — the op then REFUSES:
+  ///    visible error, the fresh data is rendered, nothing is
+  ///    pushed. Rows are raw (not a document encode) so each op
+  ///    keeps its pre-fix payload shape byte-for-byte: add/delete
+  ///    round-trip hidden rows verbatim (the R44 preservation
+  ///    rule), and only archive — whose write IS the stamp —
+  ///    returns document-encoded rows;
+  /// 3. the spliced full list is saved through [_saveMedications].
+  ///
+  /// The pre-fix code spliced into `_data.medications` — this
+  /// screen's LOAD-TIME snapshot — and pushed that stale list
+  /// wholesale. The server stores the medications field whole
+  /// (there is no per-row merge), so any whole-blob push built on
+  /// a stale snapshot silently reverts every server-side change
+  /// made after the screen loaded: a medication archived on
+  /// another surface (or in the native app) resurrected as
+  /// active, and a medication added there vanished. That is the
+  /// exact shape of the Oct 22, 2026 server-blob evidence
+  /// (escitalopram still `isPresent:true`, no desvenlafaxine row,
+  /// minutes-old whole-list pushes carrying Sep 13 data).
+  Future<void> _mutateMedications(
+      List<Map<String, dynamic>>? Function(MedicationDocument fresh)
+          splice) async {
+    _backend.invalidateSyncPull();
+    final body = await _backend.fetchSyncPull();
+    if (body == null) {
+      _snack('Could not save. Check your connection and try again.');
+      await _reloadFromServer(reportLoadFailure: false);
+      return;
+    }
+    final freshData = SettingsProfileData.fromPull(body);
+    if (mounted) {
+      setState(() => _data = freshData);
+    } else {
+      _data = freshData;
+    }
+    final fresh = MedicationDocument.fromRawRows(freshData.medications);
+    final rows = splice(fresh);
+    if (rows == null) {
+      // Refused (target gone or ambiguous in the fresh data):
+      // the fresh data stays rendered; never push, never claim
+      // success.
+      _snack('Could not save. Check your connection and try again.');
+      return;
+    }
+    await _saveMedications(rows);
+  }
+
+  /// The raw index [entry] occupies in [doc], or -1 — identity
+  /// match over the document's aligned entries (the entry came
+  /// from this document, via resolveFreshEntry).
+  int _rawIndexOfEntry(MedicationDocument doc, MedicationEntry entry) {
+    for (var i = 0; i < doc.length; i++) {
+      if (identical(doc.entryAt(i), entry)) return i;
+    }
+    return -1;
+  }
+
   Future<void> _deleteMedication(String id) async {
     // Native deleteMedication (SettingsViewModel.kt:976-989): drop
-    // from the profile list and push the whole list.
-    await _saveMedications(
-        _data.medications.where((m) => '${m['id'] ?? ''}' != id).toList());
+    // from the profile list and push the whole list — now spliced
+    // into the FRESH list (see [_mutateMedications]): the rendered
+    // row is re-resolved there by its id, never dropped out of
+    // this screen's stale snapshot.
+    final current = MedicationDocument.fromRawRows(_data.medications);
+    MedicationEntry? target;
+    for (final e in current.entries) {
+      if (e.id == id) {
+        target = e;
+        break;
+      }
+    }
+    if (target == null) {
+      _snack('Could not save. Check your connection and try again.');
+      return;
+    }
+    final rendered = target;
+    await _mutateMedications((fresh) {
+      final t = fresh.resolveFreshEntry(rendered);
+      if (t == null) return null;
+      final rawIndex = _rawIndexOfEntry(fresh, t);
+      if (rawIndex < 0) return null;
+      // Raw-row removal (the pre-fix delete's payload shape):
+      // every other row — parseable or not — is pushed verbatim.
+      return [
+        for (var i = 0; i < fresh.rawRows.length; i++)
+          if (i != rawIndex) fresh.rawRows[i],
+      ];
+    });
   }
 
   /// Round 39 — archive via the shared model (the same op the
@@ -2354,15 +2448,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// Vera R39 fix pass: [rawIndex] is the row's index in the full
   /// medications list — the op targets that exact row by position
   /// (Finding 1: no name/id first-match, so id-less duplicates
-  /// can never stamp the wrong row), and the document is built
-  /// from the raw maps `_data.medications` already holds, so the
-  /// splice-back encode retains unparseable rows verbatim and
-  /// extra non-DTO keys (Finding 2). Saved through the existing
-  /// [_saveMedications], so push/failure behavior is unchanged.
+  /// can never stamp the wrong row).
+  ///
+  /// Report-pdf fix: the op now runs through [_mutateMedications]
+  /// — the rendered entry is re-resolved in the FRESH document
+  /// (identity → raw-index hint → unique id/composite, the shared
+  /// [MedicationDocument.resolveFreshEntry] discipline) and the
+  /// splice-back encode over the fresh rows retains unparseable
+  /// rows verbatim and extra non-DTO keys (Finding 2), instead of
+  /// stamping this screen's stale load-time snapshot and pushing
+  /// it wholesale over newer server state.
   Future<void> _archiveMedication(int rawIndex) async {
-    final doc = MedicationDocument.fromRawRows(_data.medications);
-    final updated = doc.archiveAt(rawIndex, now: DateTime.now());
-    await _saveMedications(updated.encode());
+    final rendered =
+        MedicationDocument.fromRawRows(_data.medications).entryAt(rawIndex);
+    if (rendered == null) {
+      _snack('Could not save. Check your connection and try again.');
+      return;
+    }
+    final now = DateTime.now();
+    await _mutateMedications((fresh) {
+      final t = fresh.resolveFreshEntry(rendered, rawIndexHint: rawIndex);
+      if (t == null) return null;
+      final updated = fresh.archiveEntry(t, now: now);
+      // archiveEntry refuses by returning the same document —
+      // treat that as this op's refusal too.
+      if (identical(updated, fresh)) return null;
+      return updated.encode();
+    });
   }
 
   // Round 44: no unarchive/restore on this screen — archived
@@ -2451,7 +2563,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   'updatedAt': now.millisecondsSinceEpoch,
                   'isDeleted': false,
                 };
-                await _saveMedications([..._data.medications, med]);
+                // Report-pdf fix: append to the FRESH list (see
+                // _mutateMedications) — appending to this screen's
+                // load-time snapshot and pushing it wholesale
+                // would revert any server-side change made since
+                // the screen loaded.
+                await _mutateMedications(
+                    (fresh) => [...fresh.rawRows, med]);
                 if (ctx.mounted) Navigator.of(ctx).pop();
               },
               child: const Text('Add',
