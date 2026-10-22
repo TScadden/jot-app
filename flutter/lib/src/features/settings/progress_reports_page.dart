@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
 
+import 'package:tabs_lab/src/data/downloads_saver.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/medications.dart';
@@ -45,6 +46,14 @@ class ProgressReportsPage extends StatefulWidget {
   /// the app documents directory.
   final Future<void> Function(List<int> bytes, String fileName)? sharePdf;
   final Future<String> Function(List<int> bytes, String fileName)? savePdf;
+
+  /// Test seam for the automatic Downloads copy (Juno Ruling 2):
+  /// production uses [ReportDownloadsSaver] over the Health Connect
+  /// bridge channel (MediaStore). Returns whether the copy landed;
+  /// a throw is treated the same as a false return — a failed
+  /// Downloads copy never blocks generation or sharing.
+  final Future<bool> Function(List<int> bytes, String fileName)?
+      saveToDownloads;
   final ReportGenerationPipeline? pipeline;
 
   const ProgressReportsPage({
@@ -57,6 +66,7 @@ class ProgressReportsPage extends StatefulWidget {
     this.knowledgeStore,
     this.sharePdf,
     this.savePdf,
+    this.saveToDownloads,
     this.pipeline,
   });
 
@@ -69,6 +79,42 @@ class ProgressReportsPage extends StatefulWidget {
 /// (700000–799998) — the same accepted exposure as check-in 770001,
 /// not its own disjoint block. Kept as native's id regardless.
 const appointmentReminderId = 770002;
+
+/// Builds the report's profile input from the Settings profile
+/// data (the sync pull's decoded blobs, via [SettingsProfileData]).
+///
+/// Medications (report-pdf fix, Juno Ruling 1): the active list is
+/// the shared medication model's own filter —
+/// `!entry.isDeleted && !entry.isArchived`
+/// ([activeMedicationEntries]) — where
+/// [MedicationEntry.isArchived] is the archived stamp OR
+/// `!isPresent` (medications.dart, R35 precedent). Filtering on
+/// `isPresent` alone was the defect: a row carrying
+/// `isArchived == true` with `isPresent == true` passed it and an
+/// archived medication (escitalopram, archived Oct 16, 2026)
+/// rendered as active in the report. Entries keep their stored
+/// record order and their stored name/dose/frequency — nothing is
+/// sorted, deduped, or rewritten here.
+ReportProfileInput reportProfileInputFromSettings(SettingsProfileData d) {
+  final conditions = <String>[
+    for (final row in d.conditions)
+      if ('${row['name'] ?? ''}'.trim().isNotEmpty) '${row['name']}'.trim(),
+  ];
+  final parsed = <MedicationEntry>[];
+  for (final row in d.medications) {
+    final m = MedicationEntry.fromBlobRow(row);
+    if (m != null) parsed.add(m);
+  }
+  return ReportProfileInput(
+    userContext: d.userContext,
+    age: d.age ?? 0,
+    heightCm: d.heightCm ?? 0,
+    weightKg: d.weightKg ?? 0,
+    gender: d.gender,
+    conditions: conditions,
+    activeMedications: activeMedicationEntries(parsed),
+  );
+}
 
 class _ProgressReportsPageState extends State<ProgressReportsPage> {
   ReportFocus _focus = ReportFocus.health;
@@ -157,40 +203,28 @@ class _ProgressReportsPageState extends State<ProgressReportsPage> {
   List<QuickLogCategory> get _selected =>
       resolveReportCategories(_categories, _focus, _customIds);
 
-  ReportProfileInput get _profileInput {
-    final d = widget.profileData;
-    final conditions = <String>[
-      for (final row in d.conditions)
-        if ('${row['name'] ?? ''}'.trim().isNotEmpty)
-          '${row['name']}'.trim(),
-    ];
-    final meds = <MedicationEntry>[];
-    for (final row in d.medications) {
-      final m = MedicationEntry.fromBlobRow(row);
-      if (m != null && !m.isDeleted && m.isPresent) meds.add(m);
-    }
-    return ReportProfileInput(
-      userContext: d.userContext,
-      age: d.age ?? 0,
-      heightCm: d.heightCm ?? 0,
-      weightKg: d.weightKg ?? 0,
-      gender: d.gender,
-      conditions: conditions,
-      activeMedications: meds,
-    );
-  }
+  ReportProfileInput get _profileInput =>
+      reportProfileInputFromSettings(widget.profileData);
 
   Future<String> _defaultSave(List<int> bytes, String fileName) async {
-    // Divergence (round report): native also copies the PDF into
-    // Downloads via MediaStore. Flutter has no clean Downloads
-    // path in the Lab (the only Downloads writer is the CSV bridge,
-    // a text hand-off), so the saved copy lands in the app
-    // documents directory; the share sheet shares the same bytes.
+    // The saved copy lands in the app documents directory; the
+    // share sheet shares the same bytes. The automatic Downloads
+    // copy is a SEPARATE step over the same bytes (Juno Ruling 2 —
+    // see [_defaultSaveToDownloads]); this app-private save is
+    // unchanged.
     final dir = await getApplicationDocumentsDirectory();
     final file = File('${dir.path}/$fileName');
     await file.writeAsBytes(bytes, flush: true);
     return file.path;
   }
+
+  /// The automatic Downloads copy (Juno Ruling 2): the bridge
+  /// plugin's MediaStore writer (the CSV bridge's channel, extended
+  /// with a byte hand-off — see downloads_saver.dart). Never throws:
+  /// the saver reports failure as false.
+  Future<bool> _defaultSaveToDownloads(
+          List<int> bytes, String fileName) =>
+      ReportDownloadsSaver.instance.savePdf(bytes: bytes, fileName: fileName);
 
   Future<void> _generate({bool forceRaw = false}) async {
     if (_stage != null) return;
@@ -242,6 +276,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage> {
               isRawFallback: isRawFallback,
               aiFailureReason: aiFailureReason),
       savePdf: widget.savePdf ?? _defaultSave,
+      saveToDownloads: widget.saveToDownloads ?? _defaultSaveToDownloads,
     );
     if (!mounted) return;
     setState(() => _stage = null);
@@ -296,6 +331,18 @@ class _ProgressReportsPageState extends State<ProgressReportsPage> {
                   style: const TextStyle(
                       color: NotelColors.textSecondary, fontSize: 11)),
             ],
+            // Juno Ruling 2: the Downloads attempt finished before
+            // this dialog opened and its outcome travels with the
+            // ready outcome — this line is its disclosure.
+            if (ready.downloadsSaved != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                  ready.downloadsSaved!
+                      ? 'A copy was also saved to your Downloads folder.'
+                      : 'This report could not be saved to Downloads. It is saved in the app and you can still share it now.',
+                  style: const TextStyle(
+                      color: NotelColors.textSecondary, fontSize: 11)),
+            ],
           ],
         ),
         actions: [
@@ -317,11 +364,14 @@ class _ProgressReportsPageState extends State<ProgressReportsPage> {
     if (!mounted) return;
     setState(() => _pendingShare = null);
     if (share != true) {
-      // Saved-file transparency: the PDF is already saved in the
-      // app even when the user declines to share right now.
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text(
-              'Report saved in the app. Export again any time to share it.')));
+      // Saved-file transparency (Juno Ruling 2 wording): the PDF
+      // is already saved in the app even when the user declines to
+      // share right now, and in Downloads too when that copy
+      // landed.
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(ready.downloadsSaved == true
+              ? 'Report saved in Downloads and in the app. Export again any time to share it.'
+              : 'Report saved in the app. It could not be saved to Downloads. Export again any time to share it.')));
       return;
     }
     // Native marks the export when the share sheet is launched.
@@ -335,8 +385,11 @@ class _ProgressReportsPageState extends State<ProgressReportsPage> {
       await shareFn(ready.pdfBytes, ready.fileName);
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Could not open the share sheet. The report is saved in the app.')));
+        // Juno Ruling 2: name Downloads only when that copy landed.
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(ready.downloadsSaved == true
+                ? 'Could not open the share sheet. The report is saved in Downloads and in the app.'
+                : 'Could not open the share sheet. The report is saved in the app.')));
       }
     }
   }
