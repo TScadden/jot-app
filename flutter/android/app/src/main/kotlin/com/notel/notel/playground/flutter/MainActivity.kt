@@ -1100,7 +1100,23 @@ class MainActivity : FlutterFragmentActivity() {
                     // do NOT fall through to an empty-list success.
                     permissionDenied = true
                 } catch (_: Exception) {
-                    // Native logs and continues with an empty list.
+                    // B-10: a non-Security query failure must NOT fall
+                    // through to an empty-list success (Dart renders that
+                    // as "No events found.", a false signal). Mirror the
+                    // outer catch: signal CALENDAR_READ_FAILED so Dart
+                    // substitutes "Calendar events are unavailable
+                    // right now."
+                    runOnUiThread {
+                        try {
+                            result.error(
+                                "CALENDAR_READ_FAILED",
+                                "Could not read calendar events.",
+                                null
+                            )
+                        } catch (_: Exception) {
+                        }
+                    }
+                    return@Thread
                 }
             } catch (_: Exception) {
                 // Native's outer catch returns the "unavailable"
