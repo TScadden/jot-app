@@ -773,7 +773,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
             style: TextStyle(
                 color: NotelColors.textPrimary, fontWeight: FontWeight.bold)),
         content: const Text(
-          'AI suggestions need Tabs Premium. Membership is managed in the main Tabs app — this Lab build shows your real membership state but can\u2019t start a trial.',
+          'AI suggestions need Tabs Premium. Manage your membership in Settings under Membership — subscriptions are purchased and managed through Google Play.',
           style: TextStyle(color: NotelColors.textSecondary),
         ),
         actions: [
