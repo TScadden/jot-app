@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/weekly_snapshot.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
@@ -22,6 +24,12 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// Round 13 — real data via [loadData]: loaded on init, on metric switch
 /// (resetting the tapped point), and on refresh-button tap. When [loadData]
 /// is null the card keeps the round-8 empty states (used by tests).
+///
+/// Founder spec (Oct 26, 2026) — no empty-state flash: while a load is in
+/// flight the card shows a loading state, never the no-data state. The
+/// empty state may appear only when a load completes with no data, or
+/// after [emptyStateDelay] (30 s) passes with nothing loaded; data that
+/// arrives after the delay still swaps in when its load completes.
 class WeeklySnapshotCard extends StatefulWidget {
   final Future<WeeklySnapshotMetricData> Function(SnapshotMetric)? loadData;
 
@@ -42,16 +50,46 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
   /// Guards against stale loads when the user switches metrics quickly.
   int _loadGeneration = 0;
 
+  /// True while a load for the current metric is in flight.
+  bool _loadInFlight = false;
+
+  /// True once the current load has run [emptyStateDelay] with nothing
+  /// loaded — only then may the empty state replace the loading state.
+  bool _loadTimedOut = false;
+
+  /// Arms the 30 s empty-state delay for the in-flight load; cancelled
+  /// when the load completes, when a newer load starts, and on dispose.
+  Timer? _emptyTimer;
+
+  /// How long a load may run with nothing loaded before the card may
+  /// show its no-data state (founder spec, Oct 26, 2026).
+  static const Duration emptyStateDelay = Duration(seconds: 30);
+
   @override
   void initState() {
     super.initState();
     _reload();
   }
 
+  @override
+  void dispose() {
+    _emptyTimer?.cancel();
+    super.dispose();
+  }
+
   Future<void> _reload() async {
     final loader = widget.loadData;
     if (loader == null) return;
     final generation = ++_loadGeneration;
+    _emptyTimer?.cancel();
+    setState(() {
+      _loadInFlight = true;
+      _loadTimedOut = false;
+    });
+    _emptyTimer = Timer(emptyStateDelay, () {
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() => _loadTimedOut = true);
+    });
     WeeklySnapshotMetricData data;
     try {
       data = await loader(_selected);
@@ -61,8 +99,10 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
       data = emptyMetricData(_selected);
     }
     if (!mounted || generation != _loadGeneration) return;
+    _emptyTimer?.cancel();
     setState(() {
       _loaded = data;
+      _loadInFlight = false;
     });
   }
 
@@ -77,8 +117,10 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
 
   @override
   Widget build(BuildContext context) {
-    // Fast first paint + honest fallback: the native empty state until the
-    // loader delivers (or when no loader is wired).
+    // Content paints from the last completed load; before the first load
+    // completes the card shows the loading state (never the empty state)
+    // unless the load already finished empty, ran past the 30 s delay,
+    // or no loader is wired (round-8 tests).
     final data = _loaded ?? emptyMetricData(_selected);
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
@@ -99,9 +141,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
               onSelect: _selectMetric,
             ),
             const SizedBox(height: 12),
-            if (data.isEmpty)
-              _emptyState(data)
-            else ...[
+            if (!data.isEmpty) ...[
               _avgRow(data),
               const SizedBox(height: 8),
               _tooltip(data),
@@ -114,7 +154,43 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
                 selectedIndex: _selectedPoint,
                 onSelectIndex: (i) => setState(() => _selectedPoint = i),
               ),
-            ],
+            ] else if (_loadInFlight && !_loadTimedOut)
+              _loadingState()
+            else
+              _emptyState(data),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Shown while the current metric's load is in flight (and for at most
+  /// [emptyStateDelay]); same box height as the empty state so the card
+  /// does not jump when content or the empty state lands.
+  Widget _loadingState() {
+    return const SizedBox(
+      height: 140,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                color: NotelColors.primary,
+              ),
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Loading your week...',
+              style: TextStyle(
+                fontSize: 13,
+                color: NotelColors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
       ),
