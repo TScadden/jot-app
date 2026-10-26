@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
@@ -168,6 +170,14 @@ class _SleepScreenState extends State<SleepScreen> {
   bool _refreshing = false;
   bool _connected = false;
 
+  /// Perf fix — generation counter for [_refreshSleepNeed]: the
+  /// initial load now lets its Sleep Need refresh finish BEHIND the
+  /// first paint, so a later refresh (Sync) can start while an
+  /// earlier one is still in flight. Each call takes a generation;
+  /// a call whose generation is no longer current drops its results
+  /// instead of overwriting the newer refresh's state.
+  int _sleepNeedGen = 0;
+
   /// HC read hardening — the last bridge read failure on this screen,
   /// as a bracketed code + the native exception class only (never
   /// health values). Sleep reads used to fail closed to null/empty
@@ -263,13 +273,34 @@ class _SleepScreenState extends State<SleepScreen> {
     _readError = null;
     await _readMinutesFor(dates);
     await _applySelected(_dateKey(today), useProfileFallback: true);
-    await _refreshSleepNeed();
     if (!mounted) return;
+    // Perf fix — paint-first: the hero, Recent Nights and debt are
+    // fully computed from the reads above, so the screen paints
+    // NOW. The Sleep Need refresh (a trailing 90-day union load +
+    // full store read) used to gate _loading=false even though it
+    // only feeds that one section; it now continues behind the
+    // paint and repaints when it lands.
     setState(() {
       _connected = true;
       _loading = false;
       _refreshing = false;
     });
+    // Behind the paint, the Sleep Need section settles in two
+    // steps: the store's local depth first (no bridge call, no
+    // timer — it lands almost immediately), then the full union
+    // refresh. The background step deliberately runs UNGUARDED:
+    // arming the usual 5s read-guard timer behind a completed
+    // paint leaves a live timer (and a hung future) dangling off a
+    // screen the user can already use and leave, and loadDays
+    // never throws by contract — a wedged channel simply leaves
+    // the section on its store-painted state, exactly what a
+    // guard expiry would do. Sync (below) keeps the guarded path.
+    unawaited(() async {
+      await _refreshSleepNeed(guarded: false, storeOnly: true);
+      if (mounted) setState(() {});
+      await _refreshSleepNeed(guarded: false);
+      if (mounted) setState(() {});
+    }());
   }
 
   /// R70 — refreshes the Personal Sleep Need state from the
@@ -278,19 +309,39 @@ class _SleepScreenState extends State<SleepScreen> {
   /// reads missed), then the estimate + balance evaluations are
   /// computed from store ∪ in-hand reads. Never throws — a failure
   /// leaves the previous (or empty) state standing.
-  Future<void> _refreshSleepNeed() async {
+  /// [guarded] wraps the reads in the screen's timeout guard (the
+  /// Sync path); the initial load's behind-paint refresh passes
+  /// false — see [_load]. [storeOnly] serves the union from the
+  /// local store alone (no Health Connect fetch) for the
+  /// behind-paint first step.
+  Future<void> _refreshSleepNeed(
+      {bool guarded = true, bool storeOnly = false}) async {
+    final gen = ++_sleepNeedGen;
     try {
       // Guarded like every other read on this screen: a wedged
       // channel (unmocked in tests, stuck natively) must never
       // hang the load — the section just keeps its prior state.
-      final union = await _guarded(
-        () => _queries.loadDays(90, metrics: {HistoryMetric.sleep}),
-      );
+      final union = guarded
+          ? await _guarded(
+              () => _queries.loadDays(90, metrics: {HistoryMetric.sleep}),
+            )
+          : await _queries.loadDays(
+              90,
+              metrics: {HistoryMetric.sleep},
+              fetchFromHealthConnect: !storeOnly,
+            );
       if (union == null) return;
+      // A newer refresh (or a Sync, which clears _history first)
+      // superseded this one while it was in flight — drop the
+      // stale results instead of overwriting the newer state.
+      if (gen != _sleepNeedGen) return;
       // Partial union signal (F2/F5, Juno J4 copy): some sleep
       // history chunks could not be read — warn, don't blank.
       if (union.partial(HistoryMetric.sleep)) _capturePartialError();
-      final stored = await _guarded(() => _queries.store.readAll()) ?? const {};
+      final stored = guarded
+          ? await _guarded(() => _queries.store.readAll()) ?? const {}
+          : await _queries.store.readAll();
+      if (gen != _sleepNeedGen) return;
       final map = <String, int>{
         for (final e in stored.entries)
           if (e.value.sleepMinutes != null) e.key: e.value.sleepMinutes!,
