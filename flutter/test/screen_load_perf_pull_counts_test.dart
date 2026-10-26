@@ -83,7 +83,7 @@ void main() {
     QuickLogCache.instance.debugReset();
     QuickLogCache.instance.debugSetStore(
       read: (_) async => null,
-      write: (_, __) async {},
+      write: (_, _) async {},
       delete: (_) async {},
     );
   });

@@ -146,11 +146,43 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
     }
   }
 
+  /// Concurrent-batch analogue of [_readGuarded], used by
+  /// [_loadDate]: the caller clears
+  /// [HealthConnectService.lastReadErrorCode] ONCE before the batch
+  /// starts, and each read CLAIMS the recorded code in its own
+  /// completion continuation (reads it, then clears it) instead of
+  /// clearing up front — clearing per read would erase a concurrent
+  /// read's failure signal before its owner could see it. Platform
+  /// replies are delivered one message at a time and Dart
+  /// microtasks (these continuations) flush between messages, so
+  /// the first continuation to run after a code is set belongs to
+  /// the read that set it: failure attribution stays per-read,
+  /// exactly as the sequential [_readGuarded] (the same protocol
+  /// the union reader uses — see health_history_queries.dart).
+  /// A throwing / timed-out read still reports failed via the
+  /// catch, and only for itself.
+  Future<({T? value, bool failed})> _readGuardedClaim<T>(
+      Future<T> Function() call) async {
+    try {
+      final value = await call().timeout(const Duration(seconds: 10));
+      final failed = _hc.lastReadErrorCode != null;
+      if (failed) _hc.lastReadErrorCode = null;
+      return (value: value, failed: failed);
+    } catch (_) {
+      return (value: null, failed: true);
+    }
+  }
+
   Future<void> _load() async {
+    // Perf fix: the profile pull (network) and the Health Connect
+    // connection check (bridge) are independent — start both before
+    // awaiting either, instead of paying them serially.
+    final profileFuture = _backend.fetchProfile();
+    final connectedFuture = _guarded(() => _hc.isConnected());
     Map<String, dynamic>? profile;
     String? error;
     try {
-      profile = await _backend.fetchProfile();
+      profile = await profileFuture;
       if (profile == null) {
         error =
             'Could not load your metrics. Check your connection and try again.';
@@ -161,8 +193,7 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
     }
     _profile = profile;
 
-    final hcConnected =
-        await _guarded(() => _hc.isConnected()) ?? false;
+    final hcConnected = await connectedFuture ?? false;
 
     if (hcConnected) {
       // History sets for the selector/picker selectability (native
@@ -216,14 +247,31 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
     // data) cache exactly as before.
     var anyReadFailed = false;
     if (hcConnected) {
-      final hr = await _readGuarded(() => _hc.readHeartRateSamples(key));
+      // Perf fix: the six day reads are independent bridge calls —
+      // they used to run one after another (up to six 10s-bounded
+      // round-trips in series). Starting every guarded read before
+      // awaiting any of them runs them concurrently; the results
+      // are then applied in the original precedence order below, so
+      // values and fallbacks are unchanged. Each read keeps its own
+      // error isolation via _readGuardedClaim: one failed read
+      // still only marks this date load failed (F5b), never throws.
+      _hc.lastReadErrorCode = null;
+      final hrFuture = _readGuardedClaim(() => _hc.readHeartRateSamples(key));
+      final restingFuture =
+          _readGuardedClaim(() => _hc.readRestingHeartRate(key));
+      final weightFuture = _readGuardedClaim(() => _hc.readLatestWeightKg());
+      final respFuture =
+          _readGuardedClaim(() => _hc.readRespiratoryRate(key));
+      final oxyFuture = _readGuardedClaim(() => _hc.readOxygenSaturation(key));
+      final hrvFuture = _readGuardedClaim(() => _hc.readHrvRmssd(key));
+
+      final hr = await hrFuture;
       anyReadFailed = anyReadFailed || hr.failed;
       final samples = hr.value ?? const <HrSample>[];
       final daytime = daytimeHeartRateAvg(samples);
       if (daytime != null) avgHr = daytime;
 
-      final resting =
-          await _readGuarded(() => _hc.readRestingHeartRate(key));
+      final resting = await restingFuture;
       anyReadFailed = anyReadFailed || resting.failed;
       restingHr = nonZeroInt(resting.value);
       if (restingHr == null) {
@@ -236,18 +284,18 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
         restingHr = hist.value?.restingHr[key];
       }
 
-      final weight = await _readGuarded(() => _hc.readLatestWeightKg());
+      final weight = await weightFuture;
       anyReadFailed = anyReadFailed || weight.failed;
       final weightKg = weight.value;
       if (weightKg != null && weightKg > 0) weightLbs = weightKg * 2.20462;
 
-      final resp = await _readGuarded(() => _hc.readRespiratoryRate(key));
+      final resp = await respFuture;
       anyReadFailed = anyReadFailed || resp.failed;
       breathing = nonZeroDouble(resp.value);
-      final oxy = await _readGuarded(() => _hc.readOxygenSaturation(key));
+      final oxy = await oxyFuture;
       anyReadFailed = anyReadFailed || oxy.failed;
       oxygen = nonZeroDouble(oxy.value);
-      final hrvRes = await _readGuarded(() => _hc.readHrvRmssd(key));
+      final hrvRes = await hrvFuture;
       anyReadFailed = anyReadFailed || hrvRes.failed;
       hrv = nonZeroDouble(hrvRes.value);
     }

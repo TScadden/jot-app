@@ -26,9 +26,11 @@ import 'package:tabs_lab/src/data/health_history_store.dart';
 /// and records the failure in `lastReadErrorCode`; a PARTIAL read
 /// (some chunks missing, real rows returned) records
 /// `lastPartialErrorCode` instead and is reported in
-/// [HistoryUnion.partialMetrics] — never as a failure. The union reads
-/// SEQUENTIALLY and snapshots that code around each read so a
-/// failed metric is reported in [HistoryUnion.failedMetrics] —
+/// [HistoryUnion.partialMetrics] — never as a failure. The union runs
+/// the per-metric reads CONCURRENTLY and each read claims the
+/// recorded code in its own completion continuation (see step 2b in
+/// [HealthHistoryQueries.loadRange] for the attribution protocol) so
+/// a failed metric is reported in [HistoryUnion.failedMetrics] —
 /// callers that must not mistake an outage for emptiness (the Key
 /// Metrics CSV export, Vera F5) check it; everyone else just gets
 /// the honest store-backed remainder.
@@ -263,108 +265,151 @@ class HealthHistoryQueries {
       );
     }
 
-    bool readFailed() => hc.lastReadErrorCode != null;
-    bool readPartial() => hc.lastPartialErrorCode != null;
+    // 2b. The per-metric HC reads run CONCURRENTLY (screen-load
+    //     perf fix; this step used to await them one after another,
+    //     so a 5-metric union cost the SUM of 5 bridge range reads).
+    //     Concurrency is safe here: the reads touch independent
+    //     bridge methods, Flutter MethodChannel replies are matched
+    //     per call, and shipped code already Future.waits bridge
+    //     reads over this same channel (health_repository.dart
+    //     loadTodayVitals, R60; the Sleep screen's parallel per-day
+    //     reads). The union's wall time is now the MAX of the reads.
+    //
+    //     Error attribution under concurrency: the service records
+    //     a read's failure / partial signal in the shared
+    //     lastReadErrorCode / lastPartialErrorCode fields BEFORE that
+    //     read's future completes, and nothing else writes or clears
+    //     them. So the fields are cleared ONCE, before any read
+    //     starts, and each metric's loader CLAIMS the signal in its
+    //     own completion continuation (reads the field, then clears
+    //     it). Platform replies are delivered one message at a time
+    //     and Dart microtasks — these continuations — flush between
+    //     messages, so the first continuation to run after a signal
+    //     is set is the one belonging to the read that set it:
+    //     attribution stays per-metric, exactly as the old sequential
+    //     clear-snapshot-check around each read. Per-read error
+    //     isolation is preserved (the R60 Vera pattern): a loader
+    //     that throws marks only its own metric failed and never
+    //     fails the Future.wait or the union.
+    hc.lastReadErrorCode = null;
+    hc.lastPartialErrorCode = null;
 
-    if (metrics.contains(HistoryMetric.restingHr)) {
-      hc.lastReadErrorCode = null;
-      hc.lastPartialErrorCode = null;
+    bool claimReadError() {
+      final readFailed = hc.lastReadErrorCode != null;
+      if (readFailed) hc.lastReadErrorCode = null;
+      return readFailed;
+    }
+
+    bool claimPartial() {
+      final readPartial = hc.lastPartialErrorCode != null;
+      if (readPartial) hc.lastPartialErrorCode = null;
+      return readPartial;
+    }
+
+    Future<void> loadRestingHr() async {
       try {
         final rows = await hc.readRestingHrHistory(fetchDays);
-        if (readFailed()) {
+        if (claimReadError()) {
           failed.add(HistoryMetric.restingHr);
-        } else {
-          for (final r in rows) {
-            // Zero rule, exactly as the readers it replaces.
-            if (r.bpm > 0) putFresh(r.date, hr: r.bpm);
-          }
+          return;
+        }
+        for (final r in rows) {
+          // Zero rule, exactly as the readers it replaces.
+          if (r.bpm > 0) putFresh(r.date, hr: r.bpm);
         }
       } catch (_) {
         failed.add(HistoryMetric.restingHr);
       }
     }
 
-    if (metrics.contains(HistoryMetric.sleep)) {
-      hc.lastReadErrorCode = null;
-      hc.lastPartialErrorCode = null;
+    Future<void> loadSleep() async {
       try {
         final rows = await hc.readSleepHistory(fetchDays);
-        if (readFailed()) {
+        if (claimReadError()) {
+          // Same-read hygiene: a failed read's partial signal is
+          // not a warning anyone can act on — drain it so a later
+          // loader's continuation cannot claim it as its own.
+          claimPartial();
           failed.add(HistoryMetric.sleep);
-        } else {
-          // Partial data is data (F2): rows are processed; the
-          // partial signal rides along as a warning, never as a
-          // failed metric.
-          if (readPartial()) partial.add(HistoryMetric.sleep);
-          for (final r in rows) {
-            if (r.mins > 0) putFresh(r.date, sleep: r.mins);
-            if (r.deep > 0) putFresh(r.date, deep: r.deep);
-          }
+          return;
+        }
+        // Partial data is data (F2): rows are processed; the
+        // partial signal rides along as a warning, never as a
+        // failed metric.
+        if (claimPartial()) partial.add(HistoryMetric.sleep);
+        for (final r in rows) {
+          if (r.mins > 0) putFresh(r.date, sleep: r.mins);
+          if (r.deep > 0) putFresh(r.date, deep: r.deep);
         }
       } catch (_) {
+        claimPartial();
         failed.add(HistoryMetric.sleep);
       }
     }
 
-    if (metrics.contains(HistoryMetric.calories)) {
-      hc.lastReadErrorCode = null;
-      hc.lastPartialErrorCode = null;
+    Future<void> loadCalories() async {
       try {
         final rows = await hc.readCaloriesHistory(fetchDays);
-        if (readFailed()) {
+        if (claimReadError()) {
           failed.add(HistoryMetric.calories);
-        } else {
-          for (final r in rows) {
-            if (r.kcal > 0) putFresh(r.date, kcal: r.kcal);
-          }
+          return;
+        }
+        for (final r in rows) {
+          if (r.kcal > 0) putFresh(r.date, kcal: r.kcal);
         }
       } catch (_) {
         failed.add(HistoryMetric.calories);
       }
     }
 
-    if (metrics.contains(HistoryMetric.spikes)) {
-      hc.lastReadErrorCode = null;
-      hc.lastPartialErrorCode = null;
+    Future<void> loadSpikes() async {
       try {
         final rows = await hc.readSpikeCounts(fetchDays);
-        if (readFailed()) {
+        if (claimReadError()) {
           failed.add(HistoryMetric.spikes);
-        } else {
-          for (final r in rows) {
-            // 0 spikes is REAL data (a sampled day, no spikes).
-            if (r.count >= 0) putFresh(r.date, spikeCount: r.count);
-          }
+          return;
+        }
+        for (final r in rows) {
+          // 0 spikes is REAL data (a sampled day, no spikes).
+          if (r.count >= 0) putFresh(r.date, spikeCount: r.count);
         }
       } catch (_) {
         failed.add(HistoryMetric.spikes);
       }
     }
 
-    if (metrics.contains(HistoryMetric.hrv)) {
+    Future<void> loadHrv() async {
       // R71 — ONE range read of raw HRV samples; day attribution +
       // the daily top-tier rule run in Dart (attributeDailyHrv).
-      hc.lastReadErrorCode = null;
-      hc.lastPartialErrorCode = null;
       try {
         final samples = await hc.readHrvSamples(fetchDays);
-        if (readFailed()) {
+        if (claimReadError()) {
+          claimPartial();
           failed.add(HistoryMetric.hrv);
-        } else {
-          // Partial data is data (Defect 0): the surviving chunks'
-          // samples are processed; the partial signal rides along
-          // as a warning, exactly like sleep above.
-          if (readPartial()) partial.add(HistoryMetric.hrv);
-          final dailyHrv = attributeDailyHrv(
-              samples, _datesInRange(startDate, endDate).toSet());
-          for (final entry in dailyHrv.entries) {
-            if (entry.value > 0) putFresh(entry.key, hrvValue: entry.value);
-          }
+          return;
+        }
+        // Partial data is data (Defect 0): the surviving chunks'
+        // samples are processed; the partial signal rides along
+        // as a warning, exactly like sleep above.
+        if (claimPartial()) partial.add(HistoryMetric.hrv);
+        final dailyHrv = attributeDailyHrv(
+            samples, _datesInRange(startDate, endDate).toSet());
+        for (final entry in dailyHrv.entries) {
+          if (entry.value > 0) putFresh(entry.key, hrvValue: entry.value);
         }
       } catch (_) {
+        claimPartial();
         failed.add(HistoryMetric.hrv);
       }
     }
+
+    await Future.wait([
+      if (metrics.contains(HistoryMetric.restingHr)) loadRestingHr(),
+      if (metrics.contains(HistoryMetric.sleep)) loadSleep(),
+      if (metrics.contains(HistoryMetric.calories)) loadCalories(),
+      if (metrics.contains(HistoryMetric.spikes)) loadSpikes(),
+      if (metrics.contains(HistoryMetric.hrv)) loadHrv(),
+    ]);
 
     // 3. Everything fresh feeds the store BEFORE returning — no
     //    reader can bypass the store's growth. mergeRefresh
