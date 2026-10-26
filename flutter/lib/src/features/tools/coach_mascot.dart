@@ -16,8 +16,10 @@ bool _motionEnabled(BuildContext context) {
 /// Bandit — the Tabs raccoon mascot as the Health Coach's face/persona.
 ///
 /// The name lives in exactly one place ([kCoachName]); every name-bearing
-/// coach string interpolates it. Art is the approved build_raccoon_v3
-/// character (same raccoon as the website login) — no redesign.
+/// coach string interpolates it. Art is the glossy cartoon Bandit
+/// (founder-approved Oct 26, 2026): full body from the cartoon master,
+/// avatar is a head crop of the same art, blink is the matching
+/// eyes-shut crop.
 ///
 /// Idle life is deliberately subtle, matching the mascot's established
 /// numbers: a blink of ~180 ms every 4–5 s, a 2 px breathing bob on a
