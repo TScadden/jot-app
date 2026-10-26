@@ -9,6 +9,7 @@ import 'package:http/testing.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
+import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 
@@ -87,6 +88,11 @@ class _DelayedRepository extends HealthRepository {
 }
 
 void main() {
+  // Oct 26, 2026 perf package: the sync-pull and habits caches are
+  // STATIC and session-keyed, and cases in this file reuse one session
+  // token across fresh fake servers — reset between cases so one
+  // case's cached pull/habits body cannot be served to the next case.
+  setUp(TabsBackend.debugResetSharedCaches);
   late _FakeStore store;
 
   setUp(() {
@@ -340,6 +346,17 @@ void main() {
       await tester.pump(const Duration(seconds: 5));
       expect(find.text('72'), findsOneWidget);
       expect(find.text('12'), findsOneWidget);
+      // The Weekly Snapshot card below the vitals is NOT stalled: its
+      // load completes empty promptly (HC unavailable) and, since the
+      // Oct 26, 2026 founder spec (365a0ef), it legitimately shows its
+      // own loading spinner while that load is in flight — HomeScreen
+      // also remounts the card once as it settles, restarting the
+      // load, so the completed load's frame lands one pump later.
+      // Settle those frames, then the assertion below keeps its
+      // original meaning: no spinner/shimmer for the CACHE-SEEDED
+      // vitals and streak while their (stalled) load never resolves.
+      await tester.pump();
+      await tester.pump();
       expect(find.byType(CircularProgressIndicator), findsNothing);
 
       // Flush the staggered-entrance timers before teardown (round-14
@@ -362,9 +379,16 @@ void main() {
         ),
       ));
       // Biometrics show "--" from the loaded-empty cache; log count 0 is
-      // real data. No spinner anywhere.
+      // real data.
       expect(find.text('--'), findsWidgets);
       expect(find.text('0'), findsOneWidget);
+      // No spinner for the seeded cells. The Weekly Snapshot card's
+      // own (founder-spec, Oct 26, 2026) loading spinner is separate:
+      // its load completes empty promptly (HC unavailable), so settle
+      // its frames first — after that, no spinner anywhere, exactly
+      // as this case has always asserted.
+      await tester.pump();
+      await tester.pump();
       expect(find.byType(CircularProgressIndicator), findsNothing);
 
       // Flush the staggered-entrance timers before teardown (see above).

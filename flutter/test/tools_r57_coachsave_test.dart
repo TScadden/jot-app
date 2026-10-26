@@ -240,6 +240,11 @@ Future<void> sendOneMessage(WidgetTester tester) async {
 }
 
 void main() {
+  // Oct 26, 2026 perf package: the sync-pull and habits caches are
+  // STATIC and session-keyed, and cases in this file reuse one session
+  // token across fresh fake servers — reset between cases so one
+  // case's cached pull/habits body cannot be served to the next case.
+  setUp(TabsBackend.debugResetSharedCaches);
   group('backend synced-count verification', () {
     test('true only when synced covers the whole batch', () async {
       TabsBackend withBody(int status, Object body) =>
@@ -394,7 +399,13 @@ void main() {
       expect(find.text(saveFailureBanner), findsNothing);
 
       // A brand-new backend instance (cold pull cache) over the same
-      // server = the second device's view.
+      // server = the second device's view. The shared pull cache is
+      // per-PROCESS in production (static, in-memory), so a second
+      // device would not hold this device's pre-save pull — reset it
+      // here to simulate that cold cache faithfully; a new backend
+      // instance alone no longer cold-starts it (Oct 26, 2026 perf
+      // package made the cache static and session-keyed).
+      TabsBackend.debugResetSharedCaches();
       tester.view.physicalSize = const Size(1200, 2000);
       tester.view.devicePixelRatio = 1.0;
       await tester.pumpWidget(

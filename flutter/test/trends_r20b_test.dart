@@ -84,6 +84,11 @@ Finder mainScrollable() => find
     .first;
 
 void main() {
+  // Oct 26, 2026 perf package: the sync-pull and habits caches are
+  // STATIC and session-keyed, and cases in this file reuse one session
+  // token across fresh fake servers — reset between cases so one
+  // case's cached pull/habits body cannot be served to the next case.
+  setUp(TabsBackend.debugResetSharedCaches);
   group('Round 20b Trends', () {
     testWidgets('patterns section is gone, HR section gone too (20c)',
         (tester) async {

@@ -32,6 +32,11 @@ String dateStr(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
 void main() {
+  // Oct 26, 2026 perf package: the sync-pull and habits caches are
+  // STATIC and session-keyed, and cases in this file reuse one session
+  // token across fresh fake servers — reset between cases so one
+  // case's cached pull/habits body cannot be served to the next case.
+  setUp(TabsBackend.debugResetSharedCaches);
   // ── Backend payloads ──────────────────────────────────────────────────────
 
   group('backend friend endpoints', () {

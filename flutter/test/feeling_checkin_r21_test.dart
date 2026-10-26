@@ -42,6 +42,11 @@ QuickLogCategory _cat(int id, String name) => QuickLogCategory(
 );
 
 void main() {
+  // Oct 26, 2026 perf package: the sync-pull and habits caches are
+  // STATIC and session-keyed, and cases in this file reuse one session
+  // token across fresh fake servers — reset between cases so one
+  // case's cached pull/habits body cannot be served to the next case.
+  setUp(TabsBackend.debugResetSharedCaches);
   group('feelingDayStart (native energyDayStart, 04:00 boundary)', () {
     test('after 04:00 → today 04:00', () {
       final start = feelingDayStart(DateTime(2026, 10, 12, 11, 30));

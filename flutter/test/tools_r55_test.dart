@@ -138,6 +138,11 @@ Future<void> flushSnack(WidgetTester tester) async {
 }
 
 void main() {
+  // Oct 26, 2026 perf package: the sync-pull and habits caches are
+  // STATIC and session-keyed, and cases in this file reuse one session
+  // token across fresh fake servers — reset between cases so one
+  // case's cached pull/habits body cannot be served to the next case.
+  setUp(TabsBackend.debugResetSharedCaches);
   final now = DateTime(2026, 10, 13, 12, 0);
   int ms(DateTime d) => d.millisecondsSinceEpoch;
 
