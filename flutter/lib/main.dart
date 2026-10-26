@@ -16,6 +16,7 @@ import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/daily_score_background.dart';
 import 'package:tabs_lab/src/data/daily_score_refresh_owner.dart';
+import 'package:tabs_lab/src/data/migraine_controller.dart';
 import 'package:tabs_lab/src/data/refresh_keep_alive.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/onboarding_store.dart';
@@ -180,6 +181,10 @@ class AppFlow extends StatefulWidget {
   /// notification service (Round 30).
   final ReminderNotificationService? notificationService;
 
+  /// Migraine timer — injectable for tests; defaults to the shared
+  /// app-level controller this flow creates in initState.
+  final MigraineController? migraineController;
+
   const AppFlow(
       {super.key,
       this.authApi,
@@ -189,7 +194,8 @@ class AppFlow extends StatefulWidget {
       this.healthConnectService,
       this.onboardingStore,
       this.tabsBackend,
-      this.notificationService});
+      this.notificationService,
+      this.migraineController});
 
   @override
   State<AppFlow> createState() => _AppFlowState();
@@ -749,6 +755,14 @@ class _AppFlowState extends State<AppFlow>
     });
   }
 
+  // Migraine timer — the ONE shared app-level controller (founder
+  // spec, Oct 26, 2026): created here with the app wiring and
+  // passed down MainShell → Home → Today Summary, so the card, the
+  // collapsed header, and the notification tap handler share this
+  // state. Owned by this flow unless injected.
+  late final MigraineController _migraineController;
+  bool _ownsMigraineController = false;
+
   @override
   void initState() {
     super.initState();
@@ -760,6 +774,10 @@ class _AppFlowState extends State<AppFlow>
     _tabsBackend =
         widget.tabsBackend ?? TabsBackend(sessionStore: _sessionStore);
     TabsBackend.onSessionExpired = _onSessionExpired;
+    _ownsMigraineController = widget.migraineController == null;
+    _migraineController = widget.migraineController ??
+        MigraineController.production(backend: _tabsBackend);
+    unawaited(_initMigraine());
     unawaited(_restoreSession());
     // Daily Score background scoring (founder amendment #2) —
     // register the periodic WorkManager task and arm the
@@ -790,6 +808,25 @@ class _AppFlowState extends State<AppFlow>
         });
       },
     );
+  }
+
+  // ── Migraine timer (founder spec, Oct 26, 2026) ───────────────
+  //
+  // App-start sync: reconcile the notification with the store
+  // (active attack → block active + notification (re)posted when
+  // permission allows; no active attack → no stale 7303 remains),
+  // retry any pending Trends entry, and consume a cold-start
+  // launch tap (notification tap that launched the app ends the
+  // attack first; Home then presents the details form once via the
+  // controller's one-shot signal). Best-effort and silent: the
+  // timer is an enhancement and must never break app start.
+  Future<void> _initMigraine() async {
+    try {
+      await _migraineController.initialize();
+      await _migraineController.consumeLaunchTap();
+    } catch (_) {
+      // Silent by design (see above).
+    }
   }
 
   // ── Daily Score background (founder amendment #2) ──────────────
@@ -898,6 +935,10 @@ class _AppFlowState extends State<AppFlow>
     // checkSubscriptionStatus).
     if (state == AppLifecycleState.resumed) {
       _billingSync?.onResumed();
+      // Migraine timer: a resume refreshes the ongoing
+      // notification's elapsed text and retries pending Trends
+      // writes (Juno §B/§E).
+      unawaited(_migraineController.onAppResumed());
       // App-open sync (founder directive, Oct 22, 2026): a return
       // from background while home is an app open — trigger the
       // open capture NOW, in the foreground (Juno F1), through
@@ -917,6 +958,7 @@ class _AppFlowState extends State<AppFlow>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    if (_ownsMigraineController) _migraineController.dispose();
     // Ownership of the single billing service ends here (see
     // _startBillingSync): this is the only dispose of it.
     _billingSync?.dispose();
@@ -976,6 +1018,7 @@ class _AppFlowState extends State<AppFlow>
               locationService: widget.locationService,
               healthConnectService: widget.healthConnectService,
               billingService: _billingSync?.service,
+              migraineController: _migraineController,
               onLogout: _onLogout),
         if (_splashVisible)
           AnimatedBuilder(

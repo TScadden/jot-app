@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/billing_service.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/data/migraine_controller.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
@@ -89,6 +90,10 @@ class MainShell extends StatefulWidget {
   /// there, never constructed or disposed by the shell or screens.
   final BillingService? billingService;
 
+  /// The shared app-level migraine controller (app wiring in
+  /// main.dart), forwarded to Home.
+  final MigraineController? migraineController;
+
   const MainShell(
       {super.key,
       this.email,
@@ -97,7 +102,8 @@ class MainShell extends StatefulWidget {
       this.healthConnectService,
       this.onLogout,
       this.settingsStore,
-      this.billingService});
+      this.billingService,
+      this.migraineController});
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -248,6 +254,7 @@ class _MainShellState extends State<MainShell>
           locationService: widget.locationService,
           healthConnectService: widget.healthConnectService,
           billingService: widget.billingService,
+          migraineController: widget.migraineController,
           // Round 34 — so a logout started in the Settings screen
           // pushed from Home's counter slot exits the shell too.
           onLogout: widget.onLogout,

@@ -2,10 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/data/migraine_controller.dart';
+import 'package:tabs_lab/src/data/migraine_time_format.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/today_plan_store.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
+import 'package:tabs_lab/src/features/home/migraine_block.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
@@ -87,6 +90,13 @@ class TodaySummaryCard extends StatefulWidget {
   final TodaySummaryCache? summaryCache;
   final SessionStore? sessionStore;
 
+  /// The shared app-level migraine controller (created with the app
+  /// wiring in main.dart). When null the card creates and owns one,
+  /// so the migraine block works in every mount; the app passes its
+  /// instance so the card, the collapsed header, and the
+  /// notification tap handler share ONE state.
+  final MigraineController? migraineController;
+
   const TodaySummaryCard({
     super.key,
     this.backend,
@@ -94,6 +104,7 @@ class TodaySummaryCard extends StatefulWidget {
     this.planStore,
     this.summaryCache,
     this.sessionStore,
+    this.migraineController,
   });
 
   @override
@@ -102,6 +113,14 @@ class TodaySummaryCard extends StatefulWidget {
 
 class _TodaySummaryCardState extends State<TodaySummaryCard> {
   late final TodaySummaryLoader _loader;
+
+  // Migraine timer (Juno §D): the shared controller drives the
+  // block + the collapsed-header subtitle; a 30s tick (Lab cadence)
+  // refreshes the elapsed text in both while an attack runs and
+  // re-posts the ongoing notification with the same elapsed text.
+  late final MigraineController _migraine;
+  bool _ownsMigraine = false;
+  Timer? _migraineTimer;
 
   // Founder rule: collapsed at every mount (see class doc).
   bool _expanded = false;
@@ -211,11 +230,45 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
       cache: widget.summaryCache,
       sessionStore: widget.sessionStore,
     );
+    _ownsMigraine = widget.migraineController == null;
+    _migraine = widget.migraineController ??
+        MigraineController.production(backend: widget.backend);
+    _migraine.addListener(_onMigraineChanged);
+    unawaited(_migraine.initialize());
+    _syncMigraineTimer();
     // First frame: the in-memory last-known snapshot for this account
     // + day, when one exists — values render instantly, then the
     // fresh load below swaps in quietly if it differs.
     _seedFromCache();
     unawaited(_load());
+  }
+
+  @override
+  void dispose() {
+    _migraineTimer?.cancel();
+    _migraine.removeListener(_onMigraineChanged);
+    if (_ownsMigraine) _migraine.dispose();
+    super.dispose();
+  }
+
+  void _onMigraineChanged() {
+    if (!mounted) return;
+    setState(() {});
+    _syncMigraineTimer();
+  }
+
+  /// The 30s elapsed tick runs only while an attack is active.
+  void _syncMigraineTimer() {
+    if (_migraine.isActive) {
+      _migraineTimer ??= Timer.periodic(const Duration(seconds: 30), (_) {
+        if (!mounted) return;
+        setState(() {});
+        unawaited(_migraine.refreshNotification());
+      });
+    } else {
+      _migraineTimer?.cancel();
+      _migraineTimer = null;
+    }
   }
 
   Future<void> _seedFromCache() async {
@@ -347,7 +400,16 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
     // Before the first load lands (and with no cache to seed from)
     // the header matches native's initial state: empty subtitle,
     // plan/trends unresolved. It resolves within the first load.
-    final subtitle = data?.plan.summaryText ?? '';
+    //
+    // Juno §D: while a migraine attack is ACTIVE the header
+    // subtitle is REPLACED with `Migraine attack · {elapsed}` (the
+    // plan subtitle is displaced only while the attack runs and
+    // returns unchanged when it ends; an ended attack awaiting
+    // details never appears here).
+    final subtitle = _migraine.isActive
+        ? 'Migraine attack · '
+            '${formatElapsedDuration(_migraine.elapsedMinutes())}'
+        : (data?.plan.summaryText ?? '');
 
     // Rendered plan rows (Round 41): the plan data already excludes
     // completed items; _goneItemIds additionally hides an item whose
@@ -470,6 +532,13 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
+                          const Divider(
+                            color: NotelColors.divider,
+                            height: 1,
+                          ),
+                          const SizedBox(height: 12),
+                          MigraineBlock(controller: _migraine),
+                          const SizedBox(height: 14),
                           const Divider(
                             color: NotelColors.divider,
                             height: 1,

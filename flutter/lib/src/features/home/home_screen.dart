@@ -14,6 +14,7 @@ import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_history_sync.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
+import 'package:tabs_lab/src/data/migraine_controller.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/launch_trace.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
@@ -27,6 +28,7 @@ import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 import 'package:tabs_lab/src/features/home/health_connect_banner.dart';
+import 'package:tabs_lab/src/features/home/migraine_block.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/features/home/weather_sheet.dart';
@@ -148,6 +150,12 @@ class HomeScreen extends StatefulWidget {
   /// to the Settings screen pushed from the counter slot.
   final BillingService? billingService;
 
+  /// The shared app-level migraine controller (app wiring in
+  /// main.dart). Home consumes its one-shot pending-details signal
+  /// (notification tap → attack ended → details form, Juno §C) and
+  /// forwards the controller to the Today Summary card.
+  final MigraineController? migraineController;
+
   const HomeScreen(
       {super.key,
       this.email,
@@ -160,7 +168,8 @@ class HomeScreen extends StatefulWidget {
       this.onLogout,
       this.healthHistoryStore,
       this.dailyScoreSnapshotCapture,
-      this.billingService});
+      this.billingService,
+      this.migraineController});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -392,8 +401,15 @@ class _HomeScreenState extends State<HomeScreen> {
     // push still goes through WidgetSync's serialized latest-wins
     // drain, and the refresh re-pushes through
     // HomeDataCache.persist() when it lands.)
+    // Migraine details form (Juno §C): consume the controller's
+    // one-shot pending-details signal — raised when a notification
+    // tap ended the attack — exactly once, here on Home. Checked on
+    // mount (cold-start launch tap) and on every controller change
+    // (foreground/background tap while Home is alive).
+    widget.migraineController?.addListener(_onMigraineChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      _maybeShowMigraineDetails();
       // Round 50 — push the cached snapshot to the home-screen
       // widget, so the widget matches what the strip shows even
       // before the background refresh completes. Signed-in when
@@ -410,6 +426,36 @@ class _HomeScreenState extends State<HomeScreen> {
       ));
       _loadWeather();
     });
+  }
+
+  // ── Migraine details form (Juno §C) ─────────────────────────────
+  bool _migraineFormShowing = false;
+
+  void _onMigraineChanged() {
+    if (!mounted) return;
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _maybeShowMigraineDetails());
+  }
+
+  /// Presents the details form for a tap-ended attack, consuming
+  /// the one-shot signal so it can never be presented twice. The
+  /// signal is in-memory only: process death discards it, and the
+  /// form is never re-presented on later opens (Juno §F).
+  void _maybeShowMigraineDetails() {
+    final controller = widget.migraineController;
+    if (controller == null || !mounted || _migraineFormShowing) return;
+    if (!controller.hasPendingDetails) return;
+    final attack = controller.consumePendingDetails();
+    if (attack == null) return;
+    _migraineFormShowing = true;
+    showMigraineDetailsForm(context, controller: controller, attack: attack)
+        .whenComplete(() => _migraineFormShowing = false);
+  }
+
+  @override
+  void dispose() {
+    widget.migraineController?.removeListener(_onMigraineChanged);
+    super.dispose();
   }
 
   /// Round 34 — loads the ACTIVE event counters from the sync pull's
@@ -932,9 +978,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 onCountersTap: () => unawaited(_openEventCounters()),
               ),
             ),
-            const StaggeredEntrance(
+            StaggeredEntrance(
               index: 2,
-              child: TodaySummaryCard(),
+              child: TodaySummaryCard(
+                migraineController: widget.migraineController,
+              ),
             ),
             StaggeredEntrance(
               index: 3,
