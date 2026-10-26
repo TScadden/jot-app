@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -733,6 +734,11 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
   bool _loading = true;
   bool _refreshing = false;
   bool _writing = false;
+
+  /// Perf fix — generation counter for [_load]: its two chains now
+  /// complete asynchronously, so a superseded load's late HC result
+  /// must not merge over a newer load's state.
+  int _loadGen = 0;
   List<BpUiRecord> _records = const [];
   List<dynamic> _manualRows = const [];
   List<BpRecord> _hcRecords = const [];
@@ -756,31 +762,30 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
         _error = null;
       });
     }
-    try {
-      final profile = await _backend.fetchProfile();
-      List<BpRecord> hcRecords = const [];
-      String? notice;
-      bool connected = false;
-      try {
-        // Bounded (Vera F3, same defect class as the Heart wedge):
-        // a never-returning HC call used to leave this screen on
-        // its skeleton forever. The bound uses the shared
-        // readTimeout; expiry throws into the catch below and fails
-        // to the existing "query issue" notice.
-        connected =
-            await _hc.isConnected().timeout(HealthConnectService.readTimeout);
-        if (connected) {
-          hcRecords = await _hc
-              .readBloodPressure(30)
-              .timeout(HealthConnectService.readTimeout);
-        } else {
-          notice = 'Health Connect is not connected. Showing manual readings only.';
-        }
-      } catch (e) {
-        // Channel failures surface as a visible notice; manual data still shows.
-        notice = 'Health Connect query issue. Showing manual readings.';
-      }
-      if (!mounted) return;
+    // Perf fix: the profile pull (network — its body carries the
+    // MANUAL logs) and the Health Connect chain (isConnected, then
+    // readBloodPressure(30), each bounded by the shared 30s
+    // readTimeout) used to run strictly serially, and the manual
+    // logs were withheld in the same final setState — so a slow
+    // bridge held already-downloaded manual readings behind up to
+    // a minute of skeleton. The chains are independent: start both
+    // now, paint the manual logs as soon as the pull lands, and
+    // merge the HC records in when the bridge chain lands.
+    final loadGen = ++_loadGen;
+    var profileLanded = false;
+    var profileThrew = false;
+    Map<String, dynamic>? profile;
+    var hcLanded = false;
+    List<BpRecord> hcRecords = const [];
+    String? notice;
+
+    // Applies whatever has landed so far, in whichever order the
+    // two chains finished. Runs on each chain's completion; the
+    // second run re-merges with both halves present, reproducing
+    // exactly the state the old joint setState produced.
+    void apply() {
+      if (!mounted || loadGen != _loadGen) return;
+      if (!profileLanded || profileThrew) return;
       setState(() {
         _hcRecords = hcRecords;
         _hcNotice = notice;
@@ -797,10 +802,61 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
               manual: bpUiRecordsFromRaw(_manualRows),
               healthConnect: hcRecords);
         }
+        // The manual logs are the screen's primary content: the
+        // skeleton ends when the pull lands, not when HC does.
         _loading = false;
-        _refreshing = false;
+        // The refresh affordance stays busy until both chains are
+        // in, as before (it gates re-entry into _load).
+        if (hcLanded) _refreshing = false;
       });
+    }
+
+    final hcFuture = () async {
+      try {
+        // Bounded (Vera F3, same defect class as the Heart wedge):
+        // a never-returning HC call used to leave this screen on
+        // its skeleton forever. The bound uses the shared
+        // readTimeout; expiry throws into the catch below and fails
+        // to the existing "query issue" notice.
+        final connected =
+            await _hc.isConnected().timeout(HealthConnectService.readTimeout);
+        if (connected) {
+          final records = await _hc
+              .readBloodPressure(30)
+              .timeout(HealthConnectService.readTimeout);
+          return (records: records, notice: null);
+        }
+        return (
+          records: const <BpRecord>[],
+          notice:
+              'Health Connect is not connected. Showing manual readings only.'
+        );
+      } catch (e) {
+        // Channel failures surface as a visible notice; manual data still shows.
+        return (
+          records: const <BpRecord>[],
+          notice: 'Health Connect query issue. Showing manual readings.'
+        );
+      }
+    }();
+    unawaited(hcFuture.then((r) {
+      hcRecords = r.records;
+      notice = r.notice;
+      hcLanded = true;
+      apply();
+    }));
+
+    try {
+      profile = await _backend.fetchProfile();
     } catch (e) {
+      profileThrew = true;
+    }
+    profileLanded = true;
+    if (loadGen != _loadGen) return; // a newer load superseded this one
+    if (profileThrew) {
+      // The old serial code never reached the HC chain when the
+      // pull threw: the error state is final and a late HC result
+      // must not merge over it (apply() above also guards this).
       if (!mounted) return;
       setState(() {
         _error = 'Could not load your data. We could not pull your latest '
@@ -808,7 +864,9 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
         _loading = false;
         _refreshing = false;
       });
+      return;
     }
+    apply();
   }
 
   void _showSaveError([String? message]) {
