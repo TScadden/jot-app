@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
@@ -69,15 +70,24 @@ class TabsBackend {
   /// their own. Same stale-while-revalidate spirit as the weather
   /// cache: memory-only, never persisted, never logged.
   static const Duration syncPullTtl = Duration(minutes: 5);
-  Map<String, dynamic>? _syncPullCache;
-  DateTime? _syncPullAt;
 
-  /// The profile-mutation epoch at which the fetch that produced
-  /// [_syncPullCache] STARTED (see [_profileMutationEpoch]). The
-  /// cached body is served only while this still equals the current
-  /// epoch: a body whose fetch started before the latest successful
-  /// profile push is never served as fresh, on ANY instance.
-  int _syncPullCacheEpoch = -1;
+  /// Screen-load performance (Oct 26, 2026) — the TTL cache is STATIC
+  /// and keyed by (baseUrl, token), the same scoping as the Round-60
+  /// in-flight slot below. It used to be per-instance, but the app
+  /// constructs ~29 [TabsBackend] instances over one session (several
+  /// screens mint a new one on every property access), so nearly every
+  /// navigation missed the cache and paid a full GET /api/sync/pull.
+  /// Each entry records the profile-mutation epoch at which its fetch
+  /// STARTED (see [_profileMutationEpoch]): a body whose fetch started
+  /// before the latest successful profile push is never served as
+  /// fresh, on ANY instance.
+  static final Map<
+      (String, String?),
+      ({
+        Map<String, dynamic> body,
+        DateTime at,
+        int epoch,
+      })> _syncPullCacheBySession = {};
 
   /// Counter-mutation durability (Oct 2026) — app-wide profile
   /// mutation epoch. STATIC for the same reason as the Round 31
@@ -102,10 +112,23 @@ class TabsBackend {
   /// Round 19 — drops the cached sync pull so the next read hits the
   /// server. Called after local writes (log save/repeat/delete,
   /// category add/delete) so counts and lists refresh honestly.
+  /// Oct 26, 2026: clears EVERY session entry — the cache is shared
+  /// app-wide now, so one instance's write must invalidate for all.
   void invalidateSyncPull() {
-    _syncPullCache = null;
-    _syncPullAt = null;
-    _syncPullCacheEpoch = -1;
+    _syncPullCacheBySession.clear();
+  }
+
+  /// The (baseUrl, token) key scoping the shared caches, or null when
+  /// the session store is unreadable — callers then skip caching and
+  /// take the uncached path, exactly as the epoch-checked shared pull
+  /// does when its token read fails.
+  Future<(String, String?)?> _sessionKey() async {
+    try {
+      final token = await _sessionStore.readToken();
+      return (_baseUrl, token);
+    } catch (_) {
+      return null;
+    }
   }
 
   final http.Client _client;
@@ -405,9 +428,6 @@ class TabsBackend {
     return future;
   }
 
-  Future<Map<String, dynamic>?> _fetchSyncPullShared() async =>
-      (await _fetchSyncPullSharedRecord()).body;
-
   /// Round 18 — the full sync-pull body, cached in memory for
   /// [syncPullTtl]. Null on any failure.
   ///
@@ -418,20 +438,20 @@ class TabsBackend {
   /// unservable, not just this instance's (the pre-fix per-instance
   /// invalidation in `_pushProfile` could not see other instances).
   Future<Map<String, dynamic>?> fetchSyncPull() async {
-    final cached = _syncPullCache;
-    final at = _syncPullAt;
-    if (cached != null &&
-        at != null &&
-        _syncPullCacheEpoch == _profileMutationEpoch &&
-        DateTime.now().difference(at) < syncPullTtl) {
-      return cached;
+    final key = await _sessionKey();
+    if (key != null) {
+      final entry = _syncPullCacheBySession[key];
+      if (entry != null &&
+          entry.epoch == _profileMutationEpoch &&
+          DateTime.now().difference(entry.at) < syncPullTtl) {
+        return entry.body;
+      }
     }
     final result = await _fetchSyncPullSharedRecord();
     final body = result.body;
-    if (body != null) {
-      _syncPullCache = body;
-      _syncPullAt = DateTime.now();
-      _syncPullCacheEpoch = result.fetchEpoch;
+    if (body != null && key != null) {
+      _syncPullCacheBySession[key] =
+          (body: body, at: DateTime.now(), epoch: result.fetchEpoch);
     }
     return body;
   }
@@ -521,12 +541,14 @@ class TabsBackend {
     required String habitId,
     required String date,
     required bool completed,
-  }) {
-    return _postJson('/api/habits/log', {
+  }) async {
+    final ok = await _postJson('/api/habits/log', {
       'habit_id': habitId,
       'completed_date': date,
       'is_completed': completed,
     });
+    if (ok) invalidateHabits();
+    return ok;
   }
 
   /// Round 47 — create a habit, mirroring native habit creation:
@@ -554,6 +576,7 @@ class TabsBackend {
         (response.statusCode != 200 && response.statusCode != 201)) {
       return null;
     }
+    invalidateHabits();
     try {
       final decoded = jsonDecode(response.body);
       if (decoded is Map<String, dynamic>) {
@@ -570,8 +593,11 @@ class TabsBackend {
   /// True on HTTP 200. There is NO habit update endpoint — a rename
   /// would need delete+recreate, which destroys the habit's
   /// server-side log history, so editing is deliberately not built.
-  Future<bool> deleteHabit(String id) =>
-      _delete('/api/habits/${Uri.encodeComponent(id)}');
+  Future<bool> deleteHabit(String id) async {
+    final ok = await _delete('/api/habits/${Uri.encodeComponent(id)}');
+    if (ok) invalidateHabits();
+    return ok;
+  }
 
   /// Round 18 — friends list from `GET /api/friends/list`.
   Future<List<FriendDto>> fetchFriendsList() async {
@@ -912,10 +938,11 @@ class TabsBackend {
   /// Current/best streak from `/api/sync/pull`. Nulls on any failure —
   /// the streak row renders "--".
   Future<({int? current, int? best})> fetchStreak() async {
-    // Round 60 — joins the app-wide in-flight pull (see
-    // _fetchSyncPullShared); still uncached, so a call made when no
-    // pull is in flight fetches fresh exactly as before.
-    final body = await _fetchSyncPullShared();
+    // Oct 26, 2026 — reads through the shared TTL pull cache like
+    // every other pull view (fetchSyncPull); write paths invalidate
+    // or epoch-guard the cache, so the streak cannot go stale past a
+    // local write.
+    final body = await fetchSyncPull();
     final profile = body?['profile'];
     if (profile is! Map<String, dynamic>) {
       return (current: null, best: null);
@@ -928,8 +955,8 @@ class TabsBackend {
 
   /// Log-entry timestamps (epoch ms) from `/api/sync/pull` `entries`.
   Future<List<int>> fetchLogEntries() async {
-    // Round 60 — shared in-flight pull; see fetchStreak.
-    final body = await _fetchSyncPullShared();
+    // Shared TTL pull cache; see fetchStreak.
+    final body = await fetchSyncPull();
     final entries = body?['entries'];
     if (entries is! List) return const [];
     final out = <int>[];
@@ -957,7 +984,64 @@ class TabsBackend {
   /// "the server has no habits" apart from "the refresh failed",
   /// so a failed refresh preserves the on-screen list instead of
   /// blanking it to the empty state until the next load.
+  /// Oct 26, 2026 — `GET /api/habits` gets the same treatment as the
+  /// sync pull: a STATIC session-keyed TTL cache + single-flight. It
+  /// previously had neither, so every Habits-screen entry, Today
+  /// Summary build, and repository read paid its own round-trip.
+  /// Failures (null) are never cached — a failed read must not blank
+  /// habits for the TTL window. Every successful habit write
+  /// ([logHabit], [createHabit], [deleteHabit]) invalidates.
+  static final Map<
+      (String, String?),
+      ({
+        List<HabitDto> habits,
+        DateTime at,
+      })> _habitsCacheBySession = {};
+  static final Map<(String, String?), Future<List<HabitDto>?>>
+      _habitsInFlight = {};
+
+  /// Drops the cached habits list for every session. Called after
+  /// successful habit writes so post-write re-fetches stay honest.
+  void invalidateHabits() {
+    _habitsCacheBySession.clear();
+  }
+
+  /// Test-only: clears the shared pull/habits caches so suites that
+  /// reuse one session token across cases stay isolated (production
+  /// has exactly one session; the caches are keyed by it).
+  @visibleForTesting
+  static void debugResetSharedCaches() {
+    _syncPullCacheBySession.clear();
+    _habitsCacheBySession.clear();
+    _habitsInFlight.clear();
+  }
+
   Future<List<HabitDto>?> fetchHabitsOrNull() async {
+    final key = await _sessionKey();
+    if (key != null) {
+      final entry = _habitsCacheBySession[key];
+      if (entry != null &&
+          DateTime.now().difference(entry.at) < syncPullTtl) {
+        return entry.habits;
+      }
+      final inFlight = _habitsInFlight[key];
+      if (inFlight != null) return inFlight;
+    }
+    late final Future<List<HabitDto>?> future;
+    future = _fetchHabitsUncached().whenComplete(() {
+      if (key != null && identical(_habitsInFlight[key], future)) {
+        _habitsInFlight.remove(key);
+      }
+    });
+    if (key != null) _habitsInFlight[key] = future;
+    final result = await future;
+    if (result != null && key != null) {
+      _habitsCacheBySession[key] = (habits: result, at: DateTime.now());
+    }
+    return result;
+  }
+
+  Future<List<HabitDto>?> _fetchHabitsUncached() async {
     final body = await _getJson('/api/habits');
     if (body == null) return null;
     final habits = body['habits'];
@@ -979,8 +1063,8 @@ class TabsBackend {
   /// of `[{systolic, diastolic, timeEpochMs, ...}]`. Tolerates null, blank,
   /// and malformed content (→ empty); never throws.
   Future<List<BpRecord>> fetchManualBpLogs() async {
-    // Round 60 — shared in-flight pull; see fetchStreak.
-    final body = await _fetchSyncPullShared();
+    // Shared TTL pull cache; see fetchStreak.
+    final body = await fetchSyncPull();
     final profile = body?['profile'];
     if (profile is! Map<String, dynamic>) return const [];
     final raw = profile['manualBloodPressureLogs'];

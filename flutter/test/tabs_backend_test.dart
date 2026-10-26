@@ -17,6 +17,11 @@ TabsBackend backendWith(
 }
 
 void main() {
+  // Oct 26, 2026: the pull/habits caches are shared app-wide and keyed
+  // by session token; every case in this file uses the same token, so
+  // reset between cases to keep them isolated.
+  setUp(TabsBackend.debugResetSharedCaches);
+
   group('fetchStreak', () {
     test('parses current/best from a sample pullData payload', () async {
       final backend = backendWith(
@@ -186,6 +191,9 @@ void main() {
 
     test('null / blank / "[]" / malformed → empty, never throws', () async {
       for (final raw in [null, '', '   ', '[]', 'not-json', '[1,2']) {
+        // Each iteration is a different server body under one session
+        // token; drop the shared pull cache so the new body is read.
+        TabsBackend.debugResetSharedCaches();
         final backend = backendWith(
           MockClient((_) async => http.Response(
                 jsonEncode({
@@ -199,6 +207,7 @@ void main() {
             reason: 'raw=$raw');
       }
       // Malformed rows are skipped, valid rows survive.
+      TabsBackend.debugResetSharedCaches();
       final backend = backendWith(
         MockClient((_) async => http.Response(
               jsonEncode({
