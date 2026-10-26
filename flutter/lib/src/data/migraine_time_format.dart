@@ -1,8 +1,8 @@
-/// Migraine attack time formatting — ported verbatim from the Lab
-/// (`attack_loggers/time_format.dart`, itself a port of the Kotlin
-/// formatters). Production migraine surfaces use these two functions
-/// ONLY (Juno ruling 2026-10-26, §A/§E): one elapsed format and one
-/// timestamp format everywhere, including the Trends entry body.
+// Migraine attack time formatting — ported verbatim from the Lab
+// (`attack_loggers/time_format.dart`, itself a port of the Kotlin
+// formatters). Production migraine surfaces use these two functions
+// ONLY (Juno ruling 2026-10-26, §A/§E): one elapsed format and one
+// timestamp format everywhere, including the Trends entry body.
 
 const _months = [
   'Jan',

@@ -95,20 +95,32 @@ class BackendMigraineTrendsGateway implements MigraineTrendsGateway {
 /// start and on form save; the end itself is persisted FIRST, so no
 /// failure downstream can un-end an attack.
 class MigraineController extends ChangeNotifier {
-  MigraineController({
+  factory MigraineController({
     required MigraineAttackStore store,
     required MigraineNotifier notifier,
     required MigraineTrendsGateway gateway,
     Future<({double lat, double lon})?> Function()? storedCoordinates,
     Future<double> Function(double lat, double lon)? pressureFetcher,
     DateTime Function()? clock,
-  })  : _store = store,
-        _notifier = notifier,
-        _gateway = gateway,
-        _storedCoordinates = storedCoordinates,
-        _pressureFetcher = pressureFetcher ??
+  }) =>
+      MigraineController._(
+        store,
+        notifier,
+        gateway,
+        storedCoordinates,
+        pressureFetcher ??
             ((lat, lon) => fetchPressureHpa(lat: lat, lon: lon)),
-        _clock = clock ?? DateTime.now;
+        clock ?? DateTime.now,
+      );
+
+  MigraineController._(
+    this._store,
+    this._notifier,
+    this._gateway,
+    this._storedCoordinates,
+    this._pressureFetcher,
+    this._clock,
+  );
 
   /// Production wiring. The notifier's tap handler late-binds to
   /// this controller, mirroring how `main.dart` arms the Daily
@@ -384,8 +396,7 @@ class MigraineController extends ChangeNotifier {
     }
     if (attack == null || attack.isActive) return false;
     var updated = attack.copyWith(
-      reliefRating:
-          reliefRating == null ? null : reliefRating.clamp(0, 5),
+      reliefRating: reliefRating?.clamp(0, 5),
       painPeak: commitPain && painPeak != null
           ? painPeak.clamp(0, 10)
           : null,
