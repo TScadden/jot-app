@@ -90,8 +90,8 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 /// Native `CoachViewModel.welcomeMessage` — shown for a new session
 /// and inserted as the session's first message on creation.
 const String coachWelcomeMessage =
-    "Hi! I'm $kCoachName. I have context on your recent logs, health "
-    'history, and knowledge base. How can I help you today?';
+    "Hi, I'm $kCoachName, your Tabs Coach.\n"
+    'Ask me anything about your health, habits, and data.';
 
 /// Native `MedicalDisclaimerBanner` copy, verbatim — the banner
 /// above all coach content (CoachScreen.kt). Round 18 invented
@@ -1934,14 +1934,16 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    CoachMascotFigure(height: 96),
+                    CoachMascotFigure(
+                        height: 96, semanticLabel: '$kCoachName, Tabs Coach'),
                     SizedBox(height: 16),
                     Text('No chats yet.',
                         style: TextStyle(
                             fontSize: 16,
                             color: NotelColors.textSecondary)),
                     SizedBox(height: 4),
-                    Text('Tap the + button to start a conversation.',
+                    Text('Tap the + button to start a conversation with '
+                        '$kCoachName.',
                         style: TextStyle(
                             fontSize: 14,
                             color: NotelColors.textSecondary)),
@@ -3908,7 +3910,7 @@ class _ChatBubble extends StatelessWidget {
                   children: [
                     CoachMascotAvatar(size: 20),
                     SizedBox(width: 6),
-                    Text(kCoachName,
+                    Text('$kCoachName · Tabs Coach',
                         style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -4583,7 +4585,7 @@ class _InputBar extends StatelessWidget {
                 style: const TextStyle(
                     color: NotelColors.textPrimary, fontSize: 15),
                 decoration: InputDecoration(
-                  hintText: 'Ask $kCoachName about your health…',
+                  hintText: 'Ask $kCoachName anything...',
                   hintStyle: const TextStyle(
                       color: NotelColors.textSecondary),
                   filled: true,

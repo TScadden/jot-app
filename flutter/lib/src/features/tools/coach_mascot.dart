@@ -147,7 +147,7 @@ class _CoachMascotAvatarState extends State<CoachMascotAvatar> {
           width: widget.size,
           height: widget.size,
           fit: BoxFit.cover,
-          semanticLabel: kCoachName,
+          semanticLabel: '$kCoachName, Tabs Coach',
         ),
       ),
     );
@@ -158,7 +158,15 @@ class _CoachMascotAvatarState extends State<CoachMascotAvatar> {
 class CoachMascotFigure extends StatelessWidget {
   final double height;
 
-  const CoachMascotFigure({super.key, required this.height});
+  /// Accessibility label. Coach surfaces pass Juno's approved
+  /// 'Bandit, Tabs Coach'; app-wide placements keep the plain name.
+  final String semanticLabel;
+
+  const CoachMascotFigure({
+    super.key,
+    required this.height,
+    this.semanticLabel = kCoachName,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -167,7 +175,7 @@ class CoachMascotFigure extends StatelessWidget {
         kCoachFullAsset,
         height: height,
         fit: BoxFit.contain,
-        semanticLabel: kCoachName,
+        semanticLabel: semanticLabel,
       ),
     );
   }

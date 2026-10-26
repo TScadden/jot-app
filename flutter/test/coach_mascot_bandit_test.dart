@@ -39,8 +39,11 @@ Widget _wrap(Widget child) {
 void main() {
   test('coach name constant is Bandit and the greeting uses it', () {
     expect(kCoachName, 'Bandit');
-    expect(coachWelcomeMessage, startsWith("Hi! I'm Bandit."));
-    expect(coachWelcomeMessage, isNot(contains("I'm Tabs Coach")));
+    expect(coachWelcomeMessage,
+        startsWith("Hi, I'm Bandit, your Tabs Coach."));
+    expect(coachWelcomeMessage,
+        contains('Ask me anything about your health, habits, and data.'));
+    expect(coachWelcomeMessage, isNot(contains('I have context')));
   });
 
   testWidgets('mascot avatar renders from the Bandit asset', (tester) async {
@@ -59,12 +62,12 @@ void main() {
     // Header avatar.
     expect(find.byType(CoachMascotAvatar), findsWidgets);
     // First-run greeting is Bandit's welcome message.
-    expect(find.textContaining("Hi! I'm Bandit."), findsOneWidget);
-    // Sender label is the mascot's name (no sparkle label remains).
-    expect(find.text('Bandit'), findsOneWidget);
-    expect(find.textContaining('Tabs Coach'), findsNothing);
-    // Input hint uses the name.
-    expect(find.text('Ask Bandit about your health…'), findsOneWidget);
+    expect(find.textContaining("Hi, I'm Bandit, your Tabs Coach."),
+        findsOneWidget);
+    // Sender label is Juno's approved 'Bandit · Tabs Coach'.
+    expect(find.text('Bandit · Tabs Coach'), findsOneWidget);
+    // Input hint (Juno's approved wording).
+    expect(find.text('Ask Bandit anything...'), findsOneWidget);
   });
 
   testWidgets('app-wide: Weekly Snapshot empty state shows Bandit',
