@@ -5,6 +5,7 @@ import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 import 'daily_score_background.dart' show LocalDailyScoreReadyNotifier;
+import 'migraine_notification.dart' show LocalMigraineNotifier;
 
 /// Round 30 — local notification scheduling for the Settings reminder
 /// toggles, mirroring the native app.
@@ -94,6 +95,7 @@ class NotificationBootstrap {
   static bool _initialized = false;
   static Future<void>? _initializing;
   static void Function(String date)? _scoreTapHandler;
+  static void Function()? _migraineTapHandler;
 
   /// Whether the foreground plugin.initialize has completed.
   static bool get isInitialized => _initialized;
@@ -111,10 +113,22 @@ class NotificationBootstrap {
     _scoreTapHandler = handler;
   }
 
+  /// Registers the migraine-timer notification tap handler (the
+  /// migraine notifier's `onTap`). The payload is the constant
+  /// [LocalMigraineNotifier.payload] — it carries no data; the
+  /// handler ends the active attack (see the migraine controller).
+  static void registerMigraineTapHandler(void Function() handler) {
+    _migraineTapHandler = handler;
+  }
+
   /// The dispatching response callback handed to the plugin —
   /// also directly callable in tests.
   static void dispatchNotificationResponse(NotificationResponse response) {
     final payload = response.payload;
+    if (LocalMigraineNotifier.isMigrainePayload(payload)) {
+      _migraineTapHandler?.call();
+      return;
+    }
     if (LocalDailyScoreReadyNotifier.isScorePayload(payload)) {
       _scoreTapHandler?.call(payload!);
     }
@@ -160,6 +174,7 @@ class NotificationBootstrap {
     _initialized = false;
     _initializing = null;
     _scoreTapHandler = null;
+    _migraineTapHandler = null;
   }
 }
 
