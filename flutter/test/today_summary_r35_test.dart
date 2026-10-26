@@ -119,6 +119,11 @@ QuickLogEntry entry(int id, int categoryId, String body, DateTime at) =>
     );
 
 void main() {
+  // Oct 26, 2026 perf package: the sync-pull/habits caches are STATIC
+  // and session-keyed, and every case here reuses the token 'tok' —
+  // reset between cases so one case's cached pull body cannot be
+  // served to the next case's fresh fake server.
+  setUp(TabsBackend.debugResetSharedCaches);
   // R70 WS2 — the union helper reads/writes the shared history
   // store; reset it (in-memory backing) so cases stay isolated.
   setUp(() {
@@ -1901,6 +1906,11 @@ void main() {
       // type in the same slot), so unmount fully first — the tab
       // switch in MainShell replaces the whole body the same way.
       tookLogged = true;
+      // The elsewhere log is simulated by flipping the fake
+      // server; the real Quick Log write path invalidates the
+      // shared sync-pull cache on save — mirror that invalidation
+      // here so the remount reads the new body, not the TTL cache.
+      TabsBackend.debugResetSharedCaches();
       await tester
           .pumpWidget(const MaterialApp(home: Scaffold(body: SizedBox())));
       await tester.pumpAndSettle();
@@ -2266,6 +2276,10 @@ void main() {
       );
       expect(animatedState.completedReminderIds, contains(5));
 
+      // Second scenario, second fake server under the same token:
+      // drop the shared pull cache so its pre-check-off body is
+      // read, not the first server's post-check-off cached body.
+      TabsBackend.debugResetSharedCaches();
       final reducedMem = MemoryStore();
       await pumpMotionCard(tester,
           client: reminderClient(),

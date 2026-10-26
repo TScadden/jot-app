@@ -22,6 +22,11 @@ String _dateStrForTest(DateTime d) =>
 List<WindowDay> _window() => sevenDayWindow();
 
 void main() {
+  // Oct 26, 2026 perf package: the sync-pull cache is STATIC and
+  // session-keyed, and cases below reuse the token 'tok' — reset
+  // between cases so one case's cached pull body cannot be served
+  // to the next case's fresh fake server.
+  setUp(TabsBackend.debugResetSharedCaches);
   // R70 WS2 — the union helper reads/writes the shared history
   // store; reset it (in-memory backing) so cases stay isolated.
   setUp(() {

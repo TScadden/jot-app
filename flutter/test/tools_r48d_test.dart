@@ -166,6 +166,11 @@ Map<String, dynamic> _medRow(String id, String name) => {
     };
 
 void main() {
+  // Oct 26, 2026 perf package: the habits cache is STATIC and
+  // session-keyed, and every case here reuses the token 'tok' —
+  // reset between cases so one case's cached habits cannot be
+  // served to the next case's fresh fake server.
+  setUp(TabsBackend.debugResetSharedCaches);
   group('r48d habits: fetchHabitsOrNull distinguishes failure', () {
     test('500 → null; fetchHabits still flattens to []', () async {
       final backend = _backendWith(
@@ -214,6 +219,9 @@ void main() {
       expect(habits, isNotNull);
       expect(habits!.single.title, 'Drink water');
 
+      // Second server body under the same token within this case:
+      // drop the shared habits cache so the empty body is read.
+      TabsBackend.debugResetSharedCaches();
       final empty = _backendWith(
         MockClient((_) async =>
             http.Response(jsonEncode({'habits': []}), 200)),

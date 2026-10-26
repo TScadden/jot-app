@@ -62,6 +62,11 @@ class _EmailThrowingStore extends FakeSessionStore {
 }
 
 void main() {
+  // Oct 26, 2026 perf package: the sync-pull/habits caches are STATIC
+  // and session-keyed, and every case here reuses the same tokens —
+  // reset between cases so one case's cached pull body cannot be
+  // served to the next case's fresh fake server.
+  setUp(TabsBackend.debugResetSharedCaches);
   setUp(() {
     TabsBackend.onSessionExpired = null;
   });

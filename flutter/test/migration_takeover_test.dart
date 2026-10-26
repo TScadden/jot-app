@@ -163,6 +163,11 @@ Future<Map<String, String>> populatedLabStore(DateTime today) async {
 }
 
 void main() {
+  // Oct 26, 2026 perf package: the sync-pull cache is STATIC and
+  // session-keyed, and the resync cases below reuse the token 'tok'
+  // — reset between cases so one case's cached pull body cannot be
+  // served to the next case's fresh fake server.
+  setUp(TabsBackend.debugResetSharedCaches);
   final fixedNow = DateTime(2026, 10, 16, 12, 30);
 
   group('export', () {

@@ -121,6 +121,10 @@ MigraineAttack attackFixture({
     );
 
 void main() {
+  // Oct 26, 2026 perf package: the sync-pull cache is STATIC and
+  // session-keyed, and the gateway cases below reuse the token 'tok'
+  // — reset between cases so each starts from a clean shared cache.
+  setUp(TabsBackend.debugResetSharedCaches);
   group('formatElapsedDuration (Lab port)', () {
     test('under 60 minutes', () {
       expect(formatElapsedDuration(0), '0 min');
@@ -526,6 +530,9 @@ void main() {
       )));
       expect(await byName.resolveSymptomsCategoryId(), 9);
 
+      // Second server body under the same token within this case:
+      // drop the shared pull cache so the fallback body is read.
+      TabsBackend.debugResetSharedCaches();
       final byFallback = BackendMigraineTrendsGateway(backendFor(
           MockClient(
         (_) async => http.Response(

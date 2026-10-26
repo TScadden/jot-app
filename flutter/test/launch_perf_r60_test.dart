@@ -96,6 +96,11 @@ TabsBackend _delayedBackend({
 }
 
 void main() {
+  // Oct 26, 2026 perf package: the sync-pull cache is STATIC and
+  // session-keyed, and every case here reuses the token 'fake-token'
+  // — reset between cases so one case's cached pull body cannot be
+  // served to the next case's fresh fake server.
+  setUp(TabsBackend.debugResetSharedCaches);
   group('LaunchTrace', () {
     setUp(() => LaunchTrace.instance.debugReset());
     tearDown(() => LaunchTrace.instance.debugReset());
@@ -264,16 +269,53 @@ void main() {
     });
 
     test(
-        'the single-flight slot serves nothing stale: a consumer '
-        'arriving AFTER completion fetches fresh', () async {
+        'the shared TTL cache serves a consumer arriving AFTER '
+        'completion: no new fetch within the TTL, fresh fetch after '
+        'invalidateSyncPull() or under a different token', () async {
+      // Oct 26, 2026 perf package supersedes the Round-60
+      // no-carryover rule ('the single-flight slot serves nothing
+      // stale: a consumer arriving AFTER completion fetches
+      // fresh'): the sync pull is now a shared TTL cache, so a
+      // post-completion consumer within the TTL is served from the
+      // cache — that sharing is the perf win — and freshness is
+      // restored by invalidateSyncPull() (which local writes call)
+      // or by a different session token.
       var pulls = 0;
       final backend = _delayedBackend(onPull: () => pulls++);
       await backend.fetchStreak();
       expect(pulls, 1);
+      final cached = await backend.fetchStreak();
+      expect(pulls, 1,
+          reason: 'within the TTL the completed pull is served '
+              'from the shared cache — 0 new fetches');
+      expect(cached.current, 12);
+      backend.invalidateSyncPull();
       await backend.fetchStreak();
       expect(pulls, 2,
-          reason: 'direct readers keep their uncached semantics — '
-              'only IN-FLIGHT calls are shared');
+          reason: 'after invalidateSyncPull() the next consumer '
+              'fetches fresh');
+      // A different token is a different cache entry and fetches
+      // fresh even while the first session's body is cached.
+      var otherPulls = 0;
+      final other = TabsBackend(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/sync/pull') {
+            otherPulls++;
+            return http.Response(
+              jsonEncode({
+                'entries': <dynamic>[],
+                'profile': {'currentStreak': 99, 'bestStreak': 1},
+              }),
+              200,
+            );
+          }
+          return http.Response('not found', 404);
+        }),
+        sessionStore: FakeSessionStore()..token = 'fake-token-other',
+      );
+      final otherStreak = await other.fetchStreak();
+      expect(otherPulls, 1);
+      expect(otherStreak.current, 99);
     });
   });
 
@@ -292,6 +334,10 @@ void main() {
       await seqHc.readSleepMinutes('2026-10-15');
       seqSw.stop();
 
+      // The sequential baseline just cached its pull under the same
+      // session token; drop the shared TTL cache so the parallel
+      // load below performs (and counts) its own single pull.
+      TabsBackend.debugResetSharedCaches();
       var pulls = 0;
       final repo = HealthRepository(
         hc: _DelayedHc(),
