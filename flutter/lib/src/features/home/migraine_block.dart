@@ -240,7 +240,7 @@ class _ActiveContentState extends State<_ActiveContent> {
             value: _pain.toDouble(),
             min: 1,
             max: 10,
-            divisions: 8,
+            divisions: 9,
             label: '$_pain',
             onChanged: (v) => setState(() => _pain = v.toInt()),
             onChangeEnd: (v) =>
@@ -615,7 +615,7 @@ class _MigraineDetailsFormState extends State<MigraineDetailsForm> {
                 value: _pain.toDouble(),
                 min: 1,
                 max: 10,
-                divisions: 8,
+                divisions: 9,
                 label: '$_pain',
                 onChanged: (v) => setState(() {
                   _pain = v.toInt();
