@@ -125,6 +125,14 @@ Future<void> _pumpHistory(
 }
 
 void main() {
+  // Screen-load perf (Oct 26, 2026): the sync-pull cache is now a
+  // STATIC session-keyed map shared by every TabsBackend instance,
+  // and every case in this suite reuses the token 'test-token' — so
+  // without a reset, one case's cached pull body would be served to
+  // the next case's fresh fake server. Reset between cases via the
+  // backend's test hook (its documented purpose).
+  setUp(() => TabsBackend.debugResetSharedCaches());
+
   group('pure edit helpers (native EntryDetailViewModel ports)', () {
     const entry = QuickLogEntry(
       id: 42,
