@@ -7,6 +7,7 @@ import 'package:tabs_lab/src/data/onboarding_store.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/onboarding/onboarding_header.dart';
+import 'package:tabs_lab/src/features/tools/coach_mascot.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Round 32 — port of native `SetupLoadingScreen.kt` (route
@@ -244,6 +245,10 @@ class _SetupLoadingScreenState extends State<SetupLoadingScreen> {
                   color: NotelColors.textSecondary,
                 ),
               ),
+              const SizedBox(height: 24),
+              // Bandit, the app mascot, keeps the user company while
+              // setup finishes — visual only, no copy changes.
+              const CoachMascotFigure(height: 84),
               const Spacer(),
               if (_finished) ...[
                 OnboardingPrimaryButton(

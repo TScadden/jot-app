@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/features/home/weekly_snapshot_card.dart';
+import 'package:tabs_lab/src/features/quicklog/history_screen.dart';
 import 'package:tabs_lab/src/features/tools/coach_mascot.dart';
 import 'package:tabs_lab/src/features/tools/health_coach_screen.dart';
 
@@ -63,5 +65,42 @@ void main() {
     expect(find.textContaining('Tabs Coach'), findsNothing);
     // Input hint uses the name.
     expect(find.text('Ask Bandit anything...'), findsOneWidget);
+  });
+
+  testWidgets('app-wide: Weekly Snapshot empty state shows Bandit',
+      (tester) async {
+    await tester.pumpWidget(_wrap(const Scaffold(
+      body: Column(children: [WeeklySnapshotCard()]),
+    )));
+    await tester.pump();
+    expect(find.byType(CoachMascotFigure), findsOneWidget);
+    expect(find.text('Not enough sleep data yet'), findsOneWidget);
+  });
+
+  testWidgets('app-wide: History with no entries shows Bandit',
+      (tester) async {
+    final store = FakeSessionStore()..token = 'tok';
+    final backend = TabsBackend(
+      client: MockClient((request) async {
+        if (request.url.path == '/api/sync/pull') {
+          return http.Response(
+              jsonEncode({
+                'isUnlimited': true,
+                'entries': [],
+                'categories': [],
+                'coachSessions': [],
+                'coachMessages': [],
+              }),
+              200);
+        }
+        return http.Response(jsonEncode({'success': true}), 200);
+      }),
+      sessionStore: store,
+    );
+    await tester.pumpWidget(_wrap(HistoryScreen(backend: backend)));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(CoachMascotFigure), findsOneWidget);
+    expect(find.text('No entries yet'), findsOneWidget);
   });
 }
