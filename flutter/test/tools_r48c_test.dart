@@ -626,7 +626,7 @@ void main() {
         CoachChatScreen(backend: backendWith(chatClient(log))),
       );
       // Native greeting for a new session.
-      expect(find.textContaining("Hi! I'm Tabs Coach."), findsOneWidget);
+      expect(find.textContaining("Hi! I'm Bandit."), findsOneWidget);
 
       await tester.enterText(find.byType(TextField), 'make a list');
       await tester.tap(find.byIcon(Icons.send));
