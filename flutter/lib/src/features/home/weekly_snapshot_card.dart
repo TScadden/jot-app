@@ -25,6 +25,12 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// (resetting the tapped point), and on refresh-button tap. When [loadData]
 /// is null the card keeps the round-8 empty states (used by tests).
 ///
+/// Screen-load perf (Oct 26, 2026) — successful loads are cached per
+/// metric for the card session: switching back to a loaded metric
+/// paints its cached data instantly (no loading state) and revalidates
+/// in the background; first loads and the refresh button keep the
+/// foreground loading flow below.
+///
 /// Founder spec (Oct 26, 2026) — no empty-state flash: while a load is in
 /// flight the card shows a loading state, never the no-data state. The
 /// empty state may appear only when a load completes with no data, or
@@ -47,6 +53,15 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
   /// Latest loaded data per metric; null until the first load completes.
   WeeklySnapshotMetricData? _loaded;
 
+  /// Per-metric result cache for this card session (screen-load perf,
+  /// Oct 26, 2026): switching back to a metric that already loaded
+  /// paints its cached data instantly — no loading state — while a
+  /// background refresh revalidates it. Only SUCCESSFUL loads are
+  /// cached: a throwing loader falls back to the empty state exactly
+  /// as before and never poisons an entry, so the next visit to that
+  /// metric runs the normal loading flow again.
+  final Map<SnapshotMetric, WeeklySnapshotMetricData> _cache = {};
+
   /// Guards against stale loads when the user switches metrics quickly.
   int _loadGeneration = 0;
 
@@ -61,6 +76,11 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
   /// when the load completes, when a newer load starts, and on dispose.
   Timer? _emptyTimer;
 
+  /// Pending background revalidation for a cache-hit metric switch;
+  /// cancelled when a newer load starts, on the next switch, and on
+  /// dispose.
+  Timer? _revalidateTimer;
+
   /// How long a load may run with nothing loaded before the card may
   /// show its no-data state (founder spec, Oct 26, 2026).
   static const Duration emptyStateDelay = Duration(seconds: 30);
@@ -74,32 +94,63 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
   @override
   void dispose() {
     _emptyTimer?.cancel();
+    _revalidateTimer?.cancel();
     super.dispose();
   }
 
-  Future<void> _reload() async {
+  /// Foreground load for the current metric: first load per metric
+  /// and the refresh button. Follows the founder-spec loading flow —
+  /// loading state while in flight, empty state only on a completed
+  /// empty load or after [emptyStateDelay].
+  Future<void> _reload() => _load(_selected, background: false);
+
+  /// Loads [metric] via [WeeklySnapshotCard.loadData].
+  ///
+  /// Foreground loads ([background] false) drive the loading state
+  /// and the 30 s empty-state timer. Background loads are cache-hit
+  /// revalidations: they never touch the loading state or the timer,
+  /// so the cached data on screen never flashes, and a failed
+  /// background refresh simply keeps the cached data.
+  ///
+  /// A successful load is written to [_cache]; a throwing loader is
+  /// NOT cached (see [_cache]).
+  Future<void> _load(SnapshotMetric metric,
+      {required bool background}) async {
     final loader = widget.loadData;
     if (loader == null) return;
     final generation = ++_loadGeneration;
     _emptyTimer?.cancel();
-    setState(() {
-      _loadInFlight = true;
-      _loadTimedOut = false;
-    });
-    _emptyTimer = Timer(emptyStateDelay, () {
-      if (!mounted || generation != _loadGeneration) return;
-      setState(() => _loadTimedOut = true);
-    });
+    _revalidateTimer?.cancel();
+    if (!background) {
+      setState(() {
+        _loadInFlight = true;
+        _loadTimedOut = false;
+      });
+      _emptyTimer = Timer(emptyStateDelay, () {
+        if (!mounted || generation != _loadGeneration) return;
+        setState(() => _loadTimedOut = true);
+      });
+    }
     WeeklySnapshotMetricData data;
     try {
-      data = await loader(_selected);
+      data = await loader(metric);
     } catch (_) {
-      // A throwing loader is a bug — fall back to the native empty state
-      // rather than leaving stale data on screen.
-      data = emptyMetricData(_selected);
+      if (!mounted || generation != _loadGeneration) return;
+      _emptyTimer?.cancel();
+      // A throwing loader is a bug — fall back to the native empty
+      // state rather than leaving stale data on screen (foreground),
+      // or keep the cached data (background). Either way the failure
+      // is not cached.
+      if (background) return;
+      setState(() {
+        _loaded = emptyMetricData(metric);
+        _loadInFlight = false;
+      });
+      return;
     }
     if (!mounted || generation != _loadGeneration) return;
     _emptyTimer?.cancel();
+    _cache[metric] = data;
     setState(() {
       _loaded = data;
       _loadInFlight = false;
@@ -107,12 +158,30 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
   }
 
   void _selectMetric(SnapshotMetric m) {
+    final cached = _cache[m];
     setState(() {
       _selected = m;
       _selectedPoint = null; // native resets the tapped point on switch
-      _loaded = null; // drop stale data for the old metric
+      // Cache hit: paint the metric's last data immediately, with no
+      // loading state. Miss: drop the old metric's data, as before.
+      _loaded = cached;
+      if (cached != null) {
+        _loadInFlight = false;
+        _loadTimedOut = false;
+      }
     });
-    _reload();
+    if (cached == null) {
+      _load(m, background: false);
+    } else {
+      // Revalidate behind the painted cache, deferred to the next
+      // event-loop turn so the cached paint lands first and is never
+      // gated on the loader; dropped if the user has already moved on.
+      _revalidateTimer?.cancel();
+      _revalidateTimer = Timer(Duration.zero, () {
+        if (!mounted || _selected != m) return;
+        _load(m, background: true);
+      });
+    }
   }
 
   @override
