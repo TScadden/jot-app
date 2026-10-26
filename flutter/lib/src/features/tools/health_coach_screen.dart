@@ -4583,7 +4583,7 @@ class _InputBar extends StatelessWidget {
                 style: const TextStyle(
                     color: NotelColors.textPrimary, fontSize: 15),
                 decoration: InputDecoration(
-                  hintText: 'Ask $kCoachName anything...',
+                  hintText: 'Ask $kCoachName about your health…',
                   hintStyle: const TextStyle(
                       color: NotelColors.textSecondary),
                   filled: true,

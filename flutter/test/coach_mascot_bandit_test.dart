@@ -64,7 +64,7 @@ void main() {
     expect(find.text('Bandit'), findsOneWidget);
     expect(find.textContaining('Tabs Coach'), findsNothing);
     // Input hint uses the name.
-    expect(find.text('Ask Bandit anything...'), findsOneWidget);
+    expect(find.text('Ask Bandit about your health…'), findsOneWidget);
   });
 
   testWidgets('app-wide: Weekly Snapshot empty state shows Bandit',
