@@ -40,21 +40,28 @@ class CalendarService {
 
   /// Takeover disclosures (audit P4): builds the coach's
   /// upcoming-events context PERMISSION-AWARELY. When calendar
-  /// read permission is not granted — or the bridge read fails,
-  /// including the Kotlin side's SecurityException, which it now
-  /// surfaces as a PERMISSION_DENIED error instead of an empty
-  /// list — the context is native's "Calendar events are
-  /// unavailable right now." It must NEVER be "No events found.":
-  /// that string is reserved for a successful read that genuinely
-  /// returned zero events, so the model (and the Data Safety
-  /// story) never receives a false "no events" signal.
+  /// read permission is not granted — the permission-status read
+  /// says read == false, or the bridge read fails with the Kotlin
+  /// side's PERMISSION_DENIED error (its SecurityException path)
+  /// — the context is [calendarPermissionMissingContext] (Juno
+  /// compliance ruling): it tells the model permission is missing
+  /// and forbids any "nothing scheduled" implication. Any OTHER
+  /// bridge failure keeps native's "Calendar events are
+  /// unavailable right now." It must NEVER be "No events found."
+  /// on a failure path: that string is reserved for a successful
+  /// read that genuinely returned zero events, so the model (and
+  /// the Data Safety story) never receives a false "no events"
+  /// signal.
   Future<String> upcomingEventsContext() async {
     try {
       final status = await getPermissionStatus();
-      if (!status.read) return calendarEventsUnavailableContext;
+      if (!status.read) return calendarPermissionMissingContext;
       final events = await getUpcomingEvents();
       return formatUpcomingCalendarEvents(events);
-    } on CalendarException {
+    } on CalendarException catch (e) {
+      if (e.code == 'PERMISSION_DENIED') {
+        return calendarPermissionMissingContext;
+      }
       return calendarEventsUnavailableContext;
     } catch (_) {
       return calendarEventsUnavailableContext;
@@ -213,8 +220,9 @@ class CalendarService {
 
   /// Upcoming events for the coach context (native query bounds and
   /// ordering live in Kotlin). Throws [CalendarException] on failure —
-  /// the caller mirrors native's outer catch by using
-  /// [calendarEventsUnavailableContext].
+  /// [upcomingEventsContext] maps a PERMISSION_DENIED code to
+  /// [calendarPermissionMissingContext] and any other failure to
+  /// [calendarEventsUnavailableContext] (native's outer catch).
   Future<List<CalendarEventItem>> getUpcomingEvents() async {
     try {
       final raw = await _channel.invokeMethod<List>('getUpcomingEvents');
@@ -338,6 +346,18 @@ const String coachCalendarNotConnectedContext =
 /// Native's outer-catch return from `getUpcomingCalendarEvents`.
 const String calendarEventsUnavailableContext =
     'Calendar events are unavailable right now.';
+
+/// Juno compliance ruling (coach calendar read fix): the context
+/// used ONLY when Google Calendar is connected but READ_CALENDAR
+/// permission is missing — never as a generic failure fallback
+/// (non-permission failures keep [calendarEventsUnavailableContext]
+/// byte-identical). It stops the model reading a permission gap as
+/// "nothing scheduled": the model must not imply the user has
+/// nothing scheduled or that it checked the calendar, and it
+/// directs the user to grant Calendar permission in Android
+/// Settings. Verbatim ruled text — do not reword.
+const String calendarPermissionMissingContext =
+    'CALENDAR EVENTS: Google Calendar is connected, but Tabs does not currently have permission to read the calendar, so no calendar events are available to you. Do NOT say or imply that the user has nothing scheduled, and do NOT claim that you checked their calendar. If the user asks about their schedule, workouts, or upcoming events, tell them you can\'t see their calendar events yet because Calendar permission hasn\'t been granted to Tabs, and let them know they can grant it in their Android device Settings, under Apps, then Tabs, then Permissions, then Calendar. Once that permission is granted, you will be able to see their events in later messages. You can still help them schedule new events using the calendar proposal format below.';
 
 /// Native's insert confirmation (CoachViewModel.kt:884-891),
 /// with ONE deliberate wording change — takeover disclosures
