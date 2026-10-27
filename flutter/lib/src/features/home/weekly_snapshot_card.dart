@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/weekly_snapshot.dart';
+import 'package:tabs_lab/src/features/tools/coach_mascot.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
@@ -308,13 +309,22 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
     return SizedBox(
       height: 140,
       child: Center(
-        child: Text(
-          data.emptyMessage ?? 'No data available past 7 days',
-          style: const TextStyle(
-            fontSize: 13,
-            color: NotelColors.textSecondary,
-          ),
-          textAlign: TextAlign.center,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Bandit keeps the empty/loading state company — visual
+            // only, the honest empty message below is unchanged.
+            const CoachMascotFigure(height: 54),
+            const SizedBox(height: 6),
+            Text(
+              data.emptyMessage ?? 'No data available past 7 days',
+              style: const TextStyle(
+                fontSize: 13,
+                color: NotelColors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       ),
     );

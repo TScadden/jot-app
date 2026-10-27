@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/features/tools/coach_mascot.dart';
 import 'package:tabs_lab/src/data/calendar_service.dart';
 import 'package:tabs_lab/src/data/coach_memory_store.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
@@ -89,8 +90,8 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 /// Native `CoachViewModel.welcomeMessage` — shown for a new session
 /// and inserted as the session's first message on creation.
 const String coachWelcomeMessage =
-    "Hi! I'm Tabs Coach. I have context on your recent logs, health "
-    'history, and knowledge base. How can I help you today?';
+    "Hi, I'm $kCoachName, your Tabs Coach.\n"
+    'Ask me anything about your health, habits, and data.';
 
 /// Native `MedicalDisclaimerBanner` copy, verbatim — the banner
 /// above all coach content (CoachScreen.kt). Round 18 invented
@@ -1933,15 +1934,16 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.chat_bubble_outline,
-                        size: 64, color: NotelColors.textSecondary),
+                    CoachMascotFigure(
+                        height: 96, semanticLabel: '$kCoachName, Tabs Coach'),
                     SizedBox(height: 16),
                     Text('No chats yet.',
                         style: TextStyle(
                             fontSize: 16,
                             color: NotelColors.textSecondary)),
                     SizedBox(height: 4),
-                    Text('Tap the + button to start a conversation.',
+                    Text('Tap the + button to start a conversation with '
+                        '$kCoachName.',
                         style: TextStyle(
                             fontSize: 14,
                             color: NotelColors.textSecondary)),
@@ -3752,16 +3754,7 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
         ),
         title: Row(
           children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: NotelColors.primary.withValues(alpha: 0.15),
-                shape: BoxShape.circle,
-              ),
-              alignment: Alignment.center,
-              child: const Text('✨', style: TextStyle(fontSize: 16)),
-            ),
+            const CoachMascotAvatar(size: 36),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -3912,11 +3905,18 @@ class _ChatBubble extends StatelessWidget {
             if (!isUser && !isError)
               const Padding(
                 padding: EdgeInsets.only(left: 4, bottom: 4),
-                child: Text('✨ Tabs Coach',
-                    style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: NotelColors.primary)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CoachMascotAvatar(size: 20),
+                    SizedBox(width: 6),
+                    Text('$kCoachName · Tabs Coach',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: NotelColors.primary)),
+                  ],
+                ),
               ),
             if (displayText.isNotEmpty || isLoading)
               Container(
@@ -4585,7 +4585,7 @@ class _InputBar extends StatelessWidget {
                 style: const TextStyle(
                     color: NotelColors.textPrimary, fontSize: 15),
                 decoration: InputDecoration(
-                  hintText: 'Ask Coach anything...',
+                  hintText: 'Ask $kCoachName anything...',
                   hintStyle: const TextStyle(
                       color: NotelColors.textSecondary),
                   filled: true,
