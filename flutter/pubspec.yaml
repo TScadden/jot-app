@@ -125,6 +125,7 @@ flutter:
     - assets/images/bandit_avatar.png
     - assets/images/bandit_avatar_blink.png
     - assets/images/bandit_full.png
+    - assets/images/bandit_full_blink.png
     # Round 18b — bundled research library (mirrors native
     # app/src/main/assets/research/*.json).
     - assets/research/
