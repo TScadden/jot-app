@@ -16,6 +16,7 @@ import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/daily_score_background.dart';
 import 'package:tabs_lab/src/data/daily_score_refresh_owner.dart';
+import 'package:tabs_lab/src/data/migraine_attack_store.dart';
 import 'package:tabs_lab/src/data/migraine_controller.dart';
 import 'package:tabs_lab/src/data/refresh_keep_alive.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
@@ -458,6 +459,9 @@ class _AppFlowState extends State<AppFlow>
     // Round 55: coach memory is account-bound too — session expiry
     // wipes it like the other caches.
     unawaited(CoachMemoryStore.instance.clear());
+    // Audit 4e: migraine attack records are account-bound too —
+    // session expiry wipes them like the other stores.
+    unawaited(MigraineAttackStore.instance.clear());
     // Round 65: cached extracted document text is account-bound too.
     unawaited(KnowledgeExtractionStore.instance.clear());
     // Correction round (Juno C2): the SettingsStore counter-delete
@@ -511,6 +515,10 @@ class _AppFlowState extends State<AppFlow>
     unawaited(TodaySummaryCache.instance.clearIfOwnerMismatch(email));
     unawaited(TodayPlanStore.instance.clearIfOwnerMismatch(email));
     unawaited(CoachMemoryStore.instance.clearIfOwnerMismatch(email));
+    // Audit 4e: same owner-mismatch enforcement for migraine
+    // attack records.
+    unawaited(
+        MigraineAttackStore.instance.clearIfOwnerMismatch(email));
     unawaited(
         KnowledgeExtractionStore.instance.clearIfOwnerMismatch(email));
     // Round 32 — native parity: email login and Google sign-in (both
@@ -694,6 +702,10 @@ class _AppFlowState extends State<AppFlow>
     unawaited(TodaySummaryCache.instance.clearIfOwnerMismatch(email));
     unawaited(TodayPlanStore.instance.clearIfOwnerMismatch(email));
     unawaited(CoachMemoryStore.instance.clearIfOwnerMismatch(email));
+    // Audit 4e: same owner-mismatch enforcement for migraine
+    // attack records.
+    unawaited(
+        MigraineAttackStore.instance.clearIfOwnerMismatch(email));
     unawaited(
         KnowledgeExtractionStore.instance.clearIfOwnerMismatch(email));
     unawaited(_stampFreshAccountOnboarding());

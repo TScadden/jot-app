@@ -6,6 +6,7 @@ import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/data/heart_data_cache.dart';
 import 'package:tabs_lab/src/data/coach_memory_store.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
+import 'package:tabs_lab/src/data/migraine_attack_store.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
@@ -110,6 +111,14 @@ void seedRealCaches() {
   // its singleton to the same in-memory disk so the real wipe in
   // these flows completes against it too.
   CoachMemoryStore.instance.debugSetStore(
+    read: (k) async => cacheDisk[k],
+    write: (k, v) async => cacheDisk[k] = v,
+    delete: (k) async => cacheDisk.remove(k),
+  );
+  // Audit 4e: migraine attack records joined the account-bound
+  // caches — wire the shared store to the same fake disk, for the
+  // same FakeAsync reason as the coach store above.
+  MigraineAttackStore.instance.debugSetStore(
     read: (k) async => cacheDisk[k],
     write: (k, v) async => cacheDisk[k] = v,
     delete: (k) async => cacheDisk.remove(k),

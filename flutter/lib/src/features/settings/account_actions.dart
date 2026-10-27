@@ -2,6 +2,7 @@ import 'package:tabs_lab/src/data/coach_memory_store.dart';
 import 'package:tabs_lab/src/data/daily_score_refresh_owner.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
+import 'package:tabs_lab/src/data/migraine_attack_store.dart';
 import 'package:tabs_lab/src/data/heart_data_cache.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
@@ -75,6 +76,12 @@ class AccountActions {
     // the same wipe covers it.
     try {
       await CoachMemoryStore.instance.clear();
+    } catch (_) {}
+    // Audit 4e (Oct 27, 2026): migraine attack records are
+    // account-bound device-local health data — the same wipe
+    // covers them, the in-progress attack included.
+    try {
+      await MigraineAttackStore.instance.clear();
     } catch (_) {}
     // R70 fix pass (Vera F1 / Juno C1): the historical health store
     // is account-bound all-time health data — logout / account
