@@ -30,6 +30,7 @@ class FakeCalendarBridge {
   int deleteRows = 1;
   List<dynamic> upcoming = const [];
   bool throwOnUpcoming = false;
+  String upcomingErrorCode = 'PERMISSION_DENIED';
   bool throwOnInsert = false;
   bool throwInvalidArgsOnInsert = false;
 
@@ -68,11 +69,12 @@ class FakeCalendarBridge {
       case 'getUpcomingEvents':
         if (throwOnUpcoming) {
           // Mirrors the Kotlin bridge after the P4 fix: a
-          // SecurityException surfaces as an error, not an
-          // empty-list success.
+          // SecurityException surfaces as a PERMISSION_DENIED
+          // error, not an empty-list success; other failures use
+          // their own code (e.g. CALENDAR_READ_FAILED).
           throw PlatformException(
-              code: 'PERMISSION_DENIED',
-              message: 'Calendar permission is not granted.');
+              code: upcomingErrorCode,
+              message: 'Calendar read failed.');
         }
         return upcoming;
       case 'listWritableCalendars':
@@ -176,14 +178,33 @@ void main() {
       expect(status.granted, isFalse);
     });
 
-    // ── Takeover disclosures (audit P4): permission-aware context ──
-    test('P4: read permission denied → unavailable context, and '
-        'the events read is never attempted', () async {
+    // ── Takeover disclosures (audit P4) + coach calendar read fix
+    // (Juno ruling): permission-missing gets its own context ──
+    test('read permission denied (status read == false) → '
+        'permission-missing context (Juno verbatim), and the '
+        'events read is never attempted', () async {
       final bridge =
           FakeCalendarBridge(readGranted: false, writeGranted: false);
       final service = serviceFor(bridge);
       final ctx = await service.upcomingEventsContext();
-      expect(ctx, calendarEventsUnavailableContext);
+      expect(ctx, calendarPermissionMissingContext);
+      expect(
+          ctx,
+          'CALENDAR EVENTS: Google Calendar is connected, but Tabs '
+          'does not currently have permission to read the calendar, '
+          'so no calendar events are available to you. Do NOT say '
+          'or imply that the user has nothing scheduled, and do '
+          'NOT claim that you checked their calendar. If the user '
+          'asks about their schedule, workouts, or upcoming '
+          'events, tell them you can\'t see their calendar events '
+          'yet because Calendar permission hasn\'t been granted to '
+          'Tabs, and let them know they can grant it in their '
+          'Android device Settings, under Apps, then Tabs, then '
+          'Permissions, then Calendar. Once that permission is '
+          'granted, you will be able to see their events in later '
+          'messages. You can still help them schedule new events '
+          'using the calendar proposal format below.');
+      expect(ctx, isNot(calendarEventsUnavailableContext));
       expect(ctx, isNot(contains('No events found.')));
       expect(bridge.callsTo('getUpcomingEvents'), isEmpty);
     });
@@ -198,12 +219,30 @@ void main() {
       expect(bridge.callsTo('getUpcomingEvents'), hasLength(1));
     });
 
-    test('P4: permission granted + bridge read fails (the Kotlin '
-        'SecurityException path) → unavailable, not empty', () async {
+    test('permission granted + bridge read fails with '
+        'PERMISSION_DENIED (the Kotlin SecurityException path) → '
+        'permission-missing context, not empty, not unavailable',
+        () async {
       final bridge = FakeCalendarBridge()..throwOnUpcoming = true;
       final service = serviceFor(bridge);
       final ctx = await service.upcomingEventsContext();
+      expect(ctx, calendarPermissionMissingContext);
+      expect(ctx, isNot(calendarEventsUnavailableContext));
+      expect(ctx, isNot(contains('No events found.')));
+    });
+
+    test('permission granted + bridge read fails GENERICALLY '
+        '(CALENDAR_READ_FAILED) → the old unavailable context, '
+        'byte-identical, not permission-missing, not empty',
+        () async {
+      final bridge = FakeCalendarBridge()
+        ..throwOnUpcoming = true
+        ..upcomingErrorCode = 'CALENDAR_READ_FAILED';
+      final service = serviceFor(bridge);
+      final ctx = await service.upcomingEventsContext();
       expect(ctx, calendarEventsUnavailableContext);
+      expect(ctx, 'Calendar events are unavailable right now.');
+      expect(ctx, isNot(calendarPermissionMissingContext));
       expect(ctx, isNot(contains('No events found.')));
     });
 
@@ -221,6 +260,35 @@ void main() {
       final service = serviceFor(bridge);
       final ctx = await service.upcomingEventsContext();
       expect(ctx, contains('- Dentist on 2026-10-20 02:30 PM'));
+    });
+
+    test('success with an all-day instance and a timed instance '
+        '→ existing formatting, byte-identical', () async {
+      // Instances rows from the Kotlin bridge carry the instance
+      // BEGIN as dtstart (e.g. a recurring series' occurrence, or
+      // an all-day checklist occurrence at UTC midnight).
+      final bridge = FakeCalendarBridge()
+        ..upcoming = [
+          {
+            'title': 'Comeback Tour: daily checklist',
+            'dtstart':
+                DateTime.utc(2026, 10, 21).millisecondsSinceEpoch,
+            'allDay': true,
+          },
+          {
+            'title': 'Dentist',
+            'dtstart': DateTime(2026, 10, 20, 14, 30)
+                .millisecondsSinceEpoch,
+            'allDay': false,
+          },
+        ];
+      final service = serviceFor(bridge);
+      final ctx = await service.upcomingEventsContext();
+      expect(
+          ctx,
+          'CALENDAR EVENTS (today + next 14 days):\n'
+          '- Comeback Tour: daily checklist on 2026-10-21 (all day)\n'
+          '- Dentist on 2026-10-20 02:30 PM');
     });
 
     test('insert passes native-mapped fields through', () async {
@@ -692,10 +760,13 @@ void main() {
           contains('- Physical therapy on 2026-10-14 09:00 AM'));
     });
 
-    // ── Takeover disclosures (audit P4): the coach request must
-    // distinguish "permission missing" from "genuinely empty" ──
-    testWidgets('P4: connected send with calendar permission DENIED '
-        'sends the unavailable context, never "No events found."',
+    // ── Takeover disclosures (audit P4) + coach calendar read fix
+    // (Juno ruling): the coach request must distinguish
+    // "permission missing" from "genuinely empty" AND from a
+    // generic read failure ──
+    testWidgets('connected send with calendar permission DENIED '
+        'sends the permission-missing context (Juno), never '
+        '"No events found.", never the unavailable string',
         (tester) async {
       final log = <http.BaseRequest>[];
       final bridge =
@@ -711,7 +782,9 @@ void main() {
       final body = jsonDecode((coachReq.single as http.Request).body)
           as Map<String, dynamic>;
       final ctx = body['userContext'] as String;
-      expect(ctx, contains('Calendar events are unavailable right now.'));
+      expect(ctx, contains(calendarPermissionMissingContext));
+      expect(ctx,
+          isNot(contains('Calendar events are unavailable right now.')));
       expect(ctx, isNot(contains('No events found.')));
       // The events read is not even attempted without permission.
       expect(bridge.callsTo('getUpcomingEvents'), isEmpty);

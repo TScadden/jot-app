@@ -1030,17 +1030,35 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     /// Port of native `getUpcomingCalendarEvents`' query
-    /// (CoachViewModel.kt:1461-1546): all calendars, not-deleted,
-    /// from the earlier of local/UTC midnight today through local
-    /// midnight + 15 days, DTSTART ascending. Dart formats the rows
-    /// into native's exact context string. A query failure is
-    /// caught natively and yields an empty list; mirrored here —
-    /// with ONE deliberate exception (takeover disclosures, audit
-    /// P4): a SecurityException means calendar permission is not
-    /// granted, and it surfaces as a PERMISSION_DENIED error so
-    /// Dart substitutes native's "Calendar events are unavailable
-    /// right now." context. An empty success here must mean the
-    /// calendar is genuinely empty, never "permission missing".
+    /// (CoachViewModel.kt:1461-1546), with the coach calendar read
+    /// fix: the read runs over CalendarContract.Instances, NOT
+    /// Events, so recurring series are expanded into the actual
+    /// occurrences inside the window (an Events/DTSTART query can
+    /// never surface a recurring occurrence whose series started
+    /// earlier). The window stays bounded to the same period as
+    /// before — from the earlier of local/UTC midnight today
+    /// through local midnight + 15 days, passed as the Instances
+    /// URI begin/end — never the full series. Each row returns the
+    /// instance BEGIN as "dtstart", sorted BEGIN ascending; Dart
+    /// formats the rows into native's exact context string.
+    ///
+    /// FAMILY EXCLUSION (founder standing rule): before the
+    /// Instances query, the Calendars table is read and every
+    /// calendar whose ACCOUNT_NAME is the family group calendar
+    /// or whose CALENDAR_DISPLAY_NAME is "Family" is excluded via
+    /// a CALENDAR_ID NOT IN filter IN THE QUERY ITSELF (skipped
+    /// when the exclusion set is empty), so family events never
+    /// reach Dart or any formatting.
+    ///
+    /// Error contract is unchanged: a SecurityException at any
+    /// point means calendar permission is not granted and surfaces
+    /// as a PERMISSION_DENIED error (takeover disclosures, audit
+    /// P4 — Dart substitutes the permission-missing context, never
+    /// "No events found."); any other failure surfaces as
+    /// CALENDAR_READ_FAILED (Dart substitutes native's "Calendar
+    /// events are unavailable right now."). An empty success here
+    /// must mean the calendar is genuinely empty, never
+    /// "permission missing".
     private fun getUpcomingCalendarEvents(result: MethodChannel.Result) {
         Thread {
             val events = mutableListOf<Map<String, Any?>>()
@@ -1064,31 +1082,91 @@ class MainActivity : FlutterFragmentActivity() {
                 val queryStart = minOf(localMidnight, utcMidnight)
                 val queryEnd = localMidnight + 15 * 24 * 60 * 60 * 1000L
 
-                val eventProjection = arrayOf(
-                    CalendarContract.Events.TITLE,
-                    CalendarContract.Events.DTSTART,
-                    CalendarContract.Events.ALL_DAY
-                )
-                val selection =
-                    "${CalendarContract.Events.DTSTART} >= ? AND ${CalendarContract.Events.DTSTART} <= ? AND ${CalendarContract.Events.DELETED} != 1"
-                val selectionArgs = arrayOf(queryStart.toString(), queryEnd.toString())
                 try {
+                // FAMILY EXCLUSION (founder standing rule): collect
+                // the excluded calendar IDs first, so the Instances
+                // query below can filter them out at calendar-ID
+                // level, before any row is read or formatted.
+                val excludedCalendarIds = mutableListOf<Long>()
+                contentResolver.query(
+                    CalendarContract.Calendars.CONTENT_URI,
+                    arrayOf(
+                        CalendarContract.Calendars._ID,
+                        CalendarContract.Calendars.ACCOUNT_NAME,
+                        CalendarContract.Calendars.CALENDAR_DISPLAY_NAME
+                    ),
+                    null, null, null
+                )?.use { cursor ->
+                    val idCol = cursor.getColumnIndex(CalendarContract.Calendars._ID)
+                    val accNameCol =
+                        cursor.getColumnIndex(CalendarContract.Calendars.ACCOUNT_NAME)
+                    val displayNameCol = cursor.getColumnIndex(
+                        CalendarContract.Calendars.CALENDAR_DISPLAY_NAME
+                    )
+                    while (cursor.moveToNext()) {
+                        val accName =
+                            if (accNameCol != -1) cursor.getString(accNameCol) else null
+                        val displayName = if (displayNameCol != -1) {
+                            cursor.getString(displayNameCol)
+                        } else {
+                            null
+                        }
+                        if (accName == "family01139464036508455009@group.calendar.google.com" ||
+                            displayName == "Family"
+                        ) {
+                            if (idCol != -1) {
+                                excludedCalendarIds.add(cursor.getLong(idCol))
+                            }
+                        }
+                    }
+                }
+
+                // Instances query: the begin/end window is carried
+                // in the URI path (required by the Instances table),
+                // bounded to the same today + 15 days window above.
+                val instancesUriBuilder =
+                    CalendarContract.Instances.CONTENT_URI.buildUpon()
+                android.content.ContentUris.appendId(
+                    instancesUriBuilder, queryStart
+                )
+                android.content.ContentUris.appendId(
+                    instancesUriBuilder, queryEnd
+                )
+                val instanceProjection = arrayOf(
+                    CalendarContract.Instances.TITLE,
+                    CalendarContract.Instances.BEGIN,
+                    CalendarContract.Instances.ALL_DAY
+                )
+                val instanceSelection: String?
+                val instanceSelectionArgs: Array<String>?
+                if (excludedCalendarIds.isEmpty()) {
+                    instanceSelection = null
+                    instanceSelectionArgs = null
+                } else {
+                    val placeholders =
+                        excludedCalendarIds.joinToString(", ") { "?" }
+                    instanceSelection =
+                        "${CalendarContract.Instances.CALENDAR_ID} NOT IN ($placeholders)"
+                    instanceSelectionArgs = excludedCalendarIds
+                        .map { it.toString() }
+                        .toTypedArray()
+                }
                     contentResolver.query(
-                        CalendarContract.Events.CONTENT_URI,
-                        eventProjection,
-                        selection,
-                        selectionArgs,
-                        "${CalendarContract.Events.DTSTART} ASC"
+                        instancesUriBuilder.build(),
+                        instanceProjection,
+                        instanceSelection,
+                        instanceSelectionArgs,
+                        "${CalendarContract.Instances.BEGIN} ASC"
                     )?.use { cursor ->
-                        val titleCol = cursor.getColumnIndex(CalendarContract.Events.TITLE)
-                        val startCol = cursor.getColumnIndex(CalendarContract.Events.DTSTART)
-                        val allDayCol = cursor.getColumnIndex(CalendarContract.Events.ALL_DAY)
-                        if (titleCol != -1 && startCol != -1) {
+                        val titleCol = cursor.getColumnIndex(CalendarContract.Instances.TITLE)
+                        val beginCol = cursor.getColumnIndex(CalendarContract.Instances.BEGIN)
+                        val allDayCol = cursor.getColumnIndex(CalendarContract.Instances.ALL_DAY)
+                        if (titleCol != -1 && beginCol != -1) {
                             while (cursor.moveToNext()) {
                                 events.add(
                                     mapOf(
                                         "title" to cursor.getString(titleCol),
-                                        "dtstart" to cursor.getLong(startCol),
+                                        "dtstart" to cursor.getLong(beginCol),
                                         "allDay" to (allDayCol != -1 && cursor.getInt(allDayCol) == 1)
                                     )
                                 )
