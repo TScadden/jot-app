@@ -23,7 +23,9 @@ import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/billing/billing_plans_panel.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
+import 'package:tabs_lab/src/data/crash_reporting.dart';
 import 'package:tabs_lab/src/features/settings/account_actions.dart';
+import 'package:tabs_lab/src/features/settings/crash_test_hook.dart';
 import 'package:tabs_lab/src/features/settings/progress_reports_page.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
@@ -5501,6 +5503,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ]),
       const SizedBox(height: 24),
+      // Lab-only forced-crash test hook (Juno Ruling 2026-10-27,
+      // C6). CrashTestHook renders nothing unless this build is
+      // the lab flavor; a production-flavor build can never reach
+      // it. Placed by LOCAL CACHE so it sits with the other
+      // diagnostics-adjacent sections.
+      if (CrashReporting.isLabFlavor()) ...[
+        _sectionLabel('LAB TEST HOOKS'),
+        CrashTestHook(visible: CrashReporting.isLabFlavor()),
+        const SizedBox(height: 24),
+      ],
       _sectionLabel('LOCAL CACHE'),
       _card([
         const Text(

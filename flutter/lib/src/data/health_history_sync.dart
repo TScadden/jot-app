@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:tabs_lab/src/data/crash_reporting.dart';
 import 'package:tabs_lab/src/data/daily_score.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
@@ -409,8 +410,13 @@ class HealthHistorySync {
         completeOnlyDate: _historyDateStr(now),
       );
       return true;
-    } catch (_) {
-      // Capture failure must never break a screen.
+    } catch (e, st) {
+      // Capture failure must never break a screen. C7 allowlisted
+      // call site (CRASH_REPORTING_CALLSITES.md #3): type + static
+      // message only — a Health Connect read error can embed health
+      // values, which never leave the device.
+      CrashReporting.captureError(e,
+          stackTrace: st, staticMessage: 'health history capture failed');
       return false;
     }
   }
