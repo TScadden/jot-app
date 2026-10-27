@@ -864,6 +864,8 @@ class _HomeScreenState extends State<HomeScreen> {
             width: 64,
             child: IconButton(
               onPressed: _onWeatherTap,
+              // Audit 6d (Oct 27, 2026) — house label.
+              tooltip: 'Weather',
               padding: EdgeInsets.zero,
               icon: FittedBox(
                 fit: BoxFit.scaleDown,

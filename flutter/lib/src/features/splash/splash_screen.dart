@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/theme/animations.dart';
 
 /// Round 1 — the opening splash screen.
 ///
@@ -63,6 +64,14 @@ class _SplashContentState extends State<_SplashContent>
 
   @override
   Widget build(BuildContext context) {
+    // Audit 6c (Oct 27, 2026) — reduced motion: the entry fade/scale
+    // is gated on the central [animationsDisabled] check, following
+    // the in-app convention (StaggeredEntrance / SkeletonGroup):
+    // render the final state instantly, with no Opacity/Transform
+    // wrappers applied at all.
+    if (animationsDisabled(context)) {
+      return const _SplashContentBody();
+    }
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
@@ -74,40 +83,49 @@ class _SplashContentState extends State<_SplashContent>
           ),
         );
       },
-      child: SizedBox(
-        width: double.infinity,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Image.asset(
-                'assets/images/ic_tabs_note.png',
-                width: 130,
-                height: 130,
+      child: const _SplashContentBody(),
+    );
+  }
+}
+
+class _SplashContentBody extends StatelessWidget {
+  const _SplashContentBody();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Image.asset(
+              'assets/images/ic_tabs_note.png',
+              width: 130,
+              height: 130,
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Tabs',
+              style: TextStyle(
+                fontSize: 36,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF7C6EFF),
+                letterSpacing: 2,
               ),
-              const SizedBox(height: 24),
-              const Text(
-                'Tabs',
-                style: TextStyle(
-                  fontSize: 36,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF7C6EFF),
-                  letterSpacing: 2,
-                ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Health & Symptom Intelligence',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF7A8FAF),
               ),
-              const SizedBox(height: 6),
-              const Text(
-                'Health & Symptom Intelligence',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF7A8FAF),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
