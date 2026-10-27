@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'migraine_time_format.dart';
@@ -60,6 +61,28 @@ class LocalMigraineNotifier implements MigraineNotifier {
       '${formatElapsedDuration(elapsedMin)} so far. Tap to end the attack.';
 
   static bool isMigrainePayload(String? payload) => payload == LocalMigraineNotifier.payload;
+
+  static MigraineNotifier? _wipeNotifierOverride;
+
+  /// Cancels the posted ongoing attack notification (id
+  /// [notificationId]) from an account-wipe path. The wipe paths
+  /// (AccountActions funnel, session expiry) clear
+  /// MigraineAttackStore outside the MigraineController lifecycle,
+  /// so without this the persistent tap-to-end notification would
+  /// be orphaned mid-attack — its tap would load a wiped store.
+  /// Plugin cancel is by id, so any instance works; no controller
+  /// is needed. Fault-isolated: a cancel failure can never break
+  /// a wipe.
+  static Future<void> cancelPostedAttack() async {
+    try {
+      await (_wipeNotifierOverride ?? LocalMigraineNotifier()).cancel();
+    } catch (_) {}
+  }
+
+  @visibleForTesting
+  static void debugSetWipeNotifier(MigraineNotifier? notifier) {
+    _wipeNotifierOverride = notifier;
+  }
 
   final FlutterLocalNotificationsPlugin _plugin;
   final void Function()? _onTap;

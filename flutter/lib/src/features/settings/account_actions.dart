@@ -3,6 +3,7 @@ import 'package:tabs_lab/src/data/daily_score_refresh_owner.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/migraine_attack_store.dart';
+import 'package:tabs_lab/src/data/migraine_notification.dart';
 import 'package:tabs_lab/src/data/heart_data_cache.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
@@ -82,6 +83,11 @@ class AccountActions {
     // covers them, the in-progress attack included.
     try {
       await MigraineAttackStore.instance.clear();
+    } catch (_) {}
+    // Vera 4e follow-up: wipe mid-attack must not orphan the
+    // ongoing notification; its tap would load a wiped store.
+    try {
+      await LocalMigraineNotifier.cancelPostedAttack();
     } catch (_) {}
     // R70 fix pass (Vera F1 / Juno C1): the historical health store
     // is account-bound all-time health data — logout / account
