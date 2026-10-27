@@ -24,6 +24,23 @@ abstract final class BillingProducts {
   /// `applicationId = "com.notel.notel"`); the Flutter Lab package
   /// (`com.notel.notel.playground.flutter`) must never sell.
   static const String productionPackage = 'com.notel.notel';
+
+  /// Deep link to this subscription's management page in Play's
+  /// Subscription Center, in the form documented by Google Play
+  /// Billing ("Link to a specific subscription management page"):
+  /// `https://play.google.com/store/account/subscriptions?sku=<productId>&package=<app package>`,
+  /// where `sku` is the subscription's productId.
+  ///
+  /// Play's catalog for Tabs is ONE subscription product —
+  /// [monthly] (`jot_membership_monthly`) — carrying both base
+  /// plans (`premium-monthly` and `premium-yearly`). So `sku` is
+  /// that single product ID no matter which base plan the user
+  /// picked: `jot_membership_yearly` is not a product ID in the
+  /// catalog and does not resolve to the yearly subscription.
+  /// (Conformance audit 2026-10-27, item 1c.)
+  static const String subscriptionManagementUrl =
+      'https://play.google.com/store/account/subscriptions'
+      '?sku=$monthly&package=$productionPackage';
 }
 
 /// One pricing phase of an offer, mirroring Play's `PricingPhase`.

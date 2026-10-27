@@ -1627,7 +1627,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 // package (com.notel.notel.playground.flutter),
                 // whose Play subscriptions page does not exist.
                 // Subscriptions live under the production package.
-                'https://play.google.com/store/account/subscriptions?sku=${_selectedPlan == 'monthly' ? 'jot_membership_monthly' : 'jot_membership_yearly'}&package=${BillingProducts.productionPackage}'),
+                //
+                // Audit 1c fix: the sku must be the ONE Play
+                // product ID (jot_membership_monthly) for both
+                // base plans — the old ternary sent the
+                // non-existent product jot_membership_yearly when
+                // the yearly plan was selected. See
+                // BillingProducts.subscriptionManagementUrl.
+                BillingProducts.subscriptionManagementUrl),
             // R49 SE4: 48dp hit area (was ≈15dp of bare text);
             // the 11sp label itself is unchanged.
             child: Container(
