@@ -31,6 +31,7 @@ class FakeCalendarBridge {
   List<dynamic> upcoming = const [];
   bool throwOnUpcoming = false;
   String upcomingErrorCode = 'PERMISSION_DENIED';
+  bool malformedUpcoming = false;
   bool throwOnInsert = false;
   bool throwInvalidArgsOnInsert = false;
 
@@ -67,6 +68,18 @@ class FakeCalendarBridge {
       case 'deleteEvents':
         return deleteRows;
       case 'getUpcomingEvents':
+        if (malformedUpcoming) {
+          // A payload of the wrong shape: invokeMethod<List>
+          // throws a TypeError inside getUpcomingEvents, which is
+          // neither a PlatformException nor a MissingPluginException,
+          // so it escapes the CalendarException conversion and lands
+          // in upcomingEventsContext's generic catch (_). This is the
+          // only bridge-level failure that reaches that branch — a
+          // handler-thrown StateError is wrapped by the test
+          // messenger into a PlatformException('error') envelope and
+          // becomes a CalendarException (probe-verified Oct 27, 2026).
+          return 42;
+        }
         if (throwOnUpcoming) {
           // Mirrors the Kotlin bridge after the P4 fix: a
           // SecurityException surfaces as a PERMISSION_DENIED
@@ -233,9 +246,9 @@ void main() {
 
     test('permission granted + bridge read fails GENERICALLY '
         '(CALENDAR_READ_FAILED) → the unavailable context with '
-        'Juno\'s VC 100104 do-not-claim guard (verbatim), no '
-        'permission language, not permission-missing, not empty',
-        () async {
+        'Juno\'s do-not-claim guard (verbatim, Oct 27 2026 '
+        'ruling), no permission language, not '
+        'permission-missing, not empty', () async {
       final bridge = FakeCalendarBridge()
         ..throwOnUpcoming = true
         ..upcomingErrorCode = 'CALENDAR_READ_FAILED';
@@ -244,19 +257,60 @@ void main() {
       expect(ctx, calendarEventsUnavailableContext);
       expect(
           ctx,
-          'Calendar events could not be loaded. This can happen '
-          'from time to time — it does not mean the user has '
-          'nothing scheduled. Do not tell the user their calendar '
-          'is empty or that they have no events. Work from their '
-          'logged data where you can, and if it would help, offer '
-          'to try the calendar again.');
+          'CALENDAR EVENTS: Tabs could not load calendar events '
+          'right now, so no calendar events are available to you. '
+          'Do NOT say or imply that the user has nothing scheduled, '
+          'and do NOT claim that you checked their calendar. If the '
+          'user asks about their schedule, workouts, or upcoming '
+          'events, tell them you can\'t see their calendar events '
+          'right now because they could not be loaded, and let them '
+          'know they can try again in a later message. Calendar '
+          'events may be available to you in later messages if they '
+          'load successfully. You can still help them schedule new '
+          'events using the calendar proposal format below.');
       // The guard Juno required: explicit do-not-claim wording,
       // and NO permission language on this non-permission path.
-      expect(ctx, contains('does not mean the user has nothing scheduled'));
-      expect(ctx, contains('Do not tell the user their calendar is empty'));
+      expect(ctx,
+          contains('Do NOT say or imply that the user has nothing scheduled'));
+      expect(ctx, contains('do NOT claim that you checked their calendar'));
       expect(ctx.toLowerCase(), isNot(contains('permission')));
       expect(ctx, isNot(calendarPermissionMissingContext));
       expect(ctx, isNot(contains('No events found.')));
+    });
+
+    test('permission granted + bridge returns a MALFORMED events '
+        'payload → the generic catch (_) branch returns the SAME '
+        'unavailable context (Juno verbatim), no permission '
+        'language, not permission-missing, not empty', () async {
+      // Not a CalendarException at all: the malformed payload makes
+      // getUpcomingEvents throw a TypeError, which only the generic
+      // catch (_) in upcomingEventsContext can take (see
+      // FakeCalendarBridge.malformedUpcoming). Juno's ruling
+      // requires this branch pinned to the exact same string.
+      final bridge = FakeCalendarBridge()..malformedUpcoming = true;
+      final service = serviceFor(bridge);
+      final ctx = await service.upcomingEventsContext();
+      expect(ctx, calendarEventsUnavailableContext);
+      expect(
+          ctx,
+          'CALENDAR EVENTS: Tabs could not load calendar events '
+          'right now, so no calendar events are available to you. '
+          'Do NOT say or imply that the user has nothing scheduled, '
+          'and do NOT claim that you checked their calendar. If the '
+          'user asks about their schedule, workouts, or upcoming '
+          'events, tell them you can\'t see their calendar events '
+          'right now because they could not be loaded, and let them '
+          'know they can try again in a later message. Calendar '
+          'events may be available to you in later messages if they '
+          'load successfully. You can still help them schedule new '
+          'events using the calendar proposal format below.');
+      expect(ctx,
+          contains('Do NOT say or imply that the user has nothing scheduled'));
+      expect(ctx, contains('do NOT claim that you checked their calendar'));
+      expect(ctx.toLowerCase(), isNot(contains('permission')));
+      expect(ctx, isNot(calendarPermissionMissingContext));
+      expect(ctx, isNot(contains('No events found.')));
+      expect(bridge.callsTo('getUpcomingEvents'), hasLength(1));
     });
 
     test('P4: permission granted + events → formatted events '

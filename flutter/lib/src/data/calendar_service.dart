@@ -47,8 +47,9 @@ class CalendarService {
   /// compliance ruling): it tells the model permission is missing
   /// and forbids any "nothing scheduled" implication. Any OTHER
   /// bridge failure returns [calendarEventsUnavailableContext],
-  /// which carries Juno's VC 100104 do-not-claim guard without
-  /// permission language. It must NEVER be "No events found."
+  /// Juno's verbatim ruled do-not-claim guard string (Oct 27,
+  /// 2026 ruling) without permission language. It must NEVER be
+  /// "No events found."
   /// on a failure path: that string is reserved for a successful
   /// read that genuinely returned zero events, so the model (and
   /// the Data Safety story) never receives a false "no events"
@@ -349,22 +350,18 @@ const String coachCalendarNotConnectedContext =
 /// `getUpcomingCalendarEvents` ("Calendar events are unavailable
 /// right now."), but the calendar crew's fingerprint tests showed
 /// the model renders that bare failure as "nothing scheduled"
-/// (2/2), so Juno ruled (VC 100104) that this path carries the
-/// same do-not-claim guard as the permission-missing context,
-/// WITHOUT any permission language (this path is not a permission
-/// failure): the model must not say or imply the calendar is empty,
-/// must work from logged data where it can, and may offer to retry
-/// the calendar. Verbatim ruled text — do not reword. Used ONLY on
-/// non-permission failures; the permission paths return
-/// [calendarPermissionMissingContext] and a genuinely empty
-/// successful read keeps "No events found."
+/// (2/2), so Juno ruled that this path carries a do-not-claim
+/// guard WITHOUT any permission language (this path is not a
+/// permission failure). The value below is her verbatim ruled
+/// string (Juno ruling, Oct 27, 2026:
+/// team/compliance/2026-10-27-coach-calendar-generic-guard-juno.md)
+/// — do not reword. (VC 100104 briefly shipped a compressed
+/// paraphrase of this string; VC 100105 restored the verbatim
+/// text.) Used ONLY on non-permission failures; the permission
+/// paths return [calendarPermissionMissingContext] and a
+/// genuinely empty successful read keeps "No events found."
 const String calendarEventsUnavailableContext =
-    'Calendar events could not be loaded. This can happen from '
-    'time to time — it does not mean the user has nothing '
-    'scheduled. Do not tell the user their calendar is empty or '
-    'that they have no events. Work from their logged data where '
-    'you can, and if it would help, offer to try the calendar '
-    'again.';
+    'CALENDAR EVENTS: Tabs could not load calendar events right now, so no calendar events are available to you. Do NOT say or imply that the user has nothing scheduled, and do NOT claim that you checked their calendar. If the user asks about their schedule, workouts, or upcoming events, tell them you can\'t see their calendar events right now because they could not be loaded, and let them know they can try again in a later message. Calendar events may be available to you in later messages if they load successfully. You can still help them schedule new events using the calendar proposal format below.';
 
 /// Juno compliance ruling (coach calendar read fix): the context
 /// used ONLY when Google Calendar is connected but READ_CALENDAR
