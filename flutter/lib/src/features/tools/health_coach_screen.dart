@@ -2408,6 +2408,11 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
   CoachChatMessage? _welcomeMessage;
   final TextEditingController _input = TextEditingController();
   final ScrollController _scroll = ScrollController();
+
+  /// Measures the first message's sender-label row so
+  /// [_scrollToBottom] can tell whether scrolling to the end would
+  /// slice that row at the viewport's top edge (see there).
+  final GlobalKey _firstLabelKey = GlobalKey();
   bool _sending = false;
   bool _actionBusy = false;
 
@@ -2494,13 +2499,38 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) {
-        _scroll.animateTo(
-          _scroll.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-        );
+      if (!_scroll.hasClients) return;
+      final maxExtent = _scroll.position.maxScrollExtent;
+      var target = maxExtent;
+      // Clipped first sender label (founder report, VC 100103): when
+      // the thread only BARELY overflows the viewport (greeting + one
+      // short question + one long answer), scrolling to the absolute
+      // bottom can strand the first message's sender-label row
+      // ('Bandit · Tabs Coach' + avatar) sliced in half at the
+      // viewport's top edge, flush under the disclaimer banner. The
+      // label row sits at the very top of the first item: in content
+      // coordinates it spans the list's top padding (8, in the
+      // ListView below) to 8 + its height. A scroll offset inside
+      // that span cuts the row; at or below 8 the row is fully
+      // visible, and past the span it has fully scrolled away (the
+      // bubble body straddling the edge is normal chat behavior).
+      // So only when maxScrollExtent itself falls inside the span —
+      // a window one label-row tall — stay top-anchored at 0 instead
+      // of slicing the row. Every other case, including the
+      // post-approval flows that append a confirmation message a
+      // screenful down, still lands at the latest message exactly
+      // as before.
+      final labelHeight = _firstLabelKey.currentContext?.size?.height;
+      if (labelHeight != null &&
+          maxExtent > 8 &&
+          maxExtent < 8 + labelHeight) {
+        target = 0;
       }
+      _scroll.animateTo(
+        target,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
     });
   }
 
@@ -3789,6 +3819,7 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
               separatorBuilder: (context, _) =>
                   const SizedBox(height: 14),
               itemBuilder: (context, i) => _ChatBubble(
+                labelKey: i == 0 ? _firstLabelKey : null,
                 message: _messages[i],
                 sessionMessages: _messages,
                 actionBusy: _actionBusy,
@@ -3849,7 +3880,13 @@ class _ChatBubble extends StatelessWidget {
   final bool calendarConnected;
   final void Function(String kind, bool approve) onProposal;
 
+  /// Set only on the thread's first bubble: measures its
+  /// sender-label row for [_CoachChatScreenState._scrollToBottom]'s
+  /// clipped-label guard. Null on every other bubble.
+  final Key? labelKey;
+
   const _ChatBubble({
+    this.labelKey,
     required this.message,
     this.sessionMessages = const [],
     required this.actionBusy,
@@ -3903,9 +3940,10 @@ class _ChatBubble extends StatelessWidget {
               isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             if (!isUser && !isError)
-              const Padding(
-                padding: EdgeInsets.only(left: 4, bottom: 4),
-                child: Row(
+              Padding(
+                key: labelKey,
+                padding: const EdgeInsets.only(left: 4, bottom: 4),
+                child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     CoachMascotAvatar(size: 20),
