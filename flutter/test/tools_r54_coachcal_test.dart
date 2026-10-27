@@ -232,8 +232,9 @@ void main() {
     });
 
     test('permission granted + bridge read fails GENERICALLY '
-        '(CALENDAR_READ_FAILED) → the old unavailable context, '
-        'byte-identical, not permission-missing, not empty',
+        '(CALENDAR_READ_FAILED) → the unavailable context with '
+        'Juno\'s VC 100104 do-not-claim guard (verbatim), no '
+        'permission language, not permission-missing, not empty',
         () async {
       final bridge = FakeCalendarBridge()
         ..throwOnUpcoming = true
@@ -241,7 +242,19 @@ void main() {
       final service = serviceFor(bridge);
       final ctx = await service.upcomingEventsContext();
       expect(ctx, calendarEventsUnavailableContext);
-      expect(ctx, 'Calendar events are unavailable right now.');
+      expect(
+          ctx,
+          'Calendar events could not be loaded. This can happen '
+          'from time to time — it does not mean the user has '
+          'nothing scheduled. Do not tell the user their calendar '
+          'is empty or that they have no events. Work from their '
+          'logged data where you can, and if it would help, offer '
+          'to try the calendar again.');
+      // The guard Juno required: explicit do-not-claim wording,
+      // and NO permission language on this non-permission path.
+      expect(ctx, contains('does not mean the user has nothing scheduled'));
+      expect(ctx, contains('Do not tell the user their calendar is empty'));
+      expect(ctx.toLowerCase(), isNot(contains('permission')));
       expect(ctx, isNot(calendarPermissionMissingContext));
       expect(ctx, isNot(contains('No events found.')));
     });

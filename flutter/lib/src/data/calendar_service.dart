@@ -46,8 +46,9 @@ class CalendarService {
   /// — the context is [calendarPermissionMissingContext] (Juno
   /// compliance ruling): it tells the model permission is missing
   /// and forbids any "nothing scheduled" implication. Any OTHER
-  /// bridge failure keeps native's "Calendar events are
-  /// unavailable right now." It must NEVER be "No events found."
+  /// bridge failure returns [calendarEventsUnavailableContext],
+  /// which carries Juno's VC 100104 do-not-claim guard without
+  /// permission language. It must NEVER be "No events found."
   /// on a failure path: that string is reserved for a successful
   /// read that genuinely returned zero events, so the model (and
   /// the Data Safety story) never receives a false "no events"
@@ -222,7 +223,7 @@ class CalendarService {
   /// ordering live in Kotlin). Throws [CalendarException] on failure —
   /// [upcomingEventsContext] maps a PERMISSION_DENIED code to
   /// [calendarPermissionMissingContext] and any other failure to
-  /// [calendarEventsUnavailableContext] (native's outer catch).
+  /// [calendarEventsUnavailableContext].
   Future<List<CalendarEventItem>> getUpcomingEvents() async {
     try {
       final raw = await _channel.invokeMethod<List>('getUpcomingEvents');
@@ -343,9 +344,27 @@ const String coachCalendarDeleteFailureMessage =
 const String coachCalendarNotConnectedContext =
     'No Google Calendar connected.';
 
-/// Native's outer-catch return from `getUpcomingCalendarEvents`.
+/// The coach context for a NON-permission calendar read failure.
+/// This began as native's outer-catch return from
+/// `getUpcomingCalendarEvents` ("Calendar events are unavailable
+/// right now."), but the calendar crew's fingerprint tests showed
+/// the model renders that bare failure as "nothing scheduled"
+/// (2/2), so Juno ruled (VC 100104) that this path carries the
+/// same do-not-claim guard as the permission-missing context,
+/// WITHOUT any permission language (this path is not a permission
+/// failure): the model must not say or imply the calendar is empty,
+/// must work from logged data where it can, and may offer to retry
+/// the calendar. Verbatim ruled text — do not reword. Used ONLY on
+/// non-permission failures; the permission paths return
+/// [calendarPermissionMissingContext] and a genuinely empty
+/// successful read keeps "No events found."
 const String calendarEventsUnavailableContext =
-    'Calendar events are unavailable right now.';
+    'Calendar events could not be loaded. This can happen from '
+    'time to time — it does not mean the user has nothing '
+    'scheduled. Do not tell the user their calendar is empty or '
+    'that they have no events. Work from their logged data where '
+    'you can, and if it would help, offer to try the calendar '
+    'again.';
 
 /// Juno compliance ruling (coach calendar read fix): the context
 /// used ONLY when Google Calendar is connected but READ_CALENDAR
