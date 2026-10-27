@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/daily_score.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
@@ -94,6 +96,36 @@ DailyBiometrics _baselineDay(String date) => DailyBiometrics(
       hrvRmssdMs: 40,
       restingHrBpm: 60,
     );
+
+/// The same baseline day as a persisted-JSON row (the shape
+/// `DailyBiometrics.toJson` writes inside the disk blob).
+Map<String, dynamic> _jsonBaselineDay(String date) => {
+      'date': date,
+      'sleepMinutes': 480,
+      'hrvRmssdMs': 40,
+      'restingHrBpm': 60,
+    };
+
+/// A persisted blob string shaped exactly like
+/// `HealthHistoryStore.persist()` writes it.
+String _persistedBlob(Map<String, Map<String, dynamic>> days) =>
+    jsonEncode({
+      'ownerEmail': 'founder@tabs.app',
+      'lastCaptureMs': 1234567890,
+      'days': days,
+    });
+
+/// A store whose disk ALREADY holds [days] as a persisted blob
+/// before the store exists: the blob is placed in the fake
+/// storage BEFORE the store is created via [_fakeStore], and
+/// nothing is ever merged — the first store interaction in
+/// these tests is the cold `readAll()`, which lazily warms from
+/// disk through `warmFromDisk` → `DailyBiometrics.fromJson`.
+HealthHistoryStore _coldStore(Map<String, Map<String, dynamic>> days) {
+  final fake = _FakeStore();
+  fake.values[HealthHistoryStore.storageKey] = _persistedBlob(days);
+  return _fakeStore(fake);
+}
 
 void main() {
   const target = '2026-10-17';
@@ -398,6 +430,171 @@ void main() {
       expect(row.restingHrBpm, isNull);
       // A full 28-day baseline exists for every component, yet
       // there is nothing to score: the honest no-score state.
+      expect(computeDailyScore(days, target), isNull);
+      await DailyScoreEngine(store: store).computeMissingScores();
+      final persisted = (await store.readAll())[target]!;
+      expect(persisted.dailyScore, isNull);
+      expect(persisted.scoreSleep, isNull);
+      expect(persisted.scoreHrv, isNull);
+      expect(persisted.scoreRestingHr, isNull);
+    });
+  });
+
+  group('R1 cold-load: 0 values in the persisted JSON blob '
+      '(fromJson path)', () {
+    test('target day: persisted hrvRmssdMs 0 warms as MISSING, '
+        'and the score renormalizes over sleep + resting HR',
+        () async {
+      final store = _coldStore({
+        for (final d in _priorDates(target, 28)) d: _jsonBaselineDay(d),
+        target: {
+          'date': target,
+          'sleepMinutes': 240,
+          'hrvRmssdMs': 0,
+          'restingHrBpm': 60,
+        },
+      });
+
+      // The FIRST interaction is the cold warm itself.
+      final days = await store.readAll();
+      expect(days[target]!.hrvRmssdMs, isNull,
+          reason: 'a persisted 0 ms HRV must warm from disk as '
+              'missing (fromJson zero rule), never as a stored 0');
+      final c = computeDailyScore(days, target)!;
+      expect(c.hrvScore, isNull);
+      expect(c.sleepScore, 50);
+      expect(c.restingHrScore, 70);
+      expect(c.dailyScore, 58);
+      expect(c.dailyScore, isNot(38),
+          reason: '38 is the score a measured-0 HRV would produce');
+
+      await DailyScoreEngine(store: store).computeMissingScores();
+      final persisted = (await store.readAll())[target]!;
+      expect(persisted.dailyScore, 58);
+      expect(persisted.scoreHrv, isNull);
+      expect(persisted.scoreSleep, 50);
+      expect(persisted.scoreRestingHr, 70);
+    });
+
+    test('target day: persisted restingHrBpm 0 warms as MISSING, '
+        'and the score renormalizes over sleep + HRV', () async {
+      final store = _coldStore({
+        for (final d in _priorDates(target, 28)) d: _jsonBaselineDay(d),
+        target: {
+          'date': target,
+          'sleepMinutes': 240,
+          'hrvRmssdMs': 40,
+          'restingHrBpm': 0,
+        },
+      });
+
+      final days = await store.readAll();
+      expect(days[target]!.restingHrBpm, isNull,
+          reason: 'a persisted 0 bpm resting HR must warm from '
+              'disk as missing (fromJson zero rule)');
+      final c = computeDailyScore(days, target)!;
+      expect(c.restingHrScore, isNull);
+      expect(c.sleepScore, 50);
+      expect(c.hrvScore, 70);
+      expect(c.dailyScore, 59);
+      expect(c.dailyScore, isNot(70),
+          reason: '70 is the score a measured-0 resting HR would '
+              'produce through the inverted map');
+
+      await DailyScoreEngine(store: store).computeMissingScores();
+      final persisted = (await store.readAll())[target]!;
+      expect(persisted.dailyScore, 59);
+      expect(persisted.scoreRestingHr, isNull);
+      expect(persisted.scoreSleep, 50);
+      expect(persisted.scoreHrv, 70);
+    });
+
+    test('target day: persisted sleepMinutes 0 warms as MISSING, '
+        'and the score renormalizes over HRV + resting HR',
+        () async {
+      final store = _coldStore({
+        for (final d in _priorDates(target, 28)) d: _jsonBaselineDay(d),
+        target: {
+          'date': target,
+          'sleepMinutes': 0,
+          'hrvRmssdMs': 40,
+          'restingHrBpm': 60,
+        },
+      });
+
+      final days = await store.readAll();
+      expect(days[target]!.sleepMinutes, isNull,
+          reason: 'a persisted 0-minute sleep must warm from '
+              'disk as a night with no data (fromJson zero rule)');
+      final c = computeDailyScore(days, target)!;
+      expect(c.sleepScore, isNull);
+      expect(c.hrvScore, 70);
+      expect(c.restingHrScore, 70);
+      expect(c.dailyScore, 70);
+      expect(c.dailyScore, isNot(42),
+          reason: '42 is the score a measured-0 sleep night '
+              'would produce');
+
+      await DailyScoreEngine(store: store).computeMissingScores();
+      final persisted = (await store.readAll())[target]!;
+      expect(persisted.dailyScore, 70);
+      expect(persisted.scoreSleep, isNull);
+      expect(persisted.scoreHrv, 70);
+      expect(persisted.scoreRestingHr, 70);
+    });
+
+    test('baseline: persisted 0 HRV days warm with no HRV and '
+        'never count toward the ≥7 baseline days', () async {
+      final priors = _priorDates(target, 16);
+      final store = _coldStore({
+        // Oldest 6 prior days: real HRV at 40 ms.
+        for (final d in priors.sublist(0, 6))
+          d: {'date': d, 'hrvRmssdMs': 40, 'caloriesKcal': 2000},
+        // Most recent 10 prior days: persisted HRV of 0 ms
+        // (failed reads) — each day exists only via calories.
+        for (final d in priors.sublist(6))
+          d: {'date': d, 'hrvRmssdMs': 0, 'caloriesKcal': 2000},
+        target: {'date': target, 'hrvRmssdMs': 40},
+      });
+
+      final days = await store.readAll();
+      // The zero days arrived, but with no HRV value.
+      expect(days[priors.last]!.hrvRmssdMs, isNull,
+          reason: 'a persisted 0 ms HRV day must warm with '
+              'hrvRmssdMs null (fromJson zero rule)');
+      // Only 6 real baseline days exist (< 7): no HRV component,
+      // and with no other component present, no score at all.
+      expect(computeDailyScore(days, target), isNull);
+      final written =
+          await DailyScoreEngine(store: store).computeMissingScores();
+      expect(written, 0);
+      expect((await store.readAll())[target]!.dailyScore, isNull);
+    });
+
+    test('a day whose persisted biometrics ALL read 0: spike 0 '
+        'survives as real data, the three biometrics warm null, '
+        'and no score is computed or persisted', () async {
+      final store = _coldStore({
+        for (final d in _priorDates(target, 28)) d: _jsonBaselineDay(d),
+        target: {
+          'date': target,
+          'sleepMinutes': 0,
+          'hrvRmssdMs': 0,
+          'restingHrBpm': 0,
+          'spikeCount': 0,
+        },
+      });
+
+      final days = await store.readAll();
+      final row = days[target]!;
+      expect(row.spikeCount, 0,
+          reason: 'spikeCount 0 is real data and survives the '
+              'cold load — it is the store\'s one zero exception');
+      expect(row.sleepMinutes, isNull);
+      expect(row.hrvRmssdMs, isNull);
+      expect(row.restingHrBpm, isNull);
+      // A full 28-day baseline exists, yet there is nothing to
+      // score: the honest no-score state.
       expect(computeDailyScore(days, target), isNull);
       await DailyScoreEngine(store: store).computeMissingScores();
       final persisted = (await store.readAll())[target]!;

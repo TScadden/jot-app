@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 import 'package:tabs_lab/src/features/tools/medications_screen.dart';
 
 import 'test_helpers.dart';
@@ -411,6 +413,107 @@ void main() {
       expect(find.text('5 Active Medication(s)'), findsOneWidget);
       expect(find.text('Archived Medications (1)'), findsOneWidget);
       expect(find.text('Desvenlafaxine Succinate ER'), findsOneWidget);
+    });
+  });
+
+  group('R3 — stale-loaded Settings screen save '
+      '(fresh-pull before splice, Settings entry point)', () {
+    testWidgets(
+        'the Settings profile page loads the stale snapshot; '
+        'the correction lands server-side; an ADD from the stale '
+        'Settings screen splices into the FRESH list — the '
+        'stored list keeps the four actives, escitalopram '
+        'stayed ended, desvenlafaxine stayed present',
+        (tester) async {
+      tester.view.physicalSize = const Size(1080, 3400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final fresherRaw = _encodeRows(_fresherRows());
+      final server = FakeMedicationServer(rows: _staleRows());
+      final store = _session();
+      final a = server.backend(store);
+      final b = server.backend(store);
+
+      // The stale client: the Settings screen loads (and
+      // renders) the PRE-correction snapshot. Settings shows
+      // ACTIVE meds only — escitalopram renders (active in the
+      // stale list), desvenlafaxine does not, and archived rows
+      // never render on this screen at all.
+      await tester.pumpWidget(MaterialApp(
+        home: SettingsScreen(
+          email: 'founder@tabs.app',
+          backend: a,
+          settingsStore: SettingsStore.withStorage(
+            read: (k) async => null,
+            write: (k, v) async {},
+            delete: (k) async {},
+          ),
+          notificationService: FakeReminderNotificationService(),
+          urlLauncher: (uri) async => true,
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('menu_user_profile')));
+      await tester.pumpAndSettle();
+      expect(find.text('Escitalopram'), findsOneWidget);
+      expect(find.text('Desvenlafaxine Succinate ER'), findsNothing);
+
+      // The Oct 23 correction lands server-side (another
+      // client pushes the verified fresher list) while this
+      // screen still holds its stale snapshot.
+      expect(
+          await b.postSyncProfile({'medications': fresherRaw}),
+          isTrue);
+      expect(server.medicationsRaw, fresherRaw);
+
+      // The user adds a medication from the STALE Settings
+      // screen. The save path (`_showAddMedicationDialog` →
+      // `_mutateMedications`) must fresh-pull and splice the
+      // add into the fresh document — a whole-list push built
+      // on the screen's stale snapshot would resurrect
+      // escitalopram and drop desvenlafaxine here.
+      await tester.ensureVisible(
+          find.byKey(const ValueKey('add_medication_button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('add_medication_button')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+          find.byKey(const ValueKey('medication_name_field')), 'New Med');
+      await tester.enterText(
+          find.byKey(const ValueKey('medication_start_field')), 'Oct 2026');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('medication_add')));
+      await tester.pumpAndSettle();
+
+      // The push that landed was built on the FRESH list.
+      final medPushes = server.pushes
+          .where((p) => p.containsKey('medications'))
+          .toList();
+      // Push 1 is the correction itself; push 2 is the screen's
+      // save.
+      expect(medPushes, hasLength(2));
+
+      final rows = server.serverMedRows;
+      // Nothing dropped, nothing duplicated: the 5 fresher rows
+      // plus the one addition.
+      expect(rows, hasLength(6),
+          reason: 'the stale push must not drop fresher rows');
+      _expectFresherListIntact(rows,
+          reason: 'stored list after the stale Settings '
+              'screen\'s save');
+      final added = rows.singleWhere((r) => r['name'] == 'New Med');
+      expect(added['isPresent'], isTrue);
+      // This screen's native add default (the Settings DTO
+      // default, not the Tools editor's entered dose).
+      expect(added['dose'], 'As prescribed');
+
+      // And the screen now renders the FRESH state:
+      // desvenlafaxine is shown, and escitalopram — ended in
+      // the fresh list, and Settings renders actives only — is
+      // gone, not resurrected as active.
+      expect(find.text('Desvenlafaxine Succinate ER'), findsOneWidget);
+      expect(find.text('Escitalopram'), findsNothing);
     });
   });
 }
