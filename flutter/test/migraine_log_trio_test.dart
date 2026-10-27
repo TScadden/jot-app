@@ -4,6 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:tabs_lab/src/data/migraine_attack_store.dart';
+import 'package:tabs_lab/src/data/migraine_controller.dart';
+import 'package:tabs_lab/src/data/migraine_notification.dart';
+import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/quicklog/history_screen.dart';
 
@@ -14,6 +18,8 @@ import 'test_helpers.dart';
 /// - Fix 2: HistoryScreen's initial load invalidates the sync-pull
 ///   cache BEFORE fetching (the 5-minute TTL cache hid a
 ///   just-saved migraine entry from the founder).
+/// - Fix 3: migraine entries file under "Migraine Symptoms &
+///   Triggers" when it exists, else Symptoms, fallback id 1 (§D).
 /// - Fix 1 support: HistoryScreen's focusEntryId opens that entry
 ///   once loaded (the completion line's tap target).
 void main() {
@@ -141,6 +147,87 @@ void main() {
       expect(find.text('Unrelated older entry'), findsOneWidget);
     });
   });
+
+  group('fix 3 — migraine category resolution (Juno §D)', () {
+    TabsBackend backendForCategories(List<Map<String, dynamic>> cats) {
+      final session = FakeSessionStore()..token = 'tok';
+      final client = MockClient((request) async {
+        if (request.url.path == '/api/sync/pull') {
+          return http.Response(
+            jsonEncode({
+              'entries': <dynamic>[],
+              'categories': cats,
+              'profile': <String, dynamic>{},
+            }),
+            200,
+          );
+        }
+        return http.Response('not found', 404);
+      });
+      return TabsBackend(client: client, sessionStore: session);
+    }
+
+    Future<int> resolve(List<Map<String, dynamic>> cats) {
+      TabsBackend.debugResetSharedCaches();
+      return BackendMigraineTrendsGateway(backendForCategories(cats))
+          .resolveMigraineCategoryId();
+    }
+
+    test('founder category present → its id (founder list shape)',
+        () async {
+      // The founder's real list: id 1 Symptoms, id 9 the migraine
+      // category. The migraine category wins over Symptoms.
+      expect(
+        await resolve([
+          {'id': 1, 'name': 'Symptoms'},
+          {'id': 9, 'name': 'Migraine Symptoms & Triggers'},
+        ]),
+        9,
+      );
+    });
+
+    test('founder category match is case-insensitive', () async {
+      expect(
+        await resolve([
+          {'id': 9, 'name': 'migraine symptoms & triggers'},
+          {'id': 1, 'name': 'Symptoms'},
+        ]),
+        9,
+      );
+    });
+
+    test('no founder category → Symptoms id, resolved by name',
+        () async {
+      // Symptoms carries id 3 here, NOT the fallback 1 — proving
+      // the Symptoms step resolves by name, not by the fallback.
+      expect(
+        await resolve([
+          {'id': 3, 'name': 'Symptoms'},
+          {'id': 1, 'name': 'Other'},
+        ]),
+        3,
+      );
+    });
+
+    test('neither category → fallback id 1', () async {
+      expect(
+        await resolve([
+          {'id': 5, 'name': 'Other'},
+        ]),
+        1,
+      );
+    });
+
+    test('posted entry carries the resolved category id', () async {
+      final h = Harness();
+      h.gateway.categoryId = 9;
+      await h.controller.initialize();
+      await h.controller.startAttack();
+      await h.controller.endWithReliefDialog(reliefRating: 3);
+      expect(h.gateway.posted, hasLength(1));
+      expect(h.gateway.posted.single.categoryId, 9);
+    });
+  });
 }
 
 /// Records sync-pull cache/fetch call order, so the fix-2 test can
@@ -164,4 +251,80 @@ class _RecordingBackend extends TabsBackend {
       'profile': <String, dynamic>{},
     });
   }
+}
+
+class MemoryStore {
+  final Map<String, String> map = {};
+  Future<String?> read(String k) async => map[k];
+  Future<void> write(String k, String v) async => map[k] = v;
+  Future<void> delete(String k) async => map.remove(k);
+}
+
+MigraineAttackStore storeWith(MemoryStore s) =>
+    MigraineAttackStore.withStorage(
+      read: s.read,
+      write: s.write,
+      delete: s.delete,
+    );
+
+class FakeMigraineNotifier implements MigraineNotifier {
+  bool enabled;
+  bool launch = false;
+  final List<int> showCalls = [];
+  int cancelCount = 0;
+  FakeMigraineNotifier({this.enabled = true});
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<bool> showAttack(int elapsedMin) async {
+    if (!enabled) return false;
+    showCalls.add(elapsedMin);
+    return true;
+  }
+
+  @override
+  Future<void> cancel() async {
+    cancelCount++;
+  }
+
+  @override
+  Future<bool> areNotificationsEnabled() async => enabled;
+
+  @override
+  Future<bool> launchMigrainePayload() async => launch;
+}
+
+class FakeTrendsGateway implements MigraineTrendsGateway {
+  final List<QuickLogEntry> posted = [];
+  bool postResult = true;
+  int categoryId = 7;
+  int nextId = 100;
+
+  @override
+  Future<bool> postEntry(QuickLogEntry entry) async {
+    posted.add(entry);
+    return postResult;
+  }
+
+  @override
+  Future<int> resolveMigraineCategoryId() async => categoryId;
+
+  @override
+  Future<int> generateEntryId() async => nextId++;
+}
+
+class Harness {
+  final MemoryStore mem = MemoryStore();
+  late final MigraineAttackStore store = storeWith(mem);
+  final FakeMigraineNotifier notifier = FakeMigraineNotifier();
+  final FakeTrendsGateway gateway = FakeTrendsGateway();
+  DateTime now = DateTime(2026, 10, 27, 9, 12);
+  late final MigraineController controller = MigraineController(
+    store: store,
+    notifier: notifier,
+    gateway: gateway,
+    clock: () => now,
+  );
 }

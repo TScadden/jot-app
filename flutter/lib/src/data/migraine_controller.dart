@@ -17,9 +17,13 @@ abstract class MigraineTrendsGateway {
   /// Posts (upserts) one entry via `POST /api/sync/entries`.
   Future<bool> postEntry(QuickLogEntry entry);
 
-  /// Symptoms category id: resolved by name with fallback 1
-  /// (today_summary.dart precedent).
-  Future<int> resolveSymptomsCategoryId();
+  /// Category id for the attack's entry (migraine log trio fix 3 —
+  /// founder direction Oct 27, 2026; Juno receipt
+  /// 2026-10-27-migraine-log-trio-juno.md §D): the founder's own
+  /// "Migraine Symptoms & Triggers" category when it exists on his
+  /// account, otherwise Symptoms resolved by name, final fallback
+  /// id 1.
+  Future<int> resolveMigraineCategoryId();
 
   /// A fresh entry id using the Quick Log convention (max existing
   /// id + 1). Called ONCE per attack, at first end; the id is then
@@ -45,10 +49,14 @@ class BackendMigraineTrendsGateway implements MigraineTrendsGateway {
   }
 
   @override
-  Future<int> resolveSymptomsCategoryId() async {
+  Future<int> resolveMigraineCategoryId() async {
     try {
       final categories = await backend.fetchLogCategories();
-      return resolveSummaryCategoryId(categories,
+      // Fix 3 chain: founder category by name first, then Symptoms
+      // by name, then id 1 (the 100102 §E default, preserved
+      // exactly where the founder category is absent).
+      return categoryIdByName(categories, 'Migraine Symptoms & Triggers') ??
+          resolveSummaryCategoryId(categories,
               name: 'Symptoms', fallbackId: 1) ??
           1;
     } catch (_) {
@@ -78,6 +86,19 @@ class BackendMigraineTrendsGateway implements MigraineTrendsGateway {
       return DateTime.now().millisecondsSinceEpoch;
     }
   }
+}
+
+/// Name-only category lookup with [resolveSummaryCategoryId]'s
+/// matching semantics (trimmed, case-insensitive) but NO id
+/// fallback — fix 3's chain applies its own ordered fallbacks, and
+/// the founder-category step must not silently land on an id when
+/// the name is absent.
+int? categoryIdByName(List<QuickLogCategory> categories, String name) {
+  final target = name.trim().toLowerCase();
+  for (final c in categories) {
+    if (c.name.trim().toLowerCase() == target) return c.id;
+  }
+  return null;
 }
 
 /// The one shared app-level controller for the migraine attack
@@ -522,7 +543,7 @@ class MigraineController extends ChangeNotifier {
           await _store.save(attack);
         } catch (_) {}
       }
-      final categoryId = await _gateway.resolveSymptomsCategoryId();
+      final categoryId = await _gateway.resolveMigraineCategoryId();
       final entry = buildMigraineTrendsEntry(
         attack,
         entryId: entryId,
