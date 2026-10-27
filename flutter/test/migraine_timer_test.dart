@@ -85,6 +85,9 @@ class FakeTrendsGateway implements MigraineTrendsGateway {
 
   @override
   Future<int> generateEntryId() async => nextId++;
+
+  @override
+  Future<bool?> entryExists(int entryId) async => true;
 }
 
 class Harness {

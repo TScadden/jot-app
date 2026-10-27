@@ -9,8 +9,10 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/today_plan_store.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
 import 'package:tabs_lab/src/features/home/migraine_block.dart';
+import 'package:tabs_lab/src/features/quicklog/history_screen.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/slide_page_route.dart';
 
 /// Today Summary card — port of the native "Expandable Today Summary
 /// Section" (`TodayScreen.kt` item 3, `TodayViewModel`).
@@ -345,6 +347,24 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
 
   void _toggle() => setState(() => _expanded = !_expanded);
 
+  /// Migraine log trio fix 1 (Juno 2026-10-27 §A condition 3):
+  /// the completion line's tap opens THAT attack's entry in
+  /// History. HistoryScreen's initial load invalidates the
+  /// sync-pull cache first (fix 2), so the entry is present on
+  /// arrival, and [HistoryScreen.focusEntryId] opens it directly.
+  /// Same SlidePageRoute pattern as Quick Log's history push.
+  void _openLoggedEntry(int entryId) {
+    Navigator.of(context).push(
+      SlidePageRoute(
+        reducedMotion: animationsDisabled(context),
+        builder: (_) => HistoryScreen(
+          backend: widget.backend,
+          focusEntryId: entryId,
+        ),
+      ),
+    );
+  }
+
   Future<void> _onToggleItem(TodayPlanItem item) async {
     if (_actingItemId != null) return;
     // Round 41: rendered rows are never completed, so a toggle is
@@ -537,7 +557,10 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                             height: 1,
                           ),
                           const SizedBox(height: 12),
-                          MigraineBlock(controller: _migraine),
+                          MigraineBlock(
+                            controller: _migraine,
+                            onOpenLoggedEntry: _openLoggedEntry,
+                          ),
                           const SizedBox(height: 14),
                           const Divider(
                             color: NotelColors.divider,

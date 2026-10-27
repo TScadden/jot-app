@@ -25,6 +25,13 @@ abstract class MigraineTrendsGateway {
   /// id 1.
   Future<int> resolveMigraineCategoryId();
 
+  /// Whether the Trends entry [entryId] still exists server-side
+  /// (migraine log trio fix 1 — Juno §A condition 5: the Today
+  /// Summary completion line must not outlive its entry). Null =
+  /// unknown (the pull failed); only a definite false may clear a
+  /// rendered line.
+  Future<bool?> entryExists(int entryId);
+
   /// A fresh entry id using the Quick Log convention (max existing
   /// id + 1). Called ONCE per attack, at first end; the id is then
   /// persisted on the attack record and reused for the form-save
@@ -61,6 +68,22 @@ class BackendMigraineTrendsGateway implements MigraineTrendsGateway {
           1;
     } catch (_) {
       return 1;
+    }
+  }
+
+  @override
+  Future<bool?> entryExists(int entryId) async {
+    try {
+      final pull = await backend.fetchSyncPull();
+      if (pull == null) return null;
+      final raw = pull['entries'];
+      if (raw is! List) return null;
+      for (final e in raw) {
+        if (e is Map && e['id'] == entryId) return true;
+      }
+      return false;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -183,6 +206,7 @@ class MigraineController extends ChangeNotifier {
   bool _notificationPosted = false;
   String? _startError;
   MigraineAttack? _pendingDetails;
+  MigraineAttack? _lastLoggedAttack;
   bool _initialized = false;
 
   /// Single-flight guard for the end funnel: two racing end calls
@@ -206,6 +230,14 @@ class MigraineController extends ChangeNotifier {
   /// Peek only — consume via [consumePendingDetails].
   MigraineAttack? get pendingDetails => _pendingDetails;
   bool get hasPendingDetails => _pendingDetails != null;
+
+  /// Migraine log trio fix 1 (Juno ruling 2026-10-27 §A): the most
+  /// recent attack whose §E Trends entry is CONFIRMED saved —
+  /// its write (or §C-form update) returned success — ended today,
+  /// and whose entry still existed at last verification. Drives
+  /// the Today Summary completion line. Null in every other state:
+  /// a pending/unsaved end NEVER appears here (§A condition 1–2).
+  MigraineAttack? get lastLoggedAttack => _lastLoggedAttack;
 
   int nowMs() => _clock().millisecondsSinceEpoch;
 
@@ -236,6 +268,10 @@ class MigraineController extends ChangeNotifier {
       await _notifier.cancel();
     }
     await retryPendingTrends();
+    // After the retry: a save it confirmed may now surface the
+    // completion line (Juno §A condition 2), and an entry deleted
+    // since must drop it (condition 5).
+    await _refreshLastLogged();
     notifyListeners();
   }
 
@@ -253,6 +289,7 @@ class MigraineController extends ChangeNotifier {
       await _syncNotification();
     }
     await retryPendingTrends();
+    await _refreshLastLogged();
     notifyListeners();
   }
 
@@ -438,6 +475,13 @@ class MigraineController extends ChangeNotifier {
       await _store.save(
           result.attack.copyWith(trendsEntryPending: !result.ok));
     } catch (_) {}
+    if (result.ok) {
+      // The §C-form update CONFIRMED the entry (Juno §A condition
+      // 1 names the form update explicitly): surface/refresh the
+      // completion line for this attack.
+      await _refreshLastLogged();
+      notifyListeners();
+    }
     return result.ok;
   }
 
@@ -459,6 +503,53 @@ class MigraineController extends ChangeNotifier {
         }
       }
     } catch (_) {}
+  }
+
+  bool _endedToday(MigraineAttack attack) {
+    final end = attack.endTimestamp;
+    if (end == null) return false;
+    final endDay = DateTime.fromMillisecondsSinceEpoch(end);
+    final now = _clock();
+    return endDay.year == now.year &&
+        endDay.month == now.month &&
+        endDay.day == now.day;
+  }
+
+  /// Recomputes [lastLoggedAttack] from the store (Juno §A
+  /// conditions 1 + 5): the most recent attack that ended today
+  /// with a CONFIRMED entry (entry id persisted, pending flag
+  /// clear) — and whose entry still exists server-side. A failed
+  /// existence check (unknown) keeps the candidate: only positive
+  /// evidence of deletion clears the line. Never invents state on
+  /// a store failure — the previous value stands.
+  Future<void> _refreshLastLogged() async {
+    try {
+      final all = await _store.loadAll();
+      MigraineAttack? best;
+      for (final a in all) {
+        if (a.isActive || a.trendsEntryPending) continue;
+        if (a.trendsEntryId == null) continue;
+        if (!_endedToday(a)) continue;
+        if (best == null ||
+            (a.endTimestamp ?? 0) > (best.endTimestamp ?? 0)) {
+          best = a;
+        }
+      }
+      final candidate = best;
+      if (candidate == null) {
+        _lastLoggedAttack = null;
+        return;
+      }
+      bool? exists;
+      try {
+        exists = await _gateway.entryExists(candidate.trendsEntryId!);
+      } catch (_) {
+        exists = null;
+      }
+      _lastLoggedAttack = exists == false ? null : candidate;
+    } catch (_) {
+      // Store read failure: keep prior state, never invent one.
+    }
   }
 
   /// Re-posts the ongoing notification with the current elapsed
@@ -517,6 +608,11 @@ class MigraineController extends ChangeNotifier {
       try {
         await _store.save(ended);
       } catch (_) {}
+      // Confirmed save only: a successful write surfaces the
+      // completion line; a failed one leaves the most recent
+      // CONFIRMED completion (or nothing) standing — no pending
+      // variant is ever presented as logged (Juno §A 1–2, 5).
+      await _refreshLastLogged();
       notifyListeners();
       return ended;
     } finally {
