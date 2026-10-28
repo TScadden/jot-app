@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
+import 'package:tabs_lab/src/data/medication_change_events.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 
@@ -1289,6 +1290,20 @@ class TabsBackend {
     final ok = await _postJson('/api/sync/profile', fields);
     if (ok) _profileMutationEpoch++;
     return ok;
+  }
+
+  /// Phase 1, item 2a — append-only medication change events via
+  /// `POST /api/sync/medication-events` with `{"events": [...]}`
+  /// (spec §2.6). Insert-only server-side (ON CONFLICT DO
+  /// NOTHING on the client-supplied event id — replays are
+  /// harmless). True on HTTP 200; callers emit best-effort after
+  /// a successful profile push and swallow failures (see
+  /// `medication_change_events.dart`).
+  Future<bool> postMedicationChangeEvents(
+      List<MedicationChangeEvent> events) {
+    return _postJson('/api/sync/medication-events', {
+      'events': events.map((e) => e.toJson()).toList(),
+    });
   }
 
   /// Round 29 — nickname update. Returns the decoded body on HTTP 200
