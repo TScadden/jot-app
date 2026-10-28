@@ -22,6 +22,16 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 ///   :474 flow. Written by native's `ConditionRepository` as a JSON
 ///   string of condition names; pushed as the profile field
 ///   `conditions` (the same JSON string).
+/// - `onboarding_owner_email` (string, default absent) — Flutter-only
+///   account binding (Oct 28, 2026, founder seed findings): the store
+///   holds one account's profile context and conditions, and the
+///   onboarding screens prefill from it local-first, so the state is
+///   owner-stamped and wiped on an account mismatch at login /
+///   register ([clearIfOwnerMismatch], the CoachMemoryStore /
+///   MigraineAttackStore pattern). Before this key existed the store
+///   was global: any state left on the device — by a previous
+///   account or an older app generation — prefilled the NEXT
+///   account's onboarding and was pushed into its server profile.
 ///
 /// Storage follows the app's existing pattern ([SettingsStore],
 /// [SessionStore]): flutter_secure_storage (Android Keystore-backed
@@ -38,6 +48,7 @@ class OnboardingStore {
   static const introConsultationSeenKey = 'intro_consultation_seen';
   static const userContextKey = 'user_context';
   static const userConditionsKey = 'user_conditions';
+  static const ownerEmailKey = 'onboarding_owner_email';
 
   Future<String?> Function(String key) _read =
       (key) => const FlutterSecureStorage().read(key: key);
@@ -102,6 +113,7 @@ class OnboardingStore {
       introConsultationSeenKey,
       userContextKey,
       userConditionsKey,
+      ownerEmailKey,
     ]) {
       try {
         if (await _read(k) != null) return true;
@@ -161,10 +173,42 @@ class OnboardingStore {
       introConsultationSeenKey,
       userContextKey,
       userConditionsKey,
+      ownerEmailKey,
     ]) {
       try {
         await _delete(k);
       } catch (_) {}
+    }
+  }
+
+  static String? _normalizeEmail(String? email) {
+    final e = email?.trim().toLowerCase();
+    return (e == null || e.isEmpty) ? null : e;
+  }
+
+  /// Login/register ownership enforcement, mirroring
+  /// [CoachMemoryStore.clearIfOwnerMismatch]: onboarding state is
+  /// account-bound. When the stored owner differs from [email] —
+  /// including legacy state with NO owner stamp, which predates the
+  /// binding and cannot be attributed to the signing-in account —
+  /// every onboarding key is wiped and the store is re-stamped to
+  /// [email], so a previous account's (or an older app generation's)
+  /// context text and conditions can never prefill this account's
+  /// onboarding or be pushed into its server profile. State stamped
+  /// to [email] itself is preserved (same-account resume). Returns
+  /// true when a wipe happened. Never throws.
+  Future<bool> clearIfOwnerMismatch(String? email) async {
+    final expected = _normalizeEmail(email);
+    if (expected == null) return false;
+    try {
+      final owner = _normalizeEmail(await _read(ownerEmailKey));
+      if (owner == expected) return false;
+      final hadState = owner != null || await hasAnyState();
+      if (hadState) await clear();
+      await _write(ownerEmailKey, expected);
+      return hadState;
+    } catch (_) {
+      return false;
     }
   }
 }

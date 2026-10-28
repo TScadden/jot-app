@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
@@ -255,12 +256,20 @@ Map<String, FoodCheckResult> decodeFoodEncyclopedia(String? json) {
 abstract class FoodHistoryStore {
   Future<String?> loadEncyclopediaJson();
   Future<void> saveEncyclopediaJson(String json);
+
+  /// Account-ownership enforcement (founder seed findings,
+  /// Oct 28, 2026): drop any stored history that does not belong
+  /// to [email] and stamp the store to [email]. Default no-op so
+  /// test fakes keep compiling; [SecureFoodHistoryStore] overrides
+  /// with the real owner check.
+  Future<bool> clearIfOwnerMismatch(String? email) async => false;
 }
 
 /// Secure-storage-backed [FoodHistoryStore] (Android Keystore
 /// EncryptedSharedPreferences, the app's standard local store).
 class SecureFoodHistoryStore implements FoodHistoryStore {
   static const String storageKey = 'food_checker_history';
+  static const String ownerKey = 'food_checker_history_owner';
   final FlutterSecureStorage _storage;
 
   const SecureFoodHistoryStore([FlutterSecureStorage? storage])
@@ -272,6 +281,31 @@ class SecureFoodHistoryStore implements FoodHistoryStore {
   @override
   Future<void> saveEncyclopediaJson(String json) =>
       _storage.write(key: storageKey, value: json);
+
+  /// Founder seed findings (Oct 28, 2026): the persisted food
+  /// history is one account's content, but the key was global and
+  /// NO path ever cleared it — a new account opening the Food
+  /// Checker inherited the previous account's checked foods. When
+  /// the stamped owner differs from [email] (including legacy
+  /// unstamped history), the history is wiped and re-stamped.
+  /// Returns true when a wipe happened. Never throws.
+  @override
+  Future<bool> clearIfOwnerMismatch(String? email) async {
+    final e = email?.trim().toLowerCase();
+    if (e == null || e.isEmpty) return false;
+    try {
+      final owner =
+          (await _storage.read(key: ownerKey))?.trim().toLowerCase();
+      if (owner == e) return false;
+      final had = (owner != null && owner.isNotEmpty) ||
+          (await _storage.read(key: storageKey)) != null;
+      if (had) await _storage.delete(key: storageKey);
+      await _storage.write(key: ownerKey, value: e);
+      return had;
+    } catch (_) {
+      return false;
+    }
+  }
 }
 
 /// The request body the native screen sends to `POST api/ai/advice`:
@@ -335,6 +369,19 @@ class _FoodToolScreenState extends State<FoodToolScreen> {
   @override
   void initState() {
     super.initState();
+    unawaited(_enforceOwnerThenLoad());
+  }
+
+  /// Founder seed findings (Oct 28, 2026): enforce food-history
+  /// ownership against the stored session BEFORE the first load
+  /// (the Heart screen's mount-warm pattern), so a previous
+  /// account's checked foods can never render for this account.
+  /// Enforcement failure falls through to the normal load.
+  Future<void> _enforceOwnerThenLoad() async {
+    try {
+      final email = await SessionStore().readEmail();
+      await _historyStore.clearIfOwnerMismatch(email);
+    } catch (_) {}
     _loadEncyclopedia();
   }
 

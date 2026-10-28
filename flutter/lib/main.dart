@@ -11,6 +11,7 @@ import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_history_sync.dart';
+import 'package:tabs_lab/src/data/heart_data_cache.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/launch_trace.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
@@ -522,6 +523,14 @@ class _AppFlowState extends State<AppFlow>
     // theme / nav preferences (the full SettingsStore.clear runs
     // on explicit logout / account deletion via AccountActions).
     unawaited(SettingsStore().clearDeletedCounterIds());
+    // Founder seed findings (Oct 28, 2026): the same targeted-wipe
+    // logic covers the SettingsStore account-identity keys (Google
+    // account / calendar emails + connected flags, report
+    // appointment prefs) — a forced expiry previously left them on
+    // device for the next account's Settings → Connected Apps to
+    // display. Device-level preferences stay, exactly as with the
+    // tombstones above.
+    unawaited(SettingsStore().clearAccountIdentity());
     // Round 52 — single widget-clear funnel: HomeDataCache.clear()
     // above IS the widget clear (it fire-and-forgets
     // WidgetSync.clear()); the Round 50 duplicate explicit call
@@ -572,6 +581,24 @@ class _AppFlowState extends State<AppFlow>
         MigraineAttackStore.instance.clearIfOwnerMismatch(email));
     unawaited(
         KnowledgeExtractionStore.instance.clearIfOwnerMismatch(email));
+    // Founder seed findings (Oct 28, 2026): the onboarding store
+    // joins the same enforcement — it holds the account's profile
+    // context + conditions and the onboarding screens prefill from
+    // it local-first, but it predates the owner pattern and was
+    // never wired in: a previous account's (or older app
+    // generation's) context/conditions survived into the next
+    // account's onboarding and were pushed into its server profile.
+    unawaited(_onboardingStore.clearIfOwnerMismatch(email));
+    // Audit gap (Oct 28, 2026): HeartDataCache implements the same
+    // enforcement but was only wired into explicit logout; add the
+    // login funnel so a foreign HR blob never survives a switch on
+    // disk (the Heart screen's mount warm remains the backstop).
+    unawaited(HeartDataCache.instance.clearIfOwnerMismatch(email));
+    // Account-identity keys in SettingsStore (Google account /
+    // calendar emails + connected flags, report appointment prefs)
+    // are owner-checked the same way; device-level preferences
+    // (theme, nav, check-in toggle) are NOT touched.
+    unawaited(SettingsStore().clearIdentityIfOwnerMismatch(email));
     // Round 32 — native parity: email login and Google sign-in (both
     // modes) mark onboarding complete (LoginViewModel.login /
     // loginWithGoogleAccount call setOnboardingComplete(true)), and
@@ -770,7 +797,16 @@ class _AppFlowState extends State<AppFlow>
         MigraineAttackStore.instance.clearIfOwnerMismatch(email));
     unawaited(
         KnowledgeExtractionStore.instance.clearIfOwnerMismatch(email));
-    unawaited(_stampFreshAccountOnboarding());
+    // Founder seed findings (Oct 28, 2026): a fresh registration
+    // owns NO onboarding content, so any context/conditions on the
+    // device are a previous account's — the owner-mismatch wipe runs
+    // BEFORE the fresh-account flag stamp below (chained, so a wipe
+    // delete can never land after a stamp write).
+    unawaited(HeartDataCache.instance.clearIfOwnerMismatch(email));
+    unawaited(SettingsStore().clearIdentityIfOwnerMismatch(email));
+    unawaited(_onboardingStore
+        .clearIfOwnerMismatch(email)
+        .then((_) => _stampFreshAccountOnboarding()));
     setState(() {
       _loggedInEmail = email;
       _onboardingStep = OnboardingStep.consent;

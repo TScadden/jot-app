@@ -77,6 +77,13 @@ class SettingsStore extends ChangeNotifier {
   static const deletedCounterIdsKey = 'settings_deleted_counter_ids';
   static const deletedCounterOwnerKey =
       'settings_deleted_counter_owner';
+  // Founder seed findings (Oct 28, 2026) — owner stamp for the
+  // account-identity keys in this store (Google account / calendar
+  // emails + connected flags, report appointment prefs). The store
+  // as a whole is device-level (theme, nav, toggles survive account
+  // switches by design); the identity keys are one account's data
+  // and are owner-checked like the tombstones above.
+  static const identityOwnerEmailKey = 'settings_identity_owner_email';
 
   Future<String?> Function(String key) _read =
       (key) => const FlutterSecureStorage().read(key: key);
@@ -404,6 +411,63 @@ class SettingsStore extends ChangeNotifier {
     }
   }
 
+  /// The account-identity keys: another account's Google identity
+  /// and appointment prefs must never be inherited by the next
+  /// account on this device (founder seed findings, Oct 28, 2026 —
+  /// before this, they survived everything but an explicit logout,
+  /// so Settings → Connected Apps could show the previous account's
+  /// Google email after a forced session expiry + re-login).
+  static const _identityKeys = [
+    googleCalendarConnectedKey,
+    googleCalendarEmailKey,
+    googleAccountConnectedKey,
+    googleAccountEmailKey,
+    reportAppointmentDateKey,
+    reportAppointmentTypeKey,
+  ];
+
+  /// Wipes ONLY the account-identity keys (+ their owner stamp),
+  /// leaving device-level preferences untouched. Called on a forced
+  /// session expiry, mirroring [clearDeletedCounterIds]. Never
+  /// throws.
+  Future<void> clearAccountIdentity() async {
+    for (final k in [..._identityKeys, identityOwnerEmailKey]) {
+      try {
+        await _delete(k);
+      } catch (_) {}
+    }
+  }
+
+  /// Login/register ownership enforcement for the identity keys,
+  /// mirroring the other account-bound stores: when the stamped
+  /// owner differs from [email] — including legacy state with no
+  /// stamp — the identity keys are wiped and re-stamped; device
+  /// preferences are never touched. Returns true when a wipe
+  /// happened. Never throws.
+  Future<bool> clearIdentityIfOwnerMismatch(String? email) async {
+    final e = email?.trim().toLowerCase();
+    if (e == null || e.isEmpty) return false;
+    try {
+      final ownerRaw = await _read(identityOwnerEmailKey);
+      final owner = ownerRaw?.trim().toLowerCase();
+      if (owner == e) return false;
+      var had = owner != null && owner.isNotEmpty;
+      if (!had) {
+        for (final k in _identityKeys) {
+          if (await _read(k) != null) {
+            had = true;
+            break;
+          }
+        }
+      }
+      if (had) await clearAccountIdentity();
+      await _write(identityOwnerEmailKey, e);
+      return had;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Wipes every settings key. Called on logout / account deletion so a
   /// next account never inherits this account's on-device choices.
   Future<void> clear() async {
@@ -424,6 +488,7 @@ class SettingsStore extends ChangeNotifier {
       reportAppointmentTypeKey,
       deletedCounterIdsKey,
       deletedCounterOwnerKey,
+      identityOwnerEmailKey,
     ]) {
       try {
         await _delete(k);
