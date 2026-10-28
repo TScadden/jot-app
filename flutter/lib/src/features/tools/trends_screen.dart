@@ -620,7 +620,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
     for (final entry in freq.entries) {
       if (entry.value <= 0 || knownIds.contains(entry.key)) continue;
       rows.add(_CategoryProgressRow(
-        name: _categoryNames[entry.key] ?? 'Category ${entry.key}',
+        name: resolveTrendsCategoryName(entry.key, _categoryNames),
         count: entry.value,
         total: total,
         color: _categoryColors[entry.key] ?? NotelColors.primary,
@@ -1094,6 +1094,31 @@ List<TrendsCategory> parseTrendsCategories(dynamic raw) {
   }
   return out;
 }
+
+/// Canonical names of the app's built-in default categories (native
+/// `DefaultCategories`; the ids are stable across app generations).
+/// Trends uses these ONLY as a display fallback when the sync pull
+/// carries no row for an entry's category id: this client never
+/// originates the defaults as server rows, and a full-list categories
+/// replace can drop rows that older entries still reference — without
+/// the fallback those entries render as a raw "Category N" (fresh-
+/// account audit, Oct 28, 2026). A pulled row — including a user
+/// rename — always wins over this table.
+const Map<int, String> trendsDefaultCategoryNames = {
+  1: 'Symptoms',
+  2: 'Food & Eating',
+  3: 'Weight & Vitals',
+  4: 'Goals & Habits',
+  5: 'Sleep',
+  6: 'Mood & Energy',
+  7: 'General',
+  8: 'Medication',
+};
+
+/// Display name for a Trends category row: pulled name first, then
+/// the built-in default name, then the raw-id fallback.
+String resolveTrendsCategoryName(int id, Map<int, String> pulledNames) =>
+    pulledNames[id] ?? trendsDefaultCategoryNames[id] ?? 'Category $id';
 
 /// Splits an entry's chips field into plain symptom/chip names.
 ///
