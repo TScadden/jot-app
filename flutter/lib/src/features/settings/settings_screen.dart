@@ -248,7 +248,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // Device-only settings (SettingsStore).
   bool _showNavLabels = true;
-  String _themeMode = 'DARK';
+  // Juno ruling (Oct 2026): no _themeMode view state anymore — the
+  // Appearance picker is disabled and Dark is always the shown
+  // selection, so this screen never reads the stored theme mode.
+  // The stored key/value is left exactly as it was in the store.
   bool _contextHidden = true;
   bool _checkInEnabled = true;
   int _lastSyncMs = 0;
@@ -412,7 +415,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final results = await Future.wait<dynamic>([
       _backend.fetchSyncPull(),
       _store.getShowNavLabels(),
-      _store.getThemeMode(),
+      // No getThemeMode(): per Juno's Oct 2026 ruling the disabled
+      // Appearance picker never displays the stored value (see the
+      // field note above), so nothing here consumes it.
       _store.getUserContextHidden(),
       _store.getCheckInReminderEnabled(),
       _store.getLastSyncTimeMs(),
@@ -445,10 +450,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _data = data;
       _showNavLabels = results[1] as bool;
-      _themeMode = results[2] as String;
-      _contextHidden = results[3] as bool;
-      _checkInEnabled = results[4] as bool;
-      _lastSyncMs = results[5] as int;
+      _contextHidden = results[2] as bool;
+      _checkInEnabled = results[3] as bool;
+      _lastSyncMs = results[4] as int;
       _loaded = true;
       if (!_contextSeeded) {
         _contextController.text = data.userContext;
@@ -3554,10 +3558,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 fontWeight: FontWeight.w600,
                 fontSize: 14)),
         const SizedBox(height: 2),
-        const Text("Choose how Tabs looks. System follows your phone's setting.",
+        // Juno ruling (Oct 2026, verbatim copy): the picker is
+        // disabled below, so the subtitle states the one appearance
+        // that exists instead of offering a choice.
+        const Text('Tabs currently uses the dark appearance.',
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
         const SizedBox(height: 10),
+        // Juno ruling (Oct 2026): this picker renders DISABLED.
+        // An interactive control is itself a claim — with no light
+        // theme in the app (main.dart builds only notelDarkTheme()
+        // and screens use dark NotelColors literals throughout) a
+        // tappable Light/System choice would mislead: taps used to
+        // save a selection nothing ever applied. So: taps do
+        // nothing and write NOTHING (the setThemeMode write on tap
+        // is removed), and Dark — the appearance actually in
+        // effect — is always the shown selection, regardless of
+        // any previously stored value (a stored LIGHT/SYSTEM is
+        // left untouched in the store, just never presented as in
+        // effect). Re-enabling waits on a real light theme
+        // verified on device — a future package, not this one.
         Row(
           children: [
             for (final (mode, label) in const [
@@ -3571,21 +3591,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: ElevatedButton(
                     key: ValueKey('theme_$mode'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _themeMode == mode
+                      backgroundColor: mode == 'DARK'
                           ? NotelColors.primary
                           : NotelColors.surfaceHigh,
-                      foregroundColor: _themeMode == mode
+                      foregroundColor: mode == 'DARK'
+                          ? Colors.white
+                          : NotelColors.textSecondary,
+                      // Disabled-state colors pinned to the same
+                      // values, so the disabled row still reads as
+                      // "Dark is current" instead of washing out.
+                      disabledBackgroundColor: mode == 'DARK'
+                          ? NotelColors.primary
+                          : NotelColors.surfaceHigh,
+                      disabledForegroundColor: mode == 'DARK'
                           ? Colors.white
                           : NotelColors.textSecondary,
                     ),
-                    onPressed: () async {
-                      setState(() => _themeMode = mode);
-                      await _store.setThemeMode(mode);
-                    },
+                    onPressed: null,
                     child: Text(label,
                         style: TextStyle(
                             fontSize: 13,
-                            fontWeight: _themeMode == mode
+                            fontWeight: mode == 'DARK'
                                 ? FontWeight.bold
                                 : FontWeight.w500)),
                   ),
@@ -3594,10 +3620,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
         const SizedBox(height: 8),
-        // The Lab renders the native dark palette; the choice persists
-        // exactly as native's DataStore key does (flagged in report).
+        // Juno ruling (Oct 2026, verbatim copy) — replaces the
+        // Lab-era caption that claimed the choice was saved.
         const Text(
-            'Your choice is saved on this device. The Flutter Lab currently renders the dark theme.',
+            'Appearance cannot be changed right now. Tabs includes only the dark appearance.',
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
       ]),
@@ -5803,7 +5829,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // it is a reconcile input below).
       try {
         _checkInEnabled = await _store.getCheckInReminderEnabled();
-        _themeMode = await _store.getThemeMode();
+        // No theme-mode re-read: the disabled Appearance picker
+        // never displays it (Juno ruling, Oct 2026). The imported
+        // value stays in the store untouched.
         _showNavLabels = await _store.getShowNavLabels();
         _contextHidden = await _store.getUserContextHidden();
       } catch (_) {}

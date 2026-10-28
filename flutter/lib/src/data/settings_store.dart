@@ -30,7 +30,19 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// EncryptedSharedPreferences), the same store the session and the
 /// account-bound caches use. Injectable read/write/delete for tests,
 /// following the caches' pattern.
-class SettingsStore {
+///
+/// Customize-wiring fix (Oct 2026): the store is a [ChangeNotifier]
+/// and [setShowNavLabels] notifies after the write lands. That is
+/// the live-refresh channel for the one preference with a live
+/// consumer outside the writing screen: MainShell observes the
+/// SHARED store instance it hands to Settings, so flipping the
+/// Customize toggle updates the visible dock on the same screen,
+/// with no tab switch. Storage stays the source of truth —
+/// listeners re-read the key, they never receive a pushed value —
+/// and a cold restart re-seeds from storage exactly as before.
+/// Notification is deliberately scoped to this setter: no other
+/// key has a cross-screen live consumer today.
+class SettingsStore extends ChangeNotifier {
   static const showNavLabelsKey = 'settings_show_nav_labels';
   static const themeModeKey = 'settings_theme_mode';
   static const userContextHiddenKey = 'settings_user_context_hidden';
@@ -100,7 +112,15 @@ class SettingsStore {
 
   /// Native default true (NotelPreferences.kt:269).
   Future<bool> getShowNavLabels() => _readBool(showNavLabelsKey, true);
-  Future<void> setShowNavLabels(bool v) => _writeBool(showNavLabelsKey, v);
+
+  /// Writes the preference, then notifies listeners (see the class
+  /// doc): observers re-read the key from storage. If the write
+  /// itself throws, no notification fires and the error propagates
+  /// exactly as it did before this channel existed.
+  Future<void> setShowNavLabels(bool v) async {
+    await _writeBool(showNavLabelsKey, v);
+    notifyListeners();
+  }
 
   /// Native default "DARK" (NotelPreferences.kt:163 comment).
   Future<String> getThemeMode() async {
