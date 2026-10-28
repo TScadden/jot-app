@@ -54,11 +54,12 @@ enum OnboardingStep {
 /// root route, so the build wraps them in a PopScope that runs
 /// [_OnboardingFlowState._stepBack] — the one back action every
 /// step's arrow also calls — whenever the current step has an
-/// in-flow back destination. On consent (the first step) the pop
-/// is allowed through instead, so the gesture exits the app rather
-/// than trapping the user on the arrow's deliberate no-op;
-/// setup loading likewise stays poppable because it carries no
-/// back affordance at all (see [_OnboardingFlowState._backTargetFor]).
+/// in-flow back destination. On consent (the first step, and the
+/// only step with no back destination) the pop is allowed through
+/// instead, so the gesture exits the app rather than trapping the
+/// user on the arrow's deliberate no-op; setup loading intercepts
+/// like every other later step and returns to membership (see
+/// [_OnboardingFlowState._backTargetFor]).
 ///
 /// [initialStep] is where a cold start resumes (AppFlow's startup
 /// resolver maps the stored flags to a step, exactly like native's
@@ -119,11 +120,14 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   /// The step the in-app back arrow returns to from [step] — the
   /// single source for every step's `onBack` below AND for the
   /// system-back interception in [build], so the two can never
-  /// drift apart. Null where the step has no in-flow back
+  /// drift apart. Null only where the step has no in-flow back
   /// destination: consent is the entry step (its arrow is a
-  /// deliberate no-op — native clears the stack beneath it) and
-  /// setup loading carries no back affordance at all (it is the
-  /// auto-finalizing terminal step; see SetupLoadingScreen).
+  /// deliberate no-op — native clears the stack beneath it).
+  /// Setup loading maps to membership like every other later
+  /// step, even though the screen itself carries no back arrow
+  /// (it is the auto-finalizing terminal step; stepping back
+  /// lets its finalize finish in the background — see
+  /// SetupLoadingScreen).
   OnboardingStep? _backTargetFor(OnboardingStep step) => switch (step) {
         OnboardingStep.consent => null,
         OnboardingStep.consultationIntro => OnboardingStep.consent,
@@ -132,7 +136,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         OnboardingStep.notifications => OnboardingStep.conditions,
         OnboardingStep.connections => OnboardingStep.notifications,
         OnboardingStep.membership => OnboardingStep.connections,
-        OnboardingStep.setupLoading => null,
+        OnboardingStep.setupLoading => OnboardingStep.membership,
       };
 
   /// The one back action for this flow: every step screen's arrow
@@ -169,9 +173,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     // mid-wizard — while the arrow correctly steps back. Intercept
     // whenever the current step has an in-flow back destination
     // and run [_stepBack], the SAME action the arrow calls. On
-    // consent (the first step) and setup loading — the steps with
-    // no back destination — the pop goes through: the gesture
-    // exits instead of trapping the user (see _backTargetFor).
+    // consent — the first step and the only step with no back
+    // destination — the pop goes through: the gesture exits
+    // instead of trapping the user (see _backTargetFor).
     final bool interceptBack = _backTargetFor(_step) != null;
     return PopScope(
       canPop: !interceptBack,

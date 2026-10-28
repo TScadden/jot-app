@@ -9,10 +9,12 @@ import 'package:tabs_lab/src/features/auth/login_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/conditions_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/consent_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/consultation_intro_screen.dart';
+import 'package:tabs_lab/src/features/onboarding/membership_onboarding_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/notification_onboarding_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/onboarding_connections_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/onboarding_flow.dart';
 import 'package:tabs_lab/src/features/onboarding/profile_setup_screen.dart';
+import 'package:tabs_lab/src/features/onboarding/setup_loading_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
 
 import 'onboarding_r32_test.dart' as r32;
@@ -190,6 +192,29 @@ void main() {
       expectFlowAlive(tester);
       expect(find.byType(OnboardingConditionsScreen), findsOneWidget);
       expect(find.text('Add conditions'), findsOneWidget);
+    });
+
+    testWidgets(
+        'setup loading: system back steps back to membership and '
+        'does not pop the flow', (tester) async {
+      await pumpPushedFlow(tester, initialStep: OnboardingStep.setupLoading);
+      expect(find.byType(SetupLoadingScreen), findsOneWidget);
+      expect(find.text('Welcome to Tabs'), findsOneWidget);
+
+      await systemBack(tester);
+
+      expectFlowAlive(tester);
+      expect(find.byType(SetupLoadingScreen), findsNothing);
+      expect(find.byType(MembershipOnboardingScreen), findsOneWidget);
+      expect(find.text('Unlock Tabs Premium'), findsOneWidget);
+      // SetupLoadingScreen's finalize is unawaited and is not
+      // cancelled by dispose: stepping back lets it finish in the
+      // background. Run fake time past its 2s settle so the
+      // delayed completion observes disposal (its setState is
+      // mounted-guarded) instead of tripping the pending-timer
+      // invariant at test end.
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pump();
     });
 
     testWidgets(
