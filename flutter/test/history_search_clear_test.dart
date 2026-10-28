@@ -120,8 +120,10 @@ void main() {
 
     expect(find.text('Brain fog all morning'), findsOneWidget);
     expect(find.text('Took a walk at noon'), findsNothing);
+    // Visible text, read through the field's EditableText so this
+    // reads the same on a controlled or uncontrolled field.
     expect(
-      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      tester.widget<EditableText>(find.byType(EditableText)).controller.text,
       'fog',
     );
 
@@ -130,6 +132,10 @@ void main() {
     await tester.pumpAndSettle();
 
     // (a) The visible text in the search field is empty.
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText)).controller.text,
+      isEmpty,
+    );
     final field = tester.widget<TextField>(find.byType(TextField));
     expect(field.controller, isNotNull);
     expect(field.controller!.text, isEmpty);
