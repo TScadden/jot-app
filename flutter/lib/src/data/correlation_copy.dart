@@ -168,16 +168,34 @@ const String medWindowRuleNote =
     'The day of the change counts in the "after" window for starts and dose changes, and in the "before" window for stops.';
 
 /// Draft 6 — change labels.
+// Blank-dose form (Juno micro-ruling, Oct 28 2026): a genuinely
+// empty recorded dose drops the separator segment entirely.
 String medChangeStartedLabel(String name, String dose) =>
-    'Started $name · $dose';
+    dose.isEmpty ? 'Started $name' : 'Started $name · $dose';
 String medChangeStoppedLabel(String name) => 'Stopped $name';
 String medChangeDoseLabel(String name, String oldDose, String newDose) =>
     '$name dose changed from $oldDose to $newDose';
 String medChangeScheduleLabel(
-        String name, String oldFrequency, String newFrequency) =>
-    '$name schedule changed from $oldFrequency to $newFrequency';
+  String name,
+  String oldFrequency,
+  String newFrequency,
+) => '$name schedule changed from $oldFrequency to $newFrequency';
 String medChangeRestartedLabel(String name, String dose) =>
-    'Restarted $name · $dose';
+    dose.isEmpty ? 'Restarted $name' : 'Restarted $name · $dose';
+
+/// Item 5 · S9 — F5 truncation note (Juno micro-ruling, Oct 28
+/// 2026 — mandatory on an F5 card rendering averages from a
+/// window a neighboring same-medication change truncated;
+/// renders once per truncated window). {window} is exactly
+/// `before` or `after`; {span} is the window's actual calendar
+/// span under item 2 §3, never the scored-day count; {name} is
+/// the medication name exactly as recorded.
+String f5TruncationNote({
+  required String window,
+  required int spanDays,
+  required String name,
+}) =>
+    'The $window window is shortened to $spanDays days. Another change to $name happened during the full window.';
 
 // ── Copy-lint blocklist (U1, adopted by Juno R3) ───────────────────
 //

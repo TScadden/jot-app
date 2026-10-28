@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/correlation_copy.dart';
 import 'package:tabs_lab/src/data/correlation_engine.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
+import 'package:tabs_lab/src/data/medication_timeline.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 
 /// Phase 1, item 5 — engine tests (spec §8 numbering).
@@ -210,7 +211,8 @@ void main() {
       expect(f4.state, InsightState.progress);
     });
 
-    test('4. F5 passthrough: record equals computeMedChangeWindows', () {
+    test('4. F5 passthrough: record equals computeF5Windows, and '
+        'computeF5Windows equals item 2\'s own computation', () {
       final rows = <DailyBiometrics>[];
       for (var i = 0; i < 28; i++) {
         rows.add(bio(addDaysToDayKey('2026-09-01', i),
@@ -227,19 +229,37 @@ void main() {
             startDate: '2026-09-15',
             endDate: 'Present',
             isPresent: true),
-        effectiveDate: '2026-09-15',
+        effectiveDate: 'Sep 15, 2026',
         recordedAt: tsFor('2026-09-15', hour: 9),
         source: 'tools',
       );
-      final windows = computeMedChangeWindows(
+      final windows = computeF5Windows(
         event: event,
         allEvents: [event],
         biometrics: bioMap(rows),
       );
-      expect(windows.before.n, 14);
-      expect(windows.before.mean, 60);
-      expect(windows.after.n, 14);
-      expect(windows.after.mean, 80);
+      expect(windows.beforeN, 14);
+      expect(windows.beforeMean, 60);
+      expect(windows.afterN, 14);
+      expect(windows.afterMean, 80);
+
+      // The passthrough itself (VC 100109 combine): item 2's own
+      // derivation over the same marker and scores produces the
+      // identical windows — F5 has no second derivation.
+      final marker =
+          capturedTimelineMarker(medChangeContractEvent(event))!;
+      final item2 = computeMedicationWindows(
+        marker: marker,
+        allMarkers: [marker],
+        scoresByDate: scoreMapFromHistoryRows(bioMap(rows)),
+        windowDays: 14,
+      );
+      expect(windows.beforeN, item2.beforeScoredDays);
+      expect(windows.beforeMean, item2.beforeAverage?.toDouble());
+      expect(windows.afterN, item2.afterScoredDays);
+      expect(windows.afterMean, item2.afterAverage?.toDouble());
+      expect(windows.beforeSpanDays, item2.beforeSpanDays);
+      expect(windows.afterSpanDays, item2.afterSpanDays);
 
       final records = computeCorrelationInsights(
           inputs(biometrics: bioMap(rows), medEvents: [event]));
@@ -247,10 +267,10 @@ void main() {
       expect(f5.familyId, 'F5');
       expect(f5.windowKey, 'event:ev1');
       expect(f5.state, InsightState.numbers);
-      expect(f5.groups[0].n, windows.before.n);
-      expect(f5.groups[0].mean, windows.before.mean);
-      expect(f5.groups[1].n, windows.after.n);
-      expect(f5.groups[1].mean, windows.after.mean);
+      expect(f5.groups[0].n, windows.beforeN);
+      expect(f5.groups[0].mean, windows.beforeMean);
+      expect(f5.groups[1].n, windows.afterN);
+      expect(f5.groups[1].mean, windows.afterMean);
       expect(f5.headerLabel, 'Started MedA · 5 mg');
       expect(f5.subjectName, 'MedA');
     });
@@ -789,13 +809,13 @@ void main() {
           'MedB dose changed from 5 mg to 10 mg');
       // Change day counts in the AFTER window for a dose change:
       // a score only on the anchor day lands in after, not before.
-      final windows = computeMedChangeWindows(
+      final windows = computeF5Windows(
         event: doseChange,
         allEvents: [doseChange],
         biometrics: bioMap([bio('2026-09-20', score: 66)]),
       );
-      expect(windows.after.n, 1);
-      expect(windows.before.n, 0);
+      expect(windows.afterN, 1);
+      expect(windows.beforeN, 0);
     });
 
     test('F5 truncation at a neighboring same-med change', () {
@@ -803,26 +823,32 @@ void main() {
       for (var i = 0; i < 30; i++) {
         rows.add(bio(addDaysToDayKey('2026-09-01', i), score: 50));
       }
-      MedChangeEventInput ev(String id, String type, String day) =>
+      // VC 100109 combine (itemized): effective dates use the
+      // medication date grammar — the shared anchor rule (item
+      // 2's parseMedicationDate) that replaced the retired
+      // engine-only ISO rule.
+      MedChangeEventInput ev(
+              String id, String type, String dayKey, String declared) =>
           MedChangeEventInput(
             id: id,
             medId: 'm1',
             medName: 'MedA',
             type: type,
-            effectiveDate: day,
-            recordedAt: tsFor(day, hour: 9),
+            effectiveDate: declared,
+            recordedAt: tsFor(dayKey, hour: 9),
             source: 'tools',
           );
-      final start = ev('ev-s', 'start', '2026-09-10');
-      final dose = ev('ev-dc', 'dose_change', '2026-09-15');
-      final windows = computeMedChangeWindows(
+      final start = ev('ev-s', 'start', '2026-09-10', 'Sep 10, 2026');
+      final dose = ev('ev-dc', 'dose_change', '2026-09-15', 'Sep 15, 2026');
+      final windows = computeF5Windows(
         event: start,
         allEvents: [start, dose],
         biometrics: bioMap(rows),
       );
-      expect(windows.after.truncated, isTrue);
-      expect(windows.after.n, 5); // 09-10 .. 09-14 only
-      expect(windows.before.truncated, isFalse);
+      expect(windows.afterNeighborTruncated, isTrue);
+      expect(windows.afterN, 5); // 09-10 .. 09-14 only
+      expect(windows.afterSpanDays, 5);
+      expect(windows.beforeNeighborTruncated, isFalse);
     });
 
     test('F2 incidence: flare counts with denominators, floors on '

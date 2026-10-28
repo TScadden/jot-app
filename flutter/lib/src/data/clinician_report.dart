@@ -293,7 +293,11 @@ String _capturedChangeLabel(MedicationChangeEvent e) {
   final name = e.medName;
   switch (e.type) {
     case 'start':
-      return 'Started $name · ${e.newSnapshot?.dose ?? ''}';
+      // Blank-dose form (Juno micro-ruling, Oct 28 2026).
+      final startDose = e.newSnapshot?.dose ?? '';
+      return startDose.isEmpty
+          ? 'Started $name'
+          : 'Started $name · $startDose';
     case 'stop':
       return 'Stopped $name';
     case 'dose_change':
@@ -301,13 +305,23 @@ String _capturedChangeLabel(MedicationChangeEvent e) {
     case 'frequency_change':
       return '$name schedule changed from ${e.oldSnapshot?.frequency ?? ''} to ${e.newSnapshot?.frequency ?? ''}';
     case 'restore':
-      return 'Restarted $name · ${e.newSnapshot?.dose ?? ''}';
+      final restoreDose = e.newSnapshot?.dose ?? '';
+      return restoreDose.isEmpty
+          ? 'Restarted $name'
+          : 'Restarted $name · $restoreDose';
     default:
       return name;
   }
 }
 
 DateTime _capturedChangeDay(MedicationChangeEvent e) {
+  // VC 100109 combine — Vera C1 restore exception (ratified on
+  // item 2b, applied here): a restore's effectiveDate is the
+  // ERASED STOP DATE the unarchive preserved, not the restart
+  // day; a restore anchors on its capture day. Without this,
+  // the report dates every restart on the day the med was
+  // stopped and windows it around the wrong day.
+  if (e.type == 'restore') return _dayOf(e.recordedAt);
   final eff = e.effectiveDate;
   if (eff != null && eff.trim().isNotEmpty) {
     final parsed = parseDeclaredMedDate(eff);
@@ -317,6 +331,10 @@ DateTime _capturedChangeDay(MedicationChangeEvent e) {
 }
 
 String _capturedDateLabel(MedicationChangeEvent e) {
+  // The C1 restore exception applies to the printed label too:
+  // a restart is labeled with its capture day, never the erased
+  // stop date carried in its effectiveDate.
+  if (e.type == 'restore') return formatMedArchiveDate(_dayOf(e.recordedAt));
   final eff = e.effectiveDate;
   if (eff != null && eff.trim().isNotEmpty) {
     final parsed = parseDeclaredMedDate(eff);
@@ -400,7 +418,10 @@ List<ClinicianMedChange> deriveDeclaredMedChanges(
       out.add(ClinicianMedChange(
         day: start.day,
         dateLabel: declaredDateLabel(start),
-        label: 'Started ${med.name} · ${med.dose}',
+        // Blank-dose form (Juno micro-ruling, Oct 28 2026).
+        label: med.dose.isEmpty
+            ? 'Started ${med.name}'
+            : 'Started ${med.name} · ${med.dose}',
         captured: false,
       ));
     }

@@ -27,8 +27,12 @@ import 'dart:convert';
 
 import 'correlation_copy.dart';
 import 'health_history_store.dart';
+import 'medication_change_events.dart';
+import 'medication_timeline.dart';
+import 'medications.dart' show parseMedicationDate;
 import 'quick_log_models.dart';
 import 'sleep_need.dart';
+import 'today_summary.dart' show dateStrOf;
 
 // ── Constants (spec §3.3/§3.4/§4 — golden-tested, §8 A5) ──────────
 
@@ -71,11 +75,11 @@ class InsightGroup {
   });
 
   Map<String, dynamic> toJson() => {
-        'label': label,
-        'n': n,
-        if (mean != null) 'mean': mean,
-        if (median != null) 'median': median,
-      };
+    'label': label,
+    'n': n,
+    if (mean != null) 'mean': mean,
+    if (median != null) 'median': median,
+  };
 
   static InsightGroup? fromJson(dynamic raw) {
     if (raw is! Map) return null;
@@ -161,12 +165,12 @@ class CoOccurrence {
   });
 
   Map<String, dynamic> toJson() => {
-        'confounderLabel': confounderLabel,
-        'groupADays': groupADays,
-        'groupBDays': groupBDays,
-        'valueA': valueA,
-        'valueB': valueB,
-      };
+    'confounderLabel': confounderLabel,
+    'groupADays': groupADays,
+    'groupBDays': groupBDays,
+    'valueA': valueA,
+    'valueB': valueB,
+  };
 
   static CoOccurrence? fromJson(dynamic raw) {
     if (raw is! Map) return null;
@@ -211,10 +215,10 @@ class InsightComponentOutcome {
   });
 
   Map<String, dynamic> toJson() => {
-        'outcomeId': outcomeId,
-        'state': state.name,
-        'groups': [for (final g in groups) g.toJson()],
-      };
+    'outcomeId': outcomeId,
+    'state': state.name,
+    'groups': [for (final g in groups) g.toJson()],
+  };
 
   static InsightComponentOutcome? fromJson(dynamic raw) {
     if (raw is! Map) return null;
@@ -245,10 +249,10 @@ class InsightComponentOutcome {
 }
 
 InsightState _stateFromName(String name) => switch (name) {
-      'numbers' => InsightState.numbers,
-      'unavailable' => InsightState.unavailable,
-      _ => InsightState.progress,
-    };
+  'numbers' => InsightState.numbers,
+  'unavailable' => InsightState.unavailable,
+  _ => InsightState.progress,
+};
 
 bool _listEquals<T>(List<T> a, List<T> b) {
   if (a.length != b.length) return false;
@@ -294,6 +298,15 @@ class InsightRecord {
   /// when [headerLabel] is null, and carried on every F5 record).
   final String? subjectName;
 
+  /// F5 only, numbers state only: the actual calendar span of a
+  /// window that a neighboring same-medication change truncated
+  /// (Juno micro-ruling S9, Oct 28 2026). Null when that window
+  /// was not neighbor-truncated (or below the D1 floor, where no
+  /// averages and no truncation note render). The Patterns
+  /// surface renders the S9 note from these.
+  final int? beforeTruncatedSpan;
+  final int? afterTruncatedSpan;
+
   /// F1 only: secondary component outcomes over the same groups.
   final List<InsightComponentOutcome> componentOutcomes;
 
@@ -317,6 +330,8 @@ class InsightRecord {
     this.coOccurrence,
     this.headerLabel,
     this.subjectName,
+    this.beforeTruncatedSpan,
+    this.afterTruncatedSpan,
     this.componentOutcomes = const [],
     required this.computedAtMs,
     required this.throughDate,
@@ -327,23 +342,23 @@ class InsightRecord {
   String get storeKey => correlationRecordKey(familyId, splitId);
 
   Map<String, dynamic> toJson() => {
-        'familyId': familyId,
-        'splitId': splitId,
-        'windowKey': windowKey,
-        'state': state.name,
-        'groups': [for (final g in groups) g.toJson()],
-        if (incidence != null) 'incidence': incidence!.toJson(),
-        if (coOccurrence != null) 'coOccurrence': coOccurrence!.toJson(),
-        if (headerLabel != null) 'headerLabel': headerLabel,
-        if (subjectName != null) 'subjectName': subjectName,
-        if (componentOutcomes.isNotEmpty)
-          'componentOutcomes': [
-            for (final c in componentOutcomes) c.toJson(),
-          ],
-        'computedAtMs': computedAtMs,
-        'throughDate': throughDate,
-        'inputFingerprint': inputFingerprint,
-      };
+    'familyId': familyId,
+    'splitId': splitId,
+    'windowKey': windowKey,
+    'state': state.name,
+    'groups': [for (final g in groups) g.toJson()],
+    if (incidence != null) 'incidence': incidence!.toJson(),
+    if (coOccurrence != null) 'coOccurrence': coOccurrence!.toJson(),
+    if (headerLabel != null) 'headerLabel': headerLabel,
+    if (subjectName != null) 'subjectName': subjectName,
+    if (beforeTruncatedSpan != null) 'beforeTruncatedSpan': beforeTruncatedSpan,
+    if (afterTruncatedSpan != null) 'afterTruncatedSpan': afterTruncatedSpan,
+    if (componentOutcomes.isNotEmpty)
+      'componentOutcomes': [for (final c in componentOutcomes) c.toJson()],
+    'computedAtMs': computedAtMs,
+    'throughDate': throughDate,
+    'inputFingerprint': inputFingerprint,
+  };
 
   static InsightRecord? fromJson(dynamic raw) {
     if (raw is! Map) return null;
@@ -371,10 +386,14 @@ class InsightRecord {
       groups: groups,
       incidence: IncidenceResult.fromJson(raw['incidence']),
       coOccurrence: CoOccurrence.fromJson(raw['coOccurrence']),
-      headerLabel:
-          raw['headerLabel'] is String ? raw['headerLabel'] as String : null,
-      subjectName:
-          raw['subjectName'] is String ? raw['subjectName'] as String : null,
+      headerLabel: raw['headerLabel'] is String
+          ? raw['headerLabel'] as String
+          : null,
+      subjectName: raw['subjectName'] is String
+          ? raw['subjectName'] as String
+          : null,
+      beforeTruncatedSpan: (raw['beforeTruncatedSpan'] as num?)?.toInt(),
+      afterTruncatedSpan: (raw['afterTruncatedSpan'] as num?)?.toInt(),
       componentOutcomes: components,
       computedAtMs: (raw['computedAtMs'] as num?)?.toInt() ?? 0,
       throughDate: '${raw['throughDate'] ?? ''}',
@@ -394,6 +413,8 @@ class InsightRecord {
       other.coOccurrence == coOccurrence &&
       other.headerLabel == headerLabel &&
       other.subjectName == subjectName &&
+      other.beforeTruncatedSpan == beforeTruncatedSpan &&
+      other.afterTruncatedSpan == afterTruncatedSpan &&
       _listEquals(other.componentOutcomes, componentOutcomes) &&
       other.computedAtMs == computedAtMs &&
       other.throughDate == throughDate &&
@@ -401,20 +422,22 @@ class InsightRecord {
 
   @override
   int get hashCode => Object.hash(
-        familyId,
-        splitId,
-        windowKey,
-        state,
-        Object.hashAll(groups),
-        incidence,
-        coOccurrence,
-        headerLabel,
-        subjectName,
-        Object.hashAll(componentOutcomes),
-        computedAtMs,
-        throughDate,
-        inputFingerprint,
-      );
+    familyId,
+    splitId,
+    windowKey,
+    state,
+    Object.hashAll(groups),
+    incidence,
+    coOccurrence,
+    headerLabel,
+    subjectName,
+    beforeTruncatedSpan,
+    afterTruncatedSpan,
+    Object.hashAll(componentOutcomes),
+    computedAtMs,
+    throughDate,
+    inputFingerprint,
+  );
 }
 
 /// The insight store's record key: familyId + splitId.
@@ -608,12 +631,12 @@ class MedFieldSnapshot {
   }
 
   Map<String, dynamic> toJson() => {
-        'dose': dose,
-        'frequency': frequency,
-        'startDate': startDate,
-        'endDate': endDate,
-        'isPresent': isPresent,
-      };
+    'dose': dose,
+    'frequency': frequency,
+    'startDate': startDate,
+    'endDate': endDate,
+    'isPresent': isPresent,
+  };
 }
 
 /// One medication change event, parsed from the item 2a contract
@@ -653,24 +676,25 @@ class MedChangeEventInput {
       type: '${json['type'] ?? ''}',
       oldSnapshot: MedFieldSnapshot.fromJson(json['old']),
       newSnapshot: MedFieldSnapshot.fromJson(json['new']),
-      effectiveDate:
-          json['effectiveDate'] is String ? json['effectiveDate'] as String : null,
+      effectiveDate: json['effectiveDate'] is String
+          ? json['effectiveDate'] as String
+          : null,
       recordedAt: (json['recordedAt'] as num?)?.toInt() ?? 0,
       source: '${json['source'] ?? ''}',
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'medId': medId,
-        'medName': medName,
-        'type': type,
-        'old': oldSnapshot?.toJson(),
-        'new': newSnapshot?.toJson(),
-        'effectiveDate': effectiveDate,
-        'recordedAt': recordedAt,
-        'source': source,
-      };
+    'id': id,
+    'medId': medId,
+    'medName': medName,
+    'type': type,
+    'old': oldSnapshot?.toJson(),
+    'new': newSnapshot?.toJson(),
+    'effectiveDate': effectiveDate,
+    'recordedAt': recordedAt,
+    'source': source,
+  };
 }
 
 /// Provider seam for medication change events (item 2a contract).
@@ -932,9 +956,11 @@ IntakeDerivation deriveIntake(List<QuickLogEntry> entries) {
             }
             return null;
           }
+
           final f = amount(decoded['fluidMl']);
           final s = amount(decoded['sodiumMg']);
-          final badType = (decoded['fluidMl'] != null && f == null) ||
+          final badType =
+              (decoded['fluidMl'] != null && f == null) ||
               (decoded['sodiumMg'] != null && s == null);
           if (!badType) {
             fluidMl = f;
@@ -1035,9 +1061,17 @@ bool meetsCorrelationFloor(int nA, int nB) =>
       state: InsightState.numbers,
       groups: [
         InsightGroup(
-            label: labelA, n: valuesA.length, mean: a.mean, median: a.median),
+          label: labelA,
+          n: valuesA.length,
+          mean: a.mean,
+          median: a.median,
+        ),
         InsightGroup(
-            label: labelB, n: valuesB.length, mean: b.mean, median: b.median),
+          label: labelB,
+          n: valuesB.length,
+          mean: b.mean,
+          median: b.median,
+        ),
       ],
     );
   }
@@ -1063,150 +1097,164 @@ bool? sleepNightBelowNeed(Map<String, int> sleepByDate, String date) {
   return evaluation.asleepMinutes < evaluation.needMinutes!;
 }
 
-// ── F5 — the shared medication-window computation ──────────────────
+// ── F5 — item 2's medication-window computation, shared ───────────
 //
-// This is THE computation (item 2 spec §3): item 2b's
-// before/after panel consumes [computeMedChangeWindows] exactly
-// as the engine's F5 family does. There is no private engine
-// variant, and the panel must not grow one either.
+// VC 100109 combine — UNIFICATION. The item-5 spec is explicit:
+// F5 is item 2's before/after computation rendered under item
+// 5's honesty rules — a passthrough, no second derivation. The
+// branch as built carried a private reimplementation here
+// (computeMedChangeWindows); item 2b's panel and item 3's PDF
+// handoff run computeMedicationWindows in
+// medication_timeline.dart. The two diverged (neighbor bounds
+// by anchor day vs by regimen, same-day neighbors, dates_edit
+// bounding, restore anchoring), so the private implementation
+// is REMOVED and F5 delegates to item 2's computation through
+// the marker adapter below. What remains in this file is the
+// projection between the engine's input shape and item 2's
+// marker shape — no window arithmetic of its own.
 
-/// The anchor day for a change event: its effectiveDate when it
-/// parses as a full YYYY-MM-DD date; otherwise (null,
-/// month-precision YYYY-MM, unparseable) the device-local
-/// calendar day of recordedAt.
+/// Projects an engine input event onto the item 2a contract
+/// shape the timeline derivation consumes. Field-for-field;
+/// [typeOverride] exists for the delete projection below.
+MedicationChangeEvent medChangeContractEvent(
+  MedChangeEventInput e, {
+  String? typeOverride,
+}) {
+  MedicationFieldSnapshot? snap(MedFieldSnapshot? s) => s == null
+      ? null
+      : MedicationFieldSnapshot(
+          dose: s.dose,
+          frequency: s.frequency,
+          startDate: s.startDate,
+          endDate: s.endDate,
+          isPresent: s.isPresent,
+        );
+  return MedicationChangeEvent(
+    id: e.id,
+    medId: e.medId,
+    medName: e.medName,
+    type: typeOverride ?? e.type,
+    oldSnapshot: snap(e.oldSnapshot),
+    newSnapshot: snap(e.newSnapshot),
+    effectiveDate: e.effectiveDate,
+    recordedAt: e.recordedAt,
+    source: e.source,
+  );
+}
+
+/// The timeline marker for [event]'s OWN F5 windows, or null
+/// when the event has no windows of its own (dates_edit heads
+/// no record and computes none). Delete events keep their F5
+/// cards (subjectName header) and their change day counts in
+/// the BEFORE window — the rule both item 2's stop class and
+/// the retired engine rule state — so a delete's marker is
+/// built from a stop-typed projection of the event. The delete
+/// does NOT join the bounding marker set (item 2's derivation
+/// has no delete markers; the panel never bounds at a delete,
+/// and neither does F5).
+TimelineMarker? _f5OwnMarker(MedChangeEventInput event) {
+  if (event.type == 'dates_edit') return null;
+  final contract = medChangeContractEvent(
+    event,
+    typeOverride: event.type == 'delete' ? 'stop' : null,
+  );
+  return capturedTimelineMarker(contract);
+}
+
+/// The anchor day for a change event, under item 2's rule (the
+/// derivation's marker anchor: the parsed effectiveDate when
+/// present, else the local day of recordedAt — with restore
+/// anchored on its capture day, Vera C1). dates_edit events
+/// have no marker; their anchor follows the same grammar for
+/// through-date/fingerprint purposes only.
 String medChangeAnchorDay(MedChangeEventInput event) {
+  final marker = _f5OwnMarker(event);
+  if (marker != null) return dateStrOf(marker.date);
   final effective = event.effectiveDate;
-  if (effective != null && parseDayKey(effective) != null) return effective;
+  final parsed = (effective == null || effective.trim().isEmpty)
+      ? null
+      : parseMedicationDate(effective);
+  if (parsed != null) return dateStrOf(parsed);
   final dt = DateTime.fromMillisecondsSinceEpoch(event.recordedAt);
   return _fmtDay(dt.year, dt.month, dt.day);
 }
 
-bool _sameMed(MedChangeEventInput a, MedChangeEventInput b) {
-  if (a.medId.isNotEmpty && b.medId.isNotEmpty) return a.medId == b.medId;
-  return a.medName == b.medName;
-}
-
-/// Types whose change day counts in the AFTER window (item 2 §3 /
-/// Juno Draft 5): starts and dose changes — with frequency
-/// changes and restores in the same class. Stops and deletes
-/// count their change day in the BEFORE window.
-bool _changeDayInAfter(String type) =>
-    type == 'start' ||
-    type == 'dose_change' ||
-    type == 'frequency_change' ||
-    type == 'restore';
-
-/// One window of a medication change comparison.
-class MedWindowStats {
-  /// Scored days in the window (days with a Daily Score).
-  final int n;
-  final double? mean;
-
-  /// Whether a neighboring same-med change truncated the window.
-  final bool truncated;
-
-  const MedWindowStats({required this.n, this.mean, required this.truncated});
-}
-
-/// The before/after windows for one change event.
-class MedChangeWindows {
+/// One F5 window comparison, projected from item 2's
+/// [TimelineWindowResult] at the F5 window length. The means
+/// are item 2's D1-floor-gated whole-number averages (the F5
+/// record re-checks the identical floor over the same counts
+/// before rendering, and its renderer formats whole numbers —
+/// equivalent by construction).
+class F5WindowResult {
   final String anchorDay;
-  final MedWindowStats before;
-  final MedWindowStats after;
+  final int beforeN;
+  final double? beforeMean;
+  final int beforeSpanDays;
+  final bool beforeNeighborTruncated;
+  final int afterN;
+  final double? afterMean;
+  final int afterSpanDays;
+  final bool afterNeighborTruncated;
 
-  const MedChangeWindows({
+  const F5WindowResult({
     required this.anchorDay,
-    required this.before,
-    required this.after,
+    required this.beforeN,
+    required this.beforeMean,
+    required this.beforeSpanDays,
+    required this.beforeNeighborTruncated,
+    required this.afterN,
+    required this.afterMean,
+    required this.afterSpanDays,
+    required this.afterNeighborTruncated,
   });
 }
 
-MedWindowStats _windowStats(
-  String startDay,
-  String endDay,
-  Map<String, DailyBiometrics> biometrics, {
-  required bool truncated,
-}) {
-  final values = <double>[];
-  var day = startDay;
-  while (day.compareTo(endDay) <= 0) {
-    final score = biometrics[day]?.dailyScore;
-    if (score != null) values.add(score.toDouble());
-    day = addDaysToDayKey(day, 1);
-  }
-  return MedWindowStats(
-    n: values.length,
-    mean: values.isEmpty ? null : groupStats(values).mean,
-    truncated: truncated,
-  );
-}
-
-/// Computes the 14-day before/after Daily Score windows for
-/// [event] over [biometrics], truncated at neighboring same-med
-/// changes from [allEvents] (dates_edit events included — they
-/// change the record of a change and so bound their neighbors'
-/// windows, per the engine brief).
-///
-/// Change-day rule: the anchor day is in the AFTER window for
-/// start/dose_change/frequency_change/restore, and in the BEFORE
-/// window for stop/delete. Truncation: the after window ends the
-/// day before the next same-med change's anchor; the before
-/// window starts the day after the previous same-med change's
-/// anchor.
-MedChangeWindows computeMedChangeWindows({
+/// Computes the F5 before/after windows for [event] by running
+/// item 2's [computeMedicationWindows] over the marker set
+/// built from [allEvents] — the passthrough the item-5 spec
+/// requires (§8 test 4 asserts the F5 record equals this
+/// function's output, and this function's output equals item
+/// 2's own result over the same markers).
+F5WindowResult computeF5Windows({
   required MedChangeEventInput event,
   required List<MedChangeEventInput> allEvents,
   required Map<String, DailyBiometrics> biometrics,
 }) {
   final anchor = medChangeAnchorDay(event);
-  final inAfter = _changeDayInAfter(event.type);
-
-  var beforeStart =
-      addDaysToDayKey(anchor, inAfter ? -correlationF5WindowDays : -(correlationF5WindowDays - 1));
-  var beforeEnd = addDaysToDayKey(anchor, inAfter ? -1 : 0);
-  var afterStart = addDaysToDayKey(anchor, inAfter ? 0 : 1);
-  var afterEnd =
-      addDaysToDayKey(anchor, inAfter ? correlationF5WindowDays - 1 : correlationF5WindowDays);
-
-  String? prevAnchor;
-  String? nextAnchor;
-  for (final other in allEvents) {
-    if (other.id == event.id && other.recordedAt == event.recordedAt) continue;
-    if (!_sameMed(event, other)) continue;
-    final otherAnchor = medChangeAnchorDay(other);
-    if (otherAnchor.compareTo(anchor) < 0 &&
-        (prevAnchor == null || otherAnchor.compareTo(prevAnchor) > 0)) {
-      prevAnchor = otherAnchor;
-    }
-    if (otherAnchor.compareTo(anchor) > 0 &&
-        (nextAnchor == null || otherAnchor.compareTo(nextAnchor) < 0)) {
-      nextAnchor = otherAnchor;
-    }
+  final own = _f5OwnMarker(event);
+  if (own == null) {
+    return F5WindowResult(
+      anchorDay: anchor,
+      beforeN: 0,
+      beforeMean: null,
+      beforeSpanDays: 0,
+      beforeNeighborTruncated: false,
+      afterN: 0,
+      afterMean: null,
+      afterSpanDays: 0,
+      afterNeighborTruncated: false,
+    );
   }
-
-  var beforeTruncated = false;
-  if (prevAnchor != null) {
-    final bound = addDaysToDayKey(prevAnchor, 1);
-    if (bound.compareTo(beforeStart) > 0) {
-      beforeStart = bound;
-      beforeTruncated = true;
-    }
-  }
-  var afterTruncated = false;
-  if (nextAnchor != null) {
-    final bound = addDaysToDayKey(nextAnchor, -1);
-    if (bound.compareTo(afterEnd) < 0) {
-      afterEnd = bound;
-      afterTruncated = true;
-    }
-  }
-
-  return MedChangeWindows(
+  final markers = <TimelineMarker>[
+    for (final e in allEvents)
+      ?capturedTimelineMarker(medChangeContractEvent(e)),
+  ];
+  final w = computeMedicationWindows(
+    marker: own,
+    allMarkers: markers,
+    scoresByDate: scoreMapFromHistoryRows(biometrics),
+    windowDays: correlationF5WindowDays,
+  );
+  return F5WindowResult(
     anchorDay: anchor,
-    before: _windowStats(beforeStart, beforeEnd, biometrics,
-        truncated: beforeTruncated),
-    after: _windowStats(afterStart, afterEnd, biometrics,
-        truncated: afterTruncated),
+    beforeN: w.beforeScoredDays,
+    beforeMean: w.beforeAverage?.toDouble(),
+    beforeSpanDays: w.beforeSpanDays,
+    beforeNeighborTruncated: w.beforeNeighborTruncated,
+    afterN: w.afterScoredDays,
+    afterMean: w.afterAverage?.toDouble(),
+    afterSpanDays: w.afterSpanDays,
+    afterNeighborTruncated: w.afterNeighborTruncated,
   );
 }
 
@@ -1216,15 +1264,19 @@ MedChangeWindows computeMedChangeWindows({
 String? medChangeHeaderLabel(MedChangeEventInput event) {
   final name = event.medName;
   return switch (event.type) {
-    'start' =>
-      medChangeStartedLabel(name, event.newSnapshot?.dose ?? ''),
+    'start' => medChangeStartedLabel(name, event.newSnapshot?.dose ?? ''),
     'stop' => medChangeStoppedLabel(name),
     'dose_change' => medChangeDoseLabel(
-        name, event.oldSnapshot?.dose ?? '', event.newSnapshot?.dose ?? ''),
-    'frequency_change' => medChangeScheduleLabel(name,
-        event.oldSnapshot?.frequency ?? '', event.newSnapshot?.frequency ?? ''),
-    'restore' =>
-      medChangeRestartedLabel(name, event.newSnapshot?.dose ?? ''),
+      name,
+      event.oldSnapshot?.dose ?? '',
+      event.newSnapshot?.dose ?? '',
+    ),
+    'frequency_change' => medChangeScheduleLabel(
+      name,
+      event.oldSnapshot?.frequency ?? '',
+      event.newSnapshot?.frequency ?? '',
+    ),
+    'restore' => medChangeRestartedLabel(name, event.newSnapshot?.dose ?? ''),
     _ => null,
   };
 }
@@ -1245,8 +1297,15 @@ class _Derived {
   /// First day of the trailing-90-day window.
   final String windowStart;
 
-  _Derived._(this.sleepByDate, this.feelingByDay, this.flareDays,
-      this.migraineDays, this.intake, this.through, this.windowStart);
+  _Derived._(
+    this.sleepByDate,
+    this.feelingByDay,
+    this.flareDays,
+    this.migraineDays,
+    this.intake,
+    this.through,
+    this.windowStart,
+  );
 
   factory _Derived.from(CorrelationInputs inputs) {
     final sleep = buildSleepMap(inputs.biometrics);
@@ -1298,9 +1357,7 @@ class _Derived {
 
 String _fingerprint(String familyId, String through, Map<String, int> counts) {
   final keys = counts.keys.toList()..sort();
-  return 'v1|$familyId|through:$through|${[
-    for (final k in keys) '$k:${counts[k]}',
-  ].join('|')}';
+  return 'v1|$familyId|through:$through|${[for (final k in keys) '$k:${counts[k]}'].join('|')}';
 }
 
 class _Job {
@@ -1330,24 +1387,27 @@ List<_Job> _buildJobs(CorrelationInputs inputs, _Derived d, int computedAtMs) {
     CoOccurrence? coOccurrence,
     String? headerLabel,
     String? subjectName,
+    int? beforeTruncatedSpan,
+    int? afterTruncatedSpan,
     List<InsightComponentOutcome> componentOutcomes = const [],
     String? throughDate,
-  }) =>
-      InsightRecord(
-        familyId: familyId,
-        splitId: splitId,
-        windowKey: windowKey,
-        state: state,
-        groups: groups,
-        incidence: incidence,
-        coOccurrence: coOccurrence,
-        headerLabel: headerLabel,
-        subjectName: subjectName,
-        componentOutcomes: componentOutcomes,
-        computedAtMs: computedAtMs,
-        throughDate: throughDate ?? d.through,
-        inputFingerprint: fingerprint,
-      );
+  }) => InsightRecord(
+    familyId: familyId,
+    splitId: splitId,
+    windowKey: windowKey,
+    state: state,
+    groups: groups,
+    incidence: incidence,
+    coOccurrence: coOccurrence,
+    headerLabel: headerLabel,
+    subjectName: subjectName,
+    beforeTruncatedSpan: beforeTruncatedSpan,
+    afterTruncatedSpan: afterTruncatedSpan,
+    componentOutcomes: componentOutcomes,
+    computedAtMs: computedAtMs,
+    throughDate: throughDate ?? d.through,
+    inputFingerprint: fingerprint,
+  );
 
   // ── F1 — sleep duration → next-day Daily Score ──────────────────
   for (final splitId in const ['F1a', 'F1b']) {
@@ -1355,69 +1415,75 @@ List<_Job> _buildJobs(CorrelationInputs inputs, _Derived d, int computedAtMs) {
       'bio': bioInWindow,
       'sleep': sleepInWindow,
     });
-    jobs.add(_Job('F1', splitId, fp, () {
-      final labelA = splitId == 'F1a' ? f1aGroupALabel : f1bGroupALabel;
-      final labelB = splitId == 'F1a' ? f1aGroupBLabel : f1bGroupBLabel;
-      // Group membership per night (the grouping variable), then
-      // each outcome collects over the nights in its groups.
-      final nightsA = <String>[];
-      final nightsB = <String>[];
-      final nights = d.sleepByDate.keys.where(d.inWindow).toList()..sort();
-      for (final night in nights) {
-        final bool? isA = splitId == 'F1a'
-            ? d.sleepByDate[night]! < correlationF1aThresholdMinutes
-            : sleepNightBelowNeed(d.sleepByDate, night);
-        if (isA == null) continue;
-        (isA ? nightsA : nightsB).add(night);
-      }
-      List<double> outcome(
-          List<String> groupNights, int? Function(DailyBiometrics) pick) {
-        final values = <double>[];
-        for (final night in groupNights) {
-          final row = inputs.biometrics[addDaysToDayKey(night, 1)];
-          if (row == null) continue;
-          final v = pick(row);
-          if (v != null) values.add(v.toDouble());
+    jobs.add(
+      _Job('F1', splitId, fp, () {
+        final labelA = splitId == 'F1a' ? f1aGroupALabel : f1bGroupALabel;
+        final labelB = splitId == 'F1a' ? f1aGroupBLabel : f1bGroupBLabel;
+        // Group membership per night (the grouping variable), then
+        // each outcome collects over the nights in its groups.
+        final nightsA = <String>[];
+        final nightsB = <String>[];
+        final nights = d.sleepByDate.keys.where(d.inWindow).toList()..sort();
+        for (final night in nights) {
+          final bool? isA = splitId == 'F1a'
+              ? d.sleepByDate[night]! < correlationF1aThresholdMinutes
+              : sleepNightBelowNeed(d.sleepByDate, night);
+          if (isA == null) continue;
+          (isA ? nightsA : nightsB).add(night);
         }
-        return values;
-      }
+        List<double> outcome(
+          List<String> groupNights,
+          int? Function(DailyBiometrics) pick,
+        ) {
+          final values = <double>[];
+          for (final night in groupNights) {
+            final row = inputs.biometrics[addDaysToDayKey(night, 1)];
+            if (row == null) continue;
+            final v = pick(row);
+            if (v != null) values.add(v.toDouble());
+          }
+          return values;
+        }
 
-      final primary = _scoreGroups(
-        labelA: labelA,
-        labelB: labelB,
-        valuesA: outcome(nightsA, (r) => r.dailyScore),
-        valuesB: outcome(nightsB, (r) => r.dailyScore),
-      );
-      InsightComponentOutcome component(
-          String outcomeId, int? Function(DailyBiometrics) pick) {
-        final g = _scoreGroups(
+        final primary = _scoreGroups(
           labelA: labelA,
           labelB: labelB,
-          valuesA: outcome(nightsA, pick),
-          valuesB: outcome(nightsB, pick),
+          valuesA: outcome(nightsA, (r) => r.dailyScore),
+          valuesB: outcome(nightsB, (r) => r.dailyScore),
         );
-        return InsightComponentOutcome(
-          outcomeId: outcomeId,
-          state: g.state,
-          groups: g.groups,
-        );
-      }
+        InsightComponentOutcome component(
+          String outcomeId,
+          int? Function(DailyBiometrics) pick,
+        ) {
+          final g = _scoreGroups(
+            labelA: labelA,
+            labelB: labelB,
+            valuesA: outcome(nightsA, pick),
+            valuesB: outcome(nightsB, pick),
+          );
+          return InsightComponentOutcome(
+            outcomeId: outcomeId,
+            state: g.state,
+            groups: g.groups,
+          );
+        }
 
-      final components = <InsightComponentOutcome>[
-        component('scoreSleep', (r) => r.scoreSleep),
-        component('scoreHrv', (r) => r.scoreHrv),
-        component('scoreRestingHr', (r) => r.scoreRestingHr),
-      ];
-      return record(
-        familyId: 'F1',
-        splitId: splitId,
-        windowKey: correlationWindowKeyLast90,
-        state: primary.state,
-        groups: primary.groups,
-        fingerprint: fp,
-        componentOutcomes: components,
-      );
-    }));
+        final components = <InsightComponentOutcome>[
+          component('scoreSleep', (r) => r.scoreSleep),
+          component('scoreHrv', (r) => r.scoreHrv),
+          component('scoreRestingHr', (r) => r.scoreRestingHr),
+        ];
+        return record(
+          familyId: 'F1',
+          splitId: splitId,
+          windowKey: correlationWindowKeyLast90,
+          state: primary.state,
+          groups: primary.groups,
+          fingerprint: fp,
+          componentOutcomes: components,
+        );
+      }),
+    );
   }
 
   // ── F2 — intake target-hit → next-day outcomes ──────────────────
@@ -1433,12 +1499,16 @@ List<_Job> _buildJobs(CorrelationInputs inputs, _Derived d, int computedAtMs) {
     if (!d.inWindow(e.key)) continue;
     final target = intakeTargetForDay(inputs.targetHistory, e.key);
     final fluidHit = _quantityHit(
-        totals: e.value, target: target?.fluidTargetMl, total: e.value.fluidMl);
+      totals: e.value,
+      target: target?.fluidTargetMl,
+      total: e.value.fluidMl,
+    );
     if (fluidHit != null) fluidHitByDay[e.key] = fluidHit;
     final sodiumHit = _quantityHit(
-        totals: e.value,
-        target: target?.sodiumTargetMg,
-        total: e.value.sodiumMg);
+      totals: e.value,
+      target: target?.sodiumTargetMg,
+      total: e.value.sodiumMg,
+    );
     if (sodiumHit != null) sodiumHitByDay[e.key] = sodiumHit;
   }
 
@@ -1451,7 +1521,9 @@ List<_Job> _buildJobs(CorrelationInputs inputs, _Derived d, int computedAtMs) {
     'sodium-migraine',
   ]) {
     final isFluid = splitId.startsWith('fluid');
-    final kind = splitId.substring(splitId.indexOf('-') + 1); // score|flare|migraine
+    final kind = splitId.substring(
+      splitId.indexOf('-') + 1,
+    ); // score|flare|migraine
     final fp = _fingerprint('F2', d.through, {
       'bio': bioInWindow,
       'intake': intakeInWindow,
@@ -1459,87 +1531,95 @@ List<_Job> _buildJobs(CorrelationInputs inputs, _Derived d, int computedAtMs) {
       if (kind == 'flare') 'flare': flareInWindow,
       if (kind == 'migraine') 'migraine': migraineInWindow,
     });
-    jobs.add(_Job('F2', splitId, fp, () {
-      if (d.intake.byDay.isEmpty) {
-        // The input feature itself is absent: S7's unavailable
-        // state (not a progress state — there is nothing to
-        // accumulate counts against).
+    jobs.add(
+      _Job('F2', splitId, fp, () {
+        if (d.intake.byDay.isEmpty) {
+          // The input feature itself is absent: S7's unavailable
+          // state (not a progress state — there is nothing to
+          // accumulate counts against).
+          return record(
+            familyId: 'F2',
+            splitId: splitId,
+            windowKey: correlationWindowKeyLast90,
+            state: InsightState.unavailable,
+            groups: const [
+              InsightGroup(label: f2GroupALabel, n: 0),
+              InsightGroup(label: f2GroupBLabel, n: 0),
+            ],
+            fingerprint: fp,
+          );
+        }
+        final hitByDay = isFluid ? fluidHitByDay : sodiumHitByDay;
+        final daysA = [
+          for (final e in hitByDay.entries)
+            if (e.value) e.key,
+        ];
+        final daysB = [
+          for (final e in hitByDay.entries)
+            if (!e.value) e.key,
+        ];
+        if (kind == 'score') {
+          List<double> outcomes(List<String> days) {
+            final values = <double>[];
+            for (final day in days) {
+              final score =
+                  inputs.biometrics[addDaysToDayKey(day, 1)]?.dailyScore;
+              if (score != null) values.add(score.toDouble());
+            }
+            return values;
+          }
+
+          final g = _scoreGroups(
+            labelA: f2GroupALabel,
+            labelB: f2GroupBLabel,
+            valuesA: outcomes(daysA),
+            valuesB: outcomes(daysB),
+          );
+          return record(
+            familyId: 'F2',
+            splitId: splitId,
+            windowKey: correlationWindowKeyLast90,
+            state: g.state,
+            groups: g.groups,
+            fingerprint: fp,
+          );
+        }
+        // Incidence: numerator = group days whose NEXT labeled day
+        // carries the outcome record; denominator = group days
+        // whose next day is assessable (next day <= latest input
+        // day). Floors apply to the denominators.
+        final outcomeDays = kind == 'flare' ? d.flareDays : d.migraineDays;
+        (int, int) incidenceFor(List<String> days) {
+          var x = 0;
+          var n = 0;
+          for (final day in days) {
+            final next = addDaysToDayKey(day, 1);
+            if (next.compareTo(d.through) > 0) continue;
+            n++;
+            if (outcomeDays.contains(next)) x++;
+          }
+          return (x, n);
+        }
+
+        final (x, n) = incidenceFor(daysA);
+        final (y, m) = incidenceFor(daysB);
+        final state = meetsCorrelationFloor(n, m)
+            ? InsightState.numbers
+            : InsightState.progress;
         return record(
           familyId: 'F2',
           splitId: splitId,
           windowKey: correlationWindowKeyLast90,
-          state: InsightState.unavailable,
-          groups: const [
-            InsightGroup(label: f2GroupALabel, n: 0),
-            InsightGroup(label: f2GroupBLabel, n: 0),
+          state: state,
+          groups: [
+            InsightGroup(label: f2GroupALabel, n: n),
+            InsightGroup(label: f2GroupBLabel, n: m),
           ],
           fingerprint: fp,
+          incidence: IncidenceResult(x: x, n: n, y: y, m: m),
         );
-      }
-      final hitByDay = isFluid ? fluidHitByDay : sodiumHitByDay;
-      final daysA = [for (final e in hitByDay.entries) if (e.value) e.key];
-      final daysB = [for (final e in hitByDay.entries) if (!e.value) e.key];
-      if (kind == 'score') {
-        List<double> outcomes(List<String> days) {
-          final values = <double>[];
-          for (final day in days) {
-            final score =
-                inputs.biometrics[addDaysToDayKey(day, 1)]?.dailyScore;
-            if (score != null) values.add(score.toDouble());
-          }
-          return values;
-        }
-
-        final g = _scoreGroups(
-          labelA: f2GroupALabel,
-          labelB: f2GroupBLabel,
-          valuesA: outcomes(daysA),
-          valuesB: outcomes(daysB),
-        );
-        return record(
-          familyId: 'F2',
-          splitId: splitId,
-          windowKey: correlationWindowKeyLast90,
-          state: g.state,
-          groups: g.groups,
-          fingerprint: fp,
-        );
-      }
-      // Incidence: numerator = group days whose NEXT labeled day
-      // carries the outcome record; denominator = group days
-      // whose next day is assessable (next day <= latest input
-      // day). Floors apply to the denominators.
-      final outcomeDays = kind == 'flare' ? d.flareDays : d.migraineDays;
-      (int, int) incidenceFor(List<String> days) {
-        var x = 0;
-        var n = 0;
-        for (final day in days) {
-          final next = addDaysToDayKey(day, 1);
-          if (next.compareTo(d.through) > 0) continue;
-          n++;
-          if (outcomeDays.contains(next)) x++;
-        }
-        return (x, n);
-      }
-
-      final (x, n) = incidenceFor(daysA);
-      final (y, m) = incidenceFor(daysB);
-      final state = meetsCorrelationFloor(n, m)
-          ? InsightState.numbers
-          : InsightState.progress;
-      return record(
-        familyId: 'F2',
-        splitId: splitId,
-        windowKey: correlationWindowKeyLast90,
-        state: state,
-        groups: [
-          InsightGroup(label: f2GroupALabel, n: n),
-          InsightGroup(label: f2GroupBLabel, n: m),
-        ],
-        fingerprint: fp,
-        incidence: IncidenceResult(x: x, n: n, y: y, m: m),
-      );
-    }));
+      }),
+    );
   }
 
   // ── F3 — flare days → same-day Daily Score ──────────────────────
@@ -1549,60 +1629,62 @@ List<_Job> _buildJobs(CorrelationInputs inputs, _Derived d, int computedAtMs) {
       'flare': flareInWindow,
       'sleep': sleepInWindow,
     });
-    jobs.add(_Job('F3', 'F3', fp, () {
-      final daysA = <String>[];
-      final daysB = <String>[];
-      final valuesA = <double>[];
-      final valuesB = <double>[];
-      final days = inputs.biometrics.keys.where(d.inWindow).toList()..sort();
-      for (final day in days) {
-        final score = inputs.biometrics[day]?.dailyScore;
-        if (score == null) continue;
-        if (d.flareDays.contains(day)) {
-          daysA.add(day);
-          valuesA.add(score.toDouble());
-        } else {
-          daysB.add(day);
-          valuesB.add(score.toDouble());
+    jobs.add(
+      _Job('F3', 'F3', fp, () {
+        final daysA = <String>[];
+        final daysB = <String>[];
+        final valuesA = <double>[];
+        final valuesB = <double>[];
+        final days = inputs.biometrics.keys.where(d.inWindow).toList()..sort();
+        for (final day in days) {
+          final score = inputs.biometrics[day]?.dailyScore;
+          if (score == null) continue;
+          if (d.flareDays.contains(day)) {
+            daysA.add(day);
+            valuesA.add(score.toDouble());
+          } else {
+            daysB.add(day);
+            valuesB.add(score.toDouble());
+          }
         }
-      }
-      final g = _scoreGroups(
-        labelA: f3GroupALabel,
-        labelB: f3GroupBLabel,
-        valuesA: valuesA,
-        valuesB: valuesB,
-      );
-      CoOccurrence? coOccurrence;
-      if (g.state == InsightState.numbers) {
-        // S5, computed from the SAME days as the comparison:
-        // mean sleep over the flare group days vs the non-flare
-        // group days, over days with a usable sleep value.
-        List<double> sleeps(List<String> groupDays) => [
-              for (final day in groupDays)
-                if (d.sleepByDate[day] != null) d.sleepByDate[day]!.toDouble(),
-            ];
-        final a = sleeps(daysA);
-        final b = sleeps(daysB);
-        if (a.isNotEmpty && b.isNotEmpty) {
-          coOccurrence = CoOccurrence(
-            confounderLabel: 'sleep',
-            groupADays: 'flare',
-            groupBDays: 'non-flare',
-            valueA: groupStats(a).mean,
-            valueB: groupStats(b).mean,
-          );
+        final g = _scoreGroups(
+          labelA: f3GroupALabel,
+          labelB: f3GroupBLabel,
+          valuesA: valuesA,
+          valuesB: valuesB,
+        );
+        CoOccurrence? coOccurrence;
+        if (g.state == InsightState.numbers) {
+          // S5, computed from the SAME days as the comparison:
+          // mean sleep over the flare group days vs the non-flare
+          // group days, over days with a usable sleep value.
+          List<double> sleeps(List<String> groupDays) => [
+            for (final day in groupDays)
+              if (d.sleepByDate[day] != null) d.sleepByDate[day]!.toDouble(),
+          ];
+          final a = sleeps(daysA);
+          final b = sleeps(daysB);
+          if (a.isNotEmpty && b.isNotEmpty) {
+            coOccurrence = CoOccurrence(
+              confounderLabel: 'sleep',
+              groupADays: 'flare',
+              groupBDays: 'non-flare',
+              valueA: groupStats(a).mean,
+              valueB: groupStats(b).mean,
+            );
+          }
         }
-      }
-      return record(
-        familyId: 'F3',
-        splitId: 'F3',
-        windowKey: correlationWindowKeyLast90,
-        state: g.state,
-        groups: g.groups,
-        fingerprint: fp,
-        coOccurrence: coOccurrence,
-      );
-    }));
+        return record(
+          familyId: 'F3',
+          splitId: 'F3',
+          windowKey: correlationWindowKeyLast90,
+          state: g.state,
+          groups: g.groups,
+          fingerprint: fp,
+          coOccurrence: coOccurrence,
+        );
+      }),
+    );
   }
 
   // ── F4 — feeling → same-day Daily Score ─────────────────────────
@@ -1611,34 +1693,36 @@ List<_Job> _buildJobs(CorrelationInputs inputs, _Derived d, int computedAtMs) {
       'bio': bioInWindow,
       'feeling': d.countInWindow(d.feelingByDay.keys),
     });
-    jobs.add(_Job('F4', 'F4', fp, () {
-      final valuesA = <double>[];
-      final valuesB = <double>[];
-      final days = d.feelingByDay.keys.where(d.inWindow).toList()..sort();
-      for (final day in days) {
-        final value = d.feelingByDay[day]!;
-        // A 3 is evidence for neither pole; a day with no
-        // check-in is absent. Both are excluded structurally.
-        if (value != 1 && value != 2 && value != 4 && value != 5) continue;
-        final score = inputs.biometrics[day]?.dailyScore;
-        if (score == null) continue;
-        (value <= 2 ? valuesA : valuesB).add(score.toDouble());
-      }
-      final g = _scoreGroups(
-        labelA: f4GroupALabel,
-        labelB: f4GroupBLabel,
-        valuesA: valuesA,
-        valuesB: valuesB,
-      );
-      return record(
-        familyId: 'F4',
-        splitId: 'F4',
-        windowKey: correlationWindowKeyLast90,
-        state: g.state,
-        groups: g.groups,
-        fingerprint: fp,
-      );
-    }));
+    jobs.add(
+      _Job('F4', 'F4', fp, () {
+        final valuesA = <double>[];
+        final valuesB = <double>[];
+        final days = d.feelingByDay.keys.where(d.inWindow).toList()..sort();
+        for (final day in days) {
+          final value = d.feelingByDay[day]!;
+          // A 3 is evidence for neither pole; a day with no
+          // check-in is absent. Both are excluded structurally.
+          if (value != 1 && value != 2 && value != 4 && value != 5) continue;
+          final score = inputs.biometrics[day]?.dailyScore;
+          if (score == null) continue;
+          (value <= 2 ? valuesA : valuesB).add(score.toDouble());
+        }
+        final g = _scoreGroups(
+          labelA: f4GroupALabel,
+          labelB: f4GroupBLabel,
+          valuesA: valuesA,
+          valuesB: valuesB,
+        );
+        return record(
+          familyId: 'F4',
+          splitId: 'F4',
+          windowKey: correlationWindowKeyLast90,
+          state: g.state,
+          groups: g.groups,
+          fingerprint: fp,
+        );
+      }),
+    );
   }
 
   // ── F5 — medication change before/after windows ─────────────────
@@ -1647,30 +1731,34 @@ List<_Job> _buildJobs(CorrelationInputs inputs, _Derived d, int computedAtMs) {
       'bio': inputs.biometrics.length,
       'events': 0,
     });
-    jobs.add(_Job('F5', 'F5', fp, () {
-      return record(
-        familyId: 'F5',
-        splitId: 'F5',
-        windowKey: correlationWindowKeyLast90,
-        state: InsightState.unavailable,
-        groups: const [
-          InsightGroup(label: f5GroupALabel, n: 0),
-          InsightGroup(label: f5GroupBLabel, n: 0),
-        ],
-        fingerprint: fp,
-      );
-    }));
+    jobs.add(
+      _Job('F5', 'F5', fp, () {
+        return record(
+          familyId: 'F5',
+          splitId: 'F5',
+          windowKey: correlationWindowKeyLast90,
+          state: InsightState.unavailable,
+          groups: const [
+            InsightGroup(label: f5GroupALabel, n: 0),
+            InsightGroup(label: f5GroupBLabel, n: 0),
+          ],
+          fingerprint: fp,
+        );
+      }),
+    );
   } else {
-    final eligible = inputs.medEvents.where((e) {
-      if (e.type == 'dates_edit') return false; // no F5 record
-      final anchor = medChangeAnchorDay(e);
-      return d.inWindow(anchor);
-    }).toList()
-      ..sort((a, b) {
-        final byAnchor =
-            medChangeAnchorDay(a).compareTo(medChangeAnchorDay(b));
-        return byAnchor != 0 ? byAnchor : a.recordedAt.compareTo(b.recordedAt);
-      });
+    final eligible =
+        inputs.medEvents.where((e) {
+          if (e.type == 'dates_edit') return false; // no F5 record
+          final anchor = medChangeAnchorDay(e);
+          return d.inWindow(anchor);
+        }).toList()..sort((a, b) {
+          final byAnchor = medChangeAnchorDay(a)
+              .compareTo(medChangeAnchorDay(b));
+          return byAnchor != 0
+              ? byAnchor
+              : a.recordedAt.compareTo(b.recordedAt);
+        });
     for (final event in eligible) {
       final fp = _fingerprint('F5', d.through, {
         'bio': inputs.biometrics.length,
@@ -1680,36 +1768,49 @@ List<_Job> _buildJobs(CorrelationInputs inputs, _Derived d, int computedAtMs) {
         'eventType': event.type.hashCode,
         'eventDose': (event.newSnapshot?.dose ?? '').hashCode,
       });
-      jobs.add(_Job('F5', event.id, fp, () {
-        final windows = computeMedChangeWindows(
-          event: event,
-          allEvents: inputs.medEvents,
-          biometrics: inputs.biometrics,
-        );
-        final numbers =
-            meetsCorrelationFloor(windows.before.n, windows.after.n);
-        return record(
-          familyId: 'F5',
-          splitId: event.id,
-          windowKey: 'event:${event.id}',
-          state: numbers ? InsightState.numbers : InsightState.progress,
-          groups: [
-            InsightGroup(
-              label: f5GroupALabel,
-              n: windows.before.n,
-              mean: numbers ? windows.before.mean : null,
-            ),
-            InsightGroup(
-              label: f5GroupBLabel,
-              n: windows.after.n,
-              mean: numbers ? windows.after.mean : null,
-            ),
-          ],
-          fingerprint: fp,
-          headerLabel: medChangeHeaderLabel(event),
-          subjectName: event.medName,
-        );
-      }));
+      jobs.add(
+        _Job('F5', event.id, fp, () {
+          final windows = computeF5Windows(
+            event: event,
+            allEvents: inputs.medEvents,
+            biometrics: inputs.biometrics,
+          );
+          final numbers = meetsCorrelationFloor(
+            windows.beforeN,
+            windows.afterN,
+          );
+          return record(
+            familyId: 'F5',
+            splitId: event.id,
+            windowKey: 'event:${event.id}',
+            state: numbers ? InsightState.numbers : InsightState.progress,
+            groups: [
+              InsightGroup(
+                label: f5GroupALabel,
+                n: windows.beforeN,
+                mean: numbers ? windows.beforeMean : null,
+              ),
+              InsightGroup(
+                label: f5GroupBLabel,
+                n: windows.afterN,
+                mean: numbers ? windows.afterMean : null,
+              ),
+            ],
+            fingerprint: fp,
+            headerLabel: medChangeHeaderLabel(event),
+            subjectName: event.medName,
+            // Juno S9 (micro-ruling): the truncation span rides
+            // only on a numbers-state card — below the floor there
+            // are no averages and no truncation note.
+            beforeTruncatedSpan: numbers && windows.beforeNeighborTruncated
+                ? windows.beforeSpanDays
+                : null,
+            afterTruncatedSpan: numbers && windows.afterNeighborTruncated
+                ? windows.afterSpanDays
+                : null,
+          );
+        }),
+      );
     }
   }
 

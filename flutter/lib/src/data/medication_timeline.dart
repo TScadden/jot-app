@@ -46,12 +46,12 @@ extension TimelineMarkerKindX on TimelineMarkerKind {
   /// The capture-contract event type string for this kind (the
   /// §5 handoff's `event type` field).
   String get eventType => switch (this) {
-        TimelineMarkerKind.start => 'start',
-        TimelineMarkerKind.stop => 'stop',
-        TimelineMarkerKind.doseChange => 'dose_change',
-        TimelineMarkerKind.frequencyChange => 'frequency_change',
-        TimelineMarkerKind.restore => 'restore',
-      };
+    TimelineMarkerKind.start => 'start',
+    TimelineMarkerKind.stop => 'stop',
+    TimelineMarkerKind.doseChange => 'dose_change',
+    TimelineMarkerKind.frequencyChange => 'frequency_change',
+    TimelineMarkerKind.restore => 'restore',
+  };
 
   /// Start-class kinds count their change day in the AFTER
   /// window; stops count it in the BEFORE window (the R4 rule).
@@ -194,6 +194,14 @@ class TimelineWindowResult {
   final int? beforeAverage;
   final int? afterAverage;
 
+  /// Whether a NEIGHBORING same-medication marker's regimen
+  /// bound cut this window short (VC 100109 combine — consumed
+  /// by item 5's F5 cards for Juno's S9 truncation note, which
+  /// covers neighboring-change truncation only; series-edge
+  /// clipping does not set these).
+  final bool beforeNeighborTruncated;
+  final bool afterNeighborTruncated;
+
   const TimelineWindowResult({
     required this.requestedDays,
     required this.beforeSpanDays,
@@ -202,6 +210,8 @@ class TimelineWindowResult {
     required this.afterScoredDays,
     required this.beforeAverage,
     required this.afterAverage,
+    this.beforeNeighborTruncated = false,
+    this.afterNeighborTruncated = false,
   });
 
   /// The D1 shared floor: ≥ 5 scored days in EACH window and
@@ -381,8 +391,7 @@ DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 /// score map to null (present but unscored); days absent from
 /// the store are absent from the map. Pure projection; the store
 /// is never written.
-Map<String, int?> scoreMapFromHistoryRows(
-    Map<String, DailyBiometrics> rows) {
+Map<String, int?> scoreMapFromHistoryRows(Map<String, DailyBiometrics> rows) {
   final out = <String, int?>{};
   for (final e in rows.entries) {
     out[e.key] = e.value.dailyScore;
@@ -441,8 +450,9 @@ bool _sameMed(String aId, String aName, String bId, String bName) {
 /// The first day of [marker]'s AFTER regimen (the change day for
 /// start-class kinds; the day after for a stop, whose change day
 /// belongs to its before window).
-DateTime _afterWindowStart(TimelineMarker m) =>
-    m.kind.countsChangeDayInAfter ? m.date : m.date.add(const Duration(days: 1));
+DateTime _afterWindowStart(TimelineMarker m) => m.kind.countsChangeDayInAfter
+    ? m.date
+    : m.date.add(const Duration(days: 1));
 
 /// The last day of [marker]'s BEFORE regimen (the day before the
 /// change for start-class kinds; the change day for a stop).
@@ -508,7 +518,9 @@ TimelineWindowResult computeMedicationWindows({
   final nextBound = nextMarker == null ? null : _beforeWindowEnd(nextMarker);
 
   (int span, int scored, int? average) window(
-      DateTime wantStart, DateTime wantEnd) {
+    DateTime wantStart,
+    DateTime wantEnd,
+  ) {
     var start = wantStart;
     var end = wantEnd;
     if (seriesStart == null || seriesEnd == null) {
@@ -533,20 +545,23 @@ TimelineWindowResult computeMedicationWindows({
 
   final beforeEnd = _beforeWindowEnd(marker);
   var beforeStart = beforeEnd.subtract(Duration(days: windowDays - 1));
+  var beforeNeighborTruncated = false;
   if (prevBound != null && beforeStart.isBefore(prevBound)) {
     beforeStart = prevBound;
+    beforeNeighborTruncated = true;
   }
   final afterStart = _afterWindowStart(marker);
   var afterEnd = afterStart.add(Duration(days: windowDays - 1));
+  var afterNeighborTruncated = false;
   if (nextBound != null && afterEnd.isAfter(nextBound)) {
     afterEnd = nextBound;
+    afterNeighborTruncated = true;
   }
 
   final before = window(beforeStart, beforeEnd);
   final after = window(afterStart, afterEnd);
-  final floorMet = before.$2 >= 5 &&
-      after.$2 >= 5 &&
-      (before.$2 + after.$2) >= 14;
+  final floorMet =
+      before.$2 >= 5 && after.$2 >= 5 && (before.$2 + after.$2) >= 14;
   return TimelineWindowResult(
     requestedDays: windowDays,
     beforeSpanDays: before.$1,
@@ -557,8 +572,21 @@ TimelineWindowResult computeMedicationWindows({
     // the raw means are discarded here, not merely hidden.
     beforeAverage: floorMet ? before.$3 : null,
     afterAverage: floorMet ? after.$3 : null,
+    beforeNeighborTruncated: beforeNeighborTruncated,
+    afterNeighborTruncated: afterNeighborTruncated,
   );
 }
+
+/// The captured marker for [e], or null for non-marker types
+/// (`delete`, `dates_edit`, unknown). Public wrapper over the
+/// derivation's own marker construction (VC 100109 combine):
+/// item 5's F5 family builds its bounding marker set through
+/// this exact function so the Patterns surface and this
+/// timeline can never disagree about anchoring or marker
+/// membership — one derivation, per the item-5 spec's
+/// passthrough rule.
+TimelineMarker? capturedTimelineMarker(MedicationChangeEvent e) =>
+    _capturedMarker(e);
 
 /// Anchors a captured marker-class event. Returns null for
 /// non-marker types (`delete`, `dates_edit`, unknown).
@@ -573,8 +601,9 @@ TimelineMarker? _capturedMarker(MedicationChangeEvent e) {
   };
   if (kind == null) return null;
 
-  final recordedDay =
-      _dayOnly(DateTime.fromMillisecondsSinceEpoch(e.recordedAt));
+  final recordedDay = _dayOnly(
+    DateTime.fromMillisecondsSinceEpoch(e.recordedAt),
+  );
   // Anchor rule: the parsed effectiveDate when present, else the
   // local day of recordedAt. ONE deliberate exception — restore:
   // its effectiveDate is the erased stop date the unarchive
@@ -586,8 +615,8 @@ TimelineMarker? _capturedMarker(MedicationChangeEvent e) {
   final effective = e.effectiveDate?.trim() ?? '';
   final parsedEffective =
       (kind == TimelineMarkerKind.restore || effective.isEmpty)
-          ? null
-          : parseMedicationDate(effective);
+      ? null
+      : parseMedicationDate(effective);
   if (parsedEffective != null) {
     date = _dayOnly(parsedEffective);
     // Verbatim recorded string — never reformatted.
@@ -614,13 +643,13 @@ TimelineMarker? _capturedMarker(MedicationChangeEvent e) {
     oldValue: kind == TimelineMarkerKind.doseChange
         ? (oldSnap?.dose ?? '')
         : kind == TimelineMarkerKind.frequencyChange
-            ? (oldSnap?.frequency ?? '')
-            : '',
+        ? (oldSnap?.frequency ?? '')
+        : '',
     newValue: kind == TimelineMarkerKind.doseChange
         ? (newSnap?.dose ?? '')
         : kind == TimelineMarkerKind.frequencyChange
-            ? (newSnap?.frequency ?? '')
-            : '',
+        ? (newSnap?.frequency ?? '')
+        : '',
     afterDose: newSnap?.dose ?? oldSnap?.dose ?? '',
     afterFrequency: newSnap?.frequency ?? oldSnap?.frequency ?? '',
     afterIsPresent: newSnap?.isPresent ?? kind != TimelineMarkerKind.stop,
@@ -663,20 +692,22 @@ MedicationTimelineData buildMedicationTimeline({
       // Blank or unparseable — no marker, counted (test 10).
       skippedSeeds++;
     } else {
-      seeds.add(TimelineMarker(
-        kind: TimelineMarkerKind.start,
-        medId: row.id,
-        medName: row.name,
-        date: _dayOnly(startDate),
-        dateDisplay: startRaw,
-        monthPrecision: medicationDateIsMonthOnly(startRaw),
-        seeded: true,
-        doseAtEvent: row.dose,
-        afterDose: rowSnap.dose,
-        afterFrequency: rowSnap.frequency,
-        afterIsPresent: true,
-        recordedAtMs: _dayOnly(startDate).millisecondsSinceEpoch,
-      ));
+      seeds.add(
+        TimelineMarker(
+          kind: TimelineMarkerKind.start,
+          medId: row.id,
+          medName: row.name,
+          date: _dayOnly(startDate),
+          dateDisplay: startRaw,
+          monthPrecision: medicationDateIsMonthOnly(startRaw),
+          seeded: true,
+          doseAtEvent: row.dose,
+          afterDose: rowSnap.dose,
+          afterFrequency: rowSnap.frequency,
+          afterIsPresent: true,
+          recordedAtMs: _dayOnly(startDate).millisecondsSinceEpoch,
+        ),
+      );
     }
 
     // Declared stop (archived rows only).
@@ -687,20 +718,22 @@ MedicationTimelineData buildMedicationTimeline({
       if (endDate == null) {
         skippedSeeds++;
       } else {
-        seeds.add(TimelineMarker(
-          kind: TimelineMarkerKind.stop,
-          medId: row.id,
-          medName: row.name,
-          date: _dayOnly(endDate),
-          dateDisplay: endRaw.trim(),
-          monthPrecision: medicationDateIsMonthOnly(endRaw),
-          seeded: true,
-          doseAtEvent: row.dose,
-          afterDose: rowSnap.dose,
-          afterFrequency: rowSnap.frequency,
-          afterIsPresent: false,
-          recordedAtMs: _dayOnly(endDate).millisecondsSinceEpoch,
-        ));
+        seeds.add(
+          TimelineMarker(
+            kind: TimelineMarkerKind.stop,
+            medId: row.id,
+            medName: row.name,
+            date: _dayOnly(endDate),
+            dateDisplay: endRaw.trim(),
+            monthPrecision: medicationDateIsMonthOnly(endRaw),
+            seeded: true,
+            doseAtEvent: row.dose,
+            afterDose: rowSnap.dose,
+            afterFrequency: rowSnap.frequency,
+            afterIsPresent: false,
+            recordedAtMs: _dayOnly(endDate).millisecondsSinceEpoch,
+          ),
+        );
       }
     }
   }
@@ -721,20 +754,21 @@ MedicationTimelineData buildMedicationTimeline({
     return false;
   }
 
-  final markers = <TimelineMarker>[
-    ...captured,
-    for (final s in seeds)
-      if (!capturedSuppresses(s)) s,
-  ]..sort((a, b) {
-      final byDate = a.date.compareTo(b.date);
-      if (byDate != 0) return byDate;
-      // Same-day order is capture sequence (the windowing
-      // sequence rule); then captured before seeded, then name.
-      final bySequence = a.recordedAtMs.compareTo(b.recordedAtMs);
-      if (bySequence != 0) return bySequence;
-      if (a.seeded != b.seeded) return a.seeded ? 1 : -1;
-      return a.medName.compareTo(b.medName);
-    });
+  final markers =
+      <TimelineMarker>[
+        ...captured,
+        for (final s in seeds)
+          if (!capturedSuppresses(s)) s,
+      ]..sort((a, b) {
+        final byDate = a.date.compareTo(b.date);
+        if (byDate != 0) return byDate;
+        // Same-day order is capture sequence (the windowing
+        // sequence rule); then captured before seeded, then name.
+        final bySequence = a.recordedAtMs.compareTo(b.recordedAtMs);
+        if (bySequence != 0) return bySequence;
+        if (a.seeded != b.seeded) return a.seeded ? 1 : -1;
+        return a.medName.compareTo(b.medName);
+      });
 
   // ── Range: earliest of (score coverage start, earliest
   // marker) through today (or the latest data day if later). ──
@@ -761,8 +795,11 @@ MedicationTimelineData buildMedicationTimeline({
   }
 
   // ── Per-day log series ──────────────────────────────────────
-  final symptomsId = resolveSummaryCategoryId(categories,
-      name: 'Symptoms', fallbackId: 1);
+  final symptomsId = resolveSummaryCategoryId(
+    categories,
+    name: 'Symptoms',
+    fallbackId: 1,
+  );
   int? migraineCategoryId;
   for (final c in categories) {
     if (c.name.trim().toLowerCase() == 'migraine symptoms & triggers') {
@@ -791,7 +828,8 @@ MedicationTimelineData buildMedicationTimeline({
     // categoryId 0 entries whose body names headache/nausea/
     // fatigue count as symptom logs.
     final body = e.body.toLowerCase();
-    final legacySymptom = e.categoryId == 0 &&
+    final legacySymptom =
+        e.categoryId == 0 &&
         (body.contains('headache') ||
             body.contains('nausea') ||
             body.contains('fatigue'));
@@ -864,12 +902,14 @@ MedicationTimelineData buildMedicationTimeline({
           startsSeeded: medMarkers[i].seeded,
         ),
     ];
-    lanes.add(TimelineMedLane(
-      medName: row?.name ?? medMarkers.last.medName,
-      medId: medMarkers.first.medId,
-      markers: medMarkers,
-      segments: segments,
-    ));
+    lanes.add(
+      TimelineMedLane(
+        medName: row?.name ?? medMarkers.last.medName,
+        medId: medMarkers.first.medId,
+        markers: medMarkers,
+        segments: segments,
+      ),
+    );
   }
   lanes.sort((a, b) {
     final byFirst = a.markers.first.date.compareTo(b.markers.first.date);

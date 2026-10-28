@@ -233,20 +233,19 @@ List<InsightRecord> placeholderRecords() {
     String splitId,
     String labelA,
     String labelB,
-  ) =>
-      InsightRecord(
-        familyId: familyId,
-        splitId: splitId,
-        windowKey: correlationWindowKeyLast90,
-        state: InsightState.progress,
-        groups: [
-          InsightGroup(label: labelA, n: 0),
-          InsightGroup(label: labelB, n: 0),
-        ],
-        computedAtMs: 0,
-        throughDate: '',
-        inputFingerprint: '',
-      );
+  ) => InsightRecord(
+    familyId: familyId,
+    splitId: splitId,
+    windowKey: correlationWindowKeyLast90,
+    state: InsightState.progress,
+    groups: [
+      InsightGroup(label: labelA, n: 0),
+      InsightGroup(label: labelB, n: 0),
+    ],
+    computedAtMs: 0,
+    throughDate: '',
+    inputFingerprint: '',
+  );
   return [
     progress('F1', 'F1a', f1aGroupALabel, f1aGroupBLabel),
     progress('F1', 'F1b', f1bGroupALabel, f1bGroupBLabel),
@@ -321,26 +320,23 @@ class _InsightCardState extends State<_InsightCard> {
   }
 
   Widget _headerText(String text) => Text(
-        text,
-        style: const TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
-          color: NotelColors.textPrimary,
-        ),
-      );
+    text,
+    style: const TextStyle(
+      fontSize: 16,
+      fontWeight: FontWeight.bold,
+      color: NotelColors.textPrimary,
+    ),
+  );
 
   Widget _bodyText(String text) => Text(
-        text,
-        style: const TextStyle(
-          fontSize: 14,
-          color: NotelColors.textPrimary,
-        ),
-      );
+    text,
+    style: const TextStyle(fontSize: 14, color: NotelColors.textPrimary),
+  );
 
   Widget _captionText(String text) => Text(
-        text,
-        style: const TextStyle(fontSize: 12, color: NotelColors.textSecondary),
-      );
+    text,
+    style: const TextStyle(fontSize: 12, color: NotelColors.textSecondary),
+  );
 
   /// S8 — F1–F4 cards only, and only when the record carries a
   /// through date (a stale record keeps its ORIGINAL date — the
@@ -368,24 +364,38 @@ class _InsightCardState extends State<_InsightCard> {
     }
     if (_isIncidence) {
       final inc = _record.incidence!;
-      out.add(_bodyText(
-        _record.splitId.contains('migraine')
-            ? correlationMigraineIncidenceSentence(
-                x: inc.x, n: inc.n, y: inc.y, m: inc.m)
-            : correlationFlareIncidenceSentence(
-                x: inc.x, n: inc.n, y: inc.y, m: inc.m),
-      ));
+      out.add(
+        _bodyText(
+          _record.splitId.contains('migraine')
+              ? correlationMigraineIncidenceSentence(
+                  x: inc.x,
+                  n: inc.n,
+                  y: inc.y,
+                  m: inc.m,
+                )
+              : correlationFlareIncidenceSentence(
+                  x: inc.x,
+                  n: inc.n,
+                  y: inc.y,
+                  m: inc.m,
+                ),
+        ),
+      );
     } else {
       final a = _record.groups[0];
       final b = _record.groups[1];
-      out.add(_bodyText(correlationComparisonSentence(
-        groupALabel: a.label,
-        groupAN: a.n,
-        groupAMean: a.mean!,
-        groupBLabel: b.label,
-        groupBN: b.n,
-        groupBMean: b.mean!,
-      )));
+      out.add(
+        _bodyText(
+          correlationComparisonSentence(
+            groupALabel: a.label,
+            groupAN: a.n,
+            groupAMean: a.mean!,
+            groupBLabel: b.label,
+            groupBN: b.n,
+            groupBMean: b.mean!,
+          ),
+        ),
+      );
       // F3 co-occurrence (S5): only when the record carries a
       // co-occurrence computed from the same days. The copy
       // formatter takes pre-formatted strings, so the record's
@@ -393,13 +403,17 @@ class _InsightCardState extends State<_InsightCard> {
       final co = _record.coOccurrence;
       if (_record.familyId == 'F3' && co != null) {
         out.add(const SizedBox(height: 8));
-        out.add(_bodyText(correlationCoOccurrenceSentence(
-          groupADays: co.groupADays,
-          confounderLabel: co.confounderLabel,
-          valueA: _compactSleepMinutes(co.valueA),
-          groupBDays: co.groupBDays,
-          valueB: _compactSleepMinutes(co.valueB),
-        )));
+        out.add(
+          _bodyText(
+            correlationCoOccurrenceSentence(
+              groupADays: co.groupADays,
+              confounderLabel: co.confounderLabel,
+              valueA: _compactSleepMinutes(co.valueA),
+              groupBDays: co.groupBDays,
+              valueB: _compactSleepMinutes(co.valueB),
+            ),
+          ),
+        );
       }
     }
     final s8 = _s8Line();
@@ -420,15 +434,35 @@ class _InsightCardState extends State<_InsightCard> {
     final before = _record.groups[0];
     final after = _record.groups[1];
     return [
-      if (header != null) ...[
-        _headerText(header),
-        const SizedBox(height: 8),
-      ],
+      if (header != null) ...[_headerText(header), const SizedBox(height: 8)],
       _bodyText(medWindowBeforeLabel),
       _bodyText(medWindowValue(before.mean!, before.n)),
+      // Juno S9 (micro-ruling): a neighboring same-med change
+      // shortened this window — the note is mandatory wherever
+      // its average renders, once per truncated window.
+      if (_record.beforeTruncatedSpan != null) ...[
+        const SizedBox(height: 8),
+        _captionText(
+          f5TruncationNote(
+            window: 'before',
+            spanDays: _record.beforeTruncatedSpan!,
+            name: _record.subjectName ?? '',
+          ),
+        ),
+      ],
       const SizedBox(height: 8),
       _bodyText(medWindowAfterLabel),
       _bodyText(medWindowValue(after.mean!, after.n)),
+      if (_record.afterTruncatedSpan != null) ...[
+        const SizedBox(height: 8),
+        _captionText(
+          f5TruncationNote(
+            window: 'after',
+            spanDays: _record.afterTruncatedSpan!,
+            name: _record.subjectName ?? '',
+          ),
+        ),
+      ],
       const SizedBox(height: 8),
       _captionText(medWindowRuleNote),
       const SizedBox(height: 8),
@@ -481,12 +515,14 @@ class _InsightCardState extends State<_InsightCard> {
     final labelA = _isF5 ? f5GroupALabel : a.label;
     final labelB = _isF5 ? f5GroupBLabel : b.label;
     final out = <Widget>[
-      _bodyText(correlationProgressSentence(
-        groupALabel: labelA,
-        groupAN: a.n,
-        groupBLabel: labelB,
-        groupBN: b.n,
-      )),
+      _bodyText(
+        correlationProgressSentence(
+          groupALabel: labelA,
+          groupAN: a.n,
+          groupBLabel: labelB,
+          groupBN: b.n,
+        ),
+      ),
     ];
     final s8 = _s8Line();
     if (s8 != null) {

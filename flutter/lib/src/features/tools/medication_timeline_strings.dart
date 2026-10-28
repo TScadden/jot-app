@@ -82,9 +82,12 @@ abstract final class MedicationTimelineStrings {
       'Not enough scored days for these windows yet. Before: $beforeScoredDays scored days. After: $afterScoredDays scored days. Averages show when each window has at least 5 scored days and the two windows have 14 scored days in total.';
 
   /// Draft 6 — marker labels. Names, doses, and schedules render
-  /// exactly as recorded in the event snapshots.
+  /// exactly as recorded in the event snapshots. Blank-dose forms
+  /// (Juno micro-ruling, Oct 28 2026): when the recorded dose is
+  /// genuinely empty, the separator segment drops — `Started
+  /// {name}` — never a dangling `·` and never a placeholder.
   static String startedLabel(String name, String dose) =>
-      'Started $name · $dose';
+      dose.isEmpty ? 'Started $name' : 'Started $name · $dose';
 
   static String stoppedLabel(String name) => 'Stopped $name';
 
@@ -96,5 +99,5 @@ abstract final class MedicationTimelineStrings {
       '$name schedule changed from $oldFrequency to $newFrequency';
 
   static String restartedLabel(String name, String dose) =>
-      'Restarted $name · $dose';
+      dose.isEmpty ? 'Restarted $name' : 'Restarted $name · $dose';
 }
