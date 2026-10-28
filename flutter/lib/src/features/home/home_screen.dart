@@ -766,13 +766,6 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       _intakeTargetVersions = versions;
       _intakePresets = presets;
-      if (presets.seedLabelPending) {
-        // R4: the seed label renders at the seed's FIRST
-        // presentation (this mount); the stored flag flips now so
-        // it never renders again.
-        _intakeSeedLabelVisible = true;
-        unawaited(_intakeSettings.markSeedLabelShown());
-      }
       final pull = await _backend.fetchSyncPull();
       if (pull == null) return;
       final entries = await _backend.fetchLogEntryDtos();
@@ -781,7 +774,10 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       _intakeCategoryId = categoryId;
       if (categoryId == null) {
-        // Name miss: the whole surface hides (spec §4.1/Q4).
+        // Name miss: the whole surface hides (spec §4.1/Q4). The
+        // R4 seed label is NOT consumed here (Vera C3): the card
+        // never presented, so the stored flag stays pending for
+        // the first load that actually presents it.
         if (_intakeTodayEntries.isNotEmpty) {
           setState(() => _intakeTodayEntries = const []);
         }
@@ -789,6 +785,18 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       _intakePullIds = entries.map((e) => e.id).toSet();
       _deriveIntakeState(entries);
+      if (presets.seedLabelPending &&
+          _intakeCategoryId != null &&
+          _intakeTotals != null) {
+        // Vera C3 — R4: the seed label renders at the seed's FIRST
+        // PRESENTATION, which is only proven now: the pull landed,
+        // Hydration resolved, and the derivation succeeded, so the
+        // card below actually presents the seeds. The stored flag
+        // flips only here, so it never renders again — and a first
+        // load that missed above leaves it pending, unconsumed.
+        _intakeSeedLabelVisible = true;
+        unawaited(_intakeSettings.markSeedLabelShown());
+      }
       // A plain setState so the card appears even on a no-data day
       // (the derivation only fires on a totals change; the category
       // resolving is itself a render change).
@@ -848,8 +856,15 @@ class _HomeScreenState extends State<HomeScreen> {
       if (pull != null) {
         entries = await _backend.fetchLogEntryDtos();
         final categories = await _backend.fetchLogCategories();
-        resolvedCategoryId =
-            resolveIntakeCategoryId(categories) ?? categoryId;
+        // Vera note 3: a FRESH pull that misses Hydration is a
+        // miss — never file under the stale cached id.
+        final freshCategoryId = resolveIntakeCategoryId(categories);
+        if (freshCategoryId == null) {
+          _intakeCategoryId = null;
+          if (mounted) setState(() {});
+          return false;
+        }
+        resolvedCategoryId = freshCategoryId;
         _intakeCategoryId = resolvedCategoryId;
         _intakePullIds = entries.map((e) => e.id).toSet();
       }
@@ -917,8 +932,21 @@ class _HomeScreenState extends State<HomeScreen> {
     return ok;
   }
 
+  /// Vera C2 — deletes [kind]'s remembered preset amounts: the
+  /// kind returns to the unconfigured state, so its quick-add
+  /// button opens the editor instead of logging. Persisted by
+  /// [IntakeSettings.forgetPreset] with the seed-label flag
+  /// preserved — a deleted seed is never re-seeded.
+  Future<void> _deleteIntakePreset(String kind) async {
+    final presets = await _intakeSettings.forgetPreset(kind);
+    if (!mounted) return;
+    setState(() => _intakePresets = presets);
+  }
+
   /// Opens the intake editor: blank (optionally kind-first), or
   /// prefilled from [entry] in edit mode with a delete action.
+  /// Create mode also carries the preset-delete action for the
+  /// selected kind (Vera C2).
   Future<void> _openIntakeEditor({
     String? initialKind,
     QuickLogEntry? entry,
@@ -934,6 +962,11 @@ class _HomeScreenState extends State<HomeScreen> {
           : () async {
               await _deleteIntakeEntry(entry);
             },
+      onDeletePreset: entry == null
+          ? (kind) async {
+              await _deleteIntakePreset(kind);
+            }
+          : null,
     );
     if (!mounted) return;
     _deriveIntakeState(_intakeEntries);

@@ -231,11 +231,13 @@ class IntakePayload {
       if (decoded['v'] != 1) return null;
       final kind = decoded['kind'];
       if (kind is! String || !intakeKinds.contains(kind)) return null;
+      // §4.1 amounts are integers: a float, a numeric string, or a
+      // negative amount is NOT a valid amount — the payload is
+      // invalid (excluded + counted), never coerced.
       int? amount(String key) {
         final v = decoded[key];
-        if (v == null) return null;
-        if (v is num) return v.toInt();
-        return int.tryParse('$v');
+        if (v is int && v >= 0) return v;
+        return null;
       }
 
       // A present-but-unparseable amount corrupts the payload.
@@ -725,6 +727,15 @@ class IntakePresets {
         byKind: {...byKind, preset.kind: preset},
         seedLabelPending: seedLabelPending ?? this.seedLabelPending,
       );
+
+  /// The same presets with [kind]'s remembered amounts removed —
+  /// that kind returns to the unconfigured state. [seedLabelPending]
+  /// is preserved exactly: deleting a preset (including the R4
+  /// seed) is NOT a re-seed and must never re-trigger the R4 label.
+  IntakePresets withoutKind(String kind) => IntakePresets(
+        byKind: {...byKind}..remove(kind),
+        seedLabelPending: seedLabelPending,
+      );
 }
 
 // ── On-device settings (spec §4.6) ──────────────────────────────────
@@ -775,11 +786,19 @@ class IntakeSettings {
   /// Appends a target version effective the CURRENT energy day —
   /// past versions are never rewritten (§4.6), so yesterday's
   /// verdict keeps yesterday's target.
+  ///
+  /// Juno Ratification 2B: an ALL-EMPTY save is a NO-OP — it
+  /// appends no version, changes no target in force, and does not
+  /// clear targets already in force. (A save setting exactly one
+  /// component IS a real version.)
   Future<List<IntakeTargetVersion>> appendTarget({
     int? fluidTargetMl,
     int? sodiumTargetMg,
     DateTime? now,
   }) async {
+    if (fluidTargetMl == null && sodiumTargetMg == null) {
+      return loadTargets();
+    }
     final versions = [...await loadTargets()];
     versions.add(IntakeTargetVersion(
       fluidTargetMl: fluidTargetMl,
@@ -821,6 +840,22 @@ class IntakeSettings {
       sodiumMg: draft.sodiumMg,
       saltMg: draft.saltMg,
     ));
+    await savePresets(updated);
+    return updated;
+  }
+
+  /// Deletes [kind]'s remembered preset amounts (Vera C2 / R4:
+  /// every seed is user-editable AND deletable). The kind returns
+  /// to the unconfigured state — its quick-add button opens the
+  /// editor instead of logging. The removal is persisted (a stored
+  /// presets blob with that kind absent), so [loadPresets] returns
+  /// exactly what was stored and NEVER re-seeds a deliberately
+  /// deleted seed; [IntakePresets.seedLabelPending] is preserved,
+  /// so the R4 label is not re-triggered.
+  Future<IntakePresets> forgetPreset(String kind) async {
+    final presets = await loadPresets();
+    if (!presets.byKind.containsKey(kind)) return presets;
+    final updated = presets.withoutKind(kind);
     await savePresets(updated);
     return updated;
   }
@@ -1103,6 +1138,7 @@ Future<void> showIntakeEditorSheet({
   String? initialKind,
   IntakePresets? presets,
   Future<void> Function()? onDelete,
+  Future<void> Function(String kind)? onDeletePreset,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -1114,6 +1150,7 @@ Future<void> showIntakeEditorSheet({
       initialKind: initialKind,
       presets: presets,
       onDelete: onDelete,
+      onDeletePreset: onDeletePreset,
     ),
   );
 }
@@ -1134,6 +1171,12 @@ class IntakeEditorSheet extends StatefulWidget {
   /// delete semantics). Null hides the action.
   final Future<void> Function()? onDelete;
 
+  /// Create mode only: deletes the remembered preset amounts for
+  /// the selected kind (Vera C2 — the preset delete/reset path,
+  /// reusing the approved `Delete` string). Null hides the action;
+  /// the host (Home) owns the presets store.
+  final Future<void> Function(String kind)? onDeletePreset;
+
   const IntakeEditorSheet({
     super.key,
     required this.onSave,
@@ -1141,6 +1184,7 @@ class IntakeEditorSheet extends StatefulWidget {
     this.initialKind,
     this.presets,
     this.onDelete,
+    this.onDeletePreset,
   });
 
   @override
@@ -1504,6 +1548,28 @@ class _IntakeEditorSheetState extends State<IntakeEditorSheet> {
                               final cb = widget.onDelete!;
                               Navigator.of(context).pop();
                               await cb();
+                            },
+                      child: const Text(
+                        'Delete',
+                        style: TextStyle(color: NotelColors.error),
+                      ),
+                    ),
+                  // Vera C2 — preset delete/reset (create mode): the
+                  // selected kind's remembered amounts are deleted,
+                  // returning it to the unconfigured state. Reuses
+                  // the approved `Delete` string verbatim.
+                  if (widget.existing == null &&
+                      widget.onDeletePreset != null &&
+                      (widget.presets?[_kind]?.isConfigured ?? false))
+                    TextButton(
+                      key: const ValueKey('intake_delete_preset'),
+                      onPressed: _saving
+                          ? null
+                          : () async {
+                              final cb = widget.onDeletePreset!;
+                              final kind = _kind;
+                              Navigator.of(context).pop();
+                              await cb(kind);
                             },
                       child: const Text(
                         'Delete',
