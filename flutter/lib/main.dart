@@ -477,10 +477,15 @@ class _AppFlowState extends State<AppFlow>
   void _onSessionExpired() {
     unawaited(HomeDataCache.instance.clear());
     unawaited(QuickLogCache.instance.clear());
-    // Optimistic logging: unconfirmed log entries are account-bound
-    // health data too — session expiry wipes the outbox with the
-    // other stores (the session is dead, so no push is possible).
-    unawaited(LogEntryOutbox.instance.clear());
+    // Optimistic logging (F2): unconfirmed log entries are
+    // account-bound health data, but session expiry must not
+    // silently destroy them — the session is dead, so no push is
+    // possible, yet the entries were never confirmed by the server.
+    // The owner-bound blob is RETAINED: the same account's next
+    // sign-in restores and flushes its own pending entries, and a
+    // different account's sign-in drops them via the login
+    // owner-mismatch wiring below before they can render or push.
+    unawaited(LogEntryOutbox.instance.retainUnconfirmed());
     // R70 fix pass (Vera F1 / Juno C1) — the historical health store
     // is account-bound too: session expiry leaves none of the expired
     // account's all-time history or Daily Scores on device.

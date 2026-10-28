@@ -28,8 +28,15 @@ import 'package:tabs_lab/src/data/today_summary.dart';
 ///   logout first makes a best-effort flush attempt for any
 ///   unconfirmed entries (native's push-first order), then revokes
 ///   the token best-effort (native proceeds even when the revoke call
-///   fails), then clears EVERYTHING account-bound on device,
-///   the outbox included.
+///   fails), then clears EVERYTHING account-bound on device — with
+///   one F2 exception: when the flush did NOT confirm every entry
+///   (offline logout, dead connection), the outbox is RETAINED
+///   owner-bound instead of wiped, so the same account's next
+///   session restores and flushes its own pending entries. A
+///   different account signing in drops them via the outbox's
+///   owner-mismatch enforcement before they can render or push.
+///   Account deletion keeps the full wipe: the account is gone
+///   server-side, so there is no session for entries to return to.
 /// - Delete: native calls `DELETE /api/auth/delete-account` FIRST and
 ///   only wipes locally on success; on failure the account and session
 ///   stay intact and the error is shown. Same order here.
@@ -48,6 +55,11 @@ class AccountActions {
   final SettingsStore _settingsStore;
   final Future<void> Function() _clearCaches;
 
+  /// Whether the cache wipe is the production funnel. The F2
+  /// retention variant exists only there — an injected wipe (tests)
+  /// owns its own behavior and runs as-is.
+  final bool _usesDefaultCaches;
+
   AccountActions({
     TabsBackend? backend,
     SessionStore? sessionStore,
@@ -56,9 +68,12 @@ class AccountActions {
   })  : _backend = backend ?? TabsBackend(),
         _sessionStore = sessionStore ?? SessionStore(),
         _settingsStore = settingsStore ?? SettingsStore(),
+        _usesDefaultCaches = clearCaches == null,
         _clearCaches = clearCaches ?? _clearDefaultCaches;
 
-  static Future<void> _clearDefaultCaches() async {
+  static Future<void> _clearDefaultCaches({
+    bool retainUnconfirmedLogEntries = false,
+  }) async {
     // Each cache isolated: one failing clear must not leave the
     // other caches holding the previous account's data (R29b).
     try {
@@ -68,9 +83,16 @@ class AccountActions {
       await QuickLogCache.instance.clear();
     } catch (_) {}
     // Optimistic logging (Oct 27, 2026): unconfirmed log entries
-    // are account-bound health data — the wipe covers the outbox.
+    // are account-bound health data — the wipe covers the outbox,
+    // EXCEPT on the F2 retention path (logout / session expiry
+    // with entries the server never confirmed), where the
+    // owner-bound blob is retained for the same account's return.
     try {
-      await LogEntryOutbox.instance.clear();
+      if (retainUnconfirmedLogEntries) {
+        await LogEntryOutbox.instance.retainUnconfirmed();
+      } else {
+        await LogEntryOutbox.instance.clear();
+      }
     } catch (_) {}
     try {
       await HeartDataCache.instance.clear();
@@ -125,7 +147,12 @@ class AccountActions {
   }
 
   /// Test hook: clears the real cache singletons.
-  static Future<void> clearDefaultCaches() => _clearDefaultCaches();
+  static Future<void> clearDefaultCaches({
+    bool retainUnconfirmedLogEntries = false,
+  }) =>
+      _clearDefaultCaches(
+        retainUnconfirmedLogEntries: retainUnconfirmedLogEntries,
+      );
 
   /// Fault-isolated wipe (R29b Vera fix): every step is independently
   /// best-effort. Previously four sequential awaits meant a throw in
@@ -133,7 +160,9 @@ class AccountActions {
   /// errors) skipped the caches + settings wipe entirely — leaving
   /// account data on device after "logout", and, after a server-side
   /// account delete, a live local session.
-  Future<void> _clearEverything() async {
+  Future<void> _clearEverything({
+    bool retainUnconfirmedLogEntries = false,
+  }) async {
     try {
       _backend.invalidateSyncPull();
     } catch (_) {}
@@ -141,7 +170,11 @@ class AccountActions {
       await _sessionStore.clear();
     } catch (_) {}
     try {
-      await _clearCaches();
+      if (retainUnconfirmedLogEntries && _usesDefaultCaches) {
+        await _clearDefaultCaches(retainUnconfirmedLogEntries: true);
+      } else {
+        await _clearCaches();
+      }
     } catch (_) {}
     try {
       await _settingsStore.clear();
@@ -153,22 +186,29 @@ class AccountActions {
   /// server acknowledged the revoke.
   Future<bool> logout() async {
     // Native push-first parity: give unconfirmed log entries their
-    // last chance to reach the server before the token is revoked
-    // and the outbox is wiped. Best-effort, exactly like the revoke —
-    // and time-bounded, so a wedged storage channel or a dead
-    // connection can never hold the logout itself hostage.
+    // last chance to reach the server before the token is revoked.
+    // Best-effort, exactly like the revoke — and time-bounded, so a
+    // wedged storage channel or a dead connection can never hold
+    // the logout itself hostage. F2: the flush RESULT now decides
+    // the outbox's fate — a flush that did not confirm every entry
+    // (offline, timed out, threw) RETAINS the owner-bound blob for
+    // the same account's return instead of wiping it silently; only
+    // a fully confirmed flush earns the wipe.
+    var flushed = false;
     try {
-      await LogEntryOutbox.instance
+      flushed = await LogEntryOutbox.instance
           .flush(_backend)
           .timeout(const Duration(seconds: 3), onTimeout: () => false);
-    } catch (_) {}
+    } catch (_) {
+      flushed = false;
+    }
     var revoked = false;
     try {
       revoked = await _backend.logoutAccount();
     } catch (_) {
       revoked = false;
     }
-    await _clearEverything();
+    await _clearEverything(retainUnconfirmedLogEntries: !flushed);
     return revoked;
   }
 
