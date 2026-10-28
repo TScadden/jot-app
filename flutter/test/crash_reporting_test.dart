@@ -564,7 +564,7 @@ void main() {
       expect(caught, isA<StateError>());
     });
 
-    testWidgets('hook renders only when visible; tap is inert',
+    testWidgets('hook renders only when visible, with tap labels',
         (tester) async {
       await tester.pumpWidget(const MaterialApp(
         home: Scaffold(body: CrashTestHook(visible: false)),
@@ -577,9 +577,7 @@ void main() {
       expect(
           find.byKey(const ValueKey('crash_test_hook_card')), findsOneWidget);
       expect(find.textContaining('TEST ONLY'), findsOneWidget);
-      await tester.tap(
-          find.byKey(const ValueKey('crash_test_hook_button')));
-      await tester.pump();
+      expect(find.text('Tap to force a test crash'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });
@@ -678,10 +676,10 @@ void main() {
       final items = await transport.decodedItems();
       final events = items.where((i) => i['item_type'] == 'event').toList();
       expect(events, hasLength(1),
-          reason: 'one canary long-press must produce one event');
+          reason: 'one canary tap must produce one event');
     });
 
-    testWidgets('extended hook: taps inert, long-presses fire the '
+    testWidgets('extended hook: single taps fire the '
         'native + canary actions', (tester) async {
       var nativeFires = 0;
       var canaryFires = 0;
@@ -707,17 +705,9 @@ void main() {
 
       await tester.tap(
           find.byKey(const ValueKey('crash_test_hook_native_button')));
-      await tester.tap(
-          find.byKey(const ValueKey('crash_test_hook_canary_button')));
-      await tester.pump();
-      expect(nativeFires, 0, reason: 'plain tap must be inert');
-      expect(canaryFires, 0, reason: 'plain tap must be inert');
-
-      await tester.longPress(
-          find.byKey(const ValueKey('crash_test_hook_native_button')));
       await tester.pump();
       expect(nativeFires, 1);
-      await tester.longPress(
+      await tester.tap(
           find.byKey(const ValueKey('crash_test_hook_canary_button')));
       await tester.pump();
       expect(canaryFires, 1);

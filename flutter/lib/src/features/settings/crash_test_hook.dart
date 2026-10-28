@@ -16,8 +16,10 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// gated inside [CrashReporting] (and, for the native trigger, on
 /// the Kotlin side), so no action is reachable in prod.
 ///
-/// Three long-press actions; a plain tap is inert on every button
-/// by design — none of these may fire by accident:
+/// Three actions, each fired by a SINGLE TAP (founder direction,
+/// Oct 27, 2026: the original long-press gate was unusable on
+/// device — the settings scroll view's gesture arena ate the
+/// press — so a plain tap fires, with no confirmation gate):
 ///
 /// - Dart forced crash: [CrashReporting.forceTestCrash] throws an
 ///   uncaught error through the real uncaught path (C6 evidence).
@@ -110,27 +112,23 @@ class _CrashTestHookState extends State<CrashTestHook> {
     }
   }
 
-  Widget _longPressButton({
+  Widget _actionButton({
     required ValueKey<String> key,
     required String label,
-    required VoidCallback onLongPress,
+    required VoidCallback onTap,
   }) {
     return SizedBox(
       width: double.infinity,
-      child: GestureDetector(
-        onLongPress: onLongPress,
-        child: ElevatedButton(
-          key: key,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: NotelColors.surfaceHigh,
-            foregroundColor: NotelColors.textPrimary,
-          ),
-          // A plain tap is inert by design (see class doc).
-          onPressed: () {},
-          child: Text(
-            label,
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
+      child: ElevatedButton(
+        key: key,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: NotelColors.surfaceHigh,
+          foregroundColor: NotelColors.textPrimary,
+        ),
+        onPressed: onTap,
+        child: Text(
+          label,
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
     );
@@ -149,17 +147,17 @@ class _CrashTestHookState extends State<CrashTestHook> {
           children: [
             const Text(
               'TEST ONLY — crash reporting check. This card exists '
-              'only in the Tabs Lab build. Long-press a button to '
-              'fire it; a plain tap does nothing. The two crash '
+              'only in the Tabs Lab build. Tap a button to '
+              'fire it. The two crash '
               'buttons will close the app. Do not use on data you '
               'care about.',
               style: TextStyle(color: NotelColors.textSecondary, fontSize: 12),
             ),
             const SizedBox(height: 12),
-            _longPressButton(
+            _actionButton(
               key: const ValueKey('crash_test_hook_button'),
-              label: 'Long-press to force a test crash',
-              onLongPress: CrashReporting.forceTestCrash,
+              label: 'Tap to force a test crash',
+              onTap: CrashReporting.forceTestCrash,
             ),
             const SizedBox(height: 12),
             const Text(
@@ -169,10 +167,10 @@ class _CrashTestHookState extends State<CrashTestHook> {
               style: TextStyle(color: NotelColors.textSecondary, fontSize: 12),
             ),
             const SizedBox(height: 8),
-            _longPressButton(
+            _actionButton(
               key: const ValueKey('crash_test_hook_native_button'),
-              label: 'Long-press to force a NATIVE test crash',
-              onLongPress: _fireNativeCrash,
+              label: 'Tap to force a NATIVE test crash',
+              onTap: _fireNativeCrash,
             ),
             const SizedBox(height: 12),
             const Text(
@@ -183,10 +181,10 @@ class _CrashTestHookState extends State<CrashTestHook> {
               style: TextStyle(color: NotelColors.textSecondary, fontSize: 12),
             ),
             const SizedBox(height: 8),
-            _longPressButton(
+            _actionButton(
               key: const ValueKey('crash_test_hook_canary_button'),
-              label: 'Long-press to send the canary test event',
-              onLongPress: _fireCanary,
+              label: 'Tap to send the canary test event',
+              onTap: _fireCanary,
             ),
             if (_status != null) ...[
               const SizedBox(height: 12),
