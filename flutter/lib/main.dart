@@ -13,6 +13,7 @@ import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_history_sync.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/launch_trace.dart';
+import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/daily_score_background.dart';
@@ -100,6 +101,12 @@ Future<void> _bootstrap() async {
     // account is dropped here instead of seeding another account's
     // all-time history + Daily Scores into this session.
     HealthHistoryStore.instance.warmFromDisk(currentEmail: sessionEmail),
+    // Optimistic logging (Oct 27, 2026) — same account-bound warm
+    // for the log-entry outbox: entries staged locally but not yet
+    // pushed (including by a session the OS killed mid-push) are in
+    // memory before the first frame, ready to overlay the first
+    // pull and retry on the first sync trigger.
+    LogEntryOutbox.instance.warmFromDisk(currentEmail: sessionEmail),
   ]);
   LaunchTrace.instance.mark(LaunchTrace.cachesWarmed);
   // V-1 correction — the ONE app-level notification bootstrap:
@@ -470,6 +477,15 @@ class _AppFlowState extends State<AppFlow>
   void _onSessionExpired() {
     unawaited(HomeDataCache.instance.clear());
     unawaited(QuickLogCache.instance.clear());
+    // Optimistic logging (F2): unconfirmed log entries are
+    // account-bound health data, but session expiry must not
+    // silently destroy them — the session is dead, so no push is
+    // possible, yet the entries were never confirmed by the server.
+    // The owner-bound blob is RETAINED: the same account's next
+    // sign-in restores and flushes its own pending entries, and a
+    // different account's sign-in drops them via the login
+    // owner-mismatch wiring below before they can render or push.
+    unawaited(LogEntryOutbox.instance.retainUnconfirmed());
     // R70 fix pass (Vera F1 / Juno C1) — the historical health store
     // is account-bound too: session expiry leaves none of the expired
     // account's all-time history or Daily Scores on device.
@@ -532,6 +548,9 @@ class _AppFlowState extends State<AppFlow>
   void _onLoginSuccess(String email) {
     unawaited(QuickLogCache.instance.clearIfOwnerMismatch(email));
     unawaited(HomeDataCache.instance.clearIfOwnerMismatch(email));
+    // Optimistic logging: a previous account's unconfirmed entries
+    // must never render under, or push into, the new account.
+    unawaited(LogEntryOutbox.instance.clearIfOwnerMismatch(email));
     // R70 fix pass (Vera F1 / Juno C1) — same owner-mismatch
     // enforcement for the historical health store.
     unawaited(HealthHistoryStore.instance.clearIfOwnerMismatch(email));
@@ -678,7 +697,17 @@ class _AppFlowState extends State<AppFlow>
     unawaited(HealthHistorySync.instance.captureOnAppOpen());
   }
 
+  /// Optimistic-logging retry trigger: every home landing is a
+  /// normal sync opportunity for entries staged locally but not yet
+  /// confirmed by the server. Fire-and-forget; the outbox is
+  /// single-flight and its failures stay visible as Not synced in
+  /// History rather than surfacing here.
+  void _retryPendingLogEntries() {
+    unawaited(LogEntryOutbox.instance.flush(_tabsBackend));
+  }
+
   void _kickFirstRunResync() {
+    _retryPendingLogEntries();
     _firstRunResyncFuture ??= _runFirstRunResync();
     // Every home landing funnels through here (cold-start restore,
     // sign-in, onboarding completion): a stashed Daily Score
@@ -723,6 +752,7 @@ class _AppFlowState extends State<AppFlow>
   void _onRegisterSuccess(String email) {
     unawaited(QuickLogCache.instance.clearIfOwnerMismatch(email));
     unawaited(HomeDataCache.instance.clearIfOwnerMismatch(email));
+    unawaited(LogEntryOutbox.instance.clearIfOwnerMismatch(email));
     // R70 fix pass (Vera F1 / Juno C1) — same owner-mismatch
     // enforcement for the historical health store.
     unawaited(HealthHistoryStore.instance.clearIfOwnerMismatch(email));
@@ -992,6 +1022,9 @@ class _AppFlowState extends State<AppFlow>
       // notification's elapsed text and retries pending Trends
       // writes (Juno §B/§E).
       unawaited(_migraineController.onAppResumed());
+      // Optimistic logging: a resume while home is likewise a retry
+      // trigger for any unconfirmed log-entry upserts.
+      if (_stage == _FlowStage.home) _retryPendingLogEntries();
       // App-open sync (founder directive, Oct 22, 2026): a return
       // from background while home is an app open — trigger the
       // open capture NOW, in the foreground (Juno F1), through

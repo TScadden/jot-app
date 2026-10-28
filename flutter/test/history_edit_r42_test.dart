@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/quicklog/history_screen.dart';
@@ -18,7 +19,11 @@ import 'test_helpers.dart';
 ///   replaced by the native JSON-array shape `["<category name>"]`;
 ///   the list row updates in place with no reload.
 /// - Check-in entries (Mood & Energy + "Daily Ranking") → NO edit UI.
-/// - Failed save → old values remain everywhere, error shown.
+/// - Optimistic semantics (Oct 27, 2026): a save is accepted once it
+///   is durable in the local outbox; a failed SERVER push keeps the
+///   new values on screen with the card reading Not synced (proven
+///   in optimistic_log_entry_sync_test.dart). Only a failed LOCAL
+///   persistence keeps the old values + inline error.
 
 const _categories = <Map<String, dynamic>>[
   {
@@ -114,12 +119,29 @@ class _FakeServer {
   }
 }
 
+/// The outbox on an in-memory disk, reset per case: edit saves now
+/// stage locally first, so the suite must not touch the real
+/// secure-storage channel.
+LogEntryOutbox _freshOutbox() {
+  final disk = <String, String>{};
+  final outbox = LogEntryOutbox.instance;
+  outbox.debugReset();
+  outbox.debugSetStore(
+    read: (key) async => disk[key],
+    write: (key, value) async => disk[key] = value,
+    delete: (key) async => disk.remove(key),
+  );
+  return outbox;
+}
+
 Future<void> _pumpHistory(
   WidgetTester tester,
   _FakeServer server,
 ) async {
   await tester.pumpWidget(
-    MaterialApp(home: HistoryScreen(backend: server.backend())),
+    MaterialApp(
+      home: HistoryScreen(backend: server.backend(), outbox: _freshOutbox()),
+    ),
   );
   await tester.pumpAndSettle();
 }
@@ -315,7 +337,8 @@ void main() {
       expect(server.capturedPosts, isEmpty);
     });
 
-    testWidgets('failed save → old values remain, error shown',
+    testWidgets(
+        'server-failed text save → new text stays, queued for retry',
         (tester) async {
       final server = _FakeServer([_normalEntry()])..failPosts = true;
       await _pumpHistory(tester, server);
@@ -329,21 +352,25 @@ void main() {
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
 
-      // Honest error, editor stays open, nothing adopted.
+      // Optimistic semantics: the edit was durably saved LOCALLY, so
+      // the editor closed and the new text is adopted everywhere —
+      // the failed push is surfaced by the card's Not synced badge
+      // and the still-queued outbox record, never by reverting.
       expect(find.text("Couldn't save that edit — try again."),
-          findsOneWidget);
-      await tester.tap(find.text('Cancel'));
-      await tester.pumpAndSettle();
-      // Detail still shows the OLD body — no phantom edit.
-      expect(find.text('Brain fog all morning'), findsWidgets);
-      expect(find.text('Phantom edit'), findsNothing);
+          findsNothing);
+      expect(find.text('Phantom edit'), findsWidgets);
       await tester.tap(find.text('Close'));
       await tester.pumpAndSettle();
-      expect(find.text('Brain fog all morning'), findsOneWidget);
-      expect(find.text('Phantom edit'), findsNothing);
+      expect(find.text('Phantom edit'), findsOneWidget);
+      expect(find.text('Brain fog all morning'), findsNothing);
+      expect(find.text('Not synced'), findsOneWidget);
+      expect(LogEntryOutbox.instance.failedIds, contains(42));
+      // The server, meanwhile, still holds the old text.
+      expect(server.entries.single['body'], 'Brain fog all morning');
     });
 
-    testWidgets('failed category change → old category kept, error shown',
+    testWidgets(
+        'server-failed category change → new category stays, Not synced',
         (tester) async {
       final server = _FakeServer([_normalEntry()])..failPosts = true;
       await _pumpHistory(tester, server);
@@ -353,11 +380,17 @@ void main() {
       await tester.tap(find.text('GENERAL'));
       await tester.pumpAndSettle();
 
+      // No inline error: the change saved locally. The dialog title
+      // names the NEW category, the server still holds the old one,
+      // and the queue keeps the edit marked failed for retry.
       expect(find.text("Couldn't save that change — try again."),
-          findsOneWidget);
-      // Title still names the OLD category; server state unchanged.
-      expect(find.text('Symptoms'), findsWidgets);
+          findsNothing);
+      expect(find.text('General'), findsWidgets);
       expect(server.entries.single['categoryId'], 3);
+      expect(LogEntryOutbox.instance.failedIds, contains(42));
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+      expect(find.text('Not synced'), findsOneWidget);
     });
   });
 }

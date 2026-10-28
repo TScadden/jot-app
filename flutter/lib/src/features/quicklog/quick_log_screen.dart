@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
+import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
@@ -77,8 +78,7 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 /// names are lowercased to match [recentSuggestions]' body match.
 /// Top-level (not a State method) so fixture tests can exercise
 /// the exact computation the screen runs.
-Set<String> activeMedicationNamesFromProfile(
-    Map<String, dynamic>? profile) {
+Set<String> activeMedicationNamesFromProfile(Map<String, dynamic>? profile) {
   final decoded = TabsBackend.decodeProfileList(profile?['medications']);
   final out = <String>{};
   for (final row in decoded) {
@@ -94,8 +94,15 @@ class QuickLogScreen extends StatefulWidget {
   final TabsBackend? backend;
   final WeatherApiClient? weatherApi;
   final VoiceInput? voiceInput;
+  final LogEntryOutbox? outbox;
 
-  const QuickLogScreen({super.key, this.backend, this.weatherApi, this.voiceInput});
+  const QuickLogScreen({
+    super.key,
+    this.backend,
+    this.weatherApi,
+    this.voiceInput,
+    this.outbox,
+  });
 
   @override
   State<QuickLogScreen> createState() => _QuickLogScreenState();
@@ -104,6 +111,7 @@ class QuickLogScreen extends StatefulWidget {
 class _QuickLogScreenState extends State<QuickLogScreen> {
   TabsBackend get _backend => widget.backend ?? TabsBackend();
   VoiceInput get _voice => widget.voiceInput ?? VoiceInput();
+  LogEntryOutbox get _outbox => widget.outbox ?? LogEntryOutbox.instance;
 
   /// Round 19c: no blocking `_loading` flag exists anymore. The first
   /// background refresh flips this when it lands; until then, any
@@ -132,6 +140,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
 
   List<QuickLogEntry> _recentSuggestions = const [];
   int? _medicationCategoryId;
+  Set<String> _activeMedicationNamesCache = const {};
 
   bool _isUnlimited = false;
   bool _isAdmin = false;
@@ -150,7 +159,11 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
   String _profileUserContext = '';
 
   int _todayCount = 0;
-  bool _saving = false;
+
+  /// Re-entrancy guard for the brief local-persistence window only.
+  /// It is deliberately not a loading state: the network push never
+  /// gates the form, the confirmation, or the button's appearance.
+  bool _saveInFlight = false;
   String? _saveError;
 
   static const _chipInk = Color(0xFF0A0A0E); // native LegacyDarkChipInk
@@ -158,6 +171,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
   @override
   void initState() {
     super.initState();
+    _outbox.addListener(_onOutboxChanged);
     _manualController.addListener(() {
       final has = _manualController.text.trim().isNotEmpty;
       if (has != _hasTypedText) setState(() => _hasTypedText = has);
@@ -183,11 +197,45 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
 
   @override
   void dispose() {
+    _outbox.removeListener(_onOutboxChanged);
     _manualController.dispose();
     super.dispose();
   }
 
   // ── Load (round 19c: background refresh, never blocking) ─────────
+
+  /// Kicks the entry-outbox disk load against the session account
+  /// WITHOUT gating the refresh on it (see [_refresh]): storage
+  /// latency must never hold the screen hostage. The load's
+  /// completion notification applies the overlay via
+  /// [_onOutboxChanged] if the pull landed first.
+  void _primeOutbox() {
+    unawaited(() async {
+      try {
+        await _outbox.load(ownerEmail: await _backend.readEmail());
+      } catch (_) {
+        try {
+          await _outbox.load();
+        } catch (_) {}
+      }
+    }());
+  }
+
+  /// The outbox changed (its disk load landed, an entry was staged,
+  /// or a background push resolved): re-apply the pending overlay
+  /// over whatever the last pull put on screen.
+  void _onOutboxChanged() {
+    if (!mounted) return;
+    setState(() {
+      _entries = _outbox.merge(_entries);
+      _todayCount = todayEntryCount(_entries);
+      _recentSuggestions = recentSuggestions(
+        _entries,
+        activeMedicationNames: _activeMedicationNamesCache,
+        medicationCategoryId: _medicationCategoryId,
+      );
+    });
+  }
 
   /// Stale-while-revalidate refresh. Runs on every open (and on
   /// pull-to-refresh / retry / category mutations, as `_load` did in
@@ -196,29 +244,49 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
   /// screen (cached seed or previous data), and the error state is
   /// surfaced only when nothing has ever been shown.
   Future<void> _refresh() async {
+    // Local-first reconciliation: the outbox load is kicked first
+    // and its records are overlaid over the pull below (and again
+    // via the outbox listener if the load lands after the pull), so
+    // a stale pull cannot erase a not-yet-pushed log or edit — and
+    // the refresh never waits on the storage channel to do it.
+    _primeOutbox();
     try {
       final pull = await _backend.fetchSyncPull();
       if (!mounted) return;
       if (pull == null) {
         setState(() {
+          _entries = _outbox.merge(_entries);
+          _todayCount = todayEntryCount(_entries);
+          _recentSuggestions = recentSuggestions(
+            _entries,
+            activeMedicationNames: _activeMedicationNamesCache,
+            medicationCategoryId: _medicationCategoryId,
+          );
           _firstRefreshDone = true;
           if (!_everHadCategories) {
             _loadError = "Couldn't reach the Tabs server. "
                 'Check your connection and pull down to retry.';
           }
         });
+        // Opening/refreshing Quick Log is a normal sync trigger:
+        // retry anything an earlier session staged but could not
+        // push, without making this refresh wait on the network.
+        unawaited(_outbox.flush(_backend));
         return;
       }
-      final entries = await _backend.fetchLogEntryDtos();
+      final serverEntries = await _backend.fetchLogEntryDtos();
+      final entries = _outbox.merge(serverEntries);
       final rawCategories = await _backend.fetchLogCategories();
       final membership = await _backend.fetchMembership();
       final profile = await _backend.fetchProfile();
 
       final ranked = rankCategories(rawCategories, entries);
       final medCat = rawCategories
-          .where((c) =>
-              c.name.trim().toLowerCase() == 'medication' ||
-              c.name.trim().toLowerCase() == 'medications')
+          .where(
+            (c) =>
+                c.name.trim().toLowerCase() == 'medication' ||
+                c.name.trim().toLowerCase() == 'medications',
+          )
           .firstOrNull;
       final medNames = _activeMedicationNames(profile);
       final recents = recentSuggestions(
@@ -250,6 +318,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         _autoAiSuggestions = auto;
         _profileUserContext = userContext;
         _medicationCategoryId = medCat?.id;
+        _activeMedicationNamesCache = medNames;
         _recentSuggestions = recents;
         _todayCount = todayEntryCount(entries);
         _firstRefreshDone = true;
@@ -266,6 +335,9 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         isAdmin: membership.isAdmin,
       );
       unawaited(cache.persist());
+      // A completed refresh is also a retry trigger for the entry
+      // outbox; the push runs behind the already-rendered data.
+      unawaited(_outbox.flush(_backend));
 
       // Native auto-fetch: Auto Ping on + category + access + no chips.
       if (auto &&
@@ -314,8 +386,10 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
     final cat = _selectedCategory;
     if (cat == null) return;
     if (!_isUnlimited && !_isAdmin) {
-      setState(() => _chipsError =
-          'Unlimited membership required for AI features. Please check Membership in Settings.');
+      setState(
+        () => _chipsError =
+            'Unlimited membership required for AI features. Please check Membership in Settings.',
+      );
       return;
     }
     if (!forceRefresh) {
@@ -379,16 +453,24 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
     sb.writeln('[SYSTEM: SUGGESTION_ENGINE_RULES]');
     sb.writeln("Return 6-10 'Quick Note' chips. Rules:");
     sb.writeln(
-        '1. STRICTURE: Each chip MUST BE 20 CHARACTERS OR LESS (including spaces).');
+      '1. STRICTURE: Each chip MUST BE 20 CHARACTERS OR LESS (including spaces).',
+    );
     sb.writeln('2. Each chip MUST be 1-3 words total.');
     sb.writeln(
-        "3. Focus only on specific symptoms, actions, or status updates appropriate for the category '${cat.name}'.");
-    sb.writeln("4. NO full sentences. NO punctuation. NO trailing conjunctions ('and', 'with', 'for').");
+      "3. Focus only on specific symptoms, actions, or status updates appropriate for the category '${cat.name}'.",
+    );
     sb.writeln(
-        "5. Use clear health abbreviations if necessary (e.g., 'RLS', 'POTs', 'OI', 'MCAS').");
+      "4. NO full sentences. NO punctuation. NO trailing conjunctions ('and', 'with', 'for').",
+    );
     sb.writeln(
-        '6. Priorities matching current user data (HR spikes, sleep debt, past logs).');
-    sb.writeln("Example: 'Brain Fog', 'Chest Pain', 'High HR Spike', 'Restless Legs'.");
+      "5. Use clear health abbreviations if necessary (e.g., 'RLS', 'POTs', 'OI', 'MCAS').",
+    );
+    sb.writeln(
+      '6. Priorities matching current user data (HR spikes, sleep debt, past logs).',
+    );
+    sb.writeln(
+      "Example: 'Brain Fog', 'Chest Pain', 'High HR Spike', 'Restless Legs'.",
+    );
     return sb.toString();
   }
 
@@ -436,7 +518,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
   // ── Save ──────────────────────────────────────────────────────────
 
   bool get _isLogEnabled =>
-      !_saving && (_selectedChips.isNotEmpty || _hasTypedText);
+      !_saveInFlight && (_selectedChips.isNotEmpty || _hasTypedText);
 
   String _composedText() {
     final parts = <String>[];
@@ -446,12 +528,20 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
     return parts.join(' · ');
   }
 
-  int _nextEntryId() {
-    var maxId = 0;
+  /// F1: the id is allocated by the outbox AFTER its disk load
+  /// settles (see [LogEntryOutbox.allocateEntryId]) — never
+  /// synchronously from a possibly-unloaded [LogEntryOutbox.maxId],
+  /// which could hand a killed session's pending id to a new entry
+  /// and let stage() overwrite the pending record.
+  Future<int> _nextEntryId() {
+    var serverMaxId = 0;
     for (final e in _entries) {
-      if (e.id > maxId) maxId = e.id;
+      if (e.id > serverMaxId) serverMaxId = e.id;
     }
-    return maxId + 1;
+    return _outbox.allocateEntryIdForBackend(
+      backend: _backend,
+      serverMaxId: serverMaxId,
+    );
   }
 
   /// Round 59 — after any successful entry creation on this screen,
@@ -465,6 +555,31 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
     unawaited(HomeDataCache.instance.persist());
   }
 
+  /// Applies an already-durably-staged entry to every local surface
+  /// and starts its server push behind them. The push result never
+  /// gates this method: the per-entry pending/failed presentation
+  /// for an unconfirmed row lives on the entry's recent-suggestion
+  /// chip (F5) and on its History card, both fed by the outbox.
+  void _applyLocalEntry(QuickLogEntry entry) {
+    setState(() {
+      _entries = _outbox.merge([..._entries, entry]);
+      _todayCount = todayEntryCount(_entries);
+      _recentSuggestions = recentSuggestions(
+        _entries,
+        activeMedicationNames: _activeMedicationNamesCache,
+        medicationCategoryId: _medicationCategoryId,
+      );
+      _saveError = null;
+    });
+    QuickLogCache.instance.applyCounts(
+      todayCount: _todayCount,
+      recentSuggestions: _recentSuggestions,
+    );
+    unawaited(QuickLogCache.instance.persist());
+    _syncHomeEntryCount();
+    unawaited(_outbox.flush(_backend));
+  }
+
   /// Native `saveEntry()`: chipless manual notes file under the
   /// "general" category (native `findCategoryIdBySlug("general",
   /// defaultId = 7)`); here resolved against the real category set.
@@ -473,10 +588,8 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
     if (cat == null || !_isLogEnabled) return;
     final body = _composedText();
     if (body.isEmpty) return;
-    setState(() {
-      _saving = true;
-      _saveError = null;
-    });
+    _saveInFlight = true;
+    setState(() => _saveError = null);
     final categoryId = _selectedChips.isEmpty
         ? _categories
                 .where((c) => c.name.trim().toLowerCase() == 'general')
@@ -485,7 +598,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
             cat.id
         : cat.id;
     final entry = QuickLogEntry(
-      id: _nextEntryId(),
+      id: await _nextEntryId(),
       categoryId: categoryId,
       body: body,
       chips: _selectedChips.isEmpty ? '' : _selectedChips.join(', '),
@@ -493,52 +606,35 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
       timestamp: DateTime.now().millisecondsSinceEpoch,
     );
     try {
-      final ok = await _backend.postLogEntries([entry]);
-      if (!ok) {
+      // Local persistence FIRST. The form completes as soon as the
+      // entry is durable on device; the server POST follows in the
+      // background through the outbox.
+      final staged = await _outbox.stageForBackend(
+        entry,
+        backend: _backend,
+        serverKnown: false,
+      );
+      if (!mounted) return;
+      if (!staged) {
         setState(() {
-          _saving = false;
-          _saveError =
-              "Couldn't save that entry. Check your connection and try again.";
+          _saveError = "Couldn't save that entry on this device. "
+              'Try again.';
         });
         return;
       }
-      _backend.invalidateSyncPull();
-      final entries = await _backend.fetchLogEntryDtos();
-      final medNames = _activeMedicationNames(await _backend.fetchProfile());
+      _applyLocalEntry(entry);
       setState(() {
-        _entries = entries;
-        _todayCount = todayEntryCount(entries);
-        _recentSuggestions = recentSuggestions(
-          entries,
-          activeMedicationNames: medNames,
-          medicationCategoryId: _medicationCategoryId,
-        );
-        _saving = false;
-        _saveError = null;
         _selectedChips = const [];
         _manualController.clear();
       });
-      // Round 19c: keep the cache seed in step with the mutation.
-      QuickLogCache.instance.applyCounts(
-        todayCount: _todayCount,
-        recentSuggestions: _recentSuggestions,
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Entry logged · $_todayCount today')),
       );
-      unawaited(QuickLogCache.instance.persist());
-      // Round 59: the new entry also moves the Home strip's count —
-      // mirror it into the Home snapshot and persist (which pushes
-      // the home-screen widget), so the widget shows the new count
-      // immediately instead of the count from Home's last load.
-      _syncHomeEntryCount();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Entry logged · $_todayCount today')),
-        );
-      }
     } catch (e) {
-      setState(() {
-        _saving = false;
-        _saveError = 'Save failed: $e';
-      });
+      if (!mounted) return;
+      setState(() => _saveError = 'Save failed: $e');
+    } finally {
+      _saveInFlight = false;
     }
   }
 
@@ -546,27 +642,21 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
   /// immediately re-log that entry's content.
   Future<void> _logFromRecent(QuickLogEntry entry) async {
     final dupe = QuickLogEntry(
-      id: _nextEntryId(),
+      id: await _nextEntryId(),
       categoryId: entry.categoryId,
       body: entry.body,
       chips: entry.chips,
       manualText: entry.manualText,
       timestamp: DateTime.now().millisecondsSinceEpoch,
     );
-    final ok = await _backend.postLogEntries([dupe]);
+    final staged = await _outbox.stageForBackend(
+      dupe,
+      backend: _backend,
+      serverKnown: false,
+    );
     if (!mounted) return;
-    if (ok) {
-      _backend.invalidateSyncPull();
-      final entries = await _backend.fetchLogEntryDtos();
-      if (!mounted) return;
-      setState(() {
-        _entries = entries;
-        _todayCount = todayEntryCount(entries);
-      });
-      QuickLogCache.instance.applyCounts(todayCount: _todayCount);
-      unawaited(QuickLogCache.instance.persist());
-      // Round 59: same Home/widget count sync as the save path.
-      _syncHomeEntryCount();
+    if (staged) {
+      _applyLocalEntry(dupe);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Entry logged · $_todayCount today')),
       );
@@ -587,8 +677,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
     try {
       final text = await _voice.startVoiceInput();
       final current = _manualController.text.trim();
-      _manualController.text =
-          current.isEmpty ? text : '$current $text';
+      _manualController.text = current.isEmpty ? text : '$current $text';
     } on VoiceInputException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -607,12 +696,14 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: NotelColors.surface,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('New category',
-            style: TextStyle(
-                color: NotelColors.textPrimary,
-                fontWeight: FontWeight.bold)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'New category',
+          style: TextStyle(
+            color: NotelColors.textPrimary,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         content: TextField(
           controller: nameController,
           autofocus: true,
@@ -625,16 +716,20 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel',
-                style: TextStyle(color: NotelColors.textPrimary)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: NotelColors.textPrimary),
+            ),
           ),
           TextButton(
-            onPressed: () =>
-                Navigator.pop(context, nameController.text.trim()),
-            child: const Text('Add',
-                style: TextStyle(
-                    color: NotelColors.primary,
-                    fontWeight: FontWeight.bold)),
+            onPressed: () => Navigator.pop(context, nameController.text.trim()),
+            child: const Text(
+              'Add',
+              style: TextStyle(
+                color: NotelColors.primary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),
@@ -647,10 +742,9 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
       '#4ECDC4',
       '#4D96FF',
       '#A566FF',
-      '#FFD93D'
+      '#FFD93D',
     ];
-    final nextId =
-        _categories.fold<int>(0, (m, c) => c.id > m ? c.id : m) + 1;
+    final nextId = _categories.fold<int>(0, (m, c) => c.id > m ? c.id : m) + 1;
     final nextSort =
         _categories.fold<int>(0, (m, c) => c.sortOrder > m ? c.sortOrder : m) +
             1;
@@ -689,12 +783,14 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: NotelColors.surface,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Delete Subject?',
-            style: TextStyle(
-                color: NotelColors.textPrimary,
-                fontWeight: FontWeight.bold)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Delete Subject?',
+          style: TextStyle(
+            color: NotelColors.textPrimary,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         content: Text(
           "Are you sure you want to delete '${cat.name}'? This will remove the subject from your quick logging list.",
           style: const TextStyle(color: NotelColors.textSecondary),
@@ -702,14 +798,20 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel',
-                style: TextStyle(color: NotelColors.textPrimary)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: NotelColors.textPrimary),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete',
-                style: TextStyle(
-                    color: NotelColors.error, fontWeight: FontWeight.bold)),
+            child: const Text(
+              'Delete',
+              style: TextStyle(
+                color: NotelColors.error,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),
@@ -767,11 +869,14 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: NotelColors.surface,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Tabs Premium',
-            style: TextStyle(
-                color: NotelColors.textPrimary, fontWeight: FontWeight.bold)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Tabs Premium',
+          style: TextStyle(
+            color: NotelColors.textPrimary,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         content: const Text(
           'AI suggestions need Tabs Premium. Manage your membership in Settings under Membership — subscriptions are purchased and managed through Google Play.',
           style: TextStyle(color: NotelColors.textSecondary),
@@ -779,10 +884,13 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Got it',
-                style: TextStyle(
-                    color: NotelColors.primary,
-                    fontWeight: FontWeight.bold)),
+            child: const Text(
+              'Got it',
+              style: TextStyle(
+                color: NotelColors.primary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),
@@ -793,8 +901,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final activeCatColor =
-        _selectedCategory?.color ?? NotelColors.primary;
+    final activeCatColor = _selectedCategory?.color ?? NotelColors.primary;
     return Scaffold(
       backgroundColor: NotelColors.background,
       appBar: AppBar(
@@ -870,15 +977,21 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.cloud_off_outlined,
-                size: 56, color: NotelColors.textSecondary),
+            const Icon(
+              Icons.cloud_off_outlined,
+              size: 56,
+              color: NotelColors.textSecondary,
+            ),
             const SizedBox(height: 16),
-            Text(_loadError!,
-                style: const TextStyle(
-                    fontSize: 14,
-                    height: 1.5,
-                    color: NotelColors.textSecondary),
-                textAlign: TextAlign.center),
+            Text(
+              _loadError!,
+              style: const TextStyle(
+                fontSize: 14,
+                height: 1.5,
+                color: NotelColors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: () {
@@ -890,7 +1003,8 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
                 backgroundColor: NotelColors.primary,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
+                  borderRadius: BorderRadius.circular(14),
+                ),
               ),
               child: const Text('Try again'),
             ),
@@ -909,51 +1023,43 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: TextField(
         controller: _manualController,
-        style:
-            const TextStyle(color: NotelColors.textPrimary, fontSize: 14),
+        style: const TextStyle(color: NotelColors.textPrimary, fontSize: 14),
         cursorColor: activeCatColor,
         decoration: InputDecoration(
           hintText: 'Add optional details about these symptoms…',
           hintStyle: const TextStyle(
-              color: NotelColors.textSecondary, fontSize: 13),
+            color: NotelColors.textSecondary,
+            fontSize: 13,
+          ),
           filled: true,
           fillColor: NotelColors.surface,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 16,
+          ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide:
-                BorderSide(color: activeCatColor.withValues(alpha: 0.25)),
+            borderSide: BorderSide(
+              color: activeCatColor.withValues(alpha: 0.25),
+            ),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
             borderSide: BorderSide(color: activeCatColor),
           ),
-          suffixIcon: _saving
-              ? Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: activeCatColor,
-                    ),
-                  ),
+          suffixIcon: _hasTypedText
+              ? IconButton(
+                  onPressed: _saveEntry,
+                  icon: const Icon(Icons.add),
+                  tooltip: 'Log typed note',
+                  color: activeCatColor,
                 )
-              : _hasTypedText
-                  ? IconButton(
-                      onPressed: _saveEntry,
-                      icon: const Icon(Icons.add),
-                      tooltip: 'Log typed note',
-                      color: activeCatColor,
-                    )
-                  : IconButton(
-                      onPressed: _mic,
-                      icon: const Icon(Icons.mic),
-                      tooltip: 'Voice Input',
-                      color: activeCatColor,
-                    ),
+              : IconButton(
+                  onPressed: _mic,
+                  icon: const Icon(Icons.mic),
+                  tooltip: 'Voice Input',
+                  color: activeCatColor,
+                ),
         ),
       ),
     );
@@ -1006,8 +1112,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => _selectCategory(cat),
-            onLongPress:
-                deletable ? () => _confirmDeleteCategory(cat) : null,
+            onLongPress: deletable ? () => _confirmDeleteCategory(cat) : null,
             // R49 Q1: the full 48dp row height is the hit area
             // (was a 36dp chip inside v6 list padding).
             child: SizedBox(
@@ -1015,7 +1120,9 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
               child: Center(
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 8),
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
                     color: selected ? catColor : NotelColors.surface,
@@ -1029,9 +1136,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
                   child: Text(
                     cat.name,
                     style: TextStyle(
-                      color: selected
-                          ? _chipInk
-                          : NotelColors.textSecondary,
+                      color: selected ? _chipInk : NotelColors.textSecondary,
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
                     ),
@@ -1117,13 +1222,13 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         height: 48,
         child: Center(
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               color: NotelColors.surface,
               border: Border.all(
-                  color: NotelColors.primary.withValues(alpha: 0.25)),
+                color: NotelColors.primary.withValues(alpha: 0.25),
+              ),
             ),
             child: const Row(
               mainAxisSize: MainAxisSize.min,
@@ -1184,20 +1289,24 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
                   child: Center(
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(10),
                         color: NotelColors.surfaceHigh,
                         border: Border.all(
-                            color: NotelColors.surfaceHigh
-                                .withValues(alpha: 0.5)),
+                          color: NotelColors.surfaceHigh.withValues(alpha: 0.5),
+                        ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.history,
-                              size: 14,
-                              color: NotelColors.textSecondary),
+                          const Icon(
+                            Icons.history,
+                            size: 14,
+                            color: NotelColors.textSecondary,
+                          ),
                           const SizedBox(width: 6),
                           Text(
                             label,
@@ -1206,6 +1315,20 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
                               fontSize: 12,
                             ),
                           ),
+                          // F5: a staged (not yet server-confirmed)
+                          // entry carries the SAME per-entry sync
+                          // badge History uses — same state model,
+                          // same copy — so a failed push is visible
+                          // here, not only in History. Confirmed
+                          // entries carry no badge: this strip is a
+                          // shortcut row, not a status list.
+                          if (_outbox.statusFor(entry.id) != null) ...[
+                            const SizedBox(width: 6),
+                            LogEntrySyncBadge(
+                              outbox: _outbox,
+                              entryId: entry.id,
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -1253,8 +1376,9 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
             child: const Text(
               'Learn about Tabs Premium',
               style: TextStyle(
-                  color: NotelColors.primary,
-                  fontWeight: FontWeight.bold),
+                color: NotelColors.primary,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ],
@@ -1265,13 +1389,13 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
           SizedBox(
             width: 48,
             height: 48,
-            child: CircularProgressIndicator(
-                color: NotelColors.primary),
+            child: CircularProgressIndicator(color: NotelColors.primary),
           ),
           SizedBox(height: 12),
-          Text('Getting suggestions…',
-              style: TextStyle(
-                  color: NotelColors.textSecondary, fontSize: 14)),
+          Text(
+            'Getting suggestions…',
+            style: TextStyle(color: NotelColors.textSecondary, fontSize: 14),
+          ),
         ],
       );
     } else if (_chipsError != null) {
@@ -1280,8 +1404,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
           Text(
             _chipsError!,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-                color: NotelColors.error, fontSize: 13),
+            style: const TextStyle(color: NotelColors.error, fontSize: 13),
           ),
           const SizedBox(height: 12),
           TextButton(
@@ -1291,10 +1414,13 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
             onPressed: _freshMembershipVerified
                 ? () => _fetchSuggestions(forceRefresh: true)
                 : null,
-            child: const Text('Retry',
-                style: TextStyle(
-                    color: NotelColors.primary,
-                    fontWeight: FontWeight.bold)),
+            child: const Text(
+              'Retry',
+              style: TextStyle(
+                color: NotelColors.primary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       );
@@ -1303,8 +1429,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         children: [
           const Text(
             'No suggestions loaded',
-            style: TextStyle(
-                color: NotelColors.textSecondary, fontSize: 12),
+            style: TextStyle(color: NotelColors.textSecondary, fontSize: 12),
           ),
           const SizedBox(height: 8),
           TextButton(
@@ -1317,8 +1442,9 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
             child: const Text(
               'Load Suggestions',
               style: TextStyle(
-                  color: NotelColors.primary,
-                  fontWeight: FontWeight.bold),
+                color: NotelColors.primary,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ],
@@ -1336,7 +1462,9 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
     final rows = <Widget>[];
     for (var i = 0; i < _chips.length; i += 2) {
       final rowChips = _chips.sublist(
-          i, i + 2 > _chips.length ? _chips.length : i + 2);
+        i,
+        i + 2 > _chips.length ? _chips.length : i + 2,
+      );
       rows.add(
         Row(
           children: [
@@ -1375,8 +1503,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         constraints: const BoxConstraints(minHeight: 48),
         alignment: Alignment.centerLeft,
         margin: const EdgeInsets.only(right: 10),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
           color: selected ? activeCatColor : NotelColors.surface,
@@ -1395,8 +1522,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
             // precedent (5.21:1 on primary), not white (3.80:1).
             color: selected ? _chipInk : NotelColors.textPrimary,
             fontSize: 13,
-            fontWeight:
-                selected ? FontWeight.bold : FontWeight.normal,
+            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
           ),
         ),
       ),
@@ -1406,9 +1532,8 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
   /// "Your quick note" card — visible when chips are selected, text is
   /// typed, or a save error exists (native AnimatedVisibility rule).
   Widget _buildQuickNoteCard(Color activeCatColor) {
-    final visible = _selectedChips.isNotEmpty ||
-        _hasTypedText ||
-        _saveError != null;
+    final visible =
+        _selectedChips.isNotEmpty || _hasTypedText || _saveError != null;
     if (!visible) return const SizedBox.shrink();
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -1416,8 +1541,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         color: NotelColors.surface,
-        border: Border.all(
-            color: NotelColors.primary.withValues(alpha: 0.18)),
+        border: Border.all(color: NotelColors.primary.withValues(alpha: 0.18)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1428,7 +1552,9 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
               const Text(
                 'Your quick note',
                 style: TextStyle(
-                    color: NotelColors.textSecondary, fontSize: 12),
+                  color: NotelColors.textSecondary,
+                  fontSize: 12,
+                ),
               ),
               SizedBox(
                 height: 48,
@@ -1436,37 +1562,32 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
                   onPressed: _isLogEnabled ? _saveEntry : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: activeCatColor,
-                    disabledBackgroundColor:
-                        activeCatColor.withValues(alpha: 0.35),
+                    disabledBackgroundColor: activeCatColor.withValues(
+                      alpha: 0.35,
+                    ),
                     foregroundColor: Colors.white,
-                    disabledForegroundColor:
-                        Colors.white.withValues(alpha: 0.5),
+                    disabledForegroundColor: Colors.white.withValues(
+                      alpha: 0.5,
+                    ),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                   ),
-                  child: _saving
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.check, size: 14),
-                            SizedBox(width: 4),
-                            Text(
-                              'Log',
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold),
-                            ),
-                          ],
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.check, size: 14),
+                      SizedBox(width: 4),
+                      Text(
+                        'Log',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
                         ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
