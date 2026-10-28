@@ -304,18 +304,52 @@ class _MainShellState extends State<MainShell>
 
   @override
   Widget build(BuildContext context) {
+    final ambient = Theme.of(context);
     return Stack(
       children: [
-        // Tab body. This inner Stack is the slot wrappers' parent in
-        // EVERY state (rest and sliding alike) — if the wrappers'
-        // parent changed between states, their screens would remount
-        // at each transition boundary. Outgoing renders below
-        // incoming while sliding; at rest only the settled slot is in
-        // the tree at all.
-        Stack(
-          children: _sliding
-              ? [_slotWidget(_fromSlot), _slotWidget(_toSlot)]
-              : [_slotWidget(_settledSlot)],
+        // Snackbar clearance: the dock below is an overlay SIBLING
+        // of the tab bodies, not any tab Scaffold's
+        // bottomNavigationBar, so a Scaffold knows nothing about
+        // it — and a fixed (M3 default) SnackBar anchors to its own
+        // Scaffold's bottom edge, where the opaque dock pill paints
+        // over its lower half. Scoping a FLOATING snackbar theme
+        // around the body slot only (never the dock) parks the
+        // visible card above the pill instead: a floating bar sits
+        // at its base (the Scaffold's bottom, capped at the
+        // viewPadding line the dock also resolves against) minus
+        // the theme's insetPadding.bottom, which is derived from
+        // the shared dock geometry in nav_dock.dart and reads the
+        // same _showNavLabels field that drives the dock, so the
+        // inset tracks the labels preference (56 vs 66) exactly.
+        // Left/right stay 0, so the bar keeps its full-width look;
+        // colors / shape / text style / duration come untouched
+        // from the ambient theme. Screens outside the shell
+        // (welcome / login, pushed routes) are not under this
+        // Theme, so they get no phantom gap. Do not "simplify"
+        // this wrapper away — the defect returns with it.
+        Theme(
+          data: ambient.copyWith(
+            snackBarTheme: ambient.snackBarTheme.copyWith(
+              behavior: SnackBarBehavior.floating,
+              insetPadding: EdgeInsets.fromLTRB(
+                0,
+                5,
+                0,
+                navDockSnackBarBottomInset(showLabels: _showNavLabels),
+              ),
+            ),
+          ),
+          // Tab body. This inner Stack is the slot wrappers' parent in
+          // EVERY state (rest and sliding alike) — if the wrappers'
+          // parent changed between states, their screens would remount
+          // at each transition boundary. Outgoing renders below
+          // incoming while sliding; at rest only the settled slot is in
+          // the tree at all.
+          child: Stack(
+            children: _sliding
+                ? [_slotWidget(_fromSlot), _slotWidget(_toSlot)]
+                : [_slotWidget(_settledSlot)],
+          ),
         ),
         // Dock floats above every tab.
         Positioned(
