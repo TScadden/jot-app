@@ -278,7 +278,8 @@ class NativeCrashScrubTest {
         assertNull(result.getRequest())
         val crumbs = result.getBreadcrumbs()
         assertTrue(crumbs == null || crumbs.isEmpty())
-        assertTrue(result.getExtras() == null || result.getExtras().isEmpty())
+        val extrasAfter = result.getExtras()
+        assertTrue(extrasAfter == null || extrasAfter.isEmpty())
         // (getModules() is package-private in the SDK; the modules
         // row is proven by the serialization sweep below.)
         assertNull(result.getMessage())
@@ -332,8 +333,10 @@ class NativeCrashScrubTest {
         assertEquals(false, mechanism.isExceptionGroup())
         assertEquals(3, mechanism.getExceptionId())
         assertEquals(1, mechanism.getParentId())
-        assertTrue(mechanism.getData() == null || mechanism.getData()!!.isEmpty())
-        assertTrue(mechanism.getMeta() == null || mechanism.getMeta()!!.isEmpty())
+        val mechData = mechanism.getData()
+        val mechMeta = mechanism.getMeta()
+        assertTrue(mechData == null || mechData.isEmpty())
+        assertTrue(mechMeta == null || mechMeta.isEmpty())
         assertNull(mechanism.getDescription())
         assertNull(mechanism.getHelpLink())
 
@@ -352,7 +355,8 @@ class NativeCrashScrubTest {
         assertNull(frame.getContextLine())
         assertNull(frame.getPreContext())
         assertNull(frame.getPostContext())
-        assertTrue(frame.getVars() == null || frame.getVars()!!.isEmpty())
+        val frameVars = frame.getVars()
+        assertTrue(frameVars == null || frameVars.isEmpty())
         assertNull(exceptions[0].getStacktrace()!!.getRegisters())
 
         // ── Context rows ──
