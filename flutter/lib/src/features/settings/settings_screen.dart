@@ -16,6 +16,7 @@ import 'package:tabs_lab/src/data/metrics_csv_import.dart';
 import 'package:tabs_lab/src/data/migration_bundle.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/google_sign_in_service.dart';
+import 'package:tabs_lab/src/data/medication_change_events.dart';
 import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
@@ -2400,10 +2401,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // ── Medications / Conditions / Auto-Fill (Round 30) ──────────────
 
-  Future<void> _saveMedications(List<Map<String, dynamic>> meds) async {
+  Future<bool> _saveMedications(List<Map<String, dynamic>> meds) async {
     final raw = jsonEncode(meds);
     setState(() => _data = _data.copyWith(medicationsRaw: raw));
-    await _pushProfile({'medications': raw});
+    return await _pushProfile({'medications': raw});
   }
 
   /// Report-pdf fix (write-path audit, Oct 22, 2026) — the shared
@@ -2461,7 +2462,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _snack('Could not save. Check your connection and try again.');
       return;
     }
-    await _saveMedications(rows);
+    final saved = await _saveMedications(rows);
+    if (saved) {
+      // Phase 1 item 2a (spec §2.6): capture the change events
+      // — ONLY now that the profile push has succeeded,
+      // diffing the FRESH before-state against the pushed rows
+      // (parsed back through the shared model; unparseable
+      // rows ride through pushes verbatim and carry no fields
+      // to diff). Emission is best-effort and cannot throw.
+      // It is fired WITHOUT awaiting: this method's callers
+      // dismiss their dialogs when it returns, and a
+      // best-effort capture POST (20s transport timeout on a
+      // dead connection) must never delay a completed save's
+      // UI — the diff above is computed synchronously from the
+      // fresh/pushed states either way.
+      final afterEntries = <MedicationEntry>[];
+      for (final row in rows) {
+        final entry = MedicationEntry.fromBlobRow(row);
+        if (entry != null) afterEntries.add(entry);
+      }
+      unawaited(emitMedicationChangeEvents(
+        _backend,
+        diffMedicationLists(
+          before: fresh.entries,
+          after: afterEntries,
+          source: 'settings',
+          now: DateTime.now(),
+          idGen: generateMedicationUuid,
+        ),
+      ));
+    }
   }
 
   /// The raw index [entry] occupies in [doc], or -1 — identity

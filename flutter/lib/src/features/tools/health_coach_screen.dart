@@ -10,6 +10,7 @@ import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart';
+import 'package:tabs_lab/src/data/medication_change_events.dart';
 import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
@@ -3731,6 +3732,10 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
         return const CoachApprovalOutcome.failure();
       }
       final rows = decodeCoachProfileBlobRaw(profile['medications']);
+      // Phase 1 item 2a (spec §2.6): snapshot the raw rows
+      // BEFORE the append loop — after a successful push this
+      // is the before-state the capture diff runs against.
+      final beforeRows = List<dynamic>.of(rows);
       final existingNames = <String>{
         for (final row in rows)
           if (coachRawRowMap(row) != null)
@@ -3760,9 +3765,42 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
       }
       final saved = await _backend
           .postSyncProfile({'medications': jsonEncode(rows)});
-      return saved
-          ? const CoachApprovalOutcome.success()
-          : const CoachApprovalOutcome.failure();
+      if (!saved) return const CoachApprovalOutcome.failure();
+      // Phase 1 item 2a (spec §2.6): capture the change events
+      // — ONLY now that the profile push has succeeded,
+      // diffing the pre-append rows against the pushed rows
+      // (both parsed through the shared model). A re-approval
+      // where every proposed med already exists appended
+      // nothing, so the diff is empty and no event is emitted.
+      // Emission is best-effort and cannot throw, so it can
+      // never un-save this completed save.
+      List<MedicationEntry> parseRows(List<dynamic> rawRows) {
+        final out = <MedicationEntry>[];
+        for (final row in rawRows) {
+          final map = coachRawRowMap(row);
+          if (map == null) continue;
+          final entry = MedicationEntry.fromBlobRow(map);
+          if (entry != null) out.add(entry);
+        }
+        return out;
+      }
+
+      // Fired WITHOUT awaiting, for the same reason as the
+      // Settings hook: the approval outcome reports this save's
+      // completion, and a best-effort capture POST must never
+      // delay it — the diff is computed synchronously from the
+      // pre-append/pushed states either way.
+      unawaited(emitMedicationChangeEvents(
+        _backend,
+        diffMedicationLists(
+          before: parseRows(beforeRows),
+          after: parseRows(rows),
+          source: 'coach',
+          now: DateTime.now(),
+          idGen: generateMedicationUuid,
+        ),
+      ));
+      return const CoachApprovalOutcome.success();
     } catch (_) {
       return const CoachApprovalOutcome.failure();
     }

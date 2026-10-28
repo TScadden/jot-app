@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/data/medication_change_events.dart';
 import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
@@ -401,6 +402,22 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
           {'medications': jsonEncode(updated.encode())});
       if (ok) {
         _backend.invalidateSyncPull();
+        // Phase 1 item 2a (spec §2.6): capture the change
+        // events — ONLY now that the profile push has
+        // succeeded, diffing the FRESH before-state against
+        // the pushed after-state (never the rendered
+        // snapshot). Emission is best-effort and cannot throw,
+        // so it can never un-save this completed save.
+        await emitMedicationChangeEvents(
+          _backend,
+          diffMedicationLists(
+            before: fresh.entries,
+            after: updated.entries,
+            source: 'tools',
+            now: DateTime.now(),
+            idGen: generateMedicationUuid,
+          ),
+        );
         return;
       }
       if (!mounted) return;
