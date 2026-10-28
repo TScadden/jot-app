@@ -18,6 +18,7 @@ import io.sentry.protocol.SentryException
 import io.sentry.protocol.SentryRuntime
 import io.sentry.protocol.SentryStackFrame
 import io.sentry.protocol.SentryStackTrace
+import io.sentry.protocol.SentryThread
 import io.sentry.protocol.User
 import java.io.StringWriter
 import java.util.Date
@@ -71,6 +72,7 @@ class NativeCrashScrubTest {
         private const val CANARY_SERVER = "canary-server-name"
         private const val CANARY_RUNTIME_VERSION = "canary-runtime-version-text"
         private const val CANARY_TOP_MODULE = "canary-top-module-1.0"
+        private const val CANARY_THREAD_NAME = "canary-thread-name-main"
 
         private val ALL_CANARIES = listOf(
             CANARY_INSTALL_ID,
@@ -93,6 +95,7 @@ class NativeCrashScrubTest {
             CANARY_SERVER,
             CANARY_RUNTIME_VERSION,
             CANARY_TOP_MODULE,
+            CANARY_THREAD_NAME,
             "canaryTopModule"
         )
     }
@@ -187,6 +190,20 @@ class NativeCrashScrubTest {
 
         event.setExceptions(listOf(ex1, ex2))
 
+        // Thread canary (Vera C1): a native event entering the
+        // scrub carries a thread — named with a canary, crashed,
+        // holding the canary stack trace — matching ex1's
+        // threadId (9), exactly as a real native crash event
+        // would. The serialization sweep below must prove the
+        // scrubbed event carries no "threads" key on the wire.
+        val thread = SentryThread()
+        thread.setId(9L)
+        thread.setName(CANARY_THREAD_NAME)
+        thread.setCrashed(true)
+        thread.setCurrent(true)
+        thread.setStacktrace(trace)
+        event.setThreads(listOf(thread))
+
         // Contexts: the full B5 enrichment.
         val contexts: Contexts = event.getContexts()
         val app = App()
@@ -267,6 +284,20 @@ class NativeCrashScrubTest {
     fun scrubbedEventSatisfiesEverySection15Row() {
         val event = seededB5Event()
         val eventIdBefore = event.getEventId()
+
+        // Vera C1 sanity: the SEEDED event really carries the
+        // thread on the wire — the same serializer writes a
+        // "threads" key and the canary thread name before the
+        // scrub. Without this, the post-scrub absence assertion
+        // below could pass vacuously.
+        val seededWriter = StringWriter()
+        JsonSerializer(SentryOptions()).serialize(event, seededWriter)
+        val seededJson = seededWriter.toString()
+        assertTrue(seededJson.contains("\"threads\""))
+        assertTrue(seededJson.contains(CANARY_THREAD_NAME))
+        val seededThreads = event.getThreads()
+        assertTrue(seededThreads != null && seededThreads.isNotEmpty())
+
         val result = NativeCrashScrub.scrub(event)
 
         // Never null, same event (§1.3).
@@ -286,10 +317,10 @@ class NativeCrashScrubTest {
         assertNull(result.getServerName())
         assertNull(result.getFingerprints())
         // SentryEvent.setThreads(null) stores an EMPTY SentryValues in
-        // sentry-java 8.61.1 (never null); the serializer writes the
-        // threads key only when the list is non-empty, so the received
-        // event carries no threads key — asserted here as null-or-empty
-        // and on the wire by the serialization sweep below.
+        // sentry-java 8.61.1 (never null); object-level the scrubbed
+        // event is null-or-empty here, and the serialization sweep
+        // below proves the wire side: the seeded thread canary is
+        // gone and no "threads" key is written (Vera C1).
         val threadsAfter = result.getThreads()
         assertTrue(threadsAfter == null || threadsAfter.isEmpty())
         assertNull(result.getTransaction())
@@ -451,6 +482,10 @@ class NativeCrashScrubTest {
         assertFalse(json.contains("\"breadcrumbs\""))
         assertFalse(json.contains("\"request\""))
         assertFalse(json.contains("\"extra\""))
+        // Vera C1: a thread was seeded into this event (see the
+        // pre-scrub sanity above), so this assertion proves the
+        // "threads" key's absence on the wire, not vacuously.
+        assertFalse(json.contains("\"threads\""))
         assertTrue(json.contains("RuntimeException"))
         assertTrue(json.contains("Pixel 9a"))
     }
