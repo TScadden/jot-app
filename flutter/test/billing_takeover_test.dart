@@ -1067,6 +1067,259 @@ void main() {
       expect(find.textContaining('free trial'), findsNothing);
       expect(find.textContaining('Free for'), findsNothing);
     });
+
+    // ── Vera follow-up: offer-grouping edge cases ────────────
+    // Two shapes the base-plan grouping must survive without
+    // crashing and without inventing a price: an offer whose
+    // basePlanId is null, and a group whose offers carry no
+    // recurring-price phase. The assertions below pin the
+    // production code's actual behavior (billing_plans_panel
+    // ._groupsFor / _PlanGroup): a null base-plan ID groups
+    // under its own null key — never merged into a named plan
+    // group, never force-unwrapped — plan names come from the
+    // group's recurring PERIOD, and every price line is the
+    // offers' real phase summary or the honest fallback.
+
+    // (i) A null-basePlanId offer with NO phase data as the
+    // catalog's only offer: grouping must not crash on the null
+    // key, the lone card falls back to the product title (no
+    // recurring period → no plan name), and NO price is
+    // invented — the honest fallback line, a bare "Subscribe"
+    // CTA, and no '$', savings, or trial claim anywhere.
+    testWidgets(
+        '(i) null basePlanId offer with no phases → no crash, '
+        'honest fallback card, no invented price', (tester) async {
+      await pumpPanel(tester, catalog: [
+        product(BillingProducts.monthly, [
+          offer(token: 'tok-null', basePlan: null, phases: const []),
+        ]),
+      ]);
+      expect(tester.takeException(), isNull);
+      expect(find.text('Monthly Plan'), findsNothing);
+      expect(find.text('Yearly Plan'), findsNothing);
+      // The fake's product title is its id; that is the card's
+      // fallback title for a period-less group.
+      expect(find.text(BillingProducts.monthly), findsOneWidget);
+      expect(find.text('Pricing shown in Google Play'), findsOneWidget);
+      expect(find.textContaining('\$'), findsNothing);
+      expect(find.textContaining('SAVE '), findsNothing);
+      expect(find.text('FREE TRIAL'), findsNothing);
+      expect(find.text('Subscribe'), findsOneWidget);
+    });
+
+    // (j) A null-basePlanId offer WITH real phases as the
+    // catalog's only offer: it still groups (under the null
+    // key), its card is named from its recurring PERIOD (P1M →
+    // Monthly — plan names never come from base-plan ID
+    // strings), and the price shown is exactly the price Play
+    // returned in its phases — nothing invented, nothing added.
+    testWidgets(
+        '(j) null basePlanId offer with P1M phases → period-named '
+        'card showing only its real phase price', (tester) async {
+      await pumpPanel(tester, catalog: [
+        product(BillingProducts.monthly, [
+          // Builder default phases: P7D free, then $5.99 P1M.
+          offer(token: 'tok-null', basePlan: null),
+        ]),
+      ]);
+      expect(tester.takeException(), isNull);
+      expect(find.text('Monthly Plan'), findsOneWidget);
+      expect(find.text('Yearly Plan'), findsNothing);
+      expect(find.text('Free for 7-day, then \$5.99/month'),
+          findsOneWidget);
+      expect(find.text('FREE TRIAL'), findsOneWidget);
+      expect(find.text('Start 7-day free trial'), findsOneWidget);
+      expect(find.textContaining('\$39.99'), findsNothing);
+      expect(find.textContaining('SAVE '), findsNothing);
+    });
+
+    // (k) A null-basePlanId offer with no phases ALONGSIDE the
+    // live monthly/yearly groups: the named groups and their
+    // savings chip are untouched, the null offer is NOT merged
+    // into either named group (the monthly group still holds
+    // exactly its two offers and still waits for the user's
+    // pick), and its own card shows the honest fallback instead
+    // of borrowing a named plan's price.
+    testWidgets(
+        '(k) null basePlanId offer alongside live groups → named '
+        'groups and SAVE chip untouched, null card honestly empty',
+        (tester) async {
+      await pumpPanel(tester, catalog: [
+        product(BillingProducts.monthly, [
+          ...liveCatalog().offers,
+          offer(token: 'tok-null', basePlan: null, phases: const []),
+        ]),
+      ]);
+      expect(tester.takeException(), isNull);
+      expect(find.text('Monthly Plan'), findsOneWidget);
+      expect(find.text('Yearly Plan'), findsOneWidget);
+      expect(find.text('SAVE 44% • BEST VALUE'), findsOneWidget);
+      // Not merged: both named groups still hold exactly two
+      // offers each, and no group claims three.
+      expect(find.text('2 offers — tap to choose'), findsNWidgets(2));
+      expect(find.text('3 offers — tap to choose'), findsNothing);
+      expect(find.text('Choose a plan option'), findsOneWidget);
+      // The null group's own card is titled with the product
+      // title (fake title = product id). Its price line is the
+      // honest fallback — as are both named groups' lines in
+      // this state: a multi-offer group with no pick yet (the
+      // selected monthly group) or not selected (yearly) has no
+      // unambiguous offer to price from, so all three cards
+      // show the fallback and no price is invented for any of
+      // them.
+      expect(find.text(BillingProducts.monthly), findsOneWidget);
+      expect(find.text('Pricing shown in Google Play'),
+          findsNWidgets(3));
+    });
+
+    // (l) A group whose only offer carries ONLY a free phase —
+    // no recurring-price phase at all: no crash, the group is
+    // NOT named Monthly (its only period is the trial's P7D),
+    // its card shows the real free-phase summary and NO
+    // recurring price (no '$5.99', no '/month', no '$0.00'), no
+    // FREE TRIAL chip (the chip gate is a monthly recurring
+    // period), and with no known monthly recurring price there
+    // is no savings chip. The healthy yearly group beside it
+    // renders and selects normally.
+    testWidgets(
+        '(l) free-phase-only group → no fabricated recurring '
+        'price, no SAVE chip, yearly unaffected', (tester) async {
+      await pumpPanel(tester, catalog: [
+        product(BillingProducts.monthly, [
+          offer(
+            token: 'tok-m-free',
+            basePlan: 'premium-monthly',
+            offerId: 'free-trial-7-day',
+            phases: const [
+              BillingPricingPhase(
+                  formattedPrice: '\$0.00',
+                  priceAmountMicros: 0,
+                  priceCurrencyCode: 'USD',
+                  billingPeriod: 'P7D'),
+            ],
+          ),
+          offer(
+            token: 'tok-y-base',
+            basePlan: 'premium-yearly',
+            offerId: null,
+            phases: const [
+              BillingPricingPhase(
+                  formattedPrice: '\$39.99',
+                  priceAmountMicros: 39990000,
+                  priceCurrencyCode: 'USD',
+                  billingPeriod: 'P1Y'),
+            ],
+          ),
+        ]),
+      ]);
+      expect(tester.takeException(), isNull);
+      expect(find.text('Monthly Plan'), findsNothing);
+      expect(find.text('Yearly Plan'), findsOneWidget);
+      expect(find.text('Free for 7-day'), findsOneWidget);
+      expect(find.textContaining('\$5.99'), findsNothing);
+      expect(find.textContaining('\$0.00'), findsNothing);
+      expect(find.textContaining('/month'), findsNothing);
+      expect(find.text('FREE TRIAL'), findsNothing);
+      expect(find.textContaining('SAVE '), findsNothing);
+      expect(find.textContaining('BEST VALUE'), findsNothing);
+      expect(find.text('Subscribe — \$39.99/year'), findsOneWidget);
+    });
+
+    // (m) A group whose only offer carries NO phases at all —
+    // no recurring price and no trial — beside a healthy
+    // monthly group: no crash, the phase-less group is NOT
+    // named Yearly (no period → product-title fallback), its
+    // price line is the honest fallback (never a fabricated
+    // '$39.99'), and it cannot feed a savings claim.
+    testWidgets(
+        '(m) phase-less yearly group beside monthly → honest '
+        'fallback, no fabricated price or SAVE chip',
+        (tester) async {
+      await pumpPanel(tester, catalog: [
+        product(BillingProducts.monthly, [
+          offer(
+            token: 'tok-m-base',
+            basePlan: 'premium-monthly',
+            offerId: null,
+            phases: const [
+              BillingPricingPhase(
+                  formattedPrice: '\$5.99',
+                  priceAmountMicros: 5990000,
+                  priceCurrencyCode: 'USD',
+                  billingPeriod: 'P1M'),
+            ],
+          ),
+          offer(
+            token: 'tok-y-none',
+            basePlan: 'premium-yearly',
+            offerId: null,
+            phases: const [],
+          ),
+        ]),
+      ]);
+      expect(tester.takeException(), isNull);
+      expect(find.text('Monthly Plan'), findsOneWidget);
+      expect(find.text('Yearly Plan'), findsNothing);
+      expect(find.text(BillingProducts.monthly), findsOneWidget);
+      expect(find.text('Pricing shown in Google Play'), findsOneWidget);
+      expect(find.textContaining('\$39.99'), findsNothing);
+      expect(find.textContaining('SAVE '), findsNothing);
+      expect(find.textContaining('BEST VALUE'), findsNothing);
+      expect(find.text('Subscribe — \$5.99/month'), findsOneWidget);
+    });
+
+    // (n) A monthly group whose offers carry only FREE phases
+    // (a $0 P1M phase is a period, not a price): the card is
+    // named from that period and shows the real all-free
+    // summary, but a $0 "recurring price" must never become a
+    // savings claim — no SAVE / BEST VALUE chip — and no dollar
+    // price ('$0.00' included) is shown for the monthly group.
+    testWidgets(
+        '(n) all-free monthly phases → real free summary, \$0 '
+        'never feeds a SAVE chip', (tester) async {
+      await pumpPanel(tester, catalog: [
+        product(BillingProducts.monthly, [
+          offer(
+            token: 'tok-m-free',
+            basePlan: 'premium-monthly',
+            offerId: 'free-trial-7-day',
+            phases: const [
+              BillingPricingPhase(
+                  formattedPrice: '\$0.00',
+                  priceAmountMicros: 0,
+                  priceCurrencyCode: 'USD',
+                  billingPeriod: 'P7D'),
+              BillingPricingPhase(
+                  formattedPrice: '\$0.00',
+                  priceAmountMicros: 0,
+                  priceCurrencyCode: 'USD',
+                  billingPeriod: 'P1M'),
+            ],
+          ),
+          offer(
+            token: 'tok-y-base',
+            basePlan: 'premium-yearly',
+            offerId: null,
+            phases: const [
+              BillingPricingPhase(
+                  formattedPrice: '\$39.99',
+                  priceAmountMicros: 39990000,
+                  priceCurrencyCode: 'USD',
+                  billingPeriod: 'P1Y'),
+            ],
+          ),
+        ]),
+      ]);
+      expect(tester.takeException(), isNull);
+      expect(find.text('Monthly Plan'), findsOneWidget);
+      expect(find.text('Free for 7-day, then Free for 1-month'),
+          findsOneWidget);
+      expect(find.textContaining('\$0.00'), findsNothing);
+      expect(find.textContaining('\$5.99'), findsNothing);
+      expect(find.textContaining('SAVE '), findsNothing);
+      expect(find.textContaining('BEST VALUE'), findsNothing);
+      expect(find.text('Start 7-day free trial'), findsOneWidget);
+    });
   });
 
   group('Single app-owned instance (Vera fix 1)', () {
