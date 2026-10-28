@@ -14,7 +14,9 @@ import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_history_sync.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
+import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/data/migraine_controller.dart';
+import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/launch_trace.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
@@ -25,6 +27,7 @@ import 'package:tabs_lab/src/features/connections/connections_screen.dart';
 import 'package:tabs_lab/src/features/home/daily_score_circle.dart';
 import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
+import 'package:tabs_lab/src/features/home/flare_day_logging.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 import 'package:tabs_lab/src/features/home/health_connect_banner.dart';
@@ -156,6 +159,12 @@ class HomeScreen extends StatefulWidget {
   /// forwards the controller to the Today Summary card.
   final MigraineController? migraineController;
 
+  /// Phase 1 item 1 — the entry outbox the flare-day commit stages
+  /// through (the shipped VC 100107 optimistic mechanism). Injectable
+  /// for tests; defaults to the shared singleton every other entry
+  /// writer uses.
+  final LogEntryOutbox? logEntryOutbox;
+
   const HomeScreen(
       {super.key,
       this.email,
@@ -169,7 +178,8 @@ class HomeScreen extends StatefulWidget {
       this.healthHistoryStore,
       this.dailyScoreSnapshotCapture,
       this.billingService,
-      this.migraineController});
+      this.migraineController,
+      this.logEntryOutbox});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -221,6 +231,33 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Double-tap guard (native `tapInFlight`): one tap, one entry.
   bool _feelingTapInFlight = false;
   int? _feelingCategoryId;
+
+  // ── Phase 1 item 1: flare-day fast logging ──────────────────────
+  /// Null until the sync pull resolves the Symptoms category — the
+  /// flare button renders only once it resolves (spec §4.2 honesty
+  /// pattern: hide rather than misfile). Fully independent of the
+  /// Daily Ranking check-in above (founder Q5): a flare log never
+  /// settles, fills, or hides the check-in card.
+  int? _flareCategoryId;
+
+  /// Today's flare record, DERIVED from the entry set (pulled
+  /// entries overlaid with the outbox's pending local entries) —
+  /// never persisted as separate state (spec §4.4). Null while no
+  /// flare is logged for the current energy day.
+  QuickLogEntry? _flareToday;
+
+  /// The last known entry set AS MERGED with the outbox overlay —
+  /// the Quick Log pattern (`_entries` there is the merged view, so
+  /// an entry whose push has landed stays in the local view even
+  /// after its queue record leaves the outbox, until the next pull
+  /// confirms it). Re-deriving against a stale raw pull instead
+  /// would un-log a just-committed flare.
+  List<QuickLogEntry> _flareEntries = const [];
+
+  /// Commit guard: a double-tap or retry amends, never duplicates.
+  bool _flareCommitInFlight = false;
+
+  LogEntryOutbox get _outbox => widget.logEntryOutbox ?? LogEntryOutbox.instance;
 
   // ── Round 34: event counters ─────────────────────────────────────
   /// Active counters in Settings list order. Empty until the cache or
@@ -392,6 +429,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _resolveCountUpGate();
     _loadHealthData();
     _loadFeelingState();
+    _loadFlareState();
+    _outbox.addListener(_onFlareOutboxChanged);
     _loadCounters();
     _loadDailyScore();
     // Round 60 — non-essentials defer until AFTER the first frame:
@@ -455,6 +494,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     widget.migraineController?.removeListener(_onMigraineChanged);
+    _outbox.removeListener(_onFlareOutboxChanged);
     super.dispose();
   }
 
@@ -632,6 +672,194 @@ class _HomeScreenState extends State<HomeScreen> {
       // Card stays visible; the user can tap again.
     } finally {
       _feelingTapInFlight = false;
+    }
+  }
+
+  // ── Phase 1 item 1: flare-day fast logging ──────────────────────
+  //
+  // The write rides the shipped VC 100107 optimistic mechanism
+  // (LogEntryOutbox): allocate the id through the outbox's post-load
+  // allocation, stage durably on device FIRST, apply on screen, and
+  // flush in the background through the existing /api/sync/entries
+  // upsert. The outbox flush invalidates the sync pull on success.
+  // There is NO parallel sync path here, and this flow never calls
+  // postLogCategories (whole-list replace landmine, spec §4.3) — it
+  // only reads the pulled category set.
+
+  /// Derives the flare button state from [base] overlaid with the
+  /// outbox's pending local entries (spec §4.4: logged state is
+  /// derived, not stored, and pending entries count). The merged
+  /// result becomes the new local view (see [_flareEntries]). When
+  /// the derived record is still pending in the outbox — e.g. staged
+  /// in a session the OS killed before its push — this also kicks
+  /// the retry flush, the History-open pattern: Home may be the
+  /// first surface to see that record, and derivation is the one
+  /// place every path (load, listener, commit, sheet return)
+  /// passes through.
+  void _deriveFlareState(List<QuickLogEntry> base) {
+    _flareEntries = _outbox.merge(base);
+    final categoryId = _flareCategoryId;
+    if (categoryId == null) return;
+    final record = findFlareRecord(_flareEntries, symptomsCategoryId: categoryId);
+    if (record != null && _outbox.isPending(record.id)) {
+      unawaited(_outbox.flush(_backend));
+    }
+    if (!mounted) return;
+    if (record?.id != _flareToday?.id ||
+        record?.chips != _flareToday?.chips ||
+        record?.body != _flareToday?.body) {
+      setState(() => _flareToday = record);
+    }
+  }
+
+  /// The outbox changed (its disk load landed, an entry was staged,
+  /// a push settled): re-derive today's flare record from the local
+  /// merged view plus the pending overlay.
+  void _onFlareOutboxChanged() {
+    if (!mounted) return;
+    _deriveFlareState(_flareEntries);
+  }
+
+  /// Resolves the flare category + today's record from the REAL
+  /// pulled data. Any failure leaves the button unrendered — the
+  /// honest state, never a guess. Independent of [_loadFeelingState]
+  /// (founder Q5).
+  Future<void> _loadFlareState() async {
+    try {
+      // Kick the outbox disk load against the session account, so a
+      // record staged by a killed session is part of the derivation
+      // (and of the retry flush the listener kicks).
+      String? email;
+      try {
+        email = await _backend.readEmail();
+      } catch (_) {
+        email = null;
+      }
+      await _outbox.load(ownerEmail: email);
+      final pull = await _backend.fetchSyncPull();
+      if (pull == null) return;
+      final entries = await _backend.fetchLogEntryDtos();
+      final categories = await _backend.fetchLogCategories();
+      final categoryId = resolveFlareCategoryId(categories);
+      if (!mounted) return;
+      _flareCategoryId = categoryId;
+      if (categoryId == null) {
+        // Double miss: the button does not render.
+        if (_flareToday != null) setState(() => _flareToday = null);
+        return;
+      }
+      _deriveFlareState(entries);
+      // A plain setState so the button appears even when no flare
+      // record exists (the derivation above only fires on a record
+      // change; the category resolving is itself a render change).
+      if (mounted) setState(() {});
+    } catch (_) {
+      // Honest unrendered state — the button never renders on a guess.
+    }
+  }
+
+  /// Tap on the flare button (either state): opens the sheet,
+  /// pre-filled from today's record when one exists (spec §2.6).
+  Future<void> _onFlareTap() async {
+    final today = _flareToday;
+    await showFlareDaySheet(
+      context: context,
+      onCommit: _commitFlare,
+      initialSeverity: today == null ? null : flareSeverityOf(today),
+      initialType:
+          today == null ? null : flareTypesOf(today).firstOrNull,
+    );
+    if (!mounted) return;
+    // Re-derive on return: the commit already applied locally, and
+    // this catches any outbox change that landed while the sheet
+    // was up. The base is the local merged view, NOT a raw pull —
+    // a just-pushed entry whose queue record has left the outbox
+    // must stay derived (see [_flareEntries]).
+    _deriveFlareState(_flareEntries);
+  }
+
+  /// The sheet's commit: one flare record per energy day, amended in
+  /// place (founder Q2). Returns true only when the LOCAL stage
+  /// succeeded (Juno §3.3b) — the sheet closes, Home shows the
+  /// logged state, and the push runs in the background. A local
+  /// write failure returns false: the button stays un-logged and
+  /// the sheet surfaces the existing generic copy.
+  Future<bool> _commitFlare({required String severity, String? type}) async {
+    if (_flareCommitInFlight) return false;
+    final categoryId = _flareCategoryId;
+    if (categoryId == null) return false;
+    _flareCommitInFlight = true;
+    try {
+      // Duplicate safety (spec §4.4): re-check the derived state
+      // against a FRESH pull before writing — the check-in's
+      // re-check precedent — so a double-tap, a retry, or a record
+      // logged elsewhere amends instead of duplicating.
+      _backend.invalidateSyncPull();
+      final pull = await _backend.fetchSyncPull();
+      List<QuickLogEntry> entries = _flareEntries;
+      var resolvedCategoryId = categoryId;
+      if (pull != null) {
+        entries = await _backend.fetchLogEntryDtos();
+        final categories = await _backend.fetchLogCategories();
+        resolvedCategoryId =
+            resolveFlareCategoryId(categories) ?? categoryId;
+        _flareCategoryId = resolvedCategoryId;
+      }
+      final merged = _outbox.merge(entries);
+      final existing =
+          findFlareRecord(merged, symptomsCategoryId: resolvedCategoryId);
+      final QuickLogEntry entry;
+      final bool serverKnown;
+      if (existing != null) {
+        entry = amendFlareEntry(existing, severity: severity, type: type);
+        // Server-known when the outbox already classifies it so, or
+        // when a FRESH pull carried it (a merged local view alone
+        // proves nothing — it can hold a never-pushed local entry).
+        serverKnown = _outbox.isServerKnown(existing.id) ||
+            (pull != null && entries.any((e) => e.id == existing.id));
+      } else {
+        var serverMaxId = 0;
+        for (final e in merged) {
+          if (e.id > serverMaxId) serverMaxId = e.id;
+        }
+        final id = await _outbox.allocateEntryIdForBackend(
+          backend: _backend,
+          serverMaxId: serverMaxId,
+        );
+        entry = buildFlareEntry(
+          id: id,
+          categoryId: resolvedCategoryId,
+          severity: severity,
+          type: type,
+        );
+        serverKnown = false;
+      }
+      // Local persistence FIRST. Only a successful stage may change
+      // the button to its logged state (Juno §3.3b).
+      final staged = await _outbox.stageForBackend(
+        entry,
+        backend: _backend,
+        serverKnown: serverKnown,
+      );
+      if (!staged) return false;
+      if (!mounted) return true;
+      // Instant on-screen apply; the push runs behind it. A push
+      // failure rides the outbox's per-entry sync state (History /
+      // Quick Log badge copy) and never un-logs the entry. The
+      // committed entry also joins the local merged view, so a
+      // later re-derivation keeps it even after its queue record
+      // leaves the outbox on a successful push.
+      _flareEntries = _outbox.merge([...entries, entry]);
+      setState(() => _flareToday = entry);
+      unawaited(_outbox.flush(_backend));
+      // Quiet background refresh so today's counts pick up the new
+      // entry once its push lands (the feeling check-in's pattern).
+      unawaited(_loadHealthData());
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      _flareCommitInFlight = false;
     }
   }
 
@@ -948,6 +1176,20 @@ class _HomeScreenState extends State<HomeScreen> {
                     _feelingLeaving = false;
                   });
                 },
+              ),
+            // Phase 1 item 1 — the persistent flare-day button,
+            // directly under the check-in: present every day (the
+            // user declares a flare; Tabs never detects one),
+            // rendered only once the Symptoms category resolves,
+            // and NOT premium-gated (logging is free-forever). It is
+            // not wrapped in StaggeredEntrance for the same reason
+            // the check-in card is not: it carries its own state
+            // change, which doubles as the commit confirmation.
+            if (_flareCategoryId != null)
+              FlareDayButton(
+                loggedSeverity:
+                    _flareToday == null ? null : flareSeverityOf(_flareToday!),
+                onTap: () => unawaited(_onFlareTap()),
               ),
             StaggeredEntrance(
               index: 0,
