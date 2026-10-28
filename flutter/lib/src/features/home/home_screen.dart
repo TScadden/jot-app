@@ -14,7 +14,9 @@ import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_history_sync.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
+import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/data/migraine_controller.dart';
+import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/launch_trace.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
@@ -25,6 +27,7 @@ import 'package:tabs_lab/src/features/connections/connections_screen.dart';
 import 'package:tabs_lab/src/features/home/daily_score_circle.dart';
 import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
+import 'package:tabs_lab/src/features/home/intake_logging.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 import 'package:tabs_lab/src/features/home/health_connect_banner.dart';
@@ -156,6 +159,12 @@ class HomeScreen extends StatefulWidget {
   /// forwards the controller to the Today Summary card.
   final MigraineController? migraineController;
 
+  /// Phase 1 item 4 — the entry outbox the intake card stages
+  /// through (the shipped VC 100107 optimistic mechanism).
+  /// Injectable for tests; defaults to the shared singleton every
+  /// other entry writer uses.
+  final LogEntryOutbox? logEntryOutbox;
+
   const HomeScreen(
       {super.key,
       this.email,
@@ -169,7 +178,8 @@ class HomeScreen extends StatefulWidget {
       this.healthHistoryStore,
       this.dailyScoreSnapshotCapture,
       this.billingService,
-      this.migraineController});
+      this.migraineController,
+      this.logEntryOutbox});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -221,6 +231,47 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Double-tap guard (native `tapInFlight`): one tap, one entry.
   bool _feelingTapInFlight = false;
   int? _feelingCategoryId;
+
+  // ── Phase 1 item 4: salt & fluid tracking ───────────────────────
+  /// Null until the sync pull resolves the Hydration category BY
+  /// NAME (no fallback — spec §4.1/Q4): the intake card renders
+  /// only once it resolves, and never on a miss.
+  int? _intakeCategoryId;
+
+  /// The last known entry set AS MERGED with the outbox overlay —
+  /// the local view intake derivation reads, so a just-pushed entry
+  /// stays counted even after its queue record leaves the outbox,
+  /// until the next pull confirms it.
+  List<QuickLogEntry> _intakeEntries = const [];
+
+  /// Today's intake rows + totals, DERIVED from [_intakeEntries]
+  /// on every change (never persisted as separate state).
+  List<QuickLogEntry> _intakeTodayEntries = const [];
+  IntakeDayTotals? _intakeTotals;
+
+  /// Target versions + the version in force today, and the
+  /// remembered quick-add presets — device-local settings
+  /// (SettingsStore), loaded by [_loadIntakeState].
+  List<IntakeTargetVersion> _intakeTargetVersions = const [];
+  IntakeTargetVersion? _intakeTargetsToday;
+  IntakePresets _intakePresets = IntakePresets.seed();
+
+  /// True while the R4 seed label is in its first presentation.
+  bool _intakeSeedLabelVisible = false;
+
+  /// The most recent card-logged event (the Undo target). Session
+  /// state only, like the counter interaction it mirrors.
+  int? _intakeLastEntryId;
+
+  /// Commit guard: a double-tap retries the stage, never duplicates.
+  bool _intakeCommitInFlight = false;
+
+  LogEntryOutbox get _outbox =>
+      widget.logEntryOutbox ?? LogEntryOutbox.instance;
+
+  SettingsStore get _settingsStore => widget.settingsStore ?? SettingsStore();
+
+  IntakeSettings get _intakeSettings => IntakeSettings(_settingsStore);
 
   // ── Round 34: event counters ─────────────────────────────────────
   /// Active counters in Settings list order. Empty until the cache or
@@ -392,6 +443,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _resolveCountUpGate();
     _loadHealthData();
     _loadFeelingState();
+    _loadIntakeState();
+    _outbox.addListener(_onIntakeOutboxChanged);
     _loadCounters();
     _loadDailyScore();
     // Round 60 — non-essentials defer until AFTER the first frame:
@@ -455,6 +508,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     widget.migraineController?.removeListener(_onMigraineChanged);
+    _outbox.removeListener(_onIntakeOutboxChanged);
     super.dispose();
   }
 
@@ -633,6 +687,333 @@ class _HomeScreenState extends State<HomeScreen> {
     } finally {
       _feelingTapInFlight = false;
     }
+  }
+
+  // ── Phase 1 item 4: salt & fluid tracking ──────────────────────
+  //
+  // Writes ride the shipped VC 100107 optimistic mechanism
+  // (LogEntryOutbox): allocate the id through the outbox's post-load
+  // allocation, stage durably on device FIRST, apply on screen, and
+  // flush in the background through the existing /api/sync/entries
+  // upsert. This flow never calls postLogCategories and never
+  // writes the profile blob — it only reads the pulled category set
+  // and resolves `Hydration` BY NAME (no fallback, no creation:
+  // a miss hides the whole surface, spec §4.1/Q4).
+
+  /// Derives the card state from [base] overlaid with the outbox's
+  /// pending local entries. The merged result becomes the new local
+  /// view (see [_intakeEntries]). When a derived entry is still
+  /// pending — e.g. staged by a session the OS killed before its
+  /// push — this also kicks the retry flush (the flare pattern).
+  void _deriveIntakeState(List<QuickLogEntry> base) {
+    _intakeEntries = _outbox.merge(base);
+    final today = intakeEntriesForDay(_intakeEntries);
+    final totals = intakeTotalsForDay(_intakeEntries);
+    final targets =
+        intakeTargetsInForce(_intakeTargetVersions, dayStart: totals.dayStart);
+    // Only a PENDING record kicks the retry flush here (a record
+    // staged by a killed session loads as pending): a FAILED record
+    // also sits in the outbox map, and re-kicking on every notify
+    // would spin a retry loop — failed entries retry on the app's
+    // normal sync triggers, per the outbox contract.
+    var anyPending = false;
+    for (final e in today) {
+      if (_outbox.statusFor(e.id) == LogEntrySyncStatus.pending) {
+        anyPending = true;
+        break;
+      }
+    }
+    if (anyPending) unawaited(_outbox.flush(_backend));
+    if (!mounted) return;
+    final changed = totals.fluidMl != _intakeTotals?.fluidMl ||
+        totals.sodiumMg != _intakeTotals?.sodiumMg ||
+        totals.eventCount != _intakeTotals?.eventCount ||
+        today.map((e) => e.id).join(',') !=
+            _intakeTodayEntries.map((e) => e.id).join(',') ||
+        targets?.effectiveFromDayMs != _intakeTargetsToday?.effectiveFromDayMs ||
+        targets?.fluidTargetMl != _intakeTargetsToday?.fluidTargetMl ||
+        targets?.sodiumTargetMg != _intakeTargetsToday?.sodiumTargetMg;
+    _intakeTodayEntries = today;
+    _intakeTotals = totals;
+    _intakeTargetsToday = targets;
+    if (changed) setState(() {});
+  }
+
+  /// The outbox changed (disk load landed, an entry was staged, a
+  /// push settled): re-derive from the local merged view.
+  void _onIntakeOutboxChanged() {
+    if (!mounted || _intakeCategoryId == null) return;
+    _deriveIntakeState(_intakeEntries);
+  }
+
+  /// Resolves the Hydration category + today's intake state from
+  /// the REAL pulled data, and the targets/presets from the
+  /// on-device settings store. Any failure leaves the card
+  /// unrendered — the honest state, never a guess.
+  Future<void> _loadIntakeState() async {
+    try {
+      String? email;
+      try {
+        email = await _backend.readEmail();
+      } catch (_) {
+        email = null;
+      }
+      await _outbox.load(ownerEmail: email);
+      // Settings (targets + presets) are device-local; they load
+      // independently of the pull.
+      final versions = await _intakeSettings.loadTargets();
+      final presets = await _intakeSettings.loadPresets();
+      if (!mounted) return;
+      _intakeTargetVersions = versions;
+      _intakePresets = presets;
+      if (presets.seedLabelPending) {
+        // R4: the seed label renders at the seed's FIRST
+        // presentation (this mount); the stored flag flips now so
+        // it never renders again.
+        _intakeSeedLabelVisible = true;
+        unawaited(_intakeSettings.markSeedLabelShown());
+      }
+      final pull = await _backend.fetchSyncPull();
+      if (pull == null) return;
+      final entries = await _backend.fetchLogEntryDtos();
+      final categories = await _backend.fetchLogCategories();
+      final categoryId = resolveIntakeCategoryId(categories);
+      if (!mounted) return;
+      _intakeCategoryId = categoryId;
+      if (categoryId == null) {
+        // Name miss: the whole surface hides (spec §4.1/Q4).
+        if (_intakeTodayEntries.isNotEmpty) {
+          setState(() => _intakeTodayEntries = const []);
+        }
+        return;
+      }
+      _intakePullIds = entries.map((e) => e.id).toSet();
+      _deriveIntakeState(entries);
+      // A plain setState so the card appears even on a no-data day
+      // (the derivation only fires on a totals change; the category
+      // resolving is itself a render change).
+      if (mounted) setState(() {});
+    } catch (_) {
+      // Honest unrendered state — the card never renders on a guess.
+    }
+  }
+
+  /// Whether [entry] is known to exist server-side: the outbox
+  /// classifies it so, or the last pull carried it.
+  bool _intakeServerKnown(QuickLogEntry entry) =>
+      _outbox.isServerKnown(entry.id) ||
+      (_intakePullIds.contains(entry.id));
+
+  /// Ids present in the most recent raw pull (before the outbox
+  /// overlay) — refreshed by every intake load/commit re-pull.
+  Set<int> _intakePullIds = const {};
+
+  /// One quick-add tap on [kind]: a configured preset logs one
+  /// event with the remembered amounts; an unconfigured kind opens
+  /// the editor instead of logging an invented amount (spec §4.2).
+  Future<void> _onIntakeQuickAdd(String kind) async {
+    final preset = _intakePresets[kind];
+    if (preset == null || !preset.isConfigured) {
+      await _openIntakeEditor(initialKind: kind);
+      return;
+    }
+    final draft = IntakeDraft(
+      kind: kind,
+      fluidMl: preset.fluidMl,
+      sodiumMg: preset.sodiumMg,
+      saltMg: preset.saltMg,
+      time: DateTime.now(),
+    );
+    await _commitIntakeCreate(draft);
+  }
+
+  /// Creates one intake entry from [draft] through the outbox.
+  /// Returns true only when the LOCAL stage succeeded — a failed
+  /// push never un-logs (the entry stays staged with its sync
+  /// badge in History), and totals include it throughout because
+  /// derivation reads the merged local view.
+  Future<bool> _commitIntakeCreate(IntakeDraft draft) async {
+    if (_intakeCommitInFlight) return false;
+    final categoryId = _intakeCategoryId;
+    if (categoryId == null) return false;
+    _intakeCommitInFlight = true;
+    try {
+      // Re-check against a FRESH pull before writing (the flare /
+      // check-in precedent): fresh category resolution and the
+      // fresh server max id for the outbox allocator.
+      _backend.invalidateSyncPull();
+      final pull = await _backend.fetchSyncPull();
+      List<QuickLogEntry> entries = _intakeEntries;
+      var resolvedCategoryId = categoryId;
+      if (pull != null) {
+        entries = await _backend.fetchLogEntryDtos();
+        final categories = await _backend.fetchLogCategories();
+        resolvedCategoryId =
+            resolveIntakeCategoryId(categories) ?? categoryId;
+        _intakeCategoryId = resolvedCategoryId;
+        _intakePullIds = entries.map((e) => e.id).toSet();
+      }
+      final merged = _outbox.merge(entries);
+      var serverMaxId = 0;
+      for (final e in merged) {
+        if (e.id > serverMaxId) serverMaxId = e.id;
+      }
+      final id = await _outbox.allocateEntryIdForBackend(
+        backend: _backend,
+        serverMaxId: serverMaxId,
+      );
+      final entry = buildIntakeEntry(
+        id: id,
+        categoryId: resolvedCategoryId,
+        draft: draft,
+      );
+      // Local persistence FIRST; only a successful stage applies on
+      // screen.
+      final staged = await _outbox.stageForBackend(
+        entry,
+        backend: _backend,
+        serverKnown: false,
+      );
+      if (!staged) return false;
+      if (!mounted) return true;
+      setState(() => _intakeLastEntryId = entry.id);
+      _deriveIntakeState([...entries, entry]);
+      unawaited(_outbox.flush(_backend));
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      _intakeCommitInFlight = false;
+    }
+  }
+
+  /// The editor's save: create (through [_commitIntakeCreate]) or
+  /// edit in place (same id, body + payload rewritten together).
+  /// Either way the saved amounts become the kind's remembered
+  /// preset (spec §4.2).
+  Future<bool> _saveIntakeFromEditor(
+    IntakeDraft draft,
+    QuickLogEntry? existing,
+  ) async {
+    final bool ok;
+    if (existing == null) {
+      ok = await _commitIntakeCreate(draft);
+    } else {
+      final updated = editIntakeEntry(existing, draft: draft);
+      final staged = await _outbox.stageForBackend(
+        updated,
+        backend: _backend,
+        serverKnown: _intakeServerKnown(existing),
+      );
+      if (!staged) return false;
+      if (mounted) _deriveIntakeState(_intakeEntries);
+      unawaited(_outbox.flush(_backend));
+      ok = true;
+    }
+    if (ok) {
+      final presets = await _intakeSettings.rememberDraft(draft);
+      if (mounted) setState(() => _intakePresets = presets);
+    }
+    return ok;
+  }
+
+  /// Opens the intake editor: blank (optionally kind-first), or
+  /// prefilled from [entry] in edit mode with a delete action.
+  Future<void> _openIntakeEditor({
+    String? initialKind,
+    QuickLogEntry? entry,
+  }) async {
+    await showIntakeEditorSheet(
+      context: context,
+      existing: entry,
+      initialKind: initialKind,
+      presets: _intakePresets,
+      onSave: _saveIntakeFromEditor,
+      onDelete: entry == null
+          ? null
+          : () async {
+              await _deleteIntakeEntry(entry);
+            },
+    );
+    if (!mounted) return;
+    _deriveIntakeState(_intakeEntries);
+  }
+
+  /// Deletes an intake entry with History's semantics: a pending
+  /// local-only upsert is cancelled (that IS the delete); a
+  /// server-known row gets the server DELETE, and a failed DELETE
+  /// restores the cancelled staged version. Used by the card's
+  /// Undo (for the most recent card-logged event) and the editor's
+  /// delete action.
+  Future<void> _deleteIntakeEntry(QuickLogEntry entry) async {
+    _outbox.markDeleting(entry.id);
+    try {
+      await _outbox.settleInFlightPush();
+      if (!mounted) return;
+      final pendingRecord = _outbox.recordFor(entry.id);
+      LogEntryOutboxRecord? cancelledRecord;
+      if (pendingRecord != null) {
+        cancelledRecord = await _outbox.cancel(entry.id);
+        if (cancelledRecord == null) return;
+        if (!pendingRecord.serverKnown) {
+          _applyIntakeRemoval(entry.id);
+          return;
+        }
+      }
+      final ok = await _backend.deleteLogEntry(entry.id);
+      if (!mounted) return;
+      if (ok) {
+        _applyIntakeRemoval(entry.id);
+      } else if (cancelledRecord != null) {
+        await _outbox.restore(cancelledRecord);
+        if (mounted) _deriveIntakeState(_intakeEntries);
+      }
+    } finally {
+      _outbox.unmarkDeleting(entry.id);
+    }
+  }
+
+  /// Removes [id] from the local view and re-derives; clears the
+  /// Undo target when it was the removed event.
+  void _applyIntakeRemoval(int id) {
+    _intakeEntries = _intakeEntries.where((e) => e.id != id).toList();
+    if (_intakeLastEntryId == id) {
+      setState(() => _intakeLastEntryId = null);
+    }
+    _deriveIntakeState(_intakeEntries);
+  }
+
+  /// The card's Undo (S8): removes exactly the most recent
+  /// card-logged event.
+  Future<void> _undoLastIntake() async {
+    final id = _intakeLastEntryId;
+    if (id == null) return;
+    final entry =
+        _intakeEntries.where((e) => e.id == id).firstOrNull ??
+            _outbox.recordFor(id)?.entry;
+    if (entry == null) {
+      setState(() => _intakeLastEntryId = null);
+      return;
+    }
+    await _deleteIntakeEntry(entry);
+  }
+
+  /// Opens the targets editor; saving appends a version effective
+  /// the current energy day (past days keep their verdicts).
+  Future<void> _openIntakeTargets() async {
+    await showIntakeTargetsSheet(
+      context: context,
+      current: _intakeTargetsToday,
+      onSave: ({int? fluidTargetMl, int? sodiumTargetMg}) async {
+        final versions = await _intakeSettings.appendTarget(
+          fluidTargetMl: fluidTargetMl,
+          sodiumTargetMg: sodiumTargetMg,
+        );
+        if (!mounted) return;
+        setState(() => _intakeTargetVersions = versions);
+        _deriveIntakeState(_intakeEntries);
+      },
+    );
   }
 
   /// Round 15c — resolves the once-per-day count-up gate from secure
@@ -948,6 +1329,28 @@ class _HomeScreenState extends State<HomeScreen> {
                     _feelingLeaving = false;
                   });
                 },
+              ),
+            // Phase 1 item 4 — the salt & water card, directly under
+            // the feeling check-in (founder Q5). Rendered only once
+            // the Hydration category resolves BY NAME (a miss hides
+            // the whole surface, spec §4.1/Q4), and NOT
+            // premium-gated (capture + totals are free, Q8). Not
+            // wrapped in StaggeredEntrance, like the check-in card:
+            // it carries its own state changes.
+            if (_intakeCategoryId != null && _intakeTotals != null)
+              IntakeCard(
+                todayEntries: _intakeTodayEntries,
+                totals: _intakeTotals!,
+                targets: _intakeTargetsToday,
+                presets: _intakePresets,
+                showSeedLabel: _intakeSeedLabelVisible,
+                lastLoggedEntryId: _intakeLastEntryId,
+                onQuickAdd: (kind) => unawaited(_onIntakeQuickAdd(kind)),
+                onOpenEditor: () => unawaited(_openIntakeEditor()),
+                onEditEntry: (entry) =>
+                    unawaited(_openIntakeEditor(entry: entry)),
+                onUndo: () => unawaited(_undoLastIntake()),
+                onOpenTargets: () => unawaited(_openIntakeTargets()),
               ),
             StaggeredEntrance(
               index: 0,
