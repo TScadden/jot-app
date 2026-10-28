@@ -146,8 +146,17 @@ class _MainShellState extends State<MainShell>
   // device store the Settings toggle writes. Native collects the
   // DataStore flow with initial = true (MainActivity.kt:137), so the
   // first frame assumes the native default and the stored value
-  // lands a frame later. Re-read on every tab change so flipping the
-  // Settings toggle takes effect as soon as the user leaves Settings.
+  // lands a frame later.
+  //
+  // Customize-wiring fix (Oct 2026): the refresh is LIVE, not
+  // tab-switch-timed. The shell listens to the shared SettingsStore
+  // (see [_screenFor] — Settings receives THIS instance, not a
+  // fresh one), and setShowNavLabels notifies after its write
+  // lands, so flipping the Customize toggle while sitting in
+  // Settings updates the visible dock on that same screen, in both
+  // directions. The dock-tap re-read below stays as a belt-and-
+  // braces reseed for writes that bypass the setter (there are
+  // none in production; a Round 30 test mutates storage directly).
   bool _showNavLabels = true;
   late final SettingsStore _settingsStore;
 
@@ -155,6 +164,7 @@ class _MainShellState extends State<MainShell>
   void initState() {
     super.initState();
     _settingsStore = widget.settingsStore ?? SettingsStore();
+    _settingsStore.addListener(_onSettingsStoreChanged);
     // Round 40 — one controller for the paired slide; Round 22's
     // 300ms duration and easeOut curve.
     _slideController = AnimationController(
@@ -168,8 +178,19 @@ class _MainShellState extends State<MainShell>
 
   @override
   void dispose() {
+    // The store is NOT disposed here: when it was injected the
+    // caller owns it, and when the shell created it nothing else
+    // disposes stores anywhere in this codebase — only the
+    // listener registration is the shell's to undo.
+    _settingsStore.removeListener(_onSettingsStoreChanged);
     _slideController.dispose();
     super.dispose();
+  }
+
+  /// Store-change callback (Customize-wiring fix): the write has
+  /// already landed in storage, so a plain re-read is the refresh.
+  void _onSettingsStoreChanged() {
+    _refreshNavLabels();
   }
 
   void _onSlideStatus(AnimationStatus status) {
@@ -253,6 +274,11 @@ class _MainShellState extends State<MainShell>
           weatherApi: widget.weatherApi,
           locationService: widget.locationService,
           healthConnectService: widget.healthConnectService,
+          // Same shared instance as the Settings tab (see the
+          // settings case below): Home pushes a Settings route for
+          // Event Counters and forwards this store into it, so a
+          // Customize change made there notifies this shell too.
+          settingsStore: _settingsStore,
           billingService: widget.billingService,
           migraineController: widget.migraineController,
           // Round 34 — so a logout started in the Settings screen
@@ -275,6 +301,14 @@ class _MainShellState extends State<MainShell>
           key: const ValueKey('settings_screen'),
           email: widget.email,
           onLogout: widget.onLogout,
+          // Customize-wiring fix: Settings MUST write through the
+          // shell's store instance. Two default instances share the
+          // secure-storage backing (so reads always agreed), but a
+          // change notification only reaches listeners on the
+          // instance that was written — without this hand-off the
+          // live dock refresh above could never fire in the shell
+          // tree.
+          settingsStore: _settingsStore,
           healthConnectService: widget.healthConnectService,
           billingService: widget.billingService,
         ),
