@@ -5,6 +5,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/billing_play_store.dart';
 import 'package:tabs_lab/src/data/coach_memory_store.dart';
+import 'package:tabs_lab/src/data/crash_reporting.dart';
 import 'package:tabs_lab/src/data/first_run_sync.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
@@ -35,15 +36,32 @@ import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
 import 'package:tabs_lab/src/features/splash/splash_screen.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/notel_theme.dart';
+import 'package:sentry_flutter/sentry_flutter.dart'
+    show SentryWidgetsFlutterBinding;
 
-void main() async {
+/// Crash-tracking bootstrap (Juno Ruling 2026-10-27, Ruling 4):
+/// `main` delegates to [CrashReporting.run], which installs the
+/// global error handlers and — only when a DSN was injected at
+/// build time via --dart-define=SENTRY_DSN — initialises Sentry
+/// around the existing bootstrap in [_bootstrap]. With an empty
+/// DSN the SDK is never initialised and the app runs identically
+/// (local debugPrint handlers only). See crash_reporting.dart.
+Future<void> main() async {
+  await CrashReporting.run(_bootstrap);
+}
+
+Future<void> _bootstrap() async {
   // Round 60 — launch timeline starts here (see launch_trace.dart;
   // in-memory only, printed only under --dart-define=LAUNCH_TRACE).
   LaunchTrace.instance.mark(LaunchTrace.processStart);
   // Round 16 — warm the home-data cache before the first frame so a
   // cold start shows last-known numbers instantly instead of "--".
   // Never throws; a missing/corrupt cache just starts empty.
-  WidgetsFlutterBinding.ensureInitialized();
+  // SentryWidgetsFlutterBinding is the Sentry-aware binding; when
+  // the SDK was initialised by CrashReporting.run this is the
+  // binding its integrations expect, and with no DSN it behaves as
+  // the plain WidgetsFlutterBinding.
+  SentryWidgetsFlutterBinding.ensureInitialized();
   // Round 19c fix (Vera BLOCKING 1) — account-bound warm: read the
   // stored session account first, and warm each cache against it.
   // A blob owned by a different account (or by no recorded account)
@@ -54,7 +72,12 @@ void main() async {
   String? sessionEmail;
   try {
     sessionEmail = await SessionStore().readEmail();
-  } catch (_) {
+  } catch (e, st) {
+    // C7 allowlisted call site (CRASH_REPORTING_CALLSITES.md #1):
+    // type + static message only — the store error can embed the
+    // stored value, which is account data.
+    CrashReporting.captureError(e,
+        stackTrace: st, staticMessage: 'bootstrap session read failed');
     sessionEmail = null;
   }
   // Round 60 — the two cache warms are independent disk reads (each
@@ -91,9 +114,13 @@ void main() async {
     try {
       await NotificationBootstrap.initialize(
           FlutterLocalNotificationsPlugin());
-    } catch (_) {
-      // Silent: notifications are an enhancement; the app must
-      // start identically without them.
+    } catch (e, st) {
+      // Silent to the user: notifications are an enhancement; the
+      // app must start identically without them. C7 allowlisted
+      // call site (CRASH_REPORTING_CALLSITES.md #2): type + static
+      // message only.
+      CrashReporting.captureError(e,
+          stackTrace: st, staticMessage: 'notification bootstrap failed');
     }
   }());
   // Round 52 — re-publish the widget on EVERY app start, once,
