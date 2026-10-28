@@ -421,6 +421,95 @@ void main() {
     });
 
     testWidgets(
+        'archive of the marker-less row: the stale pull lands '
+        'after the push; a SECOND save still carries the marker '
+        'on the pushed blob', (tester) async {
+      final server = FakeCounterServer(counters: _twelveCounters());
+      final store = _session();
+      final storeMap = <String, String>{};
+      final a = server.backend(store);
+      final b = server.backend(store);
+
+      await _pumpSettings(tester, a, storeMap);
+      expect(find.text('Counter 7'), findsOneWidget);
+      // The fixture premise: c7 has NO isArchived key server-side
+      // (the native-era encoding of the founder's 3 stuck rows).
+      final fixtureC7 =
+          server.serverCounters.firstWhere((c) => c['id'] == 'c7');
+      expect(fixtureC7.containsKey('isArchived'), isFalse);
+
+      // A second instance starts a slow pull BEFORE the tap; the
+      // server snapshots the pre-mutation state and holds it.
+      server.holdNextPull();
+      final slowPull = b.fetchSyncPull();
+      await tester.pump();
+      await tester.pump();
+
+      // Archive c7 — the marker-less row itself. The save re-pulls
+      // fresh (joining the held in-flight pull), so nothing
+      // changes on screen while the pull is held.
+      await tester.tap(find.byKey(const ValueKey('counter_archive_c7')));
+      await tester.pump();
+      expect(find.text('Counter 7'), findsOneWidget);
+      expect(find.text('No counters yet.'), findsNothing);
+
+      // The pre-mutation pull lands; the save computes the archive
+      // against that (still server-current) list and pushes.
+      server.releaseHeldPull();
+      await tester.pumpAndSettle();
+      await slowPull;
+
+      // The archive of the marker-less row reached the server and
+      // stamped the key explicitly.
+      expect(server.pushCount, 1);
+      final afterFirst =
+          server.serverCounters.firstWhere((c) => c['id'] == 'c7');
+      expect(afterFirst['isArchived'], isTrue,
+          reason: 'archiving the no-key row must stamp isArchived '
+              'true on the server');
+      expect(find.text('ARCHIVED'), findsOneWidget);
+
+      // The step no other counter test performs: SAVE AGAIN after
+      // the stale pull has landed. Re-enter on the second instance
+      // (the one whose pull crossed the push) and archive c4. The
+      // pre-fix client built this second save on its stale
+      // snapshot, and the push silently dropped the first
+      // archive's marker — the step that made the revert
+      // permanent.
+      await _pumpSettings(tester, b, storeMap);
+      expect(find.text('ARCHIVED'), findsOneWidget);
+      expect(find.text('Counter 7'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('counter_archive_c4')));
+      await tester.pumpAndSettle();
+
+      // Exactly one more push fired, and the marker survived it —
+      // both in the pushed blob itself and in the stored server
+      // state.
+      expect(server.pushCount, 2);
+      final pushedBlob = (jsonDecode(
+              server.pushes.last['eventCounters'] as String) as List)
+          .cast<Map<String, dynamic>>();
+      expect(
+          pushedBlob.firstWhere((c) => c['id'] == 'c7')['isArchived'],
+          isTrue,
+          reason: 'the second save must not drop the marker-less '
+              "row's archived marker from the pushed blob");
+      expect(
+          pushedBlob.firstWhere((c) => c['id'] == 'c4')['isArchived'],
+          isTrue);
+      expect(
+          server.serverCounters
+              .firstWhere((c) => c['id'] == 'c7')['isArchived'],
+          isTrue);
+      expect(
+          server.serverCounters
+              .firstWhere((c) => c['id'] == 'c4')['isArchived'],
+          isTrue);
+      // The list never emptied along the way.
+      expect(find.text('No counters yet.'), findsNothing);
+    });
+
+    testWidgets(
         'Vera F1: double-tap on archive during an in-flight save '
         'archives exactly once — the buttons disable while the '
         'save runs and the intent is absolute, never a fresh-row '
