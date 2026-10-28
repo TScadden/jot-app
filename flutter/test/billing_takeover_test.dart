@@ -30,6 +30,11 @@ class FakeBillingStore implements BillingStore {
   Object? queryError;
   Object? completeError;
 
+  /// Every product-ID set passed to [queryProducts], in call
+  /// order — lets tests pin the EXACT catalog query (set equality)
+  /// the service makes, not just that a query happened.
+  final List<Set<String>> queriedProductIdSets = [];
+
   final StreamController<List<BillingPurchase>> updates =
       StreamController<List<BillingPurchase>>.broadcast();
 
@@ -45,6 +50,7 @@ class FakeBillingStore implements BillingStore {
   @override
   Future<List<BillingProduct>> queryProducts(Set<String> productIds) async {
     log.add('store.queryProducts');
+    queriedProductIdSets.add(Set<String>.of(productIds));
     if (queryError != null) throw queryError!;
     return catalog;
   }
@@ -114,6 +120,18 @@ class FakeMembershipBackend extends TabsBackend {
   Future<bool> fetchIsUnlimited() async => false;
 }
 
+// ── Fake-catalog builders ──────────────────────────────────────
+//
+// LESSON (verified Oct 27, 2026): the old two-product fake hid
+// this defect. It modeled the catalog as TWO products
+// (jot_membership_monthly + a second, invented yearly product),
+// so the paywall's one-product modeling defect never showed up
+// in tests. The fake now mirrors the LIVE shape: ONE product
+// (jot_membership_monthly), TWO base plans (premium-monthly /
+// premium-yearly), and offers carrying basePlanId — the grouping
+// key the panel must use. Never reintroduce a second product
+// here; plans differ by base plan and offer, not by product.
+
 BillingOffer offer({
   String token = 'tok-offer-1',
   String? basePlan = 'base',
@@ -144,6 +162,73 @@ BillingProduct product(String id, List<BillingOffer> offers) => BillingProduct(
       description: '',
       offers: offers,
     );
+
+/// The LIVE Play catalog shape (verified Oct 27, 2026): ONE
+/// subscription product, [BillingProducts.monthly], with TWO base
+/// plans — premium-monthly ($5.99/mo) and premium-yearly
+/// ($39.99/yr) — and each base plan carrying a base offer
+/// (offerId null) plus the free-trial-7-day offer (a P7D free
+/// phase, then the plan's recurring price).
+BillingProduct liveCatalog() => product(BillingProducts.monthly, [
+      offer(
+        token: 'tok-m-base',
+        basePlan: 'premium-monthly',
+        offerId: null,
+        phases: const [
+          BillingPricingPhase(
+              formattedPrice: '\$5.99',
+              priceAmountMicros: 5990000,
+              priceCurrencyCode: 'USD',
+              billingPeriod: 'P1M'),
+        ],
+      ),
+      offer(
+        token: 'tok-m-trial',
+        basePlan: 'premium-monthly',
+        offerId: 'free-trial-7-day',
+        phases: const [
+          BillingPricingPhase(
+              formattedPrice: '\$0.00',
+              priceAmountMicros: 0,
+              priceCurrencyCode: 'USD',
+              billingPeriod: 'P7D'),
+          BillingPricingPhase(
+              formattedPrice: '\$5.99',
+              priceAmountMicros: 5990000,
+              priceCurrencyCode: 'USD',
+              billingPeriod: 'P1M'),
+        ],
+      ),
+      offer(
+        token: 'tok-y-base',
+        basePlan: 'premium-yearly',
+        offerId: null,
+        phases: const [
+          BillingPricingPhase(
+              formattedPrice: '\$39.99',
+              priceAmountMicros: 39990000,
+              priceCurrencyCode: 'USD',
+              billingPeriod: 'P1Y'),
+        ],
+      ),
+      offer(
+        token: 'tok-y-trial',
+        basePlan: 'premium-yearly',
+        offerId: 'free-trial-7-day',
+        phases: const [
+          BillingPricingPhase(
+              formattedPrice: '\$0.00',
+              priceAmountMicros: 0,
+              priceCurrencyCode: 'USD',
+              billingPeriod: 'P7D'),
+          BillingPricingPhase(
+              formattedPrice: '\$39.99',
+              priceAmountMicros: 39990000,
+              priceCurrencyCode: 'USD',
+              billingPeriod: 'P1Y'),
+        ],
+      ),
+    ]);
 
 Future<void> settle() async {
   // Let broadcast-stream deliveries + chained futures run.
@@ -223,6 +308,22 @@ void main() {
       expect(backend.verifiedTokens, isEmpty);
       expect(log.indexOf('store.queryProducts'),
           lessThan(log.indexOf('store.queryOwned')));
+    });
+
+    test(
+        'initialize queries exactly the one live product id '
+        '(subscriptionIds is the monthly singleton)', () async {
+      store.catalog = [product(BillingProducts.monthly, [offer()])];
+
+      await service.initialize();
+
+      // The contract: there is no yearly product id anymore —
+      // the one live product is queried, and nothing else.
+      expect(BillingProducts.subscriptionIds, {BillingProducts.monthly});
+      expect(store.queriedProductIdSets, hasLength(1));
+      expect(store.queriedProductIdSets.single, {'jot_membership_monthly'});
+      expect(store.queriedProductIdSets.single,
+          BillingProducts.subscriptionIds);
     });
 
     test('purchased update: verify runs BEFORE completePurchase', () async {
@@ -715,8 +816,12 @@ void main() {
     Future<BillingService> pumpPanel(
       WidgetTester tester, {
       required List<BillingProduct> catalog,
+      List<String>? eventLog,
     }) async {
-      final log = <String>[];
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final log = eventLog ?? <String>[];
       final store = FakeBillingStore(log)..catalog = catalog;
       final backend = FakeBillingBackend(log);
       final service = BillingService(
@@ -733,138 +838,234 @@ void main() {
       return service;
     }
 
-    testWidgets('CTA label comes from the real offer (trial from Play data)',
+    // (a) Both cards come from grouping the ONE product's offers
+    // by basePlanId — there is no second (yearly) product.
+    testWidgets(
+        '(a) both Monthly Plan and Yearly Plan cards render from '
+        'the ONE product', (tester) async {
+      final service = await pumpPanel(tester, catalog: [liveCatalog()]);
+      expect(service.state.products, hasLength(1));
+      expect(service.state.products.single.id, BillingProducts.monthly);
+      expect(find.text('Monthly Plan'), findsOneWidget);
+      expect(find.text('Yearly Plan'), findsOneWidget);
+    });
+
+    // (b) Savings are computed from the two GROUPS' recurring
+    // prices: 1 - 39.99 / (5.99 * 12) ≈ 44%.
+    testWidgets('(b) SAVE 44% • BEST VALUE renders on the yearly card',
         (tester) async {
-      await pumpPanel(tester, catalog: [
-        product(BillingProducts.monthly, [offer()]),
-        product(BillingProducts.yearly, [
-          offer(token: 'tok-y', phases: const [
-            BillingPricingPhase(
-                formattedPrice: '\$39.99',
-                priceAmountMicros: 39990000,
-                priceCurrencyCode: 'USD',
-                billingPeriod: 'P1Y'),
-          ]),
-        ]),
-      ]);
-      // Single-offer monthly with a real P7D free phase → the trial
-      // label is earned from data, not hardcoded.
-      expect(find.text('Start 7-day free trial'), findsOneWidget);
-      expect(find.text('Free for 7-day, then \$5.99/month'), findsWidgets);
-      // Yearly card shows its real price; savings chip computed
-      // from live prices (1 - 39.99/(5.99*12) ≈ 44%).
-      expect(find.text('\$39.99/year'), findsWidgets);
+      await pumpPanel(tester, catalog: [liveCatalog()]);
       expect(find.text('SAVE 44% • BEST VALUE'), findsOneWidget);
     });
 
+    // (c) Any offer in the monthly group has a free phase, so the
+    // monthly card carries the trial chip (derived from phases).
+    testWidgets('(c) FREE TRIAL chip renders on the monthly card',
+        (tester) async {
+      await pumpPanel(tester, catalog: [liveCatalog()]);
+      expect(find.text('FREE TRIAL'), findsOneWidget);
+    });
+
+    // (d) The monthly group is selected by default and holds two
+    // offers, so the CTA waits for an explicit offer pick.
     testWidgets(
-        'yearly chip: no BEST VALUE when savings are not computable '
-        'from real prices', (tester) async {
-      // Yearly alone in the catalog: there is no monthly price to
-      // compute savings against, so no value chip may appear at all
-      // (takeover review fix — Juno).
+        '(d) multi-offer monthly group: CTA waits for a pick, then '
+        'shows the picked trial label', (tester) async {
+      await pumpPanel(tester, catalog: [liveCatalog()]);
+      expect(find.text('Choose a plan option'), findsOneWidget);
+      expect(find.text('Choose an offer'), findsOneWidget);
+      // Only the SELECTED (monthly) group's offers are rows.
+      expect(find.byKey(const ValueKey('billing_offer_tok-m-base')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('billing_offer_tok-m-trial')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('billing_offer_tok-y-trial')),
+          findsNothing);
+      expect(find.text('Free for 7-day, then \$5.99/month'), findsWidgets);
+
+      await tester.tap(find.byKey(const ValueKey('billing_offer_tok-m-trial')));
+      await tester.pump();
+      expect(find.text('Choose a plan option'), findsNothing);
+      expect(find.text('Start 7-day free trial'), findsOneWidget);
+    });
+
+    // (e) The CTA buys the ONE product with the picked yearly
+    // offer's token — exactly one launch, of the pick.
+    testWidgets(
+        '(e) picking the yearly trial and tapping the CTA launches '
+        'the one product with tok-y-trial', (tester) async {
+      final log = <String>[];
+      await pumpPanel(tester, catalog: [liveCatalog()], eventLog: log);
+
+      await tester.tap(find.text('Yearly Plan'));
+      await tester.pump();
+      // The offer rows switched to the yearly group.
+      expect(find.byKey(const ValueKey('billing_offer_tok-y-base')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('billing_offer_tok-y-trial')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('billing_offer_tok-m-trial')),
+          findsNothing);
+      expect(find.text('Choose a plan option'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('billing_offer_tok-y-trial')));
+      await tester.pump();
+      expect(find.text('Start 7-day free trial'), findsOneWidget);
+
+      await tester.tap(find.text('Start 7-day free trial'));
+      await tester.pump();
+      expect(log,
+          contains('store.launch:jot_membership_monthly:tok-y-trial'));
+      expect(log.where((e) => e.startsWith('store.launch')), hasLength(1));
+    });
+
+    // (f) The yearly group's offers disagree on the P1Y recurring
+    // price, so the group's recurring price is ambiguous and no
+    // savings / value claim may be shown.
+    testWidgets(
+        '(f) ambiguous yearly-group recurring price → no BEST VALUE',
+        (tester) async {
       await pumpPanel(tester, catalog: [
-        product(BillingProducts.yearly, [
-          offer(token: 'tok-y-only', phases: const [
-            BillingPricingPhase(
-                formattedPrice: '\$39.99',
-                priceAmountMicros: 39990000,
-                priceCurrencyCode: 'USD',
-                billingPeriod: 'P1Y'),
-          ]),
+        product(BillingProducts.monthly, [
+          offer(
+            token: 'tok-m-base',
+            basePlan: 'premium-monthly',
+            offerId: null,
+            phases: const [
+              BillingPricingPhase(
+                  formattedPrice: '\$5.99',
+                  priceAmountMicros: 5990000,
+                  priceCurrencyCode: 'USD',
+                  billingPeriod: 'P1M'),
+            ],
+          ),
+          offer(
+            token: 'tok-m-trial',
+            basePlan: 'premium-monthly',
+            offerId: 'free-trial-7-day',
+            phases: const [
+              BillingPricingPhase(
+                  formattedPrice: '\$0.00',
+                  priceAmountMicros: 0,
+                  priceCurrencyCode: 'USD',
+                  billingPeriod: 'P7D'),
+              BillingPricingPhase(
+                  formattedPrice: '\$5.99',
+                  priceAmountMicros: 5990000,
+                  priceCurrencyCode: 'USD',
+                  billingPeriod: 'P1M'),
+            ],
+          ),
+          offer(
+            token: 'tok-y-base',
+            basePlan: 'premium-yearly',
+            offerId: null,
+            phases: const [
+              BillingPricingPhase(
+                  formattedPrice: '\$39.99',
+                  priceAmountMicros: 39990000,
+                  priceCurrencyCode: 'USD',
+                  billingPeriod: 'P1Y'),
+            ],
+          ),
+          offer(
+            token: 'tok-y-trial',
+            basePlan: 'premium-yearly',
+            offerId: 'free-trial-7-day',
+            phases: const [
+              BillingPricingPhase(
+                  formattedPrice: '\$0.00',
+                  priceAmountMicros: 0,
+                  priceCurrencyCode: 'USD',
+                  billingPeriod: 'P7D'),
+              BillingPricingPhase(
+                  formattedPrice: '\$49.99',
+                  priceAmountMicros: 49990000,
+                  priceCurrencyCode: 'USD',
+                  billingPeriod: 'P1Y'),
+            ],
+          ),
         ]),
       ]);
       expect(find.text('Yearly Plan'), findsOneWidget);
       expect(find.textContaining('BEST VALUE'), findsNothing);
+      expect(find.textContaining('SAVE '), findsNothing);
     });
 
+    // (g) A catalog whose one product carries ONLY a yearly group:
+    // the yearly card renders, but with no monthly group there is
+    // nothing to compute savings against — no value chip at all
+    // (takeover review fix — Juno).
     testWidgets(
-        'yearly chip: no BEST VALUE when a plan has multiple offers '
-        '(recurring price ambiguous)', (tester) async {
+        '(g) catalog with ONLY a yearly group → Yearly Plan renders, '
+        'no BEST VALUE', (tester) async {
       await pumpPanel(tester, catalog: [
         product(BillingProducts.monthly, [
-          offer(token: 'tok-m1'),
-          offer(token: 'tok-m2', phases: const [
-            BillingPricingPhase(
-                formattedPrice: '\$4.99',
-                priceAmountMicros: 4990000,
-                priceCurrencyCode: 'USD',
-                billingPeriod: 'P1M'),
-          ]),
-        ]),
-        product(BillingProducts.yearly, [
-          offer(token: 'tok-y2', phases: const [
-            BillingPricingPhase(
-                formattedPrice: '\$39.99',
-                priceAmountMicros: 39990000,
-                priceCurrencyCode: 'USD',
-                billingPeriod: 'P1Y'),
-          ]),
+          offer(
+            token: 'tok-y-base',
+            basePlan: 'premium-yearly',
+            offerId: null,
+            phases: const [
+              BillingPricingPhase(
+                  formattedPrice: '\$39.99',
+                  priceAmountMicros: 39990000,
+                  priceCurrencyCode: 'USD',
+                  billingPeriod: 'P1Y'),
+            ],
+          ),
+          offer(
+            token: 'tok-y-trial',
+            basePlan: 'premium-yearly',
+            offerId: 'free-trial-7-day',
+            phases: const [
+              BillingPricingPhase(
+                  formattedPrice: '\$0.00',
+                  priceAmountMicros: 0,
+                  priceCurrencyCode: 'USD',
+                  billingPeriod: 'P7D'),
+              BillingPricingPhase(
+                  formattedPrice: '\$39.99',
+                  priceAmountMicros: 39990000,
+                  priceCurrencyCode: 'USD',
+                  billingPeriod: 'P1Y'),
+            ],
+          ),
         ]),
       ]);
+      expect(find.text('Yearly Plan'), findsOneWidget);
+      expect(find.text('Monthly Plan'), findsNothing);
       expect(find.textContaining('BEST VALUE'), findsNothing);
     });
 
-    testWidgets('no free phase in the offer → CTA claims no trial',
-        (tester) async {
+    // (h) A single-offer monthly group with no free phase: the CTA
+    // is the plain subscribe label earned from the real phase, and
+    // no trial is claimed anywhere.
+    testWidgets(
+        '(h) single-offer monthly group with no free phase → plain '
+        'subscribe CTA and no trial claim anywhere', (tester) async {
       await pumpPanel(tester, catalog: [
         product(BillingProducts.monthly, [
-          offer(token: 'tok-plain', phases: const [
-            BillingPricingPhase(
-                formattedPrice: '\$5.99',
-                priceAmountMicros: 5990000,
-                priceCurrencyCode: 'USD',
-                billingPeriod: 'P1M'),
-          ]),
+          offer(
+            token: 'tok-m-base',
+            basePlan: 'premium-monthly',
+            offerId: null,
+            phases: const [
+              BillingPricingPhase(
+                  formattedPrice: '\$5.99',
+                  priceAmountMicros: 5990000,
+                  priceCurrencyCode: 'USD',
+                  billingPeriod: 'P1M'),
+            ],
+          ),
         ]),
       ]);
-      expect(find.text('Start 7-day free trial'), findsNothing);
+      expect(find.text('Monthly Plan'), findsOneWidget);
+      expect(find.text('Yearly Plan'), findsNothing);
       expect(find.text('Subscribe — \$5.99/month'), findsOneWidget);
-    });
-
-    testWidgets('multi-offer plan: CTA waits for the user to pick an offer',
-        (tester) async {
-      final log = <String>[];
-      final store = FakeBillingStore(log);
-      final first = offer(token: 'tok-a');
-      final second = offer(token: 'tok-b', phases: const [
-        BillingPricingPhase(
-            formattedPrice: '\$4.99',
-            priceAmountMicros: 4990000,
-            priceCurrencyCode: 'USD',
-            billingPeriod: 'P1M'),
-      ]);
-      store.catalog = [
-        product(BillingProducts.monthly, [first, second])
-      ];
-      final backend = FakeBillingBackend(log);
-      final service = BillingService(
-          store: store, backend: backend, isProductionBuild: true);
-      addTearDown(() async {
-        await service.dispose();
-        await store.updates.close();
-      });
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(body: BillingPlansPanel(service: service)),
-      ));
-      await tester.pump();
-      await tester.pump();
-
-      expect(find.text('Choose a plan option'), findsOneWidget);
-      expect(find.text('Choose an offer'), findsOneWidget);
-      // Both offers present with their real summaries.
-      expect(find.text('Free for 7-day, then \$5.99/month'), findsWidgets);
-      expect(find.text('\$4.99/month'), findsWidgets);
-
-      await tester.tap(find.byKey(const ValueKey('billing_offer_tok-b')));
-      await tester.pump();
-      expect(find.text('Subscribe — \$4.99/month'), findsOneWidget);
-
-      await tester.tap(find.text('Subscribe — \$4.99/month'));
-      await tester.pump();
-      // The purchase launched with the PICKED offer, not the first.
-      expect(log, contains('store.launch:jot_membership_monthly:tok-b'));
-      expect(log.where((e) => e.startsWith('store.launch')), hasLength(1));
+      expect(find.text('Start 7-day free trial'), findsNothing);
+      expect(find.text('FREE TRIAL'), findsNothing);
+      expect(find.textContaining('free trial'), findsNothing);
+      expect(find.textContaining('Free for'), findsNothing);
     });
   });
 
