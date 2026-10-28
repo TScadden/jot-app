@@ -131,6 +131,8 @@ class LogEntryOutbox extends ChangeNotifier {
     _inFlightIds.clear();
     _deletingIds.clear();
     _ownerEmail = null;
+    _idHighWater = 0;
+    _quarantinedRecords = const [];
     _loaded = false;
     _loadFuture = null;
     _flushFuture = null;
@@ -147,7 +149,41 @@ class LogEntryOutbox extends ChangeNotifier {
   Future<void>? _loadFuture;
   Future<bool>? _flushFuture;
 
+  /// Highest entry id this blob has ever allocated or staged
+  /// (F1). Persisted in the blob and only ever rises: a fresh id
+  /// must clear not just the records currently in memory, but every
+  /// id a previous session handed out — including one whose record
+  /// a kill left on disk while this session's load is still in
+  /// flight. See [allocateEntryId].
+  int _idHighWater = 0;
+
+  /// Raw record maps that a load could not adopt — records from an
+  /// UNOWNED blob (their owner stamp was lost, e.g. `readEmail()`
+  /// threw at stage time) and records whose JSON no longer parses
+  /// (F3). Quarantined records are never adopted, rendered, or
+  /// pushed, but they are NOT deleted as a side effect of loading:
+  /// they stay in memory here and are re-embedded in the blob on
+  /// every persist (see [_toJson]), so the data survives until a
+  /// human or a future repair path decides its fate. The count is
+  /// the visible signal; a blob owned by a DIFFERENT known account
+  /// is the one deliberate exception — it keeps the owner-drop in
+  /// [_applyLoadedBlobLocked], like every other account-bound
+  /// store in the app.
+  List<Map<String, dynamic>> _quarantinedRecords = const [];
+
   String? get ownerEmail => _ownerEmail;
+
+  /// F3 signal: how many records the last load quarantined instead
+  /// of adopting (see [_quarantinedRecords]). Zero in the healthy
+  /// case; a debug surface or a future UI can read this to make a
+  /// damaged or unstamped blob visible instead of silent.
+  int get quarantinedRecordCount => _quarantinedRecords.length;
+
+  bool get hasQuarantinedRecords => _quarantinedRecords.isNotEmpty;
+
+  /// The quarantined raw record maps themselves (unmodifiable).
+  List<Map<String, dynamic>> get quarantinedRecords =>
+      List.unmodifiable(_quarantinedRecords);
 
   List<LogEntryOutboxRecord> get records {
     final out = _records.values.toList();
@@ -332,11 +368,21 @@ class LogEntryOutbox extends ChangeNotifier {
   /// Applies a parsed disk blob to the in-memory state (called
   /// inside the serialization lock). Records fill only IDs not
   /// already held — a row staged this session is always at least as
-  /// new as the blob's copy. A blob owned by a DIFFERENT account
-  /// than [currentEmail] (or an unowned blob carrying rows) is
-  /// dropped instead of leaking into this account: its records are
-  /// not adopted, and the caller deletes the blob. Returns true
-  /// when the blob must be deleted.
+  /// new as the blob's copy.
+  ///
+  /// Owner handling (F3): a blob owned by a DIFFERENT known account
+  /// than [currentEmail] is dropped instead of leaking into this
+  /// account: its records are not adopted, and the caller deletes
+  /// the blob (the house owner-bound rule, shared with every other
+  /// account-bound store). An UNOWNED blob carrying rows is a
+  /// different case — the reachable path is this same account's
+  /// blob losing its stamp when `readEmail()` threw at stage time —
+  /// so its records are QUARANTINED, not dropped: nothing is
+  /// adopted, nothing is deleted, the raw records stay readable via
+  /// [quarantinedRecords] and ride the next persist. Records that
+  /// fail `fromJson` are quarantined the same way, in every owner
+  /// case where the blob itself is kept. Returns true when the
+  /// blob must be deleted.
   bool _applyLoadedBlobLocked(
     Map<String, dynamic>? map, {
     String? currentEmail,
@@ -344,29 +390,71 @@ class LogEntryOutbox extends ChangeNotifier {
     final expected = normalizeEmail(currentEmail);
     String? blobOwner;
     final blobRecords = <LogEntryOutboxRecord>[];
+    final blobRawRecords = <Map<String, dynamic>>[];
+    final corruptRawRecords = <Map<String, dynamic>>[];
+    final priorQuarantined = <Map<String, dynamic>>[];
+    var blobHighWater = 0;
     if (map != null) {
       blobOwner = normalizeEmail(map['ownerEmail']?.toString());
+      final rawHighWater = map['nextIdHighWater'];
+      if (rawHighWater is int && rawHighWater > blobHighWater) {
+        blobHighWater = rawHighWater;
+      }
       final rawRecords = map['records'];
       if (rawRecords is List) {
         for (final raw in rawRecords) {
           if (raw is Map<String, dynamic>) {
             final record = LogEntryOutboxRecord.fromJson(raw);
-            if (record != null) blobRecords.add(record);
+            if (record != null) {
+              blobRecords.add(record);
+              blobRawRecords.add(raw);
+            } else {
+              corruptRawRecords.add(raw);
+            }
           }
+        }
+      }
+      final rawQuarantined = map['quarantinedRecords'];
+      if (rawQuarantined is List) {
+        for (final raw in rawQuarantined) {
+          if (raw is Map<String, dynamic>) priorQuarantined.add(raw);
         }
       }
     }
     var needsDelete = false;
-    if (expected != null && blobOwner != expected && blobRecords.isNotEmpty) {
-      // Foreign (or unowned) rows on disk: never adopt them into
-      // this account. Session-staged rows, if any, stay; the blob
-      // is deleted and the next persist rewrites it from memory.
+    if (expected != null &&
+        blobOwner != null &&
+        blobOwner != expected &&
+        blobRecords.isNotEmpty) {
+      // Foreign rows on disk: never adopt them into this account.
+      // Session-staged rows, if any, stay; the blob is deleted and
+      // the next persist rewrites it from memory.
       _ownerEmail = expected;
       needsDelete = true;
+    } else if (expected != null &&
+        blobOwner == null &&
+        blobRecords.isNotEmpty) {
+      // Unowned rows (F3): quarantine the raw records — the valid
+      // ones and the corrupt ones alike — instead of dropping the
+      // blob wholesale. Nothing is adopted into this account, the
+      // blob is NOT deleted, and the next persist re-embeds the
+      // quarantined maps under the now-known owner (see [_toJson]).
+      _ownerEmail = expected;
+      _quarantinedRecords = List.unmodifiable([
+        ...blobRawRecords,
+        ...corruptRawRecords,
+        ...priorQuarantined,
+      ]);
+      if (blobHighWater > _idHighWater) _idHighWater = blobHighWater;
     } else {
       for (final record in blobRecords) {
         _records.putIfAbsent(record.entry.id, () => record);
       }
+      if (blobHighWater > _idHighWater) _idHighWater = blobHighWater;
+      _quarantinedRecords = List.unmodifiable([
+        ...corruptRawRecords,
+        ...priorQuarantined,
+      ]);
       _ownerEmail ??= blobOwner;
       if (expected != null && _ownerEmail != expected) {
         if (_ownerEmail == null && _records.isEmpty) {
@@ -377,6 +465,7 @@ class LogEntryOutbox extends ChangeNotifier {
           // them rather than leak.
           _records.clear();
           _serverConfirmedIds.clear();
+          _quarantinedRecords = const [];
           _ownerEmail = expected;
           needsDelete = true;
         }
@@ -403,6 +492,7 @@ class LogEntryOutbox extends ChangeNotifier {
       // owned health-entry queue.
       _records.clear();
       _serverConfirmedIds.clear();
+      _quarantinedRecords = const [];
       _ownerEmail = expected;
       _loaded = true;
       notifyListeners();
@@ -444,8 +534,63 @@ class LogEntryOutbox extends ChangeNotifier {
 
   Map<String, dynamic> _toJson() => {
         'ownerEmail': _ownerEmail,
+        'nextIdHighWater': _idHighWater,
         'records': records.map((r) => r.toJson()).toList(),
+        // F3: quarantined raw records ride every persist, so a load
+        // that quarantined them can never lose them on the next
+        // write. Omitted when empty — the healthy blob is unchanged
+        // apart from the F1 high-water field.
+        if (_quarantinedRecords.isNotEmpty)
+          'quarantinedRecords': _quarantinedRecords,
       };
+
+  /// Allocates the id for a BRAND-NEW entry (F1).
+  ///
+  /// The old screen code computed `max(_entries, outbox.maxId) + 1`
+  /// synchronously, before this process's disk load had settled:
+  /// after a kill, a pending record sat on disk unseen, its id was
+  /// handed out again, and [stage] overwrote the pending record —
+  /// silent data loss. Allocation now (1) awaits the load, so the
+  /// on-disk records are part of the computation, and (2) runs
+  /// inside the serialization lock against a persisted high-water
+  /// mark, so an id once handed out — even one whose entry was
+  /// never staged, because the user backed out — is never reused.
+  /// The collision is impossible by construction, not by timing.
+  Future<int> allocateEntryId({
+    required int serverMaxId,
+    String? ownerEmail,
+  }) async {
+    await load(ownerEmail: ownerEmail);
+    return _runLocked(() async {
+      var candidate = serverMaxId;
+      if (maxId > candidate) candidate = maxId;
+      if (_idHighWater > candidate) candidate = _idHighWater;
+      candidate += 1;
+      _idHighWater = candidate;
+      // Persist the raised mark before handing the id out: a kill
+      // between allocation and stage must not free the id again.
+      // (If this write itself fails, the in-memory mark still
+      // guards this session, and the caller's own stage persist
+      // will fail-and-surface the same way stage failures do.)
+      await _persistLocked();
+      return candidate;
+    });
+  }
+
+  /// Convenience wrapper for screens, mirroring [stageForBackend]:
+  /// resolves the session owner from [backend] first.
+  Future<int> allocateEntryIdForBackend({
+    required TabsBackend backend,
+    required int serverMaxId,
+  }) async {
+    String? email;
+    try {
+      email = await backend.readEmail();
+    } catch (_) {
+      email = null;
+    }
+    return allocateEntryId(serverMaxId: serverMaxId, ownerEmail: email);
+  }
 
   /// Durably stages [entry] locally. Returns false when the local
   /// write itself failed; in that case the previous in-memory queue
@@ -458,6 +603,10 @@ class LogEntryOutbox extends ChangeNotifier {
     await load(ownerEmail: ownerEmail);
     final ok = await _runLocked(() async {
       final previous = Map<int, LogEntryOutboxRecord>.from(_records);
+      // A staged id joins the F1 high-water mark: ids handed out
+      // by any path (allocation, or a caller-constructed entry)
+      // are never reused by a later allocation.
+      if (entry.id > _idHighWater) _idHighWater = entry.id;
       final existing = _records[entry.id];
       _records[entry.id] = LogEntryOutboxRecord(
         entry: entry,
@@ -696,10 +845,32 @@ class LogEntryOutbox extends ChangeNotifier {
     return out;
   }
 
+  /// Retains unconfirmed entries across a logout or a session
+  /// expiry (F2), instead of wiping them.
+  ///
+  /// The blob is owner-bound: kept on disk untouched, its records
+  /// restore and flush when the SAME account signs back in, and a
+  /// DIFFERENT account's sign-in drops them via
+  /// [clearIfOwnerMismatch] before they can render or push (the
+  /// login wiring in main.dart) — the migraine store's owner-bound
+  /// retention pattern. Returns true when entries were retained.
+  /// When the queue is empty there is nothing to lose, so this
+  /// falls through to the ordinary [clear] and returns false.
+  Future<bool> retainUnconfirmed() async {
+    await load();
+    if (_records.isEmpty) {
+      await clear();
+      return false;
+    }
+    return true;
+  }
+
   Future<void> clear() async {
     await _runLocked(() async {
       _records.clear();
       _serverConfirmedIds.clear();
+      _quarantinedRecords = const [];
+      _idHighWater = 0;
       _ownerEmail = null;
       _loaded = true;
       notifyListeners();
@@ -729,6 +900,7 @@ class LogEntryOutbox extends ChangeNotifier {
       }
       _records.clear();
       _serverConfirmedIds.clear();
+      _quarantinedRecords = const [];
       _ownerEmail = expected;
       _loaded = true;
       dropped = true;
