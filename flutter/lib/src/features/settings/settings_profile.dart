@@ -250,6 +250,15 @@ class EventCounterItem {
   final bool isFavorite;
   final bool isArchived;
 
+  /// When this counter was deleted (epoch ms), or null when it was
+  /// not deleted through the Delete action. Delete/restore model
+  /// (founder direction, Oct 27, 2026): deleting a counter sets
+  /// [isArchived] AND stamps [deletedAt]; restoring clears both.
+  /// Rows archived before this model existed carry no stamp —
+  /// readers must treat a null stamp as "no known delete date",
+  /// never invent one.
+  final int? deletedAt;
+
   const EventCounterItem({
     required this.id,
     required this.name,
@@ -258,11 +267,14 @@ class EventCounterItem {
     this.autoUp = false,
     this.isFavorite = false,
     this.isArchived = false,
+    this.deletedAt,
   });
 
   factory EventCounterItem.fromMap(Map<String, dynamic> m) {
     int asInt(dynamic v) =>
         v is num ? v.toInt() : (v is String ? int.tryParse(v) ?? 0 : 0);
+    int? asIntOrNull(dynamic v) =>
+        v is num ? v.toInt() : (v is String ? int.tryParse(v) : null);
     bool asBool(dynamic v) => v == true || v == 'true';
     return EventCounterItem(
       id: '${m['id'] ?? ''}',
@@ -272,6 +284,7 @@ class EventCounterItem {
       autoUp: asBool(m['autoUp']),
       isFavorite: asBool(m['isFavorite']),
       isArchived: asBool(m['isArchived']),
+      deletedAt: asIntOrNull(m['deletedAt']),
     );
   }
 
@@ -283,9 +296,25 @@ class EventCounterItem {
         'autoUp': autoUp,
         'isFavorite': isFavorite,
         'isArchived': isArchived,
+        // Emitted ONLY when set: the profile blob is stored
+        // verbatim server-side (whole-blob replace), so omitting
+        // the key on a restore CLEARS the stamp server-side.
+        if (deletedAt != null) 'deletedAt': deletedAt,
       };
 
-  EventCounterItem copyWith({String? name, int? targetDate, bool? isUp, bool? autoUp, bool? isArchived}) =>
+  /// Sentinel for [copyWith]'s [deletedAt]: an omitted argument
+  /// keeps the current stamp; an explicit `deletedAt: null` clears
+  /// it (a restore).
+  static const Object _deletedAtUnset = Object();
+
+  EventCounterItem copyWith({
+    String? name,
+    int? targetDate,
+    bool? isUp,
+    bool? autoUp,
+    bool? isArchived,
+    Object? deletedAt = _deletedAtUnset,
+  }) =>
       EventCounterItem(
         id: id,
         name: name ?? this.name,
@@ -294,6 +323,9 @@ class EventCounterItem {
         autoUp: autoUp ?? this.autoUp,
         isFavorite: isFavorite,
         isArchived: isArchived ?? this.isArchived,
+        deletedAt: identical(deletedAt, _deletedAtUnset)
+            ? this.deletedAt
+            : deletedAt as int?,
       );
 
   @override
@@ -305,11 +337,12 @@ class EventCounterItem {
       other.isUp == isUp &&
       other.autoUp == autoUp &&
       other.isFavorite == isFavorite &&
-      other.isArchived == isArchived;
+      other.isArchived == isArchived &&
+      other.deletedAt == deletedAt;
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, targetDate, isUp, autoUp, isFavorite, isArchived);
+  int get hashCode => Object.hash(
+      id, name, targetDate, isUp, autoUp, isFavorite, isArchived, deletedAt);
 
   /// Signed whole calendar days from the target's local calendar day
   /// to today's local calendar day (positive when the target day is

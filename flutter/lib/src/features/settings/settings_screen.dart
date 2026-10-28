@@ -662,6 +662,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   targetDateMs: c.targetDate,
                   isArchived: c.isArchived,
                   isUp: c.isUp,
+                  deletedAt: c.deletedAt,
                 ))
             .toList(),
       );
@@ -4746,7 +4747,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   /// Counter-mutation durability (Oct 2026) — the choke point for
-  /// every SETTINGS event-counter save (archive / unarchive /
+  /// every SETTINGS event-counter save (delete / restore /
   /// edit / create / end-and-save), rewritten after the founder's
   /// mutations never persisted. Correction round (Vera F4): this
   /// is not literally the only whole-blob eventCounters writer —
@@ -4886,7 +4887,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   List<Widget> _countersPage() {
     final counters = _counters;
     final active = counters.where((c) => !c.isArchived).toList();
-    final archived = counters.where((c) => c.isArchived).toList();
+    // Delete/Restore model (Oct 27, 2026): a deleted counter is an
+    // archived row carrying a deletedAt stamp; it renders in the
+    // DELETED COUNTERS section below and can always be brought back.
+    final deleted = counters.where((c) => c.isArchived).toList();
     final history = _data.counterHistory;
     return [
       Row(
@@ -4945,11 +4949,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   TextStyle(color: NotelColors.textSecondary, fontSize: 13))
         ])
       else if (active.isNotEmpty)
-        _counterCard(active, archived: false),
-      if (archived.isNotEmpty) ...[
+        _counterCard(active),
+      if (deleted.isNotEmpty) ...[
         const SizedBox(height: 16),
-        _sectionLabel('ARCHIVED'),
-        _counterCard(archived, archived: true),
+        _sectionLabel('DELETED COUNTERS'),
+        // The founder's requested look (Oct 27, 2026): the same
+        // clean text-row card as PAST COUNTERS below — no per-row
+        // icon rail; each row's only action is 'Bring back'.
+        _card(_deletedCounterRows(deleted),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 8)),
       ],
       if (history.isNotEmpty) ...[
         const SizedBox(height: 16),
@@ -4973,17 +4982,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// surface color / radius / padding family as every Settings
   /// card), rows separated by the standard divider — the menu-card
   /// rhythm from Rounds 29–30.
-  Widget _counterCard(List<EventCounterItem> list,
-      {required bool archived}) {
+  Widget _counterCard(List<EventCounterItem> list) {
     final children = <Widget>[];
     for (var i = 0; i < list.length; i++) {
       if (i > 0) {
         children.add(const Divider(color: NotelColors.divider, height: 1));
       }
-      children.add(_counterRow(list[i], archived: archived));
+      children.add(_counterRow(list[i]));
     }
     return _card(children,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8));
+  }
+
+  /// 'Mon DD, YYYY' — the date format shared by the Past Counters
+  /// rows and the Deleted Counters rows, so the two sections read
+  /// identically.
+  String _monthDayYearLabel(int ms) {
+    final date = DateTime.fromMillisecondsSinceEpoch(ms);
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    return '${months[date.month - 1]} ${date.day.toString().padLeft(2, '0')}, ${date.year}';
   }
 
   List<Widget> _pastCounterRows(List<Map<String, dynamic>> history) {
@@ -4997,16 +5017,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final ms = ended is num
           ? ended.toInt()
           : (ended is String ? int.tryParse(ended) ?? 0 : 0);
-      final date = DateTime.fromMillisecondsSinceEpoch(ms);
-      const months = [
-        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-      ];
-      final label =
-          '${months[date.month - 1]} ${date.day.toString().padLeft(2, '0')}, ${date.year}';
       rows.add(Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Text('${h['name'] ?? ''} (Ended: $label)',
+        child: Text('${h['name'] ?? ''} (Ended: ${_monthDayYearLabel(ms)})',
             style: const TextStyle(
                 color: NotelColors.textSecondary, fontSize: 11)),
       ));
@@ -5014,10 +5027,69 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return rows;
   }
 
-  Widget _counterRow(EventCounterItem c, {required bool archived}) {
-    // Archived rows recede: name and day label both render in the
-    // muted secondary tone at the smaller sizes. Active rows stay
-    // full strength with the Tabs-purple day label.
+  /// Deleted counters in the Past Counters style (founder
+  /// direction, Oct 27, 2026): divider-separated muted text rows,
+  /// 'Name (Deleted: Mon DD, YYYY)', no per-row icon clutter. Each
+  /// row's ONLY action is the 'Bring back' restore — no edit, no
+  /// end (ending a deleted counter means bringing it back first,
+  /// then ending it from the active list). Rows archived before
+  /// the delete stamp existed carry no deletedAt: they render
+  /// name-only — a date is never invented for them.
+  List<Widget> _deletedCounterRows(List<EventCounterItem> list) {
+    final rows = <Widget>[];
+    for (var i = 0; i < list.length; i++) {
+      if (i > 0) {
+        rows.add(const Divider(color: NotelColors.divider, height: 1));
+      }
+      final c = list[i];
+      final label = c.deletedAt == null
+          ? c.name
+          : '${c.name} (Deleted: ${_monthDayYearLabel(c.deletedAt!)})';
+      rows.add(Row(
+        key: ValueKey('counter_row_${c.id}'),
+        children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(label,
+                  style: const TextStyle(
+                      color: NotelColors.textSecondary, fontSize: 11)),
+            ),
+          ),
+          TextButton(
+            key: ValueKey('counter_restore_${c.id}'),
+            style: TextButton.styleFrom(
+              foregroundColor: NotelColors.textSecondary,
+              // ≥48dp tap target (this page's a11y precedent) while
+              // the label itself stays at the rows' 11px.
+              minimumSize: const Size(48, 48),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              textStyle: const TextStyle(fontSize: 11),
+            ),
+            // Vera F1 — disabled while a counter save is in flight.
+            onPressed: _counterSaveInFlight
+                ? null
+                : () async {
+                    // ABSOLUTE intent: restore THIS row by id —
+                    // isArchived false AND the delete stamp cleared,
+                    // every other field carried through intact.
+                    await _saveCounters((fresh) => fresh
+                        .map((x) => x.id == c.id
+                            ? x.copyWith(isArchived: false, deletedAt: null)
+                            : x)
+                        .toList());
+                  },
+            child: const Text('Bring back'),
+          ),
+        ],
+      ));
+    }
+    return rows;
+  }
+
+  Widget _counterRow(EventCounterItem c) {
+    // Active rows only (deleted rows render as _deletedCounterRows):
+    // full-strength name with the Tabs-purple day label.
     return Padding(
       key: ValueKey('counter_row_${c.id}'),
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -5028,20 +5100,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(c.name,
-                    style: TextStyle(
-                        color: archived
-                            ? NotelColors.textSecondary
-                            : NotelColors.textPrimary,
-                        fontWeight:
-                            archived ? FontWeight.w600 : FontWeight.bold,
-                        fontSize: archived ? 12 : 13)),
+                    style: const TextStyle(
+                        color: NotelColors.textPrimary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13)),
                 const SizedBox(height: 2),
                 Text(c.daysLabel(),
-                    style: TextStyle(
-                        color: archived
-                            ? NotelColors.textSecondary
-                            : NotelColors.primary,
-                        fontSize: archived ? 10 : 11)),
+                    style: const TextStyle(
+                        color: NotelColors.primary, fontSize: 11)),
               ],
             ),
           ),
@@ -5050,27 +5116,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // each on an explicit 48dp touch target with a tooltip
           // (the tooltip doubles as the semantics label).
           IconButton(
-            key: ValueKey('counter_archive_${c.id}'),
-            tooltip: archived ? 'Unarchive counter' : 'Archive counter',
+            key: ValueKey('counter_delete_${c.id}'),
+            tooltip: 'Delete counter',
             constraints:
                 const BoxConstraints(minWidth: 48, minHeight: 48),
-            icon: Icon(archived ? Icons.unarchive : Icons.archive,
+            icon: const Icon(Icons.delete_outline,
                 size: 18, color: NotelColors.textSecondary),
             // Vera F1 — disabled while a counter save is in flight.
             onPressed: _counterSaveInFlight
                 ? null
                 : () async {
-                    // ABSOLUTE intent captured from the RENDERED
-                    // row: this tap means "set isArchived to the
-                    // opposite of what I see". _saveCounters applies
-                    // that absolute value to the fresh row — never
-                    // a toggle of the fresh row's own flag, which a
-                    // double-tap or concurrent archive would flip
-                    // back (the founder's un-archive symptom).
-                    final targetArchived = !c.isArchived;
+                    // ABSOLUTE intent captured at tap time from the
+                    // RENDERED row: this tap means "delete the
+                    // counter I see" — set isArchived AND stamp
+                    // deletedAt with the tap moment. _saveCounters
+                    // applies those absolute values to the fresh
+                    // row by id — never a toggle of the fresh row's
+                    // own flag, which a double-tap or concurrent
+                    // mutation would flip back. Single tap, no
+                    // confirmation (Juno ruling, Oct 27, 2026): the
+                    // Deleted section's 'Bring back' is the undo.
+                    final deletedAtMs =
+                        DateTime.now().millisecondsSinceEpoch;
                     await _saveCounters((fresh) => fresh
                         .map((x) => x.id == c.id
-                            ? x.copyWith(isArchived: targetArchived)
+                            ? x.copyWith(
+                                isArchived: true, deletedAt: deletedAtMs)
                             : x)
                         .toList());
                   },

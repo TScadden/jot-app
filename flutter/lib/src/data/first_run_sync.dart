@@ -111,6 +111,7 @@ Future<void> performReminderResync({
               targetDateMs: c.targetDate,
               isArchived: c.isArchived,
               isUp: c.isUp,
+              deletedAt: c.deletedAt,
             ))
         .toList(),
   );

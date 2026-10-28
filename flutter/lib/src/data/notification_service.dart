@@ -186,12 +186,19 @@ class EventReminderRequest {
   final bool isArchived;
   final bool isUp;
 
+  /// Delete stamp (epoch ms) from the counter's Delete action, or
+  /// null when not deleted. A deleted counter never arms an alarm —
+  /// checked alongside [isArchived] so even a legacy row whose
+  /// archive marker is missing cannot fire after a delete.
+  final int? deletedAt;
+
   const EventReminderRequest({
     required this.counterId,
     required this.name,
     required this.targetDateMs,
     required this.isArchived,
     required this.isUp,
+    this.deletedAt,
   });
 }
 
@@ -394,9 +401,10 @@ class ReminderSync {
       // Native's EventReceiver re-checks the master event toggle at
       // fire time; the plugin equivalent is cancelling here when the
       // toggle is off.
-      final fire = (!eventEnabled || e.isArchived || e.isUp)
-          ? null
-          : eventFireTime(e.targetDateMs, n);
+      final fire =
+          (!eventEnabled || e.isArchived || e.deletedAt != null || e.isUp)
+              ? null
+              : eventFireTime(e.targetDateMs, n);
       if (fire == null) {
         await service.cancel(id);
       } else {
