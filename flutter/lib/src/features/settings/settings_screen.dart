@@ -885,6 +885,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return ok;
   }
 
+  /// F-11 (legal-exposure register Q82) — open-source license
+  /// notices. Flutter populates the LicenseRegistry with every
+  /// bundled package's license, but the shipped app wired no
+  /// surface to it, so the MIT/BSD/Apache notice duties that
+  /// travel with the binary were unreachable in-app.
+  /// showLicensePage renders that registry (app name/version
+  /// plus the full license list) in the app's theme.
+  void _openLicenses() {
+    showLicensePage(
+      context: context,
+      applicationName: 'Tabs',
+      applicationVersion: '1.0',
+    );
+  }
+
   Future<void> _openUrl(String url) async {
     final uri = Uri.parse(url);
     final launch = widget.urlLauncher ??
@@ -1418,6 +1433,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
               height: 48,
               alignment: Alignment.center,
               child: const Text('Privacy Policy',
+                  style: TextStyle(
+                      color: NotelColors.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500)),
+            ),
+          ),
+          const SizedBox(height: 2),
+          GestureDetector(
+            key: const ValueKey('open_source_licenses'),
+            behavior: HitTestBehavior.opaque,
+            onTap: _openLicenses,
+            child: Container(
+              height: 48,
+              alignment: Alignment.center,
+              child: const Text('Open Source Licenses',
                   style: TextStyle(
                       color: NotelColors.primary,
                       fontSize: 12,
