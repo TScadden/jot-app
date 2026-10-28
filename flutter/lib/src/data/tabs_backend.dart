@@ -1306,22 +1306,27 @@ class TabsBackend {
     });
   }
 
-  /// Phase 1, item 2b — reads the append-only medication change
-  /// events via `GET /api/sync/medication-events` →
-  /// `{success: true, events: [...]}` OLDEST FIRST, each event in
-  /// the client contract shape (see [MedicationChangeEvent]).
-  /// Follows the file's list-fetch precedent: an empty list on
-  /// ANY failure (transport, non-200, `success != true`, or a
-  /// body without a usable `events` list) — indistinguishable
-  /// from a genuinely empty history at this layer, and the
-  /// timeline screen renders its honest empty changes state from
-  /// it (seeded markers and scores still render). Malformed
-  /// event rows are skipped; never throws.
-  Future<List<MedicationChangeEvent>> fetchMedicationChangeEvents() async {
+  /// Phase 1, items 2b + 3 — THE read path for the append-only
+  /// medication change events: `GET /api/sync/medication-events`
+  /// → `{success: true, events: [...]}` OLDEST FIRST, each event
+  /// in the client contract shape (see [MedicationChangeEvent]),
+  /// ONLY the caller's events. Unified at the VC 100109 combine
+  /// (both branches had grown a copy): NULL on any failure
+  /// (transport, non-200, `success != true`, or a body without a
+  /// usable `events` list) so a caller can tell a failed fetch
+  /// from a genuinely empty history — item 3's Z5 degrades to its
+  /// declared form on null instead of mistaking a failure for
+  /// "no changes captured" (spec §4.5: failures land in
+  /// degradation, never in falsified content), and item 2b's
+  /// timeline screen maps null to its honest empty changes state
+  /// (`?? const []` at its call site; seeded markers and scores
+  /// still render). Malformed event rows are skipped; never
+  /// throws.
+  Future<List<MedicationChangeEvent>?> fetchMedicationChangeEvents() async {
     final body = await _getJson('/api/sync/medication-events');
-    if (body == null || body['success'] != true) return const [];
+    if (body == null || body['success'] != true) return null;
     final raw = body['events'];
-    if (raw is! List) return const [];
+    if (raw is! List) return null;
     final out = <MedicationChangeEvent>[];
     for (final e in raw) {
       if (e is Map<String, dynamic>) {

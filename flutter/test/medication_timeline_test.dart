@@ -212,25 +212,31 @@ void main() {
       final events = await backend.fetchMedicationChangeEvents();
       // The bogus row parses tolerantly into an empty event; the
       // two real events keep their order and fields.
-      expect(events.length, 3);
+      expect(events, isNotNull);
+      expect(events!.length, 3);
       expect(events[0].type, 'start');
       expect(events[0].newSnapshot?.dose, '10 mg');
       expect(events[1].type, 'stop');
       expect(events[1].newSnapshot?.isPresent, isFalse);
     });
 
-    test('fetchMedicationChangeEvents → empty on failure shapes', () async {
+    // VC 100109 combine (itemized): the read path was unified
+    // with item 3's nullable contract — failure shapes now read
+    // as NULL (a failed fetch), distinguishable from a genuinely
+    // empty history; the timeline screen maps null to its empty
+    // state at its call site.
+    test('fetchMedicationChangeEvents → null on failure shapes', () async {
       final http500 = backendWith(
           MockClient((_) async => http.Response('nope', 500)));
-      expect(await http500.fetchMedicationChangeEvents(), isEmpty);
+      expect(await http500.fetchMedicationChangeEvents(), isNull);
 
       final notSuccess = backendWith(MockClient((_) async =>
           http.Response(jsonEncode({'success': false, 'events': []}), 200)));
-      expect(await notSuccess.fetchMedicationChangeEvents(), isEmpty);
+      expect(await notSuccess.fetchMedicationChangeEvents(), isNull);
 
       final noEvents = backendWith(MockClient((_) async =>
           http.Response(jsonEncode({'success': true}), 200)));
-      expect(await noEvents.fetchMedicationChangeEvents(), isEmpty);
+      expect(await noEvents.fetchMedicationChangeEvents(), isNull);
     });
   });
 

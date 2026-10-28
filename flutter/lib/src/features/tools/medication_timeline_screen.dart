@@ -187,7 +187,11 @@ class _MedicationTimelineScreenState extends State<MedicationTimelineScreen> {
       final profile = await _backend.fetchProfile();
       final medRows = parseMedicationBlob(
           TabsBackend.decodeProfileList(profile?['medications']));
-      final events = await _backend.fetchMedicationChangeEvents();
+      // VC 100109 combine: the unified read path is nullable
+      // (item 3's degradation semantics); this screen's signed
+      // behavior is the empty list on any failure.
+      final events =
+          await _backend.fetchMedicationChangeEvents() ?? const [];
       final entries = await _backend.fetchLogEntryDtos();
       final categories = await _backend.fetchLogCategories();
 
@@ -246,10 +250,12 @@ class _MedicationTimelineScreenState extends State<MedicationTimelineScreen> {
       _scrollChartToEnd();
     } catch (_) {
       if (!mounted) return;
-      // Honest empty on any failure: seeds + scores render from
-      // whatever the derivation can build over empty inputs —
-      // the changes list shows its ruled empty state and nothing
-      // is invented.
+      // Honest empty on any failure: the timeline is built over
+      // fully empty inputs, so the screen renders its ruled
+      // empty states and nothing is invented. (VC 100109
+      // combine — Vera C3 comment correction: the earlier text
+      // overstated this fallback as rendering seeds + scores;
+      // on a load failure neither is available.)
       setState(() {
         _data = buildMedicationTimeline(
           events: const [],
