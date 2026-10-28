@@ -115,6 +115,16 @@ Future<({_RecordingHc hc, HealthHistoryStore store})> _runCapture({
   if (lastCaptureMs != null) {
     await store.markCaptured(lastCaptureMs);
   }
+  if (seed) {
+    // A seeded store models one that has already captured under
+    // the CURRENT sleep-totals rule (Oct 28, 2026: nights are the
+    // union of all bouts): pre-stamp the rule version so these
+    // cases keep pinning the gap-aware windows. A legacy-version
+    // store instead forces one full 90-day sleep re-read — that
+    // upgrade behavior is pinned in sleep_totals_upgrade_test.dart.
+    await store.markSleepTotalsRuleVersion(
+        HealthHistoryStore.currentSleepTotalsRuleVersion);
+  }
   final recording = hc ?? _RecordingHc();
   final sync = HealthHistorySync.withDeps(
     hc: recording,

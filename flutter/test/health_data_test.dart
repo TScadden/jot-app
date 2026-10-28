@@ -466,17 +466,36 @@ void main() {
           case 'readRestingHrHistory':
             return <Map<String, Object>>[];
           case 'readSleepHistory':
-            // R70 WS2 — the snapshot's sleep now comes through the
-            // union helper's range read: serve the same per-day
-            // minutes the per-day reads served, for the last 7 days.
+            // Sleep-bouts-summed — the bridge now returns per-SESSION
+            // maps and Dart unions them into per-day totals: serve
+            // one session per day for the last 7 days whose unioned
+            // totals equal the per-day values the old mock served
+            // (mins: sleepMinutes, deep: 60). A session ending at
+            // 08:00 on date D has wake date D, so startMs is
+            // endMs − sleepMinutes on that date, with a deep stage
+            // of 01:00–02:00 (60 min).
             final now = DateTime.now();
+            final today = DateTime(now.year, now.month, now.day);
             return <Map<String, Object>>[
               for (var i = 6; i >= 0; i--)
-                {
-                  'date': _dateStrForTest(now.subtract(Duration(days: i))),
-                  'mins': sleepMinutes,
-                  'deep': 60,
-                },
+                () {
+                  final day = today.subtract(Duration(days: i));
+                  final endMs =
+                      DateTime(day.year, day.month, day.day, 8)
+                          .millisecondsSinceEpoch;
+                  final deepStartMs =
+                      DateTime(day.year, day.month, day.day, 1)
+                          .millisecondsSinceEpoch;
+                  return <String, Object>{
+                    'date': _dateStrForTest(day),
+                    'startMs': endMs - sleepMinutes * 60 * 1000,
+                    'endMs': endMs,
+                    'awake': <List<int>>[],
+                    'deep': <List<int>>[
+                      [deepStartMs, deepStartMs + 60 * 60 * 1000],
+                    ],
+                  };
+                }(),
             ];
           case 'readSpikeCounts':
             return <Map<String, Object>>[];

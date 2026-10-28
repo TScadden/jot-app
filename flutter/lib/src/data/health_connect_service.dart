@@ -664,8 +664,52 @@ class HealthConnectService {
     }
   }
 
+  /// Parses one raw interval list from the bridge (`[[startMs,
+  /// endMs], ...]`). Malformed entries are skipped; a non-list
+  /// value yields no intervals.
+  static List<({int startMs, int endMs})> _parseSleepIntervals(
+      dynamic v) {
+    if (v is! List) return const [];
+    final out = <({int startMs, int endMs})>[];
+    for (final entry in v) {
+      if (entry is List && entry.length >= 2) {
+        final s = entry[0];
+        final e = entry[1];
+        if (s is num && e is num) {
+          out.add((startMs: s.toInt(), endMs: e.toInt()));
+        }
+      }
+    }
+    return out;
+  }
+
+  /// Parses one session map from the `readSleepHistory` bridge
+  /// payload into a [SleepSessionRaw]. Returns null for a malformed
+  /// entry (missing/invalid date, startMs or endMs) — malformed
+  /// entries are skipped, never thrown.
+  static SleepSessionRaw? _parseSleepSession(dynamic item) {
+    if (item is! Map) return null;
+    final d = item['date'];
+    final start = item['startMs'];
+    final end = item['endMs'];
+    if (d is! String || d.isEmpty) return null;
+    if (start is! num || end is! num) return null;
+    return SleepSessionRaw(
+      date: d,
+      startMs: start.toInt(),
+      endMs: end.toInt(),
+      awake: _parseSleepIntervals(item['awake']),
+      deep: _parseSleepIntervals(item['deep']),
+    );
+  }
+
   /// Per-day sleep totals `[{date, mins, deep}]` over the last [days]
-  /// days (bridge range read, native `readHistoricalSleepWithDeep`).
+  /// days (bridge range read). The bridge now returns per-SESSION
+  /// maps (`{date, startMs, endMs, awake, deep}`); the per-day
+  /// totals are the union of all the night's bouts, computed in
+  /// Dart by [summarizeSleepSessions] (founder decision Oct 28,
+  /// 2026: a night's total is all of its bouts added up, overlaps
+  /// never double-counted).
   /// Raw values pass through — callers apply the founder zero rule.
   /// Empty when unreadable.
   Future<List<({String date, int mins, int deep})>> readSleepHistory(
@@ -689,22 +733,12 @@ class HealthConnectService {
           lastReadErrorDetails = partial;
         }
       }
-      final out = <({String date, int mins, int deep})>[];
+      final sessions = <SleepSessionRaw>[];
       for (final item in items) {
-        if (item is Map) {
-          final d = item['date'];
-          final m = item['mins'];
-          final deep = item['deep'];
-          if (d is String && m is num) {
-            out.add((
-              date: d,
-              mins: m.toInt(),
-              deep: deep is num ? deep.toInt() : 0,
-            ));
-          }
-        }
+        final session = _parseSleepSession(item);
+        if (session != null) sessions.add(session);
       }
-      return out;
+      return summarizeSleepSessions(sessions);
     } on PlatformException catch (e) {
       _notePlatformError(e);
       return const [];
@@ -830,6 +864,117 @@ class HealthConnectService {
     await _store.write(
         _kConnectedAtKey, DateTime.now().toUtc().toIso8601String());
   }
+}
+
+/// One raw sleep session as returned by the `readSleepHistory`
+/// bridge: the session interval plus its raw (unmerged) awake and
+/// deep stage intervals. [date] is the session's wake/end date
+/// ("YYYY-MM-DD") as attributed natively.
+class SleepSessionRaw {
+  final String date;
+  final int startMs;
+  final int endMs;
+  final List<({int startMs, int endMs})> awake;
+  final List<({int startMs, int endMs})> deep;
+
+  const SleepSessionRaw({
+    required this.date,
+    required this.startMs,
+    required this.endMs,
+    this.awake = const [],
+    this.deep = const [],
+  });
+}
+
+/// Merges [intervals] with Kotlin `mergeIntervals` semantics:
+/// degenerate intervals (end <= start) are dropped, the rest are
+/// sorted by start and merged whenever the next interval starts at
+/// or before the current merged interval ends
+/// (`next.start <= current.end`).
+List<({int startMs, int endMs})> _mergeSleepIntervals(
+    Iterable<({int startMs, int endMs})> intervals) {
+  final cleaned = [
+    for (final iv in intervals)
+      if (iv.endMs > iv.startMs) iv,
+  ]..sort((a, b) {
+      final byStart = a.startMs.compareTo(b.startMs);
+      return byStart != 0 ? byStart : a.endMs.compareTo(b.endMs);
+    });
+  final merged = <({int startMs, int endMs})>[];
+  for (final iv in cleaned) {
+    if (merged.isEmpty || iv.startMs > merged.last.endMs) {
+      merged.add(iv);
+    } else if (iv.endMs > merged.last.endMs) {
+      merged[merged.length - 1] =
+          (startMs: merged.last.startMs, endMs: iv.endMs);
+    }
+  }
+  return merged;
+}
+
+/// The asleep pieces of one session: its merged awake intervals,
+/// clamped to the session interval, subtracted from it.
+List<({int startMs, int endMs})> _asleepPieces(SleepSessionRaw session) {
+  if (session.endMs <= session.startMs) return const [];
+  final clampedAwake = <({int startMs, int endMs})>[];
+  for (final iv in _mergeSleepIntervals(session.awake)) {
+    final start = iv.startMs < session.startMs ? session.startMs : iv.startMs;
+    final end = iv.endMs > session.endMs ? session.endMs : iv.endMs;
+    if (end > start) clampedAwake.add((startMs: start, endMs: end));
+  }
+  final pieces = <({int startMs, int endMs})>[];
+  var cursor = session.startMs;
+  for (final iv in clampedAwake) {
+    if (iv.startMs > cursor) {
+      pieces.add((startMs: cursor, endMs: iv.startMs));
+    }
+    if (iv.endMs > cursor) cursor = iv.endMs;
+  }
+  if (cursor < session.endMs) {
+    pieces.add((startMs: cursor, endMs: session.endMs));
+  }
+  return pieces;
+}
+
+/// Sleep-bouts-summed (founder decision Oct 28, 2026): a night's
+/// sleep total is ALL of that night's sleep bouts added up, with
+/// overlaps never double-counted. Per date (sessions grouped by
+/// their wake/end [SleepSessionRaw.date]):
+/// - each session's asleep time is the session interval minus its
+///   merged awake stages (clamped to the session);
+/// - `mins` is the duration of the UNION of every session's asleep
+///   pieces for the date, in whole minutes;
+/// - `deep` is the duration of the UNION of every session's deep
+///   stage intervals for the date, in whole minutes.
+///
+/// Returns one entry per date that has at least one session,
+/// sorted ascending by date — INCLUDING a date whose union totals
+/// 0: raw values pass through and callers apply the founder zero
+/// rule, exactly as the per-day totals always have.
+List<({String date, int mins, int deep})> summarizeSleepSessions(
+    Iterable<SleepSessionRaw> sessions) {
+  final asleepByDate = <String, List<({int startMs, int endMs})>>{};
+  final deepByDate = <String, List<({int startMs, int endMs})>>{};
+  for (final session in sessions) {
+    asleepByDate
+        .putIfAbsent(session.date, () => [])
+        .addAll(_asleepPieces(session));
+    deepByDate.putIfAbsent(session.date, () => []).addAll(session.deep);
+  }
+  final dates = asleepByDate.keys.toList()..sort();
+  final out = <({String date, int mins, int deep})>[];
+  for (final date in dates) {
+    var asleepMs = 0;
+    for (final iv in _mergeSleepIntervals(asleepByDate[date]!)) {
+      asleepMs += iv.endMs - iv.startMs;
+    }
+    var deepMs = 0;
+    for (final iv in _mergeSleepIntervals(deepByDate[date]!)) {
+      deepMs += iv.endMs - iv.startMs;
+    }
+    out.add((date: date, mins: asleepMs ~/ 60000, deep: deepMs ~/ 60000));
+  }
+  return out;
 }
 
 /// R71 — attribute raw HRV samples to local calendar days and

@@ -229,7 +229,24 @@ void main() {
         store: MemorySecureStore(),
         handler: (call) async => {
           'items': [
-            {'date': '2026-10-17', 'mins': 420, 'deep': 60},
+            // Session payload (Oct 28, 2026 bridge contract): one
+            // 420-minute session ending 08:00 on the wake date,
+            // with a 60-minute deep stage — unions to the totals
+            // the old {mins: 420, deep: 60} shape carried.
+            {
+              'date': '2026-10-17',
+              'startMs': DateTime(2026, 10, 17, 1, 0)
+                  .millisecondsSinceEpoch,
+              'endMs':
+                  DateTime(2026, 10, 17, 8, 0).millisecondsSinceEpoch,
+              'awake': <List<int>>[],
+              'deep': [
+                [
+                  DateTime(2026, 10, 17, 2, 0).millisecondsSinceEpoch,
+                  DateTime(2026, 10, 17, 3, 0).millisecondsSinceEpoch,
+                ],
+              ],
+            },
           ],
           'partialError': 'IOException',
         },
