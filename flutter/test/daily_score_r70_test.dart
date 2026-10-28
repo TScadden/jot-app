@@ -57,12 +57,101 @@ Future<bool> _instantSnapshot({bool force = false}) async => true;
 
 void main() {
   group('formula: sleep component', () {
-    test('linear below need, capped at need, no bonus above', () {
+    test('squared below need, capped at need, no bonus above', () {
       expect(scoreSleepComponent(0), 0);
-      expect(scoreSleepComponent(0.5), 50);
-      expect(scoreSleepComponent(0.75), 75);
+      expect(scoreSleepComponent(0.5), 25);
+      expect(scoreSleepComponent(0.75), 56.25);
       expect(scoreSleepComponent(1.0), 100);
       expect(scoreSleepComponent(1.4), 100);
+    });
+
+    // Founder decision, Oct 28, 2026: the squared curve's
+    // acceptance points, computed by hand from 100 × c².
+    test('acceptance points for the squared curve', () {
+      expect(scoreSleepComponent(0.25), 6.25);
+      // 276 asleep of a 636 need: (276/636)² × 100 = 18.8323…
+      expect(scoreSleepComponent(276 / 636), closeTo(18.83, 0.01));
+      expect(scoreSleepComponent(0.60), closeTo(36, 1e-9));
+      expect(scoreSleepComponent(0.80), closeTo(64, 1e-9));
+      expect(scoreSleepComponent(1.00), 100);
+    });
+  });
+
+  group('acceptance: squared sleep curve totals (Oct 28, 2026)', () {
+    const target = '2026-10-17';
+
+    // Priors carry HRV 40 ms and resting HR 60 bpm throughout, so
+    // a target day with HRV 50 ms (+25% → subscore 100) and
+    // resting HR 59 bpm (−1.667% → subscore 75) holds those two
+    // components fixed while sleep varies.
+    Map<String, DailyBiometrics> daysWithSleep(
+      List<int> priorSleep,
+      int targetSleep,
+    ) =>
+        _mapOf([
+          for (var i = 0; i < priorSleep.length; i++)
+            DailyBiometrics(
+              date: _priorDates(target, priorSleep.length)[i],
+              sleepMinutes: priorSleep[i],
+              hrvRmssdMs: 40,
+              restingHrBpm: 60,
+            ),
+          DailyBiometrics(
+            date: target,
+            sleepMinutes: targetSleep,
+            hrvRmssdMs: 50,
+            restingHrBpm: 59,
+          ),
+        ]);
+
+    void checkTotal(
+      Map<String, DailyBiometrics> days, {
+      required double sleepSubscore,
+      required double dailyExact,
+      required int dailyScore,
+    }) {
+      final c = computeDailyScore(days, target)!;
+      expect(c.sleepScore, closeTo(sleepSubscore, 0.001));
+      expect(c.hrvScore, 100);
+      expect(c.restingHrScore, closeTo(75, 1e-9));
+      expect(c.dailyExact, closeTo(dailyExact, 0.001));
+      expect(c.dailyScore, dailyScore);
+    }
+
+    // Need 480 (28 priors at 480, no debt); weights 40/35/25 with
+    // HRV 100 and RHR 75 held fixed: total = (40·sleep + 3500 +
+    // 1875) / 100.
+    test('sleep 25% of need → subscore 6.25, total 56', () {
+      checkTotal(daysWithSleep(List.filled(28, 480), 120),
+          sleepSubscore: 6.25, dailyExact: 56.25, dailyScore: 56);
+    });
+
+    test('sleep 43.4% of need (276 of 636) → subscore 18.83, total 61',
+        () {
+      // Need 636 = baseNeed 516 (p75 of 21×516 + 7×400) + the
+      // 120-minute debt cap (7 recent nights at 400 accrue 812).
+      final days = daysWithSleep(
+          [...List.filled(21, 516), ...List.filled(7, 400)], 276);
+      final c = computeDailyScore(days, target)!;
+      expect(c.sleepNeedMinutes, 636);
+      expect(c.asleepMinutes, 276);
+      checkTotal(days,
+          sleepSubscore: 18.8323, dailyExact: 61.2829, dailyScore: 61);
+    });
+
+    test('sleep 60% of need → subscore 36, total 68', () {
+      checkTotal(daysWithSleep(List.filled(28, 480), 288),
+          sleepSubscore: 36, dailyExact: 68.15, dailyScore: 68);
+    });
+
+    test('sleep 80% of need → subscore 64, total 79', () {
+      checkTotal(daysWithSleep(List.filled(28, 480), 384),
+          sleepSubscore: 64, dailyExact: 79.35, dailyScore: 79);
+    });
+
+    test('sleep 100% of need → subscore 100, total 94', () {
+      checkTotal(daysWithSleep(List.filled(28, 480), 480),
+          sleepSubscore: 100, dailyExact: 93.75, dailyScore: 94);
     });
   });
 
@@ -115,11 +204,12 @@ void main() {
         const DailyBiometrics(date: target, sleepMinutes: 240),
       ]);
       final c = computeDailyScore(days, target)!;
-      // Need from priors = 480 (p75 480, no debt) → ratio 0.5.
-      expect(c.sleepScore, 50);
+      // Need from priors = 480 (p75 480, no debt) → ratio 0.5,
+      // squared → 25.
+      expect(c.sleepScore, 25);
       expect(c.hrvScore, isNull);
       expect(c.restingHrScore, isNull);
-      expect(c.dailyScore, 50);
+      expect(c.dailyScore, 25);
       expect(c.asleepMinutes, 240);
       expect(c.sleepNeedMinutes, 480);
     });
@@ -154,9 +244,9 @@ void main() {
         const DailyBiometrics(date: target, sleepMinutes: 240, hrvRmssdMs: 40),
       ]);
       final c = computeDailyScore(days, target)!;
-      // (40*50 + 35*70) / 75 = 59.33…
-      expect(c.dailyExact, closeTo(59.333, 0.001));
-      expect(c.dailyScore, 59);
+      // Sleep ratio 0.5 squared → 25: (40*25 + 35*70) / 75 = 46.
+      expect(c.dailyExact, closeTo(46, 0.001));
+      expect(c.dailyScore, 46);
     });
 
     test('fewer than 7 baseline days: component unavailable', () {

@@ -853,8 +853,9 @@ void main() {
       now = now.add(const Duration(hours: 7));
       expect(await sync.capture(), isTrue);
       row = (await store.readAll())[today]!;
-      // Sleep 420/480 → 87.5; HRV 70; RHR 70 → 77.
-      expect(row.dailyScore, 77);
+      // Sleep 420/480 = 0.875, squared → 76.5625; HRV 70; RHR 70
+      // → (40·76.5625 + 35·70 + 25·70) / 100 = 72.625 → 73.
+      expect(row.dailyScore, 73);
       expect(row.scoreSleep, isNotNull);
       expect(row.scoreHrv, isNotNull);
       expect(row.scoreRestingHr, isNotNull);
@@ -863,7 +864,7 @@ void main() {
       hc.hr = const [(date: today, bpm: 45)];
       now = now.add(const Duration(hours: 7));
       expect(await sync.capture(), isTrue);
-      expect((await store.readAll())[today]!.dailyScore, 77);
+      expect((await store.readAll())[today]!.dailyScore, 73);
     });
   });
 
@@ -1057,7 +1058,8 @@ void main() {
       final now = DateTime.now();
       final todayStr = _ds(DateTime(now.year, now.month, now.day));
       // The forced capture lands nothing new: the refresh must
-      // still score today sleep-only (420 of 480 need → 88).
+      // still score today sleep-only (420 of 480 need = 0.875,
+      // squared → 76.5625 → 77).
       final owner = DailyScoreRefreshOwner.withCapture(
         store: store,
         capture: ({bool force = false}) async => true,
@@ -1073,11 +1075,11 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump();
       final row = (await store.readAll())[todayStr]!;
-      expect(row.dailyScore, 88);
-      expect(row.scoreSleep, 88);
+      expect(row.dailyScore, 77);
+      expect(row.scoreSleep, 77);
       expect(row.scoreHrv, isNull);
       expect(row.scoreRestingHr, isNull);
-      expect(find.text('Daily Score: 88 · Great'), findsOneWidget);
+      expect(find.text('Daily Score: 77 · Good'), findsOneWidget);
       expect(find.text('Not counted'), findsNWidgets(2));
       // Write-once resumes: a later gated automatic run with
       // drifted data never re-scores the manually scored day.
@@ -1086,7 +1088,7 @@ void main() {
       ]);
       await DailyScoreEngine(store: store)
           .computeMissingScores(completeOnlyDate: todayStr);
-      expect((await store.readAll())[todayStr]!.dailyScore, 88);
+      expect((await store.readAll())[todayStr]!.dailyScore, 77);
     });
   });
 

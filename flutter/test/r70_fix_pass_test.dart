@@ -210,23 +210,23 @@ void main() {
 
     // Stage 4: the post-capture engine run (no cutoff, the
     // health_history_sync shape) scores today ONCE, with ALL
-    // available components: sleep 240/480 need = 50, HRV at
-    // baseline = 70, resting HR -10% = 100, daily
-    // (40*50 + 35*70 + 25*100) / 100 = 69.5 -> 70.
+    // available components: sleep 240/480 need = ratio 0.5,
+    // squared = 25, HRV at baseline = 70, resting HR -10% = 100,
+    // daily (40*25 + 35*70 + 25*100) / 100 = 59.5 -> 60.
     final written = await engine.computeMissingScores();
     expect(written, 1, reason: 'only today was left to score');
     all = await store.readAll();
     final todayRow = all[today]!;
-    expect(todayRow.scoreSleep, 50);
+    expect(todayRow.scoreSleep, 25);
     expect(todayRow.scoreHrv, 70);
     expect(todayRow.scoreRestingHr, 100);
-    expect(todayRow.dailyScore, 70);
+    expect(todayRow.dailyScore, 60);
     expect(all[prior(1)], pastBefore, reason: 'past day untouched');
 
     // The Home-facing read (HomeScreen._loadDailyScore reads
     // readAll()[today]) returns the post-capture score.
     final homeRead = (await store.readAll())[today];
-    expect(homeRead?.dailyScore, 70);
+    expect(homeRead?.dailyScore, 60);
 
     // Scored once: a second post-capture run writes nothing and
     // the record is unchanged.

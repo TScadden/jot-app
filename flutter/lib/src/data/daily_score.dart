@@ -145,7 +145,8 @@ const double baselineAnchorScore = 70;
 /// linear below need, capped at need, never below 0.
 double scoreSleepComponent(double asleepRatio) {
   final r = asleepRatio < 0 ? 0.0 : asleepRatio;
-  return 100.0 * (r > 1.0 ? 1.0 : r);
+  final c = r > 1.0 ? 1.0 : r;
+  return 100.0 * c * c;
 }
 
 /// HRV component: piecewise-linear on percent deviation from the
