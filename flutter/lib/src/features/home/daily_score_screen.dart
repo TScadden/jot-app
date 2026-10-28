@@ -10,8 +10,10 @@ import 'package:tabs_lab/src/data/health_history_queries.dart'
     show historyDateStr;
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_history_sync.dart';
+import 'package:tabs_lab/src/data/correlation_copy.dart';
 import 'package:tabs_lab/src/features/home/daily_score_circle.dart';
 import 'package:tabs_lab/src/features/home/daily_score_vocabulary.dart';
+import 'package:tabs_lab/src/features/home/patterns_screen.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart'
     show formatSleepMinutes;
 import 'package:tabs_lab/src/theme/animations.dart';
@@ -247,6 +249,8 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
         const SizedBox(height: 24),
         _howItWorksCard(),
         const SizedBox(height: 16),
+        _patternsEntry(),
+        const SizedBox(height: 16),
         _disclaimer(),
       ],
     );
@@ -259,6 +263,8 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
       children: [
         _howItWorksCard(),
         const SizedBox(height: 16),
+        _patternsEntry(),
+        const SizedBox(height: 16),
         _chartCard(chartDays),
         const SizedBox(height: 16),
         for (final day in _days) _dayRow(day),
@@ -268,6 +274,50 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
         // standard, so the last row never hides behind the dock.
         const SizedBox(height: 94),
       ],
+    );
+  }
+
+  /// Phase 1 item 5 entry point: pushes the Patterns surface
+  /// (beside this screen's score history — the outcomes' home,
+  /// spec §7 Q7). The label is Juno's ruled surface title,
+  /// sourced from the copy file, never retyped.
+  Widget _patternsEntry() {
+    return Material(
+      color: NotelColors.surface,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () {
+          Navigator.of(context).push(
+            SlidePageRoute(
+              reducedMotion: animationsDisabled(context),
+              builder: (_) => const PatternsScreen(),
+            ),
+          );
+        },
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: NotelColors.legacyDarkDivider),
+          ),
+          padding: const EdgeInsets.all(16),
+          child: const Row(
+            children: [
+              Expanded(
+                child: Text(
+                  correlationTitle,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: NotelColors.textPrimary,
+                  ),
+                ),
+              ),
+              Icon(Icons.chevron_right, color: NotelColors.textSecondary),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
