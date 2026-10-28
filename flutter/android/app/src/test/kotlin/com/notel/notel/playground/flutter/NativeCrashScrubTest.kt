@@ -276,9 +276,8 @@ class NativeCrashScrubTest {
         // ── Top-level absent rows ──
         assertNull(result.getUser())
         assertNull(result.getRequest())
-        assertTrue(
-            result.getBreadcrumbs() == null || result.getBreadcrumbs()!!.isEmpty()
-        )
+        val crumbs = result.getBreadcrumbs()
+        assertTrue(crumbs == null || crumbs.isEmpty())
         assertTrue(result.getExtras() == null || result.getExtras().isEmpty())
         // (getModules() is package-private in the SDK; the modules
         // row is proven by the serialization sweep below.)
@@ -389,7 +388,7 @@ class NativeCrashScrubTest {
         assertNull(device.getModelId())
         assertNull(device.getChipset())
         assertNull(device.getOrientation())
-        assertNull(device.getSimulator())
+        assertNull(device.isSimulator())
         assertNull(device.getScreenWidthPixels())
         assertNull(device.getScreenHeightPixels())
         assertNull(device.getScreenDensity())
