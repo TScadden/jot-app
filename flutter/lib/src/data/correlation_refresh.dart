@@ -172,19 +172,13 @@ class CorrelationRefresher {
 
   CorrelationRefresher({
     required TabsBackend backend,
-    required HealthHistoryStore historyStore,
-    required CorrelationInsightStore insightStore,
-    IntakeTargetHistoryProvider targetProvider =
-        const EmptyIntakeTargetHistoryProvider(),
-    MedChangeEventProvider medEventProvider =
-        const EmptyMedChangeEventProvider(),
+    required this._historyStore,
+    required this._insightStore,
+    this._targetProvider = const EmptyIntakeTargetHistoryProvider(),
+    this._medEventProvider = const EmptyMedChangeEventProvider(),
     Future<String?> Function()? readEmail,
     DateTime Function()? now,
   }) : _backend = backend,
-       _historyStore = historyStore,
-       _insightStore = insightStore,
-       _targetProvider = targetProvider,
-       _medEventProvider = medEventProvider,
        _readEmail = readEmail ?? backend.readEmail,
        _now = now ?? DateTime.now;
 
