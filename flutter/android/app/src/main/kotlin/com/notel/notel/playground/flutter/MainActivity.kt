@@ -57,6 +57,19 @@ class MainActivity : FlutterFragmentActivity() {
         // gate stays closed there — that is the point) and
         // com.notel.notel in the prod build.
         const val APP_INFO_CHANNEL = "com.notel.notel/app_info"
+        // Phase 3 (Juno Ruling 2026-10-28 §1.2, Option B): post-init
+        // registration of the Kotlin C1 beforeSend scrub on the live
+        // native Sentry options. Dart (CrashReporting.run) invokes
+        // this immediately after SentryFlutter.init returns and
+        // before runApp. The handler is registered unconditionally
+        // in configureFlutterEngine (which runs before the Dart
+        // entrypoint, so the channel exists when called); the
+        // registration itself is inert when the SDK never
+        // initialised (empty DSN — NativeScrubRegistration reports
+        // sdkEnabled=false and Dart records the outcome).
+        const val SENTRY_SCRUB_CHANNEL =
+            "com.notel.notel.playground.flutter/sentry_native_scrub"
+        const val SENTRY_SCRUB_REGISTER_METHOD = "registerNativeScrub"
         // Lab-hook extension (Sentry Step-2 evidence, Juno Condition 1):
         // native-crash trigger for the Lab-only crash test hook. The
         // channel is registered ONLY when this build's applicationId
@@ -555,6 +568,30 @@ class MainActivity : FlutterFragmentActivity() {
                             result.success(packageName)
                         } catch (e: Exception) {
                             result.error("PACKAGE_NAME_FAILED", e.message, null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        // Phase 3 (Juno Ruling 2026-10-28 §1.2): native scrub
+        // registration channel. Contract:
+        //   channel: com.notel.notel.playground.flutter/sentry_native_scrub
+        //   method:  registerNativeScrub  (no arguments)
+        //   returns: Map {sdkEnabled: Boolean, beforeSendPresent:
+        //   Boolean, replaced: Boolean} — whether a beforeSend
+        //   occupied the live slot and that the C1 scrub replaced it.
+        // Registration failure returns a visible error code, never a
+        // silent null (team lesson: no silent channel failures).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SENTRY_SCRUB_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    SENTRY_SCRUB_REGISTER_METHOD -> {
+                        try {
+                            result.success(NativeScrubRegistration.register())
+                        } catch (e: Exception) {
+                            result.error(
+                                "NATIVE_SCRUB_REGISTER_FAILED", e.message, null
+                            )
                         }
                     }
                     else -> result.notImplemented()

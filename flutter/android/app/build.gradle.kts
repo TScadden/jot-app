@@ -237,6 +237,12 @@ tasks.configureEach {
 dependencies {
     // Round 30: desugaring runtime for flutter_local_notifications.
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // Phase 3 (Juno Ruling 2026-10-28 §1.6 Layer 1(1)): JVM unit
+    // test for the Kotlin native C1 scrub (NativeCrashScrubTest).
+    // The io.sentry classes under test arrive on the compile
+    // classpath via the sentry_flutter plugin's `api` dependency on
+    // sentry-android 8.61.1; only JUnit itself needs declaring.
+    testImplementation("junit:junit:4.13.2")
 }
 
 kotlin {

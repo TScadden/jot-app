@@ -186,6 +186,22 @@ class _CrashTestHookState extends State<CrashTestHook> {
               label: 'Tap to send the canary test event',
               onTap: _fireCanary,
             ),
+            const SizedBox(height: 12),
+            // Phase 3 (Juno Ruling 2026-10-28 §1.6 Layer 1(2)):
+            // the native C1 scrub registration outcome is surfaced
+            // HERE — a registration failure shows its error code in
+            // this card, never a silent no-op.
+            Text(
+              CrashReporting.nativeScrubRegistration?.display ??
+                  'Native C1 scrub: registration not attempted in '
+                      'this process (DSN-empty builds register '
+                      'nothing by design).',
+              key: const ValueKey('crash_test_hook_scrub_status'),
+              style: const TextStyle(
+                color: NotelColors.textSecondary,
+                fontSize: 12,
+              ),
+            ),
             if (_status != null) ...[
               const SizedBox(height: 12),
               Text(

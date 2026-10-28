@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart' show MethodChannel, appFlavor;
+import 'package:flutter/services.dart'
+    show MethodChannel, MissingPluginException, PlatformException, appFlavor;
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 /// Crash and non-fatal error reporting — Juno Ruling
@@ -127,9 +129,22 @@ abstract final class CrashReporting {
     // the stack trace).
     options.attachThreads = false;
     options.attachStacktrace = true;
-    if (transport != null) {
-      options.transport = transport;
-    }
+    // §3.2 send-path guard (Juno Ruling 2026-10-28): the LAST
+    // app-controlled point before an envelope leaves the device.
+    // Received Dart events in step 2 carried a geo-only `user`
+    // object, which C2 / §3 rule out in any form: a received event
+    // must carry NO `user` key at all. [scrubEvent] already rebuilds
+    // every event without one; this transport wrapper is the
+    // build-side guarantee at the send path itself — it inspects
+    // every outgoing event item and removes a top-level `user` key
+    // if one is present, leaving every other byte of every item
+    // untouched (items without a `user` key pass through unmodified,
+    // not re-encoded). It wraps the platform transport the SDK
+    // selected in _initDefaultValues (FileSystemTransport on
+    // Android — _initDefaultValues runs before this configurator,
+    // so the platform transport is already in place here), or the
+    // test transport when one is injected.
+    options.transport = NoUserKeyTransport(transport ?? options.transport);
 
     // Flutter-level flags (SentryFlutterOptions).
     // C5: auto session tracking ON for crash-free sessions (and,
@@ -444,16 +459,34 @@ abstract final class CrashReporting {
   /// [dsnOverride] / [transportOverride] / [environmentOverride]
   /// are test seams (capturing-transport canary gate + inertness
   /// proof); production calls [run] with no overrides.
+  ///
+  /// Phase 3 (Juno Ruling 2026-10-28 §1.2, Option B): with a DSN,
+  /// SentryFlutter.init is called WITHOUT an appRunner so that init
+  /// has fully returned before anything runs the app; the Kotlin C1
+  /// scrub is then registered on the live native options via
+  /// [registerNativeScrub], and only after registration does the
+  /// app runner execute (install handlers, then the zoned runner
+  /// that ends in `runApp`). Registration is therefore the first
+  /// operation after init returns and always precedes `runApp` —
+  /// the call order §1.8's race-window acceptance is conditioned
+  /// on, pinned by a source-scan test. (On Android the previous
+  /// shape — runner passed into init — was behaviourally identical
+  /// for handlers: Sentry's zone wrapper is only used when
+  /// PlatformDispatcher.onError is unsupported, and our own zoned
+  /// runner below is unchanged.)
   static Future<void> run(
     FutureOr<void> Function() appRunner, {
     String? dsnOverride,
     String? environmentOverride,
     Transport? transportOverride,
+    MethodChannel? nativeScrubChannelOverride,
   }) async {
     final effectiveDsn = dsnOverride ?? dsn;
     if (effectiveDsn.isEmpty) {
       // C11 inert path: no SDK, no transport, no envelope can be
-      // produced. Local handlers still improve on today's silence.
+      // produced — and nothing is registered natively either
+      // (Option B registers nothing when the SDK never inits).
+      // Local handlers still improve on today's silence.
       _installHandlers(report: _reportLocally);
       final parentZone = Zone.current;
       await runZonedGuarded<Future<void>>(
@@ -462,6 +495,11 @@ abstract final class CrashReporting {
       );
       return;
     }
+    // The MethodChannel used by registerNativeScrub needs the
+    // services binding; creating the Sentry binding here (before
+    // init) is the SDK's documented order, and _bootstrap's own
+    // ensureInitialized call returns this same instance.
+    SentryWidgetsFlutterBinding.ensureInitialized();
     await SentryFlutter.init(
       (options) => configureOptions(
         options,
@@ -469,14 +507,17 @@ abstract final class CrashReporting {
         environment: environmentOverride ?? resolveEnvironment(),
         transport: transportOverride,
       ),
-      appRunner: () async {
-        _installHandlers(report: _reportToSentry);
-        final parentZone = Zone.current;
-        await runZonedGuarded<Future<void>>(
-          () async => appRunner(),
-          _zoneErrorHandler(report: _reportToSentry, parentZone: parentZone),
-        );
-      },
+    );
+    // §1.2(2): registration immediately after init returns, before
+    // runApp. A failure is recorded as a VISIBLE error (see
+    // [nativeScrubRegistration] and the Lab hook card) — never a
+    // silent no-op, and never fatal to startup.
+    await registerNativeScrub(channel: nativeScrubChannelOverride);
+    _installHandlers(report: _reportToSentry);
+    final parentZone = Zone.current;
+    await runZonedGuarded<Future<void>>(
+      () async => appRunner(),
+      _zoneErrorHandler(report: _reportToSentry, parentZone: parentZone),
     );
   }
 
@@ -540,6 +581,92 @@ abstract final class CrashReporting {
   /// transport sees it.
   static void _reportToSentry(Object error, StackTrace stackTrace) {
     unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+  }
+
+  // ── Phase 3: native scrub registration (Juno 2026-10-28 §1.2) ──
+
+  /// MethodChannel to the Kotlin registration handler in
+  /// MainActivity (`NativeScrubRegistration`), which assigns the
+  /// Kotlin C1 scrub (`NativeCrashScrub`) to the live native
+  /// options' single beforeSend slot, replacing the plugin's
+  /// tagging-only callback. The handler is registered in
+  /// `MainActivity.configureFlutterEngine`, which runs before the
+  /// Dart entrypoint, so the channel exists when [run] calls this
+  /// immediately after `SentryFlutter.init` returns.
+  static const String nativeScrubChannelName =
+      'com.notel.notel.playground.flutter/sentry_native_scrub';
+  static const String nativeScrubRegisterMethod = 'registerNativeScrub';
+
+  /// The outcome of the most recent [registerNativeScrub] call, or
+  /// null when registration has not been attempted in this process
+  /// (which includes every DSN-empty run: nothing registers when
+  /// the SDK never inits). The Lab hook card renders this — a
+  /// registration failure is a VISIBLE error there, never a silent
+  /// no-op (team lesson: no silent channel failures).
+  static NativeScrubRegistration? nativeScrubRegistration;
+
+  /// Registers the Kotlin C1 scrub on the live native Sentry
+  /// options (Option B post-init registration). Called by [run]
+  /// immediately after `SentryFlutter.init` returns and before the
+  /// app runner (and therefore `runApp`) executes.
+  ///
+  /// Never throws: every failure is captured into
+  /// [nativeScrubRegistration] with its error code and logged with
+  /// the same code, and the hook card displays it. Returns the
+  /// recorded outcome.
+  static Future<NativeScrubRegistration> registerNativeScrub({
+    MethodChannel? channel,
+  }) async {
+    final ch = channel ?? const MethodChannel(nativeScrubChannelName);
+    NativeScrubRegistration outcome;
+    try {
+      final result =
+          await ch.invokeMapMethod<String, dynamic>(nativeScrubRegisterMethod);
+      if (result == null) {
+        outcome = const NativeScrubRegistration.failure(
+          'NATIVE_SCRUB_NO_RESULT',
+          'Registration channel returned no result.',
+        );
+      } else if (result['sdkEnabled'] != true) {
+        outcome = const NativeScrubRegistration.failure(
+          'NATIVE_SCRUB_SDK_NOT_ENABLED',
+          'Native SDK was not initialised; no scrub was registered.',
+        );
+      } else if (result['replaced'] != true) {
+        outcome = NativeScrubRegistration.failure(
+          'NATIVE_SCRUB_NOT_REPLACED',
+          'Native beforeSend slot was not replaced '
+          '(beforeSendPresent=${result['beforeSendPresent']}).',
+        );
+      } else {
+        outcome = NativeScrubRegistration.success(
+          beforeSendPresent: result['beforeSendPresent'] == true,
+        );
+      }
+    } on PlatformException catch (e) {
+      outcome = NativeScrubRegistration.failure(
+        e.code,
+        'Native scrub registration channel error: '
+        '${e.message ?? 'unknown error'}',
+      );
+    } on MissingPluginException {
+      outcome = const NativeScrubRegistration.failure(
+        'MISSING_PLUGIN',
+        'Native scrub registration channel is not registered in '
+        'this build.',
+      );
+    } catch (e) {
+      outcome = NativeScrubRegistration.failure(
+        'NATIVE_SCRUB_REGISTER_FAILED',
+        'Native scrub registration failed: $e',
+      );
+    }
+    nativeScrubRegistration = outcome;
+    if (!outcome.replaced) {
+      debugPrint(
+          '[crash-reporting] [${outcome.errorCode}] ${outcome.message}');
+    }
+    return outcome;
   }
 
   // ── Lab-hook extension (Step-2 evidence; Juno Conditions 1 + 6, §7) ──
@@ -706,5 +833,128 @@ abstract final class CrashReporting {
       throw StateError(
           'Tabs Lab forced test crash (crash_reporting.dart forceTestCrash)');
     });
+  }
+}
+
+/// Outcome of one native-scrub registration attempt (Phase 3,
+/// Juno Ruling 2026-10-28 §1.6 Layer 1(2)): whether a beforeSend
+/// occupied the live native slot, and whether the Kotlin C1 scrub
+/// replaced it. A failure carries the error code the Lab hook card
+/// displays — registration failure is visible, never silent.
+class NativeScrubRegistration {
+  const NativeScrubRegistration._({
+    required this.sdkEnabled,
+    required this.beforeSendPresent,
+    required this.replaced,
+    this.errorCode,
+    this.message,
+  });
+
+  const NativeScrubRegistration.success({required bool beforeSendPresent})
+      : this._(
+          sdkEnabled: true,
+          beforeSendPresent: beforeSendPresent,
+          replaced: true,
+        );
+
+  const NativeScrubRegistration.failure(String code, String message)
+      : this._(
+          sdkEnabled: false,
+          beforeSendPresent: false,
+          replaced: false,
+          errorCode: code,
+          message: message,
+        );
+
+  /// Whether the native SDK was initialised when registration ran.
+  final bool sdkEnabled;
+
+  /// Whether a beforeSend callback (the plugin's tagging-only one)
+  /// occupied the slot before registration.
+  final bool beforeSendPresent;
+
+  /// Whether the slot now holds the Kotlin C1 scrub.
+  final bool replaced;
+
+  /// Visible error code on failure; null on success.
+  final String? errorCode;
+
+  /// Human-readable failure detail; null on success.
+  final String? message;
+
+  /// One-line rendering for the Lab hook surface.
+  String get display {
+    if (replaced) {
+      return 'Native C1 scrub: REGISTERED on the live native options '
+          '(beforeSend was ${beforeSendPresent ? 'present and replaced' : 'absent; installed'}).';
+    }
+    return '[$errorCode] Native C1 scrub NOT registered: $message';
+  }
+}
+
+/// §3.2 send-path guard (Juno Ruling 2026-10-28): a [Transport]
+/// decorator installed by [CrashReporting.configureOptions] around
+/// the SDK's own transport. For every outgoing envelope it inspects
+/// each `event` item's payload and removes a top-level `user` key
+/// if one is present, so a Dart event leaves the device with NO
+/// `user` key at all (C2: removed entirely, in any form — the
+/// geo-only object received in step 2 is ruled out by §3).
+///
+/// Byte-identity for everything else: an item whose payload has no
+/// `user` key is forwarded as the SAME item object (never decoded
+/// or re-encoded), non-event items (session, client_report, …) are
+/// never touched, and the envelope header and
+/// `containsUnhandledException` are preserved. A payload that fails
+/// to decode is forwarded unchanged — this guard must never become
+/// a reason an event is lost.
+class NoUserKeyTransport implements Transport {
+  NoUserKeyTransport(this._inner);
+
+  final Transport _inner;
+
+  @override
+  Future<SentryId?> send(SentryEnvelope envelope) async {
+    return _inner.send(await stripUserKey(envelope));
+  }
+
+  /// Returns [envelope] itself when no event item carries a `user`
+  /// key; otherwise a new envelope whose event items are rebuilt
+  /// without that key (item headers are reused — the SDK computes
+  /// item lengths from the actual data at serialization time).
+  static Future<SentryEnvelope> stripUserKey(SentryEnvelope envelope) async {
+    var changed = false;
+    final items = <SentryEnvelopeItem>[];
+    for (final item in envelope.items) {
+      if (item.header.type != SentryItemType.event) {
+        items.add(item);
+        continue;
+      }
+      final bytes = await item.dataFactory();
+      Map<String, dynamic>? decoded;
+      try {
+        final json = jsonDecode(utf8.decode(bytes));
+        if (json is Map<String, dynamic>) decoded = json;
+      } catch (_) {
+        decoded = null;
+      }
+      if (decoded == null || !decoded.containsKey('user')) {
+        items.add(item);
+        continue;
+      }
+      decoded.remove('user');
+      final stripped = utf8.encode(jsonEncode(decoded));
+      changed = true;
+      items.add(SentryEnvelopeItem(
+        item.header,
+        () async => stripped,
+        originalObject: item.originalObject,
+      ));
+    }
+    if (!changed) return envelope;
+    return SentryEnvelope(
+      envelope.header,
+      items,
+      containsUnhandledException: envelope.containsUnhandledException,
+    );
   }
 }
