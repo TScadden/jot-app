@@ -19,13 +19,15 @@
 ///
 /// - Sleep (weight [weightSleep] = 40): from `evaluateSleepNight`
 ///   for the night ending on the scored day —
-///   `score = 100 × min(asleepRatio, 1.0)`, where asleepRatio =
-///   asleep ÷ that night's personal need (Sleep Need, itself built
-///   only from the nights before). Linear below need, capped AT
-///   need: no above-need bonus. No floor/knee either — a night at
-///   50% of need scores 50; that is the honest read of "fraction
-///   of personal need met". Unavailable when the night has no sleep
-///   data or its prior history is too sparse for a need estimate
+///   `score = 100 × c²`, where `c = clamp(asleepRatio, 0, 1)` and
+///   asleepRatio = asleep ÷ that night's personal need (Sleep
+///   Need, itself built only from the nights before). Squared
+///   below need, capped AT need: 100% of need scores 100, no
+///   above-need / oversleep bonus. No floor/knee either — a night
+///   at 50% of need scores 25; that is the honest read of the
+///   squared fraction of personal need met. Unavailable when
+///   the night has no sleep data or its prior history is too
+///   sparse for a need estimate
 ///   (evaluateSleepNight's own ≥7-prior-nights rule).
 /// - HRV (weight [weightHrv] = 35): today's `hrvRmssdMs` (RMSSD —
 ///   the literature's canonical short-term HRV metric; within-
@@ -142,7 +144,7 @@ const double rhrAnchorHighDev = 20; // → score 0
 const double baselineAnchorScore = 70;
 
 /// Sleep component from [asleepRatio] (asleep ÷ personal need):
-/// linear below need, capped at need, never below 0.
+/// squared below need, capped at need, never below 0.
 double scoreSleepComponent(double asleepRatio) {
   final r = asleepRatio < 0 ? 0.0 : asleepRatio;
   final c = r > 1.0 ? 1.0 : r;
