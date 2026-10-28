@@ -18,6 +18,7 @@ import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/daily_score_background.dart';
 import 'package:tabs_lab/src/data/daily_score_refresh_owner.dart';
+import 'package:tabs_lab/src/data/lean_test_session.dart';
 import 'package:tabs_lab/src/data/migraine_attack_store.dart';
 import 'package:tabs_lab/src/data/migraine_controller.dart';
 import 'package:tabs_lab/src/data/migraine_notification.dart';
@@ -34,6 +35,8 @@ import 'package:tabs_lab/src/data/widget_sync.dart';
 import 'package:tabs_lab/src/features/auth/login_screen.dart';
 import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
+import 'package:tabs_lab/src/features/tools/lean_test_screen.dart'
+    show BackendLeanTestGateway;
 import 'package:tabs_lab/src/features/onboarding/onboarding_flow.dart';
 import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
 import 'package:tabs_lab/src/features/splash/splash_screen.dart';
@@ -507,6 +510,9 @@ class _AppFlowState extends State<AppFlow>
     // Audit 4e: migraine attack records are account-bound too —
     // session expiry wipes them like the other stores.
     unawaited(MigraineAttackStore.instance.clear());
+    // Phase 1 item 6: the lean-test session is account-bound too —
+    // session expiry wipes it like the migraine records.
+    unawaited(LeanTestSessionStore.instance.clearAndUnbind());
     // Vera 4e follow-up: expiry mid-attack must not orphan the
     // ongoing notification; its tap would load a wiped store.
     unawaited(LocalMigraineNotifier.cancelPostedAttack());
@@ -570,6 +576,8 @@ class _AppFlowState extends State<AppFlow>
     // attack records.
     unawaited(
         MigraineAttackStore.instance.clearIfOwnerMismatch(email));
+    unawaited(
+        LeanTestSessionStore.instance.clearIfOwnerMismatch(email));
     unawaited(
         KnowledgeExtractionStore.instance.clearIfOwnerMismatch(email));
     // Round 32 — native parity: email login and Google sign-in (both
@@ -704,6 +712,18 @@ class _AppFlowState extends State<AppFlow>
   /// History rather than surfacing here.
   void _retryPendingLogEntries() {
     unawaited(LogEntryOutbox.instance.flush(_tabsBackend));
+    // Phase 1 item 6: a lean-test result that was built but never
+    // staged (app killed at close) retries here with its persisted
+    // allocated id, so the entry lands exactly once; the local
+    // session is discarded only after the stage succeeds.
+    unawaited(retryPendingLeanTestEntry(
+      store: LeanTestSessionStore.instance,
+      stage: (entry) => LogEntryOutbox.instance.stageForBackend(
+        entry,
+        backend: _tabsBackend,
+        serverKnown: false,
+      ),
+    ));
   }
 
   void _kickFirstRunResync() {
@@ -768,6 +788,8 @@ class _AppFlowState extends State<AppFlow>
     // attack records.
     unawaited(
         MigraineAttackStore.instance.clearIfOwnerMismatch(email));
+    unawaited(
+        LeanTestSessionStore.instance.clearIfOwnerMismatch(email));
     unawaited(
         KnowledgeExtractionStore.instance.clearIfOwnerMismatch(email));
     unawaited(_stampFreshAccountOnboarding());
@@ -1105,6 +1127,7 @@ class _AppFlowState extends State<AppFlow>
               healthConnectService: widget.healthConnectService,
               billingService: _billingSync?.service,
               migraineController: _migraineController,
+              leanGateway: BackendLeanTestGateway(backend: _tabsBackend),
               onLogout: _onLogout),
         if (_splashVisible && animationsDisabled(context))
           // Audit 6c — reduced motion: the splash renders plain, with

@@ -3,6 +3,7 @@ import 'package:tabs_lab/src/data/daily_score_refresh_owner.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
+import 'package:tabs_lab/src/data/lean_test_session.dart';
 import 'package:tabs_lab/src/data/migraine_attack_store.dart';
 import 'package:tabs_lab/src/data/migraine_notification.dart';
 import 'package:tabs_lab/src/data/heart_data_cache.dart';
@@ -113,6 +114,11 @@ class AccountActions {
     // covers them, the in-progress attack included.
     try {
       await MigraineAttackStore.instance.clear();
+    } catch (_) {}
+    // Phase 1 item 6: the lean-test session is account-bound
+    // device-local health data — the same wipe covers it.
+    try {
+      await LeanTestSessionStore.instance.clearAndUnbind();
     } catch (_) {}
     // Vera 4e follow-up: wipe mid-attack must not orphan the
     // ongoing notification; its tap would load a wiped store.
