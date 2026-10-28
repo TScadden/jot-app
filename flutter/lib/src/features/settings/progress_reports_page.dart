@@ -5,8 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
 
+import 'package:tabs_lab/src/data/clinician_report.dart';
+import 'package:tabs_lab/src/data/clinician_report_pdf.dart';
 import 'package:tabs_lab/src/data/downloads_saver.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
@@ -56,6 +59,11 @@ class ProgressReportsPage extends StatefulWidget {
       saveToDownloads;
   final ReportGenerationPipeline? pipeline;
 
+  /// Test seam for the Phase 1 item 3 one-page clinician report
+  /// (defaults to a pipeline wired to the page's backend + the
+  /// stored-score history).
+  final ClinicianReportPipeline? clinicianPipeline;
+
   const ProgressReportsPage({
     super.key,
     required this.profileData,
@@ -68,6 +76,7 @@ class ProgressReportsPage extends StatefulWidget {
     this.savePdf,
     this.saveToDownloads,
     this.pipeline,
+    this.clinicianPipeline,
   });
 
   @override
@@ -113,6 +122,10 @@ ReportProfileInput reportProfileInputFromSettings(SettingsProfileData d) {
     gender: d.gender,
     conditions: conditions,
     activeMedications: activeMedicationEntries(parsed),
+    // Item 3: the full parsed list rides along for the clinician
+    // report's declared-form change derivation ONLY — the active
+    // list above remains the sole source of the printed med list.
+    allMedications: parsed,
   );
 }
 
@@ -286,6 +299,66 @@ class _ProgressReportsPageState extends State<ProgressReportsPage> {
         // Vera's feature (native): hold the file for an explicit
         // share confirmation — never open the share sheet
         // unprompted.
+        setState(() => _pendingShare = ready);
+        _showShareConfirmation();
+      case ReportFailed failed:
+        if (failed.message == 'Cancelled') return;
+        setState(() {
+          _failureMessage = failed.message;
+          _failureAllowRaw = failed.allowRawFallback;
+        });
+    }
+  }
+
+  /// Phase 1, item 3 — the one-page clinician report: a separate
+  /// generate action on this page (founder Q8 crew assumption),
+  /// reusing the same save/Downloads/share machinery. No AI call;
+  /// the existing report's flow is not modified.
+  Future<void> _generateClinician() async {
+    if (_stage != null) return;
+    setState(() {
+      _cancelRequested = false;
+      _failureMessage = null;
+      _failureAllowRaw = false;
+      _stage = ReportStage.collecting;
+    });
+    final pipeline = widget.clinicianPipeline ??
+        ClinicianReportPipeline(
+          collector: ReportDataCollector(
+            backend: _backend,
+            hc: widget.healthConnectService ?? HealthConnectService(),
+          ),
+          clinicianCollector: ClinicianReportCollector(
+            // Stored, write-once Daily Scores only (spec §5.3).
+            scoreLoader: () async {
+              final days = await HealthHistoryStore.instance.readAll();
+              return {
+                for (final e in days.entries)
+                  if (e.value.dailyScore != null) e.key: e.value.dailyScore!,
+              };
+            },
+            eventsLoader: () => _backend.fetchMedicationChangeEvents(),
+            categoriesLoader: () => _backend.fetchLogCategories(),
+          ),
+        );
+    final outcome = await pipeline.generate(
+      selectedCategories: _selected,
+      last30Days: _last30Days,
+      profile: _profileInput,
+      onStage: (s) {
+        if (mounted) setState(() => _stage = s);
+      },
+      isCancelled: () => _cancelRequested,
+      renderPdf: (data) async => buildClinicianPdfBytes(data,
+          fonts: await loadClinicianPdfFonts()),
+      savePdf: widget.savePdf ?? _defaultSave,
+      saveToDownloads: widget.saveToDownloads ?? _defaultSaveToDownloads,
+    );
+    if (!mounted) return;
+    setState(() => _stage = null);
+    if (_cancelRequested) return;
+    switch (outcome) {
+      case ReportReady ready:
         setState(() => _pendingShare = ready);
         _showShareConfirmation();
       case ReportFailed failed:
@@ -806,6 +879,32 @@ class _ProgressReportsPageState extends State<ProgressReportsPage> {
                             fontWeight: FontWeight.bold)),
                   ],
                 ),
+        ),
+      ),
+      const SizedBox(height: 10),
+      SizedBox(
+        width: double.infinity,
+        height: 44,
+        child: OutlinedButton(
+          onPressed: !generating ? () => _generateClinician() : null,
+          style: OutlinedButton.styleFrom(
+            side: const BorderSide(color: NotelColors.primary),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.description_outlined,
+                  size: 18, color: NotelColors.primary),
+              SizedBox(width: 8),
+              Text('Export Clinician Report (1 page)',
+                  style: TextStyle(
+                      color: NotelColors.primary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold)),
+            ],
+          ),
         ),
       ),
       if (!hasAnyLogs) ...[

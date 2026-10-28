@@ -52,6 +52,16 @@ class MedicationFieldSnapshot {
     );
   }
 
+  factory MedicationFieldSnapshot.fromJson(Map<String, dynamic> json) {
+    return MedicationFieldSnapshot(
+      dose: '${json['dose'] ?? ''}',
+      frequency: '${json['frequency'] ?? ''}',
+      startDate: '${json['startDate'] ?? ''}',
+      endDate: '${json['endDate'] ?? ''}',
+      isPresent: json['isPresent'] == true,
+    );
+  }
+
   Map<String, dynamic> toJson() => <String, dynamic>{
     'dose': dose,
     'frequency': frequency,
@@ -123,6 +133,29 @@ class MedicationChangeEvent {
     required this.recordedAt,
     required this.source,
   });
+
+  /// Parses one event in the GET `/api/sync/medication-events`
+  /// response shape (the server's re-shaped client contract:
+  /// `old` / `new` snapshot objects or null, `recordedAt` already
+  /// coerced to a number server-side).
+  factory MedicationChangeEvent.fromJson(Map<String, dynamic> json) {
+    MedicationFieldSnapshot? snap(Object? raw) =>
+        raw is Map<String, dynamic>
+            ? MedicationFieldSnapshot.fromJson(raw)
+            : null;
+    return MedicationChangeEvent(
+      id: '${json['id'] ?? ''}',
+      medId: '${json['medId'] ?? ''}',
+      medName: '${json['medName'] ?? ''}',
+      type: '${json['type'] ?? ''}',
+      oldSnapshot: snap(json['old']),
+      newSnapshot: snap(json['new']),
+      effectiveDate:
+          json['effectiveDate'] is String ? json['effectiveDate'] as String : null,
+      recordedAt: (json['recordedAt'] as num?)?.toInt() ?? 0,
+      source: '${json['source'] ?? ''}',
+    );
+  }
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'id': id,

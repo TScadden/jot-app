@@ -1306,6 +1306,31 @@ class TabsBackend {
     });
   }
 
+  /// Phase 1, item 3 — the captured medication change events for
+  /// the clinician report's Z5 zone: `GET
+  /// /api/sync/medication-events` returns ONLY the caller's
+  /// events, oldest first. Null on any failure (transport, auth,
+  /// malformed body) so the caller can degrade Z5 to its declared
+  /// form instead of mistaking a failed fetch for "no changes
+  /// captured" (spec §4.5: failures land in degradation, never in
+  /// falsified content).
+  Future<List<MedicationChangeEvent>?> fetchMedicationChangeEvents() async {
+    final body = await _getJson('/api/sync/medication-events');
+    final events = body?['events'];
+    if (events is! List) return null;
+    final out = <MedicationChangeEvent>[];
+    for (final e in events) {
+      if (e is Map<String, dynamic>) {
+        try {
+          out.add(MedicationChangeEvent.fromJson(e));
+        } catch (_) {
+          // Skip malformed rows — never fail the whole list.
+        }
+      }
+    }
+    return out;
+  }
+
   /// Round 29 — nickname update. Returns the decoded body on HTTP 200
   /// (callers check `success`), null on any failure.
   Future<Map<String, dynamic>?> updateNickname(String nickname) async {

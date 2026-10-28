@@ -607,6 +607,14 @@ class ReportProfileInput {
   final List<String> conditions;
   final List<MedicationEntry> activeMedications;
 
+  /// Phase 1, item 3 — the FULL parsed medication list (active +
+  /// archived), used ONLY by the clinician report's declared-form
+  /// medication-changes derivation (declared start/end strings).
+  /// The v1 pipeline never reads it, and the clinician Z2 list
+  /// still prints [activeMedications] through the collector's
+  /// double filter — this field weakens no R5 gate.
+  final List<MedicationEntry> allMedications;
+
   const ReportProfileInput({
     this.userContext = '',
     this.age = 0,
@@ -615,6 +623,7 @@ class ReportProfileInput {
     this.gender = '',
     this.conditions = const [],
     this.activeMedications = const [],
+    this.allMedications = const [],
   });
 
   double get heightIn => heightCm <= 0 ? 0 : heightCm / 2.54;
