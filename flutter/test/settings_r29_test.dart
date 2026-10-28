@@ -17,6 +17,7 @@ import 'package:tabs_lab/src/data/today_summary.dart';
 import 'package:tabs_lab/src/features/settings/account_actions.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
+import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 import 'test_helpers.dart';
 
@@ -489,17 +490,74 @@ void main() {
           findsNothing);
     });
 
-    testWidgets('theme choice persists to the device store',
+    // Juno ruling (Oct 2026) REPLACES the old 'theme choice
+    // persists to the device store' test: there is no light theme
+    // in the app, so an interactive picker was a claim the app
+    // cannot keep. The picker now renders DISABLED, taps write
+    // nothing, Dark is always the shown selection, and the copy is
+    // Juno's verbatim text. The store key/value itself is left
+    // untouched (the store-level setThemeMode round-trip is still
+    // pinned in the store tests above).
+    testWidgets(
+        'appearance picker is disabled (Juno ruling): taps write '
+        'nothing, Dark is current even with LIGHT stored',
         (tester) async {
-      final map = <String, String>{};
+      final map = <String, String>{
+        SettingsStore.themeModeKey: 'LIGHT',
+      };
       final backend = FakeSettingsBackend()..pullBody = pull();
       await pumpSettings(tester, host(screen(backend: backend, store: fakeStore(map))));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Customize'));
       await tester.pumpAndSettle();
+
+      // Juno's verbatim copy; the old strings are gone.
+      expect(find.text('Tabs currently uses the dark appearance.'),
+          findsOneWidget);
+      expect(
+          find.text(
+              'Appearance cannot be changed right now. Tabs includes only the dark appearance.'),
+          findsOneWidget);
+      expect(find.text("Choose how Tabs looks. System follows your phone's setting."),
+          findsNothing);
+      expect(
+          find.text(
+              'Your choice is saved on this device. The Flutter Lab currently renders the dark theme.'),
+          findsNothing);
+
+      // All three buttons are disabled…
+      for (final mode in ['LIGHT', 'DARK', 'SYSTEM']) {
+        final button = tester.widget<ElevatedButton>(
+            find.byKey(ValueKey('theme_$mode')));
+        expect(button.onPressed, isNull, reason: 'theme_$mode');
+      }
+      // …and Dark — not the stored LIGHT — is the shown selection:
+      // its disabled-state background is the primary color.
+      final dark = tester.widget<ElevatedButton>(
+          find.byKey(const ValueKey('theme_DARK')));
+      expect(
+          dark.style!.backgroundColor!
+              .resolve({WidgetState.disabled}),
+          NotelColors.primary);
+      final light = tester.widget<ElevatedButton>(
+          find.byKey(const ValueKey('theme_LIGHT')));
+      expect(
+          light.style!.backgroundColor!
+              .resolve({WidgetState.disabled}),
+          NotelColors.surfaceHigh);
+
+      // Taps do nothing and save NO new selection: the stored
+      // value survives untouched (neither overwritten nor deleted).
       await tester.tap(find.byKey(const ValueKey('theme_LIGHT')));
+      await tester.tap(find.byKey(const ValueKey('theme_SYSTEM')));
       await tester.pumpAndSettle();
       expect(map[SettingsStore.themeModeKey], 'LIGHT');
+      final darkAfter = tester.widget<ElevatedButton>(
+          find.byKey(const ValueKey('theme_DARK')));
+      expect(
+          darkAfter.style!.backgroundColor!
+              .resolve({WidgetState.disabled}),
+          NotelColors.primary);
     });
 
     testWidgets('share-data toggle pushes the profile field',
