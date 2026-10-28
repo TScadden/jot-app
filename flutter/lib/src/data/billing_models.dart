@@ -11,13 +11,18 @@
 /// trials are whatever Play Console actually returns at runtime.
 library;
 
-/// The only two subscription product IDs that exist — verbatim from
-/// native `BillingManager.kt` `subsProductList` and the only two the
+/// The only subscription product ID that exists — verbatim from
+/// native `BillingManager.kt` `subsProductList` and the only one the
 /// server accepts (`jot-server/src/routes/billing.js:55,150`).
+/// Verified Oct 27, 2026: the live Play catalog has ONE product
+/// (`jot_membership_monthly`) carrying TWO base plans — a monthly
+/// recurring plan and a yearly recurring plan. Monthly vs yearly
+/// is a base-plan distinction on this single product (offers are
+/// told apart by their base-plan ID and recurring billing period
+/// at runtime), never a second product ID.
 abstract final class BillingProducts {
   static const String monthly = 'jot_membership_monthly';
-  static const String yearly = 'jot_membership_yearly';
-  static const Set<String> subscriptionIds = {monthly, yearly};
+  static const Set<String> subscriptionIds = {monthly};
 
   /// The production package billing belongs to. Billing activates
   /// ONLY when the running app's package is this one (native
@@ -159,9 +164,6 @@ class BillingProduct {
     required this.description,
     required this.offers,
   });
-
-  bool get isMonthly => id == BillingProducts.monthly;
-  bool get isYearly => id == BillingProducts.yearly;
 }
 
 enum BillingPurchaseStatus { pending, purchased, restored, canceled, error }

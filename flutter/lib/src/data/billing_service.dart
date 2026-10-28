@@ -4,8 +4,9 @@
 /// against the UNCHANGED server (P0-billing §3 — server verification
 /// is complete and authoritative; zero endpoint changes):
 ///
-/// 1. Query the two subscription products
-///    (`jot_membership_monthly`, `jot_membership_yearly`).
+/// 1. Query the ONE subscription product
+///    (`jot_membership_monthly`) with its two base plans — a
+///    monthly recurring plan and a yearly recurring plan.
 /// 2. The user picks a plan AND an offer (real `ProductDetails`
 ///    data — never a hardcoded price/trial, never a silent
 ///    first-offer grab; native's `firstOrNull()` offer pick is the
