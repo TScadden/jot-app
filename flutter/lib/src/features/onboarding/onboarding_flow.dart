@@ -49,6 +49,17 @@ enum OnboardingStep {
 /// back returns to the previous step (native pushes those routes
 /// sequentially from profile_setup onward).
 ///
+/// The Android system back follows the SAME path (founder fix,
+/// Oct 27, 2026): the steps are body swaps inside AppFlow's single
+/// root route, so the build wraps them in a PopScope that runs
+/// [_OnboardingFlowState._stepBack] — the one back action every
+/// step's arrow also calls — whenever the current step has an
+/// in-flow back destination. On consent (the first step) the pop
+/// is allowed through instead, so the gesture exits the app rather
+/// than trapping the user on the arrow's deliberate no-op;
+/// setup loading likewise stays poppable because it carries no
+/// back affordance at all (see [_OnboardingFlowState._backTargetFor]).
+///
 /// [initialStep] is where a cold start resumes (AppFlow's startup
 /// resolver maps the stored flags to a step, exactly like native's
 /// splash routing); a fresh registration always starts at consent.
@@ -105,6 +116,36 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   void _backTo(OnboardingStep step) => _go(step);
 
+  /// The step the in-app back arrow returns to from [step] — the
+  /// single source for every step's `onBack` below AND for the
+  /// system-back interception in [build], so the two can never
+  /// drift apart. Null where the step has no in-flow back
+  /// destination: consent is the entry step (its arrow is a
+  /// deliberate no-op — native clears the stack beneath it) and
+  /// setup loading carries no back affordance at all (it is the
+  /// auto-finalizing terminal step; see SetupLoadingScreen).
+  OnboardingStep? _backTargetFor(OnboardingStep step) => switch (step) {
+        OnboardingStep.consent => null,
+        OnboardingStep.consultationIntro => OnboardingStep.consent,
+        OnboardingStep.profileSetup => OnboardingStep.consultationIntro,
+        OnboardingStep.conditions => OnboardingStep.profileSetup,
+        OnboardingStep.notifications => OnboardingStep.conditions,
+        OnboardingStep.connections => OnboardingStep.notifications,
+        OnboardingStep.membership => OnboardingStep.connections,
+        OnboardingStep.setupLoading => null,
+      };
+
+  /// The one back action for this flow: every step screen's arrow
+  /// and the Android system back both call it, so the gesture
+  /// inherits the arrow's exact destination per step. A no-op on
+  /// steps whose [_backTargetFor] is null, matching the arrows
+  /// there (system back never reaches this on those steps — the
+  /// PopScope in [build] lets the pop through instead).
+  void _stepBack() {
+    final target = _backTargetFor(_step);
+    if (target != null) _backTo(target);
+  }
+
   Future<void> _onConsent() async {
     try {
       await _store.setHasConsented(true);
@@ -121,53 +162,73 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   @override
   Widget build(BuildContext context) {
-    return switch (_step) {
-      OnboardingStep.consent => OnboardingConsentScreen(
-          // Entry step: native's stack is cleared beneath consent,
-          // so back has nowhere to go (see the class doc).
-          onBack: () {},
-          onConsent: _onConsent,
-          onDecline: widget.onDeclineConsent,
-        ),
-      OnboardingStep.consultationIntro => ConsultationIntroScreen(
-          onBack: () => _backTo(OnboardingStep.consent),
-          onContinue: _onConsultationContinue,
-        ),
-      OnboardingStep.profileSetup => ProfileSetupScreen(
-          onBack: () => _backTo(OnboardingStep.consultationIntro),
-          onNavigateNext: () => _go(OnboardingStep.conditions),
-          onboardingStore: _store,
-          backend: widget.backend,
-        ),
-      OnboardingStep.conditions => OnboardingConditionsScreen(
-          onBack: () => _backTo(OnboardingStep.profileSetup),
-          onNavigateNext: () => _go(OnboardingStep.notifications),
-          onSkip: () => _go(OnboardingStep.notifications),
-          onboardingStore: _store,
-          backend: widget.backend,
-        ),
-      OnboardingStep.notifications => NotificationOnboardingScreen(
-          onBack: () => _backTo(OnboardingStep.conditions),
-          onNavigateNext: () => _go(OnboardingStep.connections),
-          onSkip: () => _go(OnboardingStep.connections),
-          notificationService: widget.notificationService,
-        ),
-      OnboardingStep.connections => OnboardingConnectionsScreen(
-          onBack: () => _backTo(OnboardingStep.notifications),
-          onNavigateNext: () => _go(OnboardingStep.membership),
-          healthConnectService: widget.healthConnectService,
-        ),
-      OnboardingStep.membership => MembershipOnboardingScreen(
-          onBack: () => _backTo(OnboardingStep.connections),
-          onSkip: () => _go(OnboardingStep.setupLoading),
-          backend: widget.backend,
-          billingService: widget.billingService,
-        ),
-      OnboardingStep.setupLoading => SetupLoadingScreen(
-          onNavigateMain: widget.onComplete,
-          onboardingStore: _store,
-          backend: widget.backend,
-        ),
-    };
+    // System-back parity with the steps' back arrows (founder fix,
+    // Oct 27, 2026): the steps are body swaps inside AppFlow's
+    // single root route, so without interception the Navigator has
+    // nothing to pop on Android back and the gesture exits the app
+    // mid-wizard — while the arrow correctly steps back. Intercept
+    // whenever the current step has an in-flow back destination
+    // and run [_stepBack], the SAME action the arrow calls. On
+    // consent (the first step) and setup loading — the steps with
+    // no back destination — the pop goes through: the gesture
+    // exits instead of trapping the user (see _backTargetFor).
+    final bool interceptBack = _backTargetFor(_step) != null;
+    return PopScope(
+      canPop: !interceptBack,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _stepBack();
+      },
+      child: switch (_step) {
+        OnboardingStep.consent => OnboardingConsentScreen(
+            // Entry step: native's stack is cleared beneath consent,
+            // so back has nowhere to go (see the class doc). The
+            // arrow keeps its deliberate no-op (_stepBack is a no-op
+            // at consent); only the system gesture is allowed to pop.
+            onBack: _stepBack,
+            onConsent: _onConsent,
+            onDecline: widget.onDeclineConsent,
+          ),
+        OnboardingStep.consultationIntro => ConsultationIntroScreen(
+            onBack: _stepBack,
+            onContinue: _onConsultationContinue,
+          ),
+        OnboardingStep.profileSetup => ProfileSetupScreen(
+            onBack: _stepBack,
+            onNavigateNext: () => _go(OnboardingStep.conditions),
+            onboardingStore: _store,
+            backend: widget.backend,
+          ),
+        OnboardingStep.conditions => OnboardingConditionsScreen(
+            onBack: _stepBack,
+            onNavigateNext: () => _go(OnboardingStep.notifications),
+            onSkip: () => _go(OnboardingStep.notifications),
+            onboardingStore: _store,
+            backend: widget.backend,
+          ),
+        OnboardingStep.notifications => NotificationOnboardingScreen(
+            onBack: _stepBack,
+            onNavigateNext: () => _go(OnboardingStep.connections),
+            onSkip: () => _go(OnboardingStep.connections),
+            notificationService: widget.notificationService,
+          ),
+        OnboardingStep.connections => OnboardingConnectionsScreen(
+            onBack: _stepBack,
+            onNavigateNext: () => _go(OnboardingStep.membership),
+            healthConnectService: widget.healthConnectService,
+          ),
+        OnboardingStep.membership => MembershipOnboardingScreen(
+            onBack: _stepBack,
+            onSkip: () => _go(OnboardingStep.setupLoading),
+            backend: widget.backend,
+            billingService: widget.billingService,
+          ),
+        OnboardingStep.setupLoading => SetupLoadingScreen(
+            onNavigateMain: widget.onComplete,
+            onboardingStore: _store,
+            backend: widget.backend,
+          ),
+      },
+    );
   }
 }
