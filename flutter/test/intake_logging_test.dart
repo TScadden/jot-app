@@ -312,6 +312,46 @@ void main() {
       expect(totals.hasData, isFalse);
     });
 
+    test('2b (Vera tightening 2): float / numeric-string / negative '
+        'amounts make the payload invalid — excluded AND counted, '
+        'never coerced (§4.1 integer amounts)', () {
+      // Control: a genuine integer amount still parses.
+      expect(
+        IntakePayload.tryParse('{"v":1,"kind":"Water","fluidMl":473}')
+            ?.fluidMl,
+        473,
+      );
+      for (final bad in [
+        '{"v":1,"kind":"Water","fluidMl":473.5}',
+        '{"v":1,"kind":"Water","fluidMl":473.0}',
+        '{"v":1,"kind":"Water","fluidMl":"473"}',
+        '{"v":1,"kind":"Water","fluidMl":-473}',
+        '{"v":1,"kind":"Electrolyte drink","sodiumMg":-1}',
+        '{"v":1,"kind":"Salt","sodiumMg":393,"saltMg":1000.5}',
+      ]) {
+        expect(IntakePayload.tryParse(bad), isNull, reason: bad);
+      }
+      final ts = DateTime(2026, 10, 28, 9).millisecondsSinceEpoch;
+      QuickLogEntry raw(int id, String manualText) => QuickLogEntry(
+            id: id,
+            categoryId: 7,
+            body: 'x',
+            chips: '["Intake","Water"]',
+            manualText: manualText,
+            timestamp: ts,
+          );
+      final totals = intakeTotalsForDay(
+        [
+          raw(1, '{"v":1,"kind":"Water","fluidMl":473.5}'),
+          raw(2, '{"v":1,"kind":"Water","fluidMl":-473}'),
+        ],
+        now: DateTime(2026, 10, 28, 12),
+      );
+      expect(totals.eventCount, 0);
+      expect(totals.excludedCount, 2);
+      expect(totals.fluidMl, 0);
+    });
+
     test("3: legacy ', '-joined chips carrying the tag parse; "
         'JSON list parses; bare-list parses', () {
       expect(parseIntakeChips('Intake, Water'), ['Intake', 'Water']);
@@ -589,6 +629,70 @@ void main() {
       expect(v.single.effectiveFromDayMs,
           feelingDayStart(DateTime(2026, 10, 28, 15)).millisecondsSinceEpoch);
       expect((await settings.loadTargets()).single.sodiumTargetMg, 6000);
+    });
+
+    test('C2 (settings): deleting a remembered preset persists, '
+        'returns the kind to unconfigured, never re-seeds, and '
+        'preserves the seed-label flag', () async {
+      final settings = IntakeSettings(settingsStore());
+      // Label already presented, so its flag is flipped.
+      await settings.markSeedLabelShown();
+      final deleted = await settings.forgetPreset(intakeKindWater);
+      expect(deleted[intakeKindWater], isNull);
+      expect(deleted.seedLabelPending, isFalse);
+      // Reload: exactly what was stored — the seed is GONE, not
+      // re-seeded, and the label flag is not re-armed.
+      final reloaded = await settings.loadPresets();
+      expect(reloaded[intakeKindWater], isNull);
+      expect(reloaded[intakeKindWater]?.isConfigured, isNot(true));
+      expect(reloaded.seedLabelPending, isFalse);
+      // Symmetric for other kinds.
+      await settings.rememberDraft(IntakeDraft(
+        kind: 'Electrolyte drink',
+        sodiumMg: 500,
+        time: DateTime(2026, 10, 28, 9),
+      ));
+      expect(
+        (await settings.loadPresets())[intakeKindElectrolyte]
+            ?.isConfigured,
+        isTrue,
+      );
+      await settings.forgetPreset(intakeKindElectrolyte);
+      expect(
+        (await settings.loadPresets())[intakeKindElectrolyte],
+        isNull,
+      );
+      // Deleting an unconfigured kind is a no-op.
+      final before = await settings.loadPresets();
+      final after = await settings.forgetPreset(intakeKindSalt);
+      expect(after.byKind, before.byKind);
+    });
+
+    test('Juno 2B (settings): an all-empty appendTarget is a no-op; '
+        'a one-field save is a real version', () async {
+      final settings = IntakeSettings(settingsStore());
+      final empty = await settings.appendTarget(
+        now: DateTime(2026, 10, 28, 15),
+      );
+      expect(empty, isEmpty);
+      expect(await settings.loadTargets(), isEmpty);
+      // No version was written at all.
+      expect(settingsDisk[SettingsStore.intakeTargetsKey], isNull);
+      // One field set, the other cleared: a real version.
+      final one = await settings.appendTarget(
+        fluidTargetMl: 3785,
+        now: DateTime(2026, 10, 28, 15),
+      );
+      expect(one, hasLength(1));
+      expect(one.single.fluidTargetMl, 3785);
+      expect(one.single.sodiumTargetMg, isNull);
+      // An all-empty save after that changes nothing either — it
+      // does not clear the target in force.
+      final still = await settings.appendTarget(
+        now: DateTime(2026, 10, 28, 16),
+      );
+      expect(still, hasLength(1));
+      expect(still.single.fluidTargetMl, 3785);
     });
   });
 
@@ -1012,6 +1116,183 @@ void main() {
         await tester.pump(const Duration(milliseconds: 100));
       }
       expect(find.text(intakeSeedLabel), findsNothing);
+    });
+
+    testWidgets('C3 (R4): a first load with no Hydration does NOT '
+        'consume the seed label; a later presenting load shows it '
+        'exactly once', (tester) async {
+      final missServer = _Server([], categories: _catsNoHydration);
+      await pumpHome(tester, missServer, expectCard: false);
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('Salt & water'), findsNothing);
+      expect(find.text(intakeSeedLabel), findsNothing);
+      // The stored flag was NOT flipped by the missed load.
+      expect(
+        settingsDisk[SettingsStore.intakePresetsKey] ?? '',
+        isNot(contains('"seedLabelPending":false')),
+      );
+      // Unmount and clear the shared pull cache so the second
+      // server's categories are what the next load actually pulls.
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await tester.pump();
+      TabsBackend.debugResetSharedCaches();
+      final server = _Server([], categories: _catsHydration);
+      await pumpHome(tester, server);
+      expect(find.text(intakeSeedLabel), findsOneWidget);
+      await _pumpUntil(
+        tester,
+        () => (settingsDisk[SettingsStore.intakePresetsKey] ?? '')
+            .contains('"seedLabelPending":false'),
+      );
+      // And exactly once: a third presentation shows nothing.
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await tester.pump();
+      await tester.pumpWidget(MaterialApp(
+        home: HomeScreen(
+          weatherApi: _weather(),
+          tabsBackend: server.backend(),
+          logEntryOutbox: LogEntryOutbox.instance,
+          settingsStore: settingsStore(),
+        ),
+      ));
+      await _pumpUntil(
+        tester,
+        () => find.text('Salt & water').evaluate().isNotEmpty,
+      );
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.text(intakeSeedLabel), findsNothing);
+    });
+
+    testWidgets('C2 (Home): deleting the seeded Water preset makes '
+        'its button open the editor instead of logging; the seed '
+        'is not re-seeded and the R4 label is not re-triggered',
+        (tester) async {
+      final server = _Server([], categories: _catsHydration);
+      await pumpHome(tester, server);
+      expect(find.text('+ Water 16 fl oz'), findsOneWidget);
+      await _pumpUntil(
+        tester,
+        () => (settingsDisk[SettingsStore.intakePresetsKey] ?? '')
+            .contains('"seedLabelPending":false'),
+      );
+      // Open the editor for Water (the card's Log intake) and use
+      // its preset Delete affordance.
+      await tester.tap(find.text('Log intake').first);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(
+        find.byKey(const ValueKey('intake_delete_preset')),
+        findsOneWidget,
+      );
+      expect(find.text('Delete'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('intake_delete_preset')));
+      await _pumpUntil(
+        tester,
+        () => find.text('+ Water').evaluate().isNotEmpty,
+      );
+      expect(find.text('+ Water 16 fl oz'), findsNothing);
+      // The delete logged nothing and persisted an empty preset set
+      // with the label flag still consumed.
+      expect(LogEntryOutbox.instance.records, isEmpty);
+      expect(server.entries, isEmpty);
+      expect(
+        settingsDisk[SettingsStore.intakePresetsKey] ?? '',
+        contains('"presets":{}'),
+      );
+      expect(
+        settingsDisk[SettingsStore.intakePresetsKey] ?? '',
+        contains('"seedLabelPending":false'),
+      );
+      // The unconfigured button now opens the editor, not a log.
+      await tester.tap(find.text('+ Water'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text(intakeTimeHelper), findsOneWidget);
+      expect(LogEntryOutbox.instance.records, isEmpty);
+      expect(server.entries, isEmpty);
+      await tester.tap(find.text('Cancel'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      // A fresh presentation: still no seed, still no label.
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await tester.pump();
+      await tester.pumpWidget(MaterialApp(
+        home: HomeScreen(
+          weatherApi: _weather(),
+          tabsBackend: server.backend(),
+          logEntryOutbox: LogEntryOutbox.instance,
+          settingsStore: settingsStore(),
+        ),
+      ));
+      await _pumpUntil(
+        tester,
+        () => find.text('Salt & water').evaluate().isNotEmpty,
+      );
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.text('+ Water'), findsOneWidget);
+      expect(find.text('+ Water 16 fl oz'), findsNothing);
+      expect(find.text(intakeSeedLabel), findsNothing);
+    });
+
+    testWidgets('Tightening 1 (Home): a commit whose FRESH pull '
+        'misses Hydration files nothing under the stale cached id',
+        (tester) async {
+      final cats = [
+        for (final c in _catsHydration) Map<String, dynamic>.from(c),
+      ];
+      final server = _Server([], categories: cats);
+      await pumpHome(tester, server);
+      expect(find.text('+ Water 16 fl oz'), findsOneWidget);
+      // The category set changes server-side after the load.
+      cats.removeWhere((c) => c['name'] == 'Hydration');
+      await tester.tap(find.text('+ Water 16 fl oz'));
+      await _pumpUntil(
+        tester,
+        () => find.text('Salt & water').evaluate().isEmpty,
+      );
+      expect(LogEntryOutbox.instance.records, isEmpty);
+      expect(server.entries, isEmpty);
+      expect(server.capturedPosts, isEmpty);
+    });
+
+    testWidgets('Juno 2B (Home): an all-empty targets save appends '
+        'no version and the Set targets prompt is still offered',
+        (tester) async {
+      final server = _Server([], categories: _catsHydration);
+      await pumpHome(tester, server);
+      await tester.tap(find.text('+ Water 16 fl oz'));
+      await _pumpUntil(
+        tester,
+        () =>
+            find
+                .text('Logged today: 16 fl oz water · 0 mg sodium.')
+                .evaluate()
+                .isNotEmpty,
+      );
+      expect(find.text('Set targets'), findsOneWidget);
+      await tester.tap(find.text('Set targets'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      // Both fields empty: save as-is.
+      await tester.tap(find.text('Save'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      // History unchanged (nothing was ever written) and the S5
+      // state — prompt included — persists.
+      expect(settingsDisk[SettingsStore.intakeTargetsKey], isNull);
+      expect(find.text('Set targets'), findsOneWidget);
+      expect(find.text(intakeTargetsProvenance), findsNothing);
+      expect(
+        find.text('Logged today: 16 fl oz water · 0 mg sodium.'),
+        findsOneWidget,
+      );
     });
   });
 
