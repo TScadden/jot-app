@@ -36,6 +36,7 @@ import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/onboarding/onboarding_flow.dart';
 import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
 import 'package:tabs_lab/src/features/splash/splash_screen.dart';
+import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/notel_theme.dart';
 import 'package:sentry_flutter/sentry_flutter.dart'
@@ -842,10 +843,19 @@ class _AppFlowState extends State<AppFlow>
       curve: Curves.fastOutSlowIn,
     );
     // Entry (650ms) + hold (1200ms), then the native exit sweep.
+    // Audit 6c (Oct 27, 2026) — reduced motion: skip the 650ms exit
+    // sweep entirely and remove the splash instantly at the same
+    // moment the sweep would have started (the central
+    // [animationsDisabled] gate; final state rendered instantly,
+    // matching StaggeredEntrance / SlidePageTransitionsBuilder).
     Future.delayed(
       const Duration(milliseconds: _entryMs + _holdMs),
       () {
         if (!mounted) return;
+        if (animationsDisabled(context)) {
+          setState(() => _splashVisible = false);
+          return;
+        }
         _exitController.forward().whenComplete(() {
           if (mounted) setState(() => _splashVisible = false);
         });
@@ -1063,7 +1073,12 @@ class _AppFlowState extends State<AppFlow>
               billingService: _billingSync?.service,
               migraineController: _migraineController,
               onLogout: _onLogout),
-        if (_splashVisible)
+        if (_splashVisible && animationsDisabled(context))
+          // Audit 6c — reduced motion: the splash renders plain, with
+          // no exit-sweep Transform/Opacity wrappers applied; it is
+          // removed instantly when the entry+hold elapses (initState).
+          const SplashScreen()
+        else if (_splashVisible)
           AnimatedBuilder(
             animation: _exit,
             builder: (context, child) {

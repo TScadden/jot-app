@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
+import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Round 21 — "How are you feeling?" energy check-in card.
@@ -211,6 +212,16 @@ class _FeelingCheckInCardState extends State<FeelingCheckInCard>
     super.didUpdateWidget(oldWidget);
     if (widget.leaving && !_exitStarted) {
       _exitStarted = true;
+      // Audit 6c (Oct 27, 2026) — reduced motion: no exit slide/fade;
+      // the card leaves instantly (final state rendered instantly,
+      // the central-gate convention). Completion is posted to the
+      // next frame so the parent's setState never lands mid-build.
+      if (animationsDisabled(context)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) widget.onExitComplete?.call();
+        });
+        return;
+      }
       // Native exit: 350ms slideOutHorizontally(-fullWidth) + fadeOut,
       // FastOutLinearInEasing.
       _controller.duration = const Duration(milliseconds: 350);
@@ -240,11 +251,23 @@ class _FeelingCheckInCardState extends State<FeelingCheckInCard>
 
   @override
   Widget build(BuildContext context) {
+    // Audit 6c (Oct 27, 2026) — reduced motion: the enter slide+fade
+    // (and the exit, handled in didUpdateWidget) are gated on the
+    // central [animationsDisabled] check; the card renders its final
+    // state instantly with no SlideTransition/FadeTransition applied,
+    // matching StaggeredEntrance's gated build.
+    if (animationsDisabled(context)) return _cardBody();
     return SlideTransition(
       position: _slide,
       child: FadeTransition(
         opacity: _fade,
-        child: Padding(
+        child: _cardBody(),
+      ),
+    );
+  }
+
+  Widget _cardBody() {
+    return Padding(
           // Native Surface modifier: fillMaxWidth + padding h16/v8.
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Container(
@@ -287,8 +310,6 @@ class _FeelingCheckInCardState extends State<FeelingCheckInCard>
               ),
             ),
           ),
-        ),
-      ),
     );
   }
 }

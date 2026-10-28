@@ -1977,6 +1977,8 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
                             fontSize: 13, color: NotelColors.textPrimary)),
                   ),
                   IconButton(
+                    // Audit 6d (Oct 27, 2026) — house label.
+                    tooltip: 'Dismiss',
                     icon: const Icon(Icons.close,
                         size: 18, color: NotelColors.textSecondary),
                     onPressed: () => setState(() => _actionError = null),

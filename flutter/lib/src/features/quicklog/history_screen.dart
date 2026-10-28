@@ -488,6 +488,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
         elevation: 0,
         leading: IconButton(
           onPressed: () => Navigator.of(context).pop(),
+          // Audit 6d (Oct 27, 2026) — house label.
+          tooltip: 'Back',
           icon: const Icon(Icons.arrow_back),
           color: NotelColors.textSecondary,
         ),
@@ -651,6 +653,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
                   onPressed: () => setState(() => _searchQuery = ''),
+                  // Audit 6d (Oct 27, 2026) — house label.
+                  tooltip: 'Clear search',
                   icon: const Icon(Icons.clear,
                       color: NotelColors.textSecondary),
                 )
@@ -948,6 +952,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         child: IconButton(
                           padding: EdgeInsets.zero,
                           onPressed: () => _deleteEntry(entry),
+                          // Audit 6d (Oct 27, 2026) — house label
+                          // (destructive action; top of the Low list).
+                          tooltip: 'Delete entry',
                           icon: const Icon(Icons.delete, size: 18),
                           color: NotelColors.textSecondary,
                         ),

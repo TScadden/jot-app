@@ -266,29 +266,43 @@ class _ToolsScreenState extends State<ToolsScreen>
             Padding(
               padding: const EdgeInsets.only(right: 16),
               child: Center(
-                child: GestureDetector(
-                  onTap: _exitEditMode,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: NotelColors.primary,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.check, size: 16, color: Colors.white),
-                        SizedBox(width: 6),
-                        Text(
-                          'Done',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
+                // Audit 6a (Oct 27, 2026) — the visible pill is ~28dp
+                // high; expand ONLY the hit area to the 48dp floor
+                // with the in-app ConstrainedBox(minHeight: 48)
+                // pattern (today_summary_card / medications_screen).
+                // The pill's on-screen size is unchanged: the inner
+                // Container keeps its own padding/radius and is
+                // centered inside the taller hit box.
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 48),
+                  child: GestureDetector(
+                    onTap: _exitEditMode,
+                    behavior: HitTestBehavior.opaque,
+                    child: Center(
+                      widthFactor: 1,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: NotelColors.primary,
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                      ],
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.check, size: 16, color: Colors.white),
+                            SizedBox(width: 6),
+                            Text(
+                              'Done',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),

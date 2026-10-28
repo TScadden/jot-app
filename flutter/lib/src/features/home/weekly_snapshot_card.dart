@@ -529,19 +529,31 @@ class _MetricSelectorState extends State<_MetricSelector> {
                         _removeEntry();
                         widget.onSelect(m);
                       },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12.0, vertical: 12.0),
-                        child: Text(
-                          m.displayName,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: isCurrent
-                                ? FontWeight.bold
-                                : FontWeight.normal,
-                            color: isCurrent
-                                ? NotelColors.primaryText
-                                : NotelColors.textPrimary,
+                      // Audit 6a (Oct 27, 2026) — rows measured
+                      // ~41-44dp (12dp vertical padding + 14sp text);
+                      // expand ONLY the hit area to the 48dp floor
+                      // with the in-app ConstrainedBox(minHeight: 48)
+                      // pattern. Row look is unchanged: same padding,
+                      // same text, centered in the taller hit box.
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 48),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12.0, vertical: 12.0),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              m.displayName,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: isCurrent
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                                color: isCurrent
+                                    ? NotelColors.primaryText
+                                    : NotelColors.textPrimary,
+                              ),
+                            ),
                           ),
                         ),
                       ),
