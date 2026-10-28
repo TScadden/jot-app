@@ -268,6 +268,22 @@ class _BillingPlansPanelState extends State<BillingPlansPanel> {
           ),
         ),
         const SizedBox(height: 10),
+        // F-4 (legal-exposure register Q61/Q66) — the cancellation
+        // METHOD belongs in the paywall block itself, adjacent to
+        // the subscribe CTA, not only in Settings/Terms: ROSCA and
+        // CA ARL require the cancellation policy in visual proximity
+        // to the consent request. Wording is the register's
+        // Q65-verified production statement, verbatim — no new
+        // legal copy. It renders unconditionally (with or without
+        // offer data) at the same size/contrast as the terms line
+        // below it, so the block's conspicuousness is uniform.
+        const Text(
+          'Cancel anytime in the Play Store',
+          key: ValueKey('paywall_cancel_method'),
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Color(0xBF7A8FAF), fontSize: 11),
+        ),
+        const SizedBox(height: 4),
         Text(
           _termsLine(offer),
           textAlign: TextAlign.center,

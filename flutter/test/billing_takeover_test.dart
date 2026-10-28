@@ -1067,6 +1067,52 @@ void main() {
       expect(find.textContaining('free trial'), findsNothing);
       expect(find.textContaining('Free for'), findsNothing);
     });
+
+    // F-4 (rebased onto the one-product panel): the cancellation
+    // METHOD line sits in the paywall block, adjacent to the CTA,
+    // in the register's Q65-verified verbatim phrasing.
+    testWidgets(
+        'F-4: paywall block states the cancellation method adjacent '
+        'to the CTA, with the offer-phase terms line untouched',
+        (tester) async {
+      await pumpPanel(tester, catalog: [liveCatalog()]);
+      // Pick the monthly trial offer so the CTA and the full
+      // offer-phase terms line render (the one-product panel waits
+      // for an explicit pick in a multi-offer group).
+      await tester
+          .tap(find.byKey(const ValueKey('billing_offer_tok-m-trial')));
+      await tester.pump();
+      // Exact Q65-verified production phrasing, verbatim.
+      final cancel = find.byKey(const ValueKey('paywall_cancel_method'));
+      expect(cancel, findsOneWidget);
+      expect(find.text('Cancel anytime in the Play Store'),
+          findsOneWidget);
+      // The offer-phase-built terms line is unchanged by F-4.
+      expect(
+          find.text('Monthly: Free for 7-day, then \$5.99/month. '
+              'Auto-renews until canceled. Billed by Google Play.'),
+          findsOneWidget);
+      // Adjacency: the cancellation line sits below the subscribe
+      // CTA and above the terms line in the rendered block.
+      final ctaY = tester.getCenter(find.text('Start 7-day free trial')).dy;
+      final cancelY = tester.getCenter(cancel).dy;
+      final termsY = tester
+          .getCenter(find.textContaining('Auto-renews until canceled'))
+          .dy;
+      expect(cancelY, greaterThan(ctaY));
+      expect(cancelY, lessThan(termsY));
+    });
+
+    testWidgets(
+        'F-4: cancellation method still shows when no offer data '
+        'is available (bare honest state)', (tester) async {
+      await pumpPanel(tester, catalog: const []);
+      expect(find.text('Cancel anytime in the Play Store'),
+          findsOneWidget);
+      expect(
+          find.text('Auto-renews until canceled. Billed by Google Play.'),
+          findsOneWidget);
+    });
   });
 
   group('Single app-owned instance (Vera fix 1)', () {
