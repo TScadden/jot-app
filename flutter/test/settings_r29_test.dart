@@ -377,6 +377,61 @@ void main() {
           findsOneWidget);
     });
 
+    // Conformance audit 2026-10-27, item 1c: Play's catalog is ONE
+    // product (jot_membership_monthly) with monthly + yearly base
+    // plans, so the manage/cancel deep link must carry that product
+    // ID as sku for BOTH plan selections. The old link sent the
+    // non-existent product jot_membership_yearly for the yearly
+    // selection.
+    testWidgets(
+        'manage/cancel link uses the real product sku (monthly selection)',
+        (tester) async {
+      final launched = <Uri>[];
+      final backend = FakeSettingsBackend()..pullBody = pull();
+      await pumpSettings(tester, host(screen(
+          backend: backend,
+          store: fakeStore(<String, String>{}),
+          launched: launched)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Membership').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find
+          .text('Manage or cancel anytime in Google Play Subscriptions'));
+      await tester.pumpAndSettle();
+      expect(launched.map((u) => u.toString()), [
+        'https://play.google.com/store/account/subscriptions'
+            '?sku=jot_membership_monthly&package=com.notel.notel',
+      ]);
+    });
+
+    testWidgets(
+        'manage/cancel link uses the real product sku (yearly selection)',
+        (tester) async {
+      final launched = <Uri>[];
+      final backend = FakeSettingsBackend()..pullBody = pull();
+      await pumpSettings(tester, host(screen(
+          backend: backend,
+          store: fakeStore(<String, String>{}),
+          launched: launched)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Membership').last);
+      await tester.pumpAndSettle();
+      // Selecting the yearly plan is what used to flip the sku to
+      // the non-existent jot_membership_yearly.
+      await tester.tap(find.text('Yearly Plan'));
+      await tester.pumpAndSettle();
+      await tester.tap(find
+          .text('Manage or cancel anytime in Google Play Subscriptions'));
+      await tester.pumpAndSettle();
+      expect(launched.map((u) => u.toString()), [
+        'https://play.google.com/store/account/subscriptions'
+            '?sku=jot_membership_monthly&package=com.notel.notel',
+      ]);
+      expect(launched.single.queryParameters['sku'],
+          isNot('jot_membership_yearly'));
+      expect(launched.single.queryParameters['package'], 'com.notel.notel');
+    });
+
     testWidgets('membership segment shows unlimited state from pull',
         (tester) async {
       final backend = FakeSettingsBackend()
