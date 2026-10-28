@@ -7,6 +7,31 @@ import 'package:tabs_lab/src/data/migraine_controller.dart';
 import 'package:tabs_lab/src/data/migraine_time_format.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
+/// Migraine log trio fix 1 — the completion line (Juno ruling
+/// 2026-10-27, 2026-10-27-migraine-log-trio-juno.md §A). FINAL
+/// copy, verbatim template:
+///
+/// `Migraine attack logged — {duration}. Started {started-ts}.`
+///
+/// {duration} is the Lab elapsed format and {started-ts} the Lab
+/// timestamp format — the same two values the §E entry body
+/// renders, computed the same way, so line and entry agree word
+/// for word. No other facts appear in the line (§A: no pain, aura,
+/// meds, or relief).
+String migraineLoggedLine(MigraineAttack attack) {
+  final endMs = attack.endTimestamp ?? attack.startTimestamp;
+  var durationMin = (endMs - attack.startTimestamp) ~/ 60000;
+  if (durationMin < 0) durationMin = 0;
+  return 'Migraine attack logged — '
+      '${formatElapsedDuration(durationMin)}. '
+      'Started ${formatAttackTimestamp(attack.startTimestamp)}.';
+}
+
+/// Juno §B — the ONE supporting line, verbatim: directly beneath
+/// the completion line, inside the same tap target. Nothing else
+/// is added to this surface (no dismissal, no extra copy).
+const String migraineLoggedHint = 'Tap to view in History';
+
 /// Migraine attack block inside the Today Summary card's expanded
 /// area (Juno ruling 2026-10-26 §A). Every string is Juno's FINAL
 /// copy, verbatim — see the ruling before touching any literal.
@@ -19,7 +44,17 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 class MigraineBlock extends StatelessWidget {
   final MigraineController controller;
 
-  const MigraineBlock({super.key, required this.controller});
+  /// Fix 1: tapping the completion line opens that attack's entry
+  /// in History; the card wires this to push HistoryScreen with
+  /// the entry id. Called with the CONFIRMED entry id
+  /// (`MigraineAttack.trendsEntryId`).
+  final ValueChanged<int>? onOpenLoggedEntry;
+
+  const MigraineBlock({
+    super.key,
+    required this.controller,
+    this.onOpenLoggedEntry,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -40,7 +75,10 @@ class MigraineBlock extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             if (attack == null)
-              _IdleContent(controller: controller)
+              _IdleContent(
+                controller: controller,
+                onOpenLoggedEntry: onOpenLoggedEntry,
+              )
             else
               _ActiveContent(
                 key: ValueKey('migraine-active-${attack.id}'),
@@ -56,10 +94,15 @@ class MigraineBlock extends StatelessWidget {
 
 class _IdleContent extends StatelessWidget {
   final MigraineController controller;
-  const _IdleContent({required this.controller});
+  final ValueChanged<int>? onOpenLoggedEntry;
+  const _IdleContent({required this.controller, this.onOpenLoggedEntry});
 
   @override
   Widget build(BuildContext context) {
+    // Fix 1: non-null ONLY for a confirmed-saved finished attack
+    // (the controller's §A gate) — a pending/unsaved end renders
+    // nothing here, and there is no pending variant (Juno §A 1–2).
+    final logged = controller.lastLoggedAttack;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -101,7 +144,67 @@ class _IdleContent extends StatelessWidget {
             color: NotelColors.textSecondary,
           ),
         ),
+        if (logged != null) ...[
+          const SizedBox(height: 12),
+          _LoggedCompletionLine(
+            attack: logged,
+            onTap: onOpenLoggedEntry == null
+                ? null
+                : () => onOpenLoggedEntry!(logged.trendsEntryId!),
+          ),
+        ],
       ],
+    );
+  }
+}
+
+/// The fix-1 completion surface (Juno §A line + §B hint, nothing
+/// else): one tap target; its screen-reader label is the two ruled
+/// strings read in order (§B) — the visual texts are excluded from
+/// semantics so the label is the single spoken node.
+class _LoggedCompletionLine extends StatelessWidget {
+  final MigraineAttack attack;
+  final VoidCallback? onTap;
+  const _LoggedCompletionLine({required this.attack, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final line = migraineLoggedLine(attack);
+    return Semantics(
+      container: true,
+      button: onTap != null,
+      label: '$line $migraineLoggedHint',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: ExcludeSemantics(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  line,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: NotelColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                const Text(
+                  migraineLoggedHint,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: NotelColors.primaryText,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

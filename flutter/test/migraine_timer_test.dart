@@ -81,10 +81,13 @@ class FakeTrendsGateway implements MigraineTrendsGateway {
   }
 
   @override
-  Future<int> resolveSymptomsCategoryId() async => categoryId;
+  Future<int> resolveMigraineCategoryId() async => categoryId;
 
   @override
   Future<int> generateEntryId() async => nextId++;
+
+  @override
+  Future<bool?> entryExists(int entryId) async => true;
 }
 
 class Harness {
@@ -514,7 +517,8 @@ void main() {
       return TabsBackend(client: client, sessionStore: session);
     }
 
-    test('Symptoms category resolves by name, fallback 1', () async {
+    test('category chain: Symptoms by name when no founder category, '
+        'fallback 1', () async {
       final byName = BackendMigraineTrendsGateway(backendFor(MockClient(
         (_) async => http.Response(
           jsonEncode({
@@ -528,7 +532,7 @@ void main() {
           200,
         ),
       )));
-      expect(await byName.resolveSymptomsCategoryId(), 9);
+      expect(await byName.resolveMigraineCategoryId(), 9);
 
       // Second server body under the same token within this case:
       // drop the shared pull cache so the fallback body is read.
@@ -546,7 +550,7 @@ void main() {
           200,
         ),
       )));
-      expect(await byFallback.resolveSymptomsCategoryId(), 1);
+      expect(await byFallback.resolveMigraineCategoryId(), 1);
     });
 
     test('entry id follows the Quick Log max+1 convention', () async {

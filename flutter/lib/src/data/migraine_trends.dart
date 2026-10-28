@@ -39,8 +39,9 @@ String buildMigraineTrendsBody(MigraineAttack attack) {
 
 /// The Quick Log entry for [attack] under [entryId] (persisted on
 /// the attack record at first end; reused for the form-save update)
-/// in the Symptoms category [categoryId] (resolved by name with
-/// fallback 1 — see the controller's gateway).
+/// in category [categoryId] (the founder's "Migraine Symptoms &
+/// Triggers" when it exists, else Symptoms, fallback 1 — migraine
+/// log trio fix 3; see the controller's gateway).
 ///
 /// - timestamp = attack start.
 /// - manualText = `Ended {ts}` in the Lab timestamp format.

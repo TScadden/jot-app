@@ -121,7 +121,14 @@ extension _StringNotBlank on String {
 class HistoryScreen extends StatefulWidget {
   final TabsBackend? backend;
 
-  const HistoryScreen({super.key, this.backend});
+  /// Migraine log trio fix 1 (Juno ruling 2026-10-27,
+  /// 2026-10-27-migraine-log-trio-juno.md §A condition 3): when
+  /// set, once the initial load lands, the entry with this id is
+  /// opened in its detail dialog — the Today Summary completion
+  /// line's tap lands on THAT entry, not the list top.
+  final int? focusEntryId;
+
+  const HistoryScreen({super.key, this.backend, this.focusEntryId});
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -131,6 +138,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   TabsBackend get _backend => widget.backend ?? TabsBackend();
 
   bool _loading = true;
+  bool _focusHandled = false;
   String? _loadError;
   List<QuickLogEntry> _entries = const [];
   List<QuickLogCategory> _categories = const [];
@@ -162,6 +170,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
       _loading = true;
       _loadError = null;
     });
+    // Migraine log trio fix 2: the initial load must NOT be served
+    // by the 5-minute sync-pull TTL cache — it hid a just-saved
+    // migraine entry from the founder (the entry existed; History
+    // showed the cached pre-save pull). Invalidate first, exactly
+    // as _revalidate() does for post-mutation refreshes.
+    _backend.invalidateSyncPull();
     await _fetchIntoState();
   }
 
@@ -209,6 +223,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           _categories = cats;
         });
       }
+      if (!quiet && mounted) _maybeOpenFocusedEntry();
     } catch (e) {
       if (!mounted) return;
       if (!quiet) {
@@ -219,6 +234,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
       }
       // Quiet failure: keep what's on screen; the next action retries.
     }
+  }
+
+  /// Fix 1 focus: open the focused entry's detail dialog exactly
+  /// once, after the initial load (entries AND categories) is in
+  /// state, so the dialog titles itself with the real category.
+  /// Absent entry → nothing opens; the list stands as-is.
+  void _maybeOpenFocusedEntry() {
+    final focusId = widget.focusEntryId;
+    if (focusId == null || _focusHandled) return;
+    _focusHandled = true;
+    final entry = _entries.where((e) => e.id == focusId).firstOrNull;
+    if (entry == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _showEntryDetail(entry);
+    });
   }
 
   List<QuickLogEntry> _sorted(Map<String, dynamic> pull) {
