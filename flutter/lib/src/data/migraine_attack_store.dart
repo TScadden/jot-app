@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'coach_memory_store.dart';
+
 /// One migraine attack record — the Lab `MigraineAttack` fields,
 /// ported to production's local-store shape.
 ///
@@ -149,15 +151,32 @@ class MigraineAttack {
 /// store as [TodayPlanStore] / [OnboardingStore] — with injectable
 /// read/write/delete for tests).
 ///
-/// Blob shape: `{attacks: [...], activeAttackId: int|null}`. The
-/// active attack survives app restart; elapsed is always recomputed
-/// from the stored start timestamp.
+/// Blob shape: `{ownerEmail: String|null, attacks: [...],
+/// activeAttackId: int|null}`. The active attack survives app
+/// restart; elapsed is always recomputed from the stored start
+/// timestamp.
 ///
-/// Never throws: storage failures degrade to "no attacks" on reads,
-/// and writes surface as a thrown [StateError] only from [save] so
-/// the controller can show Juno's start-failure line (§F).
+/// Audit 4e (Oct 27, 2026): the blob is account-bound, mirroring
+/// [CoachMemoryStore] — it carries its owner's normalized email,
+/// logout / account deletion / session expiry clear it, and a
+/// login by a different owner wipes it instead of serving the
+/// previous account's records. An in-progress attack is the
+/// departing owner's data and wipes with the rest.
+///
+/// Never throws on reads / clears: storage failures degrade to
+/// "no attacks" on reads, and writes surface as a thrown
+/// [StateError] only from [save] so the controller can show
+/// Juno's start-failure line (§F).
 class MigraineAttackStore {
   static const String storageKey = 'migraine_attacks_v1';
+
+  /// The one shared instance lifecycle code and the controller act
+  /// on (coach-style): [MigraineAttackStore.new] returns this, so
+  /// the controller's default store and the wipe paths in
+  /// `AccountActions` / `main.dart` share the same bound owner and
+  /// the same storage IO (including test-injected IO).
+  static final MigraineAttackStore instance =
+      MigraineAttackStore._internal();
 
   Future<String?> Function(String key) _read =
       (key) => const FlutterSecureStorage().read(key: key);
@@ -167,9 +186,21 @@ class MigraineAttackStore {
   Future<void> Function(String key) _delete =
       (key) => const FlutterSecureStorage().delete(key: key);
 
-  MigraineAttackStore();
+  /// The account this instance is bound to (normalized), set by
+  /// [clearIfOwnerMismatch]. Writes stamp it; a load whose blob
+  /// carries a different stamp is wiped instead of served. Null
+  /// while unbound (no login has bound this instance yet).
+  String? _boundOwner;
+
+  /// The shared instance (see [instance]).
+  factory MigraineAttackStore() => instance;
+
+  MigraineAttackStore._internal();
 
   MigraineAttackStore._(this._read, this._write, this._delete);
+
+  static String? _normalizeEmail(String? email) =>
+      CoachMemoryStore.normalizeEmail(email);
 
   @visibleForTesting
   factory MigraineAttackStore.withStorage({
@@ -207,6 +238,21 @@ class MigraineAttackStore {
       if (decoded is! Map<String, dynamic>) {
         return (attacks: <MigraineAttack>[], activeId: null);
       }
+      // Load enforcement (audit 4e): a stamped blob served to a
+      // differently-bound instance is another account's data —
+      // wipe the key and serve empty. When unbound, serve: the
+      // stamp's owner is the only account whose session could
+      // have written it, and every path into a different account
+      // binds first (login/register owner-mismatch, or a wipe).
+      final stamp = _normalizeEmail(decoded['ownerEmail']?.toString());
+      if (stamp != null &&
+          _boundOwner != null &&
+          stamp != _boundOwner) {
+        try {
+          await _delete(storageKey);
+        } catch (_) {}
+        return (attacks: <MigraineAttack>[], activeId: null);
+      }
       final attacks = <MigraineAttack>[];
       final rawList = decoded['attacks'];
       if (rawList is List) {
@@ -227,7 +273,23 @@ class MigraineAttackStore {
   }
 
   Future<void> _writeBlob(List<MigraineAttack> attacks, int? activeId) async {
+    // Owner stamp (audit 4e): the bound owner when known; when
+    // unbound, preserve any existing stamp — a write must never
+    // erase the stamp that binds the blob to its account.
+    var stamp = _boundOwner;
+    if (stamp == null) {
+      try {
+        final raw = await _read(storageKey);
+        if (raw != null && raw.isNotEmpty) {
+          final decoded = jsonDecode(raw);
+          if (decoded is Map<String, dynamic>) {
+            stamp = _normalizeEmail(decoded['ownerEmail']?.toString());
+          }
+        }
+      } catch (_) {}
+    }
     final blob = jsonEncode({
+      'ownerEmail': stamp,
       'attacks': attacks.map((a) => a.toJson()).toList(),
       'activeAttackId': activeId,
     });
@@ -291,10 +353,50 @@ class MigraineAttackStore {
     await _writeBlob(attacks, activeId);
   }
 
-  /// Test/reset helper: drops the whole blob.
+  /// Drops the whole blob and unbinds the owner. Called on
+  /// logout / account deletion (via `AccountActions`) and on
+  /// session expiry (via `main.dart`), exactly like the other
+  /// account-bound stores. Never throws.
   Future<void> clear() async {
+    _boundOwner = null;
     try {
       await _delete(storageKey);
     } catch (_) {}
+  }
+
+  /// Login/register ownership enforcement, mirroring
+  /// [CoachMemoryStore.clearIfOwnerMismatch]: binds this instance
+  /// to [email] and wipes the blob when it is stamped for a
+  /// different account — or carries no stamp at all (coach
+  /// semantics: no recorded account → wipe; unstamped legacy
+  /// blobs predate audit 4e). Returns true when a wipe happened.
+  /// A null/blank [email] binds nothing and wipes nothing.
+  /// Never throws.
+  Future<bool> clearIfOwnerMismatch(String? email) async {
+    final expected = _normalizeEmail(email);
+    if (expected == null) return false;
+    try {
+      final raw = await _read(storageKey);
+      if (raw == null || raw.isEmpty) {
+        _boundOwner = expected;
+        return false;
+      }
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) {
+        await clear();
+        _boundOwner = expected;
+        return true;
+      }
+      final owner = _normalizeEmail(decoded['ownerEmail']?.toString());
+      if (owner == expected) {
+        _boundOwner = expected;
+        return false;
+      }
+      await clear();
+      _boundOwner = expected;
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 }
