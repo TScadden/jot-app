@@ -57,6 +57,16 @@ class MainActivity : FlutterFragmentActivity() {
         // gate stays closed there — that is the point) and
         // com.notel.notel in the prod build.
         const val APP_INFO_CHANNEL = "com.notel.notel/app_info"
+        // Lab-hook extension (Sentry Step-2 evidence, Juno Condition 1):
+        // native-crash trigger for the Lab-only crash test hook. The
+        // channel is registered ONLY when this build's applicationId
+        // is the Lab identity (see configureFlutterEngine) — the prod
+        // flavor's applicationId is com.notel.notel, so a production
+        // build never registers it and the trigger is unreachable
+        // there. (This project has no lab flavor source set; the
+        // flavors differ by applicationId only, per build.gradle.kts.)
+        const val CRASH_TEST_CHANNEL = "com.notel.notel.playground.flutter/crash_test"
+        const val LAB_PACKAGE_NAME = "com.notel.notel.playground.flutter"
         // Round 48: BP CSV import cap, same as native MAX_CSV_FILE_BYTES.
         private const val MAX_CSV_FILE_BYTES = 5 * 1024 * 1024
         // Round 65: knowledge-document pick cap (see doc picker).
@@ -550,6 +560,50 @@ class MainActivity : FlutterFragmentActivity() {
                     else -> result.notImplemented()
                 }
             }
+        // Lab-hook extension (Juno Condition 1): native-crash trigger,
+        // Lab flavor ONLY. The registration itself is flavor-gated on
+        // the applicationId: prod builds (com.notel.notel) skip this
+        // block entirely, so the channel does not exist there. The
+        // Dart side is additionally gated by
+        // CrashReporting.isLabFlavor, and the hook card renders only
+        // in the Lab flavor.
+        if (packageName == LAB_PACKAGE_NAME) {
+            MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CRASH_TEST_CHANNEL)
+                .setMethodCallHandler { call, result ->
+                    when (call.method) {
+                        "triggerNativeCrash" -> triggerNativeTestCrash(result)
+                        else -> result.notImplemented()
+                    }
+                }
+        }
+    }
+
+    /// Lab-only native crash (Juno Condition 1 evidence): kills the
+    /// process with a genuine uncaught Kotlin fatal so the event is
+    /// captured by the native/Java Sentry pipeline (which bypasses
+    /// the Dart beforeSend allowlist — exercising that bypass is the
+    /// point of this trigger).
+    ///
+    /// The fatal is POSTED to the main thread, not thrown here: an
+    /// exception thrown inside a MethodChannel handler is caught by
+    /// the binary messenger and returned to Dart as an error reply,
+    /// which is NOT a crash. Posted outside the channel call stack,
+    /// the RuntimeException is an uncaught main-thread exception —
+    /// the process dies and the native uncaught-exception pipeline
+    /// captures it. The channel reply is sent first so Dart sees the
+    /// request was accepted before the process goes down.
+    private fun triggerNativeTestCrash(result: MethodChannel.Result) {
+        Handler(Looper.getMainLooper()).post {
+            throw RuntimeException(
+                "Tabs Lab forced native test crash (crash test channel)"
+            )
+        }
+        try {
+            result.success(true)
+        } catch (_: Exception) {
+            // The process is going down by design; a reply that can
+            // no longer be delivered must not mask the crash.
+        }
     }
 
     /// Round 48: launches the system file picker and returns the

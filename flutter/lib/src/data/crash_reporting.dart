@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart' show appFlavor;
+import 'package:flutter/services.dart' show MethodChannel, appFlavor;
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 /// Crash and non-fatal error reporting — Juno Ruling
@@ -195,6 +195,56 @@ abstract final class CrashReporting {
     return 'ScrubbedExceptionType';
   }
 
+  // ── Condition 6 hardening (Juno diff review, C1 verbatim copies) ──
+
+  /// Runtime names permitted in a scrubbed event (C1 permits the
+  /// runtime context — Dart/Flutter version — and nothing else).
+  /// Any other runtime name is a free-text string that could carry
+  /// verbatim seeded/user text, so the whole runtime entry is
+  /// dropped. Observed SDK runtimes are exactly these two
+  /// (`Dart`, `Flutter`; see the Step-2 captured envelopes).
+  static const Set<String> allowedRuntimeNames = {'Dart', 'Flutter'};
+
+  /// A runtime version survives only when it is shaped like a
+  /// version (`3.13.5`, `3.13.5 (stable)`, `3.47.7-dev.1`). Anything
+  /// else — free text, an email, a URL, a medication string — is
+  /// dropped (the runtime entry itself survives on its whitelisted
+  /// name alone).
+  static String? sanitizeRuntimeVersion(String? version) {
+    if (version != null &&
+        version.length <= 64 &&
+        RegExp(r'^\d+(?:\.\d+){1,3}(?:[-+][0-9A-Za-z.-]+)?'
+                r'(?: \([A-Za-z]+\))?$')
+            .hasMatch(version)) {
+      return version;
+    }
+    return null;
+  }
+
+  /// Mechanism scrub (Condition 6): `mechanism.data` is dropped
+  /// ENTIRELY, along with `meta`, `description`, `helpLink`,
+  /// `source` and any unknown fields — all are free-text / arbitrary
+  /// maps that Juno recorded as verbatim copies of the source
+  /// event. Only the mechanism's code-shaped fields survive: its
+  /// type (identifier-shaped, else `generic`) and its boolean /
+  /// numeric flags.
+  static Mechanism? _scrubMechanism(Mechanism? mechanism) {
+    if (mechanism == null) return null;
+    final type = mechanism.type;
+    return Mechanism(
+      type: (type.length <= 128 &&
+              RegExp(r'^[A-Za-z_][A-Za-z0-9_.$-]*$').hasMatch(type))
+          ? type
+          : 'generic',
+      handled: mechanism.handled,
+      synthetic: mechanism.synthetic,
+      isExceptionGroup: mechanism.isExceptionGroup,
+      exceptionId: mechanism.exceptionId,
+      parentId: mechanism.parentId,
+      // data: null, meta: null — dropped entirely (Condition 6).
+    );
+  }
+
   /// Frame-level scrub for stack traces (C1: frames/module/
   /// function — code identifiers only). Dropped per frame:
   /// absPath (absolute paths can contain the user's name), source
@@ -268,7 +318,9 @@ abstract final class CrashReporting {
               stackTrace: e.stackTrace == null
                   ? null
                   : _scrubStackTrace(e.stackTrace!),
-              mechanism: e.mechanism,
+              // Condition 6: mechanism.data (and the other
+              // free-text mechanism fields) never survive.
+              mechanism: _scrubMechanism(e.mechanism),
               threadId: e.threadId,
             ),
           )
@@ -292,8 +344,16 @@ abstract final class CrashReporting {
                 family: device.family,
                 arch: device.arch,
               ),
+        // Condition 6: runtime context is whitelisted — only the
+        // expected runtime names (Dart / Flutter) survive, and a
+        // version survives only when it is version-shaped; a
+        // seeded name or version string is dropped, never copied.
         runtimes: contexts.runtimes
-            .map((r) => SentryRuntime(name: r.name, version: r.version))
+            .where((r) => allowedRuntimeNames.contains(r.name))
+            .map((r) => SentryRuntime(
+                  name: r.name,
+                  version: sanitizeRuntimeVersion(r.version),
+                ))
             .toList(),
       ),
     );
@@ -480,6 +540,155 @@ abstract final class CrashReporting {
   /// transport sees it.
   static void _reportToSentry(Object error, StackTrace stackTrace) {
     unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+  }
+
+  // ── Lab-hook extension (Step-2 evidence; Juno Conditions 1 + 6, §7) ──
+
+  /// MethodChannel to the Lab-only native crash trigger in
+  /// MainActivity. The Kotlin side registers this channel ONLY when
+  /// the build's applicationId is the Lab identity
+  /// (`com.notel.notel.playground.flutter`); a production-flavor
+  /// build (applicationId `com.notel.notel`) never registers it, so
+  /// the method is unreachable there even before this Dart-side
+  /// flavor gate is consulted.
+  static const String nativeCrashChannelName =
+      'com.notel.notel.playground.flutter/crash_test';
+  static const String nativeCrashMethod = 'triggerNativeCrash';
+
+  /// Fires the Kotlin-side native crash (Juno Condition 1: a
+  /// native/Java event bypasses the Dart beforeSend allowlist, so
+  /// only a genuine native crash can exercise that pipeline).
+  ///
+  /// Returns false WITHOUT touching the channel when this is not
+  /// the Lab flavor — the production flavor can never reach the
+  /// native trigger through Dart either. Channel errors
+  /// (PlatformException / MissingPluginException) propagate to the
+  /// caller: the hook card is UI code and must surface the error
+  /// code visibly (team lesson — no silent channel failures).
+  static Future<bool> triggerNativeTestCrash({
+    String? flavor,
+    MethodChannel? channel,
+  }) async {
+    if (!isLabFlavor(flavor: flavor)) return false;
+    final ch = channel ?? const MethodChannel(nativeCrashChannelName);
+    await ch.invokeMethod<void>(nativeCrashMethod);
+    return true;
+  }
+
+  /// The R11 canary seed set (C8): exactly the nine synthetic
+  /// values the canary gate in test/crash_reporting_test.dart uses.
+  /// Synthetic values only — no real user data ever appears here,
+  /// and the gate test asserts this map equals its own independent
+  /// copy so the two can never drift apart silently.
+  static const Map<String, String> labCanarySeeds = {
+    'email': 'canary-email-7f3a@example.com',
+    'accountId': 'canary-account-9182',
+    'medication': 'CanaryMedication 42mg',
+    'healthValue': 'canary-healthvalue-231',
+    'logSentence': 'canary log sentence about my morning walk',
+    'calendarTitle': 'canary-calendar-dentist-appointment',
+    'documentFilename': 'canary-document-lab-results.pdf',
+    'bearerToken': 'canary-bearer-token-abcdef0123',
+    'urlWithQuery': 'https://example.com/path?canary-query=secret99',
+  };
+
+  /// Builds the seeded canary event for the LIVE pipeline (R11
+  /// console-level repeat, Juno §7): the nine seeds sit in the same
+  /// event positions the test gate seeds — exception type/value,
+  /// user, request + auth header, breadcrumbs, message, extra,
+  /// tags, device name/unique-id, custom contexts, and a stack
+  /// frame's file name / abs path — PLUS the Condition 6 positions:
+  /// exception `mechanism.data` and a runtime's name/version. The
+  /// event is built to be captured through the real SDK pipeline;
+  /// [scrubEvent] (via beforeSend) is what must strip every seed
+  /// before transport.
+  ///
+  /// NOTE on the one SentryUser construction in lib/: it builds
+  /// this SYNTHETIC seed (the canary account id/email above) so the
+  /// live event proves the scrub drops `user` entirely. It is
+  /// never fed account data — no other code in lib/ constructs a
+  /// SentryUser, and the source-scan test pins the occurrence
+  /// count to this one site.
+  static SentryEvent buildLabCanaryEvent() {
+    final c = labCanarySeeds;
+    final contexts = Contexts(
+      device: SentryDevice(
+        name: c['calendarTitle'],
+        model: 'Pixel 9a',
+        manufacturer: 'Google',
+        family: 'Pixel',
+        arch: 'arm64',
+        deviceUniqueIdentifier: c['accountId'],
+      ),
+      operatingSystem: SentryOperatingSystem(name: 'Android', version: '16'),
+      app: SentryApp(name: 'Tabs Lab', version: '1.0.0', build: '1'),
+      runtimes: [
+        SentryRuntime(name: 'Dart', version: '3.13.5'),
+        // Condition 6 seeds: canary runtime name + version.
+        SentryRuntime(name: c['email'], version: c['medication']),
+      ],
+    );
+    contexts['health'] = {'reading': c['healthValue']};
+    contexts['flutter_error_details'] = {'information': c['logSentence']};
+    return SentryEvent(
+      level: SentryLevel.error,
+      release: 'tabs_lab@1.0.0+1',
+      environment: 'lab',
+      // ignore: deprecated_member_use
+      extra: {'note': c['logSentence'], 'med': c['medication']},
+      tags: {'release': 'tabs_lab@1.0.0+1', 'evil': c['accountId']!},
+      message: SentryMessage(c['logSentence']!),
+      user: SentryUser(id: c['accountId'], email: c['email']),
+      request: SentryRequest(
+        url: c['urlWithQuery'],
+        headers: {'Authorization': 'Bearer ${c['bearerToken']}'},
+      ),
+      breadcrumbs: [Breadcrumb(message: c['logSentence'])],
+      exceptions: [
+        SentryException(
+          type: 'SeededException ${c['email']}',
+          value:
+              '${c['medication']} ${c['healthValue']} ${c['logSentence']} ${c['urlWithQuery']}',
+          // Condition 6 seed: canaries inside mechanism.data.
+          mechanism: Mechanism(
+            type: 'generic',
+            handled: false,
+            data: {
+              'seed_email': c['email']!,
+              'seed_detail': c['logSentence']!,
+              'seed_token': c['bearerToken']!,
+            },
+          ),
+          stackTrace: SentryStackTrace(
+            frames: [
+              SentryStackFrame(
+                function: 'seededFunction',
+                fileName: c['documentFilename'],
+                absPath: '/data/user/${c['accountId']}/seeded.dart',
+                lineNo: 7,
+                colNo: 3,
+              ),
+            ],
+          ),
+        ),
+      ],
+      contexts: contexts,
+    );
+  }
+
+  /// Emits [buildLabCanaryEvent] through the LIVE pipeline
+  /// (Juno §7 console-level R11 repeat): the app is already running
+  /// under [run]'s real Sentry init on a DSN-live Lab build, so a
+  /// plain capture here is the genuine init/capture path, not a
+  /// test harness. Returns false — and captures nothing — when
+  /// this is not the Lab flavor, or when Sentry is not enabled
+  /// (empty DSN: there is no live pipeline to emit through, and
+  /// claiming a send would be false evidence).
+  static Future<bool> triggerLabCanaryTestEvent({String? flavor}) async {
+    if (!isLabFlavor(flavor: flavor)) return false;
+    if (!Sentry.isEnabled) return false;
+    await Sentry.captureEvent(buildLabCanaryEvent());
+    return true;
   }
 
   // ── Lab-only forced crash (C6 evidence hook) ────────────────────

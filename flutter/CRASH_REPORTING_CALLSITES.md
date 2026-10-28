@@ -28,3 +28,19 @@ Global handlers (FlutterError.onError, PlatformDispatcher.onError,
 runZonedGuarded) are NOT call sites on this list: they are the C6
 bootstrap in crash_reporting.dart itself, and every event they
 produce still passes through the C1 allowlist scrub in beforeSend.
+
+## Lab-hook extension (Step-2 evidence, 2026-10-27)
+
+NOT captureError call sites — Lab-flavor-only evidence triggers,
+all gated by `CrashReporting.isLabFlavor()` in Dart, reachable
+only from the Lab-only Settings hook card, long-press only:
+
+| Trigger | Path | Purpose |
+|---|---|---|
+| Native crash | `CrashReporting.triggerNativeTestCrash` → MethodChannel `com.notel.notel.playground.flutter/crash_test` → Kotlin handler in MainActivity, registered ONLY when the applicationId is the Lab identity, which posts a fatal RuntimeException to the main thread | Juno Condition 1: exercise the native/Java Sentry pipeline that bypasses the Dart beforeSend allowlist |
+| Canary event | `CrashReporting.triggerLabCanaryTestEvent` → `Sentry.captureEvent(CrashReporting.buildLabCanaryEvent())` through the live `CrashReporting.run` init | R11 console-level repeat (Juno Step-2 verdict §7): the nine synthetic canary seeds, in the gate's event positions plus mechanism.data and runtime name/version (Condition 6), inspected in the received event's raw JSON |
+
+Neither trigger is a production code path: the hook card does not
+render in the prod flavor, both Dart triggers refuse to act when
+`isLabFlavor()` is false, and the Kotlin channel is never
+registered under the production applicationId.
