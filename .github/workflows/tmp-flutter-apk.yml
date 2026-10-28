@@ -17,3 +17,11 @@ jobs:
       - run: cd flutter && flutter pub get
       - run: cd flutter && flutter analyze
       - run: cd flutter && flutter test
+      - run: cd flutter && flutter build apk --release --split-per-abi
+      - run: >-
+          bash flutter/tool/check_widget_apk.sh
+          flutter/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tabs-lab-counter-delete-restore-v1
+          path: flutter/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
