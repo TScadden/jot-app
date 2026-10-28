@@ -285,7 +285,13 @@ class NativeCrashScrubTest {
         assertNull(result.getMessage())
         assertNull(result.getServerName())
         assertNull(result.getFingerprints())
-        assertNull(result.getThreads())
+        // SentryEvent.setThreads(null) stores an EMPTY SentryValues in
+        // sentry-java 8.61.1 (never null); the serializer writes the
+        // threads key only when the list is non-empty, so the received
+        // event carries no threads key — asserted here as null-or-empty
+        // and on the wire by the serialization sweep below.
+        val threadsAfter = result.getThreads()
+        assertTrue(threadsAfter == null || threadsAfter.isEmpty())
         assertNull(result.getTransaction())
         assertNull(result.getLogger())
         assertNull(result.getUnknown())
