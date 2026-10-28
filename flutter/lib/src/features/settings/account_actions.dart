@@ -2,6 +2,7 @@ import 'package:tabs_lab/src/data/coach_memory_store.dart';
 import 'package:tabs_lab/src/data/daily_score_refresh_owner.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
+import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/data/migraine_attack_store.dart';
 import 'package:tabs_lab/src/data/migraine_notification.dart';
 import 'package:tabs_lab/src/data/heart_data_cache.dart';
@@ -22,11 +23,13 @@ import 'package:tabs_lab/src/data/today_summary.dart';
 ///
 /// - Logout: native first pushes all local data, then revokes the
 ///   refresh token server-side, then clears credentials + caches.
-///   The Flutter Lab has no local-only record store (every record is
-///   written through to the server at save time by the Quick Log /
-///   tools flows), so there is nothing extra to push; the flow revokes
+///   Since the optimistic-logging change (Oct 27, 2026) the app DOES
+///   have one local-first record store — the log-entry outbox — so
+///   logout first makes a best-effort flush attempt for any
+///   unconfirmed entries (native's push-first order), then revokes
 ///   the token best-effort (native proceeds even when the revoke call
-///   fails), then clears EVERYTHING account-bound on device.
+///   fails), then clears EVERYTHING account-bound on device,
+///   the outbox included.
 /// - Delete: native calls `DELETE /api/auth/delete-account` FIRST and
 ///   only wipes locally on success; on failure the account and session
 ///   stay intact and the error is shown. Same order here.
@@ -63,6 +66,11 @@ class AccountActions {
     } catch (_) {}
     try {
       await QuickLogCache.instance.clear();
+    } catch (_) {}
+    // Optimistic logging (Oct 27, 2026): unconfirmed log entries
+    // are account-bound health data — the wipe covers the outbox.
+    try {
+      await LogEntryOutbox.instance.clear();
     } catch (_) {}
     try {
       await HeartDataCache.instance.clear();
@@ -144,6 +152,16 @@ class AccountActions {
   /// revoke is best-effort, exactly as native). Returns true when the
   /// server acknowledged the revoke.
   Future<bool> logout() async {
+    // Native push-first parity: give unconfirmed log entries their
+    // last chance to reach the server before the token is revoked
+    // and the outbox is wiped. Best-effort, exactly like the revoke —
+    // and time-bounded, so a wedged storage channel or a dead
+    // connection can never hold the logout itself hostage.
+    try {
+      await LogEntryOutbox.instance
+          .flush(_backend)
+          .timeout(const Duration(seconds: 3), onTimeout: () => false);
+    } catch (_) {}
     var revoked = false;
     try {
       revoked = await _backend.logoutAccount();

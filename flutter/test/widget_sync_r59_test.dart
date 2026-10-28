@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
+import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -492,9 +493,20 @@ void main() {
       write: (key, value) async => quickDisk[key] = value,
       delete: (key) async => quickDisk.remove(key),
     );
+    // Optimistic logging (Oct 27, 2026): the save path stages the
+    // entry in the log-entry outbox before anything else — keep the
+    // singleton on an in-memory disk here too.
+    final outboxDisk = <String, String>{};
+    LogEntryOutbox.instance.debugReset();
+    LogEntryOutbox.instance.debugSetStore(
+      read: (key) async => outboxDisk[key],
+      write: (key, value) async => outboxDisk[key] = value,
+      delete: (key) async => outboxDisk.remove(key),
+    );
     addTearDown(() {
       HomeDataCache.instance.debugReset();
       QuickLogCache.instance.debugReset();
+      LogEntryOutbox.instance.debugReset();
     });
 
     await tester.pumpWidget(MaterialApp(
