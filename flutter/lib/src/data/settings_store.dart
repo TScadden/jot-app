@@ -77,6 +77,13 @@ class SettingsStore extends ChangeNotifier {
   static const deletedCounterIdsKey = 'settings_deleted_counter_ids';
   static const deletedCounterOwnerKey =
       'settings_deleted_counter_owner';
+  // Phase 1 item 4 (Oct 2026) — salt & fluid tracking settings:
+  // the versioned intake-target history and the remembered
+  // quick-add preset amounts, each one JSON blob. Device-local
+  // like every key in this store (the intake ENTRIES are the
+  // durable, synced record; targets/presets are settings).
+  static const intakeTargetsKey = 'intake_targets_v1';
+  static const intakePresetsKey = 'intake_presets_v1';
 
   Future<String?> Function(String key) _read =
       (key) => const FlutterSecureStorage().read(key: key);
@@ -404,6 +411,30 @@ class SettingsStore extends ChangeNotifier {
     }
   }
 
+  // ── Phase 1 item 4 — intake targets / presets (raw JSON) ──────
+
+  Future<String?> getIntakeTargetsJson() async {
+    try {
+      return await _read(intakeTargetsKey);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> setIntakeTargetsJson(String v) =>
+      _write(intakeTargetsKey, v);
+
+  Future<String?> getIntakePresetsJson() async {
+    try {
+      return await _read(intakePresetsKey);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> setIntakePresetsJson(String v) =>
+      _write(intakePresetsKey, v);
+
   /// Wipes every settings key. Called on logout / account deletion so a
   /// next account never inherits this account's on-device choices.
   Future<void> clear() async {
@@ -424,6 +455,8 @@ class SettingsStore extends ChangeNotifier {
       reportAppointmentTypeKey,
       deletedCounterIdsKey,
       deletedCounterOwnerKey,
+      intakeTargetsKey,
+      intakePresetsKey,
     ]) {
       try {
         await _delete(k);
