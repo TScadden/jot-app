@@ -925,7 +925,11 @@ class NoUserKeyTransport implements Transport {
     var changed = false;
     final items = <SentryEnvelopeItem>[];
     for (final item in envelope.items) {
-      if (item.header.type != SentryItemType.event) {
+      // Item header types are plain strings in the envelope
+      // protocol ('event', 'session', 'client_report', …). Only
+      // event items are inspected; everything else — session items
+      // above all (§1.5 sessions note) — passes through untouched.
+      if (item.header.type != 'event') {
         items.add(item);
         continue;
       }

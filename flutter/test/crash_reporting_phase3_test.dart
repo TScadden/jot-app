@@ -228,47 +228,53 @@ void main() {
   });
 
   group('§3.2 send-path guard (NoUserKeyTransport)', () {
-    SentryEnvelopeItem eventItem(Map<String, dynamic> payload) {
-      final bytes = utf8.encode(jsonEncode(payload));
-      return SentryEnvelopeItem(
-        SentryEnvelopeItemHeader(SentryItemType.event,
-            contentType: 'application/json'),
-        () async => bytes,
+    SentryEvent eventWithGeoUser() {
+      return SentryEvent(
+        platform: 'dart',
+        user: SentryUser(
+          id: 'geo-only-no-identity',
+          geo: SentryGeo(city: 'Orem', countryCode: 'US', region: 'Utah'),
+        ),
+        exceptions: [
+          SentryException(
+            type: 'StateError',
+            value: CrashReporting.scrubbedExceptionValue,
+          ),
+        ],
       );
     }
 
     test('an event item with a user key is stripped; others untouched',
         () async {
-      final eventWithUser = eventItem({
-        'event_id': 'a43a36f5e5a14bf3912b109cba25722a',
-        'platform': 'dart',
-        'user': {
-          'geo': {'country_code': 'US', 'city': 'Orem', 'region': 'Utah'}
-        },
-        'exception': {
-          'values': [
-            {'type': 'StateError', 'value': CrashReporting.scrubbedExceptionValue}
-          ]
-        },
-      });
-      final sessionItem = SentryEnvelopeItem(
-        SentryEnvelopeItemHeader('session',
-            contentType: 'application/json'),
-        () async => utf8.encode('{"sid":"x","did":"session-did-value"}'),
+      // A non-event item stands in for the session item class:
+      // the guard must never touch non-event items (§1.5 sessions
+      // note) — verified here by object identity + byte identity.
+      final attachmentItem = SentryEnvelopeItem.fromAttachment(
+        SentryAttachment.fromIntList(
+          utf8.encode('session-shaped-bytes'),
+          'session.bin',
+        ),
+      );
+      final base = SentryEnvelope.fromEvent(
+        eventWithGeoUser(),
+        SdkVersion(name: 'test', version: '0'),
       );
       final envelope = SentryEnvelope(
-        SentryEnvelopeHeader(
-            SentryId.newId(), SdkVersion(name: 'test', version: '0')),
-        [eventWithUser, sessionItem],
+        base.header,
+        [...base.items, attachmentItem],
         containsUnhandledException: true,
       );
+      // Sanity: the seeded event item really carries a user key.
+      final seededPayload = jsonDecode(
+              utf8.decode(await envelope.items.first.dataFactory()))
+          as Map<String, dynamic>;
+      expect(seededPayload.containsKey('user'), isTrue);
+      expect((seededPayload['user'] as Map)['geo']['city'], 'Orem');
 
       final stripped = await NoUserKeyTransport.stripUserKey(envelope);
       expect(identical(stripped, envelope), isFalse);
       expect(stripped.containsUnhandledException, isTrue);
-      // Session item: same object, byte-identical (§1.5 sessions
-      // note — the guard never touches session items).
-      expect(identical(stripped.items[1], sessionItem), isTrue);
+      expect(identical(stripped.items[1], attachmentItem), isTrue);
       final payload = jsonDecode(
           utf8.decode(await stripped.items[0].dataFactory())) as Map;
       expect(payload.containsKey('user'), isFalse,
@@ -282,11 +288,9 @@ void main() {
 
     test('an envelope with no user key passes through as the same object',
         () async {
-      final clean = eventItem({'event_id': 'b43a', 'platform': 'dart'});
-      final envelope = SentryEnvelope(
-        SentryEnvelopeHeader(
-            SentryId.newId(), SdkVersion(name: 'test', version: '0')),
-        [clean],
+      final envelope = SentryEnvelope.fromEvent(
+        SentryEvent(platform: 'dart'),
+        SdkVersion(name: 'test', version: '0'),
       );
       final out = await NoUserKeyTransport.stripUserKey(envelope);
       expect(identical(out, envelope), isTrue,
