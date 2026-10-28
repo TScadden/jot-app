@@ -20,6 +20,38 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///   4dp elevation, white Edit glyph 22dp.
 enum DockTab { home, tools, quickLog, heart, settings }
 
+/// Shared nav-dock geometry contract.
+///
+/// These values are the single source of truth for the dock's
+/// geometry: [NavDock] builds from them, and MainShell derives its
+/// scoped snackbar inset from them (see
+/// [navDockSnackBarBottomInset]), so a snackbar parked above the
+/// pill can never drift out of sync with the pill itself.
+const double kNavDockHeightNoLabels = 56.0;
+const double kNavDockHeightWithLabels = 66.0;
+
+/// Space below the pill, above the system inset.
+const double kNavDockBottomGap = 12.0;
+
+/// Breathing room between the pill's top edge and a snackbar
+/// parked above it.
+const double kNavDockSnackBarGap = 8.0;
+
+double navDockHeight({required bool showLabels}) => showLabels
+    ? kNavDockHeightWithLabels
+    : kNavDockHeightNoLabels;
+
+/// Bottom inset (from the system-inset line) for a floating
+/// snackbar inside the shell: the dock's bottom gap + the pill's
+/// height + the gap above the pill. Because the floating base and
+/// the dock both resolve against the same viewPadding line, a
+/// snackbar with this bottom inset parks exactly
+/// [kNavDockSnackBarGap] above the pill's top edge.
+double navDockSnackBarBottomInset({required bool showLabels}) =>
+    kNavDockBottomGap +
+    navDockHeight(showLabels: showLabels) +
+    kNavDockSnackBarGap;
+
 /// Round 14 — the selected-tab pill now glides between tabs on a real
 /// spring ([SpringSimulation]) instead of just flipping the highlight.
 /// All five slots are equal-width (Expanded), so the pill's center is
@@ -123,12 +155,12 @@ class _NavDockState extends State<NavDock>
     // Native: bottom 12dp + navigationBarsPadding().
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
     // Native MainActivity.kt:657 — labels on: 66dp dock, off: 56dp.
-    final dockHeight = widget.showLabels ? 66.0 : 56.0;
+    final dockHeight = navDockHeight(showLabels: widget.showLabels);
     return Padding(
       padding: EdgeInsets.only(
         left: 16,
         right: 16,
-        bottom: 12 + bottomInset,
+        bottom: kNavDockBottomGap + bottomInset,
       ),
       // Material ancestor for the InkWell ripples below: the dock floats
       // beside each tab's Scaffold (not inside one), so without this the
