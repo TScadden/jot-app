@@ -60,6 +60,19 @@ class MedicationFieldSnapshot {
     'isPresent': isPresent,
   };
 
+  /// Tolerant parse of one server snapshot object (item 2b read
+  /// path — the server contract's `old` / `new` shape). Missing
+  /// fields default to the empty snapshot values; never throws.
+  factory MedicationFieldSnapshot.fromJson(Map<String, dynamic> json) {
+    return MedicationFieldSnapshot(
+      dose: '${json['dose'] ?? ''}',
+      frequency: '${json['frequency'] ?? ''}',
+      startDate: '${json['startDate'] ?? ''}',
+      endDate: '${json['endDate'] ?? ''}',
+      isPresent: json['isPresent'] == true,
+    );
+  }
+
   @override
   bool operator ==(Object other) =>
       other is MedicationFieldSnapshot &&
@@ -135,6 +148,44 @@ class MedicationChangeEvent {
     'recordedAt': recordedAt,
     'source': source,
   };
+
+  /// Tolerant parse of one event from the server read contract
+  /// (`GET /api/sync/medication-events`, item 2b): exactly the
+  /// client contract keys, oldest first server-side. Numbers may
+  /// arrive as strings (the server serializes int8-style fields
+  /// loosely elsewhere in this codebase); a malformed snapshot
+  /// degrades to null rather than failing the event. Never
+  /// throws on field shapes — callers skip events whose parse
+  /// yields an empty id AND name only if they choose to; this
+  /// factory itself always returns an event.
+  factory MedicationChangeEvent.fromJson(Map<String, dynamic> json) {
+    MedicationFieldSnapshot? snap(dynamic v) {
+      if (v is Map<String, dynamic>) {
+        return MedicationFieldSnapshot.fromJson(v);
+      }
+      if (v is Map) {
+        return MedicationFieldSnapshot.fromJson(
+            v.map((k, val) => MapEntry('$k', val)));
+      }
+      return null;
+    }
+
+    final recorded = json['recordedAt'];
+    final effective = json['effectiveDate'];
+    return MedicationChangeEvent(
+      id: '${json['id'] ?? ''}',
+      medId: '${json['medId'] ?? ''}',
+      medName: '${json['medName'] ?? ''}',
+      type: '${json['type'] ?? ''}',
+      oldSnapshot: snap(json['old']),
+      newSnapshot: snap(json['new']),
+      effectiveDate: effective == null ? null : '$effective',
+      recordedAt: recorded is num
+          ? recorded.toInt()
+          : int.tryParse('$recorded') ?? 0,
+      source: '${json['source'] ?? ''}',
+    );
+  }
 }
 
 /// Diffs the FRESH [before] medication list against the pushed
