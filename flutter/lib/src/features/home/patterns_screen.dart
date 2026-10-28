@@ -175,6 +175,14 @@ class _PatternsScreenState extends State<PatternsScreen> {
   }
 }
 
+/// Compact sleep-duration format (founder's standing house rule:
+/// sleep durations render compactly everywhere): always both
+/// parts, e.g. 352 minutes -> `5h52m`, 300 -> `5h0m`.
+String _compactSleepMinutes(double minutes) {
+  final total = minutes.round();
+  return '${total ~/ 60}h${total % 60}m';
+}
+
 /// Fixed display order (Juno R1): F1→F5, splits in engine order,
 /// F5 anchors in their stored order. The sort is stable (original
 /// index is the final tiebreaker) and never value-dependent.
@@ -379,19 +387,18 @@ class _InsightCardState extends State<_InsightCard> {
         groupBMean: b.mean!,
       )));
       // F3 co-occurrence (S5): only when the record carries a
-      // co-occurrence computed from the same days. NOTE: the copy
-      // formatter renders the sleep-minute values as whole
-      // minutes — see the build report's flagged conflict with
-      // the brief's compact-format rule.
+      // co-occurrence computed from the same days. The copy
+      // formatter takes pre-formatted strings, so the record's
+      // sleep-minute values are formatted compactly here.
       final co = _record.coOccurrence;
       if (_record.familyId == 'F3' && co != null) {
         out.add(const SizedBox(height: 8));
         out.add(_bodyText(correlationCoOccurrenceSentence(
           groupADays: co.groupADays,
           confounderLabel: co.confounderLabel,
-          valueA: co.valueA,
+          valueA: _compactSleepMinutes(co.valueA),
           groupBDays: co.groupBDays,
-          valueB: co.valueB,
+          valueB: _compactSleepMinutes(co.valueB),
         )));
       }
     }

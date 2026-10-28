@@ -304,7 +304,7 @@ void main() {
     ]);
     expect(
       find.text(
-          'On the flare days, sleep also averaged 352, compared with 390 on the no-flare days.'),
+          'On the flare days, sleep also averaged 5h52m, compared with 6h30m on the no-flare days.'),
       findsOneWidget,
     );
   });
@@ -414,7 +414,7 @@ void main() {
           correlationMedianLine(70),
           correlationFlareIncidenceSentence(x: 1, n: 5, y: 2, m: 6),
           correlationMigraineIncidenceSentence(x: 1, n: 5, y: 2, m: 6),
-          correlationCoOccurrenceSentence(groupADays: 'flare', confounderLabel: 'sleep', valueA: 352, groupBDays: 'no-flare', valueB: 390),
+          correlationCoOccurrenceSentence(groupADays: 'flare', confounderLabel: 'sleep', valueA: '5h52m', groupBDays: 'no-flare', valueB: '6h30m'),
           correlationProgressSentence(groupALabel: 'group a', groupAN: 1, groupBLabel: 'group b', groupBN: 2),
           correlationWindowLine('2026-10-20'),
         ];

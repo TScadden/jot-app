@@ -405,6 +405,11 @@ void main() {
       expect(f3.coOccurrence!.valueA, 300);
       expect(f3.coOccurrence!.valueB, 500);
 
+      String compactSleep(double minutes) {
+        final total = minutes.round();
+        return '${total ~/ 60}h${total % 60}m';
+      }
+
       final rendered = [
         correlationComparisonSentence(
           groupALabel: f3.groups[0].label,
@@ -417,9 +422,9 @@ void main() {
         correlationCoOccurrenceSentence(
           groupADays: f3.coOccurrence!.groupADays,
           confounderLabel: f3.coOccurrence!.confounderLabel,
-          valueA: f3.coOccurrence!.valueA,
+          valueA: compactSleep(f3.coOccurrence!.valueA),
           groupBDays: f3.coOccurrence!.groupBDays,
-          valueB: f3.coOccurrence!.valueB,
+          valueB: compactSleep(f3.coOccurrence!.valueB),
         ),
         correlationCaption,
         jsonEncode(f3.toJson()),

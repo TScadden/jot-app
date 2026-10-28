@@ -74,16 +74,18 @@ String correlationMigraineIncidenceSentence({
 
 /// `On the {group A} days, {confounder label} also averaged
 /// {value}, compared with {value} on the {group B} days.`
-/// Values are sleep minutes for the v1 (F3) instance and render
-/// rounded to whole minutes.
+/// Values arrive PRE-FORMATTED as strings from the caller: for
+/// the v1 (F3) instance they are sleep durations, which the
+/// caller formats compactly (`7h6m` style) from the record's
+/// sleep-minute values before calling this formatter.
 String correlationCoOccurrenceSentence({
   required String groupADays,
   required String confounderLabel,
-  required double valueA,
+  required String valueA,
   required String groupBDays,
-  required double valueB,
+  required String valueB,
 }) =>
-    'On the $groupADays days, $confounderLabel also averaged ${_whole(valueA)}, compared with ${_whole(valueB)} on the $groupBDays days.';
+    'On the $groupADays days, $confounderLabel also averaged $valueA, compared with $valueB on the $groupBDays days.';
 
 // ── S6 — progress state ────────────────────────────────────────────
 
