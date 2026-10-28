@@ -944,7 +944,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    // System-back parity with the app-bar arrow (founder report,
+    // Oct 27, 2026): the sub-pages are body swaps inside this one
+    // route, so without interception the Navigator has nothing to
+    // pop on Android back and the gesture exits the app from any
+    // sub-page — while the arrow correctly returns to the menu.
+    // Intercept whenever a sub-page is showing and run the SAME
+    // [_back] logic the arrow runs, exceptions included: Progress
+    // Reports backs to the AI page it was opened from, and a
+    // Settings pushed straight at Event Counters (Home counter
+    // slot) backs OUT to its caller — that one is a real route
+    // pop, so that state stays poppable instead of intercepting.
+    // On the menu page itself nothing changes: the route pops (or
+    // the app exits from the shell tab) exactly as before.
+    final bool interceptBack = _page != _Page.main &&
+        !(widget.openEventCounters && _page == _Page.eventCounters);
+    return PopScope(
+      canPop: !interceptBack,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _back();
+      },
+      child: Scaffold(
       backgroundColor: NotelColors.background,
       appBar: AppBar(
         backgroundColor: NotelColors.background,
@@ -996,6 +1017,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               knowledgeStore: _kStore,
             ),
         ],
+      ),
       ),
     );
   }
