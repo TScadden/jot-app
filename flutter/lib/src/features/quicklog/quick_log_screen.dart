@@ -528,12 +528,20 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
     return parts.join(' · ');
   }
 
-  int _nextEntryId() {
-    var maxId = _outbox.maxId;
+  /// F1: the id is allocated by the outbox AFTER its disk load
+  /// settles (see [LogEntryOutbox.allocateEntryId]) — never
+  /// synchronously from a possibly-unloaded [LogEntryOutbox.maxId],
+  /// which could hand a killed session's pending id to a new entry
+  /// and let stage() overwrite the pending record.
+  Future<int> _nextEntryId() {
+    var serverMaxId = 0;
     for (final e in _entries) {
-      if (e.id > maxId) maxId = e.id;
+      if (e.id > serverMaxId) serverMaxId = e.id;
     }
-    return maxId + 1;
+    return _outbox.allocateEntryIdForBackend(
+      backend: _backend,
+      serverMaxId: serverMaxId,
+    );
   }
 
   /// Round 59 — after any successful entry creation on this screen,
@@ -549,8 +557,9 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
 
   /// Applies an already-durably-staged entry to every local surface
   /// and starts its server push behind them. The push result never
-  /// gates this method: History owns the per-entry pending/failed
-  /// presentation for an unconfirmed row.
+  /// gates this method: the per-entry pending/failed presentation
+  /// for an unconfirmed row lives on the entry's recent-suggestion
+  /// chip (F5) and on its History card, both fed by the outbox.
   void _applyLocalEntry(QuickLogEntry entry) {
     setState(() {
       _entries = _outbox.merge([..._entries, entry]);
@@ -589,7 +598,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
             cat.id
         : cat.id;
     final entry = QuickLogEntry(
-      id: _nextEntryId(),
+      id: await _nextEntryId(),
       categoryId: categoryId,
       body: body,
       chips: _selectedChips.isEmpty ? '' : _selectedChips.join(', '),
@@ -633,7 +642,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
   /// immediately re-log that entry's content.
   Future<void> _logFromRecent(QuickLogEntry entry) async {
     final dupe = QuickLogEntry(
-      id: _nextEntryId(),
+      id: await _nextEntryId(),
       categoryId: entry.categoryId,
       body: entry.body,
       chips: entry.chips,
@@ -1306,6 +1315,20 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
                               fontSize: 12,
                             ),
                           ),
+                          // F5: a staged (not yet server-confirmed)
+                          // entry carries the SAME per-entry sync
+                          // badge History uses — same state model,
+                          // same copy — so a failed push is visible
+                          // here, not only in History. Confirmed
+                          // entries carry no badge: this strip is a
+                          // shortcut row, not a status list.
+                          if (_outbox.statusFor(entry.id) != null) ...[
+                            const SizedBox(width: 6),
+                            LogEntrySyncBadge(
+                              outbox: _outbox,
+                              entryId: entry.id,
+                            ),
+                          ],
                         ],
                       ),
                     ),

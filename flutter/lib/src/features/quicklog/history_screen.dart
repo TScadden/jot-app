@@ -96,6 +96,66 @@ extension _StringNotBlank on String {
   bool get isNotBlank => trim().isNotEmpty;
 }
 
+/// The ONE per-entry sync badge state model, shared by the
+/// History cards and Quick Log's recent-suggestion chips (F5):
+/// the states and copy live here only, so the two surfaces can
+/// never diverge. A row with no outbox record AFTER the outbox's
+/// disk load has landed came from (or has since been confirmed by)
+/// the server pull: Synced. A staged row reads Syncing while its
+/// push is pending and Not synced after a failed push. Before the
+/// load lands, a row's state is genuinely unknown — a record
+/// staged by a previous session may sit on disk unseen — so it
+/// reads Syncing (unconfirmed), never Synced; the load's
+/// completion notification corrects it immediately.
+class LogEntrySyncBadge extends StatelessWidget {
+  final LogEntryOutbox outbox;
+  final int entryId;
+
+  const LogEntrySyncBadge({
+    super.key,
+    required this.outbox,
+    required this.entryId,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final status = outbox.statusFor(entryId);
+    final (icon, label, color) = switch (status) {
+      LogEntrySyncStatus.failed => (
+          Icons.cloud_off,
+          'Not synced',
+          NotelColors.error,
+        ),
+      LogEntrySyncStatus.pending => (
+          Icons.cloud_upload,
+          'Syncing',
+          NotelColors.primary,
+        ),
+      null when !outbox.isLoaded => (
+          Icons.cloud_upload,
+          'Syncing',
+          NotelColors.primary,
+        ),
+      null => (Icons.cloud_done, 'Synced', NotelColors.primary),
+    };
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 12, color: color),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: TextStyle(
+            color: color,
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// Round 19 — the History view (clock-arrow icon on Quick Log). A
 /// faithful Flutter port of native `HistoryScreen.kt` +
 /// `HistoryViewModel.kt`, plus the founder addendum: the circular-arrow
@@ -371,12 +431,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return list;
   }
 
-  int _nextEntryId() {
-    var maxId = _outbox.maxId;
+  /// F1: the id is allocated by the outbox AFTER its disk load
+  /// settles (see [LogEntryOutbox.allocateEntryId]) — never
+  /// synchronously from a possibly-unloaded [LogEntryOutbox.maxId],
+  /// which could hand a killed session's pending id to a new entry
+  /// and let stage() overwrite the pending record.
+  Future<int> _nextEntryId() {
+    var serverMaxId = 0;
     for (final e in _entries) {
-      if (e.id > maxId) maxId = e.id;
+      if (e.id > serverMaxId) serverMaxId = e.id;
     }
-    return maxId + 1;
+    return _outbox.allocateEntryIdForBackend(
+      backend: _backend,
+      serverMaxId: serverMaxId,
+    );
   }
 
   /// The moved circular-arrow button: native `repeatLastEntry()`
@@ -390,7 +458,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
     final last = _entries.first; // server orders timestamp DESC
     final dupe = QuickLogEntry(
-      id: _nextEntryId(),
+      id: await _nextEntryId(),
       categoryId: last.categoryId,
       body: last.body,
       chips: last.chips,
@@ -1023,49 +1091,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   /// Per-entry sync badge, in the same slot the card has always
-  /// rendered its sync state. A row with no outbox record AFTER the
-  /// outbox's disk load has landed came from (or has since been
-  /// confirmed by) the server pull: Synced. A staged row reads
-  /// Syncing while its push is pending and Not synced after a
-  /// failed push. Before the load lands, a row's state is genuinely
-  /// unknown — a record staged by a previous session may sit on
-  /// disk unseen — so it reads Syncing (unconfirmed), never Synced;
-  /// the load's completion notification corrects it immediately.
-  Widget _entrySyncBadge(QuickLogEntry entry) {
-    final status = _outbox.statusFor(entry.id);
-    final (icon, label, color) = switch (status) {
-      LogEntrySyncStatus.failed => (
-          Icons.cloud_off,
-          'Not synced',
-          NotelColors.error,
-        ),
-      LogEntrySyncStatus.pending => (
-          Icons.cloud_upload,
-          'Syncing',
-          NotelColors.primary,
-        ),
-      null when !_outbox.isLoaded => (
-          Icons.cloud_upload,
-          'Syncing',
-          NotelColors.primary,
-        ),
-      null => (Icons.cloud_done, 'Synced', NotelColors.primary),
-    };
-    return Row(
-      children: [
-        Icon(icon, size: 12, color: color),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: TextStyle(
-            color: color,
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    );
-  }
+  /// rendered its sync state — delegates to the shared
+  /// [LogEntrySyncBadge] so History and Quick Log can never drift
+  /// apart in states or copy (F5).
+  Widget _entrySyncBadge(QuickLogEntry entry) =>
+      LogEntrySyncBadge(outbox: _outbox, entryId: entry.id);
 
   /// Native `EntryCard`: 16dp card, accent-color border, left accent
   /// strip, category chip, body (max 4 lines), timestamp + sync badge,
