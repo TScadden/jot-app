@@ -15,6 +15,7 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
+import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
@@ -344,8 +345,8 @@ void main() {
 
   group('Founder sequence (widget, faithful server)', () {
     testWidgets(
-        'archive: slow pre-tap pull lands after the push; leaving '
-        'and re-entering keeps the archive; the list never empties',
+        'delete: slow pre-tap pull lands after the push; leaving '
+        'and re-entering keeps the delete; the list never empties',
         (tester) async {
       final server = FakeCounterServer(counters: _twelveCounters());
       final store = _session();
@@ -366,64 +367,72 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      // Tap archive on c3. The save re-pulls fresh (joining the
+      // Tap delete on c3. The save re-pulls fresh (joining the
       // held in-flight pull), so nothing changes on screen while
       // the pull is held — and nothing blanks.
-      await tester.tap(find.byKey(const ValueKey('counter_archive_c3')));
+      await tester.tap(find.byKey(const ValueKey('counter_delete_c3')));
       await tester.pump();
       expect(find.text('Counter 3'), findsOneWidget);
       expect(find.text('No counters yet.'), findsNothing);
 
-      // The pre-mutation pull lands; the save computes the archive
+      // The pre-mutation pull lands; the save computes the delete
       // against that (still server-current) list and pushes.
       server.releaseHeldPull();
       await tester.pumpAndSettle();
       await slowPull;
 
-      // Server-side: the push persisted the archive.
+      // Server-side: the push persisted the delete — the archive
+      // marker AND a deletedAt stamp.
       final serverC3 =
           server.serverCounters.firstWhere((c) => c['id'] == 'c3');
       expect(serverC3['isArchived'], isTrue);
+      expect(serverC3['deletedAt'], isA<int>());
       // The row that had NO isArchived key was treated as active
-      // throughout (never archived by the splice, never dropped).
+      // throughout (never deleted by the splice, never dropped).
       final serverC7 =
           server.serverCounters.firstWhere((c) => c['id'] == 'c7');
       expect(serverC7['isArchived'], isNot(isTrue));
+      expect(serverC7.containsKey('deletedAt'), isFalse);
 
-      // On this screen c3 is now archived (muted section present).
-      expect(find.text('ARCHIVED'), findsOneWidget);
-      expect(find.text('Counter 3'), findsOneWidget);
+      // On this screen c3 is now in the Deleted section.
+      expect(find.text('DELETED COUNTERS'), findsOneWidget);
+      expect(find.textContaining('Counter 3 (Deleted:'), findsOneWidget);
       expect(find.text('No counters yet.'), findsNothing);
 
       // Leave and re-enter on the SECOND instance — the one whose
       // pull was in flight across the push. Its TTL cache must not
-      // resurrect the pre-archive state.
+      // resurrect the pre-delete state.
       await _pumpSettings(tester, b, storeMap);
-      expect(find.text('ARCHIVED'), findsOneWidget);
-      expect(find.text('Counter 3'), findsOneWidget);
-      // F8 (correction round): the archived row renders MUTED —
-      // its name in textSecondary, an active row's in textPrimary.
-      // (Replaces the vacuous isNot(equals(null)) color assertion.)
-      final name = tester.widget<Text>(find.text('Counter 3'));
-      expect(name.style!.color, NotelColors.textSecondary);
+      expect(find.text('DELETED COUNTERS'), findsOneWidget);
+      expect(find.textContaining('Counter 3 (Deleted:'), findsOneWidget);
+      // F8 (correction round): the deleted row renders MUTED — its
+      // combined label in textSecondary, an active row's name in
+      // textPrimary. (Replaces the vacuous isNot(equals(null))
+      // color assertion.)
+      final label =
+          tester.widget<Text>(find.textContaining('Counter 3 (Deleted:'));
+      expect(label.style!.color, NotelColors.textSecondary);
       final activeName = tester.widget<Text>(find.text('Counter 1'));
       expect(activeName.style!.color, NotelColors.textPrimary);
       // Juno C1: a successful load confirms the Synced chip.
       expect(find.text('Synced'), findsOneWidget);
       expect(find.text('Not synced'), findsNothing);
       expect(find.text('No counters yet.'), findsNothing);
-      // c3 is in the archived card: its archive button now offers
-      // Unarchive, like the other archived rows.
-      expect(find.byTooltip('Unarchive counter'), findsOneWidget);
-      expect(find.byTooltip('Archive counter'), findsNWidgets(11));
+      // c3's only action in the Deleted section is 'Bring back';
+      // the 11 active rows still offer Delete.
+      expect(find.byKey(const ValueKey('counter_restore_c3')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('counter_delete_c3')),
+          findsNothing);
+      expect(find.byTooltip('Delete counter'), findsNWidgets(11));
       // The no-isArchived-key row still renders after re-entry.
       expect(find.text('Counter 7'), findsOneWidget);
     });
 
     testWidgets(
-        'archive of the marker-less row: the stale pull lands '
+        'delete of the marker-less row: the stale pull lands '
         'after the push; a SECOND save still carries the marker '
-        'on the pushed blob', (tester) async {
+        'and the stamp on the pushed blob', (tester) async {
       final server = FakeCounterServer(counters: _twelveCounters());
       final store = _session();
       final storeMap = <String, String>{};
@@ -445,46 +454,51 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      // Archive c7 — the marker-less row itself. The save re-pulls
+      // Delete c7 — the marker-less row itself. The save re-pulls
       // fresh (joining the held in-flight pull), so nothing
       // changes on screen while the pull is held.
-      await tester.tap(find.byKey(const ValueKey('counter_archive_c7')));
+      await tester.tap(find.byKey(const ValueKey('counter_delete_c7')));
       await tester.pump();
       expect(find.text('Counter 7'), findsOneWidget);
       expect(find.text('No counters yet.'), findsNothing);
 
-      // The pre-mutation pull lands; the save computes the archive
+      // The pre-mutation pull lands; the save computes the delete
       // against that (still server-current) list and pushes.
       server.releaseHeldPull();
       await tester.pumpAndSettle();
       await slowPull;
 
-      // The archive of the marker-less row reached the server and
-      // stamped the key explicitly.
+      // The delete of the marker-less row reached the server and
+      // stamped the marker and the deletedAt stamp explicitly.
       expect(server.pushCount, 1);
       final afterFirst =
           server.serverCounters.firstWhere((c) => c['id'] == 'c7');
       expect(afterFirst['isArchived'], isTrue,
-          reason: 'archiving the no-key row must stamp isArchived '
+          reason: 'deleting the no-key row must stamp isArchived '
               'true on the server');
-      expect(find.text('ARCHIVED'), findsOneWidget);
+      expect(afterFirst['deletedAt'], isA<int>(),
+          reason: 'deleting the no-key row must stamp deletedAt '
+              'on the server');
+      final stamp7 = afterFirst['deletedAt'] as int;
+      expect(find.text('DELETED COUNTERS'), findsOneWidget);
+      expect(find.textContaining('Counter 7 (Deleted:'), findsOneWidget);
 
       // The step no other counter test performs: SAVE AGAIN after
       // the stale pull has landed. Re-enter on the second instance
-      // (the one whose pull crossed the push) and archive c4. The
+      // (the one whose pull crossed the push) and delete c4. The
       // pre-fix client built this second save on its stale
       // snapshot, and the push silently dropped the first
-      // archive's marker — the step that made the revert
+      // delete's marker — the step that made the revert
       // permanent.
       await _pumpSettings(tester, b, storeMap);
-      expect(find.text('ARCHIVED'), findsOneWidget);
-      expect(find.text('Counter 7'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('counter_archive_c4')));
+      expect(find.text('DELETED COUNTERS'), findsOneWidget);
+      expect(find.textContaining('Counter 7 (Deleted:'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('counter_delete_c4')));
       await tester.pumpAndSettle();
 
-      // Exactly one more push fired, and the marker survived it —
-      // both in the pushed blob itself and in the stored server
-      // state.
+      // Exactly one more push fired, and the marker and stamp
+      // survived it — both in the pushed blob itself and in the
+      // stored server state.
       expect(server.pushCount, 2);
       final pushedBlob = (jsonDecode(
               server.pushes.last['eventCounters'] as String) as List)
@@ -493,14 +507,26 @@ void main() {
           pushedBlob.firstWhere((c) => c['id'] == 'c7')['isArchived'],
           isTrue,
           reason: 'the second save must not drop the marker-less '
-              "row's archived marker from the pushed blob");
+              "row's deleted marker from the pushed blob");
+      expect(
+          pushedBlob.firstWhere((c) => c['id'] == 'c7')['deletedAt'],
+          stamp7,
+          reason: 'the second save must carry the marker-less '
+              "row's deletedAt stamp forward, not drop or restamp it");
       expect(
           pushedBlob.firstWhere((c) => c['id'] == 'c4')['isArchived'],
           isTrue);
       expect(
+          pushedBlob.firstWhere((c) => c['id'] == 'c4')['deletedAt'],
+          isA<int>());
+      expect(
           server.serverCounters
               .firstWhere((c) => c['id'] == 'c7')['isArchived'],
           isTrue);
+      expect(
+          server.serverCounters
+              .firstWhere((c) => c['id'] == 'c7')['deletedAt'],
+          stamp7);
       expect(
           server.serverCounters
               .firstWhere((c) => c['id'] == 'c4')['isArchived'],
@@ -510,8 +536,8 @@ void main() {
     });
 
     testWidgets(
-        'Vera F1: double-tap on archive during an in-flight save '
-        'archives exactly once — the buttons disable while the '
+        'Vera F1: double-tap on delete during an in-flight save '
+        'deletes exactly once — the buttons disable while the '
         'save runs and the intent is absolute, never a fresh-row '
         'toggle that flips back', (tester) async {
       final server = FakeCounterServer(counters: _twelveCounters());
@@ -525,7 +551,7 @@ void main() {
       // Hold the save's fresh re-pull so the save stays in flight
       // across the second tap.
       server.holdNextPull();
-      await tester.tap(find.byKey(const ValueKey('counter_archive_c3')));
+      await tester.tap(find.byKey(const ValueKey('counter_delete_c3')));
       await tester.pump();
       await tester.pump();
 
@@ -534,7 +560,7 @@ void main() {
       expect(
           tester
               .widget<IconButton>(
-                  find.byKey(const ValueKey('counter_archive_c3')))
+                  find.byKey(const ValueKey('counter_delete_c3')))
               .onPressed,
           isNull);
       expect(
@@ -552,26 +578,28 @@ void main() {
 
       // The double-tap (and a stray End tap) hit disabled buttons:
       // nothing queues behind the running save.
-      await tester.tap(find.byKey(const ValueKey('counter_archive_c3')));
+      await tester.tap(find.byKey(const ValueKey('counter_delete_c3')));
       await tester.tap(find.byKey(const ValueKey('counter_end_c4')));
       await tester.pump();
 
       server.releaseHeldPull();
       await tester.pumpAndSettle();
 
-      // Exactly ONE push fired, and it archived c3 — with the old
-      // fresh-row toggle, the second save un-archived it again.
+      // Exactly ONE push fired, and it deleted c3 — with the old
+      // fresh-row toggle, the second save restored it again.
       expect(server.pushCount, 1);
       final serverC3 =
           server.serverCounters.firstWhere((c) => c['id'] == 'c3');
       expect(serverC3['isArchived'], isTrue);
+      expect(serverC3['deletedAt'], isA<int>());
       expect(server.serverCounters.any((c) => c['id'] == 'c4'), isTrue);
-      expect(find.text('ARCHIVED'), findsOneWidget);
-      // The guard cleared when the save finished: buttons live again.
+      expect(find.text('DELETED COUNTERS'), findsOneWidget);
+      // The guard cleared when the save finished: the row's
+      // restore button is live.
       expect(
           tester
-              .widget<IconButton>(
-                  find.byKey(const ValueKey('counter_archive_c3')))
+              .widget<TextButton>(
+                  find.byKey(const ValueKey('counter_restore_c3')))
               .onPressed,
           isNotNull);
     });
@@ -686,7 +714,7 @@ void main() {
       final pushesBefore = server.pushCount;
       server.failAllPulls = true;
 
-      await tester.tap(find.byKey(const ValueKey('counter_archive_c3')));
+      await tester.tap(find.byKey(const ValueKey('counter_delete_c3')));
       await tester.pumpAndSettle();
 
       expect(server.pushCount, pushesBefore,
@@ -694,13 +722,113 @@ void main() {
       expect(
           find.text('Could not save. Check your connection and try again.'),
           findsWidgets);
-      // c3 is still active (its button still offers Archive).
-      expect(find.byTooltip('Archive counter'), findsNWidgets(12));
+      // c3 is still active (its button still offers Delete).
+      expect(find.byTooltip('Delete counter'), findsNWidgets(12));
       expect(find.text('No counters yet.'), findsNothing);
       // Juno C1: an aborted save drops the Synced chip until the
       // next successful pull/push.
       expect(find.text('Synced'), findsNothing);
       expect(find.text('Not synced'), findsOneWidget);
+    });
+  });
+
+  group('Delete/Restore round trip (Oct 27, 2026)', () {
+    testWidgets(
+        'delete stamps the blob and hides the counter from Settings '
+        'AND the Home data path; a second save after the stale '
+        'landing keeps marker + stamp; restore returns the counter '
+        'intact with NO deletedAt key', (tester) async {
+      final server = FakeCounterServer(counters: _twelveCounters());
+      final store = _session();
+      final storeMap = <String, String>{};
+      final a = server.backend(store);
+      final b = server.backend(store);
+
+      // c3's original row, for the restore intactness assertions.
+      final originalC3 =
+          server.serverCounters.firstWhere((c) => c['id'] == 'c3');
+
+      await _pumpSettings(tester, a, storeMap);
+
+      // Stale pull in flight across the delete push (the founder
+      // sequence): it lands after the push and must not resurrect.
+      server.holdNextPull();
+      final slowPull = b.fetchSyncPull();
+      await tester.pump();
+      await tester.pump();
+
+      final tapBefore = DateTime.now().millisecondsSinceEpoch;
+      await tester.tap(find.byKey(const ValueKey('counter_delete_c3')));
+      await tester.pump();
+      server.releaseHeldPull();
+      await tester.pumpAndSettle();
+      await slowPull;
+      final tapAfter = DateTime.now().millisecondsSinceEpoch;
+
+      // (a) The pushed blob carries marker + stamp, and c3 is out
+      // of BOTH the Settings active list and the Home data path
+      // (the activeEventCounters / !isArchived filter).
+      var serverC3 =
+          server.serverCounters.firstWhere((c) => c['id'] == 'c3');
+      expect(serverC3['isArchived'], isTrue);
+      expect(serverC3['deletedAt'], isA<int>());
+      final stamp = serverC3['deletedAt'] as int;
+      expect(stamp, greaterThanOrEqualTo(tapBefore));
+      expect(stamp, lessThanOrEqualTo(tapAfter));
+      final parsed =
+          server.serverCounters.map(EventCounterItem.fromMap).toList();
+      expect(activeEventCounters(parsed).any((c) => c.id == 'c3'),
+          isFalse);
+      expect(activeEventCounters(parsed).length, 11);
+      expect(parsed.firstWhere((c) => c.id == 'c3').deletedAt, stamp);
+      expect(find.text('DELETED COUNTERS'), findsOneWidget);
+      expect(find.byTooltip('Delete counter'), findsNWidgets(11));
+
+      // (c) A SECOND save after the stale landing pushes the whole
+      // blob again; c3's marker + stamp must survive it byte-exact.
+      await tester.tap(find.byKey(const ValueKey('counter_delete_c4')));
+      await tester.pumpAndSettle();
+      serverC3 = server.serverCounters.firstWhere((c) => c['id'] == 'c3');
+      expect(serverC3['isArchived'], isTrue);
+      expect(serverC3['deletedAt'], stamp,
+          reason: 'a later whole-blob save must carry the stamp '
+              'forward, not drop or restamp it');
+      final serverC4 =
+          server.serverCounters.firstWhere((c) => c['id'] == 'c4');
+      expect(serverC4['isArchived'], isTrue);
+      expect(serverC4['deletedAt'], isA<int>());
+
+      // (b) Restore c3: back active with every field intact, and
+      // the pushed blob carries NO deletedAt key for it (the key's
+      // absence is what clears the stamp server-side).
+      await tester.tap(find.byKey(const ValueKey('counter_restore_c3')));
+      await tester.pumpAndSettle();
+      serverC3 = server.serverCounters.firstWhere((c) => c['id'] == 'c3');
+      expect(serverC3['isArchived'], isFalse);
+      expect(serverC3.containsKey('deletedAt'), isFalse);
+      expect(serverC3['name'], originalC3['name']);
+      expect(serverC3['targetDate'], originalC3['targetDate']);
+      expect(serverC3['isUp'], originalC3['isUp']);
+      expect(serverC3['autoUp'], originalC3['autoUp']);
+      expect(serverC3['isFavorite'], originalC3['isFavorite']);
+      // The restore is by-id: c4 stays deleted.
+      final serverC4After =
+          server.serverCounters.firstWhere((c) => c['id'] == 'c4');
+      expect(serverC4After['isArchived'], isTrue);
+      expect(serverC4After['deletedAt'], serverC4['deletedAt']);
+      // On screen: c3 is an active row again; c4 remains deleted.
+      expect(find.text('Counter 3'), findsOneWidget);
+      expect(find.byKey(const ValueKey('counter_delete_c3')),
+          findsOneWidget);
+      expect(find.textContaining('Counter 4 (Deleted:'), findsOneWidget);
+      expect(find.text('Bring back'), findsOneWidget);
+      // And c3 is back on the Home data path, stamp cleared.
+      final parsedAfter =
+          server.serverCounters.map(EventCounterItem.fromMap).toList();
+      expect(activeEventCounters(parsedAfter).any((c) => c.id == 'c3'),
+          isTrue);
+      expect(parsedAfter.firstWhere((c) => c.id == 'c3').deletedAt,
+          isNull);
     });
   });
 
