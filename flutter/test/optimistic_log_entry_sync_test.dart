@@ -5,14 +5,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:tabs_lab/src/data/coach_memory_store.dart';
+import 'package:tabs_lab/src/data/health_history_store.dart';
+import 'package:tabs_lab/src/data/heart_data_cache.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
+import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
+import 'package:tabs_lab/src/data/migraine_attack_store.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
+import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/data/today_plan_store.dart';
+import 'package:tabs_lab/src/data/today_summary.dart';
 import 'package:tabs_lab/src/data/widget_sync.dart';
 import 'package:tabs_lab/src/features/quicklog/history_screen.dart';
 import 'package:tabs_lab/src/features/quicklog/quick_log_screen.dart';
+import 'package:tabs_lab/src/features/settings/account_actions.dart';
 
 import 'test_helpers.dart';
 
@@ -833,6 +842,377 @@ void main() {
       );
       expect(server.entries, isEmpty);
       expect(outbox.records, isEmpty);
+    });
+  });
+
+  group('Vera fix regressions (F1/F2/F3/F5)', () {
+    /// The AccountActions funnel clears every account-bound
+    /// singleton; wire them all to in-memory IO (the migraine
+    /// wipe suite's pattern) so the real funnel completes
+    /// against fakes.
+    void wireFunnelCaches() {
+      final cacheDisk = <String, String>{};
+      void wire(dynamic cache) => cache.debugSetStore(
+            read: (k) async => cacheDisk[k],
+            write: (k, v) async => cacheDisk[k] = v,
+            delete: (k) async => cacheDisk.remove(k),
+          );
+      wire(HomeDataCache.instance);
+      wire(QuickLogCache.instance);
+      wire(HeartDataCache.instance);
+      wire(TodaySummaryCache.instance);
+      wire(TodayPlanStore.instance);
+      wire(CoachMemoryStore.instance);
+      wire(KnowledgeExtractionStore.instance);
+      wire(HealthHistoryStore.instance);
+      wire(MigraineAttackStore.instance);
+    }
+
+    AccountActions actionsFor(_Server server, FakeSessionStore session) {
+      final settingsMap = <String, String>{};
+      return AccountActions(
+        backend: server.backend(),
+        sessionStore: session,
+        settingsStore: SettingsStore.withStorage(
+          read: (k) async => settingsMap[k],
+          write: (k, v) async => settingsMap[k] = v,
+          delete: (k) async => settingsMap.remove(k),
+        ),
+      );
+    }
+
+    test(
+        'F1: allocateEntryId waits for the disk load and never '
+        'reuses a killed session\'s pending id', () async {
+      final outbox = LogEntryOutbox.instance;
+      // Session 1: an entry staged offline; the app is killed
+      // before its push. Its id (101) exists ONLY on disk.
+      await outbox.stage(
+        _entry(id: 101, body: 'Killed session entry'),
+        serverKnown: false,
+        ownerEmail: _owner,
+      );
+      outbox.debugReset();
+
+      // Relaunch with the disk read gated (the shape of test (f)).
+      // The old screen code allocated synchronously in exactly this
+      // window: maxId was still 0 in memory, the server max was
+      // 100, so the new entry took 101 and stage() overwrote the
+      // pending record.
+      final readGate = Completer<void>();
+      outbox.debugSetStore(
+        read: (key) async {
+          await readGate.future;
+          return disk[key];
+        },
+        write: (key, value) async => disk[key] = value,
+        delete: (key) async => disk.remove(key),
+      );
+      var allocationDone = false;
+      final allocFuture = outbox
+          .allocateEntryId(serverMaxId: 100, ownerEmail: _owner)
+          .then((id) {
+        allocationDone = true;
+        return id;
+      });
+      for (var i = 0; i < 20; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(allocationDone, isFalse,
+          reason: 'allocation returned before the load landed — '
+              'the F1 collision window is open');
+      readGate.complete();
+      final newId = await allocFuture;
+      expect(newId, 102);
+      // The raised high-water mark is itself durable, so even an
+      // allocation that is never staged cannot be reused after
+      // another kill.
+      final blob =
+          jsonDecode(disk[LogEntryOutbox.storageKey]!) as Map<String, dynamic>;
+      expect(blob['nextIdHighWater'], 102);
+
+      await outbox.stage(
+        _entry(
+          id: newId,
+          body: 'Relaunch entry',
+          ts: DateTime(2026, 10, 12, 10, 0).millisecondsSinceEpoch,
+        ),
+        serverKnown: false,
+        ownerEmail: _owner,
+      );
+      // BOTH entries survive in the outbox…
+      expect(outbox.records.map((r) => r.entry.id), containsAll([101, 102]));
+      // …and both push.
+      final server = _Server([]);
+      expect(await outbox.flush(server.backend()), isTrue);
+      expect(server.capturedPosts.map((r) => r['id']), containsAll([101, 102]));
+      expect(
+        server.capturedPosts.map((r) => r['body']),
+        containsAll(['Killed session entry', 'Relaunch entry']),
+      );
+    });
+
+    testWidgets(
+        '(h) F1: Quick Log logged before the relaunch load lands '
+        'gets a fresh id — the killed session\'s pending entry '
+        'survives and both push', (tester) async {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final server = _Server([_entry(id: 1, ts: now).toSyncJson()]);
+      final outbox = LogEntryOutbox.instance;
+      // A pending entry from a session the OS killed before its
+      // push: id 2 exists only in the disk blob.
+      await tester.runAsync(
+        () => outbox.stage(
+          _entry(id: 2, body: 'Killed session entry', ts: now),
+          serverKnown: false,
+          ownerEmail: _owner,
+        ),
+      );
+      outbox.debugReset();
+
+      // Gate the relaunch disk read, exactly like test (f).
+      final readGate = Completer<void>();
+      outbox.debugSetStore(
+        read: (key) async {
+          await readGate.future;
+          return disk[key];
+        },
+        write: (key, value) async => disk[key] = value,
+        delete: (key) async => disk.remove(key),
+      );
+
+      await tester.pumpWidget(MaterialApp(
+        home: QuickLogScreen(backend: server.backend(), outbox: outbox),
+      ));
+      await _pumpUntil(
+        tester,
+        () => find.text('Symptoms').evaluate().isNotEmpty,
+      );
+      await tester.enterText(find.byType(TextField).first, 'Fresh entry');
+      await tester.pump();
+      await tester.tap(find.byTooltip('Log typed note'));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      // The save is parked on the outbox load: no confirmation yet,
+      // and (on the old code this is where the entry took id 2 and
+      // overwrote the pending record) nothing has been staged.
+      expect(find.textContaining('Entry logged'), findsNothing);
+      expect(outbox.records, isEmpty);
+
+      readGate.complete();
+      await _pumpUntil(
+        tester,
+        () => find.text('Entry logged · 3 today').evaluate().isNotEmpty,
+      );
+      await _pumpUntil(
+        tester,
+        () => server.capturedPosts.length >= 2,
+      );
+      // Both entries pushed, with their own ids and bodies — the
+      // pending record was NOT overwritten by the relaunch entry.
+      final byId = {for (final r in server.capturedPosts) r['id']: r['body']};
+      expect(byId[2], 'Killed session entry');
+      expect(byId[3], 'Fresh entry');
+      expect(outbox.records, isEmpty);
+      // Drain the snackbar + request timers (see test (a)).
+      await tester.pump(const Duration(seconds: 25));
+      await tester.pump();
+    });
+
+    test(
+        'F2 logout: a failed flush retains pending entries '
+        'owner-bound; the same account\'s return restores and '
+        'flushes them', () async {
+      wireFunnelCaches();
+      final outbox = LogEntryOutbox.instance;
+      await outbox.stage(
+        _entry(id: 201, body: 'Offline logout entry'),
+        serverKnown: false,
+        ownerEmail: _owner,
+      );
+      // Offline logout: every entries POST fails, so the logout
+      // flush cannot confirm the entry.
+      final server = _Server([], failPosts: true);
+      final session = FakeSessionStore()
+        ..token = 'tok'
+        ..refreshToken = 'ref'
+        ..email = _owner;
+      await actionsFor(server, session).logout();
+      // The logout itself completed (session gone)…
+      expect(session.token, isNull);
+      expect(session.email, isNull);
+      // …but the pending entry was NOT wiped with the caches: the
+      // owner-bound blob is still on disk.
+      expect(disk.containsKey(LogEntryOutbox.storageKey), isTrue);
+      outbox.debugReset();
+      await outbox.load(ownerEmail: _owner);
+      expect(outbox.records.single.entry.id, 201);
+      expect(outbox.records.single.entry.body, 'Offline logout entry');
+      // The same account returns and the entry finally pushes.
+      server.failPosts = false;
+      expect(await outbox.flush(server.backend()), isTrue);
+      expect(server.capturedPosts.single['id'], 201);
+      expect(outbox.records, isEmpty);
+    });
+
+    test(
+        'F2 logout retention: a different account signing in '
+        'afterwards never sees or pushes the retained entries',
+        () async {
+      wireFunnelCaches();
+      final outbox = LogEntryOutbox.instance;
+      await outbox.stage(
+        _entry(id: 202, body: 'Retained entry'),
+        serverKnown: false,
+        ownerEmail: _owner,
+      );
+      final server = _Server([], failPosts: true);
+      final session = FakeSessionStore()
+        ..token = 'tok'
+        ..refreshToken = 'ref'
+        ..email = _owner;
+      await actionsFor(server, session).logout();
+      expect(outbox.records.single.entry.id, 202);
+
+      // A DIFFERENT account signs in: main.dart's login wiring
+      // runs the owner-mismatch enforcement before the shell
+      // mounts, and the retained queue is dropped for them.
+      final dropped = await outbox.clearIfOwnerMismatch('other@example.com');
+      expect(dropped, isTrue);
+      expect(outbox.records, isEmpty);
+      outbox.debugReset();
+      await outbox.load(ownerEmail: 'other@example.com');
+      expect(outbox.records, isEmpty);
+      // And there is nothing for the new account to push.
+      final otherServer = _Server([]);
+      expect(await outbox.flush(otherServer.backend()), isTrue);
+      expect(otherServer.capturedPosts, isEmpty);
+    });
+
+    test(
+        'F2 session expiry: retainUnconfirmed (the call main.dart\'s '
+        'expiry handler makes) keeps failed entries for the owner\'s '
+        'return, and only the owner\'s', () async {
+      final outbox = LogEntryOutbox.instance;
+      await outbox.stage(
+        _entry(id: 203, body: 'Expiry entry'),
+        serverKnown: false,
+        ownerEmail: _owner,
+      );
+      final server = _Server([], failPosts: true);
+      expect(await outbox.flush(server.backend()), isFalse);
+      expect(outbox.statusFor(203), LogEntrySyncStatus.failed);
+
+      // Session expiry: the session is dead, so no flush attempt
+      // is possible — retention replaces the old unconditional wipe.
+      expect(await outbox.retainUnconfirmed(), isTrue);
+      expect(disk.containsKey(LogEntryOutbox.storageKey), isTrue);
+      outbox.debugReset();
+      await outbox.load(ownerEmail: _owner);
+      expect(outbox.statusFor(203), LogEntrySyncStatus.failed);
+      // The same account's next session flushes its own entry.
+      server.failPosts = false;
+      expect(await outbox.flush(server.backend()), isTrue);
+      expect(server.capturedPosts.single['id'], 203);
+
+      // Nothing pending → nothing retained; the ordinary wipe
+      // stands (the blob, owner stamp included, is gone).
+      expect(await outbox.retainUnconfirmed(), isFalse);
+      expect(disk.containsKey(LogEntryOutbox.storageKey), isFalse);
+
+      // And retained entries are the owner's alone: a different
+      // account's sign-in drops them before they can be seen.
+      await outbox.stage(
+        _entry(id: 204, body: 'Owner-bound entry'),
+        serverKnown: false,
+        ownerEmail: _owner,
+      );
+      expect(await outbox.retainUnconfirmed(), isTrue);
+      expect(await outbox.clearIfOwnerMismatch('other@example.com'), isTrue);
+      expect(outbox.records, isEmpty);
+    });
+
+    test(
+        'F3: an unowned record and a corrupt record load without '
+        'losing either — both are quarantined and the signal '
+        'exposes them', () async {
+      final outbox = LogEntryOutbox.instance;
+      // A blob whose owner stamp was lost (the readEmail()-threw
+      // stage path), holding one valid record and one record whose
+      // JSON no longer parses.
+      disk[LogEntryOutbox.storageKey] = jsonEncode({
+        'ownerEmail': null,
+        'records': [
+          LogEntryOutboxRecord(entry: _entry(id: 301), serverKnown: false)
+              .toJson(),
+          {'serverKnown': true}, // no entry: fromJson rejects it
+        ],
+      });
+      await outbox.load(ownerEmail: _owner);
+      // Nothing is adopted into the account…
+      expect(outbox.records, isEmpty);
+      // …nothing is deleted either: both records are quarantined,
+      // and the signal exposes them.
+      expect(outbox.hasQuarantinedRecords, isTrue);
+      expect(outbox.quarantinedRecordCount, 2);
+      // A later persist (a new entry staged for this account)
+      // re-embeds the quarantined raw records — the data is not
+      // lost as a side effect of the next write.
+      await outbox.stage(
+        _entry(id: 302),
+        serverKnown: false,
+        ownerEmail: _owner,
+      );
+      final blob =
+          jsonDecode(disk[LogEntryOutbox.storageKey]!) as Map<String, dynamic>;
+      expect(blob['records'], hasLength(1));
+      expect(blob['quarantinedRecords'], hasLength(2));
+      // And the quarantine survives a restart: still visible,
+      // still not adopted.
+      outbox.debugReset();
+      await outbox.load(ownerEmail: _owner);
+      expect(outbox.quarantinedRecordCount, 2);
+      expect(outbox.records.single.entry.id, 302);
+    });
+
+    testWidgets(
+        '(i) F5: a Quick Log entry whose push fails shows Not '
+        'synced in Quick Log itself', (tester) async {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final server = _Server([_entry(id: 1, ts: now).toSyncJson()],
+          failPosts: true);
+      await tester.pumpWidget(MaterialApp(
+        home: QuickLogScreen(
+          backend: server.backend(),
+          outbox: LogEntryOutbox.instance,
+        ),
+      ));
+      await _pumpUntil(
+        tester,
+        () => find.text('Symptoms').evaluate().isNotEmpty,
+      );
+      await tester.enterText(find.byType(TextField).first, 'Dizzy spell');
+      await tester.pump();
+      await tester.tap(find.byTooltip('Log typed note'));
+      // The entry stages and its push fails…
+      await _pumpUntil(
+        tester,
+        () => LogEntryOutbox.instance.failedIds.contains(2),
+      );
+      await _pumpUntil(
+        tester,
+        () => find.text('Not synced').evaluate().isNotEmpty,
+      );
+      // …and Quick Log itself (not only History) shows the
+      // per-entry Not synced signal, with the History badge's copy.
+      expect(find.text('Not synced'), findsOneWidget);
+      expect(find.text('Synced'), findsNothing);
+      expect(LogEntryOutbox.instance.statusFor(2),
+          LogEntrySyncStatus.failed);
+      // Drain the snackbar + request timers (see test (a)).
+      await tester.pump(const Duration(seconds: 25));
+      await tester.pump();
     });
   });
 }
