@@ -1306,6 +1306,35 @@ class TabsBackend {
     });
   }
 
+  /// Phase 1, item 2b — reads the append-only medication change
+  /// events via `GET /api/sync/medication-events` →
+  /// `{success: true, events: [...]}` OLDEST FIRST, each event in
+  /// the client contract shape (see [MedicationChangeEvent]).
+  /// Follows the file's list-fetch precedent: an empty list on
+  /// ANY failure (transport, non-200, `success != true`, or a
+  /// body without a usable `events` list) — indistinguishable
+  /// from a genuinely empty history at this layer, and the
+  /// timeline screen renders its honest empty changes state from
+  /// it (seeded markers and scores still render). Malformed
+  /// event rows are skipped; never throws.
+  Future<List<MedicationChangeEvent>> fetchMedicationChangeEvents() async {
+    final body = await _getJson('/api/sync/medication-events');
+    if (body == null || body['success'] != true) return const [];
+    final raw = body['events'];
+    if (raw is! List) return const [];
+    final out = <MedicationChangeEvent>[];
+    for (final e in raw) {
+      if (e is Map<String, dynamic>) {
+        try {
+          out.add(MedicationChangeEvent.fromJson(e));
+        } catch (_) {
+          // Skip malformed rows — never fail the whole list.
+        }
+      }
+    }
+    return out;
+  }
+
   /// Round 29 — nickname update. Returns the decoded body on HTTP 200
   /// (callers check `success`), null on any failure.
   Future<Map<String, dynamic>?> updateNickname(String nickname) async {

@@ -1,11 +1,16 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/data/billing_service.dart';
 import 'package:tabs_lab/src/data/medication_change_events.dart';
 import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/features/tools/medication_timeline_screen.dart';
+import 'package:tabs_lab/src/features/tools/medication_timeline_strings.dart';
+import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/skeleton.dart';
+import 'package:tabs_lab/src/theme/slide_page_route.dart';
 
 export 'package:tabs_lab/src/data/medications.dart';
 
@@ -95,7 +100,11 @@ class MedicationsScreen extends StatefulWidget {
   /// Injectable for tests.
   final TabsBackend? backend;
 
-  const MedicationsScreen({super.key, this.backend});
+  /// The app-owned billing service, threaded from Tools and
+  /// forwarded to the (premium) medication timeline screen.
+  final BillingService? billingService;
+
+  const MedicationsScreen({super.key, this.backend, this.billingService});
 
   @override
   State<MedicationsScreen> createState() => _MedicationsScreenState();
@@ -494,6 +503,8 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
+                _timelineEntryCard(),
+                const SizedBox(height: 16),
                 _quickActionsCard(
                     [for (final i in active) _doc.entryAt(i)!]),
                 const SizedBox(height: 16),
@@ -522,6 +533,54 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                 ],
               ],
             ),
+    );
+  }
+
+  /// Phase 1, item 2b — the entry into the medication timeline
+  /// view. The label is Juno's ruled title for the feature
+  /// (item 2, Draft 1) and nothing else: no subtitle copy exists
+  /// in her string set for this entry, so none is invented.
+  Widget _timelineEntryCard() {
+    return Material(
+      color: NotelColors.surface,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          Navigator.of(context).push(
+            SlidePageRoute(
+              reducedMotion: animationsDisabled(context),
+              builder: (_) => MedicationTimelineScreen(
+                  billingService: widget.billingService),
+            ),
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: NotelColors.cardBorder),
+          ),
+          child: const Row(
+            children: [
+              Icon(Icons.timeline, size: 22, color: NotelColors.primary),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  MedicationTimelineStrings.title,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: NotelColors.textPrimary,
+                  ),
+                ),
+              ),
+              Icon(Icons.chevron_right,
+                  size: 20, color: NotelColors.textSecondary),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

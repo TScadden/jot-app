@@ -214,7 +214,7 @@ class _ToolsScreenState extends State<ToolsScreen>
       'project_focus' => const ProjectFocusScreen(),
       'sleep' => const SleepScreen(),
       'body_info' => const BodyInfoScreen(),
-      'medications' => const MedicationsScreen(),
+      'medications' => MedicationsScreen(billingService: widget.billingService),
       'tips_and_tricks' => const TipsTricksScreen(),
       'health_coach' => const HealthCoachScreen(),
       'key_metrics' => const KeyMetricsScreen(),
