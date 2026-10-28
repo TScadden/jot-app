@@ -3974,8 +3974,12 @@ class _ChatBubble extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 15,
                           height: 1.45,
+                          // Audit 6b closure (founder pick, Oct 27, 2026):
+                          // user-bubble ink is textPrimary — 14.44:1 on
+                          // the primary@15%-over-background bubble fill,
+                          // where brand primary measured only 4.35:1.
                           color: isUser
-                              ? NotelColors.primary
+                              ? NotelColors.textPrimary
                               : isError
                                   ? NotelColors.error
                                   : NotelColors.textPrimary,

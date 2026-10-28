@@ -15,6 +15,7 @@ import 'package:tabs_lab/src/features/quicklog/history_screen.dart';
 import 'package:tabs_lab/src/features/splash/splash_screen.dart';
 import 'package:tabs_lab/src/features/tools/health_coach_screen.dart';
 import 'package:tabs_lab/src/features/tools/tools_screen.dart';
+import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 import 'test_helpers.dart';
 
@@ -364,6 +365,94 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
     });
   });
+
+  group('6b coach user-bubble contrast (founder pick: textPrimary)', () {
+    // The bubble fill exactly as _ChatBubble composes it: brand
+    // primary at 15% over the coach page background.
+    final bubbleFill = Color.alphaBlend(
+      NotelColors.primary.withValues(alpha: 0.15),
+      NotelColors.background,
+    );
+
+    test('bubble fill composites to the audited #191C3C', () {
+      // The audit's #191C3C is the rounded composite; the engine
+      // keeps sub-byte precision, so compare per channel.
+      expect(bubbleFill.r, closeTo(0x19 / 255, 1 / 255));
+      expect(bubbleFill.g, closeTo(0x1C / 255, 1 / 255));
+      expect(bubbleFill.b, closeTo(0x3C / 255, 1 / 255));
+      expect(bubbleFill.a, 1.0);
+    });
+
+    test('shipped ink (primary) reproduces the audit defect at ~4.35:1',
+        () {
+      final ratio = _contrastRatio(NotelColors.primary, bubbleFill);
+      expect(ratio, closeTo(4.35, 0.05));
+      expect(ratio, lessThan(4.5));
+    });
+
+    test('picked ink (textPrimary) measures ~14.44:1 and clears AA', () {
+      final ratio = _contrastRatio(NotelColors.textPrimary, bubbleFill);
+      expect(ratio, closeTo(14.44, 0.1));
+      expect(ratio, greaterThanOrEqualTo(4.5));
+    });
+
+    testWidgets('user bubble text renders in textPrimary, not primary',
+        (tester) async {
+      final store = FakeSessionStore()..token = 'a11y-token';
+      final backend = TabsBackend(
+        client: MockClient((request) async => http.Response('{}', 200)),
+        sessionStore: store,
+      );
+      await tester.pumpWidget(MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(disableAnimations: true),
+          child: CoachChatScreen(
+            backend: backend,
+            notificationService: FakeReminderNotificationService(),
+            accountEmail: 'user@example.com',
+            sessionId: 's1',
+            sessionTitle: 'Chat',
+            initialMessages: const [
+              CoachChatMessage(
+                id: 'm1',
+                sessionId: 's1',
+                role: 'user',
+                content: 'My knee hurts today',
+                timestamp: 1,
+              ),
+              CoachChatMessage(
+                id: 'm2',
+                sessionId: 's1',
+                role: 'coach',
+                content: 'Sorry to hear that.',
+                timestamp: 2,
+              ),
+            ],
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      final userText = tester.widget<Text>(find.text('My knee hurts today'));
+      expect(userText.style?.color, NotelColors.textPrimary);
+      expect(userText.style?.color, isNot(NotelColors.primary));
+      expect(userText.style?.fontSize, 15);
+
+      // Coach bubble ink is unchanged (already textPrimary).
+      final coachText = tester.widget<Text>(find.text('Sorry to hear that.'));
+      expect(coachText.style?.color, NotelColors.textPrimary);
+    });
+  });
+}
+
+/// WCAG contrast ratio between two opaque colors, from their
+/// relative luminances — the audit's method for surface 6b.
+double _contrastRatio(Color a, Color b) {
+  final la = a.computeLuminance();
+  final lb = b.computeLuminance();
+  final hi = la > lb ? la : lb;
+  final lo = la > lb ? lb : la;
+  return (hi + 0.05) / (lo + 0.05);
 }
 
 /// Harness mirroring Home's usage: the card is removed when its exit
