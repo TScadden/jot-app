@@ -391,7 +391,24 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    // System-back parity with the header back arrow (founder fix,
+    // Oct 27, 2026): in the pre-shell flow this screen is a stage
+    // swap inside AppFlow's single root route (see main.dart's
+    // _FlowStage machine), so without interception the Navigator
+    // has nothing to pop on Android back and the gesture exits the
+    // app — while the arrow returns to the welcome stage via
+    // [onBack]. Intercept whenever an [onBack] is wired and run
+    // that SAME callback, in every mode (register, login, forgot
+    // password — the arrow goes to welcome from all three).
+    // Standalone uses with no [onBack] keep the default pop.
+    final onBack = widget.onBack;
+    return PopScope(
+      canPop: onBack == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        onBack?.call();
+      },
+      child: Scaffold(
       backgroundColor: NotelColors.background,
       body: SafeArea(
         child: LayoutBuilder(
@@ -444,6 +461,7 @@ class _LoginScreenState extends State<LoginScreen> {
             );
           },
         ),
+      ),
       ),
     );
   }
