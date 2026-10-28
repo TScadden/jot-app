@@ -915,8 +915,23 @@ IntakeDerivation deriveIntake(List<QuickLogEntry> entries) {
       if (decoded is Map && decoded['v'] == 1) {
         final kind = decoded['kind'];
         if (kind is String && _intakeKinds.contains(kind)) {
-          int? amount(dynamic v) =>
-              v == null ? null : (v is num ? v.toInt() : null);
+          // Item 4 §4.1: amounts are integers — no floats anywhere
+          // in the payload. A present amount that is not a whole
+          // number (a fractional num, or a non-num value) returns
+          // null here, which the badType check below turns into
+          // unparseable: excluded from totals AND counted, like the
+          // bad-JSON/string cases. A whole-valued double is treated
+          // as the integer it is (JSON "473" decodes to int in Dart,
+          // but "473.0" decodes to double 473.0, and JSON encoders
+          // vary); only a fractional value is the defect case.
+          int? amount(dynamic v) {
+            if (v == null) return null;
+            if (v is int) return v;
+            if (v is double && v.isFinite && v == v.truncateToDouble()) {
+              return v.toInt();
+            }
+            return null;
+          }
           final f = amount(decoded['fluidMl']);
           final s = amount(decoded['sodiumMg']);
           final badType = (decoded['fluidMl'] != null && f == null) ||

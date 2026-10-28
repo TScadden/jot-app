@@ -19,6 +19,7 @@ InsightRecord rec({
   required String splitId,
   required InsightState state,
   List<InsightGroup> groups = const [],
+  List<InsightComponentOutcome> componentOutcomes = const [],
   IncidenceResult? incidence,
   CoOccurrence? coOccurrence,
   String? headerLabel,
@@ -31,6 +32,7 @@ InsightRecord rec({
       windowKey: 'last90',
       state: state,
       groups: groups,
+      componentOutcomes: componentOutcomes,
       incidence: incidence,
       coOccurrence: coOccurrence,
       headerLabel: headerLabel,
@@ -111,6 +113,76 @@ void main() {
     await tester.pump();
     expect(find.text('Middle score: 70'), findsOneWidget);
     expect(find.text('Middle score: 81'), findsOneWidget);
+  });
+
+  testWidgets(
+      'Vera condition 1: numbers-state component outcomes are NOT '
+      'rendered (no Juno-ruled component label exists)', (tester) async {
+    await pumpPatterns(tester, [
+      rec(
+        familyId: 'F1',
+        splitId: 'F1a',
+        state: InsightState.numbers,
+        groups: [
+          grp('nights under 6 hours of sleep', 7, mean: 71.4, median: 70),
+          grp('nights with 6 or more hours of sleep', 9,
+              mean: 80.2, median: 81),
+        ],
+        componentOutcomes: [
+          InsightComponentOutcome(
+            outcomeId: 'scoreSleep',
+            state: InsightState.numbers,
+            groups: [
+              grp('nights under 6 hours of sleep', 7,
+                  mean: 55.3, median: 54),
+              grp('nights with 6 or more hours of sleep', 9,
+                  mean: 91.6, median: 92),
+            ],
+          ),
+        ],
+      ),
+    ]);
+    const primarySentence =
+        'On nights under 6 hours of sleep (7 days), your Daily Score averaged 71. On nights with 6 or more hours of sleep (9 days), it averaged 80.';
+    expect(find.text(primarySentence), findsOneWidget);
+    // Expand the detail section: the primary S2 sentence must still
+    // appear exactly once, and no component average or median may
+    // appear anywhere in the rendered tree.
+    await tester.tap(find.byIcon(Icons.expand_more));
+    await tester.pump();
+    expect(find.text(primarySentence), findsOneWidget);
+    expect(find.textContaining('averaged'), findsOneWidget);
+    final texts = allRenderedTexts(tester).join('\n');
+    expect(texts.contains('averaged 55'), isFalse,
+        reason: 'component mean A rendered as a Daily Score average');
+    expect(texts.contains('averaged 92'), isFalse,
+        reason: 'component mean B rendered as a Daily Score average');
+    expect(texts.contains('Middle score: 54'), isFalse,
+        reason: 'component median A rendered');
+    expect(texts.contains('Middle score: 92'), isFalse,
+        reason: 'component median B rendered');
+    // The primary groups' own medians still render in the expansion.
+    expect(find.text('Middle score: 70'), findsOneWidget);
+    expect(find.text('Middle score: 81'), findsOneWidget);
+  });
+
+  testWidgets(
+      'Vera condition 2: S3 caption renders on every card — numbers, '
+      'progress, and unavailable', (tester) async {
+    await pumpPatterns(tester, [
+      f1aNumbers(),
+      rec(
+        familyId: 'F4',
+        splitId: 'F4',
+        state: InsightState.progress,
+        groups: [
+          grp('days you rated 1 or 2', 2),
+          grp('days you rated 4 or 5', 3),
+        ],
+      ),
+      rec(familyId: 'F2', splitId: '', state: InsightState.unavailable),
+    ]);
+    expect(find.text(correlationCaption), findsNWidgets(3));
   });
 
   testWidgets('S6 progress card contains NO average text', (tester) async {

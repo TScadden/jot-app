@@ -437,17 +437,17 @@ class _InsightCardState extends State<_InsightCard> {
     ];
   }
 
-  /// Detail expansion: median lines per group (S2 discipline) and,
-  /// for F1, the numbers-state component outcomes under the same
-  /// discipline. The toggle is icon-only so every TEXT string on
-  /// this surface stays inside Juno's ruled set or the record's
-  /// own stored labels.
+  /// Detail expansion: median lines per group (S2 discipline).
+  /// The toggle is icon-only so every TEXT string on this surface
+  /// stays inside Juno's ruled set or the record's own stored
+  /// labels.
   Widget _detailExpansion() {
-    final components = _record.familyId == 'F1'
-        ? _record.componentOutcomes
-            .where((c) => c.state == InsightState.numbers)
-            .toList()
-        : const <InsightComponentOutcome>[];
+    // Component outcomes (scoreSleep/scoreHrv/scoreRestingHr) are
+    // NOT rendered on this surface: Juno's ruled set has no
+    // component label, so rendering them through the S2 sentence
+    // would mislabel component averages as Daily Score averages.
+    // Rendering is held pending a Juno-ruled component label; the
+    // engine records keep carrying componentOutcomes untouched.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -465,22 +465,6 @@ class _InsightCardState extends State<_InsightCard> {
           for (final group in _record.groups)
             if (group.median != null)
               _bodyText(correlationMedianLine(group.median!)),
-          for (final component in components) ...[
-            const SizedBox(height: 8),
-            if (component.groups.length >= 2) ...[
-              _bodyText(correlationComparisonSentence(
-                groupALabel: component.groups[0].label,
-                groupAN: component.groups[0].n,
-                groupAMean: component.groups[0].mean!,
-                groupBLabel: component.groups[1].label,
-                groupBN: component.groups[1].n,
-                groupBMean: component.groups[1].mean!,
-              )),
-              for (final group in component.groups)
-                if (group.median != null)
-                  _bodyText(correlationMedianLine(group.median!)),
-            ],
-          ],
         ],
       ],
     );
@@ -509,12 +493,18 @@ class _InsightCardState extends State<_InsightCard> {
       out.add(const SizedBox(height: 8));
       out.add(s8);
     }
+    // S3 caption: Juno's ruling is "every card, every time".
+    out.add(const SizedBox(height: 8));
+    out.add(_captionText(correlationCaption));
     return out;
   }
 
   List<Widget> _unavailableChildren() {
     return [
       _bodyText(_isF5 ? correlationUnavailableF5 : correlationUnavailableF2),
+      const SizedBox(height: 8),
+      // S3 caption: Juno's ruling is "every card, every time".
+      _captionText(correlationCaption),
     ];
   }
 }

@@ -684,6 +684,61 @@ void main() {
       expect(sodium.groups[1].n, 2); // both logged days below 6000
     });
 
+    test('intake non-integer amounts are unparseable: excluded AND '
+        'counted, never truncated (item 4 §4.1)', () {
+      final entries = <QuickLogEntry>[
+        // Fractional fluid amount: the defect case. Must not be
+        // truncated to 473 and counted as valid data.
+        entry(
+          id: 11,
+          categoryId: 1,
+          body: 'Water',
+          chips: '["Intake","Water"]',
+          manualText: '{"v":1,"kind":"Water","fluidMl":473.5}',
+          timestamp: tsFor('2026-09-05'),
+        ),
+        // Whole-number int amount on the same day: still counts.
+        entry(
+          id: 12,
+          categoryId: 1,
+          body: 'Water',
+          chips: '["Intake","Water"]',
+          manualText: '{"v":1,"kind":"Water","fluidMl":473}',
+          timestamp: tsFor('2026-09-05', hour: 18),
+        ),
+        // Fractional sodium amount: also unparseable.
+        entry(
+          id: 13,
+          categoryId: 1,
+          body: 'Salt',
+          chips: '["Intake","Salt"]',
+          manualText: '{"v":1,"kind":"Salt","sodiumMg":1000.5}',
+          timestamp: tsFor('2026-09-06'),
+        ),
+        // Whole-valued double (JSON "473.0") is the integer it is:
+        // encoders vary, so this one counts.
+        entry(
+          id: 14,
+          categoryId: 1,
+          body: 'Water',
+          chips: '["Intake","Water"]',
+          manualText: '{"v":1,"kind":"Water","fluidMl":473.0}',
+          timestamp: tsFor('2026-09-07'),
+        ),
+      ];
+      final derived = deriveIntake(entries);
+      expect(derived.unparseableCount, 2);
+      // The 473.5 entry contributed nothing: the day total is the
+      // int entry alone, and only that one event is counted.
+      expect(derived.byDay['2026-09-05']!.fluidMl, 473);
+      expect(derived.byDay['2026-09-05']!.eventCount, 1);
+      // The fractional-sodium day produced no day entry at all.
+      expect(derived.byDay.containsKey('2026-09-06'), isFalse);
+      // The whole-valued double counts as 473.
+      expect(derived.byDay['2026-09-07']!.fluidMl, 473);
+      expect(derived.byDay['2026-09-07']!.eventCount, 1);
+    });
+
     test('med-event fixtures in the exact 2a toJson shape', () {
       final monthPrecision = MedChangeEventInput.fromJson({
         'id': 'ev-m',
