@@ -837,9 +837,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  /// Native `EntryCard`: 16dp card, accent-color border, left accent
-  /// strip, category chip, body (max 4 lines), timestamp + sync badge,
-  /// delete with confirmation.
+  /// Native `EntryCard`: 16dp card, accent-color border,
+  /// category chip, body (max 4 lines), timestamp + sync badge,
+  /// delete with confirmation. (Left accent strip removed
+  /// Oct 27, 2026 at the founder's direction; the border stays.)
   Widget _buildEntryCard(QuickLogEntry entry) {
     final cat = _categories
         .where((c) => c.id == entry.categoryId)
@@ -856,8 +857,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // its @15%-over-surface tint (5.92:1). For all other category
     // colors, the label keeps chipColor only where chipColor on its
     // own @15%-over-surface tint computes >= 4.5:1 per skill §2;
-    // otherwise it falls back to textPrimary. Tint, border, and the
-    // accent stripe are unchanged.
+    // otherwise it falls back to textPrimary. Tint and border are
+    // unchanged.
     Color chipLabelColor(Color color) {
       if (color == NotelColors.primary) return NotelColors.primaryText;
       double linearize(double c) => c <= 0.03928
@@ -890,132 +891,113 @@ class _HistoryScreenState extends State<HistoryScreen> {
           border: Border.all(
               color: accent.withValues(alpha: 0.20)),
         ),
-        child: Stack(
-          children: [
-            Positioned(
-              left: 0,
-              top: 0,
-              bottom: 0,
-              child: Container(
-                width: 3,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.85),
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(16),
-                    bottomLeft: Radius.circular(16),
-                  ),
-                ),
-              ),
-            ),
-            Padding(
-              // R49 HI6: vertical card padding 14→16 (the right-4
-              // delete-button inset is construction; kept).
-              padding: const EdgeInsets.fromLTRB(16, 16, 4, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: chipLabel != null
-                            ? Align(
-                                alignment: Alignment.centerLeft,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    borderRadius:
-                                        BorderRadius.circular(8),
-                                    color: chipColor.withValues(
-                                        alpha: 0.15),
-                                    border: Border.all(
-                                        color: chipColor.withValues(
-                                            alpha: 0.45)),
-                                  ),
-                                  child: Text(
-                                    chipLabel,
-                                    style: TextStyle(
-                                      color: chipLabelColorValue,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+        child: Padding(
+            // R49 HI6: vertical card padding 14→16 (the right-4
+            // delete-button inset is construction; kept).
+            padding: const EdgeInsets.fromLTRB(16, 16, 4, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: chipLabel != null
+                          ? Align(
+                              alignment: Alignment.centerLeft,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  borderRadius:
+                                      BorderRadius.circular(8),
+                                  color: chipColor.withValues(
+                                      alpha: 0.15),
+                                  border: Border.all(
+                                      color: chipColor.withValues(
+                                          alpha: 0.45)),
+                                ),
+                                child: Text(
+                                  chipLabel,
+                                  style: TextStyle(
+                                    color: chipLabelColorValue,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                              )
-                            : const SizedBox.shrink(),
-                      ),
-                      SizedBox(
-                        // R49 HI2: 48dp target (was 28×28). R53: glyph
-                        // 16->18, full-opacity textSecondary.
-                        width: 48,
-                        height: 48,
-                        child: IconButton(
-                          padding: EdgeInsets.zero,
-                          onPressed: () => _deleteEntry(entry),
-                          // Audit 6d (Oct 27, 2026) — house label
-                          // (destructive action; top of the Low list).
-                          tooltip: 'Delete entry',
-                          icon: const Icon(Icons.delete, size: 18),
-                          color: NotelColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    entry.body,
-                    style: const TextStyle(
-                      color: NotelColors.textPrimary,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                      height: 1.45,
+                              ),
+                            )
+                          : const SizedBox.shrink(),
                     ),
-                    maxLines: 4,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment:
-                        MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        _formatDateTime(entry.timestamp),
-                        style: const TextStyle(
-                          // R49 HI3: full-opacity primary = 4.82:1
-                          // on surface (was α0.55 = 2.32:1).
-                          color: NotelColors.primary,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: 0.3,
-                        ),
+                    SizedBox(
+                      // R49 HI2: 48dp target (was 28×28). R53: glyph
+                      // 16->18, full-opacity textSecondary.
+                      width: 48,
+                      height: 48,
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        onPressed: () => _deleteEntry(entry),
+                        // Audit 6d (Oct 27, 2026) — house label
+                        // (destructive action; top of the Low list).
+                        tooltip: 'Delete entry',
+                        icon: const Icon(Icons.delete, size: 18),
+                        color: NotelColors.textSecondary,
                       ),
-                      // Entries here came from the server pull itself,
-                      // so SYNCED is the honest status.
-                      Row(
-                        children: [
-                          const Icon(Icons.cloud_done,
-                              size: 12,
-                              // R49 HI4: full-opacity primary = 4.82:1
-                              // on surface (was α0.6 = 2.52:1).
-                              color: NotelColors.primary),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Synced',
-                            style: const TextStyle(
-                              color: NotelColors.primary,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                            ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  entry.body,
+                  style: const TextStyle(
+                    color: NotelColors.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    height: 1.45,
+                  ),
+                  maxLines: 4,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment:
+                      MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _formatDateTime(entry.timestamp),
+                      style: const TextStyle(
+                        // R49 HI3: full-opacity primary = 4.82:1
+                        // on surface (was α0.55 = 2.32:1).
+                        color: NotelColors.primary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                    // Entries here came from the server pull itself,
+                    // so SYNCED is the honest status.
+                    Row(
+                      children: [
+                        const Icon(Icons.cloud_done,
+                            size: 12,
+                            // R49 HI4: full-opacity primary = 4.82:1
+                            // on surface (was α0.6 = 2.52:1).
+                            color: NotelColors.primary),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Synced',
+                          style: const TextStyle(
+                            color: NotelColors.primary,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
                           ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
       ),
     );
   }
