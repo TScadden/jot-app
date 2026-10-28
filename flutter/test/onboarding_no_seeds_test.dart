@@ -104,6 +104,35 @@ class FakeSeedHC extends HealthConnectService {
 
   @override
   Future<void> openHealthConnectSettings() async {}
+
+  // The capture's history reads must complete immediately: the real
+  // implementations call the platform channel, which never answers
+  // in tests, so each read would sit out its 30 s bounded-read
+  // timeout and leave guard timers pending at teardown.
+  @override
+  Future<List<({String date, int bpm})>> readRestingHrHistory(
+          int days) async =>
+      const [];
+
+  @override
+  Future<List<({String date, int mins, int deep})>> readSleepHistory(
+          int days) async =>
+      const [];
+
+  @override
+  Future<List<({int t, double ms, int tier})>> readHrvSamples(
+          int days) async =>
+      const [];
+
+  @override
+  Future<List<({String date, int kcal})>> readCaloriesHistory(
+          int days) async =>
+      const [];
+
+  @override
+  Future<List<({String date, int count})>> readSpikeCounts(
+          int days) async =>
+      const [];
 }
 
 MockClient _mockWeatherClient() {
@@ -307,10 +336,10 @@ void main() {
       // screenshot showed the template here at 14/100 words.
       final field = tester.widget<TextField>(find.byType(TextField));
       expect(field.controller!.text, '');
-      expect(find.text('0/100 words'), findsOneWidget);
+      expect(find.text('0 / 100 words'), findsOneWidget);
       final nextButton =
-          tester.widget<ElevatedButton>(
-              find.widgetWithText(ElevatedButton, 'Next'));
+          tester.widget<FilledButton>(
+              find.widgetWithText(FilledButton, 'Next Step'));
       expect(nextButton.onPressed, isNull,
           reason: 'an untouched empty field cannot be saved — the '
               'seed used to satisfy this gate by itself');
@@ -320,11 +349,16 @@ void main() {
           isEmpty,
           reason: 'nothing was saved for the goal field');
 
-      // Type the account's OWN goal (12 words) and proceed.
+      // Type the account's OWN goal (12 words) and proceed. The
+      // button sits below the fold of the scrollable step, so
+      // scroll it into view before tapping.
       await tester.enterText(find.byType(TextField),
           'I want to sleep through the night without waking in pain');
       await tester.pump();
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Next'));
+      await tester.ensureVisible(
+          find.widgetWithText(FilledButton, 'Next Step'));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, 'Next Step'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump();
@@ -332,14 +366,18 @@ void main() {
       // Conditions: Your conditions starts EMPTY — the founder's
       // screenshot showed Acid Reflux / GERD pre-listed here.
       expect(find.text('Add conditions'), findsOneWidget);
-      expect(
-          find.text('No conditions added yet — pick from the list or '
-              'add your own below.'),
-          findsOneWidget);
+      expect(find.text('Your conditions'), findsOneWidget);
+      expect(find.text(_seedCondition), findsNothing,
+          reason: 'the pre-listed condition must not appear as '
+              'one of Your conditions — the step starts empty '
+              '(the screen renders no chips when none are added)');
 
       // Complete the step untouched: the saved conditions are an
       // EMPTY list, and no push anywhere carries the seed.
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Next'));
+      await tester.ensureVisible(
+          find.widgetWithText(FilledButton, 'Next'));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, 'Next'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump();
@@ -625,6 +663,21 @@ void main() {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(channel, null);
         TabsBackend.onSessionExpired = null;
+      });
+      // Home's Daily Score chain captures through a real
+      // HealthConnectService (HomeScreen builds its snapshot sync
+      // without the injected service; the designated seam is the
+      // snapshot-capture override, which AppFlow does not thread).
+      // Answer the bridge channel with null — reads come back
+      // empty and complete — so no bounded-read guard timer is
+      // left pending at teardown.
+      const hcChannel =
+          MethodChannel(HealthConnectService.channelName);
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(hcChannel, (_) async => null);
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(hcChannel, null);
       });
 
       final session = FakeSessionStore()
