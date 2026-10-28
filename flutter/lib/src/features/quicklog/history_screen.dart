@@ -218,6 +218,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   DateTime? _lastSyncAt;
 
   String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
   int? _categoryFilter;
   bool _todayOnly = false;
 
@@ -233,6 +234,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   void dispose() {
     _outbox.removeListener(_onOutboxChanged);
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -892,6 +894,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: TextField(
+        controller: _searchController,
         onChanged: (v) => setState(() => _searchQuery = v),
         style: const TextStyle(color: NotelColors.textPrimary, fontSize: 14),
         decoration: InputDecoration(
@@ -903,7 +906,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
-                  onPressed: () => setState(() => _searchQuery = ''),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _searchQuery = '');
+                  },
                   // Audit 6d (Oct 27, 2026) — house label.
                   tooltip: 'Clear search',
                   icon: const Icon(
