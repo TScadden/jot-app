@@ -9,6 +9,7 @@ import 'package:tabs_lab/src/features/tools/coach_mascot.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
+import 'package:tabs_lab/src/features/home/intake_logging.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/skeleton.dart';
 
@@ -35,12 +36,22 @@ List<String> parseEntryChips(String chipsJson) {
 
 /// Native detail body display + edit-field initial value:
 /// `body + "\n\n" + manualText` when manualText is non-blank, else body.
-String entryCombinedText(QuickLogEntry entry) => entry.manualText.isNotBlank
-    ? '${entry.body}\n\n${entry.manualText}'
-    : entry.body;
+///
+/// Phase 1 item 4 guard: an Intake-tagged entry's manualText is a
+/// structured JSON payload, never user copy — it displays BODY ONLY,
+/// so the payload can never render on screen.
+String entryCombinedText(QuickLogEntry entry) => isIntakeEntry(entry)
+    ? entry.body
+    : entry.manualText.isNotBlank
+        ? '${entry.body}\n\n${entry.manualText}'
+        : entry.body;
 
 /// Native `updateText(body, "")`: the edited combined text becomes the
 /// body and manualText is cleared. Same id/timestamp/chips/category.
+///
+/// Intake-tagged entries never reach this helper from the UI (their
+/// text-edit affordance routes to the intake editor sheet, which
+/// rewrites body + payload together — see _EntryDetailDialogState).
 QuickLogEntry editedEntryText(QuickLogEntry entry, String newText) =>
     entry.copyWith(body: newText, manualText: '');
 
@@ -48,10 +59,18 @@ QuickLogEntry editedEntryText(QuickLogEntry entry, String newText) =>
 /// the chips with a JSON array holding exactly the new category name
 /// (`JSONArray(listOf(catName))`), or `[]` when the name is blank.
 /// Same id/timestamp/body/manualText.
+///
+/// Phase 1 item 4 guard: for an Intake-tagged entry a category
+/// change preserves the entry's chips (the reserved tag + kind) —
+/// ONLY the categoryId changes, or the entry would silently stop
+/// being an intake record.
 QuickLogEntry editedEntryCategory(
   QuickLogEntry entry,
   QuickLogCategory category,
 ) {
+  if (isIntakeEntry(entry)) {
+    return entry.copyWith(categoryId: category.id);
+  }
   final chips =
       category.name.trim().isEmpty ? '[]' : jsonEncode([category.name]);
   return entry.copyWith(categoryId: category.id, chips: chips);
@@ -676,6 +695,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         categories: _categories,
         formatDateTime: _formatDateTime,
         onSave: _saveEntryEdit,
+        onDeleteEntry: _deleteEntry,
       ),
     );
   }
@@ -1275,11 +1295,17 @@ class _EntryDetailDialog extends StatefulWidget {
   final String Function(int timestamp) formatDateTime;
   final Future<bool> Function(QuickLogEntry updated) onSave;
 
+  /// Phase 1 item 4 — the History delete flow (confirmation +
+  /// outbox-aware delete), handed to the intake editor sheet's
+  /// delete action when an intake entry is edited from here.
+  final Future<void> Function(QuickLogEntry entry)? onDeleteEntry;
+
   const _EntryDetailDialog({
     required this.entry,
     required this.categories,
     required this.formatDateTime,
     required this.onSave,
+    this.onDeleteEntry,
   });
 
   @override
@@ -1299,6 +1325,11 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
 
   bool get _isCheckIn => isLockedCheckInEntry(_entry, widget.categories);
   bool get _isMedTab => isMedicationTabEntry(_entry);
+
+  /// Phase 1 item 4: an Intake-tagged entry's text edit routes to
+  /// the intake editor sheet — never the free-text editor, which
+  /// would clear the structured payload (editedEntryText semantics).
+  bool get _isIntake => isIntakeEntry(_entry);
 
   QuickLogCategory? get _category =>
       widget.categories.where((c) => c.id == _entry.categoryId).firstOrNull;
@@ -1328,6 +1359,10 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
   }
 
   Future<void> _editText() async {
+    if (_isIntake) {
+      await _editIntake();
+      return;
+    }
     final updated = await showDialog<QuickLogEntry>(
       context: context,
       builder: (context) =>
@@ -1335,6 +1370,38 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
     );
     if (updated != null && mounted) {
       setState(() => _entry = updated);
+    }
+  }
+
+  /// Phase 1 item 4 — the intake editor route: the sheet is
+  /// prefilled from the entry's payload and its save rewrites body
+  /// + payload together through the ordinary History save path
+  /// (same id; timestamp changes only when the user edits Time).
+  /// The payload is never cleared and never rendered as copy.
+  Future<void> _editIntake() async {
+    QuickLogEntry? updated;
+    await showIntakeEditorSheet(
+      context: context,
+      existing: _entry,
+      onSave: (draft, existing) async {
+        final u = editIntakeEntry(_entry, draft: draft);
+        final ok = await widget.onSave(u);
+        if (ok) updated = u;
+        return ok;
+      },
+      onDelete: widget.onDeleteEntry == null
+          ? null
+          : () async {
+              final entry = _entry;
+              // Close this detail dialog first; the delete flow
+              // (its own confirmation + outbox semantics) runs
+              // against the History list underneath.
+              Navigator.of(context).pop();
+              await widget.onDeleteEntry!(entry);
+            },
+    );
+    if (updated != null && mounted) {
+      setState(() => _entry = updated!);
     }
   }
 
