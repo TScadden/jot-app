@@ -77,6 +77,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:workmanager/workmanager.dart';
 
+import 'correlation_refresh.dart';
 import 'daily_score.dart';
 import 'health_connect_service.dart';
 import 'health_history_store.dart';
@@ -186,6 +187,14 @@ void dailyScoreBackgroundDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     if (task == DailyScoreBackgroundScheduler.taskName) {
       await DailyScoreBackgroundRunner.production().run();
+      // Phase 1, item 5 (spec §6): the correlation refresh
+      // piggybacks on this completion — after capture/scoring
+      // settle — never on a new timer and never on screen open.
+      // Failure-guarded: a correlation failure must never fail
+      // the background task.
+      try {
+        await CorrelationRefresher.production().refreshIfStale();
+      } catch (_) {}
     }
     return true;
   });
