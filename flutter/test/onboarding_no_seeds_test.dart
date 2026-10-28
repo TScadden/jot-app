@@ -731,4 +731,65 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
     });
   });
+
+  group('session restore owner enforcement (AppFlow)', () {
+    testWidgets(
+        'cold-start restore wipes foreign onboarding BEFORE the '
+        'gate; resumed onboarding opens empty (Vera F1)',
+        (tester) async {
+      // A stored session for the second account coexists with the
+      // first account's unstamped onboarding state, mid-onboarding
+      // (consented + intro seen, not complete) — the pre-fix state
+      // this package targets. No login/register event occurs in
+      // this process: AppFlow restores the session on cold start.
+      final session = FakeSessionStore()
+        ..token = 'fake-token-restore'
+        ..refreshToken = 'fake-refresh-restore'
+        ..email = 'second@tabs.app';
+      final map = <String, String>{
+        ..._foreignOnboardingMap(),
+        OnboardingStore.hasConsentedKey: 'true',
+        OnboardingStore.introConsultationSeenKey: 'true',
+        OnboardingStore.onboardingCompleteKey: 'false',
+      };
+      final backend = FakeSeedBackend(sessionStore: session)
+        ..pullBody = {
+          'profile': {'onboardingComplete': false},
+          'entries': [
+            {'id': 1}
+          ],
+          'categories': [
+            {'id': 1}
+          ],
+        };
+      await _pumpAppFlow(tester,
+          session: session, onboardingMap: map, backend: backend);
+
+      // The restore claimed ownership before routing: the foreign
+      // content is gone, the store is stamped to the session owner,
+      // and onboarding resumed from post-wipe state (consent).
+      expect(find.text('Privacy & Data Consent'), findsOneWidget);
+      expect(map[OnboardingStore.userContextKey], isNull,
+          reason: 'restore must wipe the foreign goal text before '
+              'any onboarding screen can prefill it');
+      expect(map[OnboardingStore.userConditionsKey], isNull);
+      expect(map[OnboardingStore.ownerEmailKey], 'second@tabs.app');
+
+      // Drive to the goal step: it opens EMPTY.
+      await tester.tap(find.widgetWithText(FilledButton, 'I consent'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump();
+      await tester.tap(find.text('Continue'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump();
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.controller!.text, '');
+      expect(find.text('0 / 100 words'), findsOneWidget);
+      // Drain the profile step's prompt-loop timer before teardown.
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await tester.pump(const Duration(seconds: 5));
+    });
+  });
 }

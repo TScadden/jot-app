@@ -357,6 +357,37 @@ void main() {
       expect(foods.keys, ['peanuts']);
     });
 
+    test('import stamps the owner-bound namespaces (Vera F3): food '
+        'history + settings identity', () async {
+      final lab = await populatedLabStore(fixedNow);
+      final exporter = MigrationBundleService(
+        store: MemorySecureStore(lab),
+        now: () => fixedNow,
+      );
+      final json = await exporter.buildExportJson(ownerEmail: founder);
+      final prod = <String, String>{};
+      final importer = MigrationBundleService(
+        store: MemorySecureStore(prod),
+        now: () => fixedNow,
+      );
+      final result =
+          await importer.importBundleJson(json, currentEmail: founder);
+      // Without these stamps, the no-seeds owner binding would wipe
+      // the imported food history and Settings identity keys as
+      // foreign at their next load.
+      expect(prod[MigrationBundleService.foodHistoryOwnerKey], founder);
+      expect(prod[MigrationBundleService.settingsIdentityOwnerKey],
+          founder);
+      // The stamps are import bookkeeping, not bundle content: they
+      // are not reported among the imported keys.
+      expect(result.importedKeys,
+          isNot(contains(MigrationBundleService.foodHistoryOwnerKey)));
+      expect(
+          result.importedKeys,
+          isNot(
+              contains(MigrationBundleService.settingsIdentityOwnerKey)));
+    });
+
     test('owner-wipe trap: a different account load wipes — import '
         'ordering is what prevents it', () async {
       // Documents the trap the import order defends against: had

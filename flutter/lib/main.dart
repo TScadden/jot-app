@@ -256,6 +256,13 @@ class _AppFlowState extends State<AppFlow>
 
   // Round 32 — onboarding state for this flow (injected in tests).
   late final OnboardingStore _onboardingStore;
+
+  /// The in-flight onboarding owner claim fired by [_onLoginSuccess].
+  /// [_resolveLoginRoute] chains its onboarding flag writes
+  /// (stamp-fresh / mark-complete) behind this future so a slow
+  /// wipe's deletes can never land after them and undo the routing
+  /// (Vera race (c), Oct 28, 2026).
+  Future<bool>? _onboardingClaim;
   late final TabsBackend _tabsBackend;
   OnboardingStep _onboardingStep = OnboardingStep.consent;
 
@@ -382,12 +389,25 @@ class _AppFlowState extends State<AppFlow>
       // other, so they run concurrently. Session validation remains
       // exactly what Round 31 made it: stored-session PRESENCE only,
       // no network round-trip at launch, ever.
-      final emailFuture = _readEmailOrNull();
-      final gateFuture = _readOnboardingGate();
-      final email = await emailFuture;
-      final gate = await gateFuture;
-      final hasState = gate.hasState;
-      final resumeStep = gate.resumeStep;
+      final email = await _readEmailOrNull();
+      // Vera F1 (Oct 28, 2026): owner enforcement BEFORE the gate.
+      // A cold-start restore never passes through the login/register
+      // funnels, so without this claim a previous account's (or an
+      // older build's) onboarding state resumed and prefilled under
+      // this session — the founder seed class, reachable with no
+      // login event in the process. The claim is awaited and the
+      // gate is derived from POST-wipe state; the Round 60
+      // email ∥ gate concurrency yields to that ordering. The
+      // legacy decision keeps keying on PRE-claim state: the claim
+      // stamps the owner key even on an empty store, which would
+      // otherwise masquerade as Round 32 state and drop a legacy
+      // session into onboarding. A null email makes the claim a
+      // no-op (the house fail-open pattern).
+      final hadStateBeforeClaim = await _onboardingStore.hasAnyState();
+      await _onboardingStore.clearIfOwnerMismatch(email);
+      final gate = await _readOnboardingGate();
+      final hasState = hadStateBeforeClaim;
+      final resumeStep = hadStateBeforeClaim ? gate.resumeStep : null;
       // If the user already moved past welcome (or the widget is
       // gone), the restore has nothing to do.
       if (!mounted || _stage != _FlowStage.welcome) return;
@@ -588,11 +608,16 @@ class _AppFlowState extends State<AppFlow>
     // never wired in: a previous account's (or older app
     // generation's) context/conditions survived into the next
     // account's onboarding and were pushed into its server profile.
-    unawaited(_onboardingStore.clearIfOwnerMismatch(email));
+    final onboardingClaim = _onboardingStore.clearIfOwnerMismatch(email);
+    _onboardingClaim = onboardingClaim;
+    unawaited(onboardingClaim);
     // Audit gap (Oct 28, 2026): HeartDataCache implements the same
-    // enforcement but was only wired into explicit logout; add the
-    // login funnel so a foreign HR blob never survives a switch on
-    // disk (the Heart screen's mount warm remains the backstop).
+    // enforcement but was only wired into explicit logout; the login
+    // funnel joins it — in a warm process this binds the cache and
+    // wipes a foreign in-memory blob. In a fresh process the funnel
+    // call binds without touching the disk blob; the blob is wiped
+    // at the Heart screen's mount, whose clearIfOwnerMismatch is
+    // awaited before warmFromDisk (Vera F5).
     unawaited(HeartDataCache.instance.clearIfOwnerMismatch(email));
     // Account-identity keys in SettingsStore (Google account /
     // calendar emails + connected flags, report appointment prefs)
@@ -664,14 +689,26 @@ class _AppFlowState extends State<AppFlow>
     }
     if (!mounted || _stage != _FlowStage.resolving) return;
     if (serverReset) {
-      unawaited(_stampFreshAccountOnboarding());
+      // Chained behind the login claim (Vera race (c)): the stamp
+      // writes onboarding flags the wipe deletes — they must land
+      // strictly after it.
+      unawaited(() async {
+        await _onboardingClaim;
+        await _stampFreshAccountOnboarding();
+      }());
       setState(() {
         _loggedInEmail = email;
         _onboardingStep = OnboardingStep.consent;
         _stage = _FlowStage.onboarding;
       });
     } else {
-      unawaited(_markOnboardingComplete());
+      // Chained behind the login claim (Vera race (c)), same as the
+      // stamp above: mark-complete's flag writes must land strictly
+      // after the wipe's deletes.
+      unawaited(() async {
+        await _onboardingClaim;
+        await _markOnboardingComplete();
+      }());
       setState(() {
         _loggedInEmail = email;
         _stage = _FlowStage.home;
