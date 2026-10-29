@@ -59,6 +59,14 @@ class SetupLoadingScreen extends StatefulWidget {
 }
 
 class _SetupLoadingScreenState extends State<SetupLoadingScreen> {
+  /// Bandit's box on this screen: 84 tall, and the width the
+  /// 438×512 master art (bandit_full.png / bandit_full_blink.png,
+  /// same aspect) occupies at that height. The slot is reserved so
+  /// the figure cannot pop in at zero width while its asset
+  /// decodes — see the first-frame note in [build].
+  static const double _banditHeight = 84;
+  static const double _banditWidth = _banditHeight * 438 / 512;
+
   static const _fallbackCategories = <String>[
     'Sleep',
     'Energy',
@@ -193,71 +201,92 @@ class _SetupLoadingScreenState extends State<SetupLoadingScreen> {
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Column(
-            children: [
-              const Spacer(),
-              Container(
-                width: 180,
-                height: 180,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: const RadialGradient(
-                    colors: [
-                      Color(0xFFE8D5FF),
-                      Color(0xB37C6EFF),
-                      NotelColors.primary,
+          // First-frame layout (founder finding, Oct 28, 2026):
+          // Scaffold hands its body LOOSE constraints, so a bare
+          // Column sizes its width to its widest child — here the
+          // title/status texts during loading (the status text even
+          // wobbles as its ellipsis dots cycle) and the full-width
+          // button once finalize completes. The under-wide column
+          // hugged the left padding, drifted with the dots, and
+          // snapped to true center when the button arrived. Pinning
+          // the width makes the first painted frame the settled,
+          // centered layout.
+          child: SizedBox(
+            width: double.infinity,
+            child: Column(
+              children: [
+                const Spacer(),
+                Container(
+                  width: 180,
+                  height: 180,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const RadialGradient(
+                      colors: [
+                        Color(0xFFE8D5FF),
+                        Color(0xB37C6EFF),
+                        NotelColors.primary,
+                      ],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: NotelColors.primary.withValues(alpha: 0.5),
+                        blurRadius: 24,
+                      ),
                     ],
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: NotelColors.primary.withValues(alpha: 0.5),
-                      blurRadius: 24,
+                  child: Center(
+                    child: Image.asset(
+                      'assets/images/ic_tabs_note.png',
+                      width: 110,
+                      height: 110,
                     ),
-                  ],
-                ),
-                child: Center(
-                  child: Image.asset(
-                    'assets/images/ic_tabs_note.png',
-                    width: 110,
-                    height: 110,
                   ),
                 ),
-              ),
-              const SizedBox(height: 48),
-              const Text(
-                'Welcome to Tabs',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: NotelColors.primary,
+                const SizedBox(height: 48),
+                const Text(
+                  'Welcome to Tabs',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: NotelColors.primary,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 14),
-              Text(
-                _finished
-                    ? 'Your profile is all set up!'
-                    : 'Getting your profile ready$dots',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  color: NotelColors.textSecondary,
+                const SizedBox(height: 14),
+                Text(
+                  _finished
+                      ? 'Your profile is all set up!'
+                      : 'Getting your profile ready$dots',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: NotelColors.textSecondary,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 24),
-              // Bandit, the app mascot, keeps the user company while
-              // setup finishes — visual only, no copy changes.
-              const CoachMascotFigure(height: 84),
-              const Spacer(),
-              if (_finished) ...[
-                OnboardingPrimaryButton(
-                  label: 'Start keeping Tabs',
-                  onPressed: widget.onNavigateMain,
+                const SizedBox(height: 24),
+                // Bandit, the app mascot, keeps the user company while
+                // setup finishes — visual only, no copy changes. The
+                // slot reserves the figure's exact box (see
+                // [_banditWidth]) so it paints at its settled size on
+                // the first frame instead of popping in at zero width
+                // once the PNG decodes.
+                const SizedBox(
+                  width: _banditWidth,
+                  height: _banditHeight,
+                  child: CoachMascotFigure(height: _banditHeight),
                 ),
-                const SizedBox(height: 16),
+                const Spacer(),
+                if (_finished) ...[
+                  OnboardingPrimaryButton(
+                    label: 'Start keeping Tabs',
+                    onPressed: widget.onNavigateMain,
+                  ),
+                  const SizedBox(height: 16),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
