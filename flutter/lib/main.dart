@@ -390,14 +390,14 @@ class _AppFlowState extends State<AppFlow>
       final gate = await gateFuture;
       // Phase 1 item 6 (F2): bind the lean-test store's owner from
       // the restored session BEFORE any home landing can load,
-      // retry, or serve a lean session. A surviving blob from a
-      // different account is dropped here, by owner mismatch,
-      // ahead of the shell — never served unbound.
+      // retry, or serve a lean session. The binding is
+      // SYNCHRONOUS (bindOwner): from this line, every store gate
+      // compares against this owner, so a surviving blob from a
+      // different account can never be served unbound — and no
+      // storage channel future is awaited in the restore path,
+      // which must never park on one.
       if (email != null) {
-        try {
-          await LeanTestSessionStore.instance
-              .clearIfOwnerMismatch(email);
-        } catch (_) {}
+        LeanTestSessionStore.instance.bindOwner(email);
       }
       final hasState = gate.hasState;
       final resumeStep = gate.resumeStep;
@@ -631,16 +631,17 @@ class _AppFlowState extends State<AppFlow>
   /// the server flag stays false until setup completes and pushes
   /// true, so the reset is deferred, never lost.)
   Future<void> _resolveLoginRoute(String email) async {
-    // Phase 1 item 6 (F2): the lean-test owner binding is AWAITED
-    // here, ahead of the home landing below (whose
-    // _kickFirstRunResync fires the pending-entry retry). A
-    // surviving blob from a different account is dropped by owner
-    // mismatch before any load or retry can serve it; the retry
-    // itself is additionally gated on a bound, matching owner in
-    // the store, so no ordering can stage across accounts.
-    try {
-      await LeanTestSessionStore.instance.clearIfOwnerMismatch(email);
-    } catch (_) {}
+    // Phase 1 item 6 (F2): the lean-test owner binding lands
+    // SYNCHRONOUSLY here, ahead of the home landing below (whose
+    // _kickFirstRunResync fires the pending-entry retry) — the
+    // login-success handler's clearIfOwnerMismatch already bound
+    // it in its synchronous prefix, and this re-asserts it at the
+    // routing point itself. From the binding instant, the store's
+    // gates refuse any blob stamped for a different account, so
+    // no load or retry can serve or stage across accounts, in any
+    // ordering; the binding awaits no channel future, so routing
+    // can never park on one.
+    LeanTestSessionStore.instance.bindOwner(email);
     // Vera BLOCKER: fetchSyncPull's TTL cache is per-instance and
     // not keyed by account — without this, a login within 5 minutes
     // of a previous session's pull reads the OLD account state (a

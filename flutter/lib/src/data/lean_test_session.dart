@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -1001,41 +1002,69 @@ class LeanTestSessionStore {
     return false;
   }
 
-  /// Login/register ownership enforcement, mirroring
-  /// [MigraineAttackStore.clearIfOwnerMismatch]. This is the F2
-  /// binding point: it binds the new owner and, on mismatch, drops
-  /// a surviving blob BEFORE any load or retry can serve it.
-  /// Never throws.
-  Future<bool> clearIfOwnerMismatch(String? email) async {
+  /// Synchronous owner binding (F2 sequencing): from the instant
+  /// this returns, [load]/[save]/retry are gated to [email] — a
+  /// surviving blob stamped for another account can never be
+  /// served, closed, or staged, because every gate compares the
+  /// blob's stamp against this binding. The proactive mismatch
+  /// wipe then runs unawaited in [_enforceBoundOwner]. Binding
+  /// synchronously (never awaiting a storage channel future) is
+  /// what lets the login/restore wiring sequence it ahead of the
+  /// home landing without ever parking routing on a channel that
+  /// cannot complete in the caller's async zone.
+  void bindOwner(String? email) {
     final expected = _normalizeEmail(email);
-    if (expected == null) return false;
+    if (expected == null) return;
+    _boundOwner = expected;
+    unawaited(_enforceBoundOwner(expected));
+  }
+
+  /// The async half of the binding: drops a surviving blob whose
+  /// stamp mismatches the bound owner, and learns whether the
+  /// kept blob holds a pending entry. Never throws.
+  Future<bool> _enforceBoundOwner(String expected) async {
     try {
       final raw = await _read(storageKey);
       if (raw == null || raw.isEmpty) {
-        _boundOwner = expected;
         _pendingKnown = false;
         return false;
       }
       final decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic>) {
-        await clearAndUnbind();
-        _boundOwner = expected;
+        try {
+          await _delete(storageKey);
+        } catch (_) {}
+        _pendingKnown = false;
         return true;
       }
       final owner = _normalizeEmail(decoded['ownerEmail']?.toString());
       if (owner == expected) {
-        _boundOwner = expected;
         final sessionRaw = decoded['session'];
         _pendingKnown = sessionRaw is Map<String, dynamic> &&
             sessionRaw['pendingEntryJson'] != null;
         return false;
       }
-      await clearAndUnbind();
-      _boundOwner = expected;
+      try {
+        await _delete(storageKey);
+      } catch (_) {}
+      _pendingKnown = false;
       return true;
     } catch (_) {
       return false;
     }
+  }
+
+  /// Login/register ownership enforcement, mirroring
+  /// [MigraineAttackStore.clearIfOwnerMismatch]. This is the F2
+  /// binding point: the binding itself lands SYNCHRONOUSLY in this
+  /// call's prefix (see [bindOwner]), before any load or retry can
+  /// serve a surviving blob; the returned future reports whether
+  /// the async enforcement dropped one. Never throws.
+  Future<bool> clearIfOwnerMismatch(String? email) async {
+    final expected = _normalizeEmail(email);
+    if (expected == null) return false;
+    _boundOwner = expected;
+    return _enforceBoundOwner(expected);
   }
 }
 
