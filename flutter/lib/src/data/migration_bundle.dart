@@ -130,6 +130,22 @@ class MigrationBundleService {
   static const String coachMemoryKey = 'coach_memory_v1';
   static const String healthHistoryKey = 'health_history_store_v1';
   static const String foodHistoryKey = 'food_checker_history';
+  static const String foodHistoryOwnerKey = 'food_checker_history_owner';
+  static const String settingsIdentityOwnerKey =
+      'settings_identity_owner_email';
+
+  /// The Settings identity subset of [settingsKeys] — the owning
+  /// store's account-identity keys (Google calendar/account +
+  /// report appointment), whose namespace is owner-stamped under
+  /// [settingsIdentityOwnerKey].
+  static const List<String> identitySettingsKeys = [
+    'settings_google_calendar_connected',
+    'settings_google_calendar_email',
+    'settings_google_account_connected',
+    'settings_google_account_email',
+    'progress_report_appointment_date',
+    'progress_report_appointment_type',
+  ];
   static const String toolsTileOrderKey = 'tools_tile_order_v1';
   static const String knowledgeExtractedKey = 'knowledge_extracted_v1';
   static const String todayPlanKey = 'today_plan_state_v1';
@@ -396,6 +412,19 @@ class MigrationBundleService {
       for (final entry in toWrite.entries) {
         await _store.write(entry.key, entry.value);
         written.add(entry.key);
+      }
+      // Vera F3 (Oct 28, 2026): the no-seeds package owner-bound two
+      // namespaces this bundle carries — food history and the
+      // Settings identity keys. A raw-key import never wrote their
+      // owner stamps, so the imported values read as foreign and
+      // were wiped at their next load. The bundle owner was
+      // validated == the signed-in account above; stamp both
+      // namespaces to it when their data landed.
+      if (written.contains(foodHistoryKey)) {
+        await _store.write(foodHistoryOwnerKey, current);
+      }
+      if (written.any(identitySettingsKeys.contains)) {
+        await _store.write(settingsIdentityOwnerKey, current);
       }
     } catch (_) {
       // Partial write: the keys that DID land get the same

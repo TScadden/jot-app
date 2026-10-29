@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/skeleton.dart';
@@ -43,6 +44,7 @@ class TipsTricksScreen extends StatefulWidget {
 class TipsCacheStore {
   static const String topicsKey = 'tips_tricks_topics_v1';
   static const String answersKey = 'tips_tricks_answers_v1';
+  static const String ownerKey = 'tips_tricks_owner_v1';
 
   Future<String?> Function(String key) _read =
       (key) => const FlutterSecureStorage().read(key: key);
@@ -112,6 +114,38 @@ class TipsCacheStore {
       await _delete(answersKey).timeout(const Duration(seconds: 3));
     } catch (_) {
       // Cache persistence never breaks the UI.
+    }
+  }
+
+  /// Founder seed findings (Oct 28, 2026): the cached topics and
+  /// answers are generated from one account's context, but the keys
+  /// were global and NO path ever cleared them — a new account
+  /// opening Tips & Tricks inherited the previous account's AI
+  /// topics/answers. When the stamped owner differs from [email]
+  /// (including legacy unstamped cache), both keys are wiped and
+  /// the store is re-stamped. Returns true when a wipe happened.
+  /// Never throws.
+  Future<bool> clearIfOwnerMismatch(String? email) async {
+    final e = email?.trim().toLowerCase();
+    if (e == null || e.isEmpty) return false;
+    try {
+      final owner = (await _read(ownerKey).timeout(const Duration(seconds: 3)))
+          ?.trim()
+          .toLowerCase();
+      if (owner == e) return false;
+      final had = (owner != null && owner.isNotEmpty) ||
+          (await _read(topicsKey).timeout(const Duration(seconds: 3))) !=
+              null ||
+          (await _read(answersKey).timeout(const Duration(seconds: 3))) !=
+              null;
+      if (had) {
+        await _delete(topicsKey).timeout(const Duration(seconds: 3));
+        await _delete(answersKey).timeout(const Duration(seconds: 3));
+      }
+      await _write(ownerKey, e).timeout(const Duration(seconds: 3));
+      return had;
+    } catch (_) {
+      return false;
     }
   }
 }
@@ -194,7 +228,14 @@ class _TipsTricksScreenState extends State<TipsTricksScreen> {
 
   /// Loads the persisted topics/answers (native shows cached topics
   /// on open; the onboarding prompt appears only when none exist).
+  /// Founder seed findings (Oct 28, 2026): ownership is enforced
+  /// against the stored session first, so a previous account's
+  /// cached topics/answers can never render for this account.
   Future<void> _loadCache() async {
+    try {
+      final email = await SessionStore().readEmail();
+      await _cacheStore.clearIfOwnerMismatch(email);
+    } catch (_) {}
     final topics = await _cacheStore.loadTopics();
     final answers = await _cacheStore.loadAnswers();
     if (!mounted) return;
