@@ -1694,6 +1694,119 @@ void main() {
       expect(find.text('4 · Good · Energy'), findsNothing);
     });
 
+    testWidgets('amend clear-all F1: a good record the server '
+        'holds but the outbox marks local-only (lost POST '
+        'response / kill in the confirmation gap) is deleted '
+        'with a server DELETE, not cancel-only — no resurrection',
+        (tester) async {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final rankingJson = _entryJson(_entry(
+        id: 40,
+        categoryId: 6,
+        body: 'Feeling: 4/5 Today',
+        chips: '["Daily Ranking"]',
+        ts: now,
+      ));
+      final server = _Server(
+        [
+          rankingJson,
+          _entryJson(_entry(
+            id: 41,
+            categoryId: 6,
+            body: 'Good day · Energy',
+            chips: '["Good Day","Energy"]',
+            ts: now,
+          )),
+        ],
+        categories: _catsNameHit,
+        // POSTs fail, so Home's derive-triggered retry flush
+        // cannot confirm (or remove) the staged local-only
+        // record — the F1 state survives until the delete.
+        failPosts: true,
+      );
+      // The SAME good record sits in the outbox as local-only:
+      // its push landed server-side (the server holds row 41
+      // above) but the client never saw the confirmation.
+      final staged = await tester.runAsync(
+        () => LogEntryOutbox.instance.stageForBackend(
+          _entry(
+            id: 41,
+            categoryId: 6,
+            body: 'Good day · Energy',
+            chips: '["Good Day","Energy"]',
+            ts: now,
+          ),
+          backend: server.backend(),
+          serverKnown: false,
+        ),
+      );
+      expect(staged, isTrue);
+      await pumpHome(tester, server);
+      await _pumpUntil(
+        tester,
+        () => find.text('4 · Good · Energy').evaluate().isNotEmpty,
+      );
+      // Let the derive-triggered retry flush attempt and fail,
+      // so the record is settled in its F1 state.
+      await _pumpUntil(
+        tester,
+        () => LogEntryOutbox.instance.failedIds.contains(41),
+      );
+      // PRECONDITION (the F1 state itself): the outbox holds
+      // record 41 classified local-only, while the server
+      // already holds row 41. Without this, the test proves
+      // nothing.
+      final precondition = LogEntryOutbox.instance.recordFor(41);
+      expect(precondition, isNotNull);
+      expect(precondition!.serverKnown, isFalse);
+      expect(goodRows(server), hasLength(1));
+      expect(goodRows(server).single['id'], 41);
+
+      await tester.tap(find.text('4 · Good · Energy'));
+      await _pumpUntil(
+        tester,
+        () => find.text("Today's check-in").evaluate().isNotEmpty,
+      );
+      await settleSheet(tester);
+      await tester.ensureVisible(find.text('Energy'));
+      await tester.pump();
+      await tester.tap(find.text('Energy'));
+      await tester.pump();
+      await tester.ensureVisible(find.text('Done'));
+      await tester.pump();
+      await tester.tap(find.text('Done'));
+      await _pumpUntil(
+        tester,
+        () =>
+            server.capturedDeletes.isNotEmpty &&
+            find.text("Today's check-in").evaluate().isEmpty,
+      );
+      // The fresh pull classified the record server-known, so
+      // the pending record was cancelled AND the server DELETE
+      // was issued — exactly one, for id 41 only.
+      expect(server.capturedDeletes, [41]);
+      expect(goodRows(server), isEmpty);
+      // The ranking row is byte-identical.
+      expect(rankingRows(server), hasLength(1));
+      expect(rankingRows(server).single, rankingJson);
+      expect(LogEntryOutbox.instance.recordFor(41), isNull);
+      expect(LogEntryOutbox.instance.records, isEmpty);
+      expect(find.text('4 · Good'), findsOneWidget);
+      expect(find.text('4 · Good · Energy'), findsNothing);
+
+      // No resurrection: a fresh Home load pulls from the
+      // server again — the deleted good record stays gone.
+      await pumpHome(tester, server);
+      await _pumpUntil(
+        tester,
+        () => find.text('4 · Good').evaluate().isNotEmpty,
+      );
+      expect(goodRows(server), isEmpty);
+      expect(server.capturedDeletes, [41]);
+      expect(find.text('4 · Good'), findsOneWidget);
+      expect(find.text('4 · Good · Energy'), findsNothing);
+    });
+
     testWidgets('amend partial clear: unticking one of two good '
         'options amends the record in place — same id, no DELETE; '
         'ranking intact', (tester) async {

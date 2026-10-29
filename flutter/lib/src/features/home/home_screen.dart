@@ -1092,12 +1092,21 @@ class _HomeScreenState extends State<HomeScreen> {
       try {
         await _outbox.settleInFlightPush();
         if (!mounted) return false;
+        // Vera F1: classify on the SAME evidence the upsert
+        // commits use — the queue flag OR the fresh pull this
+        // delete already holds — never on the queue flag alone.
+        // A lost POST response or a kill in the confirmation gap
+        // can leave the queued record marked local-only while
+        // the server already holds the row; in that state the
+        // fresh pull is the truth, and a cancel-only delete
+        // would silently resurrect on the next pull.
+        final serverKnown = _serverKnownFor(existing, ctx);
         final pending = _outbox.recordFor(id);
         LogEntryOutboxRecord? cancelled;
         if (pending != null) {
           cancelled = await _outbox.cancel(id);
           if (cancelled == null) return false;
-          if (!pending.serverKnown) {
+          if (!serverKnown) {
             // A local-only record never reached the server:
             // cancelling its pending upsert IS the whole delete.
             if (mounted) _applyGoodDeletion(ctx.merged, id);
