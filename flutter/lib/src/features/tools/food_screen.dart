@@ -421,7 +421,9 @@ class _FoodToolScreenState extends State<FoodToolScreen> {
       // enforcement read wedged before this method was ever
       // called, this never runs and the gate stays closed.
       _encyclopediaLoadSettled = true;
-      if (_persistDeferredWhileGated && _encyclopedia.isNotEmpty) {
+      if (mounted &&
+          _persistDeferredWhileGated &&
+          _encyclopedia.isNotEmpty) {
         _persistDeferredWhileGated = false;
         unawaited(_persistEncyclopedia());
       }
@@ -448,6 +450,12 @@ class _FoodToolScreenState extends State<FoodToolScreen> {
 
   @override
   void dispose() {
+    // Vera 5c residual: a check deferred while gated is
+    // session-only once the screen is gone. Clear the deferral
+    // without writing, so the load's finally-flush (which runs
+    // even after the !mounted return skips the merge) can never
+    // whole-value write the unmerged map over persisted history.
+    _persistDeferredWhileGated = false;
     _input.dispose();
     super.dispose();
   }

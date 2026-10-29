@@ -32,6 +32,10 @@ import 'test_helpers.dart';
 ///  3. slow-load race: a check that completes while the load is
 ///     still pending persists nothing until the load settles,
 ///     then the deferred persist flushes the merged map.
+///  4. dispose-before-settle: same slow load + check, but the
+///     screen is disposed before the load settles — the deferred
+///     flush must NOT write the unmerged map; the stored JSON
+///     stays byte-identical.
 
 const MethodChannel _secureChannel =
     MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
@@ -180,6 +184,53 @@ void main() {
     expect(store.saveCount, greaterThan(0));
     final decoded = decodeFoodEncyclopedia(store.value);
     expect(decoded.keys, containsAll(['spinach', 'coffee']));
+  });
+
+  testWidgets('5c dispose-before-settle: deferred flush does NOT write '
+      'the unmerged map when the screen is disposed before the load '
+      'settles', (tester) async {
+    _mockSecureChannel((call) async => null);
+    final loadGate = Completer<String?>();
+    final store = _GatedFoodStore(loadGate)..value = _seedJson();
+    final seeded = store.value;
+
+    await tester.pumpWidget(MaterialApp(
+      home: FoodToolScreen(backend: _aiBackend(), historyStore: store),
+    ));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+
+    // Successful check while the load is still pending (same
+    // fake-time budget as test 3).
+    await tester.enterText(find.byType(TextField), 'coffee');
+    await tester.pump(const Duration(milliseconds: 10));
+    await tester.tap(find.text('Check Sensitivity'));
+    for (var i = 0; i < 40; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+      if (find.text('Some histamine.').evaluate().isNotEmpty) break;
+    }
+    expect(find.text('Some histamine.'), findsOneWidget);
+    // Deferred, not written.
+    expect(store.value, seeded);
+    expect(store.saveCount, 0);
+
+    // The user leaves the food screen before the load completes:
+    // swap the widget out, disposing the screen's state.
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    await tester.pump(const Duration(milliseconds: 10));
+
+    // Settle the load with non-empty stored history. The load's
+    // !mounted return skips the merge; its finally must not flush
+    // the unmerged check-only map over that history.
+    loadGate.complete(_seedJson());
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    expect(store.saveCount, 0);
+    expect(store.value, seeded);
+    expect(store.value, contains('"spinach"'));
+    expect(store.value, isNot(contains('"coffee"')));
   });
 }
 
