@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -578,6 +579,22 @@ void main() {
   group('FoodToolScreen (round 48)', () {
     testWidgets('checked foods persist and serve the next session from cache',
         (tester) async {
+      // VC 100110 combine fix: since the onboarding-no-seeds
+      // branch, FoodToolScreen enforces history ownership against
+      // SessionStore().readEmail() (a real secure-storage channel
+      // read) BEFORE loading the encyclopedia. Unmocked, that
+      // channel never answers in the test binding and the load
+      // never runs. Mock an EMPTY secure store (no session email:
+      // enforcement is the signed no-op for a null email, and the
+      // load proceeds) — the onboarding_no_seeds_test idiom.
+      const secureChannel =
+          MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(secureChannel, (call) async => null);
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(secureChannel, null);
+      });
       final store = _MemFoodStore();
       _bigSurface(tester);
       final result = {
