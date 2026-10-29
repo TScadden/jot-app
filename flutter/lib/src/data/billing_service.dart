@@ -263,6 +263,40 @@ class BillingState {
 /// constructor remains for that owner and for tests, which may
 /// construct isolated instances against fakes.
 class BillingService {
+  /// Juno S4 — sync-refresh failure when a prior status IS known
+  /// (the pre-existing verbatim string; unchanged).
+  static const String syncErrorKnownStatus =
+      'Could not refresh subscription status from the Tabs server. '
+      'Your last known status is still shown.';
+
+  /// Juno S3 — sync-refresh failure when NO status is known yet
+  /// (verbatim, Juno ruling 2026-10-28:
+  /// `team/compliance/2026-10-28-billing-error-copy-juno.md`).
+  static const String syncErrorNoKnownStatus =
+      'Could not refresh subscription status from the Tabs server. '
+      'Please try again later.';
+
+  /// The refresh-failure copy for the CURRENT state, chosen by
+  /// Juno's prior-status test: S4 when a prior status exists and
+  /// is still shown, S3 when none does. Used by BOTH sync failure
+  /// branches (null return and thrown exception) — Juno revoked
+  /// the exception-interpolated variant as user-visible copy.
+  String get _syncFailureMessage => _state.isUnlimited == null
+      ? syncErrorNoKnownStatus
+      : syncErrorKnownStatus;
+
+  /// Account-switch hygiene (fix 4): clears ONLY the refresh /
+  /// billing error message. Called by the app flow on logout,
+  /// session expiry (via its logout path), login, and register —
+  /// the points where the account changes — so one account's
+  /// sticky error never renders for the next account in the same
+  /// app session. isUnlimited / products are deliberately NOT
+  /// reset here; the initialize flow owns those.
+  void resetErrorMessageForAccountChange() {
+    if (_state.errorMessage == null) return;
+    _emit(_state.copyWith(clearError: true));
+  }
+
   final BillingStore _store;
   final BillingBackend _backend;
   final bool _isProductionBuild;
@@ -509,6 +543,17 @@ class BillingService {
           : _state.isUnlimited,
       clearError: true,
     ));
+    // Post-purchase reconcile (fix 3): a SUCCESSFUL verify that
+    // still reports not-unlimited may simply have raced the
+    // server's settled state — run ONE status sync so the server
+    // gets a chance to correct the UI in-session. Verify FAILURE
+    // never reaches here (the early returns above preserve the
+    // un-guard / Play re-emission retry exactly, with no sync).
+    // Already-processed also skips this: its emit above already
+    // adopts unlimited.
+    if (outcome.success && !outcome.isUnlimited) {
+      await syncSubscriptionStatus();
+    }
   }
 
   /// Restore/revoke reconciliation — native `checkSubscriptionStatus`:
@@ -530,19 +575,32 @@ class BillingService {
       }.toList();
       final isUnlimited = await _backend.syncSubscriptions(tokens);
       if (isUnlimited != null) {
-        _emit(_state.copyWith(isUnlimited: isUnlimited));
-      } else {
+        // Clear-on-success (fix 1; Juno §5 REQUIRED): a successful
+        // sync clears the refresh error (S3/S4) in the same update
+        // that adopts the refreshed status — the founder sequence
+        // was a 401-era S4 surviving later 200 syncs for the rest
+        // of the app session. Scoped to S3/S4 exactly as Juno §5
+        // rules ("any successful refresh clears the S3/S4
+        // message"): other messages sharing errorMessage (e.g.
+        // "Purchase canceled. No charge was made.", emitted just
+        // before this trailing sync on the cancel/failure
+        // triggers) must survive their own sync, or they would
+        // never be seen.
+        final clearRefreshError =
+            _state.errorMessage == syncErrorKnownStatus ||
+                _state.errorMessage == syncErrorNoKnownStatus;
         _emit(_state.copyWith(
-          errorMessage: 'Could not refresh subscription status '
-              'from the Tabs server. Your last known status is '
-              'still shown.',
-        ));
+            isUnlimited: isUnlimited, clearError: clearRefreshError));
+      } else {
+        // Juno S3/S4, chosen by the prior-status test (fix 2).
+        _emit(_state.copyWith(errorMessage: _syncFailureMessage));
       }
       return isUnlimited;
-    } catch (e) {
-      _emit(_state.copyWith(
-        errorMessage: 'Could not refresh subscription status: $e',
-      ));
+    } catch (_) {
+      // Juno S3/S4 shared condition: a THROWN sync failure renders
+      // the same S3/S4 copy as a null return. The revoked
+      // exception-interpolated form is never user-visible copy.
+      _emit(_state.copyWith(errorMessage: _syncFailureMessage));
       return null;
     }
   }

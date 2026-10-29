@@ -84,6 +84,7 @@ class FakeBillingBackend implements BillingBackend {
       success: true, isUnlimited: true);
   bool? syncResult = false;
   Object? verifyError;
+  Object? syncError;
 
   /// When set, verify blocks on this completer (concurrency tests).
   Completer<void>? verifyGate;
@@ -107,6 +108,7 @@ class FakeBillingBackend implements BillingBackend {
   Future<bool?> syncSubscriptions(List<String> activeTokens) async {
     log.add('backend.sync:$activeTokens');
     syncedTokenLists.add(List.of(activeTokens));
+    if (syncError != null) throw syncError!;
     return syncResult;
   }
 }
@@ -481,6 +483,166 @@ void main() {
       expect(result, isNull);
       expect(service.state.isUnlimited, isTrue);
       expect(service.state.errorMessage, isNotNull);
+    });
+
+    // ── Paywall status reconcile (fix 1/2/3/4, Oct 28, 2026) ────
+
+    test(
+        'FOUNDER SEQUENCE (fix 1): sync fails (error set) → later '
+        'sync succeeds → error is GONE and status is adopted',
+        () async {
+      // No initialize(): direct syncs reproduce the traced
+      // sequence — a 401-era failure emits the error, then later
+      // 200 syncs succeed in the same app session / instance.
+      backend.syncResult = null;
+      expect(await service.syncSubscriptionStatus(), isNull);
+      expect(service.state.errorMessage, isNotNull);
+      expect(service.state.isUnlimited, isNull);
+
+      backend.syncResult = false;
+      expect(await service.syncSubscriptionStatus(), isFalse);
+      expect(service.state.errorMessage, isNull);
+      expect(service.state.isUnlimited, isFalse);
+
+      // And again towards true: fail, then succeed — same rule.
+      backend.syncResult = null;
+      await service.syncSubscriptionStatus();
+      expect(service.state.errorMessage, isNotNull);
+      backend.syncResult = true;
+      expect(await service.syncSubscriptionStatus(), isTrue);
+      expect(service.state.errorMessage, isNull);
+      expect(service.state.isUnlimited, isTrue);
+    });
+
+    test('fix 2 (null branch): no prior status → Juno S3 verbatim',
+        () async {
+      backend.syncResult = null;
+      await service.syncSubscriptionStatus();
+      expect(service.state.isUnlimited, isNull);
+      expect(service.state.errorMessage,
+          BillingService.syncErrorNoKnownStatus);
+      expect(
+          service.state.errorMessage,
+          'Could not refresh subscription status from the Tabs '
+          'server. Please try again later.');
+      expect(service.state.errorMessage,
+          isNot(contains('last known')));
+    });
+
+    test('fix 2 (null branch): prior status exists → Juno S4 verbatim',
+        () async {
+      backend.syncResult = false;
+      await service.syncSubscriptionStatus();
+      expect(service.state.isUnlimited, isFalse);
+      backend.syncResult = null;
+      await service.syncSubscriptionStatus();
+      expect(service.state.errorMessage,
+          BillingService.syncErrorKnownStatus);
+      expect(
+          service.state.errorMessage,
+          'Could not refresh subscription status from the Tabs '
+          'server. Your last known status is still shown.');
+      expect(service.state.isUnlimited, isFalse);
+    });
+
+    test(
+        'fix 2 (thrown branch): exception renders S3/S4 by prior '
+        'status, never the raw exception text (Juno revocation)',
+        () async {
+      backend.syncError = StateError('socket exploded XYZ');
+      await service.syncSubscriptionStatus();
+      expect(service.state.errorMessage,
+          BillingService.syncErrorNoKnownStatus);
+      expect(service.state.errorMessage,
+          isNot(contains('socket exploded')));
+      expect(service.state.errorMessage, isNot(contains('XYZ')));
+
+      // Establish a prior status, clear the fake's error, then
+      // throw again: S4, still with no exception text.
+      backend.syncError = null;
+      backend.syncResult = true;
+      await service.syncSubscriptionStatus();
+      expect(service.state.errorMessage, isNull);
+      backend.syncError = StateError('socket exploded XYZ');
+      await service.syncSubscriptionStatus();
+      expect(service.state.errorMessage,
+          BillingService.syncErrorKnownStatus);
+      expect(service.state.errorMessage,
+          isNot(contains('socket exploded')));
+      expect(service.state.isUnlimited, isTrue);
+    });
+
+    test(
+        'fix 3: verify succeeds but reports not-unlimited → ONE '
+        'reconcile sync runs and server unlimited is adopted',
+        () async {
+      store.catalog = [product(BillingProducts.monthly, [offer()])];
+      backend.syncResult = false;
+      backend.verifyOutcome = const BillingVerifyOutcome(
+          success: true, isUnlimited: false);
+      await service.initialize();
+      expect(service.state.isUnlimited, isFalse);
+      backend.syncedTokenLists.clear();
+      log.clear();
+
+      // The server's settled state now says unlimited.
+      backend.syncResult = true;
+      store.emit(const [
+        BillingPurchase(
+            productId: BillingProducts.monthly,
+            purchaseToken: 'reconcile-tok',
+            status: BillingPurchaseStatus.purchased),
+      ]);
+      await settle();
+      await settle();
+
+      expect(backend.verifiedTokens, ['reconcile-tok']);
+      expect(log, contains('store.complete:reconcile-tok'));
+      // Exactly one reconcile sync after the purchase.
+      expect(backend.syncedTokenLists, hasLength(1));
+      expect(service.state.isUnlimited, isTrue);
+      expect(service.state.errorMessage, isNull);
+    });
+
+    test('fix 3: verify FAILURE runs NO reconcile sync', () async {
+      store.catalog = [product(BillingProducts.monthly, [offer()])];
+      backend.syncResult = false;
+      backend.verifyOutcome = const BillingVerifyOutcome(
+          success: false,
+          isUnlimited: false,
+          errorMessage: 'Subscription is not active.');
+      await service.initialize();
+      backend.syncedTokenLists.clear();
+      log.clear();
+
+      store.emit(const [
+        BillingPurchase(
+            productId: BillingProducts.monthly,
+            purchaseToken: 'no-sync-tok',
+            status: BillingPurchaseStatus.purchased),
+      ]);
+      await settle();
+      await settle();
+
+      expect(service.state.phase, BillingPhase.error);
+      expect(backend.syncedTokenLists, isEmpty);
+      expect(log.where((e) => e.startsWith('store.complete')), isEmpty);
+    });
+
+    test(
+        'fix 4: account-change reset clears ONLY the error '
+        '(status and products untouched)', () async {
+      backend.syncResult = false;
+      await service.syncSubscriptionStatus();
+      expect(service.state.isUnlimited, isFalse);
+      backend.syncResult = null;
+      await service.syncSubscriptionStatus();
+      expect(service.state.errorMessage, isNotNull);
+
+      service.resetErrorMessageForAccountChange();
+      expect(service.state.errorMessage, isNull);
+      expect(service.state.isUnlimited, isFalse);
+      expect(service.state.products, isEmpty);
     });
 
     test('buy launches exactly the offer the user picked', () async {
