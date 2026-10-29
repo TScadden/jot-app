@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -198,21 +199,66 @@ void main() {
       expect(row.scoreSleep, isNull);
     });
 
-    test('no new data: identical score, byte-identical persisted record',
+    // F1 re-scope (Vera, Oct 28, 2026): this pin used to assert
+    // the WHOLE persisted blob was byte-identical after an
+    // unchanged-score refresh — which is exactly what forced
+    // replaceScore to keep the stale scoreMeta stamp. The pin
+    // is now scoped to what its original intent actually was:
+    // an unchanged-score refresh must not churn UNRELATED blob
+    // content. The score row (the whole `days` map) and every
+    // other day's metadata must stay identical; the ONE allowed
+    // difference is the refreshed day's own scoreMeta entry,
+    // which MUST restamp to this refresh's manual_refresh /
+    // computedAt (the same stamp the sync payload carries).
+    test(
+        'no new data: identical score, score row + unrelated blob '
+        'content unchanged (only target scoreMeta restamps)',
         () async {
       final fake = _FakeStore();
       final store = await _seededStore(fake);
       final beforeRow = (await store.readAll())[_target]!;
-      final beforeBlob = fake.values[HealthHistoryStore.storageKey];
+      final beforeBlob = fake.values[HealthHistoryStore.storageKey]!;
+      final refreshNow = DateTime(2026, 10, 17, 12);
       final refresher = DailyScoreRefresher.withCapture(
         store: store,
         capture: ({bool force = false}) async => true,
+        now: () => refreshNow,
       );
       final outcome = await refresher.refresh(_target);
       expect(outcome.status, DailyScoreRefreshStatus.refreshed);
       expect(outcome.computation!.dailyScore, 62);
       expect((await store.readAll())[_target], beforeRow);
-      expect(fake.values[HealthHistoryStore.storageKey], beforeBlob);
+      // Blob, section by section: everything except the target
+      // day's scoreMeta entry is unchanged.
+      final before =
+          jsonDecode(beforeBlob) as Map<String, dynamic>;
+      final after = jsonDecode(
+              fake.values[HealthHistoryStore.storageKey]!)
+          as Map<String, dynamic>;
+      expect(after['days'], before['days']);
+      expect(after['ownerEmail'], before['ownerEmail']);
+      expect(after['lastCaptureMs'], before['lastCaptureMs']);
+      expect(after['lastCaptureDiagnostics'],
+          before['lastCaptureDiagnostics']);
+      final beforeMeta =
+          (before['scoreMeta'] as Map<String, dynamic>?) ?? {};
+      final afterMeta =
+          after['scoreMeta'] as Map<String, dynamic>;
+      expect(afterMeta.keys.toSet(), beforeMeta.keys.toSet());
+      for (final date in beforeMeta.keys) {
+        if (date == _target) continue;
+        expect(afterMeta[date], beforeMeta[date], reason: date);
+      }
+      // The refreshed day's metadata DID restamp — unconditionally,
+      // even though its four score values did not change.
+      expect(afterMeta[_target], {
+        'source': dailyScoreSourceManualRefresh,
+        'computedAt': refreshNow.millisecondsSinceEpoch,
+        'algorithmVersion': dailyScoreAlgorithmVersion,
+      });
+      final meta = store.scoreMetaFor(_target)!;
+      expect(meta.source, dailyScoreSourceManualRefresh);
+      expect(meta.computedAt, refreshNow.millisecondsSinceEpoch);
     });
 
     test('failed capture (returns false): prior score untouched',

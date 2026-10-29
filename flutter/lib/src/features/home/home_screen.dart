@@ -7,6 +7,7 @@ import 'package:tabs_lab/src/data/billing_service.dart';
 import 'package:tabs_lab/src/data/daily_score.dart';
 import 'package:tabs_lab/src/data/daily_score_refresh.dart'
     show ScoreCapture;
+import 'package:tabs_lab/src/data/daily_score_sync.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart'
     show historyDateStr;
@@ -153,6 +154,14 @@ class HomeScreen extends StatefulWidget {
   /// before the score load computes anything.
   final ScoreCapture? dailyScoreSnapshotCapture;
 
+  /// Daily Score server sync (Oct 28, 2026) — injectable for
+  /// tests; forwarded to Home's engine run, its snapshot sync,
+  /// and the pushed Daily Score screen. When null, production
+  /// resolution applies (see [_HomeScreenState._scoreSync]): the
+  /// shared instance when Home is on the shared store, no sync
+  /// when a test injected a store.
+  final DailyScoreSync? dailyScoreSync;
+
   /// The app-owned billing service (single instance), forwarded
   /// to the Settings screen pushed from the counter slot.
   final BillingService? billingService;
@@ -181,6 +190,7 @@ class HomeScreen extends StatefulWidget {
       this.onLogout,
       this.healthHistoryStore,
       this.dailyScoreSnapshotCapture,
+      this.dailyScoreSync,
       this.billingService,
       this.migraineController,
       this.logEntryOutbox});
@@ -192,6 +202,14 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int? _temp;
   bool _weatherLoaded = false;
+
+  /// The resolved Daily Score server sync (Oct 28, 2026): an
+  /// injected one wins; production (no store injected — Home is
+  /// on the shared store) resolves to [DailyScoreSync.instance];
+  /// a test that injected a store without a sync gets NO sync.
+  DailyScoreSync? get _scoreSync =>
+      widget.dailyScoreSync ??
+      (widget.healthHistoryStore == null ? DailyScoreSync.instance : null);
 
   /// Round 14 — condition fields for the living header icon.
   int? _weatherCode;
@@ -416,12 +434,13 @@ class _HomeScreenState extends State<HomeScreen> {
       // post-capture engine run is the only automatic run that
       // may score today, and only when today is complete.
       final snapshot = widget.dailyScoreSnapshotCapture ??
-          HealthHistorySync.withDeps(store: store).capture;
+          HealthHistorySync.withDeps(store: store, scoreSync: _scoreSync)
+              .capture;
       await snapshot(force: false);
       // Home's OWN compute run is still cut off BEFORE today — it
       // backfills past days (day-boundary fallback) but never
       // scores today itself.
-      await DailyScoreEngine(store: store)
+      await DailyScoreEngine(store: store, scoreSync: _scoreSync)
           .computeMissingScores(beforeDate: today);
       final all = await store.readAll();
       if (!mounted) return;
@@ -446,6 +465,10 @@ class _HomeScreenState extends State<HomeScreen> {
           // read bound, would leave the bound's timer pending at
           // teardown).
           snapshotCapture: widget.dailyScoreSnapshotCapture,
+          // Thread the resolved server sync through too: the
+          // pushed screen's flush/hydration on open and its
+          // engine run act on the same sync Home uses.
+          scoreSync: _scoreSync,
         ),
       ),
     );

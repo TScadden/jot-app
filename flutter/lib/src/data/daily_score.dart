@@ -114,6 +114,7 @@
 /// scores and need no cutoff.
 library;
 
+import 'package:tabs_lab/src/data/daily_score_sync.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/sleep_need.dart';
 
@@ -142,6 +143,32 @@ const double rhrAnchorHighDev = 20; // → score 0
 /// The score shared by both deviation-mapped components when the
 /// day sits exactly at its baseline median.
 const double baselineAnchorScore = 70;
+
+/// Algorithm version stamped on every Daily Score record that
+/// leaves the device (server sync, see `daily_score_sync.dart`)
+/// and into the store's per-day score metadata.
+///
+/// 1 = the scoring formula in THIS tree, whose sleep component is
+/// the LINEAR curve in [scoreSleepComponent] below (`100 × min(
+/// asleepRatio, 1.0)`), with the HRV / resting-HR piecewise maps
+/// as documented in the file header. A sibling branch is changing
+/// the sleep curve to a squared map; whichever tree changes the
+/// formula next MUST bump this constant at combine time, so a
+/// synced record can always be told apart from a score computed
+/// by a different formula. (Checked Oct 28, 2026: the sibling
+/// branch `feat/score-sleep-curve-squared` carries NO version
+/// marker yet — this constant is the first, and its bump is that
+/// branch's to make when the curves combine.)
+const int dailyScoreAlgorithmVersion = 1;
+
+/// Sync source for a score written by an automatic path (the
+/// engine's write-once first scoring). Server contract value.
+const String dailyScoreSourceAuto = 'auto';
+
+/// Sync source for a score written by the founder's deliberate
+/// refresh ([HealthHistoryStore.replaceScore] via the refresher).
+/// Server contract value.
+const String dailyScoreSourceManualRefresh = 'manual_refresh';
 
 /// Sleep component from [asleepRatio] (asleep ÷ personal need):
 /// squared below need, capped at need, never below 0.
@@ -388,8 +415,28 @@ DailyScoreComputation? computeDailyScore(
 class DailyScoreEngine {
   final HealthHistoryStore store;
 
-  DailyScoreEngine({HealthHistoryStore? store})
-      : store = store ?? HealthHistoryStore.instance;
+  /// Server-sync hook (Oct 28, 2026): when wired, every score this
+  /// engine persists is queued for upload as an
+  /// [dailyScoreSourceAuto] record — the queue/flush live in
+  /// [DailyScoreSync], which the production call sites pass in
+  /// (the post-capture run in `health_history_sync.dart`, Home,
+  /// the score history screen, the background runner). Null in
+  /// tests and in any caller that does not wire sync: scoring is
+  /// then exactly the pre-sync behavior. Queueing is
+  /// fire-and-forget from here — it never delays or fails a
+  /// scoring run (the standing instant-paint rule).
+  final DailyScoreSync? scoreSync;
+
+  /// Clock for the persisted score's `computedAt` stamp (the same
+  /// value the sync payload carries). Injectable for tests.
+  final DateTime Function() _now;
+
+  DailyScoreEngine({
+    HealthHistoryStore? store,
+    this.scoreSync,
+    DateTime Function()? now,
+  })  : store = store ?? HealthHistoryStore.instance,
+        _now = now ?? DateTime.now;
 
   /// Computes and persists scores for all missing days, oldest
   /// first. Returns how many days were newly scored. Never throws —
@@ -427,14 +474,33 @@ class DailyScoreEngine {
         if (date == completeOnlyDate && !computation.hasAllComponents) {
           continue; // gate: today stays pending until complete
         }
+        // One computedAt for the whole persist: the store's
+        // score metadata and the sync payload must carry the
+        // SAME stamp, or the hydration conflict rule would be
+        // comparing two different clocks for one record.
+        final computedAt = _now().millisecondsSinceEpoch;
         final ok = await store.persistScore(
           date,
           dailyScore: computation.dailyScore,
           scoreSleep: computation.sleepScoreRounded,
           scoreHrv: computation.hrvScoreRounded,
           scoreRestingHr: computation.restingHrScoreRounded,
+          scoreSource: dailyScoreSourceAuto,
+          scoreComputedAt: computedAt,
+          scoreAlgorithmVersion: dailyScoreAlgorithmVersion,
         );
-        if (ok) written++;
+        if (ok) {
+          written++;
+          // Sync hook: queue the JUST-PERSISTED computation for
+          // upload. Fire-and-forget by design (see [scoreSync]);
+          // a queue/flush failure leaves the record queued for
+          // the next trigger and never reaches this run.
+          scoreSync?.queueComputation(
+            computation,
+            source: dailyScoreSourceAuto,
+            computedAt: computedAt,
+          );
+        }
       }
       return written;
     } catch (_) {

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:tabs_lab/src/data/coach_memory_store.dart';
 import 'package:tabs_lab/src/data/daily_score_refresh_owner.dart';
+import 'package:tabs_lab/src/data/daily_score_sync.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
@@ -160,6 +161,18 @@ class AccountActions {
     // deletion must leave none of it on device.
     try {
       await HealthHistoryStore.instance.clear();
+    } catch (_) {}
+    // Daily Score server sync (Oct 28, 2026): the pending-push
+    // queue is owner-stamped account data — the same wipe covers
+    // it, and its generation bump aborts any in-flight hydration
+    // so a merge cannot resurrect the wiped scores afterwards.
+    // Deliberately NOT retained like the log-entry outbox: the
+    // scores themselves are wiped with the history store above,
+    // so a retained queue would be the only surviving copy of a
+    // departed account's health data (the migraine-store wipe
+    // precedent governs).
+    try {
+      await DailyScoreSync.instance.clear();
     } catch (_) {}
     // Refresh-scope fix (Oct 20, 2026): the refresh owner's
     // pending outcomes live only in memory, but they belong to

@@ -391,6 +391,103 @@ class CaptureDiagnostic {
       '@ $atMs)';
 }
 
+/// Per-day Daily Score metadata (server sync, Oct 28, 2026):
+/// which write path produced the day's persisted score, when it
+/// was computed (epoch ms), and which algorithm version computed
+/// it. Kept in a SIDECAR map in the store blob (keyed by date),
+/// NOT as fields on [DailyBiometrics]: the row's shape, equality,
+/// and serialization are a contract every reader and merge mode
+/// already relies on, and unscored days have no metadata at all —
+/// a sidecar entry exists exactly for scored days.
+///
+/// ABSENT entry = a LEGACY record: a score persisted before sync
+/// existed (or by a caller that supplied no metadata). A legacy
+/// record's computedAt is treated as 0 / unknown by the hydration
+/// conflict rule, so a server `manual_refresh` record with ANY
+/// computedAt wins over it (see
+/// [HealthHistoryStore.applyHydratedScores]).
+class DailyScoreMeta {
+  /// `auto` or `manual_refresh` (the sync contract's values).
+  final String source;
+  final int computedAt; // epoch ms
+  final int algorithmVersion;
+
+  const DailyScoreMeta({
+    required this.source,
+    required this.computedAt,
+    required this.algorithmVersion,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'source': source,
+        'computedAt': computedAt,
+        'algorithmVersion': algorithmVersion,
+      };
+
+  static DailyScoreMeta? fromJson(dynamic raw) {
+    if (raw is! Map) return null;
+    final source = raw['source']?.toString();
+    final computedAt = raw['computedAt'];
+    final version = raw['algorithmVersion'];
+    if (source == null || source.isEmpty || computedAt is! num) {
+      return null;
+    }
+    return DailyScoreMeta(
+      source: source,
+      computedAt: computedAt.toInt(),
+      algorithmVersion: version is num ? version.toInt() : 1,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is DailyScoreMeta &&
+      other.source == source &&
+      other.computedAt == computedAt &&
+      other.algorithmVersion == algorithmVersion;
+
+  @override
+  int get hashCode => Object.hash(source, computedAt, algorithmVersion);
+
+  @override
+  String toString() =>
+      'DailyScoreMeta($source @ $computedAt, v$algorithmVersion)';
+}
+
+/// One server Daily Score record, translated for hydration (see
+/// [HealthHistoryStore.applyHydratedScores]). [sleepNeedMinutes]
+/// is deliberately absent: Sleep Need is derived locally from
+/// stored nights, never stored as a biometric — only the raw
+/// inputs that map onto row fields travel ([asleepMinutes] →
+/// `sleepMinutes`, [hrvMs] → `hrvRmssdMs`, [restingHrBpm]).
+class HydratedScore {
+  final String date;
+  final int dailyScore;
+  final int? scoreSleep;
+  final int? scoreHrv;
+  final int? scoreRestingHr;
+  final String source;
+  final int computedAt;
+  final int algorithmVersion;
+  final int? asleepMinutes;
+  final double? hrvMs;
+  final int? restingHrBpm;
+
+  const HydratedScore({
+    required this.date,
+    required this.dailyScore,
+    this.scoreSleep,
+    this.scoreHrv,
+    this.scoreRestingHr,
+    required this.source,
+    required this.computedAt,
+    required this.algorithmVersion,
+    this.asleepMinutes,
+    this.hrvMs,
+    this.restingHrBpm,
+  });
+}
+
 /// Outcome of one merge call.
 class HealthHistoryMergeResult {
   /// Dates that were not in the store before this merge.
@@ -489,6 +586,7 @@ class HealthHistoryStore {
 
   void _resetMemory() {
     _days.clear();
+    _scoreMeta.clear();
     _ownerEmail = null;
     _lastCaptureMs = null;
     _captureDiagnostics.clear();
@@ -497,6 +595,21 @@ class HealthHistoryStore {
   }
 
   final Map<String, DailyBiometrics> _days = {};
+
+  /// Sidecar per-day Daily Score metadata (see [DailyScoreMeta]).
+  /// Written only by the score write paths and by hydration;
+  /// cleared with everything else by [_resetMemory] / [clear], so
+  /// a sign-out / deletion / owner-mismatch wipe leaves no score
+  /// metadata behind for hydration to resurrect from.
+  final Map<String, DailyScoreMeta> _scoreMeta = {};
+
+  /// The score metadata for [date], or null when the day is
+  /// unscored or its score is a legacy record (see
+  /// [DailyScoreMeta]).
+  DailyScoreMeta? scoreMetaFor(String date) => _scoreMeta[date];
+
+  /// All score metadata, keyed by date (unmodifiable).
+  Map<String, DailyScoreMeta> get scoreMeta => Map.unmodifiable(_scoreMeta);
   bool _warmed = false;
   int? _lastCaptureMs;
 
@@ -650,6 +763,20 @@ class HealthHistoryStore {
           if (d != null) _captureDiagnostics[entry.key.toString()] = d;
         }
       }
+      // Score metadata sidecar: absent on every pre-sync blob
+      // (those scores are legacy records — see [DailyScoreMeta]).
+      // Entries for dates the blob does not hold are dropped: a
+      // meta entry must never outlive its day in memory.
+      final meta = map['scoreMeta'];
+      if (meta is Map) {
+        for (final entry in meta.entries) {
+          final m = DailyScoreMeta.fromJson(entry.value);
+          final date = entry.key.toString();
+          if (m != null && _days.containsKey(date)) {
+            _scoreMeta[date] = m;
+          }
+        }
+      }
       final rawOwner = map['ownerEmail'];
       if (rawOwner is String) _ownerEmail = _normalizeEmail(rawOwner);
     } catch (_) {
@@ -688,6 +815,11 @@ class HealthHistoryStore {
                 e.key: e.value.toJson(),
             },
           'days': {for (final d in dates) d: _days[d]!.toJson()},
+          if (_scoreMeta.isNotEmpty)
+            'scoreMeta': {
+              for (final d in (_scoreMeta.keys.toList()..sort()))
+                if (_days.containsKey(d)) d: _scoreMeta[d]!.toJson(),
+            },
         }),
       );
     } catch (_) {
@@ -879,10 +1011,12 @@ class HealthHistoryStore {
 
   // ── Daily Score write paths ────────────────────────────────────
   //
-  // Exactly two methods may write the score fields:
+  // Exactly two LOCAL methods may write the score fields:
   // [persistScore] (write-once, the engine's first scoring of a
   // day) and [replaceScore] (the user-initiated refresh overwrite
-  // — see its doc; nothing automatic may call it).
+  // — see its doc; nothing automatic may call it). Server sync
+  // adds a third, [applyHydratedScores] below, which writes only
+  // under its documented conflict rule and never recomputes.
 
   /// Write-once score persistence: sets the four score fields on
   /// the stored day [date] and persists. Returns false — writing
@@ -899,6 +1033,9 @@ class HealthHistoryStore {
     int? scoreSleep,
     int? scoreHrv,
     int? scoreRestingHr,
+    String? scoreSource,
+    int? scoreComputedAt,
+    int? scoreAlgorithmVersion,
   }) async {
     await _ensureWarmed();
     final existing = _days[date];
@@ -909,6 +1046,16 @@ class HealthHistoryStore {
       scoreHrv: scoreHrv,
       scoreRestingHr: scoreRestingHr,
     );
+    // Score metadata (sync): recorded when the caller supplies
+    // it (the engine always does). A caller that supplies none
+    // leaves the day a legacy record — see [DailyScoreMeta].
+    if (scoreSource != null && scoreComputedAt != null) {
+      _scoreMeta[date] = DailyScoreMeta(
+        source: scoreSource,
+        computedAt: scoreComputedAt,
+        algorithmVersion: scoreAlgorithmVersion ?? 1,
+      );
+    }
     await persist();
     return true;
   }
@@ -936,6 +1083,9 @@ class HealthHistoryStore {
     int? scoreSleep,
     int? scoreHrv,
     int? scoreRestingHr,
+    String? scoreSource,
+    int? scoreComputedAt,
+    int? scoreAlgorithmVersion,
   }) async {
     await _ensureWarmed();
     final existing = _days[date];
@@ -946,8 +1096,144 @@ class HealthHistoryStore {
       scoreHrv: scoreHrv,
       scoreRestingHr: scoreRestingHr,
     );
+    // Score metadata (sync) — F1 fix (Vera, Oct 28, 2026):
+    // restamp UNCONDITIONALLY whenever the caller supplies
+    // metadata, even when the recomputation yields the SAME
+    // four score values. The local stamp is the comparison
+    // operand of the hydration conflict rule in
+    // [applyHydratedScores] (server wins iff server
+    // manual_refresh && server.computedAt > local computedAt),
+    // and the refresher passes ONE computedAt to both this
+    // method and its queued sync payload — the sync layer's
+    // invariant is that the payload stamp == the store
+    // metadata stamp. Keeping the old stamp on an
+    // unchanged-score refresh broke that invariant (local
+    // still read auto @ T1 while the payload/server carried
+    // manual_refresh @ T2), so a stale local stamp could
+    // cause over-adoption of a server record in a
+    // POST-fails/GET-succeeds window. Callers that supply
+    // no metadata keep the previous behavior (no restamp).
+    if (scoreSource != null && scoreComputedAt != null) {
+      _scoreMeta[date] = DailyScoreMeta(
+        source: scoreSource,
+        computedAt: scoreComputedAt,
+        algorithmVersion:
+            scoreAlgorithmVersion ?? _scoreMeta[date]?.algorithmVersion ?? 1,
+      );
+    }
     await persist();
     return true;
+  }
+
+  // ── Daily Score hydration (server sync) ────────────────────────
+  //
+  // The ONLY other score write path, used exclusively by
+  // `DailyScoreSync.hydrate` to merge server records into this
+  // store. The conflict rule is EXACTLY this (verbatim from the
+  // sync spec, Oct 28, 2026):
+  //
+  //   * Local day missing a score → take the server record (fill).
+  //   * Both present → take the server record ONLY IF
+  //     server.source == 'manual_refresh' AND server.computedAt >
+  //     local computedAt. In every other case the local record
+  //     stands.
+  //   * Hydration writes the persisted score + the three
+  //     component subscores + source/computedAt/algorithmVersion
+  //     metadata + the raw inputs (asleepMinutes → the row's
+  //     sleep minutes, hrvMs → hrvRmssdMs, restingHrBpm) ONLY into
+  //     fields that are locally absent — it must NEVER overwrite
+  //     a locally present biometric value (Health Connect is the
+  //     source of truth for biometrics).
+  //   * Hydration runs only against the store's bound owner; on
+  //     owner mismatch it does nothing (the store's existing
+  //     owner logic governs).
+  //
+  // A legacy local record (no [DailyScoreMeta]) has computedAt 0,
+  // so a server manual_refresh with any computedAt wins over it.
+  // The biometric fill applies in every case (fill-absent only);
+  // score + metadata change only when the server record is taken.
+  // Returns how many days changed in any way. Never throws (a
+  // persist failure leaves memory updated, exactly as [persist]
+  // behaves everywhere else in this store).
+
+  Future<int> applyHydratedScores(List<HydratedScore> records) async {
+    await _ensureWarmed();
+    var changed = 0;
+    for (final rec in records) {
+      if (rec.date.isEmpty) continue;
+      final existing = _days[rec.date];
+      // Raw inputs, zero rule applied (≤ 0 = absent, never a fill).
+      final fillSleep = (rec.asleepMinutes != null && rec.asleepMinutes! > 0)
+          ? rec.asleepMinutes
+          : null;
+      final fillHrv =
+          (rec.hrvMs != null && rec.hrvMs! > 0) ? rec.hrvMs : null;
+      final fillRhr = (rec.restingHrBpm != null && rec.restingHrBpm! > 0)
+          ? rec.restingHrBpm
+          : null;
+
+      DailyBiometrics withFills(DailyBiometrics base) => DailyBiometrics(
+            date: base.date,
+            restingHrBpm: base.restingHrBpm ?? fillRhr,
+            sleepMinutes: base.sleepMinutes ?? fillSleep,
+            deepSleepMinutes: base.deepSleepMinutes,
+            spikeCount: base.spikeCount,
+            caloriesKcal: base.caloriesKcal,
+            hrvRmssdMs: base.hrvRmssdMs ?? fillHrv,
+            dailyScore: base.dailyScore,
+            scoreSleep: base.scoreSleep,
+            scoreHrv: base.scoreHrv,
+            scoreRestingHr: base.scoreRestingHr,
+          );
+
+      if (existing == null) {
+        // Local day missing entirely → take the server record.
+        final row = withFills(DailyBiometrics(date: rec.date)).withScores(
+          dailyScore: rec.dailyScore,
+          scoreSleep: rec.scoreSleep,
+          scoreHrv: rec.scoreHrv,
+          scoreRestingHr: rec.scoreRestingHr,
+        );
+        _days[rec.date] = row;
+        _scoreMeta[rec.date] = DailyScoreMeta(
+          source: rec.source,
+          computedAt: rec.computedAt,
+          algorithmVersion: rec.algorithmVersion,
+        );
+        changed++;
+        continue;
+      }
+
+      final localComputedAt = _scoreMeta[rec.date]?.computedAt ?? 0;
+      final takeServer = existing.dailyScore == null ||
+          (rec.source == 'manual_refresh' &&
+              rec.computedAt > localComputedAt);
+      if (takeServer) {
+        _days[rec.date] = withFills(existing).withScores(
+          dailyScore: rec.dailyScore,
+          scoreSleep: rec.scoreSleep,
+          scoreHrv: rec.scoreHrv,
+          scoreRestingHr: rec.scoreRestingHr,
+        );
+        _scoreMeta[rec.date] = DailyScoreMeta(
+          source: rec.source,
+          computedAt: rec.computedAt,
+          algorithmVersion: rec.algorithmVersion,
+        );
+        changed++;
+        continue;
+      }
+
+      // Local record stands (score + metadata untouched): fill
+      // only locally absent biometrics from the server record.
+      final filled = withFills(existing);
+      if (filled != existing) {
+        _days[rec.date] = filled;
+        changed++;
+      }
+    }
+    if (changed > 0) await persist();
+    return changed;
   }
 
   // NOTE: _fieldCount / _fieldCountChanged deliberately count the

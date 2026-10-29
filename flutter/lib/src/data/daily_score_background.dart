@@ -79,6 +79,7 @@ import 'package:workmanager/workmanager.dart';
 
 import 'correlation_refresh.dart';
 import 'daily_score.dart';
+import 'daily_score_sync.dart';
 import 'health_connect_service.dart';
 import 'health_history_store.dart';
 import 'health_history_sync.dart';
@@ -450,8 +451,14 @@ class DailyScoreBackgroundRunner {
       // throttle. The background runner never calls the app-open
       // bypass (captureOnAppOpen) and never forces.
       runCapture: () => sync.capture(),
-      scorePastDays: (beforeDate) => DailyScoreEngine(store: store)
-          .computeMissingScores(beforeDate: beforeDate),
+      // Daily Score server sync (Oct 28, 2026): past-day scores
+      // computed in the background queue for upload exactly like
+      // foreground ones. The queue is durable + owner-stamped, so
+      // a background-computed record simply waits there for the
+      // next flush trigger whose POST can land.
+      scorePastDays: (beforeDate) =>
+          DailyScoreEngine(store: store, scoreSync: DailyScoreSync.instance)
+              .computeMissingScores(beforeDate: beforeDate),
       notifier: LocalDailyScoreReadyNotifier(),
     );
   }

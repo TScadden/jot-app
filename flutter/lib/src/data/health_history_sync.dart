@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:tabs_lab/src/data/crash_reporting.dart';
 import 'package:tabs_lab/src/data/daily_score.dart';
+import 'package:tabs_lab/src/data/daily_score_sync.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 
@@ -39,29 +40,41 @@ class HealthHistorySync {
       : _hc = HealthConnectService(),
         _store = HealthHistoryStore.instance,
         _now = DateTime.now,
+        _scoreSync = DailyScoreSync.instance,
         _readTimeout = HealthConnectService.readTimeout;
 
   /// Injectable for tests / WS2 wiring. [readTimeoutOverride]
   /// shortens the per-read bound (see [captureFromHealthConnect])
   /// so a wedged-read test does not wait the production 30 s —
   /// the same pattern as the HC service's probe timeout override.
+  /// [scoreSync] wires the post-capture engine's Daily Score
+  /// server-sync hook (Oct 28, 2026): the shared [instance] and
+  /// the screens' explicit wiring pass it; test constructions
+  /// leave it null and scoring stays exactly pre-sync.
   factory HealthHistorySync.withDeps({
     HealthConnectService? hc,
     HealthHistoryStore? store,
     DateTime Function()? now,
     Duration? readTimeoutOverride,
+    DailyScoreSync? scoreSync,
   }) =>
       HealthHistorySync._(
           hc ?? HealthConnectService(),
           store ?? HealthHistoryStore.instance,
           now ?? DateTime.now,
-          readTimeoutOverride ?? HealthConnectService.readTimeout);
+          readTimeoutOverride ?? HealthConnectService.readTimeout,
+          scoreSync);
 
-  HealthHistorySync._(this._hc, this._store, this._now, this._readTimeout);
+  HealthHistorySync._(this._hc, this._store, this._now, this._readTimeout,
+      this._scoreSync);
 
   HealthConnectService _hc;
   HealthHistoryStore _store;
   DateTime Function() _now;
+
+  /// The Daily Score server-sync hook handed to the post-capture
+  /// engine run (see the factory doc). Null = sync off.
+  final DailyScoreSync? _scoreSync;
 
   /// The bound applied to every Health Connect read inside a
   /// capture (V-2): [HealthConnectService.readTimeout] in
@@ -440,7 +453,8 @@ class HealthHistorySync {
       // ALL THREE components are available, otherwise it stays
       // pending for a later capture to retry. Past days in the
       // same run score under the day-boundary fallback.
-      await DailyScoreEngine(store: _store).computeMissingScores(
+      await DailyScoreEngine(store: _store, scoreSync: _scoreSync)
+          .computeMissingScores(
         completeOnlyDate: _historyDateStr(now),
       );
       return true;

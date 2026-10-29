@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/daily_score.dart';
 import 'package:tabs_lab/src/data/daily_score_refresh.dart';
+import 'package:tabs_lab/src/data/daily_score_sync.dart';
 import 'package:tabs_lab/src/data/daily_score_refresh_owner.dart';
 import 'package:tabs_lab/src/data/refresh_keep_alive.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart'
@@ -106,8 +107,20 @@ class DailyScoreScreen extends StatefulWidget {
   /// screen's store.
   final ScoreCapture? snapshotCapture;
 
+  /// Injectable for tests: the Daily Score server sync (Oct 28,
+  /// 2026). When resolved (see [_DailyScoreScreenState._scoreSync]),
+  /// opening this screen flushes the pending push queue and —
+  /// when the local history has unscored gaps — hydrates from the
+  /// server, repainting silently when the merge lands. Invisible
+  /// by design: no indicator, no copy.
+  final DailyScoreSync? scoreSync;
+
   const DailyScoreScreen(
-      {super.key, this.store, this.refreshOwner, this.snapshotCapture});
+      {super.key,
+      this.store,
+      this.refreshOwner,
+      this.snapshotCapture,
+      this.scoreSync});
 
   @override
   State<DailyScoreScreen> createState() => _DailyScoreScreenState();
@@ -118,6 +131,15 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
       widget.store ?? HealthHistoryStore.instance;
   List<_ScoredDay> _days = const []; // newest first
   bool _loaded = false;
+
+  /// The resolved server sync: an injected one wins; the
+  /// production default (no store injected — the screen is on the
+  /// shared store) is [DailyScoreSync.instance]; a test that
+  /// injects a store without a sync gets NO sync, so pre-sync
+  /// test behavior is unchanged.
+  DailyScoreSync? get _scoreSync =>
+      widget.scoreSync ??
+      (widget.store == null ? DailyScoreSync.instance : null);
 
   @override
   void initState() {
@@ -154,6 +176,20 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
         _days = _scoredDaysFrom(all);
         _loaded = true;
       });
+      // SERVER SYNC (Oct 28, 2026): opening the history is a
+      // flush trigger, and — when the local history has unscored
+      // gaps (an empty store counts: a fresh device's whole
+      // history is a gap) — a hydration trigger. Kicked AFTER the
+      // stored paint above, fully async: first paint never waits
+      // on the network, and the list repaints from the store when
+      // the merge lands. Silent by design (no indicator, no
+      // copy); failures leave the painted history untouched.
+      final sync = _scoreSync;
+      if (sync != null) {
+        final hasGaps = all.isEmpty ||
+            all.values.any((row) => row.dailyScore == null);
+        unawaited(_flushAndMaybeHydrate(sync, hydrate: hasGaps));
+      }
     } catch (_) {
       // Same defined state the old single-chain catch produced:
       // loaded, empty — the building state.
@@ -175,13 +211,15 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
       // capture's own post-capture run is the only automatic run
       // that may score today, and only when today is complete.
       final snapshot = widget.snapshotCapture ??
-          HealthHistorySync.withDeps(store: _store).capture;
+          HealthHistorySync.withDeps(store: _store, scoreSync: _scoreSync)
+              .capture;
       await snapshot(force: false);
       // This screen's own compute run stays cut off BEFORE today
       // (TODAY RULE, daily_score.dart): it backfills past days
       // under the day-boundary fallback but never scores today.
-      await DailyScoreEngine(store: _store).computeMissingScores(
-          beforeDate: historyDateStr(DateTime.now()));
+      await DailyScoreEngine(store: _store, scoreSync: _scoreSync)
+          .computeMissingScores(
+              beforeDate: historyDateStr(DateTime.now()));
       final all = await _store.readAll();
       if (!mounted) return;
       setState(() {
@@ -193,6 +231,31 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
       // chain never blanks a painted screen.
       if (!mounted) return;
       if (!_loaded) setState(() => _loaded = true);
+    }
+  }
+
+  /// The screen-open sync trigger (see the kick in [_load]):
+  /// flush the pending queue, hydrate when the painted history
+  /// had gaps, then repaint from the store if anything changed.
+  /// Never throws — a failed sync leaves the painted history
+  /// exactly as it was.
+  Future<void> _flushAndMaybeHydrate(
+    DailyScoreSync sync, {
+    required bool hydrate,
+  }) async {
+    try {
+      await sync.flush();
+      if (!hydrate) return;
+      final changed = await sync.hydrate();
+      if (changed == 0 || !mounted) return;
+      final all = await _store.readAll();
+      if (!mounted) return;
+      setState(() {
+        _days = _scoredDaysFrom(all);
+        _loaded = true;
+      });
+    } catch (_) {
+      // Silent by design: sync is invisible in v1.
     }
   }
 

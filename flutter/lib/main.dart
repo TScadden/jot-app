@@ -20,6 +20,7 @@ import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/daily_score_background.dart';
 import 'package:tabs_lab/src/data/daily_score_refresh_owner.dart';
 import 'package:tabs_lab/src/data/lean_test_session.dart';
+import 'package:tabs_lab/src/data/daily_score_sync.dart';
 import 'package:tabs_lab/src/data/migraine_attack_store.dart';
 import 'package:tabs_lab/src/data/migraine_controller.dart';
 import 'package:tabs_lab/src/data/migraine_notification.dart';
@@ -533,6 +534,12 @@ class _AppFlowState extends State<AppFlow>
     // is account-bound too: session expiry leaves none of the expired
     // account's all-time history or Daily Scores on device.
     unawaited(HealthHistoryStore.instance.clear());
+    // Daily Score server sync (Oct 28, 2026): the pending-push
+    // queue is owner-stamped account data too — session expiry
+    // wipes it, and its generation bump aborts any in-flight
+    // hydration so wiped scores cannot be resurrected by a merge
+    // that was already on the wire.
+    unawaited(DailyScoreSync.instance.clear());
     // Refresh-scope fix (Oct 20, 2026): the app-scoped Daily
     // Score refresh owner's pending outcomes are in-memory only,
     // but they are account-bound too — session expiry drops them
@@ -617,6 +624,13 @@ class _AppFlowState extends State<AppFlow>
     // R70 fix pass (Vera F1 / Juno C1) — same owner-mismatch
     // enforcement for the historical health store.
     unawaited(HealthHistoryStore.instance.clearIfOwnerMismatch(email));
+    // Daily Score server sync (Oct 28, 2026): same enforcement
+    // for the pending-push queue — a previous account's queued
+    // scores are dropped UNSENT before they can flush under this
+    // session (the sync's flush/hydrate re-check the owner
+    // themselves, so this unawaited drop cannot be raced into a
+    // cross-account send).
+    unawaited(DailyScoreSync.instance.clearIfOwnerMismatch(email));
     // Refresh-scope fix (Oct 20, 2026): same enforcement for the
     // refresh owner's in-memory pending outcomes — synchronous,
     // so a previous account's deferred outcome is gone before the
@@ -829,8 +843,31 @@ class _AppFlowState extends State<AppFlow>
     ));
   }
 
+  /// Daily Score server sync trigger (Oct 28, 2026): every home
+  /// landing is a sign-in completion for sync purposes — flush
+  /// the pending score queue, then hydrate the local history
+  /// from the server. This one funnel covers cold-start session
+  /// restore (a fresh install with a stored session is the same
+  /// path), explicit sign-in, and onboarding completion, because
+  /// all three land home through [_kickFirstRunResync].
+  /// Fire-and-forget and silent: sync is invisible in v1, and the
+  /// sync service's own owner checks keep a stale queue from ever
+  /// flushing under a different account.
+  void _triggerDailyScoreSync() {
+    unawaited(() async {
+      try {
+        await DailyScoreSync.instance.flushAndHydrate();
+      } catch (_) {
+        // The sync service never throws; this guard is
+        // defense-in-depth so a sync surprise can never break a
+        // home landing.
+      }
+    }());
+  }
+
   void _kickFirstRunResync() {
     _retryPendingLogEntries();
+    _triggerDailyScoreSync();
     _firstRunResyncFuture ??= _runFirstRunResync();
     // Every home landing funnels through here (cold-start restore,
     // sign-in, onboarding completion): a stashed Daily Score
@@ -882,6 +919,9 @@ class _AppFlowState extends State<AppFlow>
     // R70 fix pass (Vera F1 / Juno C1) — same owner-mismatch
     // enforcement for the historical health store.
     unawaited(HealthHistoryStore.instance.clearIfOwnerMismatch(email));
+    // Daily Score server sync (Oct 28, 2026): same owner-mismatch
+    // enforcement for the pending-push queue as login.
+    unawaited(DailyScoreSync.instance.clearIfOwnerMismatch(email));
     // Refresh-scope fix (Oct 20, 2026): same enforcement for the
     // refresh owner's in-memory pending outcomes.
     DailyScoreRefreshOwner.instance.clearIfOwnerMismatch(email);
