@@ -354,13 +354,14 @@ class _AppFlowState extends State<AppFlow>
     }
   }
 
-  // Round 60 — the Round 32 onboarding gate as one future, so the
-  // restore can run it CONCURRENTLY with the email read instead of
-  // behind it. Same semantics as the sequential chain it replaces:
-  // local reads only, no network; any failure → Round 31 behavior
-  // (hasState false, no resume step, straight home). The three flag
-  // reads are independent of each other, so they also run in
-  // parallel inside the gate (sequential sum → parallel max).
+  // The Round 32 onboarding gate as one future, read SEQUENTIALLY
+  // by the restore: email read → lean-test bind → pre-claim state
+  // capture → onboarding owner claim → this gate, so the gate is
+  // derived from POST-wipe state (Vera F1). Local reads only, no
+  // network; any failure → Round 31 behavior (hasState false, no
+  // resume step, straight home). The three flag reads are
+  // independent of each other, so they run in parallel inside
+  // the gate (sequential sum → parallel max).
   Future<({bool hasState, OnboardingStep? resumeStep})>
       _readOnboardingGate() async {
     try {
@@ -393,11 +394,11 @@ class _AppFlowState extends State<AppFlow>
       // (see _readEmailOrNull). A TOKEN-read failure keeps the outer
       // behavior: fall to welcome, without clearing anything.
       //
-      // Round 60 — email ∥ onboarding gate: both are local storage
-      // reads off the same token decision and neither depends on the
-      // other, so they run concurrently. Session validation remains
-      // exactly what Round 31 made it: stored-session PRESENCE only,
-      // no network round-trip at launch, ever.
+      // Restore order is SEQUENTIAL: email read → lean-test bind →
+      // pre-claim state capture → onboarding owner claim →
+      // onboarding gate. Session validation remains exactly what
+      // Round 31 made it: stored-session PRESENCE only, no network
+      // round-trip at launch, ever.
       final email = await _readEmailOrNull();
       // Phase 1 item 6 (F2): bind the lean-test store's owner from
       // the restored session BEFORE any home landing can load,
