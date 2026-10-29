@@ -2905,6 +2905,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (_kStore.stateFor(doc.id) == KnowledgeExtractionState.ready) {
         continue;
       }
+      // Docfix: 'empty' is terminal for AUTO-backfill — extraction
+      // already ran successfully and found no readable text; only
+      // a manual retry from the viewer re-runs it.
+      if (_kStore.stateFor(doc.id) == KnowledgeExtractionState.empty) {
+        continue;
+      }
       if (_kBusyDocs.contains(doc.id)) continue;
       _kBusyDocs.add(doc.id);
       try {
@@ -3096,7 +3102,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       // Clear the failed marker by attempting fresh: backfill goes
       // through the server file data like native's retry path.
-      final state = await _kService.backfill(doc);
+      // force: a manual retry also re-runs an 'empty' doc.
+      final state = await _kService.backfill(doc, force: true);
       if (!mounted) return;
       setState(() {
         if (state == KnowledgeExtractionState.failed) {
@@ -3318,6 +3325,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         '${text?.length ?? 0} characters extracted',
                       KnowledgeExtractionState.failed =>
                         'No content could be extracted',
+                      KnowledgeExtractionState.empty =>
+                        'No readable text was found',
                       KnowledgeExtractionState.pending =>
                         'Processing… check back shortly',
                     },
@@ -3369,7 +3378,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           style: TextStyle(color: NotelColors.primary)),
                     ),
                   ] else if (state == KnowledgeExtractionState.failed) ...[
-                    const Text('No readable content was found in this file.',
+                    const Text(
+                        'Gemini could not complete extraction for this file. Try again.',
+                        style:
+                            TextStyle(color: NotelColors.textSecondary, fontSize: 13)),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      key: ValueKey('doc_retry_extract_${doc.id}'),
+                      onPressed: () async {
+                        await _retryExtraction(doc);
+                        setLocal(() {});
+                      },
+                      child: const Text('Retry extraction',
+                          style: TextStyle(color: NotelColors.primary)),
+                    ),
+                  ] else if (state == KnowledgeExtractionState.empty) ...[
+                    // Juno-ruled EMPTY copy, verbatim, with NO
+                    // error-code suffix. Manually retryable.
+                    const Text(
+                        'Gemini read this file and found no readable text in it.',
                         style:
                             TextStyle(color: NotelColors.textSecondary, fontSize: 13)),
                     const SizedBox(height: 8),
@@ -4607,6 +4634,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   const Text('• AI read',
                                       style: TextStyle(
                                           color: NotelColors.success,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w500))
+                                else if (state ==
+                                    KnowledgeExtractionState.empty)
+                                  const Text('• No readable text found',
+                                      style: TextStyle(
+                                          color: NotelColors.textSecondary,
                                           fontSize: 10,
                                           fontWeight: FontWeight.w500))
                                 else

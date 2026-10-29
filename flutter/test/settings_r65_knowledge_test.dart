@@ -253,8 +253,8 @@ void main() {
       expect(store.textFor('d2'), isNull);
     });
 
-    test('extraction: an empty result is failed, not ready-with-empty',
-        () async {
+    test('extraction: an empty result is the empty state (docfix), '
+        'not failed and not ready-with-empty', () async {
       final server = FakeDocServer()..processResult = '  ';
       final store = memStore({});
       await store.load('a@example.com');
@@ -263,7 +263,8 @@ void main() {
       const doc = KnowledgeDocumentMeta(
           id: 'd1', name: 'a.pdf', mimeType: 'application/pdf', createdAt: 1);
       expect(await service.extractFromBytes(doc, 'eA=='),
-          KnowledgeExtractionState.failed);
+          KnowledgeExtractionState.empty);
+      expect(store.stateFor('d1'), KnowledgeExtractionState.empty);
     });
 
     test('backfill: fetches file data then extracts (native restore path)',
