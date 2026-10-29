@@ -1019,28 +1019,30 @@ class HealthHistoryStore {
     await _ensureWarmed();
     final existing = _days[date];
     if (existing == null) return false;
-    final scoresChanged = existing.dailyScore != dailyScore ||
-        existing.scoreSleep != scoreSleep ||
-        existing.scoreHrv != scoreHrv ||
-        existing.scoreRestingHr != scoreRestingHr;
     _days[date] = existing.withScores(
       dailyScore: dailyScore,
       scoreSleep: scoreSleep,
       scoreHrv: scoreHrv,
       scoreRestingHr: scoreRestingHr,
     );
-    // Score metadata (sync): a refresh that recomputes the SAME
-    // four score values leaves the stored record — metadata
-    // included — byte-identical (the standing guarantee the
-    // refresh tests pin), so metadata is (re)stamped only when
-    // the scores actually changed, or when the day carries no
-    // metadata yet (a legacy record being refreshed for the
-    // first time). The refresh's sync queue entry is unaffected:
-    // it carries its own computedAt, and hydration adopts the
-    // server's manual_refresh metadata when it returns.
-    if (scoreSource != null &&
-        scoreComputedAt != null &&
-        (scoresChanged || !_scoreMeta.containsKey(date))) {
+    // Score metadata (sync) — F1 fix (Vera, Oct 28, 2026):
+    // restamp UNCONDITIONALLY whenever the caller supplies
+    // metadata, even when the recomputation yields the SAME
+    // four score values. The local stamp is the comparison
+    // operand of the hydration conflict rule in
+    // [applyHydratedScores] (server wins iff server
+    // manual_refresh && server.computedAt > local computedAt),
+    // and the refresher passes ONE computedAt to both this
+    // method and its queued sync payload — the sync layer's
+    // invariant is that the payload stamp == the store
+    // metadata stamp. Keeping the old stamp on an
+    // unchanged-score refresh broke that invariant (local
+    // still read auto @ T1 while the payload/server carried
+    // manual_refresh @ T2), so a stale local stamp could
+    // cause over-adoption of a server record in a
+    // POST-fails/GET-succeeds window. Callers that supply
+    // no metadata keep the previous behavior (no restamp).
+    if (scoreSource != null && scoreComputedAt != null) {
       _scoreMeta[date] = DailyScoreMeta(
         source: scoreSource,
         computedAt: scoreComputedAt,

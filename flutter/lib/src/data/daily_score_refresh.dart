@@ -75,8 +75,11 @@ const String dailyScoreRefreshCaptureFailedCode = 'CAPTURE_FAILED';
 enum DailyScoreRefreshStatus {
   /// The viewed day was re-scored and the new computation
   /// persisted (it may be numerically identical to the old score
-  /// when no new data landed — the persisted record is then
-  /// byte-identical too).
+  /// when no new data landed — the score row is then unchanged,
+  /// but the day's score metadata is still restamped to this
+  /// refresh's source/computedAt, the same stamp the queued
+  /// sync payload carries; see the F1 note in
+  /// [HealthHistoryStore.replaceScore]).
   refreshed,
 
   /// No recomputation was possible (or the day vanished from the
@@ -251,9 +254,11 @@ class DailyScoreRefresher {
     }
     // Sync hook: queue the JUST-REPLACED computation for upload
     // as a manual_refresh record. Fire-and-forget (see
-    // [scoreSync]); even a byte-identical rescore queues — the
-    // server's manual_refresh record is what lets another device
-    // adopt this day's manual provenance.
+    // [scoreSync]); even a numerically identical rescore queues
+    // — the server's manual_refresh record is what lets another
+    // device adopt this day's manual provenance. Its computedAt
+    // is the SAME stamp replaceScore just wrote into the
+    // store's score metadata (the F1 invariant).
     scoreSync?.queueComputation(
       computation,
       source: dailyScoreSourceManualRefresh,

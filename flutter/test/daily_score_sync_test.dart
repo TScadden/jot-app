@@ -420,11 +420,104 @@ void main() {
       expect(target.source, dailyScoreSourceManualRefresh);
       expect(target.score, 100);
       expect(target.computedAt, refreshNow.millisecondsSinceEpoch);
-      // The local metadata moved to the manual record too (the
-      // scores changed, so the restamp rule applies).
+      // The local metadata moved to the manual record too.
       final meta = store.scoreMetaFor('2026-10-16')!;
       expect(meta.source, dailyScoreSourceManualRefresh);
       expect(meta.computedAt, refreshNow.millisecondsSinceEpoch);
+    });
+
+    test(
+        'F1: unchanged-score manual refresh restamps store meta '
+        'to the queued payload stamp; older server records do '
+        'not displace the refreshed local record', () async {
+      final (:rig, :store) = await seededRig();
+      final engineNow = DateTime(2026, 10, 17, 8);
+      await DailyScoreEngine(
+        store: store,
+        scoreSync: rig.sync,
+        now: () => engineNow,
+      ).computeMissingScores();
+      await rig.sync.drain();
+      expect(rig.server.rows['2026-10-16']!.source,
+          dailyScoreSourceAuto);
+      expect(store.scoreMetaFor('2026-10-16')!.source,
+          dailyScoreSourceAuto);
+      expect(store.scoreMetaFor('2026-10-16')!.computedAt,
+          engineNow.millisecondsSinceEpoch);
+      final scoreBefore =
+          (await store.readAll())['2026-10-16']!.dailyScore;
+      expect(scoreBefore, 62);
+
+      // POST-fails window: the refresh's queued payload cannot
+      // land, so it stays pending for inspection / retry.
+      rig.server.failPosts = true;
+      // A manual refresh whose capture lands NO new data: the
+      // recomputation is numerically identical (still 62).
+      final refreshNow = DateTime(2026, 10, 17, 20);
+      final refresher = DailyScoreRefresher.withCapture(
+        store: store,
+        scoreSync: rig.sync,
+        now: () => refreshNow,
+        capture: ({bool force = false}) async => true,
+      );
+      final outcome = await refresher.refresh('2026-10-16');
+      expect(outcome.status, DailyScoreRefreshStatus.refreshed);
+      expect(outcome.computation!.dailyScore, scoreBefore);
+      await rig.sync.drain();
+
+      // THE F1 INVARIANT: store metadata stamp == queued
+      // payload stamp (source + computedAt), even though the
+      // four score values never changed.
+      final meta = store.scoreMetaFor('2026-10-16')!;
+      expect(meta.source, dailyScoreSourceManualRefresh);
+      expect(meta.computedAt, refreshNow.millisecondsSinceEpoch);
+      final pending = (await rig.sync.pendingRecords())
+          .where((r) => r.date == '2026-10-16')
+          .toList();
+      expect(pending, hasLength(1));
+      expect(pending.single.source, meta.source);
+      expect(pending.single.computedAt, meta.computedAt);
+      expect(pending.single.score, scoreBefore);
+
+      // Downstream hydration consequence, part 1 (per Vera's
+      // prescription): a server AUTO record for that day does
+      // NOT displace the refreshed local record, however new
+      // its stamp. Null raw inputs isolate the score decision
+      // (no biometric fill can count as a change).
+      rig.server.rows['2026-10-16'] = _record('2026-10-16',
+          score: 91,
+          asleepMinutes: null,
+          hrvMs: null,
+          restingHrBpm: null,
+          source: dailyScoreSourceAuto,
+          computedAt: 9999999999999);
+      expect(await rig.sync.hydrate(), 0);
+      expect((await store.readAll())['2026-10-16']!.dailyScore,
+          scoreBefore);
+      expect(store.scoreMetaFor('2026-10-16')!.computedAt,
+          refreshNow.millisecondsSinceEpoch);
+
+      // Downstream consequence, part 2 (the discriminating
+      // F1 case): a server manual_refresh stamped BETWEEN the
+      // original auto stamp (T1) and this refresh (T2) must
+      // also lose — local computedAt is now T2, so T_mid > T2
+      // is false. Before the fix the local stamp stayed at T1
+      // and this record was over-adopted.
+      final midNow = DateTime(2026, 10, 17, 14);
+      rig.server.rows['2026-10-16'] = _record('2026-10-16',
+          score: 91,
+          asleepMinutes: null,
+          hrvMs: null,
+          restingHrBpm: null,
+          source: dailyScoreSourceManualRefresh,
+          computedAt: midNow.millisecondsSinceEpoch);
+      expect(await rig.sync.hydrate(), 0);
+      expect((await store.readAll())['2026-10-16']!.dailyScore,
+          scoreBefore);
+      final metaAfter = store.scoreMetaFor('2026-10-16')!;
+      expect(metaAfter.source, dailyScoreSourceManualRefresh);
+      expect(metaAfter.computedAt,
+          refreshNow.millisecondsSinceEpoch);
     });
 
     test('an engine with NO sync wired scores exactly as before '
