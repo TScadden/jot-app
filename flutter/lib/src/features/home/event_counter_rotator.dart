@@ -11,7 +11,10 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// Rotating Event Counters Row" — the counters sit on the RIGHT of
 /// the streak pills (they are not a separate card), fed by
 /// `quickLogState.eventCounters.filter { !it.isArchived }` in stored
-/// (Settings list) order.
+/// (Settings list) order. The Flutter caller filters with the
+/// unified predicate (`EventCounterItem.isActive`, Oct 28, 2026 —
+/// neither archived nor delete-stamped) via [activeEventCounters],
+/// so a stamp-only row never reaches this widget.
 ///
 /// Native behavior, ported:
 /// - Display per counter: `"Since {name}"` / `"Until {name}"`

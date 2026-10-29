@@ -4860,7 +4860,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// [historyTransform] likewise receives the FRESH history (and
   /// the fresh counters, so the end-and-save handler can tell
   /// whether its counter is really being removed) and returns the
-  /// history to push, or null to leave history untouched.
+  /// history to push, or null to leave history untouched. It runs
+  /// BEFORE [transform] (Oct 28, 2026): a paired history+counter
+  /// move — restoring a history entry recreates its counter — can
+  /// share one fresh-data decision between the two transforms (the
+  /// history transform records whether the entry was really still
+  /// present, and the counter transform adds the counter only
+  /// then), so the pair still moves atomically in this one push
+  /// and a concurrent save that already restored the entry cannot
+  /// duplicate the counter.
   /// Returns true only when the push landed.
   Future<bool> _saveCounters(
     List<EventCounterItem> Function(List<EventCounterItem> freshCounters)
@@ -4910,17 +4918,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
         SettingsProfileData.fromPull(body));
     final freshCounters =
         freshData.eventCounters.map(EventCounterItem.fromMap).toList();
-    final counters = transform(freshCounters);
-    final raw = jsonEncode(counters.map((c) => c.toMap()).toList());
-    final fields = <String, dynamic>{'eventCounters': raw};
+    // The history transform runs FIRST (see the _saveCounters doc):
+    // paired history+counter moves share their fresh-data decision
+    // through it before the counter transform is computed.
     String? historyRaw;
     if (historyTransform != null) {
       final newHistory =
           historyTransform(freshData.counterHistory, freshCounters);
       if (newHistory != null) {
         historyRaw = jsonEncode(newHistory);
-        fields['counterHistory'] = historyRaw;
       }
+    }
+    final counters = transform(freshCounters);
+    final raw = jsonEncode(counters.map((c) => c.toMap()).toList());
+    final fields = <String, dynamic>{'eventCounters': raw};
+    if (historyRaw != null) {
+      fields['counterHistory'] = historyRaw;
     }
     if (deletedCounterId != null) {
       await _recordCounterTombstone(deletedCounterId);
@@ -4964,11 +4977,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   List<Widget> _countersPage() {
     final counters = _counters;
-    final active = counters.where((c) => !c.isArchived).toList();
-    // Delete/Restore model (Oct 27, 2026): a deleted counter is an
-    // archived row carrying a deletedAt stamp; it renders in the
-    // DELETED COUNTERS section below and can always be brought back.
-    final deleted = counters.where((c) => c.isArchived).toList();
+    // Unified split (founder direction, Oct 28, 2026): ONE
+    // predicate — active iff neither archived nor delete-stamped
+    // (EventCounterItem.isActive); every non-active counter lands
+    // in the single PAST COUNTERS box below, together with the
+    // ended-counter history entries. There is no separate
+    // DELETED COUNTERS section any more.
+    final active = counters.where((c) => c.isActive).toList();
+    final past = counters.where((c) => c.isNonActive).toList();
     final history = _data.counterHistory;
     return [
       Row(
@@ -5028,20 +5044,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ])
       else if (active.isNotEmpty)
         _counterCard(active),
-      if (deleted.isNotEmpty) ...[
-        const SizedBox(height: 16),
-        _sectionLabel('DELETED COUNTERS'),
-        // The founder's requested look (Oct 27, 2026): the same
-        // clean text-row card as PAST COUNTERS below — no per-row
-        // icon rail; each row's only action is 'Bring back'.
-        _card(_deletedCounterRows(deleted),
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8)),
-      ],
-      if (history.isNotEmpty) ...[
+      if (past.isNotEmpty || history.isNotEmpty) ...[
         const SizedBox(height: 16),
         _sectionLabel('PAST COUNTERS'),
-        _card(_pastCounterRows(history),
+        // ONE box for everything non-active (Oct 28, 2026): the
+        // non-active event counters first, then the ended-counter
+        // history entries, as divider-separated muted text rows in
+        // a single card; every row's only action is 'Restore'.
+        _card(_pastBoxRows(past, history),
             padding:
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 8)),
       ],
@@ -5072,9 +5082,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8));
   }
 
-  /// 'Mon DD, YYYY' — the date format shared by the Past Counters
-  /// rows and the Deleted Counters rows, so the two sections read
-  /// identically.
+  /// 'Mon DD, YYYY' — the date format for every row in the
+  /// unified Past Counters box.
   String _monthDayYearLabel(int ms) {
     final date = DateTime.fromMillisecondsSinceEpoch(ms);
     const months = [
@@ -5084,89 +5093,178 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return '${months[date.month - 1]} ${date.day.toString().padLeft(2, '0')}, ${date.year}';
   }
 
-  List<Widget> _pastCounterRows(List<Map<String, dynamic>> history) {
+  /// Tolerant int read for history-entry fields (num | numeric
+  /// string, the SettingsProfileData parser's convention).
+  int _historyInt(dynamic v) =>
+      v is num ? v.toInt() : (v is String ? int.tryParse(v) ?? 0 : 0);
+
+  /// The unified PAST COUNTERS box (founder direction, Oct 28,
+  /// 2026): non-active event counters first, then the
+  /// ended-counter history entries — divider-separated muted text
+  /// rows in ONE card. Every row's only action is 'Restore'.
+  List<Widget> _pastBoxRows(List<EventCounterItem> past,
+      List<Map<String, dynamic>> history) {
+    final rowWidgets = <Widget>[
+      for (final c in past) _pastCounterRow(c),
+      for (var i = 0; i < history.length; i++)
+        _pastHistoryRow(history[i], i),
+    ];
     final rows = <Widget>[];
-    for (var i = 0; i < history.length; i++) {
+    for (var i = 0; i < rowWidgets.length; i++) {
       if (i > 0) {
         rows.add(const Divider(color: NotelColors.divider, height: 1));
       }
-      final h = history[i];
-      final ended = h['endedAt'];
-      final ms = ended is num
-          ? ended.toInt()
-          : (ended is String ? int.tryParse(ended) ?? 0 : 0);
-      rows.add(Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Text('${h['name'] ?? ''} (Ended: ${_monthDayYearLabel(ms)})',
-            style: const TextStyle(
-                color: NotelColors.textSecondary, fontSize: 11)),
-      ));
+      rows.add(rowWidgets[i]);
     }
     return rows;
   }
 
-  /// Deleted counters in the Past Counters style (founder
-  /// direction, Oct 27, 2026): divider-separated muted text rows,
-  /// 'Name (Deleted: Mon DD, YYYY)', no per-row icon clutter. Each
-  /// row's ONLY action is the 'Bring back' restore — no edit, no
-  /// end (ending a deleted counter means bringing it back first,
-  /// then ending it from the active list). Rows archived before
-  /// the delete stamp existed carry no deletedAt: they render
-  /// name-only — a date is never invented for them.
-  List<Widget> _deletedCounterRows(List<EventCounterItem> list) {
-    final rows = <Widget>[];
-    for (var i = 0; i < list.length; i++) {
-      if (i > 0) {
-        rows.add(const Divider(color: NotelColors.divider, height: 1));
-      }
-      final c = list[i];
-      final label = c.deletedAt == null
-          ? c.name
-          : '${c.name} (Deleted: ${_monthDayYearLabel(c.deletedAt!)})';
-      rows.add(Row(
-        key: ValueKey('counter_row_${c.id}'),
-        children: [
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text(label,
-                  style: const TextStyle(
-                      color: NotelColors.textSecondary, fontSize: 11)),
-            ),
+  /// The shared Restore button style for Past-box rows: ≥48dp tap
+  /// target (this page's a11y precedent) while the label itself
+  /// stays at the rows' 11px.
+  ButtonStyle get _pastRestoreButtonStyle => TextButton.styleFrom(
+        foregroundColor: NotelColors.textSecondary,
+        minimumSize: const Size(48, 48),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        textStyle: const TextStyle(fontSize: 11),
+      );
+
+  /// A non-active event counter in the Past Counters style:
+  /// 'Name (Deleted: Mon DD, YYYY)' when it carries a delete
+  /// stamp, name-only when it does not (rows archived before the
+  /// stamp existed — a date is never invented for them). No
+  /// per-row icon clutter; the row's ONLY action is 'Restore' —
+  /// no edit, no end (ending a past counter means restoring it
+  /// first, then ending it from the active list).
+  Widget _pastCounterRow(EventCounterItem c) {
+    final label = c.deletedAt == null
+        ? c.name
+        : '${c.name} (Deleted: ${_monthDayYearLabel(c.deletedAt!)})';
+    return Row(
+      key: ValueKey('counter_row_${c.id}'),
+      children: [
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(label,
+                style: const TextStyle(
+                    color: NotelColors.textSecondary, fontSize: 11)),
           ),
-          TextButton(
-            key: ValueKey('counter_restore_${c.id}'),
-            style: TextButton.styleFrom(
-              foregroundColor: NotelColors.textSecondary,
-              // ≥48dp tap target (this page's a11y precedent) while
-              // the label itself stays at the rows' 11px.
-              minimumSize: const Size(48, 48),
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              textStyle: const TextStyle(fontSize: 11),
-            ),
-            // Vera F1 — disabled while a counter save is in flight.
-            onPressed: _counterSaveInFlight
-                ? null
-                : () async {
-                    // ABSOLUTE intent: restore THIS row by id —
-                    // isArchived false AND the delete stamp cleared,
-                    // every other field carried through intact.
-                    await _saveCounters((fresh) => fresh
-                        .map((x) => x.id == c.id
-                            ? x.copyWith(isArchived: false, deletedAt: null)
-                            : x)
-                        .toList());
-                  },
-            child: const Text('Bring back'),
+        ),
+        TextButton(
+          key: ValueKey('counter_restore_${c.id}'),
+          style: _pastRestoreButtonStyle,
+          // Vera F1 — disabled while a counter save is in flight.
+          onPressed: _counterSaveInFlight
+              ? null
+              : () async {
+                  // ABSOLUTE intent: restore THIS row by id —
+                  // isArchived false AND the delete stamp cleared,
+                  // every other field carried through intact.
+                  await _saveCounters((fresh) => fresh
+                      .map((x) => x.id == c.id
+                          ? x.copyWith(isArchived: false, deletedAt: null)
+                          : x)
+                      .toList());
+                },
+          // Founder-directed copy (Oct 28, 2026): the action is
+          // named 'Restore'. This supersedes Juno's earlier
+          // 'Bring back' approval (Oct 27, 2026).
+          child: const Text('Restore'),
+        ),
+      ],
+    );
+  }
+
+  /// An ended-counter history entry in the same Past-box style:
+  /// 'Name (Ended: Mon DD, YYYY)', with 'Restore' as its only
+  /// action — restoring RECREATES the counter (see
+  /// [_restoreHistoryEntry]).
+  Widget _pastHistoryRow(Map<String, dynamic> h, int index) {
+    final name = '${h['name'] ?? ''}';
+    final targetMs = _historyInt(h['targetDate']);
+    final endedMs = _historyInt(h['endedAt']);
+    return Row(
+      key: ValueKey('counter_history_row_$index'),
+      children: [
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text('$name (Ended: ${_monthDayYearLabel(endedMs)})',
+                style: const TextStyle(
+                    color: NotelColors.textSecondary, fontSize: 11)),
           ),
-        ],
-      ));
-    }
-    return rows;
+        ),
+        TextButton(
+          key: ValueKey('counter_restore_history_$index'),
+          style: _pastRestoreButtonStyle,
+          // Vera F1 — disabled while a counter save is in flight.
+          onPressed: _counterSaveInFlight
+              ? null
+              : () => _restoreHistoryEntry(
+                  name: name, targetDateMs: targetMs, endedAtMs: endedMs),
+          // Founder-directed copy (Oct 28, 2026): 'Restore' (see
+          // the note on the event-counter row's button).
+          child: const Text('Restore'),
+        ),
+      ],
+    );
+  }
+
+  /// Restoring a HISTORY entry recreates its counter: the entry
+  /// leaves counterHistory and a new ACTIVE counter built from the
+  /// entry's stored name + targetDate joins eventCounters — both
+  /// in ONE [_saveCounters] call (historyTransform + counter
+  /// transform together), so the pair moves atomically against
+  /// fresh data. The new id uses the Add Counter dialog's
+  /// id-generation (creation time in epoch ms), bumped past any
+  /// id the fresh list already carries so it is unique;
+  /// isUp/autoUp/isFavorite default false.
+  ///
+  /// Dedupe (the End action's fresh-check pattern): the history
+  /// transform runs first inside _saveCounters and records
+  /// whether the FRESH history still carries this entry (matched
+  /// on its name + targetDate + endedAt triple, removing exactly
+  /// one match). If a concurrent save already restored/removed
+  /// it, the transform leaves the history untouched and the
+  /// counter transform adds nothing — no duplicate counter.
+  Future<void> _restoreHistoryEntry({
+    required String name,
+    required int targetDateMs,
+    required int endedAtMs,
+  }) async {
+    var entryStillPresent = false;
+    await _saveCounters(
+      (fresh) {
+        if (!entryStillPresent) return fresh;
+        var idMs = DateTime.now().millisecondsSinceEpoch;
+        final usedIds = fresh.map((x) => x.id).toSet();
+        while (usedIds.contains('$idMs')) {
+          idMs++;
+        }
+        return [
+          ...fresh,
+          EventCounterItem(
+            id: '$idMs',
+            name: name,
+            targetDate: targetDateMs,
+          ),
+        ];
+      },
+      historyTransform: (freshHistory, freshCounters) {
+        final idx = freshHistory.indexWhere((h) =>
+            '${h['name'] ?? ''}' == name &&
+            _historyInt(h['targetDate']) == targetDateMs &&
+            _historyInt(h['endedAt']) == endedAtMs);
+        if (idx < 0) return null;
+        entryStillPresent = true;
+        return [...freshHistory]..removeAt(idx);
+      },
+    );
   }
 
   Widget _counterRow(EventCounterItem c) {
-    // Active rows only (deleted rows render as _deletedCounterRows):
+    // Active rows only (non-active rows render in the Past box):
     // full-strength name with the Tabs-purple day label.
     return Padding(
       key: ValueKey('counter_row_${c.id}'),
@@ -5213,7 +5311,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     // own flag, which a double-tap or concurrent
                     // mutation would flip back. Single tap, no
                     // confirmation (Juno ruling, Oct 27, 2026): the
-                    // Deleted section's 'Bring back' is the undo.
+                    // Past box's 'Restore' is the undo.
                     final deletedAtMs =
                         DateTime.now().millisecondsSinceEpoch;
                     await _saveCounters((fresh) => fresh

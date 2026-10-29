@@ -351,6 +351,39 @@ void main() {
       expect(ctx.length, lessThanOrEqualTo(coachHealthContextBudget));
     });
 
+    test('coach context: only ACTIVE counters are included — '
+        'archived, stamp-only, and both-marks rows are excluded '
+        '(unified predicate, Oct 28, 2026)', () {
+      Map<String, dynamic> row(String name,
+              {bool archived = false, int? deletedAt}) =>
+          {
+            'id': name,
+            'name': name,
+            'targetDate': ms(DateTime(2026, 10, 20)),
+            'isUp': false,
+            'autoUp': false,
+            'isFavorite': false,
+            'isArchived': archived,
+            if (deletedAt != null) 'deletedAt': deletedAt,
+          };
+      final stamp = ms(DateTime(2026, 10, 10));
+      final ctx = buildCoachHealthContext(
+        profile: {
+          'eventCounters': jsonEncode([
+            row('ActiveCounter'),
+            row('ArchivedCounter', archived: true),
+            row('StampOnlyCounter', deletedAt: stamp),
+            row('BothMarksCounter', archived: true, deletedAt: stamp),
+          ]),
+        },
+        now: now,
+      );
+      expect(ctx, contains('ActiveCounter'));
+      expect(ctx, isNot(contains('ArchivedCounter')));
+      expect(ctx, isNot(contains('StampOnlyCounter')));
+      expect(ctx, isNot(contains('BothMarksCounter')));
+    });
+
     test('enriched context places health before action instructions',
         () {
       final ctx = coachEnrichedUserContext('BASE',

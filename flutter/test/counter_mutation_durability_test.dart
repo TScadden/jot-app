@@ -394,8 +394,9 @@ void main() {
       expect(serverC7['isArchived'], isNot(isTrue));
       expect(serverC7.containsKey('deletedAt'), isFalse);
 
-      // On this screen c3 is now in the Deleted section.
-      expect(find.text('DELETED COUNTERS'), findsOneWidget);
+      // On this screen c3 is now in the unified Past box.
+      expect(find.text('PAST COUNTERS'), findsOneWidget);
+      expect(find.text('DELETED COUNTERS'), findsNothing);
       expect(find.textContaining('Counter 3 (Deleted:'), findsOneWidget);
       expect(find.text('No counters yet.'), findsNothing);
 
@@ -403,7 +404,8 @@ void main() {
       // pull was in flight across the push. Its TTL cache must not
       // resurrect the pre-delete state.
       await _pumpSettings(tester, b, storeMap);
-      expect(find.text('DELETED COUNTERS'), findsOneWidget);
+      expect(find.text('PAST COUNTERS'), findsOneWidget);
+      expect(find.text('DELETED COUNTERS'), findsNothing);
       expect(find.textContaining('Counter 3 (Deleted:'), findsOneWidget);
       // F8 (correction round): the deleted row renders MUTED — its
       // combined label in textSecondary, an active row's name in
@@ -418,7 +420,7 @@ void main() {
       expect(find.text('Synced'), findsOneWidget);
       expect(find.text('Not synced'), findsNothing);
       expect(find.text('No counters yet.'), findsNothing);
-      // c3's only action in the Deleted section is 'Bring back';
+      // c3's only action in the Past box is 'Restore';
       // the 11 active rows still offer Delete.
       expect(find.byKey(const ValueKey('counter_restore_c3')),
           findsOneWidget);
@@ -480,7 +482,8 @@ void main() {
           reason: 'deleting the no-key row must stamp deletedAt '
               'on the server');
       final stamp7 = afterFirst['deletedAt'] as int;
-      expect(find.text('DELETED COUNTERS'), findsOneWidget);
+      expect(find.text('PAST COUNTERS'), findsOneWidget);
+      expect(find.text('DELETED COUNTERS'), findsNothing);
       expect(find.textContaining('Counter 7 (Deleted:'), findsOneWidget);
 
       // The step no other counter test performs: SAVE AGAIN after
@@ -491,7 +494,8 @@ void main() {
       // delete's marker — the step that made the revert
       // permanent.
       await _pumpSettings(tester, b, storeMap);
-      expect(find.text('DELETED COUNTERS'), findsOneWidget);
+      expect(find.text('PAST COUNTERS'), findsOneWidget);
+      expect(find.text('DELETED COUNTERS'), findsNothing);
       expect(find.textContaining('Counter 7 (Deleted:'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('counter_delete_c4')));
       await tester.pumpAndSettle();
@@ -593,7 +597,8 @@ void main() {
       expect(serverC3['isArchived'], isTrue);
       expect(serverC3['deletedAt'], isA<int>());
       expect(server.serverCounters.any((c) => c['id'] == 'c4'), isTrue);
-      expect(find.text('DELETED COUNTERS'), findsOneWidget);
+      expect(find.text('PAST COUNTERS'), findsOneWidget);
+      expect(find.text('DELETED COUNTERS'), findsNothing);
       // The guard cleared when the save finished: the row's
       // restore button is live.
       expect(
@@ -767,7 +772,7 @@ void main() {
 
       // (a) The pushed blob carries marker + stamp, and c3 is out
       // of BOTH the Settings active list and the Home data path
-      // (the activeEventCounters / !isArchived filter).
+      // (the activeEventCounters / unified isActive filter).
       var serverC3 =
           server.serverCounters.firstWhere((c) => c['id'] == 'c3');
       expect(serverC3['isArchived'], isTrue);
@@ -781,7 +786,8 @@ void main() {
           isFalse);
       expect(activeEventCounters(parsed).length, 11);
       expect(parsed.firstWhere((c) => c.id == 'c3').deletedAt, stamp);
-      expect(find.text('DELETED COUNTERS'), findsOneWidget);
+      expect(find.text('PAST COUNTERS'), findsOneWidget);
+      expect(find.text('DELETED COUNTERS'), findsNothing);
       expect(find.byTooltip('Delete counter'), findsNWidgets(11));
 
       // (c) A SECOND save after the stale landing pushes the whole
@@ -821,7 +827,8 @@ void main() {
       expect(find.byKey(const ValueKey('counter_delete_c3')),
           findsOneWidget);
       expect(find.textContaining('Counter 4 (Deleted:'), findsOneWidget);
-      expect(find.text('Bring back'), findsOneWidget);
+      expect(find.text('Restore'), findsOneWidget);
+      expect(find.text('Bring back'), findsNothing);
       // And c3 is back on the Home data path, stamp cleared.
       final parsedAfter =
           server.serverCounters.map(EventCounterItem.fromMap).toList();
@@ -829,6 +836,115 @@ void main() {
           isTrue);
       expect(parsedAfter.firstWhere((c) => c.id == 'c3').deletedAt,
           isNull);
+    });
+  });
+
+  group('Unified Past box — history restore (Oct 28, 2026)', () {
+    Map<String, dynamic> historyEntry() => {
+          'name': 'Counter 5',
+          'targetDate': _midnightPlus(5).millisecondsSinceEpoch,
+          'endedAt': DateTime(2026, 9, 1).millisecondsSinceEpoch,
+        };
+
+    testWidgets(
+        'restoring a history entry recreates the counter server-side '
+        'and removes the entry, in one atomic save', (tester) async {
+      // c5 was ended earlier: it lives ONLY as a history entry.
+      final server = FakeCounterServer(
+        counters:
+            _twelveCounters().where((c) => c['id'] != 'c5').toList(),
+        history: [historyEntry()],
+      );
+      final store = _session();
+      final storeMap = <String, String>{};
+      final a = server.backend(store);
+
+      await _pumpSettings(tester, a, storeMap);
+      expect(find.textContaining('Counter 5 (Ended:'), findsOneWidget);
+      expect(find.byKey(const ValueKey('counter_delete_c5')),
+          findsNothing);
+
+      final pushesBefore = server.pushCount;
+      await tester.tap(
+          find.byKey(const ValueKey('counter_restore_history_0')));
+      await tester.pumpAndSettle();
+
+      // Exactly one push, carrying both fields.
+      expect(server.pushCount, pushesBefore + 1);
+      expect(server.pushes.last.containsKey('eventCounters'), isTrue);
+      expect(server.pushes.last.containsKey('counterHistory'), isTrue);
+      // Server state: the entry is gone, the counter is back active
+      // with the stored name/targetDate and both marks cleared.
+      final history =
+          jsonDecode(server.counterHistoryRaw) as List<dynamic>;
+      expect(history, isEmpty);
+      final restored =
+          server.serverCounters.firstWhere((c) => c['name'] == 'Counter 5');
+      expect(restored['targetDate'],
+          _midnightPlus(5).millisecondsSinceEpoch);
+      expect(restored['isArchived'], isFalse);
+      expect(restored.containsKey('deletedAt'), isFalse);
+      expect(restored['id'], isNot('c5'),
+          reason: 'the recreated counter gets a NEW unique id');
+      expect(server.serverCounters, hasLength(12));
+      // On screen it is an active row again.
+      expect(find.text('Counter 5'), findsOneWidget);
+      expect(find.byKey(const ValueKey('counter_delete_c5')),
+          findsNothing,
+          reason: 'the active row carries the NEW id, not c5');
+      expect(
+          find.byKey(ValueKey('counter_delete_${restored['id']}')),
+          findsOneWidget);
+    });
+
+    testWidgets(
+        'double-invocation against fresh data does not duplicate: '
+        'the entry was already restored by a concurrent save while '
+        'this screen still shows the stale history row',
+        (tester) async {
+      final server = FakeCounterServer(
+        counters:
+            _twelveCounters().where((c) => c['id'] != 'c5').toList(),
+        history: [historyEntry()],
+      );
+      final store = _session();
+      final storeMap = <String, String>{};
+      final a = server.backend(store);
+
+      await _pumpSettings(tester, a, storeMap);
+      expect(find.textContaining('Counter 5 (Ended:'), findsOneWidget);
+
+      // A concurrent save (another client / a second invocation
+      // that already landed) restores the entry: server history is
+      // now empty and the recreated counter already exists. This
+      // screen's row is stale — it still offers Restore.
+      server.counterHistoryRaw = jsonEncode(const []);
+      server.eventCountersRaw = jsonEncode([
+        ..._twelveCounters().where((c) => c['id'] != 'c5'),
+        {
+          'id': 'restored-elsewhere',
+          'name': 'Counter 5',
+          'targetDate': _midnightPlus(5).millisecondsSinceEpoch,
+          'isUp': false,
+          'autoUp': false,
+          'isFavorite': false,
+          'isArchived': false,
+        },
+      ]);
+      a.invalidateSyncPull();
+
+      await tester.tap(
+          find.byKey(const ValueKey('counter_restore_history_0')));
+      await tester.pumpAndSettle();
+
+      // No duplicate: exactly ONE 'Counter 5' counter exists, and
+      // it is the concurrent save's one; history stays empty.
+      final named = server.serverCounters
+          .where((c) => c['name'] == 'Counter 5')
+          .toList();
+      expect(named, hasLength(1));
+      expect(named.single['id'], 'restored-elsewhere');
+      expect(jsonDecode(server.counterHistoryRaw) as List, isEmpty);
     });
   });
 

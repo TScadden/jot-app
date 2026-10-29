@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
@@ -21,13 +22,20 @@ import 'test_helpers.dart';
 /// the shared [EventCounterItem.daysLabel] helper.
 ///
 /// Delete/Restore round (Oct 27, 2026, founder direction): Archive
-/// became Delete. The ARCHIVED section is now DELETED COUNTERS in
+/// became Delete. The ARCHIVED section became DELETED COUNTERS in
 /// the Past Counters style — clean muted text rows in a card,
 /// 'Name (Deleted: Mon DD, YYYY)' for rows carrying a deletedAt
 /// stamp, name-only for legacy stamp-less rows — with exactly one
 /// action per row, the 'Bring back' restore. Active rows keep the
 /// 48dp rail; its first button is now Delete (delete_outline,
 /// 'Delete counter', key `counter_delete_<id>`).
+///
+/// Unified Past box round (Oct 28, 2026, founder direction): the
+/// DELETED COUNTERS section is GONE — ONE 'PAST COUNTERS' box
+/// holds every non-active counter (archived OR delete-stamped —
+/// the unified predicate) AND the ended-counter history entries,
+/// and every row's only action is renamed 'Restore'. Restoring a
+/// history entry recreates its counter.
 ///
 /// These tests pin the structure AND re-prove the behavior end to
 /// end: delete / restore / edit / end-and-save / create fire the
@@ -139,6 +147,7 @@ Future<void> _pumpCounters(
   WidgetTester tester,
   FakeCountersBackend backend, {
   double width = 1080,
+  FakeReminderNotificationService? notifs,
 }) async {
   tester.view.physicalSize = Size(width, 3400);
   tester.view.devicePixelRatio = 1.0;
@@ -148,7 +157,7 @@ Future<void> _pumpCounters(
       body: SettingsScreen(
         backend: backend,
         settingsStore: fakeStore(<String, String>{}),
-        notificationService: FakeReminderNotificationService(),
+        notificationService: notifs ?? FakeReminderNotificationService(),
         openEventCounters: true,
       ),
     ),
@@ -160,6 +169,12 @@ List<dynamic> _pushedCounters(FakeCountersBackend backend) {
   final push = backend.profilePushes
       .lastWhere((p) => p.containsKey('eventCounters'));
   return jsonDecode(push['eventCounters'] as String) as List<dynamic>;
+}
+
+List<dynamic> _pushedHistory(FakeCountersBackend backend) {
+  final push = backend.profilePushes
+      .lastWhere((p) => p.containsKey('counterHistory'));
+  return jsonDecode(push['counterHistory'] as String) as List<dynamic>;
 }
 
 void main() {
@@ -241,14 +256,16 @@ void main() {
         },
       ]);
 
-    testWidgets('sections render in order: active card, DELETED '
-        'COUNTERS card, PAST COUNTERS card, footer', (tester) async {
+    testWidgets('sections render in order: active card, ONE unified '
+        'PAST COUNTERS card (deleted counters + history), footer',
+        (tester) async {
       await _pumpCounters(tester, backendWithFixture());
 
       expect(find.text('EVENT COUNTERS'), findsOneWidget);
       expect(find.text('Doctor appointment'), findsOneWidget);
       expect(find.text('1 day until'), findsOneWidget);
-      expect(find.text('DELETED COUNTERS'), findsOneWidget);
+      // The separate Deleted section is gone for good.
+      expect(find.text('DELETED COUNTERS'), findsNothing);
       // The stamped deleted row carries its (Deleted: …) date; the
       // legacy stamp-less rows render name-only — no invented date.
       expect(
@@ -259,6 +276,10 @@ void main() {
       expect(find.text('PAST COUNTERS'), findsOneWidget);
       expect(find.text('Old physical (Ended: Sep 01, 2026)'),
           findsOneWidget);
+      // Every Past-box row — deleted counters AND the history
+      // entry — offers 'Restore'; the old name is gone.
+      expect(find.text('Restore'), findsNWidgets(6));
+      expect(find.text('Bring back'), findsNothing);
       // Footer wording verbatim (Juno ruling: unchanged).
       expect(
           find.text(
@@ -267,16 +288,18 @@ void main() {
       // The buggy plural never renders.
       expect(find.textContaining('1 days'), findsNothing);
 
-      // Vertical order down the page.
+      // Vertical order down the page: active, then the Past label,
+      // then the deleted counters, then the history entry, then
+      // the footer — all inside the one box.
       double dy(Finder f) => tester.getTopLeft(f).dy;
       expect(dy(find.text('Doctor appointment')),
-          lessThan(dy(find.text('DELETED COUNTERS'))));
-      expect(dy(find.text('DELETED COUNTERS')),
+          lessThan(dy(find.text('PAST COUNTERS'))));
+      expect(dy(find.text('PAST COUNTERS')),
           lessThan(dy(find.text('Eye exam'))));
       expect(dy(find.text('Eye exam')),
-          lessThan(dy(find.text('PAST COUNTERS'))));
+          lessThan(dy(find.text('Old physical (Ended: Sep 01, 2026)'))));
       expect(
-          dy(find.text('PAST COUNTERS')),
+          dy(find.text('Old physical (Ended: Sep 01, 2026)')),
           lessThan(dy(find.text(
               'Track important upcoming or past events. All active counters will show on the main screen and sync with the AI.'))));
     });
@@ -289,12 +312,13 @@ void main() {
           (w.decoration as BoxDecoration).color == NotelColors.surface &&
           (w.decoration as BoxDecoration).borderRadius ==
               BorderRadius.circular(16);
-      // One card per section: active, deleted, past.
-      expect(find.byWidgetPredicate(isCardSurface), findsNWidgets(3));
+      // One card per section: active, and the ONE unified past box.
+      expect(find.byWidgetPredicate(isCardSurface), findsNWidgets(2));
       for (final rowKey in [
         const ValueKey('counter_row_a1'),
         const ValueKey('counter_row_b1'),
         const ValueKey('counter_row_b5'),
+        const ValueKey('counter_history_row_0'),
       ]) {
         expect(
             find.ancestor(
@@ -304,7 +328,7 @@ void main() {
       }
     });
 
-    testWidgets('hierarchy: active full strength, deleted muted '
+    testWidgets('hierarchy: active full strength, past-box muted '
         'text rows', (tester) async {
       await _pumpCounters(tester, backendWithFixture());
       final activeName = tester.widget<Text>(find.text('Doctor appointment'));
@@ -327,7 +351,7 @@ void main() {
     });
 
     testWidgets('action rail: active row keeps three 48dp targets in '
-        'order; deleted rows carry only Bring back', (tester) async {
+        'order; past-box rows carry only Restore', (tester) async {
       await _pumpCounters(tester, backendWithFixture());
       for (final action in ['delete', 'edit', 'end']) {
         final size =
@@ -349,20 +373,25 @@ void main() {
       expect(find.byTooltip('Delete counter'), findsOneWidget);
       expect(find.byTooltip('Edit counter'), findsOneWidget);
       expect(find.byTooltip('End counter'), findsOneWidget);
-      // Deleted rows: NO icon rail at all — delete, edit and end are
-      // gone; the only action is 'Bring back' on a ≥48dp target.
+      // Past-box rows: NO icon rail at all — delete, edit and end
+      // are gone; the only action is 'Restore' on a ≥48dp target.
       for (final id in ['b1', 'b2', 'b3', 'b4', 'b5']) {
         for (final action in ['delete', 'edit', 'end', 'archive']) {
           expect(find.byKey(ValueKey('counter_${action}_$id')),
               findsNothing,
-              reason: '$action/$id must not exist on a deleted row');
+              reason: '$action/$id must not exist on a past-box row');
         }
         final restore =
             tester.getSize(find.byKey(ValueKey('counter_restore_$id')));
         expect(restore.height, greaterThanOrEqualTo(48),
             reason: 'restore/$id tap target');
       }
-      expect(find.text('Bring back'), findsNWidgets(5));
+      // The history row's Restore is a ≥48dp target too.
+      final historyRestore = tester.getSize(
+          find.byKey(const ValueKey('counter_restore_history_0')));
+      expect(historyRestore.height, greaterThanOrEqualTo(48));
+      expect(find.text('Restore'), findsNWidgets(6));
+      expect(find.text('Bring back'), findsNothing);
     });
 
     testWidgets('long names wrap without breaking the row', (tester) async {
@@ -418,18 +447,19 @@ void main() {
       expect(a1['deletedAt'] as int, greaterThanOrEqualTo(before));
       expect(a1['deletedAt'] as int, lessThanOrEqualTo(after));
       expect(saved.length, 6);
-      // The row moved to the Deleted card as a muted text row
+      // The row moved to the unified Past box as a muted text row
       // carrying today's (Deleted: …) date.
-      expect(find.text('DELETED COUNTERS'), findsOneWidget);
+      expect(find.text('PAST COUNTERS'), findsOneWidget);
+      expect(find.text('DELETED COUNTERS'), findsNothing);
       final label = tester
           .widget<Text>(find.textContaining('Doctor appointment (Deleted:'));
       expect(label.style!.color, NotelColors.textSecondary);
-      expect(find.text('Bring back'), findsNWidgets(6));
+      expect(find.text('Restore'), findsNWidgets(6));
       // Single tap, straight to the section — no confirmation.
       expect(find.byType(AlertDialog), findsNothing);
     });
 
-    testWidgets('restore: Bring back on a stamped row returns it '
+    testWidgets('restore: Restore on a stamped row returns it '
         'active, data intact, with NO deletedAt key pushed',
         (tester) async {
       final backend = FakeCountersBackend()
@@ -449,7 +479,8 @@ void main() {
       final name = tester
           .widget<Text>(find.text('Specialist appointment (Brad) (2)'));
       expect(name.style!.color, NotelColors.textPrimary);
-      expect(find.text('Bring back'), findsNWidgets(4));
+      expect(find.text('Restore'), findsNWidgets(4));
+      expect(find.text('Bring back'), findsNothing);
     });
 
     testWidgets('restore: a legacy stamp-less row restores the same '
@@ -506,9 +537,12 @@ void main() {
       expect(history.first['name'], 'Doctor appointment');
       expect(history.first['targetDate'],
           _midnightPlus(1).millisecondsSinceEpoch);
-      // Gone as a row; present only as a Past Counters line.
+      // Gone as a row; present only as a Past Counters line, with
+      // a Restore action of its own in the unified box.
       expect(find.text('Doctor appointment'), findsNothing);
       expect(find.textContaining('Doctor appointment (Ended:'),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('counter_restore_history_0')),
           findsOneWidget);
     });
 
@@ -527,6 +561,220 @@ void main() {
       expect(saved.length, 7);
       expect(saved.any((c) => c['name'] == 'New thing'), isTrue);
       expect(find.text('New thing'), findsOneWidget);
+    });
+  });
+
+  group('Unified Past box (Oct 28, 2026)', () {
+    // The four data shapes of the unified predicate:
+    // (i) archived, no stamp; (ii) stamp only; (iii) both;
+    // (iv) neither.
+    List<Map<String, dynamic>> fourShapes() => [
+          _counterMap(
+              id: 's4', name: 'Shape Active', targetInDays: 3),
+          _counterMap(
+              id: 's1',
+              name: 'Shape Archived Only',
+              targetInDays: 3,
+              isArchived: true),
+          _counterMap(
+              id: 's2',
+              name: 'Shape Stamp Only',
+              targetInDays: 3,
+              deletedAt: DateTime(2026, 10, 20).millisecondsSinceEpoch),
+          _counterMap(
+              id: 's3',
+              name: 'Shape Both Marks',
+              targetInDays: 3,
+              isArchived: true,
+              deletedAt: DateTime(2026, 10, 21).millisecondsSinceEpoch),
+        ];
+
+    test('predicate matrix (unit): isActive / isNonActive / '
+        'counterMapIsActive / activeEventCounters agree', () {
+      final items = fourShapes().map(EventCounterItem.fromMap).toList();
+      final byId = {for (final c in items) c.id: c};
+      expect(byId['s1']!.isActive, isFalse);
+      expect(byId['s2']!.isActive, isFalse,
+          reason: 'a stamp-only row is NOT active');
+      expect(byId['s3']!.isActive, isFalse);
+      expect(byId['s4']!.isActive, isTrue);
+      expect(items.where((c) => c.isNonActive).map((c) => c.id),
+          ['s1', 's2', 's3']);
+      for (final m in fourShapes()) {
+        expect(EventCounterItem.counterMapIsActive(m),
+            EventCounterItem.fromMap(m).isActive,
+            reason: 'raw-map predicate must match for ${m['id']}');
+      }
+      expect(activeEventCounters(items).map((c) => c.id), ['s4']);
+    });
+
+    testWidgets('four shapes render in the right lists: stamp-only '
+        'is in the Past box (NOT active), archived-only is '
+        'name-only, both-marks shows its Deleted date', (tester) async {
+      final backend = FakeCountersBackend()
+        ..pullBody = _pull(fourShapes());
+      await _pumpCounters(tester, backend);
+
+      expect(find.text('DELETED COUNTERS'), findsNothing);
+      expect(find.text('PAST COUNTERS'), findsOneWidget);
+      // (iv) neither mark: the only active row, full rail.
+      expect(find.byKey(const ValueKey('counter_delete_s4')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('counter_restore_s4')),
+          findsNothing);
+      // (i) archived, no stamp: name-only in the box, no invented
+      // date, no active rail.
+      expect(find.text('Shape Archived Only'), findsOneWidget);
+      expect(find.byKey(const ValueKey('counter_delete_s1')),
+          findsNothing);
+      // (ii) stamp only: in the box WITH its (Deleted: …) date —
+      // and crucially NOT in the active list.
+      expect(find.text('Shape Stamp Only (Deleted: Oct 20, 2026)'),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('counter_delete_s2')),
+          findsNothing);
+      expect(find.byKey(const ValueKey('counter_edit_s2')),
+          findsNothing);
+      expect(find.byKey(const ValueKey('counter_end_s2')),
+          findsNothing);
+      // (iii) both marks: same box, same (Deleted: …) label.
+      expect(find.text('Shape Both Marks (Deleted: Oct 21, 2026)'),
+          findsOneWidget);
+      // Exactly the three non-active rows offer Restore.
+      expect(find.text('Restore'), findsNWidgets(3));
+      expect(find.text('Bring back'), findsNothing);
+      // Only the active row shows a day label ('3 days until' once).
+      expect(find.text('3 days until'), findsOneWidget);
+    });
+
+    testWidgets('restore of a stamp-only row clears BOTH marks in '
+        'the pushed blob', (tester) async {
+      final backend = FakeCountersBackend()
+        ..pullBody = _pull(fourShapes());
+      await _pumpCounters(tester, backend);
+      await tester.tap(find.byKey(const ValueKey('counter_restore_s2')));
+      await tester.pumpAndSettle();
+      final saved = _pushedCounters(backend);
+      final s2 = saved.firstWhere((c) => c['id'] == 's2');
+      expect(s2['isArchived'], isFalse);
+      expect(s2.containsKey('deletedAt'), isFalse,
+          reason: 'no deletedAt key in the pushed blob — omission '
+              'is what clears the stamp server-side');
+      // Active again on screen with its rail back.
+      expect(find.byKey(const ValueKey('counter_delete_s2')),
+          findsOneWidget);
+    });
+
+    testWidgets('history restore: recreates an active counter with '
+        'the stored name/targetDate, removes the history entry, in '
+        'ONE save carrying both fields', (tester) async {
+      final endedTarget = _midnightPlus(9).millisecondsSinceEpoch;
+      final backend = FakeCountersBackend()
+        ..pullBody = _pull(
+          [_counterMap(id: 'a1', name: 'Doctor appointment', targetInDays: 1)],
+          history: [
+            {
+              'name': 'Ended thing',
+              'targetDate': endedTarget,
+              'endedAt': DateTime(2026, 9, 1).millisecondsSinceEpoch,
+            },
+            {
+              'name': 'Other ended',
+              'targetDate': _midnightPlus(-5).millisecondsSinceEpoch,
+              'endedAt': DateTime(2026, 8, 1).millisecondsSinceEpoch,
+            },
+          ],
+        );
+      await _pumpCounters(tester, backend);
+      expect(find.text('Ended thing (Ended: Sep 01, 2026)'),
+          findsOneWidget);
+      final pushesBefore = backend.profilePushes.length;
+      await tester.tap(
+          find.byKey(const ValueKey('counter_restore_history_0')));
+      await tester.pumpAndSettle();
+
+      // ONE save, carrying BOTH fields (the pair moved atomically).
+      final newPushes = backend.profilePushes.sublist(pushesBefore);
+      expect(newPushes, hasLength(1));
+      expect(newPushes.single.containsKey('eventCounters'), isTrue);
+      expect(newPushes.single.containsKey('counterHistory'), isTrue);
+
+      final saved = _pushedCounters(backend);
+      expect(saved, hasLength(2));
+      final recreated =
+          saved.firstWhere((c) => c['name'] == 'Ended thing');
+      expect(recreated['targetDate'], endedTarget);
+      expect(recreated['isArchived'], isFalse);
+      expect(recreated.containsKey('deletedAt'), isFalse);
+      expect(recreated['isUp'], isFalse);
+      expect(recreated['autoUp'], isFalse);
+      expect(recreated['isFavorite'], isFalse);
+      // A fresh unique id (the Add dialog's epoch-ms generation):
+      // not any pre-existing id, and numeric-ms shaped.
+      expect(recreated['id'], isNot('a1'));
+      expect(int.tryParse('${recreated['id']}'), isNotNull);
+
+      // The restored entry is gone from history; the other entry
+      // is untouched.
+      final history = _pushedHistory(backend);
+      expect(history, hasLength(1));
+      expect(history.single['name'], 'Other ended');
+
+      // On screen: an active full-strength row, and the history
+      // line is gone.
+      final name = tester.widget<Text>(find.text('Ended thing'));
+      expect(name.style!.color, NotelColors.textPrimary);
+      expect(find.text('Ended thing (Ended: Sep 01, 2026)'),
+          findsNothing);
+      expect(find.text('Other ended (Ended: Aug 01, 2026)'),
+          findsOneWidget);
+    });
+
+    testWidgets('reminders: delete cancels a future counter\'s '
+        'alarm, Restore re-arms it; restoring a past-dated counter '
+        'arms nothing', (tester) async {
+      final notifs = FakeReminderNotificationService();
+      final backend = FakeCountersBackend()
+        ..pullBody = _pull([
+          _counterMap(id: 'f1', name: 'Future thing', targetInDays: 10),
+          _counterMap(
+              id: 'p1',
+              name: 'Past thing',
+              targetInDays: -3,
+              isArchived: true,
+              deletedAt: DateTime(2026, 10, 20).millisecondsSinceEpoch),
+        ]);
+      await _pumpCounters(tester, backend, notifs: notifs);
+      final futureId = eventNotificationId('f1');
+      final pastId = eventNotificationId('p1');
+      final target = _midnightPlus(10);
+      // NOTE: the load-time reminder sync is not asserted here —
+      // in the widget-test environment it sits behind the real
+      // Health Connect status read inside _load. The SAVE-driven
+      // syncs below are the seams this test pins (the same
+      // _syncReminders pass runs after every _saveCounters).
+
+      // Delete cancels through the post-save reminder re-sync.
+      await tester.tap(find.byKey(const ValueKey('counter_delete_f1')));
+      await tester.pumpAndSettle();
+      expect(notifs.once.containsKey(futureId), isFalse);
+      expect(notifs.cancelled, contains(futureId));
+
+      // Restore re-arms the future-dated counter through the same
+      // re-sync (the restored row reads active to the projection).
+      await tester.tap(find.byKey(const ValueKey('counter_restore_f1')));
+      await tester.pumpAndSettle();
+      expect(notifs.once[futureId],
+          DateTime(target.year, target.month, target.day, 9));
+
+      // Restoring the past-dated counter arms nothing (the
+      // projection skips past dates, as before).
+      await tester.tap(find.byKey(const ValueKey('counter_restore_p1')));
+      await tester.pumpAndSettle();
+      expect(notifs.once.containsKey(pastId), isFalse);
+      // And it is active on screen now.
+      expect(find.byKey(const ValueKey('counter_delete_p1')),
+          findsOneWidget);
     });
   });
 }
