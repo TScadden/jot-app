@@ -90,6 +90,11 @@ dependencies:
   in_app_purchase: ^3.3.1
   in_app_purchase_android: ^0.5.4
   sentry_flutter: ^10.2.0
+  # Opening sequence (LAB, Oct 29, 2026) — plays the bundled
+  # beats 1–5 clip on the flag-gated front door
+  # (lib/src/features/splash/opening_sequence_screen.dart). Playback
+  # is always muted; no network or audio use.
+  video_player: ^2.10.0
 
 dev_dependencies:
   flutter_test:
@@ -129,6 +134,10 @@ flutter:
     - assets/images/bandit_avatar_blink.png
     - assets/images/bandit_full.png
     - assets/images/bandit_full_blink.png
+    # Opening sequence (LAB) — clip + its literal first/last frames.
+    - assets/video/opening_beats1_5.mp4
+    - assets/images/opening_poster.png
+    - assets/images/opening_end.png
     # Round 18b — bundled research library (mirrors native
     # app/src/main/assets/research/*.json).
     - assets/research/

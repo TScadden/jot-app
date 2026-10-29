@@ -41,6 +41,7 @@ import 'package:tabs_lab/src/features/tools/lean_test_screen.dart'
     show BackendLeanTestGateway;
 import 'package:tabs_lab/src/features/onboarding/onboarding_flow.dart';
 import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
+import 'package:tabs_lab/src/features/splash/opening_sequence_screen.dart';
 import 'package:tabs_lab/src/features/splash/splash_screen.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
@@ -227,6 +228,16 @@ class AppFlow extends StatefulWidget {
   /// app-level controller this flow creates in initState.
   final MigraineController? migraineController;
 
+  /// Opening sequence (LAB) — injectable override for tests;
+  /// defaults to the compile-time [tabsOpeningSequenceEnabled]
+  /// flag (`--dart-define=TABS_OPENING_SEQUENCE=true`, default
+  /// false). When off, this flow behaves exactly as before.
+  final bool? openingSequenceEnabled;
+
+  /// Opening sequence (LAB) — injectable player factory for tests;
+  /// defaults to the real video_player-backed player.
+  final OpeningPlayerFactory? openingPlayerFactory;
+
   const AppFlow(
       {super.key,
       this.authApi,
@@ -237,7 +248,9 @@ class AppFlow extends StatefulWidget {
       this.onboardingStore,
       this.tabsBackend,
       this.notificationService,
-      this.migraineController});
+      this.migraineController,
+      this.openingSequenceEnabled,
+      this.openingPlayerFactory});
 
   @override
   State<AppFlow> createState() => _AppFlowState();
@@ -258,6 +271,38 @@ class _AppFlowState extends State<AppFlow>
   bool _loginIsRegister = true;
   String? _loggedInEmail;
 
+  // Opening sequence (LAB) — cold-start resolution for the front
+  // door: [_frontDoorResolved] flips when the restore has proven
+  // the process signed-OUT (no stored token, or an unreadable
+  // store); only then may the sequence start playback (its poster
+  // covers the wait). [_openingPlayed] is the per-process
+  // played flag: a signed-in resolution also sets it, so a
+  // signed-in user never sees the sequence — not at cold start and
+  // not after an in-process logout. [_openingCompletedVisible]
+  // keeps the finished sequence mounted as the welcome surface
+  // until the user leaves the front door (its buttons ARE the
+  // welcome actions); leaving clears it, so a later return to
+  // welcome lands on the plain WelcomeScreen instead of replaying.
+  bool _frontDoorResolved = false;
+  bool _openingPlayed = false;
+  bool _openingCompletedVisible = false;
+
+  bool get _openingEnabled =>
+      widget.openingSequenceEnabled ?? tabsOpeningSequenceEnabled;
+
+  bool get _showOpening =>
+      _openingEnabled &&
+      _stage == _FlowStage.welcome &&
+      (!_openingPlayed || _openingCompletedVisible);
+
+  void _onOpeningCompleted() {
+    if (!mounted) return;
+    setState(() {
+      _openingPlayed = true;
+      _openingCompletedVisible = true;
+    });
+  }
+
   // Round 32 — onboarding state for this flow (injected in tests).
   late final OnboardingStore _onboardingStore;
 
@@ -274,6 +319,9 @@ class _AppFlowState extends State<AppFlow>
     setState(() {
       _loginIsRegister = isRegister;
       _stage = _FlowStage.login;
+      // Leaving the front door: the finished opening sequence is
+      // not kept (or replayed) on a later return to welcome.
+      _openingCompletedVisible = false;
     });
   }
 
@@ -389,7 +437,21 @@ class _AppFlowState extends State<AppFlow>
   Future<void> _restoreSession() async {
     try {
       final token = await _sessionStore.readToken();
-      if (token == null || token.trim().isEmpty) return;
+      if (token == null || token.trim().isEmpty) {
+        // Opening sequence (LAB): the cold start is proven
+        // signed-OUT — the front door is resolved and the sequence
+        // (whose poster has covered this wait) may start playback.
+        if (mounted && _stage == _FlowStage.welcome) {
+          setState(() => _frontDoorResolved = true);
+        }
+        return;
+      }
+      // Opening sequence (LAB): a stored session means this cold
+      // start is signed-IN — the sequence is removed (the build
+      // routes on the stage changes below) and marked played for
+      // this process, so an in-process logout back to welcome
+      // never replays it either.
+      _openingPlayed = true;
       // Round 31 fix pass (Vera NIT 2): the email read is isolated
       // (see _readEmailOrNull). A TOKEN-read failure keeps the outer
       // behavior: fall to welcome, without clearing anything.
@@ -467,6 +529,12 @@ class _AppFlowState extends State<AppFlow>
       }
     } catch (_) {
       // Unreadable store → fresh-install behavior (welcome).
+      // Opening sequence (LAB): that IS the signed-out resolution —
+      // release the front door so the sequence can proceed (its
+      // own fallback covers any player trouble from here).
+      if (mounted && _stage == _FlowStage.welcome) {
+        setState(() => _frontDoorResolved = true);
+      }
     }
   }
 
@@ -1241,9 +1309,25 @@ class _AppFlowState extends State<AppFlow>
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.sizeOf(context).height;
+    final showOpening = _showOpening;
     return Stack(
       children: [
-        if (_stage == _FlowStage.welcome)
+        if (_stage == _FlowStage.welcome && showOpening)
+          // Opening sequence (LAB, flag-gated): replaces the
+          // splash + welcome front door for a signed-out cold
+          // start. Its poster covers the session-restore wait;
+          // playback starts only when [_frontDoorResolved] flips;
+          // a signed-in resolution changes the stage (removing it)
+          // before any playback. When it finishes it stays mounted
+          // as the welcome surface (see [_openingCompletedVisible]).
+          OpeningSequenceScreen(
+            onRegister: () => _goLogin(true),
+            onLogin: () => _goLogin(false),
+            signedOutConfirmed: _frontDoorResolved,
+            playerFactory: widget.openingPlayerFactory,
+            onCompleted: _onOpeningCompleted,
+          )
+        else if (_stage == _FlowStage.welcome)
           WelcomeScreen(
             onRegister: () => _goLogin(true),
             onLogin: () => _goLogin(false),
@@ -1288,7 +1372,11 @@ class _AppFlowState extends State<AppFlow>
               migraineController: _migraineController,
               leanGateway: BackendLeanTestGateway(backend: _tabsBackend),
               onLogout: _onLogout),
-        if (_splashVisible && animationsDisabled(context))
+        if (_splashVisible && showOpening)
+          // Opening sequence (LAB): the sequence IS the front-door
+          // entry — the legacy splash overlay never stacks on it.
+          const SizedBox.shrink()
+        else if (_splashVisible && animationsDisabled(context))
           // Audit 6c — reduced motion: the splash renders plain, with
           // no exit-sweep Transform/Opacity wrappers applied; it is
           // removed instantly when the entry+hold elapses (initState).
