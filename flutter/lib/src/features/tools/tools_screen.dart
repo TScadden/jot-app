@@ -9,7 +9,10 @@ import 'package:tabs_lab/src/features/tools/body_info_screen.dart';
 import 'package:tabs_lab/src/features/tools/community_screen.dart';
 import 'package:tabs_lab/src/features/tools/food_screen.dart';
 import 'package:tabs_lab/src/features/tools/habits_screen.dart';
+import 'package:tabs_lab/src/data/lean_test_session.dart';
+import 'package:tabs_lab/src/data/lean_test_strings.dart';
 import 'package:tabs_lab/src/features/tools/health_coach_screen.dart';
+import 'package:tabs_lab/src/features/tools/lean_test_screen.dart';
 import 'package:tabs_lab/src/features/tools/key_metrics_screen.dart';
 import 'package:tabs_lab/src/features/tools/lists_screen.dart';
 import 'package:tabs_lab/src/features/tools/medications_screen.dart';
@@ -140,6 +143,17 @@ class ToolOrderStore {
   }
 }
 
+/// The Phase 1 item 6 tile, appended to the grid ONLY when the
+/// Symptoms category name-resolves (spec §4): on a double miss the
+/// tile hides rather than writing to a guessed id. It is not part
+/// of [defaultToolTiles] (the native default order is unchanged).
+const ToolTile leanTestTile = ToolTile(
+  'lean_test',
+  leanS1Label,
+  Icons.accessibility_new,
+  leanS1Subtitle,
+);
+
 class ToolsScreen extends StatefulWidget {
   /// Injectable for tests.
   final ToolOrderStore? orderStore;
@@ -148,7 +162,14 @@ class ToolsScreen extends StatefulWidget {
   /// to Research → its pushed Settings screen.
   final BillingService? billingService;
 
-  const ToolsScreen({super.key, this.orderStore, this.billingService});
+  /// Phase 1 item 6 — the lean-test gateway. When provided, the
+  /// grid resolves the Symptoms category through it and shows
+  /// [leanTestTile] only when resolution succeeds. Null in tests
+  /// that do not exercise the feature (tile stays hidden).
+  final LeanTestGateway? leanGateway;
+
+  const ToolsScreen(
+      {super.key, this.orderStore, this.billingService, this.leanGateway});
 
   @override
   State<ToolsScreen> createState() => _ToolsScreenState();
@@ -159,6 +180,10 @@ class _ToolsScreenState extends State<ToolsScreen>
   late final ToolOrderStore _store;
   List<ToolTile> _tiles = defaultToolTiles;
   bool _editMode = false;
+
+  /// Phase 1 item 6: the resolved Symptoms category id, or null
+  /// while unresolved / on a double miss (tile hidden).
+  int? _leanCategoryId;
 
   late final AnimationController _enter;
   bool _enterScheduled = false;
@@ -172,6 +197,30 @@ class _ToolsScreenState extends State<ToolsScreen>
       duration: const Duration(milliseconds: 300),
     );
     _loadOrder();
+    unawaited(_resolveLeanTile());
+  }
+
+  /// Resolves the lean-test category; the tile appears only on a
+  /// successful name resolution (spec §4, item-1 §4.2 pattern).
+  Future<void> _resolveLeanTile() async {
+    final gateway = widget.leanGateway;
+    if (gateway == null) return;
+    int? categoryId;
+    try {
+      categoryId = await gateway.resolveCategoryId();
+    } catch (_) {
+      categoryId = null;
+    }
+    if (!mounted || categoryId == null) return;
+    setState(() {
+      _leanCategoryId = categoryId;
+      if (!_tiles.any((t) => t.id == leanTestTile.id)) {
+        _tiles = applyTileOrder(
+          [...defaultToolTiles, leanTestTile],
+          _tiles.map((t) => t.id).toList(),
+        );
+      }
+    });
   }
 
   @override
@@ -196,7 +245,10 @@ class _ToolsScreenState extends State<ToolsScreen>
   Future<void> _loadOrder() async {
     final saved = await _store.loadOrder();
     if (!mounted || saved == null || saved.isEmpty) return;
-    setState(() => _tiles = applyTileOrder(defaultToolTiles, saved));
+    final base = _leanCategoryId != null
+        ? [...defaultToolTiles, leanTestTile]
+        : defaultToolTiles;
+    setState(() => _tiles = applyTileOrder(base, saved));
   }
 
   Future<void> _saveOrder() =>
@@ -223,6 +275,7 @@ class _ToolsScreenState extends State<ToolsScreen>
       'food' => const FoodToolScreen(),
       'research' => ResearchToolScreen(billingService: widget.billingService),
       'community' => const CommunityToolScreen(),
+      'lean_test' => LeanTestScreen(gateway: widget.leanGateway),
       _ => ToolPlaceholderScreen(tile: tile),
     };
     Navigator.of(context).push(

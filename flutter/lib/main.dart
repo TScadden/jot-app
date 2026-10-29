@@ -19,6 +19,7 @@ import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/daily_score_background.dart';
 import 'package:tabs_lab/src/data/daily_score_refresh_owner.dart';
+import 'package:tabs_lab/src/data/lean_test_session.dart';
 import 'package:tabs_lab/src/data/migraine_attack_store.dart';
 import 'package:tabs_lab/src/data/migraine_controller.dart';
 import 'package:tabs_lab/src/data/migraine_notification.dart';
@@ -35,6 +36,8 @@ import 'package:tabs_lab/src/data/widget_sync.dart';
 import 'package:tabs_lab/src/features/auth/login_screen.dart';
 import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
+import 'package:tabs_lab/src/features/tools/lean_test_screen.dart'
+    show BackendLeanTestGateway;
 import 'package:tabs_lab/src/features/onboarding/onboarding_flow.dart';
 import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
 import 'package:tabs_lab/src/features/splash/splash_screen.dart';
@@ -395,6 +398,20 @@ class _AppFlowState extends State<AppFlow>
       // exactly what Round 31 made it: stored-session PRESENCE only,
       // no network round-trip at launch, ever.
       final email = await _readEmailOrNull();
+      // Phase 1 item 6 (F2): bind the lean-test store's owner from
+      // the restored session BEFORE any home landing can load,
+      // retry, or serve a lean session. The binding is
+      // SYNCHRONOUS (bindOwner): from this line, every store gate
+      // compares against this owner, so a surviving blob from a
+      // different account can never be served unbound. The bind
+      // itself awaits no storage channel future. (Combine note:
+      // placed at the first point the restored email is known,
+      // ahead of the onboarding owner claim below — the two stores
+      // are independent, and F2's earliest-bind ordering governs
+      // for the lean-test store.)
+      if (email != null) {
+        LeanTestSessionStore.instance.bindOwner(email);
+      }
       // Vera F1 (Oct 28, 2026): owner enforcement BEFORE the gate.
       // A cold-start restore never passes through the login/register
       // funnels, so without this claim a previous account's (or an
@@ -533,6 +550,15 @@ class _AppFlowState extends State<AppFlow>
     // Audit 4e: migraine attack records are account-bound too —
     // session expiry wipes them like the other stores.
     unawaited(MigraineAttackStore.instance.clear());
+    // Phase 1 item 6 (F1): the lean-test session is account-bound
+    // too — but a completed-pending lean result gets the outbox's
+    // treatment directly above, not a wipe: when the blob holds a
+    // pending entry, the owner-bound blob is RETAINED (the same
+    // account's next sign-in retries its pending entry; a
+    // different account's sign-in drops it via owner mismatch
+    // before any load or retry can serve it). With no pending
+    // entry, retainUnconfirmed falls through to the ordinary wipe.
+    unawaited(LeanTestSessionStore.instance.retainUnconfirmed());
     // Vera 4e follow-up: expiry mid-attack must not orphan the
     // ongoing notification; its tap would load a wiped store.
     unawaited(LocalMigraineNotifier.cancelPostedAttack());
@@ -608,6 +634,8 @@ class _AppFlowState extends State<AppFlow>
     unawaited(
         MigraineAttackStore.instance.clearIfOwnerMismatch(email));
     unawaited(
+        LeanTestSessionStore.instance.clearIfOwnerMismatch(email));
+    unawaited(
         KnowledgeExtractionStore.instance.clearIfOwnerMismatch(email));
     // Founder seed findings (Oct 28, 2026): the onboarding store
     // joins the same enforcement — it holds the account's profile
@@ -666,6 +694,17 @@ class _AppFlowState extends State<AppFlow>
   /// the server flag stays false until setup completes and pushes
   /// true, so the reset is deferred, never lost.)
   Future<void> _resolveLoginRoute(String email) async {
+    // Phase 1 item 6 (F2): the lean-test owner binding lands
+    // SYNCHRONOUSLY here, ahead of the home landing below (whose
+    // _kickFirstRunResync fires the pending-entry retry) — the
+    // login-success handler's clearIfOwnerMismatch already bound
+    // it in its synchronous prefix, and this re-asserts it at the
+    // routing point itself. From the binding instant, the store's
+    // gates refuse any blob stamped for a different account, so
+    // no load or retry can serve or stage across accounts, in any
+    // ordering; the binding awaits no channel future, so routing
+    // can never park on one.
+    LeanTestSessionStore.instance.bindOwner(email);
     // Vera BLOCKER: fetchSyncPull's TTL cache is per-instance and
     // not keyed by account — without this, a login within 5 minutes
     // of a previous session's pull reads the OLD account state (a
@@ -776,6 +815,18 @@ class _AppFlowState extends State<AppFlow>
   /// History rather than surfacing here.
   void _retryPendingLogEntries() {
     unawaited(LogEntryOutbox.instance.flush(_tabsBackend));
+    // Phase 1 item 6: a lean-test result that was built but never
+    // staged (app killed at close) retries here with its persisted
+    // allocated id, so the entry lands exactly once; the local
+    // session is discarded only after the stage succeeds.
+    unawaited(retryPendingLeanTestEntry(
+      store: LeanTestSessionStore.instance,
+      stage: (entry) => LogEntryOutbox.instance.stageForBackend(
+        entry,
+        backend: _tabsBackend,
+        serverKnown: false,
+      ),
+    ));
   }
 
   void _kickFirstRunResync() {
@@ -843,6 +894,8 @@ class _AppFlowState extends State<AppFlow>
     // attack records.
     unawaited(
         MigraineAttackStore.instance.clearIfOwnerMismatch(email));
+    unawaited(
+        LeanTestSessionStore.instance.clearIfOwnerMismatch(email));
     unawaited(
         KnowledgeExtractionStore.instance.clearIfOwnerMismatch(email));
     // Founder seed findings (Oct 28, 2026): a fresh registration
@@ -1192,6 +1245,7 @@ class _AppFlowState extends State<AppFlow>
               healthConnectService: widget.healthConnectService,
               billingService: _billingSync?.service,
               migraineController: _migraineController,
+              leanGateway: BackendLeanTestGateway(backend: _tabsBackend),
               onLogout: _onLogout),
         if (_splashVisible && animationsDisabled(context))
           // Audit 6c — reduced motion: the splash renders plain, with

@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:tabs_lab/src/data/coach_memory_store.dart';
 import 'package:tabs_lab/src/data/daily_score_refresh_owner.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
+import 'package:tabs_lab/src/data/lean_test_session.dart';
 import 'package:tabs_lab/src/data/migraine_attack_store.dart';
 import 'package:tabs_lab/src/data/migraine_notification.dart';
 import 'package:tabs_lab/src/data/heart_data_cache.dart';
@@ -114,6 +117,39 @@ class AccountActions {
     try {
       await MigraineAttackStore.instance.clear();
     } catch (_) {}
+    // Phase 1 item 6: the lean-test session is account-bound
+    // device-local health data — the same wipe covers it, with
+    // the F1/F2 retention exception mirroring the outbox directly
+    // above: when this funnel runs in retain mode (logout whose
+    // flush did not confirm every entry), a lean blob holding a
+    // completed-pending entry is RETAINED owner-bound on the same
+    // terms — the same account's next session retries it, a
+    // different account's sign-in drops it via owner mismatch
+    // before any load or retry can serve it. In normal mode the
+    // wipe runs as before.
+    // Deliberately NOT awaited in either mode (the
+    // LogEntryOutbox blob-delete rule, and main.dart's
+    // session-expiry treatment of this same store): the store has
+    // no test-injected storage in this funnel, so its storage
+    // futures reach the real FlutterSecureStorage channel — a
+    // channel future that cannot complete in a caller's async
+    // zone (a wedged channel in production, the fake-async zone
+    // in widget tests) would park this whole wipe behind it:
+    // every later clear, the settings clear, and the logout
+    // itself would never run (settings_r29: onLogout never
+    // fired). Both operations still take effect HERE, in
+    // sequence: each drops the owner binding synchronously before
+    // returning, and retainUnconfirmed decides from in-memory
+    // state when it is known; only async completion is not
+    // awaited. Neither future can complete with an error (the
+    // store swallows storage errors), and a surviving blob stays
+    // guarded — load() serves nothing unbound or mismatched and
+    // login's clearIfOwnerMismatch re-wipes a mismatched blob.
+    if (retainUnconfirmedLogEntries) {
+      unawaited(LeanTestSessionStore.instance.retainUnconfirmed());
+    } else {
+      unawaited(LeanTestSessionStore.instance.clearAndUnbind());
+    }
     // Vera 4e follow-up: wipe mid-attack must not orphan the
     // ongoing notification; its tap would load a wiped store.
     try {
