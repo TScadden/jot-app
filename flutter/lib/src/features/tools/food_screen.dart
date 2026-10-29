@@ -366,6 +366,22 @@ class _FoodToolScreenState extends State<FoodToolScreen> {
   final Map<String, bool> _expanded = {};
   bool _checkInFlight = false;
 
+  /// Vera 5c gate (VC 100110 fix round): persists are suppressed
+  /// until the encyclopedia load has SETTLED (its guarded attempt
+  /// completed or failed). The owner-enforcement read that precedes
+  /// the load has no timeout — if it wedges, the load never runs
+  /// and the in-memory map stays history-less; a whole-value
+  /// persist from that map would silently destroy every persisted
+  /// checked-food entry. While this flag is false, checks still
+  /// work in memory and the stored JSON stays byte-untouched.
+  bool _encyclopediaLoadSettled = false;
+
+  /// Set when a persist was suppressed by the gate above; the
+  /// deferred persist flushes once the gate opens, so a check
+  /// that completed during a merely slow load is still persisted
+  /// (from the by-then merged map) instead of being lost.
+  bool _persistDeferredWhileGated = false;
+
   @override
   void initState() {
     super.initState();
@@ -398,10 +414,29 @@ class _FoodToolScreenState extends State<FoodToolScreen> {
       setState(() => _encyclopedia.addAll(restored));
     } catch (_) {
       // Cache stays empty — honest, the checker still works.
+    } finally {
+      // The load attempt has settled (value or failure): the
+      // in-memory map now reflects everything that could be
+      // restored, so whole-value persists are safe again. If the
+      // enforcement read wedged before this method was ever
+      // called, this never runs and the gate stays closed.
+      _encyclopediaLoadSettled = true;
+      if (_persistDeferredWhileGated && _encyclopedia.isNotEmpty) {
+        _persistDeferredWhileGated = false;
+        unawaited(_persistEncyclopedia());
+      }
     }
   }
 
   Future<void> _persistEncyclopedia() async {
+    // Vera 5c gate: never whole-value overwrite the persisted
+    // history from a map whose load has not settled — it may be
+    // missing every previously persisted entry. In-memory results
+    // still serve this session; the stored JSON is untouched.
+    if (!_encyclopediaLoadSettled) {
+      _persistDeferredWhileGated = true;
+      return;
+    }
     try {
       await _historyStore
           .saveEncyclopediaJson(encodeFoodEncyclopedia(_encyclopedia));
