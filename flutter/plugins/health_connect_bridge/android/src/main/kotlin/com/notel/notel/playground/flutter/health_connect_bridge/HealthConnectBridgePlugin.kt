@@ -747,18 +747,21 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
     /// founder's summed-bouts rule (Oct 28, 2026) — the same rule
     /// readSleepHistory's Dart summarizer applies: a night's sleep
     /// is ALL its bouts added up. Candidate sessions are the
-    /// nonMock sessions with endTime in [startOfDay,
-    /// endOfDay+12h] (read over [startOfDay-1day, endOfDay]). For
-    /// each candidate, its genuinely-asleep intervals are the
+    /// nonMock sessions attributed to the requested date by the
+    /// WAKE-DATE rule: the local date of a session's endTime must
+    /// equal the requested date (read over [startOfDay-1day,
+    /// endOfDay]) — the identical attribution readSleepHistory
+    /// uses (its dateOf() helper), so a session is counted for
+    /// exactly one date and the following night is never folded
+    /// into a past date's read. For each candidate, its
+    /// genuinely-asleep intervals are the
     /// session interval minus its merged awake-stage intervals
     /// (AWAKE, AWAKE_IN_BED, OUT_OF_BED — see [subtractAwake]);
     /// those asleep intervals are unioned across ALL candidate
     /// sessions (via [mergeIntervals], so overlapping bouts never
     /// double-count) and the result is the union's total whole
     /// minutes. Null when there are no candidate sessions; a union
-    /// totalling 0 returns 0 (Dart applies the zero rule). This
-    /// mirrors the history rule so the single-day and history
-    /// reads agree on the same night.
+    /// totalling 0 returns 0 (Dart applies the zero rule).
     private fun readSleepMinutes(dateStr: String?, result: MethodChannel.Result) {
         val client = hcClientOrError(result) ?: return
         engineScope.launch {
@@ -772,9 +775,15 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                         )
                     )
                 )
+                // Wake-date attribution (same rule as
+                // readSleepHistory's dateOf()): a session counts
+                // for the requested date only when the LOCAL DATE
+                // of its endTime equals that date.
+                val requestedDate = localDateOf(dateStr)
+                val zone = ZoneId.systemDefault()
                 val candidates = nonMock(response.records).filter { session ->
-                    session.endTime.isAfter(startOfDay) &&
-                        session.endTime.isBefore(endOfDay.plus(12, ChronoUnit.HOURS))
+                    ZonedDateTime.ofInstant(session.endTime, zone)
+                        .toLocalDate() == requestedDate
                 }
                 if (candidates.isEmpty()) {
                     result.success(null)

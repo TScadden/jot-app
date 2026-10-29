@@ -205,6 +205,35 @@ void main() {
       // Founder zero rule: 0 is a failed read, never stored.
       expect(all['2026-10-28']?.sleepMinutes, isNull);
     });
+
+    test('i. sub-minute pieces total in ms and convert once: '
+        'two 30-second pieces sum to 1 minute, not 0', () {
+      final out = summarizeSleepSessions([
+        _session(
+            '2026-10-28',
+            DateTime(2026, 10, 28, 1, 0, 0),
+            DateTime(2026, 10, 28, 1, 0, 30)),
+        _session(
+            '2026-10-28',
+            DateTime(2026, 10, 28, 3, 0, 0),
+            DateTime(2026, 10, 28, 3, 0, 30)),
+      ]);
+      // Each piece alone is 0 whole minutes; totalled in ms
+      // (30000 + 30000) and converted once they are 1 minute.
+      expect(out, [(date: '2026-10-28', mins: 1, deep: 0)]);
+    });
+
+    test('j. exact-touch intervals merge into one continuous '
+        'interval (start == previous end)', () {
+      final out = summarizeSleepSessions([
+        _session('2026-10-28', _dt(10, 27, 23), _dt(10, 28, 1)),
+        _session('2026-10-28', _dt(10, 28, 1), _dt(10, 28, 6)),
+      ]);
+      // 23:00-01:00 (120) touching 01:00-06:00 (300) at exactly
+      // 01:00: one continuous 420-minute interval — no gap and
+      // no double count at the touch point.
+      expect(out, [(date: '2026-10-28', mins: 420, deep: 0)]);
+    });
   });
 
   group('readSleepHistory channel parse', () {
@@ -296,9 +325,6 @@ void main() {
       // (75th percentile, nearest-rank over 28 nights: rank 21.
       // Legacy's sorted nights are all 420; summed has 20 nights at
       // 420 and the 21st is the smallest split night, 420 + 40.)
-      print('Sleep Need materiality: legacy baseNeed='
-          '${legacyEst.baseNeedMinutes}, summed baseNeed='
-          '${summedEst.baseNeedMinutes}, delta=$delta');
       expect(legacyEst.baseNeedMinutes, 420);
       expect(summedEst.baseNeedMinutes, 460);
       expect(summedEst.baseNeedMinutes,

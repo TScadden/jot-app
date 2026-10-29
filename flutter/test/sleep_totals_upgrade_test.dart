@@ -46,6 +46,11 @@ class _RecordingHc extends HealthConnectService {
   String? sleepErrorCode;
   String? sleepPartialCode;
 
+  /// Sleep rows the fake re-read returns (empty by default, as
+  /// before). Set to pin what a forced capture does with ACTUAL
+  /// returned totals.
+  List<({String date, int mins, int deep})> sleepRows = const [];
+
   @override
   Future<List<({String date, int bpm})>> readRestingHrHistory(int days) async {
     windows['restingHr'] = days;
@@ -60,7 +65,7 @@ class _RecordingHc extends HealthConnectService {
     if (sleepPartialCode != null) {
       lastPartialErrorCode = sleepPartialCode;
     }
-    return const [];
+    return sleepRows;
   }
 
   @override
@@ -239,6 +244,60 @@ void main() {
       expect(hc.windows['sleep'], 90);
       expect(hc.windows['restingHr'], 31);
       expect(store.sleepTotalsRuleVersion, 1);
+    });
+
+    test('forced re-read returning a CHANGED union total for an '
+        'already-stored in-window date REPLACES the stored totals '
+        'and stamps version 2 (C-1b)', () async {
+      final disk = <String, String>{};
+      // Seeded legacy night: 2026-10-10 at sleep 432 / deep 88,
+      // store on rule version 1.
+      final store = await _seededStore(disk);
+      expect(store.sleepTotalsRuleVersion, 1);
+      final before = (await store.readAll())['2026-10-10']!;
+      expect(before.sleepMinutes, 432);
+      expect(before.deepSleepMinutes, 88);
+
+      // The forced full-window re-read returns a DIFFERENT union
+      // total for that same date.
+      final hc = _RecordingHc()
+        ..sleepRows = const [
+          (date: '2026-10-10', mins: 512, deep: 101),
+        ];
+
+      expect(await _runCapture(store, hc), isTrue);
+      expect(hc.windows['sleep'], 90);
+
+      // mergeRefresh replacement, not gap-fill: the stored row
+      // now holds the new union totals, and unrelated fields on
+      // the row are untouched.
+      final after = (await store.readAll())['2026-10-10']!;
+      expect(after.sleepMinutes, 512);
+      expect(after.deepSleepMinutes, 101);
+      expect(after.restingHrBpm, 58);
+      expect(after.caloriesKcal, 2100);
+      expect(store.sleepTotalsRuleVersion, 2);
+    });
+
+    test('forced re-read returning NO row for a stored in-window '
+        'date keeps its legacy total and still stamps version 2 '
+        '(C-1a disclosed case: sessions deleted at the source)',
+        () async {
+      final disk = <String, String>{};
+      final store = await _seededStore(disk);
+      expect(store.sleepTotalsRuleVersion, 1);
+      // Default fake returns zero sleep rows: the stored night
+      // is absent from the re-read (e.g. deleted in Health
+      // Connect), so the merge never touches it.
+      final hc = _RecordingHc();
+
+      expect(await _runCapture(store, hc), isTrue);
+      expect(hc.windows['sleep'], 90);
+
+      final after = (await store.readAll())['2026-10-10']!;
+      expect(after.sleepMinutes, 432);
+      expect(after.deepSleepMinutes, 88);
+      expect(store.sleepTotalsRuleVersion, 2);
     });
 
     test('current version: routine capture keeps the gap-aware '

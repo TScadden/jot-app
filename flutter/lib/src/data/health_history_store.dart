@@ -431,6 +431,30 @@ class HealthHistoryStore {
   /// window, so the capture forces one full sleep backfill and
   /// stamps this version once that re-read completes cleanly
   /// (see [HealthHistorySync.captureFromHealthConnect]).
+  ///
+  /// Honest limit of that upgrade: the forced re-read only
+  /// replaces totals for nights it actually returns, so a
+  /// version 2 stamp does NOT guarantee every stored total was
+  /// recomputed under the new rule. The full list of cases in
+  /// which a legacy (version 1) total is kept under the
+  /// version 2 stamp:
+  /// - Nights older than the 90-day re-read window are never
+  ///   re-read, so their stored totals stay as they were.
+  /// - Nights inside the 90-day window that Health Connect no
+  ///   longer returns — for example because their sessions were
+  ///   deleted at the source — are not touched by the merge, so
+  ///   their stored totals stay as they were.
+  /// - A night whose re-read union total is 0 is treated as
+  ///   absent data under the zero rule, so a previously stored
+  ///   total for that night is kept; the store never erases a
+  ///   stored total on a 0.
+  /// - The same applies field by field to deep sleep: a night
+  ///   whose re-read deep total is 0 keeps its previously
+  ///   stored deep total.
+  /// In each case there is no truer value to replace the stored
+  /// one with, and clearing it would break the never-shrink
+  /// rule — so the legacy value is kept on purpose, and this
+  /// comment is the disclosure of that choice.
   static const int currentSleepTotalsRuleVersion = 2;
 
   static final HealthHistoryStore instance = HealthHistoryStore._internal();
