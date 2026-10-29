@@ -181,22 +181,21 @@ int? resolveFeelingCategoryId(List<QuickLogCategory> categories) {
 }
 
 /// Builds the exact entry one tap writes (native `selectLevel`):
-/// id = max(existing ids) + 1 (the sync endpoint upserts on
-/// (user_id, local_id), so a fresh id is mandatory — round 19 rule),
 /// body "Feeling: N/5 Today", chips `["Daily Ranking"]`, manualText "".
+/// [id] is REQUIRED and must come from the outbox's post-load
+/// allocation (VC 100107 mechanism): the sync endpoint upserts on
+/// (user_id, local_id), so a fresh id is mandatory (round 19 rule),
+/// and a synchronous max+1 over a possibly-unloaded entry set is
+/// exactly the allocation that mechanism abolished — there is no
+/// fallback form of this builder.
 QuickLogEntry buildFeelingEntry({
   required int level,
   required int categoryId,
-  required List<QuickLogEntry> existing,
+  required int id,
   DateTime? now,
-  int? id,
 }) {
-  var maxId = 0;
-  for (final e in existing) {
-    if (e.id > maxId) maxId = e.id;
-  }
   return QuickLogEntry(
-    id: id ?? maxId + 1,
+    id: id,
     categoryId: categoryId,
     body: 'Feeling: $level/5 Today',
     chips: jsonEncode(const [feelingCheckInTag]),

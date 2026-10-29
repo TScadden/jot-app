@@ -72,14 +72,6 @@ const Map<String, IconData> flareTypeIcons = {
   'Crash': Icons.battery_alert,
 };
 
-/// Accessibility label for a severity option (spec §3 item 10):
-/// `Rough, severity 1 of 3` / `Bad, severity 2 of 3` /
-/// `Really bad, severity 3 of 3`.
-String flareSeveritySemantics(String severity) {
-  final index = flareSeverities.indexOf(severity);
-  return '$severity, severity ${index + 1} of 3';
-}
-
 /// Accessibility label for a late-add severity option (Juno
 /// Item 8): `Rough, severity 1 of 2` / `Really bad, severity 2 of 2`.
 String flareLateSeveritySemantics(String severity) {

@@ -96,12 +96,17 @@ class _Server {
   final List<Map<String, dynamic>> capturedPosts = [];
   int postAttempts = 0;
 
+  /// HTTP pull count, for the Vera F5 test: the initial flare
+  /// stage must not add a pull of its own.
+  int pullCount = 0;
+
   TabsBackend backend() {
     final store = FakeSessionStore()
       ..token = 'test-token'
       ..email = _owner;
     final client = MockClient((request) async {
       if (request.url.path == '/api/sync/pull') {
+        pullCount++;
         return http.Response(
           jsonEncode({
             'entries': entries,
@@ -628,6 +633,53 @@ void main() {
       );
     });
 
+    test('F3: a number-origin day carrying good options renders '
+        'BOTH the kind and the good options, in ruled order '
+        '(label and semantics)', () {
+      expect(
+        checkInSummaryLabel(
+          ranking: 2,
+          flareSeverity: 'Rough',
+          flareKind: 'Dizzy',
+          flareOrigin: SummaryFlareOrigin.numberOrigin,
+          goodOptions: const ['Energy', 'Clear head'],
+        ),
+        '2 · Rough · Dizzy · Energy, Clear head',
+      );
+      expect(
+        checkInSummarySemantics(
+          ranking: 2,
+          flareSeverity: 'Rough',
+          flareKind: 'Dizzy',
+          flareOrigin: SummaryFlareOrigin.numberOrigin,
+          goodOptions: const ['Energy', 'Clear head'],
+        ),
+        "Today's check-in: 2 of 5, rough, dizzy, energy, clear head. "
+        "Tap to update today's details.",
+      );
+      // Number-origin with good options but no kind: the options
+      // still render (they are not suppressed by the origin).
+      expect(
+        checkInSummaryLabel(
+          ranking: 2,
+          flareSeverity: 'Rough',
+          flareOrigin: SummaryFlareOrigin.numberOrigin,
+          goodOptions: const ['Energy'],
+        ),
+        '2 · Rough · Energy',
+      );
+      expect(
+        checkInSummarySemantics(
+          ranking: 2,
+          flareSeverity: 'Rough',
+          flareOrigin: SummaryFlareOrigin.numberOrigin,
+          goodOptions: const ['Energy'],
+        ),
+        "Today's check-in: 2 of 5, rough, energy. "
+        "Tap to update today's details.",
+      );
+    });
+
     test('semantics — the ruled expansions, exhaustive by case', () {
       String sem({
         required int ranking,
@@ -731,8 +783,8 @@ void main() {
       // And a good-day / ranking record never counts as a flare day.
       final good = buildGoodEntry(
           id: 8, categoryId: 6, options: ['Energy'], now: now);
-      final ranking = buildFeelingEntry(
-          level: 2, categoryId: 6, existing: const [], now: now);
+      final ranking =
+          buildFeelingEntry(level: 2, categoryId: 6, id: 9, now: now);
       expect(_deriveFlareDays([good, ranking], cats), isEmpty);
     });
   });
@@ -984,6 +1036,65 @@ void main() {
       expect(commits, [
         {'severity': 'Really bad', 'type': null},
       ]);
+    });
+
+    testWidgets('kind sheet: a failed pre-stage opens the sheet '
+        'already showing the generic failure copy (Vera F1a)',
+        (tester) async {
+      await pumpOpener(
+        tester,
+        (context) => showCheckInKindSheet(
+          context: context,
+          onKind: (_) async => true,
+          onJustLog: () async => true,
+          initialCommitFailed: true,
+        ),
+      );
+      expect(find.text('Flare day'), findsOneWidget);
+      expect(find.text(flareStageFailureCopy), findsOneWidget);
+    });
+
+    testWidgets('amend sheet, late add: dismissal before a '
+        'kind-step commit writes nothing — dismissed at the '
+        'severity step, and again at the kind step (Vera gap 2, '
+        'sheet level)', (tester) async {
+      final commits = <Map<String, String?>>[];
+      Future<void> openAmend() => pumpOpener(
+            tester,
+            (context) => showCheckInAmendSheet(
+              context: context,
+              showKindSection: false,
+              showFlareAddSection: true,
+              onFlareAdd: ({required severity, type}) async {
+                commits.add({'severity': severity, 'type': type});
+                return true;
+              },
+              showGoodSection: false,
+            ),
+          );
+
+      // Dismissed at the severity step: nothing was ever chosen,
+      // nothing commits.
+      await openAmend();
+      expect(find.text('How bad is it today?'), findsOneWidget);
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text("Today's check-in"), findsNothing);
+      expect(commits, isEmpty);
+
+      // Dismissed at the kind step: the severity selection is
+      // sheet-local state only — choosing it committed nothing,
+      // and dismissing here still writes nothing.
+      await openAmend();
+      await tester.tap(find.text('Rough'));
+      await tester.pump();
+      expect(find.text('What kind of bad?'), findsOneWidget);
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text("Today's check-in"), findsNothing);
+      expect(commits, isEmpty);
     });
 
     testWidgets('amend sheet, kind section: pre-filled kind, a '
@@ -1609,7 +1720,6 @@ void main() {
       final entry = buildFeelingEntry(
         level: 2,
         categoryId: 6,
-        existing: const [],
         id: 77,
       );
       await tester.runAsync(
@@ -1710,6 +1820,350 @@ void main() {
       expect(rankingRows(server), hasLength(1));
       await tester.pump(const Duration(seconds: 25));
       await tester.pump();
+    });
+
+    testWidgets('F1: flare pre-stage failure → the kind sheet '
+        'opens showing the failure copy → DISMISSAL retries the '
+        'severity-only stage and the flare lands', (tester) async {
+      final server = _Server([], categories: _catsNameHit);
+      server.postGate = Completer<void>();
+      await pumpHome(tester, server);
+      // Ranking stage = allocate persist + stage persist (2
+      // writes, push gated so no flush bookkeeping writes
+      // interleave). Every later disk write fails: the flare
+      // pre-stage (local, Vera F5) cannot land.
+      diskWrites = 0;
+      diskFailAfter = 2;
+      await tester.tap(find.text('2'));
+      await _pumpUntil(
+        tester,
+        () => find.text('What kind of bad?').evaluate().isNotEmpty,
+      );
+      await settleSheet(tester);
+      // (a) The sheet opened already showing the existing generic
+      // failure copy — the user knows no flare is staged yet.
+      expect(find.text(flareStageFailureCopy), findsOneWidget);
+      expect(
+        LogEntryOutbox.instance.records
+            .where((r) => r.entry.chips.contains('Flare Day')),
+        isEmpty,
+      );
+      // The disk recovers, then the user DISMISSES the sheet:
+      // dismissal is a commit path, so the dismissal retry stages
+      // the severity-only flare.
+      diskFailAfter = null;
+      await tester.tapAt(const Offset(10, 10));
+      await _pumpUntil(
+        tester,
+        () => LogEntryOutbox.instance.records
+            .any((r) => r.entry.chips.contains('Flare Day')),
+      );
+      final stagedFlare = LogEntryOutbox.instance.records
+          .singleWhere((r) => r.entry.chips.contains('Flare Day'))
+          .entry;
+      expect(jsonDecode(stagedFlare.chips), ['Flare Day', 'Rough']);
+      expect(stagedFlare.body, 'Flare day · Rough');
+      // The retry's commit announces the severity-only label in a
+      // live region (Item 11; Vera gap 7, severity-only form).
+      final announcement =
+          tester.widget<Semantics>(_semantics('Flare logged · Rough'));
+      expect(announcement.properties.liveRegion, isTrue);
+      expect(find.text('2 · Rough'), findsOneWidget);
+
+      server.postGate!.complete();
+      await _pumpUntil(
+        tester,
+        () => LogEntryOutbox.instance.records.isEmpty,
+      );
+      expect(flareRows(server), hasLength(1));
+      expect(flareRows(server).single['body'], 'Flare day · Rough');
+      expect(rankingRows(server), hasLength(1));
+      await tester.pump(const Duration(seconds: 25));
+      await tester.pump();
+    });
+
+    testWidgets('F1: flare pre-stage failure → kind-sheet '
+        'dismissal with the disk STILL failing stages no flare, '
+        'fires no announcement, and the summary stays '
+        'ranking-alone', (tester) async {
+      final server = _Server([], categories: _catsNameHit);
+      server.postGate = Completer<void>();
+      await pumpHome(tester, server);
+      diskWrites = 0;
+      diskFailAfter = 2;
+      await tester.tap(find.text('2'));
+      await _pumpUntil(
+        tester,
+        () => find.text('What kind of bad?').evaluate().isNotEmpty,
+      );
+      await settleSheet(tester);
+      expect(find.text(flareStageFailureCopy), findsOneWidget);
+      // Dismiss while every disk write still fails: the dismissal
+      // retry runs and fails the same way.
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.text('Flare day'), findsNothing);
+      expect(
+        LogEntryOutbox.instance.records
+            .where((r) => r.entry.chips.contains('Flare Day')),
+        isEmpty,
+      );
+      expect(flareRows(server), isEmpty);
+      // No announcement fired for a record that does not exist.
+      expect(_semantics('Flare logged · Rough'), findsNothing);
+      // The honest Item 11 state: the ranking alone.
+      expect(find.text('2 · Rough'), findsOneWidget);
+
+      diskFailAfter = null;
+      server.postGate!.complete();
+      await _pumpUntil(
+        tester,
+        () => LogEntryOutbox.instance.records.isEmpty,
+      );
+      expect(flareRows(server), isEmpty);
+      expect(rankingRows(server), hasLength(1));
+      await tester.pump(const Duration(seconds: 25));
+      await tester.pump();
+    });
+
+    testWidgets('F5: the initial severity-only flare stages from '
+        'the LOCAL merged view — the flare stage adds no fresh '
+        'pull; the kind amend that follows still re-checks via a '
+        'pull', (tester) async {
+      final server = _Server([], categories: _catsNameHit);
+      server.postGate = Completer<void>();
+      await pumpHome(tester, server);
+      final pullsBefore = server.pullCount;
+      await tester.tap(find.text('2'));
+      await _pumpUntil(
+        tester,
+        () => find.text('What kind of bad?').evaluate().isNotEmpty,
+      );
+      await settleSheet(tester);
+      // Exactly ONE new pull since the tap: the ranking commit's
+      // own re-check. The flare pre-stage staged locally.
+      expect(server.pullCount, pullsBefore + 1);
+      final stagedFlare = LogEntryOutbox.instance.records
+          .singleWhere((r) => r.entry.chips.contains('Flare Day'))
+          .entry;
+      expect(jsonDecode(stagedFlare.chips), ['Flare Day', 'Rough']);
+      expect(stagedFlare.body, 'Flare day · Rough');
+      // The kind tap amends that same record through the
+      // pull-based path: one more pull, same id.
+      await tester.tap(find.text('Dizzy'));
+      await _pumpUntil(
+        tester,
+        () => find.text('2 · Rough · Dizzy').evaluate().isNotEmpty,
+      );
+      expect(server.pullCount, pullsBefore + 2);
+      final amendedFlare = LogEntryOutbox.instance.records
+          .singleWhere((r) => r.entry.chips.contains('Flare Day'))
+          .entry;
+      expect(amendedFlare.id, stagedFlare.id);
+      expect(
+        jsonDecode(amendedFlare.chips),
+        ['Flare Day', 'Rough', 'Dizzy'],
+      );
+
+      server.postGate!.complete();
+      await _pumpUntil(
+        tester,
+        () => LogEntryOutbox.instance.records.isEmpty,
+      );
+      expect(flareRows(server), hasLength(1));
+      expect(rankingRows(server), hasLength(1));
+      await tester.pump(const Duration(seconds: 25));
+      await tester.pump();
+    });
+
+    testWidgets('F4: a severity-less flare record (chips hold '
+        'only the Flare Day tag) on a ranking-4 day — an amend '
+        'kind tap writes NOTHING and the sheet shows the generic '
+        'failure copy', (tester) async {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final server = _Server(
+        [
+          _entryJson(_entry(
+            id: 40,
+            categoryId: 6,
+            body: 'Feeling: 4/5 Today',
+            chips: '["Daily Ranking"]',
+            ts: now,
+          )),
+          _entryJson(_entry(
+            id: 41,
+            categoryId: 3,
+            body: 'Flare day',
+            chips: '["Flare Day"]',
+            ts: now,
+          )),
+        ],
+        categories: _catsNameHit,
+      );
+      await pumpHome(tester, server);
+      await _pumpUntil(
+        tester,
+        () => find.text('4 · Good').evaluate().isNotEmpty,
+      );
+      await tester.tap(find.text('4 · Good'));
+      await _pumpUntil(
+        tester,
+        () => find.text("Today's check-in").evaluate().isNotEmpty,
+      );
+      await settleSheet(tester);
+      await tester.tap(find.text('Dizzy'));
+      await _pumpUntil(
+        tester,
+        () => find.text(flareStageFailureCopy).evaluate().isNotEmpty,
+      );
+      // The sheet stayed open, nothing was staged, and the server
+      // record is byte-identical: no invented severity was written.
+      expect(find.text("Today's check-in"), findsOneWidget);
+      expect(LogEntryOutbox.instance.records, isEmpty);
+      expect(server.capturedPosts, isEmpty);
+      expect(flareRows(server), hasLength(1));
+      expect(flareRows(server).single['chips'], '["Flare Day"]');
+      expect(flareRows(server).single['body'], 'Flare day');
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+    });
+
+    testWidgets('gap 7: a flare commit from a number tap '
+        'announces the with-kind label in a LIVE REGION at Home '
+        'level (mirroring the good-day announcement assertion)',
+        (tester) async {
+      final server = _Server([], categories: _catsNameHit);
+      await pumpHome(tester, server);
+      await tester.tap(find.text('1'));
+      await _pumpUntil(
+        tester,
+        () => find.text('What kind of bad?').evaluate().isNotEmpty,
+      );
+      await settleSheet(tester);
+      await tester.tap(find.text('Fog'));
+      await _pumpUntil(
+        tester,
+        () => find.text('1 · Really bad · Fog').evaluate().isNotEmpty,
+      );
+      final announcement = tester.widget<Semantics>(
+        _semantics('Flare logged · Really bad · Fog'),
+      );
+      expect(announcement.properties.liveRegion, isTrue);
+      expect(find.byType(SnackBar), findsNothing);
+      await _pumpUntil(
+        tester,
+        () => LogEntryOutbox.instance.records.isEmpty,
+      );
+      expect(flareRows(server), hasLength(1));
+    });
+
+    testWidgets('gap 2 (Home level): amend late-add dismissal '
+        'before a kind-step commit writes nothing — dismissed at '
+        'the severity step, and again at the kind step',
+        (tester) async {
+      final server = _Server([], categories: _catsNameHit);
+      await pumpHome(tester, server);
+      await tester.tap(find.text('3'));
+      await _pumpUntil(
+        tester,
+        () => find.text('3 · Average').evaluate().isNotEmpty,
+      );
+      await _pumpUntil(
+        tester,
+        () => LogEntryOutbox.instance.records.isEmpty,
+      );
+
+      // First opening: dismiss at the severity step.
+      await tester.tap(find.text('3 · Average'));
+      await _pumpUntil(
+        tester,
+        () => find.text('How bad is it today?').evaluate().isNotEmpty,
+      );
+      await settleSheet(tester);
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(flareRows(server), isEmpty);
+      expect(
+        LogEntryOutbox.instance.records
+            .where((r) => r.entry.chips.contains('Flare Day')),
+        isEmpty,
+      );
+
+      // Second opening: choose a severity (sheet-local only), then
+      // dismiss at the kind step — still nothing written.
+      await tester.tap(find.text('3 · Average'));
+      await _pumpUntil(
+        tester,
+        () => find.text('How bad is it today?').evaluate().isNotEmpty,
+      );
+      await settleSheet(tester);
+      await tester.tap(find.text('Rough'));
+      await tester.pump();
+      expect(find.text('What kind of bad?'), findsOneWidget);
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text("Today's check-in"), findsNothing);
+      expect(flareRows(server), isEmpty);
+      expect(
+        LogEntryOutbox.instance.records
+            .where((r) => r.entry.chips.contains('Flare Day')),
+        isEmpty,
+      );
+      expect(find.text('3 · Average'), findsOneWidget);
+      expect(server.entries, hasLength(1));
+    });
+
+    testWidgets('kill-before-push (flare, gap 3): ranking + '
+        'severity-only flare staged, the process killed before '
+        'their push, relaunch derives the flare from the merged '
+        'view and it lands exactly once server-side',
+        (tester) async {
+      final server = _Server([], categories: _catsNameHit);
+      final outbox = LogEntryOutbox.instance;
+      final ranking = buildFeelingEntry(level: 2, categoryId: 6, id: 77);
+      final flare = buildFlareEntry(id: 78, categoryId: 3, severity: 'Rough');
+      // Staged through the same outbox stage the new local path
+      // (Vera F5a) lands in — durable on disk, never pushed.
+      await tester.runAsync(() async {
+        await outbox.stage(ranking, serverKnown: false, ownerEmail: _owner);
+        await outbox.stage(flare, serverKnown: false, ownerEmail: _owner);
+      });
+      // Simulated kill: in-memory state is gone, the disk blob
+      // (and only it) carries both records into the relaunch.
+      outbox.debugReset();
+      expect(outbox.records, isEmpty);
+      expect(server.capturedPosts, isEmpty);
+
+      await pumpHome(tester, server);
+      await _pumpUntil(
+        tester,
+        () => find.text('2 · Rough').evaluate().isNotEmpty,
+      );
+      await _pumpUntil(tester, () => outbox.records.isEmpty);
+      // Each record pushed exactly once — the staged flare was
+      // derived and flushed by the relaunch, never duplicated.
+      expect(
+        server.capturedPosts.where((e) => e['id'] == 77),
+        hasLength(1),
+      );
+      expect(
+        server.capturedPosts.where((e) => e['id'] == 78),
+        hasLength(1),
+      );
+      expect(flareRows(server), hasLength(1));
+      expect(flareRows(server).single['body'], 'Flare day · Rough');
+      expect(
+        jsonDecode(flareRows(server).single['chips'] as String),
+        ['Flare Day', 'Rough'],
+      );
+      expect(rankingRows(server), hasLength(1));
     });
   });
 

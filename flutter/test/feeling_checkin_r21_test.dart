@@ -163,11 +163,11 @@ void main() {
   });
 
   group('buildFeelingEntry (native selectLevel write)', () {
-    test('exact body/chips/category and id = max + 1', () {
+    test('exact body/chips/category and the caller-supplied id', () {
       final entry = buildFeelingEntry(
         level: 4,
         categoryId: 6,
-        existing: [_entry(id: 3), _entry(id: 41), _entry(id: 7)],
+        id: 42,
         now: DateTime(2026, 10, 12, 11, 0),
       );
       expect(entry.id, 42);
@@ -181,20 +181,21 @@ void main() {
       );
     });
 
-    test('empty history → id 1', () {
+    test('the required id is used verbatim — there is no max+1 '
+        'fallback form (Vera M3)', () {
       final entry = buildFeelingEntry(
         level: 1,
         categoryId: 6,
-        existing: const [],
+        id: 1,
       );
       expect(entry.id, 1);
     });
 
-    test('an explicit id (the outbox allocation) wins over max + 1', () {
+    test('an explicit id (the outbox allocation) is carried exactly',
+        () {
       final entry = buildFeelingEntry(
         level: 2,
         categoryId: 6,
-        existing: [_entry(id: 41)],
         id: 99,
       );
       expect(entry.id, 99);

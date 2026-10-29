@@ -192,12 +192,17 @@ Future<void> showCheckInKindSheet({
   required BuildContext context,
   required KindCommit onKind,
   required Future<bool> Function() onJustLog,
+  bool initialCommitFailed = false,
 }) {
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: NotelColors.surface,
     isScrollControlled: true,
-    builder: (_) => CheckInKindSheet(onKind: onKind, onJustLog: onJustLog),
+    builder: (_) => CheckInKindSheet(
+      onKind: onKind,
+      onJustLog: onJustLog,
+      initialCommitFailed: initialCommitFailed,
+    ),
   );
 }
 
@@ -206,7 +211,12 @@ Future<void> showCheckInKindSheet({
 /// already supplied the severity. The severity-only flare record
 /// was staged before this sheet opened, so dismissal is a commit
 /// path (Item 4): it leaves that record exactly as `Just log this`
-/// does, and neither path needs a callback on dismissal.
+/// does. When that pre-sheet stage FAILED, [initialCommitFailed]
+/// opens the sheet already showing the existing generic failure
+/// copy (Vera F1) — the user must never sit in this sheet believing
+/// a severity-only record exists when it does not — and the caller
+/// retries the severity-only stage once when the sheet closes
+/// without a successful commit.
 class CheckInKindSheet extends StatefulWidget {
   final KindCommit onKind;
 
@@ -215,10 +225,16 @@ class CheckInKindSheet extends StatefulWidget {
   /// this retries the creation as an upsert.
   final Future<bool> Function() onJustLog;
 
+  /// True when the severity-only stage that ran before this sheet
+  /// opened failed: the sheet opens with the generic failure copy
+  /// already showing.
+  final bool initialCommitFailed;
+
   const CheckInKindSheet({
     super.key,
     required this.onKind,
     required this.onJustLog,
+    this.initialCommitFailed = false,
   });
 
   @override
@@ -227,7 +243,7 @@ class CheckInKindSheet extends StatefulWidget {
 
 class _CheckInKindSheetState extends State<CheckInKindSheet> {
   bool _committing = false;
-  bool _commitFailed = false;
+  late bool _commitFailed = widget.initialCommitFailed;
 
   Future<void> _run(Future<bool> Function() commit) async {
     if (_committing) return;

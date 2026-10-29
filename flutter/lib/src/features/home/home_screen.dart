@@ -267,6 +267,11 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _flareCommitInFlight = false;
   bool _goodCommitInFlight = false;
 
+  /// Re-entrancy guard for the summary tap (Vera M1): while the
+  /// amend sheet is open, further summary taps do nothing. Set
+  /// before the sheet is shown and cleared in a finally.
+  bool _summarySheetOpen = false;
+
   LogEntryOutbox get _outbox => widget.logEntryOutbox ?? LogEntryOutbox.instance;
 
   // ── Round 34: event counters ─────────────────────────────────────
@@ -794,7 +799,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final entry = buildFeelingEntry(
       level: level,
       categoryId: resolvedId,
-      existing: ctx.merged,
       id: id,
     );
     final ok = await _stageAndApply(entry,
@@ -840,31 +844,72 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Juno Item 4). When the immediate stage failed, the summary
   /// keeps showing the ranking alone and a kind pick retries the
   /// creation as an upsert.
+  ///
+  /// Vera F5(a): the initial severity-only stage runs from the
+  /// LOCAL merged view (outbox-overlaid) via
+  /// `_commitFlare(localStage: true)` — it does NOT wait on a fresh
+  /// network pull, so the kill window between the ranking stage and
+  /// the flare stage is allocation + local stage only. The
+  /// pull-based re-check stays for the kind amend that follows.
+  ///
+  /// Vera F1: when that pre-stage failed, the kind sheet opens
+  /// already showing the generic failure copy, and DISMISSAL is no
+  /// longer a silent loss: closing the sheet without a successful
+  /// kind/`Just log this` commit retries the severity-only stage
+  /// once here. If the retry also fails, the summary stays
+  /// ranking-alone (the honest Item 11 state) and no announcement
+  /// fires — `_commitFlare` only announces on a successful stage.
   Future<void> _runLowFollowUp(int level) async {
     final severity = severityForRanking(level);
     if (severity == null) return;
     final preExisting = _flareToday;
     var stagedOk = preExisting != null;
     if (preExisting == null) {
-      stagedOk = await _commitFlare(severity: severity, type: null);
+      stagedOk = await _commitFlare(
+        severity: severity,
+        type: null,
+        localStage: true,
+      );
     }
     if (!mounted) return;
     final effectiveSeverity =
         preExisting != null ? (flareSeverityOf(preExisting) ?? severity) : severity;
+    var committedViaSheet = false;
     await showCheckInKindSheet(
       context: context,
-      onKind: (kind) => _commitFlare(
-        severity: effectiveSeverity,
-        type: kind,
-      ),
+      initialCommitFailed: preExisting == null && !stagedOk,
+      onKind: (kind) async {
+        final ok = await _commitFlare(
+          severity: effectiveSeverity,
+          type: kind,
+        );
+        if (ok) committedViaSheet = true;
+        return ok;
+      },
       onJustLog: () async {
         // The severity-only record is the commit: already staged
         // (nothing to do), a pre-existing record stays untouched,
-        // and a failed immediate stage retries here as an upsert.
-        if (preExisting != null || stagedOk) return true;
-        return _commitFlare(severity: severity, type: null);
+        // and a failed immediate stage retries here.
+        if (preExisting != null || stagedOk) {
+          committedViaSheet = true;
+          return true;
+        }
+        final ok = await _commitFlare(
+          severity: severity,
+          type: null,
+          localStage: true,
+        );
+        if (ok) committedViaSheet = true;
+        return ok;
       },
     );
+    // F1 dismissal retry: the sheet closed without a successful
+    // commit and the pre-stage had failed — dismissal is a commit
+    // path (Item 4), so the declared severity-only flare gets one
+    // more stage attempt now.
+    if (!committedViaSheet && preExisting == null && !stagedOk) {
+      await _commitFlare(severity: severity, type: null, localStage: true);
+    }
     if (mounted) _deriveCheckInState(_mergedEntries);
   }
 
@@ -872,12 +917,52 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// One flare record per energy day, amended in place. Returns
   /// true only when the LOCAL stage succeeded (Juno Item 11).
-  Future<bool> _commitFlare({required String severity, String? type}) async {
+  ///
+  /// [localStage] (Vera F5(a)) is ONLY for the initial severity-only
+  /// stage of the 1–2 follow-up and its retries: the record is
+  /// created from the local merged view (pulled entries overlaid
+  /// with the outbox — the same view derivation renders from),
+  /// without waiting on a fresh network pull. The per-record gate
+  /// is identical: the announcement and the on-screen state change
+  /// only on a successful local stage, the id comes from the
+  /// outbox's post-load allocation, and the stage is a creation
+  /// (serverKnown false). Every other commit — the kind amend /
+  /// upsert that follows, late adds, amend-sheet kinds — keeps the
+  /// pull-based re-check below.
+  Future<bool> _commitFlare({
+    required String severity,
+    String? type,
+    bool localStage = false,
+  }) async {
     if (_flareCommitInFlight) return false;
     final categoryId = _flareCategoryId;
     if (categoryId == null) return false;
     _flareCommitInFlight = true;
     try {
+      if (localStage) {
+        final existing =
+            findFlareRecord(_mergedEntries, symptomsCategoryId: categoryId);
+        if (existing != null) {
+          // A flare record for today already exists in the local
+          // view: the severity-only stage's purpose is satisfied
+          // and the existing record is left untouched.
+          return true;
+        }
+        final id = await _allocateId(_mergedEntries);
+        final entry = buildFlareEntry(
+          id: id,
+          categoryId: categoryId,
+          severity: severity,
+          type: type,
+        );
+        final ok = await _stageAndApply(entry,
+            serverKnown: false, fresh: _mergedEntries);
+        if (ok && mounted) {
+          setState(() => _checkInAnnouncement =
+              flareLoggedAnnouncement(severity, type: type));
+        }
+        return ok;
+      }
       final ctx = await _freshCommitContext();
       final resolvedId = _flareCategoryId ?? categoryId;
       final existing =
@@ -975,6 +1060,10 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Tapping the summary card opens the amend sheet, with its
   /// sections derived from today's state (Item 9).
   Future<void> _onSummaryTap() async {
+    // Vera M1: re-entrancy guard, matching every other entry point
+    // in this flow — a second tap while the sheet is open does
+    // nothing.
+    if (_summarySheetOpen) return;
     final ranking = _todayRanking;
     if (ranking == null) return;
     final flare = _flareToday;
@@ -984,21 +1073,33 @@ class _HomeScreenState extends State<HomeScreen> {
     final showKind = flare != null || ranking <= 2;
     final showFlareAdd = flare == null && ranking >= 3;
     final showGood = ranking >= 4 || _goodToday != null;
-    await showCheckInAmendSheet(
-      context: context,
-      showKindSection: showKind,
-      currentKind: flareKind,
-      onKind: (kind) => _commitFlare(
-        severity: flareSeverity ?? severityForRanking(ranking) ?? 'Rough',
-        type: kind,
-      ),
-      showFlareAddSection: showFlareAdd,
-      onFlareAdd: _commitFlare,
-      showGoodSection: showGood,
-      initialGood:
-          _goodToday == null ? const [] : goodOptionsOf(_goodToday!),
-      onGood: _commitGood,
-    );
+    _summarySheetOpen = true;
+    try {
+      await showCheckInAmendSheet(
+        context: context,
+        showKindSection: showKind,
+        currentKind: flareKind,
+        onKind: (kind) async {
+          // Vera F4: the severity must be SOURCEABLE — from the
+          // record itself (preserved verbatim, legacy `Bad`
+          // included) or from the number the user tapped. There is
+          // no invented fallback: when neither sources a severity,
+          // the commit does not write and returns false, so the
+          // sheet shows the existing generic failure copy.
+          final severity = flareSeverity ?? severityForRanking(ranking);
+          if (severity == null) return false;
+          return _commitFlare(severity: severity, type: kind);
+        },
+        showFlareAddSection: showFlareAdd,
+        onFlareAdd: _commitFlare,
+        showGoodSection: showGood,
+        initialGood:
+            _goodToday == null ? const [] : goodOptionsOf(_goodToday!),
+        onGood: _commitGood,
+      );
+    } finally {
+      _summarySheetOpen = false;
+    }
     if (!mounted) return;
     _deriveCheckInState(_mergedEntries);
   }

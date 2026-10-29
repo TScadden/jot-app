@@ -32,7 +32,8 @@ String checkInSummaryLabel({
   );
   if (flareOrigin == SummaryFlareOrigin.numberOrigin) {
     if (flareKind != null) buffer.write(' · $flareKind');
-  } else if (goodOptions.isNotEmpty) {
+  }
+  if (goodOptions.isNotEmpty) {
     buffer.write(' · ${goodOptions.join(', ')}');
   }
   if (flareOrigin == SummaryFlareOrigin.lateAdded && flareSeverity != null) {
@@ -58,7 +59,8 @@ String checkInSummarySemantics({
   );
   if (flareOrigin == SummaryFlareOrigin.numberOrigin) {
     if (flareKind != null) buffer.write(', ${flareKind.toLowerCase()}');
-  } else if (goodOptions.isNotEmpty) {
+  }
+  if (goodOptions.isNotEmpty) {
     buffer.write(
       ', ${goodOptions.map((o) => o.toLowerCase()).join(', ')}',
     );
