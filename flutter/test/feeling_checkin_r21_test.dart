@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
@@ -28,8 +29,12 @@ QuickLogEntry _entry({
   timestamp: timestamp,
 );
 
+const _energyWords = ['really bad', 'rough', 'average', 'good', 'really good'];
+
 Finder energyButton(int level) => find.byWidgetPredicate(
-  (w) => w is Semantics && w.properties.label == 'Energy $level of 5',
+  (w) =>
+      w is Semantics &&
+      w.properties.label == 'Energy $level of 5, ${_energyWords[level - 1]}',
 );
 
 QuickLogCategory _cat(int id, String name) => QuickLogCategory(
@@ -46,7 +51,18 @@ void main() {
   // STATIC and session-keyed, and cases in this file reuse one session
   // token across fresh fake servers — reset between cases so one
   // case's cached pull/habits body cannot be served to the next case.
-  setUp(TabsBackend.debugResetSharedCaches);
+  setUp(() {
+    TabsBackend.debugResetSharedCaches();
+    final disk = <String, String>{};
+    final outbox = LogEntryOutbox.instance;
+    outbox.debugReset();
+    outbox.debugSetStore(
+      read: (key) async => disk[key],
+      write: (key, value) async => disk[key] = value,
+      delete: (key) async => disk.remove(key),
+    );
+  });
+  tearDown(() => LogEntryOutbox.instance.debugReset());
   group('feelingDayStart (native energyDayStart, 04:00 boundary)', () {
     test('after 04:00 → today 04:00', () {
       final start = feelingDayStart(DateTime(2026, 10, 12, 11, 30));
@@ -173,6 +189,37 @@ void main() {
       );
       expect(entry.id, 1);
     });
+
+    test('an explicit id (the outbox allocation) wins over max + 1', () {
+      final entry = buildFeelingEntry(
+        level: 2,
+        categoryId: 6,
+        existing: [_entry(id: 41)],
+        id: 99,
+      );
+      expect(entry.id, 99);
+    });
+
+    test("feelingRankingOf parses the body; feeling words are Juno's", () {
+      expect(feelingRankingOf(_entry(body: 'Feeling: 3/5 Today')), 3);
+      expect(feelingRankingOf(_entry(body: 'Feeling: 5/5 Today')), 5);
+      expect(feelingRankingOf(_entry(body: 'headache')), isNull);
+      expect(feelingWords,
+          ['Really bad', 'Rough', 'Average', 'Good', 'Really good']);
+      expect(feelingButtonSemantics(1), 'Energy 1 of 5, really bad');
+      expect(feelingButtonSemantics(5), 'Energy 5 of 5, really good');
+      // findFeelingCheckInEntry returns the entry hasFeelingCheckIn sees.
+      final now = DateTime(2026, 10, 12, 11, 0);
+      final e = _entry(
+        chips: '["Daily Ranking"]',
+        body: 'Feeling: 2/5 Today',
+        timestamp: DateTime(2026, 10, 12, 9, 0).millisecondsSinceEpoch,
+      );
+      expect(
+        findFeelingCheckInEntry([e], moodCategoryId: 6, now: now)?.id,
+        e.id,
+      );
+    });
   });
 
   group('FeelingCheckInCard widget (native styling)', () {
@@ -198,6 +245,12 @@ void main() {
       for (var level = 1; level <= 5; level++) {
         expect(energyButton(level), findsOneWidget);
         expect(tester.getSize(energyButton(level)), const Size(48, 48));
+      }
+      // Juno Item 2: the five visible captions, verbatim, under the
+      // buttons on every presentation — no shortened forms.
+      for (final caption
+          in ['Really bad', 'Rough', 'Average', 'Good', 'Really good']) {
+        expect(find.text(caption), findsOneWidget, reason: caption);
       }
 
       await tester.tap(find.text('4'));
@@ -320,7 +373,11 @@ void main() {
     Future<void> pumpHome(WidgetTester tester, TabsBackend backend) async {
       await tester.pumpWidget(
         MaterialApp(
-          home: HomeScreen(weatherApi: weather(), tabsBackend: backend),
+          home: HomeScreen(
+            weatherApi: weather(),
+            tabsBackend: backend,
+            logEntryOutbox: LogEntryOutbox.instance,
+          ),
         ),
       );
       // Let the pull + weather + health loads settle.
@@ -330,7 +387,8 @@ void main() {
     }
 
     testWidgets(
-      'no check-in today → card shows; tap 4 writes the exact entry',
+      'no check-in today → card shows; tap 3 writes the exact entry '
+      'through the outbox and the summary replaces the card',
       (tester) async {
         Map<String, dynamic>? posted;
         final backend = backendFor(
@@ -355,7 +413,7 @@ void main() {
         final cardY = tester.getTopLeft(find.text('How are you feeling?')).dy;
         expect(cardY, lessThan(200));
 
-        await tester.tap(find.text('4'));
+        await tester.tap(find.text('3'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
         await tester.pump();
@@ -364,20 +422,25 @@ void main() {
         final rows = posted!['entries'] as List<dynamic>;
         expect(rows, hasLength(1));
         final row = rows.single as Map<String, dynamic>;
-        expect(row['id'], 42); // max(41) + 1 — never a colliding upsert id
+        // The outbox allocation also lands on max(41) + 1 here.
+        expect(row['id'], 42);
         expect(row['categoryId'], 6);
-        expect(row['body'], 'Feeling: 4/5 Today');
+        expect(row['body'], 'Feeling: 3/5 Today');
         expect(row['chips'], '["Daily Ranking"]');
         expect(row['manualText'], '');
 
-        // Exit animation completes → the card is gone for the day.
+        // Merged flow: the summary card replaces the number card
+        // for the rest of the energy day (no exit-slide state).
         await tester.pump(const Duration(milliseconds: 400));
         await tester.pump();
         expect(find.text('How are you feeling?'), findsNothing);
+        expect(find.text('3 · Average'), findsOneWidget);
       },
     );
 
-    testWidgets('check-in already logged this energy day → card never shows', (
+    testWidgets(
+        'check-in already logged this energy day → card never shows; '
+        'the summary shows instead', (
       tester,
     ) async {
       final backend = backendFor(
@@ -397,65 +460,7 @@ void main() {
       );
       await pumpHome(tester, backend);
       expect(find.text('How are you feeling?'), findsNothing);
-    });
-
-    testWidgets(
-        'tap aborts WITHOUT writing when the fresh re-pull fails (Vera gate)',
-        (tester) async {
-      var tapStarted = false;
-      var posts = 0;
-      final backend = backendFor(MockClient((request) async {
-        if (request.url.path == '/api/sync/pull') {
-          // Pulls succeed while the screen loads; once the tap starts,
-          // the tap-time re-pull fails. Writing from the resulting
-          // empty list would compute id 1 and overwrite a real entry
-          // via the upsert.
-          if (tapStarted) return http.Response('err', 500);
-          return http.Response(
-            jsonEncode({
-              'entries': [
-                {
-                  'id': 41,
-                  'categoryId': 1,
-                  'body': 'headache',
-                  'chips': '[]',
-                  'manualText': '',
-                  'timestamp': DateTime.now().millisecondsSinceEpoch,
-                },
-              ],
-              'categories': [
-                {
-                  'id': 6,
-                  'name': 'Mood & Energy',
-                  'icon': 'Mood',
-                  'colorHex': '#FFD93D',
-                  'isDefault': true,
-                  'sortOrder': 6,
-                },
-              ],
-              'profile': {'currentStreak': 3, 'bestStreak': 9},
-            }),
-            200,
-          );
-        }
-        if (request.url.path == '/api/sync/entries') {
-          posts++;
-          return http.Response('{}', 200);
-        }
-        return http.Response('not found', 404);
-      }));
-      await pumpHome(tester, backend);
-      expect(find.text('How are you feeling?'), findsOneWidget);
-
-      tapStarted = true;
-      await tester.tap(find.text('4'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-      await tester.pump();
-
-      expect(posts, 0);
-      // Card stays — the user can tap again when the network is back.
-      expect(find.text('How are you feeling?'), findsOneWidget);
+      expect(find.text('5 · Really good'), findsOneWidget);
     });
 
     testWidgets('pull failure → honest hidden state, no card, no crash', (
