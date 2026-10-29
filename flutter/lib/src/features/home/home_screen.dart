@@ -1040,6 +1040,104 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// The amend sheet's good commit. A non-empty selection amends
+  /// in place through [_commitGood], unchanged. An EMPTY selection
+  /// is the founder ruling (Oct 28, 2026, discharging Vera
+  /// condition M4): clearing all deletes the day's good-day
+  /// record. Amend mode only — the create sheet keeps [_commitGood]
+  /// directly, whose empty guard stands.
+  Future<bool> _commitGoodAmend(List<String> options) async {
+    if (options.isNotEmpty) return _commitGood(options);
+    return _deleteGoodRecord();
+  }
+
+  /// Deletes today's good-day record: the amend sheet's clear-all
+  /// (founder ruling, Oct 28, 2026). Mirrors History's _deleteEntry
+  /// classification: mark the row deleting (pushes starting now
+  /// skip it), join any in-flight push, cancel a pending upsert
+  /// first — a local-only record's cancel IS the whole delete —
+  /// then issue the server DELETE for a server-known row,
+  /// restoring the cancelled record when the DELETE fails. The
+  /// day's 1–5 ranking is a separate record and is never touched.
+  ///
+  /// Stricter than the upsert commits, deliberately: a delete
+  /// never splices a stale view, so when the fresh pull fails the
+  /// delete does not run at all and the sheet shows the existing
+  /// generic failure copy.
+  Future<bool> _deleteGoodRecord() async {
+    if (_goodCommitInFlight) return false;
+    final categoryId = _feelingCategoryId;
+    if (categoryId == null) return false;
+    _goodCommitInFlight = true;
+    try {
+      final ctx = await _freshCommitContext();
+      if (!ctx.pullOk) return false;
+      final resolvedId = _feelingCategoryId ?? categoryId;
+      final existing =
+          findGoodRecord(ctx.merged, moodCategoryId: resolvedId);
+      if (existing == null) {
+        // Already gone: the clear-all intent is satisfied. Adopt
+        // the fresh merged view so no stale summary can linger,
+        // and drop a stale announcement with the stale record.
+        if (!mounted) return true;
+        setState(() {
+          _mergedEntries = ctx.merged;
+          if (_goodToday != null) _checkInAnnouncement = null;
+        });
+        _deriveFromMerged();
+        return true;
+      }
+      final id = existing.id;
+      _outbox.markDeleting(id);
+      try {
+        await _outbox.settleInFlightPush();
+        if (!mounted) return false;
+        final pending = _outbox.recordFor(id);
+        LogEntryOutboxRecord? cancelled;
+        if (pending != null) {
+          cancelled = await _outbox.cancel(id);
+          if (cancelled == null) return false;
+          if (!pending.serverKnown) {
+            // A local-only record never reached the server:
+            // cancelling its pending upsert IS the whole delete.
+            if (mounted) _applyGoodDeletion(ctx.merged, id);
+            return true;
+          }
+        }
+        final ok = await _backend.deleteLogEntry(id);
+        if (!ok) {
+          if (cancelled != null) await _outbox.restore(cancelled);
+          return false;
+        }
+        if (mounted) _applyGoodDeletion(ctx.merged, id);
+        return true;
+      } finally {
+        _outbox.unmarkDeleting(id);
+      }
+    } catch (_) {
+      return false;
+    } finally {
+      _goodCommitInFlight = false;
+    }
+  }
+
+  /// Applies a completed good-record deletion to the local view:
+  /// the merged entries minus the deleted id, the announcement
+  /// cleared (a deletion has no ruled announcement copy — announce
+  /// nothing), state re-derived, and health data reloaded,
+  /// mirroring [_stageAndApply]'s post-steps.
+  void _applyGoodDeletion(List<QuickLogEntry> merged, int deletedId) {
+    setState(() {
+      _mergedEntries = [
+        for (final e in merged)
+          if (e.id != deletedId) e,
+      ];
+      _checkInAnnouncement = null;
+    });
+    _deriveFromMerged();
+    unawaited(_loadHealthData());
+  }
+
   // ── Summary + amend ─────────────────────────────────────────────
 
   int? get _todayRanking =>
@@ -1095,7 +1193,9 @@ class _HomeScreenState extends State<HomeScreen> {
         showGoodSection: showGood,
         initialGood:
             _goodToday == null ? const [] : goodOptionsOf(_goodToday!),
-        onGood: _commitGood,
+        // Amend mode: an empty commit is the founder-ruled
+        // clear-all delete (Oct 28, 2026), not _commitGood.
+        onGood: _commitGoodAmend,
       );
     } finally {
       _summarySheetOpen = false;

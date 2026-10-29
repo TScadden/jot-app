@@ -318,11 +318,13 @@ Future<void> showCheckInGoodSheet({
 /// amend-prefill precedent).
 ///
 /// Empty `Done` behaviour: on a fresh sheet ([allowEmptyDone]) it
-/// closes and writes nothing, exactly like dismissal (Item 5). In
-/// amend mode ([allowEmptyDone] false) `Done` is DISABLED at zero
-/// selections — see the build report: History's entry-delete is a
-/// private History-screen UI flow, not a reusable delete path, so
-/// zero-option amend does not delete the record.
+/// closes and writes nothing, exactly like dismissal (Item 5).
+/// This sheet is create mode only — amending today's good record
+/// lives in [CheckInAmendSheet] below, where unticking every
+/// option and confirming DELETES the day's good-day record
+/// (founder ruling, Oct 28, 2026, discharging Vera condition M4).
+/// The day's 1–5 ranking is a separate uneditable commit and is
+/// never touched by either sheet.
 class CheckInGoodSheet extends StatefulWidget {
   final GoodCommit onCommit;
   final Set<String> initialSelected;
@@ -452,7 +454,13 @@ Future<void> showCheckInAmendSheet({
 ///   this flare, so nothing is pre-committed.
 /// - good section (ranking 4–5, or a good record exists): the good
 ///   prompt + options + `Done`, pre-filled from today's own good
-///   record; `Done` is disabled at zero selections (amend mode).
+///   record. Founder ruling (Oct 28, 2026, discharging Vera M4):
+///   clearing every option and confirming DELETES the day's
+///   good-day record — `Done` stays enabled at zero selections and
+///   the empty selection commits as a delete. A partial clear
+///   (≥1 remaining) amends the record in place as before. The
+///   day's 1–5 ranking is a separate uneditable commit and is
+///   never touched.
 class CheckInAmendSheet extends StatefulWidget {
   final bool showKindSection;
   final String? currentKind;
@@ -513,7 +521,11 @@ class _CheckInAmendSheetState extends State<CheckInAmendSheet> {
   }
 
   Future<void> _goodDone() async {
-    if (_goodSelected.isEmpty) return; // Done disabled at zero.
+    // Founder ruling (Oct 28, 2026): the selection set is forwarded
+    // as-is, INCLUDING empty — an empty set is the clear-all delete
+    // of the day's good-day record (handled by the Home side's
+    // amend commit). Partial clears and non-empty sets amend in
+    // place as before. The ranking is never touched either way.
     await _run(
       () => widget.onGood!(goodOptionsInSheetOrder(_goodSelected)),
     );
@@ -606,8 +618,9 @@ class _CheckInAmendSheetState extends State<CheckInAmendSheet> {
         CheckInSheetOption(
           label: 'Done',
           selected: false,
-          // Amend mode: Done is disabled at zero selections.
-          onTap: (_committing || _goodSelected.isEmpty) ? null : _goodDone,
+          // Founder ruling (Oct 28, 2026): Done stays enabled at
+          // zero selections — clearing all deletes the record.
+          onTap: _committing ? null : _goodDone,
         ),
       ]);
     }

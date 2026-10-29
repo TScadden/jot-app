@@ -96,6 +96,13 @@ class _Server {
   final List<Map<String, dynamic>> capturedPosts = [];
   int postAttempts = 0;
 
+  /// DELETE support (founder ruling, Oct 28 2026): when
+  /// [failDeletes] is set, DELETEs answer 500 and change nothing;
+  /// otherwise the row is removed and its id recorded in
+  /// [capturedDeletes] (applied deletes only).
+  bool failDeletes = false;
+  final List<int> capturedDeletes = [];
+
   /// HTTP pull count, for the Vera F5 test: the initial flare
   /// stage must not add a pull of its own.
   int pullCount = 0;
@@ -133,6 +140,16 @@ class _Server {
           } else {
             entries.add(row);
           }
+        }
+        return http.Response('{"ok":true}', 200);
+      }
+      if (request.method == 'DELETE' &&
+          request.url.path.startsWith('/api/sync/entries/')) {
+        if (failDeletes) return http.Response('server error', 500);
+        final id = int.tryParse(request.url.path.split('/').last);
+        if (id != null) {
+          capturedDeletes.add(id);
+          entries.removeWhere((e) => e['id'] == id);
         }
         return http.Response('{"ok":true}', 200);
       }
@@ -1127,9 +1144,16 @@ void main() {
     });
 
     testWidgets('amend sheet, good section: pre-filled from '
-        "today's own record; Done disabled at zero selections; "
-        'Done commits the amended set', (tester) async {
+        "today's own record; Done stays enabled at zero selections "
+        'and commits the empty set (founder ruling, Oct 28 2026: '
+        'clearing all deletes the good-day record); a partial '
+        'clear commits the remaining set', (tester) async {
       final commits = <List<String>>[];
+      Future<bool> onGood(List<String> options) async {
+        commits.add(options);
+        return true;
+      }
+
       await pumpOpener(
         tester,
         (context) => showCheckInAmendSheet(
@@ -1138,31 +1162,45 @@ void main() {
           showFlareAddSection: false,
           showGoodSection: true,
           initialGood: const ['Energy'],
-          onGood: (options) async {
-            commits.add(options);
-            return true;
-          },
+          onGood: onGood,
         ),
       );
       expect(find.text('What is good about today?'), findsOneWidget);
       final energy = tester.widget<Semantics>(_semantics('Energy'));
       expect(energy.properties.selected, isTrue);
-      // Deselect the only option → Done disabled: tapping it does
-      // nothing, the sheet stays open, nothing commits.
+      // Deselect the only option → Done stays ENABLED (founder
+      // ruling): tapping it commits the EMPTY set — the clear-all
+      // delete — and the sheet closes.
       await tester.tap(find.text('Energy'));
       await tester.pump();
-      await tester.tap(find.text('Done'), warnIfMissed: false);
+      await tester.tap(find.text('Done'));
       await tester.pump();
-      expect(find.text("Today's check-in"), findsOneWidget);
-      expect(commits, isEmpty);
-      // Select another option → Done commits the amended set.
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(commits, [<String>[]]);
+      expect(find.text("Today's check-in"), findsNothing);
+
+      // Partial clear at sheet level: two pre-filled options,
+      // deselect one → Done commits just the remaining option.
+      await pumpOpener(
+        tester,
+        (context) => showCheckInAmendSheet(
+          context: context,
+          showKindSection: false,
+          showFlareAddSection: false,
+          showGoodSection: true,
+          initialGood: const ['Energy', 'Good mood'],
+          onGood: onGood,
+        ),
+      );
+      expect(find.text('What is good about today?'), findsOneWidget);
       await tester.tap(find.text('Good mood'));
       await tester.pump();
       await tester.tap(find.text('Done'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       expect(commits, [
-        ['Good mood'],
+        <String>[],
+        ['Energy'],
       ]);
       expect(find.text("Today's check-in"), findsNothing);
     });
@@ -1587,6 +1625,284 @@ void main() {
       expect(goodRows(server), hasLength(1));
       expect(goodRows(server).single['id'], goodId);
       expect(goodRows(server).single['body'], 'Good day · Energy, Good mood');
+    });
+
+    testWidgets('amend clear-all (founder ruling, Oct 28 2026): '
+        'unticking every good option deletes the good-day record '
+        'with one server DELETE; the ranking record is untouched',
+        (tester) async {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final server = _Server(
+        [
+          _entryJson(_entry(
+            id: 40,
+            categoryId: 6,
+            body: 'Feeling: 4/5 Today',
+            chips: '["Daily Ranking"]',
+            ts: now,
+          )),
+          _entryJson(_entry(
+            id: 41,
+            categoryId: 6,
+            body: 'Good day · Energy',
+            chips: '["Good Day","Energy"]',
+            ts: now,
+          )),
+        ],
+        categories: _catsNameHit,
+      );
+      await pumpHome(tester, server);
+      await _pumpUntil(
+        tester,
+        () => find.text('4 · Good · Energy').evaluate().isNotEmpty,
+      );
+      await tester.tap(find.text('4 · Good · Energy'));
+      await _pumpUntil(
+        tester,
+        () => find.text("Today's check-in").evaluate().isNotEmpty,
+      );
+      await settleSheet(tester);
+      // The good section sits below the flare-add section in this
+      // sheet — scroll its options into view before tapping.
+      await tester.ensureVisible(find.text('Energy'));
+      await tester.pump();
+      await tester.tap(find.text('Energy'));
+      await tester.pump();
+      await tester.ensureVisible(find.text('Done'));
+      await tester.pump();
+      await tester.tap(find.text('Done'));
+      await _pumpUntil(
+        tester,
+        () =>
+            goodRows(server).isEmpty &&
+            find.text('4 · Good').evaluate().isNotEmpty,
+      );
+      await _pumpUntil(
+        tester,
+        () => LogEntryOutbox.instance.records.isEmpty,
+      );
+      expect(goodRows(server), isEmpty);
+      expect(server.capturedDeletes, [41]);
+      // The ranking is a separate uneditable commit: its row is
+      // byte-identical, and nothing lingers in the outbox.
+      expect(rankingRows(server), hasLength(1));
+      expect(rankingRows(server).single['id'], 40);
+      expect(rankingRows(server).single['body'], 'Feeling: 4/5 Today');
+      expect(rankingRows(server).single['chips'], '["Daily Ranking"]');
+      expect(LogEntryOutbox.instance.records, isEmpty);
+      expect(find.text('4 · Good'), findsOneWidget);
+      expect(find.text('4 · Good · Energy'), findsNothing);
+    });
+
+    testWidgets('amend partial clear: unticking one of two good '
+        'options amends the record in place — same id, no DELETE; '
+        'ranking intact', (tester) async {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final server = _Server(
+        [
+          _entryJson(_entry(
+            id: 40,
+            categoryId: 6,
+            body: 'Feeling: 5/5 Today',
+            chips: '["Daily Ranking"]',
+            ts: now,
+          )),
+          _entryJson(_entry(
+            id: 41,
+            categoryId: 6,
+            body: 'Good day · Energy, Good mood',
+            chips: '["Good Day","Energy","Good mood"]',
+            ts: now,
+          )),
+        ],
+        categories: _catsNameHit,
+      );
+      await pumpHome(tester, server);
+      await _pumpUntil(
+        tester,
+        () => find
+            .text('5 · Really good · Energy, Good mood')
+            .evaluate()
+            .isNotEmpty,
+      );
+      await tester.tap(find.text('5 · Really good · Energy, Good mood'));
+      await _pumpUntil(
+        tester,
+        () => find.text("Today's check-in").evaluate().isNotEmpty,
+      );
+      await settleSheet(tester);
+      await tester.ensureVisible(find.text('Energy'));
+      await tester.pump();
+      await tester.tap(find.text('Energy'));
+      await tester.pump();
+      await tester.ensureVisible(find.text('Done'));
+      await tester.pump();
+      await tester.tap(find.text('Done'));
+      await _pumpUntil(
+        tester,
+        () =>
+            LogEntryOutbox.instance.records.isEmpty &&
+            goodRows(server).isNotEmpty &&
+            goodRows(server).single['body'] == 'Good day · Good mood',
+      );
+      expect(goodRows(server), hasLength(1));
+      expect(goodRows(server).single['id'], 41);
+      expect(goodRows(server).single['body'], 'Good day · Good mood');
+      expect(server.capturedDeletes, isEmpty);
+      expect(rankingRows(server), hasLength(1));
+      expect(rankingRows(server).single['id'], 40);
+      expect(rankingRows(server).single['body'], 'Feeling: 5/5 Today');
+      expect(find.text('5 · Really good · Good mood'), findsOneWidget);
+    });
+
+    testWidgets('amend clear-all during a gated push: the delete '
+        'joins the in-flight push before classifying; the good '
+        'record is still local-only at classification, so its '
+        'cancel is the whole delete — the server ends with the '
+        'ranking only and no DELETE is owed', (tester) async {
+      final server = _Server([], categories: _catsNameHit);
+      server.postGate = Completer<void>();
+      await pumpHome(tester, server);
+      await tester.tap(find.text('4'));
+      await _pumpUntil(
+        tester,
+        () => find.text('What is good about today?').evaluate().isNotEmpty,
+      );
+      await settleSheet(tester);
+      await tester.tap(find.text('Energy'));
+      await tester.pump();
+      await tester.tap(find.text('Done'));
+      // Both records are staged locally; their push is parked on
+      // the gate, so nothing has reached the server yet.
+      await _pumpUntil(
+        tester,
+        () => LogEntryOutbox.instance.records.length == 2,
+      );
+      final stagedGoodId = LogEntryOutbox.instance.records
+          .singleWhere((r) => r.entry.chips.contains('Good Day'))
+          .entry
+          .id;
+      await _pumpUntil(
+        tester,
+        () => find.text('4 · Good · Energy').evaluate().isNotEmpty,
+      );
+      await tester.tap(find.text('4 · Good · Energy'));
+      await _pumpUntil(
+        tester,
+        () => find.text("Today's check-in").evaluate().isNotEmpty,
+      );
+      await settleSheet(tester);
+      await tester.ensureVisible(find.text('Energy'));
+      await tester.pump();
+      await tester.tap(find.text('Energy'));
+      await tester.pump();
+      await tester.ensureVisible(find.text('Done'));
+      await tester.pump();
+      await tester.tap(find.text('Done'));
+      // The delete must be parked joining the in-flight push:
+      // several frames pass with the sheet still open and no
+      // DELETE issued.
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.text("Today's check-in"), findsOneWidget);
+      expect(server.capturedDeletes, isEmpty);
+      server.postGate!.complete();
+      await _pumpUntil(
+        tester,
+        () =>
+            LogEntryOutbox.instance.records.isEmpty &&
+            goodRows(server).isEmpty,
+      );
+      await _pumpUntil(
+        tester,
+        () => find.text("Today's check-in").evaluate().isEmpty,
+      );
+      expect(rankingRows(server), hasLength(1));
+      expect(goodRows(server), isEmpty);
+      // Classification evidence (verified by instrumented run):
+      // the gated in-flight push carried the RANKING (staged
+      // first — the outbox flush attempts records in insertion
+      // order), and the good record, marked deleting before its
+      // turn in that same flush, never reached the server. At
+      // classification it was a local-only pending record, so per
+      // the History precedent its cancel was the whole delete and
+      // NO server DELETE was owed for the staged good id.
+      // The surviving server row is the ranking, not the staged
+      // good record.
+      expect(rankingRows(server).single['id'], isNot(stagedGoodId));
+      expect(server.capturedDeletes, isEmpty);
+      expect(LogEntryOutbox.instance.records, isEmpty);
+      expect(find.text('4 · Good'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 25));
+      await tester.pump();
+    });
+
+    testWidgets('amend clear-all with a failing DELETE: the sheet '
+        'stays open with the generic failure copy and the record '
+        'survives; the retry deletes it and leaves the ranking '
+        'intact', (tester) async {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final server = _Server(
+        [
+          _entryJson(_entry(
+            id: 40,
+            categoryId: 6,
+            body: 'Feeling: 4/5 Today',
+            chips: '["Daily Ranking"]',
+            ts: now,
+          )),
+          _entryJson(_entry(
+            id: 41,
+            categoryId: 6,
+            body: 'Good day · Energy',
+            chips: '["Good Day","Energy"]',
+            ts: now,
+          )),
+        ],
+        categories: _catsNameHit,
+      );
+      server.failDeletes = true;
+      await pumpHome(tester, server);
+      await _pumpUntil(
+        tester,
+        () => find.text('4 · Good · Energy').evaluate().isNotEmpty,
+      );
+      await tester.tap(find.text('4 · Good · Energy'));
+      await _pumpUntil(
+        tester,
+        () => find.text("Today's check-in").evaluate().isNotEmpty,
+      );
+      await settleSheet(tester);
+      await tester.ensureVisible(find.text('Energy'));
+      await tester.pump();
+      await tester.tap(find.text('Energy'));
+      await tester.pump();
+      await tester.ensureVisible(find.text('Done'));
+      await tester.pump();
+      await tester.tap(find.text('Done'));
+      await _pumpUntil(
+        tester,
+        () => find.text(flareStageFailureCopy).evaluate().isNotEmpty,
+      );
+      // The failed DELETE changed nothing: sheet open, record
+      // still on the server, no delete captured.
+      expect(find.text("Today's check-in"), findsOneWidget);
+      expect(goodRows(server), hasLength(1));
+      expect(server.capturedDeletes, isEmpty);
+      server.failDeletes = false;
+      await tester.tap(find.text('Done'));
+      await _pumpUntil(
+        tester,
+        () =>
+            goodRows(server).isEmpty &&
+            find.text("Today's check-in").evaluate().isEmpty,
+      );
+      expect(server.capturedDeletes, [41]);
+      expect(rankingRows(server), hasLength(1));
+      expect(rankingRows(server).single['id'], 40);
+      expect(rankingRows(server).single['body'], 'Feeling: 4/5 Today');
+      expect(find.text('4 · Good'), findsOneWidget);
     });
 
     testWidgets("legacy 'Bad' flare on a 4 day: the summary "
