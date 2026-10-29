@@ -429,6 +429,15 @@ String? leanBaselineValueText(LeanBaseline baseline) {
   if (baseline.sysMean != null && baseline.diaMean != null) {
     return '${leanFormatMeasure(baseline.sysMean!)}/${leanFormatMeasure(baseline.diaMean!)} mmHg';
   }
+  // A lone systolic or diastolic is a recorded value too: it must
+  // render (named, so it cannot be mistaken for the other number),
+  // never vanish from the baseline line.
+  if (baseline.sysMean != null) {
+    return 'Systolic: ${leanFormatMeasure(baseline.sysMean!)} mmHg';
+  }
+  if (baseline.diaMean != null) {
+    return 'Diastolic: ${leanFormatMeasure(baseline.diaMean!)} mmHg';
+  }
   return null;
 }
 
@@ -616,8 +625,12 @@ String leanCaptureValuesText(LeanCapture c) {
   parts.add(c.hr != null ? '${c.hr} bpm' : 'Heart rate: $leanU2');
   if (c.sys != null && c.dia != null) {
     parts.add('${c.sys}/${c.dia} mmHg');
-  } else if (c.sys != null || c.dia != null) {
-    parts.add('Blood pressure: $leanU2');
+  } else if (c.sys != null) {
+    // A lone recorded number renders as itself, named — never as
+    // U2, which would falsely say nothing was recorded.
+    parts.add('Systolic: ${c.sys} mmHg');
+  } else if (c.dia != null) {
+    parts.add('Diastolic: ${c.dia} mmHg');
   }
   return parts.join(' · ');
 }

@@ -482,6 +482,27 @@ void main() {
       expect(text.contains('59'), isFalse);
       expect(jsonEncode(result.toPayload()).contains('"delta"'), isFalse);
     });
+
+    test('a lone systolic or diastolic renders as itself, never '
+        'as Not recorded', () {
+      // Bram fix: leanCaptureValuesText dropped a lone BP number
+      // and rendered U2 for a value that WAS recorded (§5 rule 6).
+      final sysOnly = _cap(0, _t0, hr: 72, sys: 120);
+      expect(leanCaptureValuesText(sysOnly), contains('Systolic: 120 mmHg'));
+      expect(leanCaptureValuesText(sysOnly), isNot(contains(leanU2)));
+      final diaOnly = _cap(0, _t0, dia: 80);
+      expect(leanCaptureValuesText(diaOnly), contains('Diastolic: 80 mmHg'));
+      // A BP-only baseline with a lone systolic still gets its
+      // ruled baseline label with the recorded value in it.
+      final result = LeanTestResult(
+        startedAtMs: _t0,
+        outcome: 'completed',
+        baselineReadings: [_cap(9, _t0 + _min(9), sys: 118)],
+      );
+      expect(leanBaselineLabel(result.baseline),
+          'Baseline (your one resting reading): Systolic: 118 mmHg');
+      expect(result.bodyText(), contains('Systolic: 118 mmHg'));
+    });
   });
 
   group('§8.13 copy lint over the shipped strings', () {
