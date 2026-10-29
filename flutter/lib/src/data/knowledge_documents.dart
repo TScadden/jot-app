@@ -135,6 +135,13 @@ enum KnowledgeExtractionState {
   /// An extraction attempt completed with a failure. Honest Lab
   /// state; native has no equivalent (it stays at pending forever).
   failed,
+
+  /// Docfix (Oct 2026) — extraction ran SUCCESSFULLY but Gemini
+  /// found no readable text in the file. Distinct from [failed]:
+  /// nothing went wrong, so there is no error copy and no error
+  /// code, and auto-backfill never retries it (the result will not
+  /// change); a manual retry from the viewer is still possible.
+  empty,
 }
 
 /// Device-local extracted-text cache, account-bound.
@@ -179,6 +186,7 @@ class KnowledgeExtractionStore {
     _owner = null;
     _texts = {};
     _failed = {};
+    _empty = {};
   }
 
   @visibleForTesting
@@ -192,6 +200,7 @@ class KnowledgeExtractionStore {
   String? _owner;
   Map<String, String> _texts = {};
   Set<String> _failed = {};
+  Set<String> _empty = {};
   bool _loaded = false;
 
   // TAKEOVER Phase 4 fix (Vera BLOCK, sibling of CoachMemoryStore):
@@ -216,6 +225,7 @@ class KnowledgeExtractionStore {
     _generation++;
     _texts = {};
     _failed = {};
+    _empty = {};
     _owner = null;
     _loaded = false;
   }
@@ -233,6 +243,7 @@ class KnowledgeExtractionStore {
     final generationAtStart = _generation;
     _texts = {};
     _failed = {};
+    _empty = {};
     _owner = owner;
     _loaded = true;
     if (owner == null) return;
@@ -247,6 +258,7 @@ class KnowledgeExtractionStore {
       if (generationAtStart != _generation) {
         _texts = {};
         _failed = {};
+        _empty = {};
         _owner = null;
         _loaded = false;
         return;
@@ -277,11 +289,26 @@ class KnowledgeExtractionStore {
           if (id.isNotEmpty && !_texts.containsKey(id)) _failed.add(id);
         }
       }
+      // Docfix: the 'empty' set (absent in pre-fix blobs — those
+      // load with no empty docs, and a stale 'failed' from a
+      // really-empty result clears on the next successful retry,
+      // which is the migration path; nothing is bulk-rewritten).
+      final empty = decoded['empty'];
+      if (empty is List) {
+        for (final f in empty) {
+          final id = '$f';
+          if (id.isNotEmpty && !_texts.containsKey(id)) {
+            _failed.remove(id);
+            _empty.add(id);
+          }
+        }
+      }
     } catch (_) {
       // Unreadable blob: behave as an empty cache (extractions will
       // backfill from the server file data).
       _texts = {};
       _failed = {};
+      _empty = {};
     }
   }
 
@@ -294,6 +321,7 @@ class KnowledgeExtractionStore {
           'owner': _owner,
           'texts': _texts,
           'failed': _failed.toList(),
+          'empty': _empty.toList(),
         }),
       );
     } catch (_) {
@@ -309,6 +337,7 @@ class KnowledgeExtractionStore {
     if (t != null && t.trim().isNotEmpty) {
       return KnowledgeExtractionState.ready;
     }
+    if (_empty.contains(id)) return KnowledgeExtractionState.empty;
     if (_failed.contains(id)) return KnowledgeExtractionState.failed;
     return KnowledgeExtractionState.pending;
   }
@@ -324,21 +353,28 @@ class KnowledgeExtractionStore {
     if (text.trim().isEmpty) return saveEmptyExtraction(id);
     _texts[id] = text;
     _failed.remove(id);
+    _empty.remove(id);
     await _persist();
   }
 
-  /// The extraction ran and returned nothing readable: native
-  /// leaves extractedText null in this case too (it only caches
-  /// non-blank text, LogRepository :1017), so this is a FAILED
-  /// state for retry purposes, not a fake ready.
+  /// Docfix (Oct 2026) — the extraction ran SUCCESSFULLY and
+  /// returned nothing readable. This is its own terminal state
+  /// ([KnowledgeExtractionState.empty]), NOT a failure: no error
+  /// copy, no error code, and auto-backfill never retries it. It
+  /// replaces any stale failed marker for the doc (a pre-fix
+  /// 'failed' that was really an empty result migrates here on the
+  /// next successful re-extract). Manual retry from the viewer can
+  /// still re-run it via the service's backfill force path.
   Future<void> saveEmptyExtraction(String id) async {
     _texts.remove(id);
-    _failed.add(id);
+    _failed.remove(id);
+    _empty.add(id);
     await _persist();
   }
 
   Future<void> markFailed(String id) async {
     if (_texts.containsKey(id)) return; // never demote a ready doc
+    _empty.remove(id);
     _failed.add(id);
     await _persist();
   }
@@ -348,12 +384,14 @@ class KnowledgeExtractionStore {
   Future<void> saveEditedText(String id, String text) async {
     _texts[id] = text;
     _failed.remove(id);
+    _empty.remove(id);
     await _persist();
   }
 
   Future<void> remove(String id) async {
     _texts.remove(id);
     _failed.remove(id);
+    _empty.remove(id);
     await _persist();
   }
 
@@ -387,6 +425,7 @@ class KnowledgeExtractionStore {
   Future<void> clear() async {
     _texts = {};
     _failed = {};
+    _empty = {};
     _owner = null;
     _loaded = false;
     try {
@@ -521,9 +560,12 @@ class KnowledgeDocumentService {
   /// 3. push ONLY the new row (the POST upserts sent rows; it is
   ///    not a whole-set replace, so other rows need no fileData —
   ///    which the pull does not carry anyway);
-  /// 4. verify: `syncDocuments` already requires the server's
-  ///    `{synced: n}` to account for the batch (R57 pattern, in
-  ///    TabsBackend), and a verification pull must contain the id.
+  /// 4. verify: `syncDocumentsDetailed` already requires the
+  ///    server's `{synced: n}` to account for the batch (R57
+  ///    pattern, in TabsBackend), and a verification pull must
+  ///    contain the id — or, when the server deduplicated the
+  ///    import, the canonical id it reported (whose metadata is
+  ///    then returned instead of the phantom new row's).
   /// Returns the stored document's metadata.
   Future<KnowledgeDocumentMeta> addDocument({
     required String name,
@@ -548,7 +590,7 @@ class KnowledgeDocumentService {
       mimeType: mimeType,
       createdAt: createdAt ?? DateTime.now().millisecondsSinceEpoch,
     );
-    final ok = await backend.syncDocuments([
+    final deduplicated = await backend.syncDocumentsDetailed([
       {
         'id': doc.id,
         'name': doc.name,
@@ -557,8 +599,23 @@ class KnowledgeDocumentService {
         'createdAt': doc.createdAt,
       },
     ]);
-    if (!ok) throw const KnowledgeSyncException('SAVE_UNVERIFIED');
+    if (deduplicated == null) {
+      throw const KnowledgeSyncException('SAVE_UNVERIFIED');
+    }
     final after = await freshDocuments();
+    // Docfix — import dedupe adoption: when the server reports
+    // this import was byte-identical to an existing document, it
+    // stored nothing new and named the canonical id. Verify the
+    // pull holds the canonical row and adopt ITS metadata — the
+    // freshly generated id is a phantom that must never surface
+    // as a duplicate tile or a second extraction cache entry.
+    final canonicalId = deduplicated[doc.id];
+    if (canonicalId != null) {
+      for (final d in after) {
+        if (d.id == canonicalId) return d;
+      }
+      throw const KnowledgeSyncException('SAVE_UNVERIFIED');
+    }
     if (!after.any((d) => d.id == doc.id)) {
       throw const KnowledgeSyncException('SAVE_UNVERIFIED');
     }
@@ -602,8 +659,9 @@ class KnowledgeDocumentService {
 
   /// Runs extraction for one document whose file bytes are in hand
   /// (a fresh pick or a coach-approved file). Records the honest
-  /// outcome in the store: ready on non-blank text, failed
-  /// otherwise. Returns the resulting state.
+  /// outcome in the store: ready on non-blank text, empty on a
+  /// successful call with no readable text, failed when the call
+  /// itself failed. Returns the resulting state.
   Future<KnowledgeExtractionState> extractFromBytes(
       KnowledgeDocumentMeta doc, String base64Data) async {
     final text = await backend.processDocument(doc.mimeType, base64Data);
@@ -612,10 +670,10 @@ class KnowledgeDocumentService {
       return KnowledgeExtractionState.ready;
     }
     if (text != null) {
-      // The call succeeded but Gemini found nothing readable —
-      // native leaves the doc uncached in exactly this case.
+      // The call SUCCEEDED but Gemini found nothing readable —
+      // the docfix 'empty' state, distinct from a failure.
       await store.saveEmptyExtraction(doc.id);
-      return KnowledgeExtractionState.failed;
+      return KnowledgeExtractionState.empty;
     }
     await store.markFailed(doc.id);
     return KnowledgeExtractionState.failed;
@@ -626,9 +684,19 @@ class KnowledgeDocumentService {
   /// fetch its file bytes from the server (the restore path,
   /// GET /api/sync/documents/{id}) and extract them. No-op when the
   /// doc is already ready.
-  Future<KnowledgeExtractionState> backfill(KnowledgeDocumentMeta doc) async {
-    if (store.stateFor(doc.id) == KnowledgeExtractionState.ready) {
+  /// [force] is the viewer's MANUAL retry: it re-runs extraction
+  /// even for an 'empty' doc. Without it (the automatic backfill),
+  /// 'empty' is terminal — a successful empty result never changes
+  /// on its own, so auto-retrying it would burn a Gemini call on
+  /// every Settings open forever.
+  Future<KnowledgeExtractionState> backfill(KnowledgeDocumentMeta doc,
+      {bool force = false}) async {
+    final current = store.stateFor(doc.id);
+    if (current == KnowledgeExtractionState.ready) {
       return KnowledgeExtractionState.ready;
+    }
+    if (current == KnowledgeExtractionState.empty && !force) {
+      return KnowledgeExtractionState.empty;
     }
     final b64 = await backend.fetchDocumentData(doc.id);
     if (b64 == null || b64.isEmpty) {

@@ -771,10 +771,46 @@ class TabsBackend {
   /// closed — the pre-R65 status-only check could report a save
   /// the server never stored.
   Future<bool> syncDocuments(List<Map<String, dynamic>> documents) async {
+    final result = await syncDocumentsDetailed(documents);
+    return result != null;
+  }
+
+  /// Docfix (Oct 2026) — [syncDocuments] plus the server's additive
+  /// import-dedupe report. The fixed sync/documents handler strips
+  /// whitespace-wrapped base64 at the boundary and dedupes by
+  /// content: when a sent row's bytes are byte-identical to a
+  /// document already stored under a different id, the row is NOT
+  /// stored again; it still counts toward `synced`, and the
+  /// response carries `deduplicated: {sentId: canonicalId}` so the
+  /// client adopts the existing row. Returns null when the batch is
+  /// not fully accounted for (the [syncDocuments] failure rule);
+  /// otherwise the deduplicated map (empty when nothing deduped,
+  /// and also empty against a pre-fix server that never sends it).
+  Future<Map<String, String>?> syncDocumentsDetailed(
+      List<Map<String, dynamic>> documents) async {
     final res =
         await _postJsonMap('/api/sync/documents', {'documents': documents});
-    return _syncedAll(res, documents.length);
+    if (!_syncedAll(res, documents.length)) return null;
+    final deduped = <String, String>{};
+    final raw = res?['deduplicated'];
+    if (raw is Map) {
+      for (final e in raw.entries) {
+        final from = '${e.key}';
+        final to = '${e.value}';
+        if (from.isNotEmpty && to.isNotEmpty) deduped[from] = to;
+      }
+    }
+    return deduped;
   }
+
+  /// Docfix (Oct 2026) — strips ALL whitespace (spaces, tabs, CR,
+  /// LF) from a base64 payload. Native-era uploads stored
+  /// CRLF-wrapped base64 (android.util.Base64.DEFAULT wraps at 76
+  /// columns) and Gemini rejects wrapped data outright; the server
+  /// now strips at every boundary too, and the client mirrors it
+  /// (defense in depth) so a legacy wrapped row still extracts.
+  static String stripBase64Whitespace(String data) =>
+      data.replaceAll(RegExp(r'\s+'), '');
 
   /// Round 65 — delete one knowledge document, mirroring native
   /// `LogRepository.deleteDocument` → `DELETE api/sync/documents/{id}`
@@ -792,9 +828,13 @@ class TabsBackend {
         await _getJson('/api/sync/documents/${Uri.encodeComponent(id)}');
     if (res == null) return null;
     final result = res['result'];
-    if (result is String && result.isNotEmpty) return result;
+    if (result is String && result.isNotEmpty) {
+      return stripBase64Whitespace(result);
+    }
     final fileData = res['fileData'];
-    if (fileData is String && fileData.isNotEmpty) return fileData;
+    if (fileData is String && fileData.isNotEmpty) {
+      return stripBase64Whitespace(fileData);
+    }
     return null;
   }
 
@@ -809,7 +849,9 @@ class TabsBackend {
   Future<String?> processDocument(String mimeType, String base64Data) async {
     final res = await postAi('/api/ai/process-document', {
       'mimeType': mimeType,
-      'base64Data': base64Data,
+      // Docfix: never send whitespace-wrapped base64 (see
+      // [stripBase64Whitespace]) — Gemini rejects it with a 500.
+      'base64Data': stripBase64Whitespace(base64Data),
     });
     final result = res?['result'];
     return result is String ? result : null;
