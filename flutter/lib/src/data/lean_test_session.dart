@@ -58,9 +58,13 @@ int? resolveLeanCategoryId(List<QuickLogCategory> categories) =>
 // ── Capture ────────────────────────────────────────────────────────
 
 /// One capture slot's stored values. A field is null when the user
-/// entered nothing or 0 (not recorded). [source] is `manual` or
-/// `health_connect`; [sampleTMs] is the Health Connect sample's own
-/// timestamp, present only for a confirmed assist value.
+/// entered nothing or 0 (not recorded). Source is stamped PER
+/// VALUE (F6): [hrSource] is `manual` or `health_connect` for the
+/// heart-rate value, with [hrSampleTMs] the Health Connect sample's
+/// own timestamp, present only for a confirmed assist value;
+/// [bpSource] stamps the blood-pressure values (typed by hand, so
+/// `manual` unless a future assist supplies them). An assist that
+/// supplied HR never re-stamps hand-typed BP in the same capture.
 class LeanCapture {
   /// Rest minute (9/10) for a resting capture, standing minute
   /// (0..10) for a checkpoint.
@@ -69,8 +73,9 @@ class LeanCapture {
   final int? hr;
   final int? sys;
   final int? dia;
-  final String source;
-  final int? sampleTMs;
+  final String hrSource;
+  final int? hrSampleTMs;
+  final String bpSource;
   final String? symptomNote;
 
   const LeanCapture({
@@ -79,14 +84,35 @@ class LeanCapture {
     this.hr,
     this.sys,
     this.dia,
-    this.source = 'manual',
-    this.sampleTMs,
+    String source = 'manual',
+    int? sampleTMs,
+    String? hrSource,
+    int? hrSampleTMs,
+    this.bpSource = 'manual',
     this.symptomNote,
-  });
+  })  : hrSource = hrSource ?? source,
+        hrSampleTMs = hrSampleTMs ?? sampleTMs;
+
+  /// The HR value's source (the capture's original per-capture
+  /// source field, now per-value — see [hrSource]).
+  String get source => hrSource;
+
+  /// The HR sample's timestamp, when the HR value came from a
+  /// confirmed Health Connect assist.
+  int? get sampleTMs => hrSampleTMs;
 
   /// §9 Q2: a recorded value is at least one HR/BP value actually
   /// entered or confirmed. An empty/0 capture is not a value.
   bool get hasRecordedValue => hr != null || sys != null || dia != null;
+
+  /// Per-value source stamps, emitted only beside the values they
+  /// describe (F6): the HR stamp only when an HR value exists, the
+  /// BP stamp only when a BP value exists.
+  Map<String, dynamic> _sourceJson() => {
+        if (hr != null) 'hrSource': hrSource,
+        if (hr != null && hrSampleTMs != null) 'hrSampleTMs': hrSampleTMs,
+        if (sys != null || dia != null) 'bpSource': bpSource,
+      };
 
   Map<String, dynamic> toJson() => {
         'minute': minute,
@@ -94,22 +120,21 @@ class LeanCapture {
         if (hr != null) 'hr': hr,
         if (sys != null) 'sys': sys,
         if (dia != null) 'dia': dia,
-        'source': source,
-        if (sampleTMs != null) 'sampleTMs': sampleTMs,
+        ..._sourceJson(),
         if (symptomNote != null && symptomNote!.isNotEmpty)
           'symptomNote': symptomNote,
       };
 
-  /// Payload form (spec §4): the checkpoint form carries `minute`;
-  /// the baseline-reading form omits it (readings are ordered).
-  Map<String, dynamic> toPayloadJson({required bool withMinute}) => {
-        if (withMinute) 'minute': minute,
+  /// Payload form (spec §4): every reading carries its slot
+  /// `minute` end-to-end (F7) — a lone minute-10 baseline reading
+  /// must parse back as minute 10, never reassigned by index.
+  Map<String, dynamic> toPayloadJson() => {
+        'minute': minute,
         'tMs': tMs,
         if (hr != null) 'hr': hr,
         if (sys != null) 'sys': sys,
         if (dia != null) 'dia': dia,
-        'source': source,
-        if (sampleTMs != null) 'sampleTMs': sampleTMs,
+        ..._sourceJson(),
         if (symptomNote != null && symptomNote!.isNotEmpty)
           'symptomNote': symptomNote,
       };
@@ -127,14 +152,20 @@ class LeanCapture {
       final tMs = asInt(j['tMs']);
       if (tMs == 0) return null;
       final note = j['symptomNote']?.toString();
+      // Per-value sources (F6), with the pre-F6 per-capture
+      // `source`/`sampleTMs` keys read as the HR stamp only — a
+      // legacy capture-wide stamp never re-stamps BP on read.
+      final legacySample = j['sampleTMs'];
+      final hrSampleRaw = j['hrSampleTMs'] ?? legacySample;
       return LeanCapture(
         minute: j['minute'] == null ? fallbackMinute : asInt(j['minute']),
         tMs: tMs,
         hr: asPos(j['hr']),
         sys: asPos(j['sys']),
         dia: asPos(j['dia']),
-        source: '${j['source'] ?? 'manual'}',
-        sampleTMs: j['sampleTMs'] == null ? null : asInt(j['sampleTMs']),
+        hrSource: '${j['hrSource'] ?? j['source'] ?? 'manual'}',
+        hrSampleTMs: hrSampleRaw == null ? null : asInt(hrSampleRaw),
+        bpSource: '${j['bpSource'] ?? 'manual'}',
         symptomNote: (note == null || note.isEmpty) ? null : note,
       );
     } catch (_) {
@@ -168,14 +199,12 @@ enum LeanRelaunch {
   /// stand transition. Nothing was interrupted.
   transition,
 
-  /// Standing expired while dead and values exist — present the
-  /// interrupted screen (N3).
+  /// Standing expired while dead — present the interrupted screen
+  /// (N3). This is the ONLY expired-standing relaunch path (§5.3:
+  /// exactly two interrupted paths exist; §9 Q2 covers only a
+  /// user-initiated rest stop). It applies with or without recorded
+  /// values — a zero-value expiry is never discarded silently (F3).
   interrupted,
-
-  /// Standing expired while dead with ZERO recorded values —
-  /// discard silently, no interrupted screen (coordinator judgment
-  /// call applying §9 Q2's principle; flagged for Vera/Juno).
-  discardSilently,
 }
 
 class LeanTestSession {
@@ -280,9 +309,10 @@ class LeanTestSession {
   LeanRelaunch relaunchAt(int nowMs) {
     if (standingStartedAtMs != null) {
       if (standingExpired(nowMs)) {
-        return hasAnyRecordedValue
-            ? LeanRelaunch.interrupted
-            : LeanRelaunch.discardSilently;
+        // Uniform expiry (F3/F4): zero recorded values does not
+        // change the path — the N3 interrupted screen governs every
+        // expired standing session at relaunch.
+        return LeanRelaunch.interrupted;
       }
       return LeanRelaunch.resume;
     }
@@ -375,12 +405,20 @@ class LeanTestSession {
 /// none do (spec §3.2, R2). Both raw readings always render beside
 /// it. This average is the ONLY averaged figure in the feature.
 class LeanBaseline {
-  /// `mean_of_two` | `single`.
+  /// The headline form (`mean_of_two` | `single`), derived from the
+  /// readings carrying the HEADLINE field — see [formForFieldCount].
+  /// Per-field forms live in [hrForm]/[sysForm]/[diaForm]: a field's
+  /// label must match how many readings carried THAT field (F7).
   final String form;
   final List<LeanCapture> readings;
   final double? hrMean;
   final double? sysMean;
   final double? diaMean;
+
+  /// How many readings carry each field.
+  final int hrCount;
+  final int sysCount;
+  final int diaCount;
 
   const LeanBaseline({
     required this.form,
@@ -388,9 +426,21 @@ class LeanBaseline {
     this.hrMean,
     this.sysMean,
     this.diaMean,
+    this.hrCount = 0,
+    this.sysCount = 0,
+    this.diaCount = 0,
   });
 
   bool get isMean => form == 'mean_of_two';
+
+  /// `mean_of_two` when at least two readings carried the field,
+  /// `single` when exactly one did, null when none did.
+  static String? formForFieldCount(int count) =>
+      count >= 2 ? 'mean_of_two' : (count == 1 ? 'single' : null);
+
+  String? get hrForm => formForFieldCount(hrCount);
+  String? get sysForm => formForFieldCount(sysCount);
+  String? get diaForm => formForFieldCount(diaCount);
 }
 
 double? _meanOf(List<LeanCapture> readings, int? Function(LeanCapture) pick) {
@@ -399,17 +449,42 @@ double? _meanOf(List<LeanCapture> readings, int? Function(LeanCapture) pick) {
   return values.reduce((a, b) => a + b) / values.length;
 }
 
+int _countOf(List<LeanCapture> readings, int? Function(LeanCapture) pick) =>
+    readings.where((r) => pick(r) != null).length;
+
 /// Derives the baseline from value-bearing resting readings, or
 /// null when there are none (no baseline renders, nothing is
-/// fabricated).
+/// fabricated). Each field's mean is computed over only the
+/// readings carrying that field, and the headline form follows the
+/// headline field's own count (F7): one HR reading among two
+/// readings renders under the single-reading label, never the
+/// two-reading one.
 LeanBaseline? leanBaselineOf(List<LeanCapture> readings) {
   if (readings.isEmpty) return null;
+  final hrCount = _countOf(readings, (r) => r.hr);
+  final sysCount = _countOf(readings, (r) => r.sys);
+  final diaCount = _countOf(readings, (r) => r.dia);
+  // Headline field: HR when any reading carries one; otherwise the
+  // BP pair (its form follows the SMALLER of the two counts, so the
+  // label never claims two readings for a field only one carried);
+  // otherwise the lone BP field present.
+  final int headlineCount;
+  if (hrCount > 0) {
+    headlineCount = hrCount;
+  } else if (sysCount > 0 && diaCount > 0) {
+    headlineCount = sysCount < diaCount ? sysCount : diaCount;
+  } else {
+    headlineCount = sysCount > diaCount ? sysCount : diaCount;
+  }
   return LeanBaseline(
-    form: readings.length >= 2 ? 'mean_of_two' : 'single',
+    form: LeanBaseline.formForFieldCount(headlineCount) ?? 'single',
     readings: readings,
     hrMean: _meanOf(readings, (r) => r.hr),
     sysMean: _meanOf(readings, (r) => r.sys),
     diaMean: _meanOf(readings, (r) => r.dia),
+    hrCount: hrCount,
+    sysCount: sysCount,
+    diaCount: diaCount,
   );
 }
 
@@ -511,12 +586,19 @@ class LeanTestResult {
         if (baselineReadings.isNotEmpty)
           'baseline': {
             'form': baseline!.form,
+            // Per-field forms (F7): each field's label basis is how
+            // many readings carried THAT field.
+            'fieldForms': {
+              if (baseline!.hrForm != null) 'hr': baseline!.hrForm,
+              if (baseline!.sysForm != null) 'sys': baseline!.sysForm,
+              if (baseline!.diaForm != null) 'dia': baseline!.diaForm,
+            },
             'readings': baselineReadings
-                .map((c) => c.toPayloadJson(withMinute: false))
+                .map((c) => c.toPayloadJson())
                 .toList(),
           },
         'checkpoints':
-            checkpoints.map((c) => c.toPayloadJson(withMinute: true)).toList(),
+            checkpoints.map((c) => c.toPayloadJson()).toList(),
         'disclaimerVersion': disclaimerVersion,
       };
 
@@ -743,11 +825,29 @@ class LeanTestSessionStore {
 
   String? _boundOwner;
 
+  /// In-memory knowledge of whether the persisted blob holds a
+  /// pending (built-but-unstaged) result entry. Null = unknown in
+  /// this process (nothing loaded or saved yet). [retainUnconfirmed]
+  /// decides from this without a storage read when it is known, so
+  /// its synchronous prefix can unbind immediately and the logout
+  /// funnel never has to await a channel future for it (F1).
+  bool? _pendingKnown;
+
+  /// Whether an owner is currently bound. Serving, staging, and
+  /// saving are all gated on a bound, matching owner (F2).
+  bool get hasBoundOwner => _boundOwner != null;
+
   factory LeanTestSessionStore() => instance;
 
   LeanTestSessionStore._internal();
 
   LeanTestSessionStore._(this._read, this._write, this._delete);
+
+  /// Owner the storage-injected (test) stores start bound to, so
+  /// the suite's save/load flows exercise the bound path. The
+  /// production singleton starts UNBOUND.
+  @visibleForTesting
+  static const String debugDefaultOwner = 'lean-test-owner@example.com';
 
   static String? _normalizeEmail(String? email) =>
       CoachMemoryStore.normalizeEmail(email);
@@ -757,15 +857,18 @@ class LeanTestSessionStore {
     required Future<String?> Function(String key) read,
     required Future<void> Function(String key, String value) write,
     Future<void> Function(String key)? delete,
-  }) =>
-      LeanTestSessionStore._(
-        read,
-        write,
-        delete ??
-            (key) async {
-              await write(key, '');
-            },
-      );
+  }) {
+    final store = LeanTestSessionStore._(
+      read,
+      write,
+      delete ??
+          (key) async {
+            await write(key, '');
+          },
+    );
+    store._boundOwner = debugDefaultOwner;
+    return store;
+  }
 
   @visibleForTesting
   void debugSetStore({
@@ -778,43 +881,61 @@ class LeanTestSessionStore {
     if (delete != null) _delete = delete;
   }
 
-  /// The persisted session, or null. A blob stamped for a different
-  /// bound owner is wiped instead of served (migraine audit-4e
-  /// pattern). Never throws.
+  /// Test hook: force the binding (or unbind with null) without
+  /// the login enforcement read, to exercise the F2 gates.
+  @visibleForTesting
+  void debugSetBoundOwner(String? email) {
+    _boundOwner = _normalizeEmail(email);
+  }
+
+  /// The persisted session, or null. F2 gate: NOTHING is served
+  /// against an unbound owner — a blob that survives into an
+  /// unbound window (logout delete still in flight, cold start
+  /// before the binding lands) stays on disk untouched for the
+  /// login enforcement to judge, but it is never loaded, closed,
+  /// or staged from. A blob stamped for a different bound owner,
+  /// or with no owner stamp at all, is wiped instead of served
+  /// (migraine audit-4e pattern). Never throws.
   Future<LeanTestSession?> load() async {
+    final bound = _boundOwner;
+    if (bound == null) return null;
     try {
       final raw = await _read(storageKey);
-      if (raw == null || raw.isEmpty) return null;
+      if (raw == null || raw.isEmpty) {
+        _pendingKnown = false;
+        return null;
+      }
       final decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic>) return null;
       final stamp = _normalizeEmail(decoded['ownerEmail']?.toString());
-      if (stamp != null && _boundOwner != null && stamp != _boundOwner) {
+      if (stamp == null || stamp != bound) {
         try {
           await _delete(storageKey);
         } catch (_) {}
+        _pendingKnown = false;
         return null;
       }
       final sessionRaw = decoded['session'];
       if (sessionRaw is! Map<String, dynamic>) return null;
-      return LeanTestSession.fromJson(sessionRaw);
+      final session = LeanTestSession.fromJson(sessionRaw);
+      if (session != null) {
+        _pendingKnown = session.pendingEntryJson != null;
+      }
+      return session;
     } catch (_) {
       return null;
     }
   }
 
+  /// Persists [session] stamped with the bound owner. F2 gate: a
+  /// save against an unbound owner is refused outright — it must
+  /// never stamp one account's session with another's (or no)
+  /// owner by falling back to whatever stamp a surviving blob
+  /// carries.
   Future<void> save(LeanTestSession session) async {
-    var stamp = _boundOwner;
-    if (stamp == null) {
-      try {
-        final raw = await _read(storageKey);
-        if (raw != null && raw.isNotEmpty) {
-          final decoded = jsonDecode(raw);
-          if (decoded is Map<String, dynamic>) {
-            stamp = _normalizeEmail(decoded['ownerEmail']?.toString());
-          }
-        }
-      } catch (_) {}
-    }
+    final stamp = _boundOwner;
+    if (stamp == null) return;
+    _pendingKnown = session.pendingEntryJson != null;
     await _write(
       storageKey,
       jsonEncode({'ownerEmail': stamp, 'session': session.toJson()}),
@@ -822,22 +943,69 @@ class LeanTestSessionStore {
   }
 
   /// Discards the session. Called only after the result entry has
-  /// staged, on a no-entry close (§9 Q2), on discard-and-restart,
-  /// and on the silent interrupted discard. Never throws.
+  /// staged, on a no-entry close (§9 Q2), and on
+  /// discard-and-restart. Never throws.
   Future<void> clear() async {
+    _pendingKnown = false;
     try {
       await _delete(storageKey);
     } catch (_) {}
   }
 
   /// Logout / account-deletion wipe: drops the blob and unbinds.
+  /// The unbind is synchronous (it happens before the returned
+  /// future's first await), so callers may fire this unawaited
+  /// without leaving the store bound behind them.
   Future<void> clearAndUnbind() async {
     _boundOwner = null;
     await clear();
   }
 
+  /// Retains a completed-pending result across session expiry and
+  /// logout (F1 — the outbox's `retainUnconfirmed` pattern for this
+  /// store). When the blob holds a pending entry, the owner-bound
+  /// blob is RETAINED on disk untouched: the same account's next
+  /// sign-in rebinds it and retries its pending entry, and a
+  /// different account's sign-in drops it via
+  /// [clearIfOwnerMismatch] before any load or retry can serve it.
+  /// With no pending entry there is nothing to lose, so this falls
+  /// through to [clearAndUnbind] and returns false. The unbind is
+  /// synchronous; callers in the logout funnel fire this unawaited
+  /// exactly like the wipe it replaces, so no real secure-storage
+  /// channel future is ever awaited there. Never throws.
+  Future<bool> retainUnconfirmed() async {
+    final known = _pendingKnown;
+    _boundOwner = null;
+    if (known == true) return true;
+    if (known == false) {
+      await clear();
+      return false;
+    }
+    // Unknown in this process: judge from the blob itself.
+    try {
+      final raw = await _read(storageKey);
+      if (raw != null && raw.isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, dynamic>) {
+          final sessionRaw = decoded['session'];
+          if (sessionRaw is Map<String, dynamic> &&
+              sessionRaw['pendingEntryJson'] != null) {
+            _pendingKnown = true;
+            return true;
+          }
+        }
+      }
+    } catch (_) {}
+    _pendingKnown = false;
+    await clear();
+    return false;
+  }
+
   /// Login/register ownership enforcement, mirroring
-  /// [MigraineAttackStore.clearIfOwnerMismatch]. Never throws.
+  /// [MigraineAttackStore.clearIfOwnerMismatch]. This is the F2
+  /// binding point: it binds the new owner and, on mismatch, drops
+  /// a surviving blob BEFORE any load or retry can serve it.
+  /// Never throws.
   Future<bool> clearIfOwnerMismatch(String? email) async {
     final expected = _normalizeEmail(email);
     if (expected == null) return false;
@@ -845,6 +1013,7 @@ class LeanTestSessionStore {
       final raw = await _read(storageKey);
       if (raw == null || raw.isEmpty) {
         _boundOwner = expected;
+        _pendingKnown = false;
         return false;
       }
       final decoded = jsonDecode(raw);
@@ -856,6 +1025,9 @@ class LeanTestSessionStore {
       final owner = _normalizeEmail(decoded['ownerEmail']?.toString());
       if (owner == expected) {
         _boundOwner = expected;
+        final sessionRaw = decoded['session'];
+        _pendingKnown = sessionRaw is Map<String, dynamic> &&
+            sessionRaw['pendingEntryJson'] != null;
         return false;
       }
       await clearAndUnbind();
@@ -907,6 +1079,13 @@ class LeanCloseResult {
   const LeanCloseResult({this.result, this.entry, this.staged = false});
 
   bool get hasEntry => entry != null;
+
+  /// True when the entry was built and persisted on the session as
+  /// pending (staging failed) — it retries on the next app start /
+  /// home landing with its persisted allocated id. A close with a
+  /// result but NO entry (category double-miss at close) is neither
+  /// staged nor pending: nothing was recorded (F5).
+  bool get isPending => entry != null && !staged;
 }
 
 /// Closes sessions into log entries (spec §3.5, §4; override §9):
