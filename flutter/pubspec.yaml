@@ -134,10 +134,9 @@ flutter:
     - assets/images/bandit_avatar_blink.png
     - assets/images/bandit_full.png
     - assets/images/bandit_full_blink.png
-    # Opening sequence (LAB) — clip + its literal first/last frames.
+    # Opening sequence (LAB) — clip + its literal first frame (poster).
     - assets/video/opening_beats1_5.mp4
     - assets/images/opening_poster.png
-    - assets/images/opening_end.png
     # Round 18b — bundled research library (mirrors native
     # app/src/main/assets/research/*.json).
     - assets/research/

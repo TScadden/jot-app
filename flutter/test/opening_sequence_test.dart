@@ -19,15 +19,15 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 import 'test_helpers.dart';
 
-/// Opening sequence (LAB) — flag-gated front-door clip.
+/// Opening sequence (LAB) — flag-gated front-door overlay.
 ///
-/// Covers the package spec: flag-off is a no-op, a signed-in cold
-/// start never sees the sequence, the signed-out front door runs
-/// poster → clip → handoff → beats 6–7 with working welcome
-/// callbacks, tap-to-skip during the native beats, the poster
-/// fallback on init failure AND on init timeout (the end still is
-/// never displayed — founder logo rule), play-once per process,
-/// and the reduced-motion direct render.
+/// Landing (founder-directed, Oct 29, 2026): the sequence is an
+/// opaque overlay above the REAL WelcomeScreen — clip, center
+/// lockup resolve (real ic_tabs_note mark + native wordmark), rise
+/// into the welcome header's own position, reveal, overlay removed.
+/// There is NO invented welcome content: the end-state assertions
+/// target the real screen, and the deleted storyboard strings are
+/// asserted ABSENT.
 
 class FakeOpeningPlayer implements OpeningPlayer {
   FakeOpeningPlayer({
@@ -37,8 +37,8 @@ class FakeOpeningPlayer implements OpeningPlayer {
 
   final bool failInit;
 
-  /// When true, initialize() waits on [initGate] (a hang, unless the
-  /// test completes the gate).
+  /// When true, initialize() waits on [initGate] (a hang, unless
+  /// the test completes the gate).
   final bool manualInit;
   final Completer<void> initGate = Completer<void>();
 
@@ -150,20 +150,30 @@ Future<void> pumpFlow(
   required SessionStore session,
   bool? openingEnabled,
   OpeningPlayerFactory? playerFactory,
+  bool disableAnimations = false,
 }) async {
+  final flow = AppFlow(
+    authApi: AuthApiClient(
+        client: MockClient((_) async => http.Response('nf', 404))),
+    sessionStore: session,
+    onboardingStore: fakeOnboardingStore({}),
+    tabsBackend: FakeBackend(sessionStore: session),
+    weatherApi: WeatherApiClient(client: mockWeatherClient()),
+    healthConnectService: FakeHC(),
+    notificationService: FakeReminderNotificationService(),
+    openingSequenceEnabled: openingEnabled,
+    openingPlayerFactory: playerFactory,
+  );
   await tester.pumpWidget(MaterialApp(
-    home: AppFlow(
-      authApi: AuthApiClient(
-          client: MockClient((_) async => http.Response('nf', 404))),
-      sessionStore: session,
-      onboardingStore: fakeOnboardingStore({}),
-      tabsBackend: FakeBackend(sessionStore: session),
-      weatherApi: WeatherApiClient(client: mockWeatherClient()),
-      healthConnectService: FakeHC(),
-      notificationService: FakeReminderNotificationService(),
-      openingSequenceEnabled: openingEnabled,
-      openingPlayerFactory: playerFactory,
-    ),
+    home: disableAnimations
+        ? Builder(
+            builder: (context) => MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(disableAnimations: true),
+              child: flow,
+            ),
+          )
+        : flow,
   ));
 }
 
@@ -185,28 +195,35 @@ Future<FakeOpeningPlayer> pumpFrontDoor(
   return fake;
 }
 
-/// Clip end → handoff (400ms) → beat 6 (650ms) → beat 7 (550ms) →
-/// the post-frame completion callback.
+/// Clip end → resolve (200ms) → rise (650ms) → reveal (500ms) →
+/// the post-frame completion callback removes the overlay.
 Future<void> driveToDone(
     WidgetTester tester, FakeOpeningPlayer fake) async {
   fake.complete();
   await tester.pump();
-  await tester.pump(const Duration(milliseconds: 450));
+  await tester.pump(const Duration(milliseconds: 250));
   await tester.pump(const Duration(milliseconds: 700));
-  await tester.pump(const Duration(milliseconds: 600));
+  await tester.pump(const Duration(milliseconds: 550));
+  await tester.pump();
   await tester.pump();
 }
 
-void expectEndStateLive(WidgetTester tester) {
-  expect(find.text('Your health, all in one place'), findsOneWidget);
-  final getStarted = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'Get started'));
-  expect(getStarted.onPressed, isNotNull,
-      reason: 'Get started must be live at the end state');
-  final haveAccount = tester.widget<TextButton>(
-      find.widgetWithText(TextButton, 'I have an account'));
-  expect(haveAccount.onPressed, isNotNull,
-      reason: 'I have an account must be live at the end state');
+/// The end state is the REAL WelcomeScreen, live — and none of the
+/// deleted storyboard landing exists anywhere in the flow.
+void expectRealWelcome(WidgetTester tester) {
+  expect(find.byType(OpeningSequenceScreen), findsNothing,
+      reason: 'the overlay must be removed at the end state');
+  expect(find.byType(WelcomeScreen), findsOneWidget);
+  expect(find.text('Notes that build'), findsOneWidget);
+  expect(find.text('Register'), findsOneWidget);
+  expect(find.text('Log In'), findsOneWidget);
+  expect(find.text('Track symptoms and treatments'), findsOneWidget);
+  expect(find.text('Reach your goals'), findsOneWidget);
+  expect(find.text('Learn patterns and get insights'), findsOneWidget);
+  // Negative assertions: the invented beat-7 landing is deleted.
+  expect(find.text('Your health, all in one place'), findsNothing);
+  expect(find.text('Get started'), findsNothing);
+  expect(find.text('I have an account'), findsNothing);
 }
 
 void main() {
@@ -252,9 +269,9 @@ void main() {
       await tester.pump(const Duration(seconds: 3));
     });
 
-    testWidgets('front door: poster first, muted clip plays, end '
-        'state reachable, Get started fires onRegister',
-        (tester) async {
+    testWidgets('front door: poster first, muted clip plays, '
+        'lockup resolves with the real mark, reveal lands on the '
+        'real WelcomeScreen', (tester) async {
       final fake = FakeOpeningPlayer(manualInit: true);
       await pumpFlow(
         tester,
@@ -264,8 +281,10 @@ void main() {
       );
       await tester.pump();
       // Phase A: the poster is the first thing on the door, and
-      // playback has not begun (init is still gated).
+      // playback has not begun (init is still gated). The real
+      // WelcomeScreen already stands underneath the overlay.
       expect(find.byType(OpeningSequenceScreen), findsOneWidget);
+      expect(find.byType(WelcomeScreen), findsOneWidget);
       expect(find.byKey(const ValueKey('opening_poster')),
           findsOneWidget);
       expect(fake.played, isFalse);
@@ -277,100 +296,108 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
       expect(fake.played, isTrue);
       expect(fake.volume, 0,
-          reason: 'the generated audio track must stay muted');
+          reason: 'the player must stay hard-muted');
       expect(find.byKey(const ValueKey('fake-opening-video')),
           findsOneWidget);
-      await driveToDone(tester, fake);
-      expectEndStateLive(tester);
-      // Founder logo rule: the resting lockup is the REAL mark
-      // (ic_tabs_note.png) + the native wordmark in the app's own
-      // treatment (NotelPrimary, Black w900) — and the clip's
-      // end still is never displayed anywhere in the sequence.
-      expect(find.byKey(const ValueKey('opening_end_still')),
-          findsNothing);
+      // Resolve: mid-crossfade, the overlay lockup carries the
+      // REAL mark (a second ic_tabs_note image, over the real
+      // header's own) and every "Tabs" text on screen — overlay
+      // and real header alike — is native, NotelPrimary, w900.
+      fake.complete();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
       expect(
         find.byWidgetPredicate((w) =>
             w is Image &&
             w.image is AssetImage &&
             (w.image as AssetImage).assetName ==
                 'assets/images/ic_tabs_note.png'),
-        findsOneWidget,
+        findsNWidgets(2),
       );
-      final wordmark = tester.widget<Text>(find.text('Tabs'));
-      expect(wordmark.style?.color, NotelColors.primary);
-      expect(wordmark.style?.fontWeight, FontWeight.w900);
-      // The finished sequence stays as the welcome surface.
-      expect(find.byType(OpeningSequenceScreen), findsOneWidget);
-      await tester.tap(find.text('Get started'));
+      final wordmarks = tester.widgetList<Text>(find.text('Tabs'));
+      expect(wordmarks.length, 2);
+      for (final w in wordmarks) {
+        expect(w.style?.color, NotelColors.primary);
+        expect(w.style?.fontWeight, FontWeight.w900);
+      }
+      // Rise + reveal finish the landing.
+      await tester.pump(const Duration(milliseconds: 150));
+      await tester.pump(const Duration(milliseconds: 700));
+      await tester.pump(const Duration(milliseconds: 550));
       await tester.pump();
-      expect(find.byType(LoginScreen), findsOneWidget);
-    });
-
-    testWidgets('front door: I have an account fires onLogin',
-        (tester) async {
-      final fake = await pumpFrontDoor(tester);
-      await driveToDone(tester, fake);
-      expectEndStateLive(tester);
-      await tester.tap(find.text('I have an account'));
+      await tester.pump();
+      expectRealWelcome(tester);
+      // The real screen is live: Register drives AppFlow's
+      // existing _goLogin path.
+      await tester.tap(find.text('Register'));
       await tester.pump();
       expect(find.byType(LoginScreen), findsOneWidget);
       // Flush AppFlow's splash timer before teardown.
       await tester.pump(const Duration(seconds: 2));
     });
 
-    testWidgets('tap during the native beats jumps to the end '
-        'state instantly', (tester) async {
+    testWidgets('front door: Log In on the revealed WelcomeScreen '
+        'fires the existing login path', (tester) async {
+      final fake = await pumpFrontDoor(tester);
+      await driveToDone(tester, fake);
+      expectRealWelcome(tester);
+      await tester.tap(find.text('Log In'));
+      await tester.pump();
+      expect(find.byType(LoginScreen), findsOneWidget);
+      await tester.pump(const Duration(seconds: 2));
+    });
+
+    testWidgets('tap during the native phases snaps the lockup '
+        'home and completes the reveal instantly', (tester) async {
       final fake = await pumpFrontDoor(tester);
       fake.complete();
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 450));
-      // Now in beat 6 (rise). A tap finishes everything at once.
+      await tester.pump(const Duration(milliseconds: 250));
+      // Now rising. A tap finishes everything at once.
       await tester.pump(const Duration(milliseconds: 100));
       await tester.tapAt(const Offset(400, 200));
       await tester.pump();
-      expectEndStateLive(tester);
-      // Flush AppFlow's splash timer before teardown.
+      await tester.pump();
+      expectRealWelcome(tester);
+      await tester.tap(find.text('Register'));
+      await tester.pump();
+      expect(find.byType(LoginScreen), findsOneWidget);
       await tester.pump(const Duration(seconds: 2));
     });
 
     testWidgets('player init failure: poster fallback reaches '
-        'the same end state', (tester) async {
+        'the same real WelcomeScreen', (tester) async {
       final fake =
           await pumpFrontDoor(tester, player: FakeOpeningPlayer(failInit: true));
       await tester.pump();
       await tester.pump();
-      // Fallback: the POSTER is held — the end still (with the
-      // clip's drawn lettering) is never displayed.
+      // Fallback holds the POSTER (frame 0) — never an end frame.
       expect(find.byKey(const ValueKey('opening_poster')),
           findsOneWidget);
-      expect(find.byKey(const ValueKey('opening_end_still')),
-          findsNothing);
       expect(fake.played, isFalse);
       await tester.pump(const Duration(milliseconds: 950));
       await tester.pump(const Duration(milliseconds: 250));
       await tester.pump(const Duration(milliseconds: 700));
-      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump(const Duration(milliseconds: 550));
       await tester.pump();
-      expectEndStateLive(tester);
+      expectRealWelcome(tester);
     });
 
     testWidgets('player init timeout (~700ms): poster fallback '
-        'reaches the same end state', (tester) async {
+        'reaches the same real WelcomeScreen', (tester) async {
       final fake = await pumpFrontDoor(
           tester, player: FakeOpeningPlayer(manualInit: true));
       await tester.pump(const Duration(milliseconds: 750));
       await tester.pump();
       expect(find.byKey(const ValueKey('opening_poster')),
           findsOneWidget);
-      expect(find.byKey(const ValueKey('opening_end_still')),
-          findsNothing);
       expect(fake.played, isFalse);
       await tester.pump(const Duration(milliseconds: 950));
       await tester.pump(const Duration(milliseconds: 250));
       await tester.pump(const Duration(milliseconds: 700));
-      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump(const Duration(milliseconds: 550));
       await tester.pump();
-      expectEndStateLive(tester);
+      expectRealWelcome(tester);
     });
 
     testWidgets('plays once: returning to welcome in-process does '
@@ -389,54 +416,42 @@ void main() {
       await tester.pump();
       await tester.pump();
       await driveToDone(tester, fake);
-      expectEndStateLive(tester);
-      // Let AppFlow's legacy splash timer + exit fully elapse so
-      // its overlay can never sit over the login screen below
-      // (stepped pumps: the exit ticker advances per frame).
-      await tester.pump(const Duration(milliseconds: 200));
-      await tester.pump(const Duration(milliseconds: 350));
-      await tester.pump(const Duration(milliseconds: 350));
-      await tester.pump();
-      // Leave the front door (Get started → login) and come back.
-      await tester.tap(find.text('Get started'));
+      expectRealWelcome(tester);
+      // Leave the front door (Register → login) and come back.
+      await tester.tap(find.text('Register'));
       await tester.pump();
       expect(find.byType(LoginScreen), findsOneWidget);
       await tester.tap(find.byIcon(Icons.arrow_back));
       await tester.pump();
       expect(find.byType(OpeningSequenceScreen), findsNothing);
       expect(find.byType(WelcomeScreen), findsOneWidget);
-      expect(find.text('Get started'), findsNothing);
       expect(factoryCalls, 1,
           reason: 'the sequence must not be rebuilt on return');
+      // Flush AppFlow's splash timer before teardown.
+      await tester.pump(const Duration(seconds: 2));
     });
 
-    testWidgets('reduced motion: straight to the end state, no '
-        'player is created', (tester) async {
+    testWidgets('reduced motion: no overlay at all, straight to '
+        'the real WelcomeScreen, no player created', (tester) async {
       var factoryCalls = 0;
-      var registerCalls = 0;
-      await tester.pumpWidget(MaterialApp(
-        home: Builder(
-          builder: (context) => MediaQuery(
-            data: MediaQuery.of(context)
-                .copyWith(disableAnimations: true),
-            child: OpeningSequenceScreen(
-              onRegister: () => registerCalls++,
-              onLogin: () {},
-              playerFactory: () {
-                factoryCalls++;
-                return FakeOpeningPlayer();
-              },
-            ),
-          ),
-        ),
-      ));
+      await pumpFlow(
+        tester,
+        session: FakeSessionStore(),
+        openingEnabled: true,
+        disableAnimations: true,
+        playerFactory: () {
+          factoryCalls++;
+          return FakeOpeningPlayer();
+        },
+      );
+      await tester.pump();
       await tester.pump();
       expect(factoryCalls, 0);
       expect(find.byKey(const ValueKey('opening_poster')),
           findsNothing);
-      expectEndStateLive(tester);
-      await tester.tap(find.text('Get started'));
-      expect(registerCalls, 1);
+      expectRealWelcome(tester);
+      // Flush AppFlow's splash timer before teardown.
+      await tester.pump(const Duration(seconds: 2));
     });
   });
 }

@@ -275,31 +275,30 @@ class _AppFlowState extends State<AppFlow>
   // door: [_frontDoorResolved] flips when the restore has proven
   // the process signed-OUT (no stored token, or an unreadable
   // store); only then may the sequence start playback (its poster
-  // covers the wait). [_openingPlayed] is the per-process
-  // played flag: a signed-in resolution also sets it, so a
-  // signed-in user never sees the sequence — not at cold start and
-  // not after an in-process logout. [_openingCompletedVisible]
-  // keeps the finished sequence mounted as the welcome surface
-  // until the user leaves the front door (its buttons ARE the
-  // welcome actions); leaving clears it, so a later return to
-  // welcome lands on the plain WelcomeScreen instead of replaying.
+  // covers the wait). [_openingPlayed] is the per-process played
+  // flag: a signed-in resolution also sets it, so a signed-in user
+  // never sees the sequence — not at cold start and not after an
+  // in-process logout. The sequence is an OVERLAY above the real
+  // WelcomeScreen (rendered underneath exactly as today); when it
+  // completes, [_onOpeningCompleted] removes the overlay and the
+  // live WelcomeScreen remains.
   bool _frontDoorResolved = false;
   bool _openingPlayed = false;
-  bool _openingCompletedVisible = false;
 
   bool get _openingEnabled =>
       widget.openingSequenceEnabled ?? tabsOpeningSequenceEnabled;
 
   bool get _showOpening =>
-      _openingEnabled &&
-      _stage == _FlowStage.welcome &&
-      (!_openingPlayed || _openingCompletedVisible);
+      _openingEnabled && _stage == _FlowStage.welcome && !_openingPlayed;
 
   void _onOpeningCompleted() {
     if (!mounted) return;
     setState(() {
       _openingPlayed = true;
-      _openingCompletedVisible = true;
+      // The sequence IS the front-door entry: the legacy splash
+      // must never pop in over the revealed WelcomeScreen if its
+      // entry+hold timer happens to fire after a fast reveal.
+      _splashVisible = false;
     });
   }
 
@@ -319,9 +318,6 @@ class _AppFlowState extends State<AppFlow>
     setState(() {
       _loginIsRegister = isRegister;
       _stage = _FlowStage.login;
-      // Leaving the front door: the finished opening sequence is
-      // not kept (or replayed) on a later return to welcome.
-      _openingCompletedVisible = false;
     });
   }
 
@@ -1312,22 +1308,7 @@ class _AppFlowState extends State<AppFlow>
     final showOpening = _showOpening;
     return Stack(
       children: [
-        if (_stage == _FlowStage.welcome && showOpening)
-          // Opening sequence (LAB, flag-gated): replaces the
-          // splash + welcome front door for a signed-out cold
-          // start. Its poster covers the session-restore wait;
-          // playback starts only when [_frontDoorResolved] flips;
-          // a signed-in resolution changes the stage (removing it)
-          // before any playback. When it finishes it stays mounted
-          // as the welcome surface (see [_openingCompletedVisible]).
-          OpeningSequenceScreen(
-            onRegister: () => _goLogin(true),
-            onLogin: () => _goLogin(false),
-            signedOutConfirmed: _frontDoorResolved,
-            playerFactory: widget.openingPlayerFactory,
-            onCompleted: _onOpeningCompleted,
-          )
-        else if (_stage == _FlowStage.welcome)
+        if (_stage == _FlowStage.welcome)
           WelcomeScreen(
             onRegister: () => _goLogin(true),
             onLogin: () => _goLogin(false),
@@ -1372,6 +1353,20 @@ class _AppFlowState extends State<AppFlow>
               migraineController: _migraineController,
               leanGateway: BackendLeanTestGateway(backend: _tabsBackend),
               onLogout: _onLogout),
+        if (showOpening)
+          // Opening sequence (LAB, flag-gated): an opaque overlay
+          // ABOVE the real WelcomeScreen rendered beneath it (the
+          // first child above). Its poster covers the
+          // session-restore wait; playback starts only when
+          // [_frontDoorResolved] flips; a signed-in resolution
+          // changes the stage (removing it) before any playback.
+          // It reveals the WelcomeScreen and removes itself via
+          // [_onOpeningCompleted].
+          OpeningSequenceScreen(
+            signedOutConfirmed: _frontDoorResolved,
+            playerFactory: widget.openingPlayerFactory,
+            onCompleted: _onOpeningCompleted,
+          ),
         if (_splashVisible && showOpening)
           // Opening sequence (LAB): the sequence IS the front-door
           // entry — the legacy splash overlay never stacks on it.
