@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:tabs_lab/src/data/coach_memory_store.dart';
 import 'package:tabs_lab/src/data/daily_score_refresh_owner.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
@@ -117,9 +119,25 @@ class AccountActions {
     } catch (_) {}
     // Phase 1 item 6: the lean-test session is account-bound
     // device-local health data — the same wipe covers it.
-    try {
-      await LeanTestSessionStore.instance.clearAndUnbind();
-    } catch (_) {}
+    // Deliberately NOT awaited (the LogEntryOutbox blob-delete
+    // rule, and main.dart's session-expiry treatment of this same
+    // store): the store has no test-injected storage in this
+    // funnel, so its clear awaits the real FlutterSecureStorage
+    // channel — a channel future that cannot complete in a
+    // caller's async zone (a wedged channel in production, the
+    // fake-async zone in widget tests) would park this whole wipe
+    // behind it: every later clear, the settings clear, and the
+    // logout itself would never run (settings_r29: onLogout never
+    // fired). The wipe still happens HERE, in sequence:
+    // clearAndUnbind drops the owner binding synchronously and
+    // dispatches the blob delete synchronously before returning;
+    // only the delete's completion is not awaited. The delete
+    // cannot throw out of the store (clear() swallows storage
+    // errors), and a blob whose delete is still in flight stays
+    // guarded — load() refuses a blob stamped for a different
+    // bound owner and login's clearIfOwnerMismatch re-wipes a
+    // mismatched blob.
+    unawaited(LeanTestSessionStore.instance.clearAndUnbind());
     // Vera 4e follow-up: wipe mid-attack must not orphan the
     // ongoing notification; its tap would load a wiped store.
     try {
