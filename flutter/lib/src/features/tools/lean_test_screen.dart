@@ -128,6 +128,12 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
   String _assistSource = 'manual';
   int? _assistSampleTMs;
 
+  /// The capture slot the live form belongs to (F8): when the
+  /// derived slot rolls over, unsubmitted form text is cleared so
+  /// a value typed at minute N never appears pre-filled — and
+  /// never saves — at minute N+1.
+  String? _formSlotKey;
+
   DateTime _now() => widget.clock?.call() ?? DateTime.now();
   int get _nowMs => _now().millisecondsSinceEpoch;
 
@@ -140,10 +146,19 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       final session = _session;
+      // F8: a capture-slot rollover clears unsubmitted form text.
+      final slotKey = session == null ? null : _slotKeyFor(session);
+      if (slotKey != _formSlotKey) {
+        _formSlotKey = slotKey;
+        if (slotKey != null) _clearForm();
+      }
       if (session != null &&
           session.standingStartedAtMs != null &&
-          session.standingExpired(_nowMs) &&
-          session.hasAnyRecordedValue) {
+          session.standingExpired(_nowMs)) {
+        // Uniform in-app expiry (F4): a zero-value session past its
+        // phase end takes the interrupted path too — it never stays
+        // in the standing view to submit into a completion stamped
+        // on an expired phase.
         setState(() => _interrupted = true);
       } else {
         setState(() {});
@@ -175,9 +190,6 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
     var interrupted = false;
     if (session != null) {
       switch (session.relaunchAt(_nowMs)) {
-        case LeanRelaunch.discardSilently:
-          await _store.clear();
-          session = null;
         case LeanRelaunch.interrupted:
           interrupted = true;
         case LeanRelaunch.resume:
@@ -185,6 +197,7 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
           break;
       }
     }
+    _formSlotKey = session == null ? null : _slotKeyFor(session);
     var past = const <LeanTestResult>[];
     try {
       past = leanPastResults(await _gateway.loadEntries());
@@ -230,6 +243,18 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
     _assistSampleTMs = null;
   }
 
+  /// The slot the live capture form belongs to at this instant:
+  /// the current standing minute, the due resting slot, or the
+  /// transition (no form). Null when no capture form is live.
+  String? _slotKeyFor(LeanTestSession session) {
+    if (session.standingStartedAtMs != null) {
+      return 'standing:${session.currentStandingMinute(_nowMs)}';
+    }
+    final due = session.dueBaselineMinute(_nowMs);
+    if (due != null) return 'rest:$due';
+    return null;
+  }
+
   LeanCapture _captureFromForm({required int minute, bool standing = false}) {
     final hr = leanEnteredValue(_hrController.text);
     return LeanCapture(
@@ -238,8 +263,12 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
       hr: hr,
       sys: leanEnteredValue(_sysController.text),
       dia: leanEnteredValue(_diaController.text),
-      source: hr != null ? _assistSource : 'manual',
-      sampleTMs: hr != null ? _assistSampleTMs : null,
+      // Per-value source (F6): the Health Connect assist stamps
+      // ONLY the HR value it supplied (with its sample timestamp);
+      // hand-typed BP in the same capture stays manual.
+      hrSource: hr != null ? _assistSource : 'manual',
+      hrSampleTMs: hr != null ? _assistSampleTMs : null,
+      bpSource: 'manual',
       symptomNote: standing && _noteController.text.trim().isNotEmpty
           ? _noteController.text.trim()
           : null,
@@ -267,12 +296,35 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
     if (minute >= leanStandingMinutes) {
       final close = await _closer.closeCompleted(updated);
       if (!mounted) return;
-      setState(() {
-        _session = null;
-        _result = close.result;
-        _stopLine = null;
-      });
+      _applyClose(close, stopLine: null);
     }
+  }
+
+  /// F5: the S12 completion presentation (completion line +
+  /// "Tap to view in History") renders ONLY for a close that
+  /// staged its entry or left it genuinely pending retry. A close
+  /// that staged nothing and holds no pending entry (the category
+  /// double-miss at close — which the production gateway also
+  /// reaches on any fetch exception, i.e. closing offline) keeps
+  /// the session visibly live: no result is presented, the session
+  /// is not discarded, and it does not "resurrect" later — it
+  /// simply remains the live session it still is.
+  void _applyClose(LeanCloseResult close, {required String? stopLine}) {
+    if (close.result != null && !close.staged && !close.isPending) {
+      setState(() {
+        _result = null;
+        _stopLine = null;
+        // _session and _interrupted stay exactly as they are: the
+        // live session remains on screen.
+      });
+      return;
+    }
+    setState(() {
+      _session = null;
+      _interrupted = false;
+      _result = close.result;
+      _stopLine = stopLine;
+    });
   }
 
   Future<void> _standNow() async {
@@ -287,17 +339,28 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
     if (session == null) return;
     final close = await _closer.closeRestStop(session, _nowMs);
     if (!mounted) return;
+    if (close.result == null) {
+      // §9 Q2: no recorded values — no entry, no completion line.
+      setState(() {
+        _session = null;
+        _stopLine = leanN5;
+        _result = null;
+        _noEntryClosed = true;
+      });
+      return;
+    }
+    if (!close.staged && !close.isPending) {
+      // F5: nothing staged, nothing pending — the session stays
+      // visibly live and the rest-stop response is not presented
+      // as a completed close.
+      _applyClose(close, stopLine: null);
+      return;
+    }
     setState(() {
       _session = null;
       _stopLine = leanN5;
-      if (close.result != null) {
-        _result = close.result;
-        _noEntryClosed = false;
-      } else {
-        // §9 Q2: no recorded values — no entry, no completion line.
-        _result = null;
-        _noEntryClosed = true;
-      }
+      _result = close.result;
+      _noEntryClosed = false;
     });
   }
 
@@ -306,11 +369,7 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
     if (session == null) return;
     final close = await _closer.closeStandingStop(session, _nowMs);
     if (!mounted) return;
-    setState(() {
-      _session = null;
-      _result = close.result;
-      _stopLine = leanS11Response;
-    });
+    _applyClose(close, stopLine: leanS11Response);
   }
 
   Future<void> _closeInterrupted() async {
@@ -318,12 +377,7 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
     if (session == null) return;
     final close = await _closer.closeInterrupted(session);
     if (!mounted) return;
-    setState(() {
-      _session = null;
-      _interrupted = false;
-      _result = close.result;
-      _stopLine = null;
-    });
+    _applyClose(close, stopLine: null);
   }
 
   Future<void> _discardAndRestart() async {

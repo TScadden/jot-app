@@ -388,6 +388,17 @@ class _AppFlowState extends State<AppFlow>
       final gateFuture = _readOnboardingGate();
       final email = await emailFuture;
       final gate = await gateFuture;
+      // Phase 1 item 6 (F2): bind the lean-test store's owner from
+      // the restored session BEFORE any home landing can load,
+      // retry, or serve a lean session. A surviving blob from a
+      // different account is dropped here, by owner mismatch,
+      // ahead of the shell — never served unbound.
+      if (email != null) {
+        try {
+          await LeanTestSessionStore.instance
+              .clearIfOwnerMismatch(email);
+        } catch (_) {}
+      }
       final hasState = gate.hasState;
       final resumeStep = gate.resumeStep;
       // If the user already moved past welcome (or the widget is
@@ -510,9 +521,15 @@ class _AppFlowState extends State<AppFlow>
     // Audit 4e: migraine attack records are account-bound too —
     // session expiry wipes them like the other stores.
     unawaited(MigraineAttackStore.instance.clear());
-    // Phase 1 item 6: the lean-test session is account-bound too —
-    // session expiry wipes it like the migraine records.
-    unawaited(LeanTestSessionStore.instance.clearAndUnbind());
+    // Phase 1 item 6 (F1): the lean-test session is account-bound
+    // too — but a completed-pending lean result gets the outbox's
+    // treatment directly above, not a wipe: when the blob holds a
+    // pending entry, the owner-bound blob is RETAINED (the same
+    // account's next sign-in retries its pending entry; a
+    // different account's sign-in drops it via owner mismatch
+    // before any load or retry can serve it). With no pending
+    // entry, retainUnconfirmed falls through to the ordinary wipe.
+    unawaited(LeanTestSessionStore.instance.retainUnconfirmed());
     // Vera 4e follow-up: expiry mid-attack must not orphan the
     // ongoing notification; its tap would load a wiped store.
     unawaited(LocalMigraineNotifier.cancelPostedAttack());
@@ -614,6 +631,16 @@ class _AppFlowState extends State<AppFlow>
   /// the server flag stays false until setup completes and pushes
   /// true, so the reset is deferred, never lost.)
   Future<void> _resolveLoginRoute(String email) async {
+    // Phase 1 item 6 (F2): the lean-test owner binding is AWAITED
+    // here, ahead of the home landing below (whose
+    // _kickFirstRunResync fires the pending-entry retry). A
+    // surviving blob from a different account is dropped by owner
+    // mismatch before any load or retry can serve it; the retry
+    // itself is additionally gated on a bound, matching owner in
+    // the store, so no ordering can stage across accounts.
+    try {
+      await LeanTestSessionStore.instance.clearIfOwnerMismatch(email);
+    } catch (_) {}
     // Vera BLOCKER: fetchSyncPull's TTL cache is per-instance and
     // not keyed by account — without this, a login within 5 minutes
     // of a previous session's pull reads the OLD account state (a
