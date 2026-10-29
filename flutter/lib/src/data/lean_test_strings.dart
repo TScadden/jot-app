@@ -150,6 +150,18 @@ String leanS12Line(String outcome, String startedTs) =>
 /// The migraine-pattern hint rendered with the completion line.
 const String leanHistoryHint = 'Tap to view in History';
 
+/// N6 — Juno ruling 2026-10-29 (§2.2, verbatim; VC 100110 combine
+/// change discharging Vera's F5 condition): the pending-state line.
+/// Renders on the RESULT screen only, in the PENDING close state
+/// only, IN PLACE OF [leanHistoryHint] — the two never appear
+/// together. In the staged state the hint renders exactly as
+/// before and N6 never renders. N6 never renders in History,
+/// past-results, clinician PDF/Z7, or coach output. It is an
+/// addition, not an edit to any v2 string, so
+/// `leanTestDisclaimerVersion` stays 2.
+const String leanN6 =
+    'Saved on this device. It will appear in your History once it has uploaded.';
+
 /// R2 baseline label — mean of two resting readings. [value] is a
 /// rendered measurement (data display, e.g. `72 bpm`).
 String leanBaselineMeanLabel(String value) =>

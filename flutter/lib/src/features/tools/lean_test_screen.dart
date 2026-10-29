@@ -113,6 +113,12 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
   bool _interrupted = false;
   bool _confirmed = false;
   LeanTestResult? _result;
+
+  /// True when [_result]'s close left its entry PENDING (durably
+  /// stored on this device, not yet uploaded). Drives the N6 line
+  /// on the result screen in place of the History hint (Juno
+  /// ruling 2026-10-29 §2.2).
+  bool _resultPending = false;
   String? _stopLine;
   bool _noEntryClosed = false;
   List<LeanTestResult> _pastResults = const [];
@@ -313,6 +319,7 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
     if (close.result != null && !close.staged && !close.isPending) {
       setState(() {
         _result = null;
+        _resultPending = false;
         _stopLine = null;
         // _session and _interrupted stay exactly as they are: the
         // live session remains on screen.
@@ -323,6 +330,7 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
       _session = null;
       _interrupted = false;
       _result = close.result;
+      _resultPending = close.isPending;
       _stopLine = stopLine;
     });
   }
@@ -360,6 +368,7 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
       _session = null;
       _stopLine = leanN5;
       _result = close.result;
+      _resultPending = close.isPending;
       _noEntryClosed = false;
     });
   }
@@ -696,7 +705,14 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
         const SizedBox(height: 12),
         Text(result.completionLine, style: _bodyStyle),
         const SizedBox(height: 4),
-        const Text(leanHistoryHint, style: _secondaryStyle),
+        // Juno ruling 2026-10-29 §2.2 (N6): a PENDING close renders
+        // N6 IN PLACE OF the History hint — the two never appear
+        // together. A staged close renders the hint exactly as
+        // before, and N6 never renders.
+        if (_resultPending)
+          const Text(leanN6, style: _secondaryStyle)
+        else
+          const Text(leanHistoryHint, style: _secondaryStyle),
         if (_stopLine != null) ...[
           const SizedBox(height: 12),
           Text(_stopLine!, style: _bodyStyle),

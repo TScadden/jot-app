@@ -240,6 +240,10 @@ void main() {
           findsOneWidget);
       expect(find.text(leanS2), findsOneWidget);
       expect(find.textContaining('Feeling steady'), findsOneWidget);
+      // Juno N6 (ruling 2026-10-29 §2.2): a STAGED close renders
+      // S12 exactly as before — History hint shown, N6 absent.
+      expect(find.text(leanHistoryHint), findsOneWidget);
+      expect(find.text(leanN6), findsNothing);
       expect(gateway.staged.length, 1);
       final payload = jsonDecode(gateway.staged.single.manualText);
       expect(payload['outcome'], 'completed');
@@ -678,6 +682,15 @@ void main() {
       expect(find.text(leanS12Heading), findsOneWidget);
       expect(find.textContaining('Guided lean test recorded'),
           findsOneWidget);
+      // Juno N6 (ruling 2026-10-29 §2.2, verbatim): the PENDING
+      // close renders N6 IN PLACE OF the History hint — the two
+      // never appear together.
+      expect(
+          leanN6,
+          'Saved on this device. It will appear in your History '
+          'once it has uploaded.');
+      expect(find.text(leanN6), findsOneWidget);
+      expect(find.text(leanHistoryHint), findsNothing);
       // And the pending entry is persisted on the session.
       final persisted = await store.load();
       expect(persisted!.pendingEntryJson, isNotNull);
