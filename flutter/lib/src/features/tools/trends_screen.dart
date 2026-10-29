@@ -3,6 +3,12 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart'
+    show feelingCheckInTag;
+import 'package:tabs_lab/src/features/home/flare_day_logging.dart'
+    show flareTag;
+import 'package:tabs_lab/src/features/home/good_day_logging.dart'
+    show goodDayTag;
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/skeleton.dart';
 
@@ -179,12 +185,25 @@ class _TrendsScreenState extends State<TrendsScreen> {
     return out;
   }
 
+  /// Reserved internal data tags (Juno ruling Item 6 / Vera F2):
+  /// internal-only, never display copy, so they are excluded from
+  /// the "most used" counts below and can never render as chips in
+  /// that dialog. Stored entry chips are untouched — only this
+  /// rendered list filters them, and real user chips on the same
+  /// entries still count. Keys are lowercased to match the counter.
+  static final Set<String> _reservedChipKeys = {
+    flareTag.trim().toLowerCase(),
+    goodDayTag.trim().toLowerCase(),
+    feelingCheckInTag.trim().toLowerCase(),
+  };
+
   List<({String chip, int count})> get _topChips {
     final counts = <String, int>{};
     final firstSeen = <String, String>{};
     for (final e in _entries) {
       for (final chip in splitChips(e.chips)) {
         final key = chip.toLowerCase();
+        if (_reservedChipKeys.contains(key)) continue;
         firstSeen.putIfAbsent(key, () => chip);
         counts[key] = (counts[key] ?? 0) + 1;
       }
