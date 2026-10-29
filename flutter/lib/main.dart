@@ -283,6 +283,11 @@ class _AppFlowState extends State<AppFlow>
   // _onLoginSuccess / _onRegisterSuccess), so wiping here is
   // outcome-identical and keeps reset behavior exact.
   void _onLogout() {
+    // Billing account-switch hygiene: the app-lifetime billing
+    // singleton outlives this account — clear ONLY its error
+    // message so a sticky refresh error never renders for the
+    // next account (session expiry reaches here via _onLogout).
+    _billingSync?.service.resetErrorMessageForAccountChange();
     unawaited(_onboardingStore.clear());
     // Founder fix (Oct 2026, Vera BLOCKER) — drop this flow's
     // backend pull cache too: TabsBackend.fetchSyncPull serves a
@@ -546,6 +551,9 @@ class _AppFlowState extends State<AppFlow>
   // fix). Both calls also bind the new account, so subsequent loads
   // stamp their cache blobs with this owner.
   void _onLoginSuccess(String email) {
+    // Billing account-switch hygiene: a new account signing in
+    // clears ONLY the previous account's billing error message.
+    _billingSync?.service.resetErrorMessageForAccountChange();
     unawaited(QuickLogCache.instance.clearIfOwnerMismatch(email));
     unawaited(HomeDataCache.instance.clearIfOwnerMismatch(email));
     // Optimistic logging: a previous account's unconfirmed entries
@@ -750,6 +758,9 @@ class _AppFlowState extends State<AppFlow>
   // taking the legacy-session home path — then enter the flow at
   // the consent step.
   void _onRegisterSuccess(String email) {
+    // Billing account-switch hygiene: as on login, a fresh
+    // account clears ONLY the prior billing error message.
+    _billingSync?.service.resetErrorMessageForAccountChange();
     unawaited(QuickLogCache.instance.clearIfOwnerMismatch(email));
     unawaited(HomeDataCache.instance.clearIfOwnerMismatch(email));
     unawaited(LogEntryOutbox.instance.clearIfOwnerMismatch(email));
@@ -806,6 +817,9 @@ class _AppFlowState extends State<AppFlow>
   // setLoggedIn(false); onboardingComplete is left untouched,
   // exactly as native leaves it.
   Future<void> _onConsentDecline() async {
+    // Consent decline ends the session like a logout — the same
+    // billing error-only reset applies.
+    _billingSync?.service.resetErrorMessageForAccountChange();
     try {
       await _sessionStore.clear();
     } catch (_) {}
