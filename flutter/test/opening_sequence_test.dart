@@ -15,6 +15,7 @@ import 'package:tabs_lab/src/features/auth/login_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/splash/opening_sequence_screen.dart';
+import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 import 'test_helpers.dart';
 
@@ -23,9 +24,10 @@ import 'test_helpers.dart';
 /// Covers the package spec: flag-off is a no-op, a signed-in cold
 /// start never sees the sequence, the signed-out front door runs
 /// poster → clip → handoff → beats 6–7 with working welcome
-/// callbacks, tap-to-skip during the native beats, the end-still
-/// fallback on init failure AND on init timeout, play-once per
-/// process, and the reduced-motion direct render.
+/// callbacks, tap-to-skip during the native beats, the poster
+/// fallback on init failure AND on init timeout (the end still is
+/// never displayed — founder logo rule), play-once per process,
+/// and the reduced-motion direct render.
 
 class FakeOpeningPlayer implements OpeningPlayer {
   FakeOpeningPlayer({
@@ -280,6 +282,23 @@ void main() {
           findsOneWidget);
       await driveToDone(tester, fake);
       expectEndStateLive(tester);
+      // Founder logo rule: the resting lockup is the REAL mark
+      // (ic_tabs_note.png) + the native wordmark in the app's own
+      // treatment (NotelPrimary, Black w900) — and the clip's
+      // end still is never displayed anywhere in the sequence.
+      expect(find.byKey(const ValueKey('opening_end_still')),
+          findsNothing);
+      expect(
+        find.byWidgetPredicate((w) =>
+            w is Image &&
+            w.image is AssetImage &&
+            (w.image as AssetImage).assetName ==
+                'assets/images/ic_tabs_note.png'),
+        findsOneWidget,
+      );
+      final wordmark = tester.widget<Text>(find.text('Tabs'));
+      expect(wordmark.style?.color, NotelColors.primary);
+      expect(wordmark.style?.fontWeight, FontWeight.w900);
       // The finished sequence stays as the welcome surface.
       expect(find.byType(OpeningSequenceScreen), findsOneWidget);
       await tester.tap(find.text('Get started'));
@@ -314,15 +333,18 @@ void main() {
       await tester.pump(const Duration(seconds: 2));
     });
 
-    testWidgets('player init failure: end-still fallback reaches '
+    testWidgets('player init failure: poster fallback reaches '
         'the same end state', (tester) async {
       final fake =
           await pumpFrontDoor(tester, player: FakeOpeningPlayer(failInit: true));
       await tester.pump();
       await tester.pump();
-      // Fallback: the end still stands in for the clip.
-      expect(find.byKey(const ValueKey('opening_end_still')),
+      // Fallback: the POSTER is held — the end still (with the
+      // clip's drawn lettering) is never displayed.
+      expect(find.byKey(const ValueKey('opening_poster')),
           findsOneWidget);
+      expect(find.byKey(const ValueKey('opening_end_still')),
+          findsNothing);
       expect(fake.played, isFalse);
       await tester.pump(const Duration(milliseconds: 950));
       await tester.pump(const Duration(milliseconds: 250));
@@ -332,14 +354,16 @@ void main() {
       expectEndStateLive(tester);
     });
 
-    testWidgets('player init timeout (~700ms): end-still fallback '
+    testWidgets('player init timeout (~700ms): poster fallback '
         'reaches the same end state', (tester) async {
       final fake = await pumpFrontDoor(
           tester, player: FakeOpeningPlayer(manualInit: true));
       await tester.pump(const Duration(milliseconds: 750));
       await tester.pump();
-      expect(find.byKey(const ValueKey('opening_end_still')),
+      expect(find.byKey(const ValueKey('opening_poster')),
           findsOneWidget);
+      expect(find.byKey(const ValueKey('opening_end_still')),
+          findsNothing);
       expect(fake.played, isFalse);
       await tester.pump(const Duration(milliseconds: 950));
       await tester.pump(const Duration(milliseconds: 250));

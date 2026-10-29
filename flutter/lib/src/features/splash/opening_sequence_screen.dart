@@ -20,11 +20,23 @@ const bool tabsOpeningSequenceEnabled =
 /// always muted (see [OpeningSequenceScreen] phase B).
 const String openingVideoAsset = 'assets/video/opening_beats1_5.mp4';
 
-/// The clip's literal first frame (phase A poster).
+/// The clip's literal first frame (phase A poster; also the
+/// fallback path's held frame).
 const String openingPosterAsset = 'assets/images/opening_poster.png';
 
-/// The clip's literal last frame (phase C bridge still).
+/// The clip's literal last frame. Founder correction (Oct 29,
+/// 2026): the clip's drawn "Tabs" lettering must never rest on
+/// screen as the presented logo, so this still is NOT part of the
+/// layer stack anymore — phase C crossfades the clip directly into
+/// the native lockup. The asset stays bundled and pixel-exact; it
+/// is simply never displayed.
 const String openingEndAsset = 'assets/images/opening_end.png';
+
+/// The canonical Tabs mark — the ONLY logo used natively anywhere
+/// in the sequence (handoff lockup, beat-6 header, beat 7). The
+/// same asset the splash / login / welcome / onboarding headers
+/// use; never a generated approximation.
+const String openingLogoAsset = 'assets/images/ic_tabs_note.png';
 
 /// In-app Bandit used by the native (post-clip) elements.
 const String openingBanditAsset = 'assets/images/bandit_full.png';
@@ -132,13 +144,17 @@ enum _Phase { poster, clip, fallback, handoff, rise, content, done }
 ///    the first frame; covers the wait while AppFlow resolves the
 ///    cold-start session. Playback never starts before
 ///    [signedOutConfirmed] is true.
-/// B. Clip — the bundled mp4, muted, not looping, faded in over the
-///    poster. Init error, or init not complete within ~700ms of the
-///    signed-out confirmation, takes the fallback: the end still in
-///    place of the clip for ~900ms, then the identical handoff.
-/// C. Handoff — native lockup (bottom) → end still → video (top).
-///    The video fades out over the pixel-identical end still, then
-///    the still fades out as the native lockup fades in, same rect.
+/// B. Clip — the bundled mp4 (silent encode; the player is still
+///    hard-muted as belt-and-suspenders), not looping, faded in
+///    over the poster. Init error, or init not complete within
+///    ~700ms of the signed-out confirmation, takes the fallback:
+///    the poster holds for ~900ms, then the identical handoff —
+///    the end state is unchanged.
+/// C. Handoff — the clip crossfades DIRECTLY into the native
+///    lockup (real [openingLogoAsset] mark + native-text wordmark,
+///    see [_LockupLayer]) laid out at the end-frame geometry, one
+///    ~200ms blend. The clip's drawn lettering never rests on
+///    screen: there is no end-still layer in the stack at all.
 /// D. Beat 6 — the lockup animates up into the header position
 ///    (650ms, fastOutSlowIn).
 /// E. Beat 7 — headline + Bandit card + the welcome actions fade /
@@ -186,7 +202,7 @@ class _OpeningSequenceScreenState extends State<OpeningSequenceScreen>
   static const _fallbackHold = Duration(milliseconds: 900);
 
   late final AnimationController _videoFade; // 150ms poster→clip
-  late final AnimationController _handoff; // 400ms: 2×200ms fades
+  late final AnimationController _handoff; // 200ms direct crossfade
   late final AnimationController _rise; // 650ms beat 6
   late final Animation<double> _riseCurved;
   late final AnimationController _content; // 550ms beat 7
@@ -213,7 +229,7 @@ class _OpeningSequenceScreenState extends State<OpeningSequenceScreen>
     _videoFade = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 150));
     _handoff = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 400))
+        vsync: this, duration: const Duration(milliseconds: 200))
       ..addStatusListener(_onHandoffStatus);
     _rise = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 650))
@@ -270,7 +286,9 @@ class _OpeningSequenceScreenState extends State<OpeningSequenceScreen>
       // late-initialized player was disposed by the fallback path —
       // never start playback on it.
       if (_fallbackTaken || !mounted) return;
-      // The clip's generated audio track is not part of the feature.
+      // The bundled encode is silent (video-only stream); mute
+      // anyway as belt-and-suspenders — no audio is ever part of
+      // this feature.
       await player.setVolume(0);
       if (_fallbackTaken || !mounted) return;
       setState(() {
@@ -327,10 +345,9 @@ class _OpeningSequenceScreenState extends State<OpeningSequenceScreen>
   void _beginHandoff() {
     if (!mounted || _finished) return;
     setState(() => _phase = _Phase.handoff);
-    if (_fallbackTaken) {
-      // No video to fade: run only the still→native half.
-      _handoff.value = 0.5;
-    }
+    // One direct crossfade, both paths: clip→native lockup, or (on
+    // the fallback path, where there is no clip) poster→native
+    // lockup — the poster opacity is driven by the same controller.
     unawaited(_handoff.forward());
   }
 
@@ -427,35 +444,23 @@ class _OpeningSequenceScreenState extends State<OpeningSequenceScreen>
 
   // ── Layer opacities ───────────────────────────────────────────────
 
-  double get _nativeOpacity {
-    final v = _handoff.value;
-    if (v <= 0.5) return 0.0;
-    return ((v - 0.5) * 2).clamp(0.0, 1.0);
-  }
-
-  double get _endStillOpacity {
-    if (_reducedMotion) return 0.0;
-    final v = _handoff.value;
-    if (v > 0.5) return (1.0 - (v - 0.5) * 2).clamp(0.0, 1.0);
-    // Under the video (and in place of it on the fallback path).
-    if (_phase == _Phase.clip ||
-        _phase == _Phase.fallback ||
-        _phase == _Phase.handoff) {
-      return 1.0;
-    }
-    return 0.0;
-  }
+  double get _nativeOpacity => _handoff.value.clamp(0.0, 1.0);
 
   double get _videoOpacity {
     if (_reducedMotion || !_playerReady) return 0.0;
     final v = _handoff.value;
-    if (v > 0) return v < 0.5 ? (1.0 - v * 2).clamp(0.0, 1.0) : 0.0;
+    if (v > 0) return (1.0 - v).clamp(0.0, 1.0);
     return _videoFade.value;
   }
 
   double get _posterOpacity {
-    if (_reducedMotion || _playerReady || _fallbackTaken) return 0.0;
-    return 1.0;
+    if (_reducedMotion) return 0.0;
+    if (_fallbackTaken) {
+      // Held through the fallback, then crossfaded out by the same
+      // handoff that fades the native lockup in.
+      return (1.0 - _handoff.value).clamp(0.0, 1.0);
+    }
+    return _playerReady ? 0.0 : 1.0;
   }
 
   // ── Build ─────────────────────────────────────────────────────────
@@ -501,7 +506,7 @@ class _OpeningSequenceScreenState extends State<OpeningSequenceScreen>
                       ),
                     ),
                   ),
-                // C. Native lockup (under the still and the video).
+                // C. Native lockup (under the video it replaces).
                 if (_nativeOpacity > 0)
                   Opacity(
                     opacity: _nativeOpacity,
@@ -512,19 +517,10 @@ class _OpeningSequenceScreenState extends State<OpeningSequenceScreen>
                       t: _riseCurved.value,
                     ),
                   ),
-                // C. End still (bridge).
-                if (_endStillOpacity > 0)
-                  Positioned.fromRect(
-                    rect: frame,
-                    child: Opacity(
-                      opacity: _endStillOpacity,
-                      child: Image.asset(
-                        openingEndAsset,
-                        key: const ValueKey('opening_end_still'),
-                        fit: BoxFit.contain,
-                      ),
-                    ),
-                  ),
+                // (No end-still layer: phase C crossfades the clip
+                // directly into the native lockup above — founder
+                // correction, the clip's drawn lettering never
+                // rests on screen.)
                 // B. Clip (top media layer).
                 if (_videoOpacity > 0 && _player != null)
                   Positioned.fromRect(
@@ -564,11 +560,22 @@ class _OpeningSequenceScreenState extends State<OpeningSequenceScreen>
   }
 }
 
-/// The native lockup: tile + wordmark + Bandit, each element lerped
-/// from its measured end-frame rect (inside the clip's contain rect)
-/// to its header rect (beat 6). Header composition, per the beat-7
-/// board: small tile + "Tabs" + small Bandit at the wordmark's right,
-/// centered at the top of the screen.
+/// The native lockup: the real Tabs mark + native wordmark + Bandit,
+/// each element lerped from its measured end-frame rect (inside the
+/// clip's contain rect) to its header rect (beat 6).
+///
+/// Founder logo rule (Oct 29, 2026): the mark is ALWAYS
+/// [openingLogoAsset] (`ic_tabs_note.png`) — the clip's pushed tile
+/// is plain, and the real logo lands natively here at the handoff.
+/// The wordmark is native TEXT in the app's own treatments: the
+/// SplashScreen wordmark (36sp, FontWeight.w900 Black, NotelPrimary,
+/// letterSpacing 2) scaled proportionally for this lockup's larger
+/// resting size, settling to the TopLogoHeader treatment (28dp
+/// logo + 26sp Black NotelPrimary, 1sp spacing) in the header. The
+/// video model's drawn lettering is never rendered natively.
+///
+/// Header composition, per the beat-7 board: small mark + "Tabs" +
+/// small Bandit at the wordmark's right, centered at the top.
 class _LockupLayer extends StatelessWidget {
   final Rect frame;
   final Size screenSize;
@@ -593,16 +600,16 @@ class _LockupLayer extends StatelessWidget {
   Widget build(BuildContext context) {
     const headerH = 38.0;
     final headerTop = safeTop + 10;
-    // tile 30 + gap 8 + wordmark 78 + gap 6 + Bandit 38 = 160 wide.
+    // mark 30 + gap 8 + wordmark 78 + gap 6 + Bandit 38 = 160 wide.
     final headerLeft = (screenSize.width - 160) / 2;
-    final tileHeader =
+    final markHeader =
         Rect.fromLTWH(headerLeft, headerTop + 4, 30, 30);
     final wordmarkHeader =
         Rect.fromLTWH(headerLeft + 38, headerTop, 78, headerH);
     final banditHeader =
         Rect.fromLTWH(headerLeft + 122, headerTop, 38, headerH);
 
-    final tileRect = Rect.lerp(_frac(_tileEndFrac), tileHeader, t)!;
+    final markRect = Rect.lerp(_frac(_tileEndFrac), markHeader, t)!;
     final wordmarkRect =
         Rect.lerp(_frac(_wordmarkEndFrac), wordmarkHeader, t)!;
     final banditRect =
@@ -611,18 +618,14 @@ class _LockupLayer extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
+        // The real mark, in the pushed tile's end-frame rect (the
+        // tile itself stays plain in the clip; the logo is native).
         Positioned.fromRect(
-          rect: tileRect,
-          child: Container(
-            decoration: BoxDecoration(
-              color: NotelColors.surfaceHigh,
-              borderRadius:
-                  BorderRadius.circular(tileRect.width * 0.16),
-              border: Border.all(
-                color: NotelColors.primary.withValues(alpha: 0.15),
-                width: 1.5,
-              ),
-            ),
+          rect: markRect,
+          child: Image.asset(
+            openingLogoAsset,
+            key: const ValueKey('opening_logo_mark'),
+            fit: BoxFit.contain,
           ),
         ),
         Positioned.fromRect(
@@ -636,9 +639,16 @@ class _LockupLayer extends StatelessWidget {
             child: Text(
               'Tabs',
               style: TextStyle(
+                // SplashScreen wordmark treatment (36sp Black,
+                // NotelPrimary, letterSpacing 2) at this lockup's
+                // scale: the FittedBox child is drawn at 100sp, so
+                // spacing scales proportionally (2 × 100/36 ≈ 5.6,
+                // settling toward the header's 1sp-at-26sp ≈ 3.8
+                // as the fitted size shrinks in beat 6).
                 fontSize: 100,
-                fontWeight: FontWeight.w800,
-                color: NotelColors.textPrimary,
+                fontWeight: FontWeight.w900,
+                color: NotelColors.primary,
+                letterSpacing: 5.6,
                 height: 1.0,
               ),
             ),
