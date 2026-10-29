@@ -1164,7 +1164,9 @@ String buildCoachHealthContext({
     for (final row in counterRows) {
       try {
         final c = EventCounterItem.fromMap(row);
-        if (c.isArchived || c.name.trim().isEmpty) continue;
+        // Unified predicate (Oct 28, 2026): only ACTIVE counters
+        // (neither archived nor delete-stamped) reach the coach.
+        if (!c.isActive || c.name.trim().isEmpty) continue;
         goalLines.add(
             '- ${coachPlainText(c.name)}: ${c.daysLabel(now: now)}');
       } catch (_) {}

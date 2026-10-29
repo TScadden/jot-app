@@ -25,6 +25,10 @@ import 'test_helpers.dart';
 /// order. The 📅 line at TodayScreen.kt:461 is the zero-counter
 /// fallback and its `firstEvent` is a reminder-derived
 /// `UpcomingEventItem`, not a counter.
+///
+/// Unified predicate (Oct 28, 2026): the Flutter filter is
+/// `EventCounterItem.isActive` — neither archived NOR
+/// delete-stamped — so a stamp-only row never shows on Home.
 
 EventCounterItem _counter({
   String id = 'c1',
@@ -34,6 +38,7 @@ EventCounterItem _counter({
   bool autoUp = false,
   bool isFavorite = false,
   bool isArchived = false,
+  int? deletedAt,
 }) =>
     EventCounterItem(
       id: id,
@@ -43,6 +48,7 @@ EventCounterItem _counter({
       autoUp: autoUp,
       isFavorite: isFavorite,
       isArchived: isArchived,
+      deletedAt: deletedAt,
     );
 
 /// Local midnight [days] away from [from]'s calendar day.
@@ -142,6 +148,28 @@ void main() {
     test('all archived → empty (Home renders no slot)', () {
       final b = _counter(target: DateTime(2026, 10, 20), isArchived: true);
       expect(activeEventCounters([b]), isEmpty);
+    });
+
+    test('stamp-only (deletedAt set, isArchived false) → excluded '
+        '(unified predicate)', () {
+      final b = _counter(
+          target: DateTime(2026, 10, 20),
+          deletedAt: DateTime(2026, 10, 19).millisecondsSinceEpoch);
+      expect(b.isArchived, isFalse);
+      expect(b.isActive, isFalse);
+      expect(activeEventCounters([b]), isEmpty);
+    });
+
+    test('both marks → excluded; neither mark → kept', () {
+      final both = _counter(
+          id: 'both',
+          target: DateTime(2026, 10, 20),
+          isArchived: true,
+          deletedAt: DateTime(2026, 10, 19).millisecondsSinceEpoch);
+      final neither =
+          _counter(id: 'neither', target: DateTime(2026, 10, 20));
+      expect(activeEventCounters([both, neither]).map((c) => c.id),
+          ['neither']);
     });
 
     test('empty → empty', () {
@@ -344,6 +372,7 @@ void main() {
       bool isUp = false,
       bool autoUp = false,
       bool isArchived = false,
+      int? deletedAt,
     }) =>
         {
           'id': id,
@@ -353,6 +382,7 @@ void main() {
           'autoUp': autoUp,
           'isFavorite': false,
           'isArchived': isArchived,
+          if (deletedAt != null) 'deletedAt': deletedAt,
         };
 
     WeatherApiClient weather() => WeatherApiClient(
@@ -427,6 +457,29 @@ void main() {
       await pumpHome(tester, backend);
       expect(find.byType(EventCounterRotator), findsNothing);
       expect(find.text('Days'), findsNothing);
+    });
+
+    testWidgets('a stamp-only counter (deletedAt set, isArchived '
+        'false) does NOT show on Home', (tester) async {
+      final now = DateTime.now();
+      final backend = _FakePullBackend(pullWith([
+        counterMap(
+            id: 'a', name: 'AlphaTrip', target: _midnightPlus(now, 7)),
+        counterMap(
+            id: 's',
+            name: 'StampOnly',
+            target: _midnightPlus(now, 4),
+            deletedAt: _midnightPlus(now, -1).millisecondsSinceEpoch),
+      ]));
+      await pumpHome(tester, backend);
+      expect(find.text('Until AlphaTrip'), findsOneWidget);
+      expect(find.textContaining('StampOnly'), findsNothing);
+      // It never rotates in either: the only counter in the pager
+      // is the active one (single-counter slot, no rotation).
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('Until AlphaTrip'), findsOneWidget);
+      expect(find.textContaining('StampOnly'), findsNothing);
     });
 
     testWidgets('empty pull counters → no slot renders', (tester) async {

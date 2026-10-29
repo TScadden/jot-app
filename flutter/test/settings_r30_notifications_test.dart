@@ -96,6 +96,45 @@ void main() {
       expect(fake.once.containsKey(eventNotificationId('up')), isFalse);
     });
 
+    test('event counters: a delete-stamped counter never arms — '
+        'archived, stamp-only, or both (unified predicate); clearing '
+        'both marks (a restore) re-arms a future counter', () async {
+      final fake = FakeReminderNotificationService();
+      final future = DateTime(2026, 10, 20).millisecondsSinceEpoch;
+      final stamp = DateTime(2026, 10, 19).millisecondsSinceEpoch;
+      EventReminderRequest req(String id,
+              {bool archived = false, int? deletedAt}) =>
+          EventReminderRequest(
+              counterId: id,
+              name: id,
+              targetDateMs: future,
+              isArchived: archived,
+              isUp: false,
+              deletedAt: deletedAt);
+      await ReminderSync(fake).syncAll(
+        habitEnabled: false,
+        projectEnabled: false,
+        checkInEnabled: false,
+        eventEnabled: true,
+        events: [
+          req('archivedOnly', archived: true),
+          req('stampOnly', deletedAt: stamp),
+          req('bothMarks', archived: true, deletedAt: stamp),
+          req('restored'),
+        ],
+        now: DateTime(2026, 10, 12, 12),
+      );
+      for (final id in ['archivedOnly', 'stampOnly', 'bothMarks']) {
+        expect(fake.once.containsKey(eventNotificationId(id)), isFalse,
+            reason: '$id is non-active and must not arm');
+        expect(fake.cancelled, contains(eventNotificationId(id)));
+      }
+      // The restored row (both marks cleared) arms at 9 AM on the
+      // target day — the re-arm a Settings restore relies on.
+      expect(fake.once[eventNotificationId('restored')],
+          DateTime(2026, 10, 20, 9));
+    });
+
     test('master event toggle off cancels counter alarms', () async {
       final fake = FakeReminderNotificationService();
       final future = DateTime(2026, 10, 20).millisecondsSinceEpoch;

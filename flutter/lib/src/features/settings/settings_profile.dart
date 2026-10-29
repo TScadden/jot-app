@@ -270,6 +270,30 @@ class EventCounterItem {
     this.deletedAt,
   });
 
+  /// THE unified active predicate (founder direction, Oct 28,
+  /// 2026): "deleted is the same as archived" — a counter is
+  /// ACTIVE iff it carries NEITHER non-active mark
+  /// ([isArchived] false AND [deletedAt] null), and non-active
+  /// (it lives in the unified PAST COUNTERS box) iff it carries
+  /// EITHER mark. Every consumer — the Settings page split, the
+  /// Home rotator (via [activeEventCounters]), the reminder
+  /// projection, and the Health Coach context — uses this one
+  /// predicate; no site may filter on [isArchived] alone, or a
+  /// stamp-only row (deletedAt set, isArchived false) would leak
+  /// back into the active list, Home, reminders, and the coach.
+  bool get isActive => !isArchived && deletedAt == null;
+
+  /// The complement of [isActive]: this counter belongs in the
+  /// unified PAST COUNTERS box.
+  bool get isNonActive => !isActive;
+
+  /// The same unified predicate over a RAW profile-blob map, for
+  /// the sites that parse maps before (or instead of) building an
+  /// [EventCounterItem]. Delegates to [fromMap] so the tolerant
+  /// parsing (num | String) and the predicate can never drift.
+  static bool counterMapIsActive(Map<String, dynamic> m) =>
+      EventCounterItem.fromMap(m).isActive;
+
   factory EventCounterItem.fromMap(Map<String, dynamic> m) {
     int asInt(dynamic v) =>
         v is num ? v.toInt() : (v is String ? int.tryParse(v) ?? 0 : 0);
@@ -401,17 +425,19 @@ class EventCounterItem {
   }
 }
 
-/// The counters Home shows (Round 34): every counter that is not
-/// archived, in profile (Settings list) order — native
-/// `TodayScreen.kt` filters `quickLogState.eventCounters` with
-/// `!it.isArchived` and keeps the stored order, and the Settings
-/// list renders active counters in that same order, so Home and
-/// Settings always agree. Ended-and-saved counters are REMOVED from
-/// the profile list by Settings (they live in counter history), so
-/// they can never reach this filter.
+/// The counters Home shows (Round 34): every ACTIVE counter, in
+/// profile (Settings list) order — native `TodayScreen.kt` filters
+/// `quickLogState.eventCounters` with `!it.isArchived` and keeps
+/// the stored order, and the Settings list renders active counters
+/// in that same order, so Home and Settings always agree.
+/// "Active" is the unified predicate ([EventCounterItem.isActive],
+/// Oct 28, 2026): neither archived NOR delete-stamped — a
+/// stamp-only row must not reach Home. Ended-and-saved counters
+/// are REMOVED from the profile list by Settings (they live in
+/// counter history), so they can never reach this filter.
 List<EventCounterItem> activeEventCounters(
         Iterable<EventCounterItem> counters) =>
-    counters.where((c) => !c.isArchived).toList();
+    counters.where((c) => c.isActive).toList();
 
 // ── Counter delete tombstones (Oct 2026, native parity) ──────────
 //

@@ -200,6 +200,13 @@ class EventReminderRequest {
     required this.isUp,
     this.deletedAt,
   });
+
+  /// The unified non-active predicate (Oct 28, 2026 — the same
+  /// rule as `EventCounterItem.isActive` in settings_profile.dart,
+  /// mirrored here because this request type is the projection's
+  /// input shape): a counter is non-active iff it is archived OR
+  /// carries a delete stamp. A non-active counter never arms.
+  bool get isNonActive => isArchived || deletedAt != null;
 }
 
 /// The scheduling surface the Settings screen depends on. The real
@@ -402,7 +409,7 @@ class ReminderSync {
       // fire time; the plugin equivalent is cancelling here when the
       // toggle is off.
       final fire =
-          (!eventEnabled || e.isArchived || e.deletedAt != null || e.isUp)
+          (!eventEnabled || e.isNonActive || e.isUp)
               ? null
               : eventFireTime(e.targetDateMs, n);
       if (fire == null) {
