@@ -1,14 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/health_data.dart' show HrSample;
 import 'package:tabs_lab/src/data/lean_test_session.dart';
 import 'package:tabs_lab/src/data/lean_test_strings.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
-import 'package:tabs_lab/src/features/tools/lean_test_screen.dart';
-import 'package:tabs_lab/src/features/tools/tools_screen.dart';
 
 // Phase 1 item 6 — Guided Lean Test suite (spec §8 items 1–16 plus
 // the founder-override §9 additions). Test 17 (PDF Z7 fixture) is
