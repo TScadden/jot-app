@@ -570,6 +570,41 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
         return result
     }
 
+    /// Genuinely-asleep pieces of one session: the session interval
+    /// minus its awake-stage intervals. Awake intervals are merged
+    /// (via [mergeIntervals]) and clamped to the session interval
+    /// first, so awake time outside the session never subtracts and
+    /// overlapping awake stages never double-subtract. Returns the
+    /// remaining asleep pieces in ascending order; empty when the
+    /// session interval is empty or fully awake.
+    private fun subtractAwake(
+        sessionStart: Instant,
+        sessionEnd: Instant,
+        awakeIntervals: List<Pair<Instant, Instant>>
+    ): List<Pair<Instant, Instant>> {
+        if (!sessionEnd.isAfter(sessionStart)) return emptyList()
+        val clampedAwake = mergeIntervals(awakeIntervals)
+            .map { (awakeStart, awakeEnd) ->
+                maxOf(awakeStart, sessionStart) to minOf(awakeEnd, sessionEnd)
+            }
+            .filter { it.first.isBefore(it.second) }
+        if (clampedAwake.isEmpty()) return listOf(sessionStart to sessionEnd)
+        val asleep = mutableListOf<Pair<Instant, Instant>>()
+        var cursor = sessionStart
+        for ((awakeStart, awakeEnd) in clampedAwake) {
+            if (awakeStart.isAfter(cursor)) {
+                asleep.add(cursor to awakeStart)
+            }
+            if (awakeEnd.isAfter(cursor)) {
+                cursor = awakeEnd
+            }
+        }
+        if (cursor.isBefore(sessionEnd)) {
+            asleep.add(cursor to sessionEnd)
+        }
+        return asleep
+    }
+
     /// Intraday HR read, chunked: the day is read in 4 × 6-hour
     /// windows, each paginated independently and each in its own
     /// try/catch, so one failing window or record set cannot zero
@@ -708,10 +743,25 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
         }
     }
 
-    /// Sessions in [start-1day, end]; pick the session with endTime in
-    /// [startOfDay, endOfDay+12h], highest package priority then longest
-    /// duration; minutesAsleep = durationMinutes − merged awake-stage
-    /// minutes (AWAKE, AWAKE_IN_BED, OUT_OF_BED). Null when no session.
+    /// Single-day sleep minutes for Home's today vitals, under the
+    /// founder's summed-bouts rule (Oct 28, 2026) — the same rule
+    /// readSleepHistory's Dart summarizer applies: a night's sleep
+    /// is ALL its bouts added up. Candidate sessions are the
+    /// nonMock sessions attributed to the requested date by the
+    /// WAKE-DATE rule: the local date of a session's endTime must
+    /// equal the requested date (read over [startOfDay-1day,
+    /// endOfDay]) — the identical attribution readSleepHistory
+    /// uses (its dateOf() helper), so a session is counted for
+    /// exactly one date and the following night is never folded
+    /// into a past date's read. For each candidate, its
+    /// genuinely-asleep intervals are the
+    /// session interval minus its merged awake-stage intervals
+    /// (AWAKE, AWAKE_IN_BED, OUT_OF_BED — see [subtractAwake]);
+    /// those asleep intervals are unioned across ALL candidate
+    /// sessions (via [mergeIntervals], so overlapping bouts never
+    /// double-count) and the result is the union's total whole
+    /// minutes. Null when there are no candidate sessions; a union
+    /// totalling 0 returns 0 (Dart applies the zero rule).
     private fun readSleepMinutes(dateStr: String?, result: MethodChannel.Result) {
         val client = hcClientOrError(result) ?: return
         engineScope.launch {
@@ -725,38 +775,41 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                         )
                     )
                 )
-                var target: SleepSessionRecord? = null
-                var maxPriority = -999
-                var maxDuration = -1L
-                for (session in nonMock(response.records)) {
-                    if (session.endTime.isAfter(startOfDay) &&
-                        session.endTime.isBefore(endOfDay.plus(12, ChronoUnit.HOURS))
-                    ) {
-                        val priority = packagePriority(session.metadata.dataOrigin.packageName)
-                        val duration = ChronoUnit.MINUTES.between(session.startTime, session.endTime)
-                        if (priority > maxPriority || (priority == maxPriority && duration > maxDuration)) {
-                            maxPriority = priority
-                            maxDuration = duration
-                            target = session
-                        }
-                    }
+                // Wake-date attribution (same rule as
+                // readSleepHistory's dateOf()): a session counts
+                // for the requested date only when the LOCAL DATE
+                // of its endTime equals that date.
+                val requestedDate = localDateOf(dateStr)
+                val zone = ZoneId.systemDefault()
+                val candidates = nonMock(response.records).filter { session ->
+                    ZonedDateTime.ofInstant(session.endTime, zone)
+                        .toLocalDate() == requestedDate
                 }
-                val session = target
-                if (session == null) {
+                if (candidates.isEmpty()) {
                     result.success(null)
                     return@launch
                 }
-                val awakeIntervals = session.stages
-                    .filter {
-                        it.stage == SleepSessionRecord.STAGE_TYPE_AWAKE ||
-                            it.stage == SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED ||
-                            it.stage == SleepSessionRecord.STAGE_TYPE_OUT_OF_BED
-                    }
-                    .map { it.startTime to it.endTime }
-                val awake = mergeIntervals(awakeIntervals)
-                    .sumOf { Duration.between(it.first, it.second).toMinutes().toInt() }
-                val minutesAsleep =
-                    ChronoUnit.MINUTES.between(session.startTime, session.endTime).toInt() - awake
+                val asleepIntervals = mutableListOf<Pair<Instant, Instant>>()
+                for (session in candidates) {
+                    val awakeIntervals = session.stages
+                        .filter {
+                            it.stage == SleepSessionRecord.STAGE_TYPE_AWAKE ||
+                                it.stage == SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED ||
+                                it.stage == SleepSessionRecord.STAGE_TYPE_OUT_OF_BED
+                        }
+                        .map { it.startTime to it.endTime }
+                    asleepIntervals.addAll(
+                        subtractAwake(session.startTime, session.endTime, awakeIntervals)
+                    )
+                }
+                // Total the union in milliseconds and convert ONCE
+                // (Vera C-1): per-piece toMinutes() would discard
+                // each piece's sub-minute remainder and could
+                // disagree with the Dart summarizer's whole-night
+                // total by up to (pieces - 1) minutes.
+                val minutesAsleep = mergeIntervals(asleepIntervals)
+                    .sumOf { Duration.between(it.first, it.second).toMillis() }
+                    .div(60000).toInt()
                 result.success(minutesAsleep)
             } catch (e: Exception) {
                 result.error("SLEEP_READ_FAILED", "Could not read sleep session.", hcErrorDetails(e))
@@ -1286,13 +1339,26 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
         }
     }
 
-    /// Per-day sleep totals over [tomorrowStart − days, tomorrowStart):
-    /// sessions grouped by their end (wake-up) date, per date the best
-    /// session (highest package priority, then longest) wins;
-    /// minutesAsleep = duration − merged awake-stage minutes, deep =
-    /// merged deep-stage minutes. Dart shape:
-    /// [{date: "YYYY-MM-DD", mins, deep}] sorted ascending. Mirrors
-    /// native `readHistoricalSleepWithDeep`.
+    /// Raw sleep sessions over [tomorrowStart − days, tomorrowStart),
+    /// shipped faithfully for Dart to total (founder decision
+    /// Oct 28, 2026: a night's sleep = ALL its bouts added up).
+    /// Kotlin no longer groups by date or picks a best session per
+    /// date: EVERY nonMock session crosses the bridge as
+    /// {date: "YYYY-MM-DD" (local date of the session's endTime —
+    /// its wake-up date), startMs: epochMs, endMs: epochMs,
+    /// awake: [[startMs, endMs], ...] for stages of type AWAKE,
+    /// AWAKE_IN_BED and OUT_OF_BED, deep: [[startMs, endMs], ...]
+    /// for stages of type DEEP}. Stage intervals ship RAW
+    /// (unmerged, unclamped) — day attribution, interval merging /
+    /// subtraction / union and the per-day totals live in Dart's
+    /// summarizeSleepSessions in health_connect_service.dart, where
+    /// they are testable (the codebase's attributeDailyHrv
+    /// precedent: Dart owns that). Mirrors the readHrvSamples
+    /// shipper pattern. NO package names cross the bridge.
+    /// Sessions are sorted by date, then startMs. Partial contract
+    /// is unchanged: a bare list when all chunks read OK,
+    /// {items, partialError} when some chunks fail, and
+    /// SLEEP_HISTORY_READ_FAILED only when every chunk fails.
     private fun readSleepHistory(days: Int?, result: MethodChannel.Result) {
         val client = hcClientOrError(result) ?: return
         val n = (days ?: 30).coerceIn(1, 3650)
@@ -1300,7 +1366,7 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
             // Chunked + isolated like the HRV range read (and the HR
             // day read): ≤31-day windows newest→oldest, each paginated
             // in its own try/catch. One failing window cannot zero
-            // the whole history; partial failure returns the days
+            // the whole history; partial failure returns the sessions
             // that read plus the error (Dart map shape). If EVERY
             // window fails, the read fails with the real exception.
             val zone = ZoneId.systemDefault()
@@ -1343,44 +1409,41 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                 fun dateOf(instant: Instant): String =
                     ZonedDateTime.ofInstant(instant, zone).toLocalDate().toString()
 
-                val bestByDate = mutableMapOf<String, SleepSessionRecord>()
-                for (session in nonMock(records)) {
-                    val date = dateOf(session.endTime)
-                    val existing = bestByDate[date]
-                    if (existing == null) {
-                        bestByDate[date] = session
-                    } else {
-                        val pNew = packagePriority(session.metadata.dataOrigin.packageName)
-                        val pOld = packagePriority(existing.metadata.dataOrigin.packageName)
-                        val dNew = Duration.between(session.startTime, session.endTime)
-                        val dOld = Duration.between(existing.startTime, existing.endTime)
-                        if (pNew > pOld || (pNew == pOld && dNew > dOld)) {
-                            bestByDate[date] = session
+                fun stageIntervalsMs(
+                    session: SleepSessionRecord,
+                    vararg types: Int
+                ): List<List<Long>> =
+                    session.stages
+                        .filter { it.stage in types }
+                        .map {
+                            listOf(
+                                it.startTime.toEpochMilli(),
+                                it.endTime.toEpochMilli()
+                            )
                         }
-                    }
-                }
 
-                val out = bestByDate.entries.sortedBy { it.key }.map { (date, session) ->
-                    fun stageMinutes(vararg types: Int): Int {
-                        val intervals = session.stages
-                            .filter { it.stage in types }
-                            .map { it.startTime to it.endTime }
-                        return mergeIntervals(intervals)
-                            .sumOf { Duration.between(it.first, it.second).toMinutes().toInt() }
+                val out = nonMock(records)
+                    .sortedWith(
+                        compareBy<SleepSessionRecord> { dateOf(it.endTime) }
+                            .thenBy { it.startTime.toEpochMilli() }
+                    )
+                    .map { session ->
+                        mapOf(
+                            "date" to dateOf(session.endTime),
+                            "startMs" to session.startTime.toEpochMilli(),
+                            "endMs" to session.endTime.toEpochMilli(),
+                            "awake" to stageIntervalsMs(
+                                session,
+                                SleepSessionRecord.STAGE_TYPE_AWAKE,
+                                SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED,
+                                SleepSessionRecord.STAGE_TYPE_OUT_OF_BED
+                            ),
+                            "deep" to stageIntervalsMs(
+                                session,
+                                SleepSessionRecord.STAGE_TYPE_DEEP
+                            )
+                        )
                     }
-                    val awake = stageMinutes(
-                        SleepSessionRecord.STAGE_TYPE_AWAKE,
-                        SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED,
-                        SleepSessionRecord.STAGE_TYPE_OUT_OF_BED
-                    )
-                    val deep = stageMinutes(SleepSessionRecord.STAGE_TYPE_DEEP)
-                    val duration = ChronoUnit.MINUTES.between(session.startTime, session.endTime).toInt()
-                    mapOf(
-                        "date" to date,
-                        "mins" to (duration - awake).coerceAtLeast(0),
-                        "deep" to deep
-                    )
-                }
                 if (chunkErrors.isEmpty()) {
                     result.success(out)
                 } else {

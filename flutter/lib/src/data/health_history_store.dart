@@ -416,6 +416,47 @@ class HealthHistoryMergeResult {
 class HealthHistoryStore {
   static const String storageKey = 'health_history_store_v1';
 
+  /// The current version of the rule that computes stored sleep
+  /// totals (`sleepMinutes` / `deepSleepMinutes` per night).
+  ///
+  /// Version 1 is the legacy rule — a single best sleep bout per
+  /// night — and is the IMPLICIT version of every blob written
+  /// before this key existed (pre-change blobs carry no
+  /// `sleepTotalsRuleVersion` key and warm as version 1).
+  ///
+  /// Version 2 is the Oct 28, 2026 sleep-bouts change: all bouts
+  /// for a night are unioned/summed instead of keeping only the
+  /// single best bout. A store still on version 1 holds stale
+  /// single-bout totals for nights inside Health Connect's
+  /// window, so the capture forces one full sleep backfill and
+  /// stamps this version once that re-read completes cleanly
+  /// (see [HealthHistorySync.captureFromHealthConnect]).
+  ///
+  /// Honest limit of that upgrade: the forced re-read only
+  /// replaces totals for nights it actually returns, so a
+  /// version 2 stamp does NOT guarantee every stored total was
+  /// recomputed under the new rule. The full list of cases in
+  /// which a legacy (version 1) total is kept under the
+  /// version 2 stamp:
+  /// - Nights older than the 90-day re-read window are never
+  ///   re-read, so their stored totals stay as they were.
+  /// - Nights inside the 90-day window that Health Connect no
+  ///   longer returns — for example because their sessions were
+  ///   deleted at the source — are not touched by the merge, so
+  ///   their stored totals stay as they were.
+  /// - A night whose re-read union total is 0 is treated as
+  ///   absent data under the zero rule, so a previously stored
+  ///   total for that night is kept; the store never erases a
+  ///   stored total on a 0.
+  /// - The same applies field by field to deep sleep: a night
+  ///   whose re-read deep total is 0 keeps its previously
+  ///   stored deep total.
+  /// In each case there is no truer value to replace the stored
+  /// one with, and clearing it would break the never-shrink
+  /// rule — so the legacy value is kept on purpose, and this
+  /// comment is the disclosure of that choice.
+  static const int currentSleepTotalsRuleVersion = 2;
+
   static final HealthHistoryStore instance = HealthHistoryStore._internal();
   HealthHistoryStore._internal();
 
@@ -451,6 +492,7 @@ class HealthHistoryStore {
     _ownerEmail = null;
     _lastCaptureMs = null;
     _captureDiagnostics.clear();
+    _sleepTotalsRuleVersion = 1;
     _warmed = false;
   }
 
@@ -461,6 +503,14 @@ class HealthHistoryStore {
   /// Epoch ms of the last successful Health Connect capture
   /// (persisted in the blob; drives the capture throttle).
   int? get lastCaptureMs => _lastCaptureMs;
+
+  int _sleepTotalsRuleVersion = 1;
+
+  /// The sleep-totals rule version the stored sleep values were
+  /// computed under (see [currentSleepTotalsRuleVersion]).
+  /// Version 1 is implicit for every blob written before the
+  /// version key existed.
+  int get sleepTotalsRuleVersion => _sleepTotalsRuleVersion;
 
   final Map<String, CaptureDiagnostic> _captureDiagnostics = {};
 
@@ -548,6 +598,7 @@ class HealthHistoryStore {
         // captures with ownerEmail: null, and the next cold start
         // drops that unowned-but-populated blob in full.
         if (expected != null) _ownerEmail = expected;
+        _sleepTotalsRuleVersion = 1;
         _warmed = true;
         return;
       }
@@ -557,6 +608,7 @@ class HealthHistoryStore {
       // usable blob to adopt, so bind to the known session account
       // instead of leaving the store unowned for its writes.
       if (expected != null) _ownerEmail = expected;
+      _sleepTotalsRuleVersion = 1;
       _warmed = true;
       return;
     }
@@ -585,6 +637,12 @@ class HealthHistoryStore {
       }
       final lc = map['lastCaptureMs'];
       if (lc is num) _lastCaptureMs = lc.toInt();
+      // Sleep-totals rule version: a num is taken as-is
+      // (int-truncated); absent / invalid / < 1 → version 1, the
+      // implicit version of every pre-change blob.
+      final srv = map['sleepTotalsRuleVersion'];
+      _sleepTotalsRuleVersion =
+          (srv is num && srv.toInt() >= 1) ? srv.toInt() : 1;
       final diag = map['lastCaptureDiagnostics'];
       if (diag is Map) {
         for (final entry in diag.entries) {
@@ -623,6 +681,7 @@ class HealthHistoryStore {
         jsonEncode({
           'ownerEmail': _ownerEmail,
           'lastCaptureMs': _lastCaptureMs,
+          'sleepTotalsRuleVersion': _sleepTotalsRuleVersion,
           if (_captureDiagnostics.isNotEmpty)
             'lastCaptureDiagnostics': {
               for (final e in _captureDiagnostics.entries)
@@ -640,6 +699,18 @@ class HealthHistoryStore {
   Future<void> markCaptured(int epochMs) async {
     await _ensureWarmed();
     _lastCaptureMs = epochMs;
+    await persist();
+  }
+
+  /// Stamps the sleep-totals rule version and persists it (see
+  /// [currentSleepTotalsRuleVersion]). Only ever moves forward:
+  /// a value at or below the current in-memory version is
+  /// ignored, so a stale caller can never resurrect legacy
+  /// single-bout semantics after the upgrade has landed.
+  Future<void> markSleepTotalsRuleVersion(int version) async {
+    await _ensureWarmed();
+    if (version <= _sleepTotalsRuleVersion) return;
+    _sleepTotalsRuleVersion = version;
     await persist();
   }
 

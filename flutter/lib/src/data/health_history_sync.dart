@@ -221,6 +221,19 @@ class HealthHistorySync {
   /// 28-day baseline window is always fully re-read. The spikes
   /// and HRV windows are not gap-aware (fixed first/routine
   /// windows, above).
+  ///
+  /// Sleep-totals upgrade (Oct 28, 2026): when the store's
+  /// sleep-totals rule version is stale (see
+  /// [HealthHistoryStore.currentSleepTotalsRuleVersion]), the
+  /// sleep read ignores the gap-aware window and re-reads the
+  /// FULL 90 days once — stored nights inside Health Connect's
+  /// window were computed under the legacy single-best-bout rule
+  /// and would otherwise keep those stale totals indefinitely,
+  /// since routine captures only re-read the gap-aware window.
+  /// The store is stamped to the current version only when that
+  /// full sleep read completes cleanly (no error, no partial);
+  /// a failed or partial sleep read leaves the version stale so
+  /// the next capture retries the full window.
   /// [bypassThrottle] is the app-open intent (see
   /// [captureOnAppOpen]): it skips ONLY the throttle check below —
   /// nothing else about the run changes. Direct callers outside
@@ -230,6 +243,8 @@ class HealthHistorySync {
       {bool force = false, bool bypassThrottle = false}) async {
     try {
       await _store.warmFromDisk();
+      final sleepRuleUpgradePending = _store.sleepTotalsRuleVersion <
+          HealthHistoryStore.currentSleepTotalsRuleVersion;
       final now = _now();
       final isFirst = (await _store.dayCount()) == 0;
       final last = _store.lastCaptureMs;
@@ -259,7 +274,10 @@ class HealthHistorySync {
 
       final restingHrWindowDays = windowDays(180);
       final caloriesWindowDays = windowDays(180);
-      final sleepWindowDays = windowDays(90);
+      // A stale sleep-totals rule version forces the full
+      // 90-day sleep backfill (like a first capture) regardless
+      // of the gap-aware window; the other windows are unchanged.
+      final sleepWindowDays = sleepRuleUpgradePending ? 90 : windowDays(90);
 
       final byDate = <String, DailyBiometrics>{};
       void put(String date,
@@ -334,6 +352,13 @@ class HealthHistorySync {
       final sleepHist =
           await boundedRead(_hc.readSleepHistory(sleepWindowDays));
       noteRead('sleep');
+      // Snapshot the sleep leg's cleanliness NOW, before the
+      // HRV leg's resetReadCodes() wipes both codes: the partial
+      // code is set by the service during the sleep read, and
+      // noteRead only snapshots the error code. The upgrade
+      // stamp below requires BOTH codes clear.
+      final sleepReadClean =
+          _hc.lastReadErrorCode == null && _hc.lastPartialErrorCode == null;
       for (final r in sleepHist) {
         put(r.date, sleep: r.mins, deep: r.deep);
       }
@@ -392,6 +417,15 @@ class HealthHistorySync {
         hrvSampleCount: hrvSamples.length,
         hrvDayCount: dailyHrv.length,
       );
+      // Sleep-totals upgrade: stamp the current rule version
+      // only when the pending full-window sleep re-read above
+      // completed cleanly. A failed or partial sleep read does
+      // NOT stamp — the version stays stale and the next
+      // capture retries the full 90-day window.
+      if (sleepRuleUpgradePending && sleepReadClean) {
+        await _store.markSleepTotalsRuleVersion(
+            HealthHistoryStore.currentSleepTotalsRuleVersion);
+      }
       await _store.markCaptured(now.millisecondsSinceEpoch);
       // R70 Daily Score — after-capture compute trigger: any day
       // whose inputs now exist gets its (write-once) score. The
