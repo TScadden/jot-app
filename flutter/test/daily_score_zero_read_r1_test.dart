@@ -158,26 +158,26 @@ void main() {
       expect(c.hrvBaselineMs, isNull);
       expect(c.hasAllComponents, isFalse);
       // Remaining components score exactly as in the established
-      // fixtures: sleep 240 vs a 480 need = 50; resting HR at its
-      // 60 bpm baseline median = 70.
-      expect(c.sleepScore, 50);
+      // fixtures: sleep 240 vs a 480 need = ratio 0.5, squared →
+      // 25; resting HR at its 60 bpm baseline median = 70.
+      expect(c.sleepScore, 25);
       expect(c.restingHrScore, 70);
       // Renormalized over the available weights only:
-      // (40·50 + 25·70) / 65 = 57.69…
-      expect(c.dailyExact, closeTo(57.692, 0.001));
-      expect(c.dailyScore, 58);
+      // (40·25 + 25·70) / 65 = 42.31…
+      expect(c.dailyExact, closeTo(42.308, 0.001));
+      expect(c.dailyScore, 42);
       // Counterfactual pin: had 0 been treated as measured, the
       // HRV component would clamp to 0 (dev −100%) and drag the
-      // day to (40·50 + 35·0 + 25·70) / 100 = 37.5 → 38.
-      expect(c.dailyScore, isNot(38),
-          reason: '38 is the score a measured-0 HRV would produce');
+      // day to (40·25 + 35·0 + 25·70) / 100 = 27.5 → 28.
+      expect(c.dailyScore, isNot(28),
+          reason: '28 is the score a measured-0 HRV would produce');
 
       // Step 4: the engine persists the same exclusion — the HRV
       // component field stays null on the scored day.
       await DailyScoreEngine(store: store).computeMissingScores();
       final persisted = (await store.readAll())[target]!;
-      expect(persisted.dailyScore, 58);
-      expect(persisted.scoreSleep, 50);
+      expect(persisted.dailyScore, 42);
+      expect(persisted.scoreSleep, 25);
       expect(persisted.scoreHrv, isNull);
       expect(persisted.scoreRestingHr, 70);
     });
@@ -261,23 +261,23 @@ void main() {
       expect(c.restingHrBpm, isNull);
       expect(c.restingHrBaselineBpm, isNull);
       expect(c.hasAllComponents, isFalse);
-      expect(c.sleepScore, 50);
+      expect(c.sleepScore, 25);
       expect(c.hrvScore, 70); // 40 ms at the 40 ms baseline median
-      // (40·50 + 35·70) / 75 = 59.33…
-      expect(c.dailyExact, closeTo(59.333, 0.001));
-      expect(c.dailyScore, 59);
+      // Sleep ratio 0.5 squared → 25: (40·25 + 35·70) / 75 = 46.
+      expect(c.dailyExact, closeTo(46, 0.001));
+      expect(c.dailyScore, 46);
       // Counterfactual pin: a measured 0 bpm is −100% vs baseline,
       // which the INVERTED resting-HR map saturates at 100, giving
-      // (40·50 + 35·70 + 25·100) / 100 = 69.5 → 70 — a failed read
+      // (40·25 + 35·70 + 25·100) / 100 = 59.5 → 60 — a failed read
       // would INFLATE the score if it were ever treated as data.
-      expect(c.dailyScore, isNot(70),
-          reason: '70 is the score a measured-0 resting HR would '
+      expect(c.dailyScore, isNot(60),
+          reason: '60 is the score a measured-0 resting HR would '
               'produce through the inverted map');
 
       await DailyScoreEngine(store: store).computeMissingScores();
       final persisted = (await store.readAll())[target]!;
-      expect(persisted.dailyScore, 59);
-      expect(persisted.scoreSleep, 50);
+      expect(persisted.dailyScore, 46);
+      expect(persisted.scoreSleep, 25);
       expect(persisted.scoreHrv, 70);
       expect(persisted.scoreRestingHr, isNull);
     });
@@ -394,12 +394,13 @@ void main() {
       // Need from the real nights alone = 480, no debt: a 480
       // night meets its need exactly → sleep component 100.
       // Counting the 0 nights would add 5 × 480 of "debt" (need
-      // capped at 480 + 120 = 600) and score the night 80.
+      // capped at 480 + 120 = 600) and score the night at ratio
+      // 480/600 = 0.8, squared → 64.
       expect(c.sleepNeedMinutes, 480);
       expect(c.sleepScore, 100);
       expect(c.dailyScore, 100);
-      expect(c.dailyScore, isNot(80),
-          reason: '80 is the score if 0-minute nights counted '
+      expect(c.dailyScore, isNot(64),
+          reason: '64 is the score if 0-minute nights counted '
               'as debt-bearing nights');
     });
   });
@@ -462,17 +463,17 @@ void main() {
               'missing (fromJson zero rule), never as a stored 0');
       final c = computeDailyScore(days, target)!;
       expect(c.hrvScore, isNull);
-      expect(c.sleepScore, 50);
+      expect(c.sleepScore, 25);
       expect(c.restingHrScore, 70);
-      expect(c.dailyScore, 58);
-      expect(c.dailyScore, isNot(38),
-          reason: '38 is the score a measured-0 HRV would produce');
+      expect(c.dailyScore, 42);
+      expect(c.dailyScore, isNot(28),
+          reason: '28 is the score a measured-0 HRV would produce');
 
       await DailyScoreEngine(store: store).computeMissingScores();
       final persisted = (await store.readAll())[target]!;
-      expect(persisted.dailyScore, 58);
+      expect(persisted.dailyScore, 42);
       expect(persisted.scoreHrv, isNull);
-      expect(persisted.scoreSleep, 50);
+      expect(persisted.scoreSleep, 25);
       expect(persisted.scoreRestingHr, 70);
     });
 
@@ -494,18 +495,18 @@ void main() {
               'disk as missing (fromJson zero rule)');
       final c = computeDailyScore(days, target)!;
       expect(c.restingHrScore, isNull);
-      expect(c.sleepScore, 50);
+      expect(c.sleepScore, 25);
       expect(c.hrvScore, 70);
-      expect(c.dailyScore, 59);
-      expect(c.dailyScore, isNot(70),
-          reason: '70 is the score a measured-0 resting HR would '
+      expect(c.dailyScore, 46);
+      expect(c.dailyScore, isNot(60),
+          reason: '60 is the score a measured-0 resting HR would '
               'produce through the inverted map');
 
       await DailyScoreEngine(store: store).computeMissingScores();
       final persisted = (await store.readAll())[target]!;
-      expect(persisted.dailyScore, 59);
+      expect(persisted.dailyScore, 46);
       expect(persisted.scoreRestingHr, isNull);
-      expect(persisted.scoreSleep, 50);
+      expect(persisted.scoreSleep, 25);
       expect(persisted.scoreHrv, 70);
     });
 
