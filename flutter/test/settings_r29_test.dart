@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tabs_lab/src/data/daily_score_sync.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
@@ -141,6 +142,16 @@ void seedRealCaches() {
     delete: (k) async => cacheDisk.remove(k),
   );
   HealthHistoryStore.instance.debugReset();
+  // Daily Score server sync (Oct 28, 2026): the pending-push queue
+  // joined the account-bound caches — wire its singleton to the
+  // same fake disk, for the same FakeAsync reason as the history
+  // store above.
+  DailyScoreSync.instance.debugSetStore(
+    read: (k) async => cacheDisk[k],
+    write: (k, v) async => cacheDisk[k] = v,
+    delete: (k) async => cacheDisk.remove(k),
+  );
+  DailyScoreSync.instance.debugReset();
   HomeDataCache.instance.debugReset();
   HomeDataCache.instance.applyVitals(
       const TodayVitals(heartRate: 80), ownerEmail: 'a@example.com');
