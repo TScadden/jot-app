@@ -23,6 +23,7 @@ LeanTestSessionStore _memoryStore(Map<String, String> backing) =>
 class FakeLeanGateway implements LeanTestGateway {
   int? categoryId = 7;
   int nextId = 100;
+  bool stageSucceeds = true;
   final List<QuickLogEntry> staged = [];
   List<QuickLogEntry> entries = const [];
   List<HrSample> samples = const [];
@@ -35,6 +36,7 @@ class FakeLeanGateway implements LeanTestGateway {
 
   @override
   Future<bool> stageEntry(QuickLogEntry entry) async {
+    if (!stageSucceeds) return false;
     staged.add(entry);
     return true;
   }
@@ -458,9 +460,9 @@ void main() {
       expect(await store.load(), isNull);
     });
 
-    testWidgets('expired standing with ZERO values is silently '
-        'discarded at relaunch — no interrupted screen',
-        (tester) async {
+    testWidgets('expired standing with ZERO values routes to the '
+        'N3 interrupted screen at relaunch — never silently '
+        'discarded (F3)', (tester) async {
       _tallView(tester);
       final backing = <String, String>{};
       final store = _memoryStore(backing);
@@ -478,9 +480,40 @@ void main() {
         gateway: FakeLeanGateway(),
         clock: () => now,
       );
+      expect(find.text(leanN3Line), findsOneWidget);
+      expect(find.text(leanE1), findsNothing);
+      // Not discarded: the session is still there to close or
+      // discard by the user's own choice on the N3 screen.
+      expect(await store.load(), isNotNull);
+    });
+
+    testWidgets('F4: a zero-value standing session expiring IN APP '
+        'takes the interrupted path — it cannot submit into a '
+        'completion on an expired phase', (tester) async {
+      _tallView(tester);
+      final backing = <String, String>{};
+      final store = _memoryStore(backing);
+      final base = DateTime(2026, 10, 28, 9);
+      final standingStart = base.add(const Duration(minutes: 11));
+      await store.save(LeanTestSession(
+        startedAtMs: base.millisecondsSinceEpoch,
+        restStartedAtMs: base.millisecondsSinceEpoch,
+        standingStartedAtMs: standingStart.millisecondsSinceEpoch,
+      ));
+      var now = standingStart.add(const Duration(minutes: 5));
+      await _pumpScreen(
+        tester,
+        store: store,
+        gateway: FakeLeanGateway(),
+        clock: () => now,
+      );
       expect(find.text(leanN3Line), findsNothing);
-      expect(find.text(leanE1), findsOneWidget);
-      expect(await store.load(), isNull);
+      // The phase end passes with nothing recorded.
+      now = standingStart.add(const Duration(minutes: 12));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text(leanN3Line), findsOneWidget);
+      expect(find.textContaining('Completed all 10 minutes'),
+          findsNothing);
     });
 
     testWidgets('rest expired while dead relaunches into the stand '
@@ -575,6 +608,118 @@ void main() {
       expect(capture.hr, 66);
       expect(capture.source, 'health_connect');
       expect(capture.sampleTMs, sampleMs);
+    });
+  });
+
+  group('F5 close presentation and F8 form rollover', () {
+    testWidgets('a close that staged nothing (category unresolved, '
+        'e.g. offline) presents NO completion and keeps the session '
+        'visibly live', (tester) async {
+      _tallView(tester);
+      final backing = <String, String>{};
+      final store = _memoryStore(backing);
+      final gateway = FakeLeanGateway()..categoryId = null;
+      final base = DateTime(2026, 10, 28, 9);
+      final standingStart = base.add(const Duration(minutes: 11));
+      await store.save(LeanTestSession(
+        startedAtMs: base.millisecondsSinceEpoch,
+        restStartedAtMs: base.millisecondsSinceEpoch,
+        standingStartedAtMs: standingStart.millisecondsSinceEpoch,
+        checkpoints: [
+          LeanCapture(
+              minute: 0,
+              tMs: standingStart.millisecondsSinceEpoch,
+              hr: 90),
+        ],
+      ));
+      final now = standingStart.add(const Duration(minutes: 2));
+      await _pumpScreen(tester,
+          store: store, gateway: gateway, clock: () => now);
+      await tester.tap(find.text(leanS11Action));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      // No S12 presentation of any kind for an unrecorded close.
+      expect(find.text(leanS12Heading), findsNothing);
+      expect(find.textContaining('Guided lean test recorded'),
+          findsNothing);
+      expect(find.text(leanHistoryHint), findsNothing);
+      expect(gateway.staged, isEmpty);
+      // The session simply remains the live session.
+      expect(find.text(leanS11Action), findsOneWidget);
+      expect(await store.load(), isNotNull);
+    });
+
+    testWidgets('a genuinely pending close (stage failed) DOES '
+        'present the completion — the entry exists and retries',
+        (tester) async {
+      _tallView(tester);
+      final backing = <String, String>{};
+      final store = _memoryStore(backing);
+      final gateway = FakeLeanGateway()..stageSucceeds = false;
+      final base = DateTime(2026, 10, 28, 9);
+      final standingStart = base.add(const Duration(minutes: 11));
+      await store.save(LeanTestSession(
+        startedAtMs: base.millisecondsSinceEpoch,
+        restStartedAtMs: base.millisecondsSinceEpoch,
+        standingStartedAtMs: standingStart.millisecondsSinceEpoch,
+        checkpoints: [
+          LeanCapture(
+              minute: 0,
+              tMs: standingStart.millisecondsSinceEpoch,
+              hr: 90),
+        ],
+      ));
+      final now = standingStart.add(const Duration(minutes: 2));
+      await _pumpScreen(tester,
+          store: store, gateway: gateway, clock: () => now);
+      await tester.tap(find.text(leanS11Action));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.text(leanS12Heading), findsOneWidget);
+      expect(find.textContaining('Guided lean test recorded'),
+          findsOneWidget);
+      // And the pending entry is persisted on the session.
+      final persisted = await store.load();
+      expect(persisted!.pendingEntryJson, isNotNull);
+    });
+
+    testWidgets('F8: unsubmitted text typed at minute N is cleared '
+        'when the capture slot rolls to minute N+1', (tester) async {
+      _tallView(tester);
+      final backing = <String, String>{};
+      final store = _memoryStore(backing);
+      final base = DateTime(2026, 10, 28, 9);
+      final standingStart = base.add(const Duration(minutes: 11));
+      await store.save(LeanTestSession(
+        startedAtMs: base.millisecondsSinceEpoch,
+        restStartedAtMs: base.millisecondsSinceEpoch,
+        standingStartedAtMs: standingStart.millisecondsSinceEpoch,
+      ));
+      var now = standingStart;
+      await _pumpScreen(
+        tester,
+        store: store,
+        gateway: FakeLeanGateway(),
+        clock: () => now,
+      );
+      expect(find.text(leanS9(0)), findsOneWidget);
+      await tester.enterText(find.byType(TextField).first, '88');
+      expect(
+          tester
+              .widget<TextField>(find.byType(TextField).first)
+              .controller!
+              .text,
+          '88');
+      // The minute rolls over without a submit.
+      now = standingStart.add(const Duration(minutes: 1));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text(leanS9(1)), findsOneWidget);
+      expect(
+          tester
+              .widget<TextField>(find.byType(TextField).first)
+              .controller!
+              .text,
+          '');
     });
   });
 

@@ -88,15 +88,19 @@ void main() {
       expect(s.relaunchAt(now), LeanRelaunch.interrupted);
     });
 
-    test('standing expired with ZERO values discards silently (§9 call)',
-        () {
+    test('standing expired with ZERO values routes to the N3 '
+        'interrupted path — no silent discard (F3)', () {
+      // §5.3 permits exactly two interrupted paths and §9 Q2
+      // covers only a user-initiated rest stop: an expired
+      // standing session at relaunch presents N3 whether or not
+      // it holds recorded values.
       final s = LeanTestSession(
         startedAtMs: _t0,
         restStartedAtMs: _t0,
         standingStartedAtMs: _t0 + _min(11),
       );
       final now = _t0 + _min(11) + _min(31);
-      expect(s.relaunchAt(now), LeanRelaunch.discardSilently);
+      expect(s.relaunchAt(now), LeanRelaunch.interrupted);
     });
 
     test('rest expired while dead presents the stand transition', () {
@@ -377,7 +381,12 @@ void main() {
   });
 
   group('§8.12 outcome labels identical across surfaces', () {
-    test('result screen line, History body, and past tests agree', () {
+    // Scope (corrected, F9): this checks the History body and the
+    // past-tests surface, which both derive from the payload; the
+    // result screen renders the same `completionLine` getter, and
+    // the Z7/PDF surface is deferred to item 3 — the name no
+    // longer claims surfaces it does not exercise.
+    test('History body and past tests agree on the S12 line', () {
       final result = LeanTestResult(
         startedAtMs: _t0,
         outcome: 'stopped_early',
@@ -502,7 +511,14 @@ void main() {
     });
   });
 
-  group('§8.13 copy lint over the shipped strings', () {
+  // Scope (corrected, F9): this lint scans the shipped string
+  // TABLE (`allLeanTestStrings`) plus, in the source-scan test
+  // below, the three feature source files for S4d and the bpm
+  // thresholds. It does not scan the data-display labels rendered
+  // from `lean_test_session.dart` (`Resting reading…`, `Minute…`,
+  // value lines) — those are data display, not sentence copy, and
+  // claiming this lint covers them would overclaim its scope.
+  group('§8.13 copy lint over the shipped string table', () {
     const banned = [
       'meets criteria',
       'positive test',
@@ -576,6 +592,246 @@ void main() {
         expect(source.contains('30 bpm'), isFalse);
         expect(source.contains('40 bpm'), isFalse);
       }
+    });
+  });
+
+  group('F1/F2 pending retention and owner gating', () {
+    Future<LeanTestSessionStore> storeWithPending(
+        Map<String, String> backing, FakeLeanGateway gateway) async {
+      final store = _memoryStore(backing);
+      final closer = LeanTestCloser(store: store, gateway: gateway);
+      final session = LeanTestSession(
+        startedAtMs: _t0,
+        restStartedAtMs: _t0,
+        baselineCaptures: [_cap(9, _t0 + _min(9), hr: 70)],
+      );
+      await store.save(session);
+      final close = await closer.closeRestStop(session, _t0 + _min(9));
+      expect(close.staged, isFalse);
+      expect(close.isPending, isTrue);
+      return store;
+    }
+
+    test('a pending entry survives retain (expiry/logout); the SAME '
+        'account rebinds and its retry lands it exactly once',
+        () async {
+      final backing = <String, String>{};
+      final gateway = FakeLeanGateway()..stageSucceeds = false;
+      final store = await storeWithPending(backing, gateway);
+      // Session expiry / retain-mode logout.
+      expect(await store.retainUnconfirmed(), isTrue);
+      expect(backing.containsKey(LeanTestSessionStore.storageKey),
+          isTrue);
+      expect(store.hasBoundOwner, isFalse);
+      // While unbound, nothing is served.
+      expect(await store.load(), isNull);
+      // Same account signs back in: no mismatch, blob kept.
+      expect(
+          await store.clearIfOwnerMismatch(
+              LeanTestSessionStore.debugDefaultOwner),
+          isFalse);
+      final loaded = await store.load();
+      expect(loaded!.pendingEntryJson, isNotNull);
+      gateway.stageSucceeds = true;
+      final landed = await retryPendingLeanTestEntry(
+        store: store,
+        stage: (entry) => gateway.stageEntry(entry),
+      );
+      expect(landed, isTrue);
+      expect(gateway.staged.length, 1);
+      expect(gateway.staged.single.id, 100);
+      expect(await store.load(), isNull);
+    });
+
+    test('a DIFFERENT account signing in drops a retained pending '
+        'blob via owner mismatch before any retry can stage it',
+        () async {
+      final backing = <String, String>{};
+      final gateway = FakeLeanGateway()..stageSucceeds = false;
+      final store = await storeWithPending(backing, gateway);
+      expect(await store.retainUnconfirmed(), isTrue);
+      expect(await store.clearIfOwnerMismatch('other@example.com'),
+          isTrue);
+      expect(backing.containsKey(LeanTestSessionStore.storageKey),
+          isFalse);
+      gateway.stageSucceeds = true;
+      final stagedCalls = <QuickLogEntry>[];
+      final landed = await retryPendingLeanTestEntry(
+        store: store,
+        stage: (entry) async {
+          stagedCalls.add(entry);
+          return true;
+        },
+      );
+      expect(landed, isFalse);
+      expect(stagedCalls, isEmpty);
+    });
+
+    test('retain with NO pending entry falls through to the wipe',
+        () async {
+      final backing = <String, String>{};
+      final store = _memoryStore(backing);
+      await store.save(
+          LeanTestSession(startedAtMs: _t0, restStartedAtMs: _t0));
+      expect(await store.retainUnconfirmed(), isFalse);
+      expect(backing.containsKey(LeanTestSessionStore.storageKey),
+          isFalse);
+    });
+
+    test('an unbound-owner load serves nothing and deletes nothing',
+        () async {
+      final backing = <String, String>{};
+      final store = _memoryStore(backing);
+      await store.save(
+          LeanTestSession(startedAtMs: _t0, restStartedAtMs: _t0));
+      store.debugSetBoundOwner(null);
+      expect(store.hasBoundOwner, isFalse);
+      expect(await store.load(), isNull);
+      // The blob survives unserved for the login enforcement.
+      expect(backing.containsKey(LeanTestSessionStore.storageKey),
+          isTrue);
+      // Saving against an unbound owner is refused too.
+      await store.save(LeanTestSession(
+          startedAtMs: _t0 + _min(60), restStartedAtMs: _t0 + _min(60)));
+      store.debugSetBoundOwner(LeanTestSessionStore.debugDefaultOwner);
+      expect((await store.load())!.startedAtMs, _t0);
+    });
+
+    test('a mismatched-owner retry stages nothing', () async {
+      final backing = <String, String>{};
+      final gateway = FakeLeanGateway()..stageSucceeds = false;
+      final store = await storeWithPending(backing, gateway);
+      // Bound to a different owner WITHOUT the login enforcement
+      // (the void this gate closes): the retry must still refuse.
+      store.debugSetBoundOwner('other@example.com');
+      final stagedCalls = <QuickLogEntry>[];
+      final landed = await retryPendingLeanTestEntry(
+        store: store,
+        stage: (entry) async {
+          stagedCalls.add(entry);
+          return true;
+        },
+      );
+      expect(landed, isFalse);
+      expect(stagedCalls, isEmpty);
+      expect(gateway.staged, isEmpty);
+    });
+  });
+
+  group('F5 close outcomes: staged, pending, or nothing', () {
+    test('category double-miss at close: result with NO entry, not '
+        'staged, not pending; the session stays live', () async {
+      final backing = <String, String>{};
+      final store = _memoryStore(backing);
+      final gateway = FakeLeanGateway()..categoryId = null;
+      final closer = LeanTestCloser(store: store, gateway: gateway);
+      final session = LeanTestSession(
+        startedAtMs: _t0,
+        restStartedAtMs: _t0,
+        standingStartedAtMs: _t0 + _min(11),
+        checkpoints: [_cap(0, _t0 + _min(11), hr: 90)],
+      );
+      await store.save(session);
+      final close =
+          await closer.closeStandingStop(session, _t0 + _min(12));
+      expect(close.result, isNotNull);
+      expect(close.entry, isNull);
+      expect(close.staged, isFalse);
+      expect(close.isPending, isFalse);
+      expect(gateway.staged, isEmpty);
+      // The session was not discarded: it remains the live session.
+      expect(await store.load(), isNotNull);
+    });
+
+    test('a failed stage is genuinely pending: entry present, '
+        'staged false, pending true', () async {
+      final backing = <String, String>{};
+      final store = _memoryStore(backing);
+      final gateway = FakeLeanGateway()..stageSucceeds = false;
+      final closer = LeanTestCloser(store: store, gateway: gateway);
+      final session = LeanTestSession(
+        startedAtMs: _t0,
+        restStartedAtMs: _t0,
+        standingStartedAtMs: _t0 + _min(11),
+        checkpoints: [_cap(0, _t0 + _min(11), hr: 90)],
+      );
+      await store.save(session);
+      final close =
+          await closer.closeStandingStop(session, _t0 + _min(12));
+      expect(close.entry, isNotNull);
+      expect(close.staged, isFalse);
+      expect(close.isPending, isTrue);
+    });
+  });
+
+  group('F6 per-value source stamping', () {
+    test('a Health Connect HR assist tags only HR; hand-typed BP '
+        'in the same capture stays manual, end-to-end', () {
+      final capture = LeanCapture(
+        minute: 0,
+        tMs: _t0 + _min(11),
+        hr: 92,
+        sys: 121,
+        dia: 79,
+        hrSource: 'health_connect',
+        hrSampleTMs: _t0 + _min(10),
+        bpSource: 'manual',
+      );
+      final result = LeanTestResult(
+        startedAtMs: _t0,
+        outcome: 'completed',
+        checkpoints: [capture],
+      );
+      final payload = result.toPayload();
+      final row = (payload['checkpoints'] as List).single as Map;
+      expect(row['hrSource'], 'health_connect');
+      expect(row['hrSampleTMs'], _t0 + _min(10));
+      expect(row['bpSource'], 'manual');
+      expect(row.containsKey('source'), isFalse);
+      final parsed = LeanTestResult.fromPayload(payload)!;
+      final back = parsed.checkpoints.single;
+      expect(back.hrSource, 'health_connect');
+      expect(back.hrSampleTMs, _t0 + _min(10));
+      expect(back.bpSource, 'manual');
+      expect(back.sys, 121);
+    });
+  });
+
+  group('F7 baseline per-field form and slot minutes', () {
+    test('one HR reading among two readings renders under the '
+        'single-reading label for HR', () {
+      final readings = [
+        _cap(9, _t0 + _min(9), hr: 70),
+        _cap(10, _t0 + _min(10), sys: 120, dia: 80),
+      ];
+      final baseline = leanBaselineOf(readings)!;
+      expect(baseline.hrCount, 1);
+      expect(baseline.hrForm, 'single');
+      expect(baseline.sysForm, 'single');
+      expect(leanBaselineLabel(baseline),
+          'Baseline (your one resting reading): 70 bpm');
+      final result = LeanTestResult(
+        startedAtMs: _t0,
+        outcome: 'completed',
+        baselineReadings: readings,
+      );
+      final fieldForms =
+          (result.toPayload()['baseline'] as Map)['fieldForms'] as Map;
+      expect(fieldForms['hr'], 'single');
+    });
+
+    test('a lone minute-10 baseline reading keeps minute 10 '
+        'through the payload round-trip', () {
+      final result = LeanTestResult(
+        startedAtMs: _t0,
+        outcome: 'completed',
+        baselineReadings: [_cap(10, _t0 + _min(10), hr: 72)],
+      );
+      final payload = result.toPayload();
+      final rows = (payload['baseline'] as Map)['readings'] as List;
+      expect(rows.single['minute'], 10);
+      final parsed = LeanTestResult.fromPayload(payload)!;
+      expect(parsed.baselineReadings.single.minute, 10);
     });
   });
 
