@@ -5,7 +5,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:tabs_lab/src/data/billing_service.dart';
 import 'package:tabs_lab/src/data/daily_score.dart';
-import 'package:tabs_lab/src/data/daily_score_refresh.dart' show ScoreCapture;
+import 'package:tabs_lab/src/data/daily_score_refresh.dart'
+    show ScoreCapture;
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart'
     show historyDateStr;
@@ -25,9 +26,12 @@ import 'package:tabs_lab/src/data/widget_sync.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
 import 'package:tabs_lab/src/features/home/daily_score_circle.dart';
 import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
+import 'package:tabs_lab/src/features/home/checkin_sheets.dart';
+import 'package:tabs_lab/src/features/home/checkin_summary_card.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
 import 'package:tabs_lab/src/features/home/flare_day_logging.dart';
 import 'package:tabs_lab/src/features/home/intake_logging.dart';
+import 'package:tabs_lab/src/features/home/good_day_logging.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 import 'package:tabs_lab/src/features/home/health_connect_banner.dart';
@@ -159,28 +163,27 @@ class HomeScreen extends StatefulWidget {
   /// forwards the controller to the Today Summary card.
   final MigraineController? migraineController;
 
-  /// Phase 1 item 4 — the entry outbox the intake card stages
-  /// through (the shipped VC 100107 optimistic mechanism).
-  /// Injectable for tests; defaults to the shared singleton every
-  /// other entry writer uses.
+  /// Phase 1 item 1 — the entry outbox the flare-day commit stages
+  /// through (the shipped VC 100107 optimistic mechanism). Injectable
+  /// for tests; defaults to the shared singleton every other entry
+  /// writer uses.
   final LogEntryOutbox? logEntryOutbox;
 
-  const HomeScreen({
-    super.key,
-    this.email,
-    this.weatherApi,
-    this.locationService,
-    this.healthConnectService,
-    this.healthRepository,
-    this.tabsBackend,
-    this.settingsStore,
-    this.onLogout,
-    this.healthHistoryStore,
-    this.dailyScoreSnapshotCapture,
-    this.billingService,
-    this.migraineController,
-    this.logEntryOutbox,
-  });
+  const HomeScreen(
+      {super.key,
+      this.email,
+      this.weatherApi,
+      this.locationService,
+      this.healthConnectService,
+      this.healthRepository,
+      this.tabsBackend,
+      this.settingsStore,
+      this.onLogout,
+      this.healthHistoryStore,
+      this.dailyScoreSnapshotCapture,
+      this.billingService,
+      this.migraineController,
+      this.logEntryOutbox});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -227,36 +230,48 @@ class _HomeScreenState extends State<HomeScreen> {
   /// only shows the card once the entry flow says so). A failed pull
   /// keeps the card hidden — the honest state, never a guess.
   bool _feelingVisible = false;
-  bool _feelingLeaving = false;
 
   /// Double-tap guard (native `tapInFlight`): one tap, one entry.
   bool _feelingTapInFlight = false;
   int? _feelingCategoryId;
 
-  // ── Phase 1 item 1: flare-day fast logging ──────────────────────
-  /// Null until the sync pull resolves the Symptoms category — the
-  /// flare button renders only once it resolves (spec §4.2 honesty
-  /// pattern: hide rather than misfile). Fully independent of the
-  /// Daily Ranking check-in above (founder Q5): a flare log never
-  /// settles, fills, or hides the check-in card.
+  // ── Merged check-in flow (Juno ruling Oct 28, 2026) ─────────────
+  /// Null until the sync pull resolves the Symptoms category (spec
+  /// §4.2 honesty pattern: hide rather than misfile). The good-day
+  /// record files under the Mood & Energy category — the check-in's
+  /// own category, [_feelingCategoryId].
   int? _flareCategoryId;
 
-  /// Today's flare record, DERIVED from the entry set (pulled
+  /// Today's three records, each DERIVED from the entry set (pulled
   /// entries overlaid with the outbox's pending local entries) —
-  /// never persisted as separate state (spec §4.4). Null while no
-  /// flare is logged for the current energy day.
+  /// never persisted as separate state. Per-record gate (Juno
+  /// Item 11): a record appears here only after ITS local stage
+  /// succeeded, so a failed flare/good stage leaves the summary
+  /// showing the ranking alone.
+  QuickLogEntry? _checkInToday;
   QuickLogEntry? _flareToday;
+  QuickLogEntry? _goodToday;
+
+  /// The latest Item 11 live-region announcement label (a flare or
+  /// good-day commit label), carried by the summary card. Null
+  /// until a flare/good record commits this session.
+  String? _checkInAnnouncement;
 
   /// The last known entry set AS MERGED with the outbox overlay —
-  /// the Quick Log pattern (`_entries` there is the merged view, so
-  /// an entry whose push has landed stays in the local view even
-  /// after its queue record leaves the outbox, until the next pull
-  /// confirms it). Re-deriving against a stale raw pull instead
-  /// would un-log a just-committed flare.
-  List<QuickLogEntry> _flareEntries = const [];
+  /// the Quick Log pattern (an entry whose push has landed stays in
+  /// the local view even after its queue record leaves the outbox,
+  /// until the next pull confirms it). Re-deriving against a stale
+  /// raw pull instead would un-log a just-committed record.
+  List<QuickLogEntry> _mergedEntries = const [];
 
-  /// Commit guard: a double-tap or retry amends, never duplicates.
+  /// Commit guards: a double-tap or retry amends, never duplicates.
   bool _flareCommitInFlight = false;
+  bool _goodCommitInFlight = false;
+
+  /// Re-entrancy guard for the summary tap (Vera M1): while the
+  /// amend sheet is open, further summary taps do nothing. Set
+  /// before the sheet is shown and cleared in a finally.
+  bool _summarySheetOpen = false;
 
   // ── Phase 1 item 4: salt & fluid tracking ───────────────────────
   /// Null until the sync pull resolves the Hydration category BY
@@ -292,12 +307,12 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Commit guard: a double-tap retries the stage, never duplicates.
   bool _intakeCommitInFlight = false;
 
-  LogEntryOutbox get _outbox =>
-      widget.logEntryOutbox ?? LogEntryOutbox.instance;
+  LogEntryOutbox get _outbox => widget.logEntryOutbox ?? LogEntryOutbox.instance;
 
   SettingsStore get _settingsStore => widget.settingsStore ?? SettingsStore();
 
   IntakeSettings get _intakeSettings => IntakeSettings(_settingsStore);
+
 
   // ── Round 34: event counters ─────────────────────────────────────
   /// Active counters in Settings list order. Empty until the cache or
@@ -334,8 +349,7 @@ class _HomeScreenState extends State<HomeScreen> {
     void paintFrom(Map<String, DailyBiometrics> all) {
       final row = all[today];
       final score = row?.dailyScore;
-      final pending =
-          score == null &&
+      final pending = score == null &&
           (all.values.any((r) => r.dailyScore != null) ||
               computeDailyScore(all, today) != null);
       if (score != _todayScore || pending != _todayScorePending) {
@@ -359,10 +373,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // from this call even when the store read behind it wedged.
     Future<void>? chain;
     Future<void> startChain() => chain ??= _refreshDailyScoreChain(
-      store: store,
-      today: today,
-      paintFrom: paintFrom,
-    );
+        store: store, today: today, paintFrom: paintFrom);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(startChain());
     });
@@ -404,8 +415,7 @@ class _HomeScreenState extends State<HomeScreen> {
       // last completed capture left it. The capture's own
       // post-capture engine run is the only automatic run that
       // may score today, and only when today is complete.
-      final snapshot =
-          widget.dailyScoreSnapshotCapture ??
+      final snapshot = widget.dailyScoreSnapshotCapture ??
           HealthHistorySync.withDeps(store: store).capture;
       await snapshot(force: false);
       // Home's OWN compute run is still cut off BEFORE today — it
@@ -446,8 +456,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _healthRepo =
-        widget.healthRepository ??
+    _healthRepo = widget.healthRepository ??
         HealthRepository(
           hc: widget.healthConnectService ?? HealthConnectService(),
         );
@@ -474,9 +483,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     _resolveCountUpGate();
     _loadHealthData();
-    _loadFeelingState();
-    _loadFlareState();
-    _outbox.addListener(_onFlareOutboxChanged);
+    _loadCheckInState();
+    _outbox.addListener(_onCheckInOutboxChanged);
     _loadIntakeState();
     _outbox.addListener(_onIntakeOutboxChanged);
     _loadCounters();
@@ -504,16 +512,13 @@ class _HomeScreenState extends State<HomeScreen> {
       // or the cache actually holds a completed load; a completely
       // empty, unbound cache pushes the signed-out payload instead,
       // so a previous account's numbers never linger.
-      unawaited(
-        WidgetSync.pushSnapshot(
-          cached,
-          signedIn:
-              widget.email != null ||
-              cached.ownerEmail != null ||
-              cached.vitalsLoaded ||
-              cached.streakLoaded,
-        ),
-      );
+      unawaited(WidgetSync.pushSnapshot(
+        cached,
+        signedIn: widget.email != null ||
+            cached.ownerEmail != null ||
+            cached.vitalsLoaded ||
+            cached.streakLoaded,
+      ));
       _loadWeather();
     });
   }
@@ -523,9 +528,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _onMigraineChanged() {
     if (!mounted) return;
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _maybeShowMigraineDetails(),
-    );
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _maybeShowMigraineDetails());
   }
 
   /// Presents the details form for a tap-ended attack, consuming
@@ -539,401 +543,17 @@ class _HomeScreenState extends State<HomeScreen> {
     final attack = controller.consumePendingDetails();
     if (attack == null) return;
     _migraineFormShowing = true;
-    showMigraineDetailsForm(
-      context,
-      controller: controller,
-      attack: attack,
-    ).whenComplete(() => _migraineFormShowing = false);
+    showMigraineDetailsForm(context, controller: controller, attack: attack)
+        .whenComplete(() => _migraineFormShowing = false);
   }
 
   @override
   void dispose() {
     widget.migraineController?.removeListener(_onMigraineChanged);
-    _outbox.removeListener(_onFlareOutboxChanged);
+    _outbox.removeListener(_onCheckInOutboxChanged);
     _outbox.removeListener(_onIntakeOutboxChanged);
     super.dispose();
   }
-
-  /// Round 34 — loads the ACTIVE event counters from the sync pull's
-  /// profile — the exact source Settings round 29 reads and writes
-  /// (`SettingsProfileData.eventCounters` →
-  /// `TabsBackend.decodeProfileList`), never a second store. A failed
-  /// pull keeps the cached counters (stale-while-revalidate); the
-  /// completed load lands in the account-bound [HomeDataCache].
-  Future<void> _loadCounters() async {
-    try {
-      final body = await _backend.fetchSyncPull();
-      if (body == null) return;
-      final data = SettingsProfileData.fromPull(body);
-      final counters = data.eventCounters
-          .map(EventCounterItem.fromMap)
-          .toList();
-      final active = activeEventCounters(counters);
-      final cache = HomeDataCache.instance;
-      final changed = cache.applyCounters(active, ownerEmail: widget.email);
-      unawaited(cache.persist());
-      if (!mounted) return;
-      if (changed) setState(() => _counters = active);
-      // Counter-mutation durability (Oct 2026) — the delete
-      // tombstones Settings records are applied on an isolated
-      // post-pass (the same shared helpers, settings_profile.dart),
-      // never awaited on this load path: the tombstone store is
-      // secure storage, and a storage read must never block or
-      // stall the counters render (the Round 51 lesson). The pass
-      // filters a locally deleted id out of the just-loaded list,
-      // prunes tombstones the server no longer carries, and
-      // re-lands the filtered list in the cache + UI.
-      unawaited(
-        _filterCountersTombstones(
-          allCounters: counters,
-          activeCounters: active,
-        ),
-      );
-    } catch (_) {
-      // Keep whatever the cache seeded — never invent counters.
-    }
-  }
-
-  /// The [_loadCounters] tombstone post-pass. [allCounters] is the
-  /// full pulled list (pruning judges against it — an archived
-  /// tombstoned counter is not in the active list but still counts
-  /// as carried by the server); [activeCounters] is what the load
-  /// rendered. If a newer load has replaced the counters while this
-  /// pass ran, the newer state wins and this pass does nothing.
-  /// Best-effort throughout: any failure leaves the loaded list as
-  /// it is.
-  Future<void> _filterCountersTombstones({
-    required List<EventCounterItem> allCounters,
-    required List<EventCounterItem> activeCounters,
-  }) async {
-    try {
-      final store = widget.settingsStore ?? SettingsStore();
-      final tombstones = await store.getDeletedCounterIds(
-        ownerEmail: widget.email,
-      );
-      if (tombstones.isEmpty) return;
-      final stillNeeded = pruneCounterTombstones(
-        tombstones,
-        allCounters.map((c) => c.id),
-      );
-      if (stillNeeded.length != tombstones.length) {
-        await store.setDeletedCounterIds(stillNeeded, ownerEmail: widget.email);
-      }
-      if (stillNeeded.isEmpty || !mounted) return;
-      String idsOf(List<EventCounterItem> l) => l.map((c) => c.id).join('|');
-      if (idsOf(_counters) != idsOf(activeCounters)) return;
-      final filtered = activeEventCounters(
-        filterDeletedCounters(allCounters, stillNeeded),
-      );
-      if (idsOf(filtered) == idsOf(activeCounters)) return;
-      final cache = HomeDataCache.instance;
-      cache.applyCounters(filtered, ownerEmail: widget.email);
-      unawaited(cache.persist());
-      if (!mounted) return;
-      setState(() => _counters = filtered);
-    } catch (_) {}
-  }
-
-  /// Round 34 — the counter slot's tap: pushes Settings opened
-  /// directly on its Event Counters page, via the round-22 app-wide
-  /// slide transition. On return the pull cache is invalidated and
-  /// the counters re-read, so an archive / end-and-save / edit made
-  /// there reflects on Home immediately.
-  Future<void> _openEventCounters() async {
-    await Navigator.of(context).push(
-      SlidePageRoute(
-        reducedMotion: animationsDisabled(context),
-        builder: (_) => SettingsScreen(
-          email: widget.email,
-          onLogout: widget.onLogout,
-          backend: _backend,
-          settingsStore: widget.settingsStore,
-          healthConnectService: widget.healthConnectService,
-          billingService: widget.billingService,
-          openEventCounters: true,
-        ),
-      ),
-    );
-    if (!mounted) return;
-    _backend.invalidateSyncPull();
-    unawaited(_loadCounters());
-  }
-
-  /// Round 21 — resolves check-in visibility from the REAL pulled
-  /// entries (never invented): the card shows only when the pull
-  /// succeeded, the Mood & Energy category resolved, and no
-  /// 'Daily Ranking' entry exists in that category for the current
-  /// energy day. Any failure leaves the card hidden.
-  Future<void> _loadFeelingState() async {
-    try {
-      final pull = await _backend.fetchSyncPull();
-      if (pull == null) return;
-      final entries = await _backend.fetchLogEntryDtos();
-      final categories = await _backend.fetchLogCategories();
-      final categoryId = resolveFeelingCategoryId(categories);
-      if (categoryId == null || !mounted) return;
-      _feelingCategoryId = categoryId;
-      final visible = !hasFeelingCheckIn(entries, moodCategoryId: categoryId);
-      if (visible != _feelingVisible) {
-        setState(() => _feelingVisible = visible);
-      }
-    } catch (_) {
-      // Honest hidden state — native starts (and stays) hidden until
-      // its entry flow proves the card should show.
-    }
-  }
-
-  /// Round 21 — one tap logs the rating (native `selectLevel`).
-  /// Re-pulls fresh before writing so the new id is
-  /// max(existing ids) + 1 against current server state (the sync
-  /// endpoint upserts on (user_id, local_id) — a colliding id would
-  /// silently overwrite another entry) and so an entry logged
-  /// elsewhere since this screen loaded is never duplicated.
-  /// On success the card slides away and Home's counts refresh
-  /// quietly in the background (no spinner, no count-up replay).
-  /// On failure the card simply stays, exactly like native (its
-  /// insert catch only resets the tap guard).
-  Future<void> _onFeelingSelect(int level) async {
-    if (level < 1 || level > 5 || _feelingTapInFlight) return;
-    _feelingTapInFlight = true;
-    try {
-      _backend.invalidateSyncPull();
-      // Vera round-21 gate: the write MUST NOT proceed on a failed
-      // re-pull. fetchLogEntryDtos swallows failures into an empty
-      // list, which would compute id = 1 and the upsert could
-      // overwrite the real entry 1. A null pull aborts the tap —
-      // the card stays and the user can tap again.
-      final pull = await _backend.fetchSyncPull();
-      if (pull == null) return;
-      final entries = await _backend.fetchLogEntryDtos();
-      final categories = await _backend.fetchLogCategories();
-      final categoryId =
-          resolveFeelingCategoryId(categories) ?? _feelingCategoryId;
-      if (categoryId == null) return;
-      _feelingCategoryId = categoryId;
-      if (!mounted) return;
-      if (hasFeelingCheckIn(entries, moodCategoryId: categoryId)) {
-        // Already logged for this energy day — no second entry; the
-        // card just goes away, as native's flow would hide it.
-        setState(() => _feelingVisible = false);
-        return;
-      }
-      final entry = buildFeelingEntry(
-        level: level,
-        categoryId: categoryId,
-        existing: entries,
-      );
-      final ok = await _backend.postLogEntries([entry]);
-      if (!ok || !mounted) return;
-      _backend.invalidateSyncPull();
-      setState(() => _feelingLeaving = true);
-      // Quiet background refresh: today's log count / streak pick up
-      // the new entry with no spinner and no count-up replay (the
-      // once-per-day gate already fired for this view).
-      unawaited(_loadHealthData());
-    } catch (_) {
-      // Card stays visible; the user can tap again.
-    } finally {
-      _feelingTapInFlight = false;
-    }
-  }
-
-  // ── Phase 1 item 1: flare-day fast logging ──────────────────────
-  //
-  // The write rides the shipped VC 100107 optimistic mechanism
-  // (LogEntryOutbox): allocate the id through the outbox's post-load
-  // allocation, stage durably on device FIRST, apply on screen, and
-  // flush in the background through the existing /api/sync/entries
-  // upsert. The outbox flush invalidates the sync pull on success.
-  // There is NO parallel sync path here, and this flow never calls
-  // postLogCategories (whole-list replace landmine, spec §4.3) — it
-  // only reads the pulled category set.
-
-  /// Derives the flare button state from [base] overlaid with the
-  /// outbox's pending local entries (spec §4.4: logged state is
-  /// derived, not stored, and pending entries count). The merged
-  /// result becomes the new local view (see [_flareEntries]). When
-  /// the derived record is still pending in the outbox — e.g. staged
-  /// in a session the OS killed before its push — this also kicks
-  /// the retry flush, the History-open pattern: Home may be the
-  /// first surface to see that record, and derivation is the one
-  /// place every path (load, listener, commit, sheet return)
-  /// passes through.
-  void _deriveFlareState(List<QuickLogEntry> base) {
-    _flareEntries = _outbox.merge(base);
-    final categoryId = _flareCategoryId;
-    if (categoryId == null) return;
-    final record = findFlareRecord(
-      _flareEntries,
-      symptomsCategoryId: categoryId,
-    );
-    if (record != null && _outbox.isPending(record.id)) {
-      unawaited(_outbox.flush(_backend));
-    }
-    if (!mounted) return;
-    if (record?.id != _flareToday?.id ||
-        record?.chips != _flareToday?.chips ||
-        record?.body != _flareToday?.body) {
-      setState(() => _flareToday = record);
-    }
-  }
-
-  /// The outbox changed (its disk load landed, an entry was staged,
-  /// a push settled): re-derive today's flare record from the local
-  /// merged view plus the pending overlay.
-  void _onFlareOutboxChanged() {
-    if (!mounted) return;
-    _deriveFlareState(_flareEntries);
-  }
-
-  /// Resolves the flare category + today's record from the REAL
-  /// pulled data. Any failure leaves the button unrendered — the
-  /// honest state, never a guess. Independent of [_loadFeelingState]
-  /// (founder Q5).
-  Future<void> _loadFlareState() async {
-    try {
-      // Kick the outbox disk load against the session account, so a
-      // record staged by a killed session is part of the derivation
-      // (and of the retry flush the listener kicks).
-      String? email;
-      try {
-        email = await _backend.readEmail();
-      } catch (_) {
-        email = null;
-      }
-      await _outbox.load(ownerEmail: email);
-      final pull = await _backend.fetchSyncPull();
-      if (pull == null) return;
-      final entries = await _backend.fetchLogEntryDtos();
-      final categories = await _backend.fetchLogCategories();
-      final categoryId = resolveFlareCategoryId(categories);
-      if (!mounted) return;
-      _flareCategoryId = categoryId;
-      if (categoryId == null) {
-        // Double miss: the button does not render.
-        if (_flareToday != null) setState(() => _flareToday = null);
-        return;
-      }
-      _deriveFlareState(entries);
-      // A plain setState so the button appears even when no flare
-      // record exists (the derivation above only fires on a record
-      // change; the category resolving is itself a render change).
-      if (mounted) setState(() {});
-    } catch (_) {
-      // Honest unrendered state — the button never renders on a guess.
-    }
-  }
-
-  /// Tap on the flare button (either state): opens the sheet,
-  /// pre-filled from today's record when one exists (spec §2.6).
-  Future<void> _onFlareTap() async {
-    final today = _flareToday;
-    await showFlareDaySheet(
-      context: context,
-      onCommit: _commitFlare,
-      initialSeverity: today == null ? null : flareSeverityOf(today),
-      initialType: today == null ? null : flareTypesOf(today).firstOrNull,
-    );
-    if (!mounted) return;
-    // Re-derive on return: the commit already applied locally, and
-    // this catches any outbox change that landed while the sheet
-    // was up. The base is the local merged view, NOT a raw pull —
-    // a just-pushed entry whose queue record has left the outbox
-    // must stay derived (see [_flareEntries]).
-    _deriveFlareState(_flareEntries);
-  }
-
-  /// The sheet's commit: one flare record per energy day, amended in
-  /// place (founder Q2). Returns true only when the LOCAL stage
-  /// succeeded (Juno §3.3b) — the sheet closes, Home shows the
-  /// logged state, and the push runs in the background. A local
-  /// write failure returns false: the button stays un-logged and
-  /// the sheet surfaces the existing generic copy.
-  Future<bool> _commitFlare({required String severity, String? type}) async {
-    if (_flareCommitInFlight) return false;
-    final categoryId = _flareCategoryId;
-    if (categoryId == null) return false;
-    _flareCommitInFlight = true;
-    try {
-      // Duplicate safety (spec §4.4): re-check the derived state
-      // against a FRESH pull before writing — the check-in's
-      // re-check precedent — so a double-tap, a retry, or a record
-      // logged elsewhere amends instead of duplicating.
-      _backend.invalidateSyncPull();
-      final pull = await _backend.fetchSyncPull();
-      List<QuickLogEntry> entries = _flareEntries;
-      var resolvedCategoryId = categoryId;
-      if (pull != null) {
-        entries = await _backend.fetchLogEntryDtos();
-        final categories = await _backend.fetchLogCategories();
-        resolvedCategoryId = resolveFlareCategoryId(categories) ?? categoryId;
-        _flareCategoryId = resolvedCategoryId;
-      }
-      final merged = _outbox.merge(entries);
-      final existing = findFlareRecord(
-        merged,
-        symptomsCategoryId: resolvedCategoryId,
-      );
-      final QuickLogEntry entry;
-      final bool serverKnown;
-      if (existing != null) {
-        entry = amendFlareEntry(existing, severity: severity, type: type);
-        // Server-known when the outbox already classifies it so, or
-        // when a FRESH pull carried it (a merged local view alone
-        // proves nothing — it can hold a never-pushed local entry).
-        serverKnown =
-            _outbox.isServerKnown(existing.id) ||
-            (pull != null && entries.any((e) => e.id == existing.id));
-      } else {
-        var serverMaxId = 0;
-        for (final e in merged) {
-          if (e.id > serverMaxId) serverMaxId = e.id;
-        }
-        final id = await _outbox.allocateEntryIdForBackend(
-          backend: _backend,
-          serverMaxId: serverMaxId,
-        );
-        entry = buildFlareEntry(
-          id: id,
-          categoryId: resolvedCategoryId,
-          severity: severity,
-          type: type,
-        );
-        serverKnown = false;
-      }
-      // Local persistence FIRST. Only a successful stage may change
-      // the button to its logged state (Juno §3.3b).
-      final staged = await _outbox.stageForBackend(
-        entry,
-        backend: _backend,
-        serverKnown: serverKnown,
-      );
-      if (!staged) return false;
-      if (!mounted) return true;
-      // Instant on-screen apply; the push runs behind it. A push
-      // failure rides the outbox's per-entry sync state (History /
-      // Quick Log badge copy) and never un-logs the entry. The
-      // committed entry also joins the local merged view, so a
-      // later re-derivation keeps it even after its queue record
-      // leaves the outbox on a successful push.
-      _flareEntries = _outbox.merge([...entries, entry]);
-      setState(() => _flareToday = entry);
-      unawaited(_outbox.flush(_backend));
-      // Quiet background refresh so today's counts pick up the new
-      // entry once its push lands (the feeling check-in's pattern).
-      unawaited(_loadHealthData());
-      return true;
-    } catch (_) {
-      return false;
-    } finally {
-      _flareCommitInFlight = false;
-    }
-  }
-
-  /// Round 15c — resolves the once-per-day count-up gate from secure
-  /// storage. The gate persists today's date BEFORE reporting true, so
-  /// a rebuild mid-animation can never re-trigger it. Local read, so
-
   // ── Phase 1 item 4: salt & fluid tracking ──────────────────────
   //
   // Writes ride the shipped VC 100107 optimistic mechanism
@@ -1297,6 +917,709 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+
+
+  /// Round 34 — loads the ACTIVE event counters from the sync pull's
+  /// profile — the exact source Settings round 29 reads and writes
+  /// (`SettingsProfileData.eventCounters` →
+  /// `TabsBackend.decodeProfileList`), never a second store. A failed
+  /// pull keeps the cached counters (stale-while-revalidate); the
+  /// completed load lands in the account-bound [HomeDataCache].
+  Future<void> _loadCounters() async {
+    try {
+      final body = await _backend.fetchSyncPull();
+      if (body == null) return;
+      final data = SettingsProfileData.fromPull(body);
+      final counters =
+          data.eventCounters.map(EventCounterItem.fromMap).toList();
+      final active = activeEventCounters(counters);
+      final cache = HomeDataCache.instance;
+      final changed = cache.applyCounters(active, ownerEmail: widget.email);
+      unawaited(cache.persist());
+      if (!mounted) return;
+      if (changed) setState(() => _counters = active);
+      // Counter-mutation durability (Oct 2026) — the delete
+      // tombstones Settings records are applied on an isolated
+      // post-pass (the same shared helpers, settings_profile.dart),
+      // never awaited on this load path: the tombstone store is
+      // secure storage, and a storage read must never block or
+      // stall the counters render (the Round 51 lesson). The pass
+      // filters a locally deleted id out of the just-loaded list,
+      // prunes tombstones the server no longer carries, and
+      // re-lands the filtered list in the cache + UI.
+      unawaited(_filterCountersTombstones(
+          allCounters: counters, activeCounters: active));
+    } catch (_) {
+      // Keep whatever the cache seeded — never invent counters.
+    }
+  }
+
+  /// The [_loadCounters] tombstone post-pass. [allCounters] is the
+  /// full pulled list (pruning judges against it — an archived
+  /// tombstoned counter is not in the active list but still counts
+  /// as carried by the server); [activeCounters] is what the load
+  /// rendered. If a newer load has replaced the counters while this
+  /// pass ran, the newer state wins and this pass does nothing.
+  /// Best-effort throughout: any failure leaves the loaded list as
+  /// it is.
+  Future<void> _filterCountersTombstones({
+    required List<EventCounterItem> allCounters,
+    required List<EventCounterItem> activeCounters,
+  }) async {
+    try {
+      final store = widget.settingsStore ?? SettingsStore();
+      final tombstones =
+          await store.getDeletedCounterIds(ownerEmail: widget.email);
+      if (tombstones.isEmpty) return;
+      final stillNeeded = pruneCounterTombstones(
+          tombstones, allCounters.map((c) => c.id));
+      if (stillNeeded.length != tombstones.length) {
+        await store.setDeletedCounterIds(stillNeeded,
+            ownerEmail: widget.email);
+      }
+      if (stillNeeded.isEmpty || !mounted) return;
+      String idsOf(List<EventCounterItem> l) =>
+          l.map((c) => c.id).join('|');
+      if (idsOf(_counters) != idsOf(activeCounters)) return;
+      final filtered =
+          activeEventCounters(filterDeletedCounters(allCounters, stillNeeded));
+      if (idsOf(filtered) == idsOf(activeCounters)) return;
+      final cache = HomeDataCache.instance;
+      cache.applyCounters(filtered, ownerEmail: widget.email);
+      unawaited(cache.persist());
+      if (!mounted) return;
+      setState(() => _counters = filtered);
+    } catch (_) {}
+  }
+
+  /// Round 34 — the counter slot's tap: pushes Settings opened
+  /// directly on its Event Counters page, via the round-22 app-wide
+  /// slide transition. On return the pull cache is invalidated and
+  /// the counters re-read, so an archive / end-and-save / edit made
+  /// there reflects on Home immediately.
+  Future<void> _openEventCounters() async {
+    await Navigator.of(context).push(
+      SlidePageRoute(
+        reducedMotion: animationsDisabled(context),
+        builder: (_) => SettingsScreen(
+          email: widget.email,
+          onLogout: widget.onLogout,
+          backend: _backend,
+          settingsStore: widget.settingsStore,
+          healthConnectService: widget.healthConnectService,
+          billingService: widget.billingService,
+          openEventCounters: true,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    _backend.invalidateSyncPull();
+    unawaited(_loadCounters());
+  }
+
+  /// Merged check-in — resolves ALL of today's check-in state
+  /// (ranking visibility, flare record, good record) from the REAL
+  /// pulled entries overlaid with the outbox. Any failure leaves
+  /// the number card hidden and no summary shown — the honest
+  /// state, never a guess.
+  Future<void> _loadCheckInState() async {
+    try {
+      // Kick the outbox disk load against the session account, so a
+      // record staged by a killed session is part of the derivation
+      // (and of the retry flush the derivation kicks).
+      String? email;
+      try {
+        email = await _backend.readEmail();
+      } catch (_) {
+        email = null;
+      }
+      await _outbox.load(ownerEmail: email);
+      final pull = await _backend.fetchSyncPull();
+      if (pull == null) return;
+      final entries = await _backend.fetchLogEntryDtos();
+      final categories = await _backend.fetchLogCategories();
+      if (!mounted) return;
+      _feelingCategoryId = resolveFeelingCategoryId(categories);
+      _flareCategoryId = resolveFlareCategoryId(categories);
+      _deriveCheckInState(entries);
+      // A plain setState so the number card / flare slot appear
+      // even when the derivation itself changed no record (the
+      // category resolving is itself a render change).
+      if (mounted) setState(() {});
+    } catch (_) {
+      // Honest hidden state — nothing renders on a guess.
+    }
+  }
+
+  /// Derives today's three records from [base] overlaid with the
+  /// outbox's pending local entries (a pending record counts).
+  void _deriveCheckInState(List<QuickLogEntry> base) {
+    _mergedEntries = _outbox.merge(base);
+    _deriveFromMerged();
+  }
+
+  /// Re-derives from the stored merged view and paints on change.
+  /// When a derived record is still pending in the outbox — e.g.
+  /// staged in a session the OS killed before its push — this also
+  /// kicks the retry flush (the _deriveFlareState pattern, now for
+  /// all three records): Home may be the first surface to see that
+  /// record, and derivation is the one place every path passes
+  /// through.
+  void _deriveFromMerged() {
+    final feelingId = _feelingCategoryId;
+    final flareId = _flareCategoryId;
+    final checkIn = feelingId == null
+        ? null
+        : findFeelingCheckInEntry(_mergedEntries, moodCategoryId: feelingId);
+    final flare = flareId == null
+        ? null
+        : findFlareRecord(_mergedEntries, symptomsCategoryId: flareId);
+    final good = feelingId == null
+        ? null
+        : findGoodRecord(_mergedEntries, moodCategoryId: feelingId);
+    for (final record in [checkIn, flare, good]) {
+      if (record != null && _outbox.isPending(record.id)) {
+        unawaited(_outbox.flush(_backend));
+        break;
+      }
+    }
+    if (!mounted) return;
+    final visible = feelingId != null && checkIn == null;
+    bool changed(QuickLogEntry? a, QuickLogEntry? b) =>
+        a?.id != b?.id || a?.chips != b?.chips || a?.body != b?.body;
+    if (changed(checkIn, _checkInToday) ||
+        changed(flare, _flareToday) ||
+        changed(good, _goodToday) ||
+        visible != _feelingVisible) {
+      setState(() {
+        _checkInToday = checkIn;
+        _flareToday = flare;
+        _goodToday = good;
+        _feelingVisible = visible;
+      });
+    } else {
+      // Keep the fields current even when no paint is needed (the
+      // category ids may have resolved on this pass).
+      _checkInToday = checkIn;
+      _flareToday = flare;
+      _goodToday = good;
+      _feelingVisible = visible;
+    }
+  }
+
+  /// The outbox changed: re-derive from the local merged view.
+  void _onCheckInOutboxChanged() {
+    if (!mounted) return;
+    _deriveCheckInState(_mergedEntries);
+  }
+
+  /// Fresh-pull context for a commit: invalidates the pull,
+  /// re-reads entries + categories when the pull succeeds, and
+  /// returns the merged view commits must re-check against (the
+  /// check-in's re-check precedent, mirrored from _commitFlare).
+  /// A failed pull falls back to the local merged view — the
+  /// outbox allocation + stage still guard the write, exactly as
+  /// the shipped flare commit behaved on a null pull.
+  Future<({List<QuickLogEntry> fresh, List<QuickLogEntry> merged, bool pullOk})>
+      _freshCommitContext() async {
+    _backend.invalidateSyncPull();
+    final pull = await _backend.fetchSyncPull();
+    if (pull == null) {
+      return (fresh: _mergedEntries, merged: _mergedEntries, pullOk: false);
+    }
+    final entries = await _backend.fetchLogEntryDtos();
+    final categories = await _backend.fetchLogCategories();
+    final feelingId = resolveFeelingCategoryId(categories);
+    if (feelingId != null) _feelingCategoryId = feelingId;
+    final flareId = resolveFlareCategoryId(categories);
+    if (flareId != null) _flareCategoryId = flareId;
+    return (fresh: entries, merged: _outbox.merge(entries), pullOk: true);
+  }
+
+  /// Whether [entry]'s id is server-known for staging: the outbox
+  /// already classifies it so, or a FRESH pull carried it (a merged
+  /// local view alone proves nothing).
+  bool _serverKnownFor(
+    QuickLogEntry entry,
+    ({List<QuickLogEntry> fresh, List<QuickLogEntry> merged, bool pullOk}) ctx,
+  ) =>
+      _outbox.isServerKnown(entry.id) ||
+      (ctx.pullOk && ctx.fresh.any((e) => e.id == entry.id));
+
+  /// Stages [entry] through the outbox and, only on a successful
+  /// LOCAL stage, applies it instantly on screen and kicks the
+  /// background flush (Juno Item 11 per-record gate). Returns the
+  /// stage result.
+  Future<bool> _stageAndApply(
+    QuickLogEntry entry, {
+    required bool serverKnown,
+    required List<QuickLogEntry> fresh,
+  }) async {
+    final staged = await _outbox.stageForBackend(
+      entry,
+      backend: _backend,
+      serverKnown: serverKnown,
+    );
+    if (!staged) return false;
+    if (!mounted) return true;
+    _mergedEntries = _outbox.merge([...fresh, entry]);
+    _deriveFromMerged();
+    unawaited(_outbox.flush(_backend));
+    unawaited(_loadHealthData());
+    return true;
+  }
+
+  Future<int> _allocateId(List<QuickLogEntry> merged) async {
+    var serverMaxId = 0;
+    for (final e in merged) {
+      if (e.id > serverMaxId) serverMaxId = e.id;
+    }
+    return _outbox.allocateEntryIdForBackend(
+      backend: _backend,
+      serverMaxId: serverMaxId,
+    );
+  }
+
+  // ── Ranking commit (the check-in write, on the outbox) ────────
+
+  /// One tap logs the ranking through the shipped outbox —
+  /// mirroring _commitFlare exactly: invalidate, fresh-pull
+  /// re-check (hasFeelingCheckIn on merged entries), allocate,
+  /// stage, instant apply, unawaited flush. The old await-first
+  /// postLogEntries path is gone. Returns today's check-in entry
+  /// (newly staged or pre-existing), or null when the local stage
+  /// failed — in which case nothing about the logged state changes
+  /// and no follow-up sheet opens.
+  Future<({QuickLogEntry entry, bool created})?> _commitRanking(
+      int level) async {
+    final categoryId = _feelingCategoryId;
+    if (categoryId == null) return null;
+    final ctx = await _freshCommitContext();
+    final resolvedId = _feelingCategoryId ?? categoryId;
+    if (hasFeelingCheckIn(ctx.merged, moodCategoryId: resolvedId)) {
+      _deriveCheckInState(ctx.fresh);
+      final existing = findFeelingCheckInEntry(ctx.merged,
+          moodCategoryId: resolvedId);
+      return existing == null ? null : (entry: existing, created: false);
+    }
+    final id = await _allocateId(ctx.merged);
+    final entry = buildFeelingEntry(
+      level: level,
+      categoryId: resolvedId,
+      id: id,
+    );
+    final ok = await _stageAndApply(entry,
+        serverKnown: false, fresh: ctx.fresh);
+    return ok ? (entry: entry, created: true) : null;
+  }
+
+  /// The number tap: the single entry point of the merged flow.
+  /// The ranking stages first; only after ITS local stage succeeds
+  /// do the number's follow-ups run (1–2 flare, 4–5 good sheet, 3
+  /// nothing further).
+  Future<void> _onFeelingSelect(int level) async {
+    if (level < 1 || level > 5 || _feelingTapInFlight) return;
+    _feelingTapInFlight = true;
+    try {
+      final result = await _commitRanking(level);
+      if (result == null || !mounted) return;
+      // A pre-existing check-in (double-tap / logged elsewhere)
+      // opens no follow-ups — its own flow already ran.
+      if (!result.created) return;
+      if (level <= 2) {
+        await _runLowFollowUp(level);
+      } else if (level >= 4) {
+        await showCheckInGoodSheet(
+          context: context,
+          onCommit: _commitGood,
+        );
+        if (mounted) _deriveCheckInState(_mergedEntries);
+      }
+    } catch (_) {
+      // The card/summary keep their derived state; a failed stage
+      // changed no logged state.
+    } finally {
+      _feelingTapInFlight = false;
+    }
+  }
+
+  /// The 1–2 follow-up: stage the severity-only flare record
+  /// IMMEDIATELY (only when no flare record exists for the day — an
+  /// existing one is left untouched), then open the kind sheet.
+  /// A kind tap upserts the flare; `Just log this` and dismissal
+  /// leave the severity-only record (dismissal = commit path,
+  /// Juno Item 4). When the immediate stage failed, the summary
+  /// keeps showing the ranking alone and a kind pick retries the
+  /// creation as an upsert.
+  ///
+  /// Vera F5(a): the initial severity-only stage runs from the
+  /// LOCAL merged view (outbox-overlaid) via
+  /// `_commitFlare(localStage: true)` — it does NOT wait on a fresh
+  /// network pull, so the kill window between the ranking stage and
+  /// the flare stage is allocation + local stage only. The
+  /// pull-based re-check stays for the kind amend that follows.
+  ///
+  /// Vera F1: when that pre-stage failed, the kind sheet opens
+  /// already showing the generic failure copy, and DISMISSAL is no
+  /// longer a silent loss: closing the sheet without a successful
+  /// kind/`Just log this` commit retries the severity-only stage
+  /// once here. If the retry also fails, the summary stays
+  /// ranking-alone (the honest Item 11 state) and no announcement
+  /// fires — `_commitFlare` only announces on a successful stage.
+  Future<void> _runLowFollowUp(int level) async {
+    final severity = severityForRanking(level);
+    if (severity == null) return;
+    final preExisting = _flareToday;
+    var stagedOk = preExisting != null;
+    if (preExisting == null) {
+      stagedOk = await _commitFlare(
+        severity: severity,
+        type: null,
+        localStage: true,
+      );
+    }
+    if (!mounted) return;
+    final effectiveSeverity =
+        preExisting != null ? (flareSeverityOf(preExisting) ?? severity) : severity;
+    var committedViaSheet = false;
+    await showCheckInKindSheet(
+      context: context,
+      initialCommitFailed: preExisting == null && !stagedOk,
+      onKind: (kind) async {
+        final ok = await _commitFlare(
+          severity: effectiveSeverity,
+          type: kind,
+        );
+        if (ok) committedViaSheet = true;
+        return ok;
+      },
+      onJustLog: () async {
+        // The severity-only record is the commit: already staged
+        // (nothing to do), a pre-existing record stays untouched,
+        // and a failed immediate stage retries here.
+        if (preExisting != null || stagedOk) {
+          committedViaSheet = true;
+          return true;
+        }
+        final ok = await _commitFlare(
+          severity: severity,
+          type: null,
+          localStage: true,
+        );
+        if (ok) committedViaSheet = true;
+        return ok;
+      },
+    );
+    // F1 dismissal retry: the sheet closed without a successful
+    // commit and the pre-stage had failed — dismissal is a commit
+    // path (Item 4), so the declared severity-only flare gets one
+    // more stage attempt now.
+    if (!committedViaSheet && preExisting == null && !stagedOk) {
+      await _commitFlare(severity: severity, type: null, localStage: true);
+    }
+    if (mounted) _deriveCheckInState(_mergedEntries);
+  }
+
+  // ── Flare commit (outbox upsert) ────────────────────────────────
+
+  /// One flare record per energy day, amended in place. Returns
+  /// true only when the LOCAL stage succeeded (Juno Item 11).
+  ///
+  /// [localStage] (Vera F5(a)) is ONLY for the initial severity-only
+  /// stage of the 1–2 follow-up and its retries: the record is
+  /// created from the local merged view (pulled entries overlaid
+  /// with the outbox — the same view derivation renders from),
+  /// without waiting on a fresh network pull. The per-record gate
+  /// is identical: the announcement and the on-screen state change
+  /// only on a successful local stage, the id comes from the
+  /// outbox's post-load allocation, and the stage is a creation
+  /// (serverKnown false). Every other commit — the kind amend /
+  /// upsert that follows, late adds, amend-sheet kinds — keeps the
+  /// pull-based re-check below.
+  Future<bool> _commitFlare({
+    required String severity,
+    String? type,
+    bool localStage = false,
+  }) async {
+    if (_flareCommitInFlight) return false;
+    final categoryId = _flareCategoryId;
+    if (categoryId == null) return false;
+    _flareCommitInFlight = true;
+    try {
+      if (localStage) {
+        final existing =
+            findFlareRecord(_mergedEntries, symptomsCategoryId: categoryId);
+        if (existing != null) {
+          // A flare record for today already exists in the local
+          // view: the severity-only stage's purpose is satisfied
+          // and the existing record is left untouched.
+          return true;
+        }
+        final id = await _allocateId(_mergedEntries);
+        final entry = buildFlareEntry(
+          id: id,
+          categoryId: categoryId,
+          severity: severity,
+          type: type,
+        );
+        final ok = await _stageAndApply(entry,
+            serverKnown: false, fresh: _mergedEntries);
+        if (ok && mounted) {
+          setState(() => _checkInAnnouncement =
+              flareLoggedAnnouncement(severity, type: type));
+        }
+        return ok;
+      }
+      final ctx = await _freshCommitContext();
+      final resolvedId = _flareCategoryId ?? categoryId;
+      final existing =
+          findFlareRecord(ctx.merged, symptomsCategoryId: resolvedId);
+      final QuickLogEntry entry;
+      final bool serverKnown;
+      if (existing != null) {
+        entry = amendFlareEntry(existing, severity: severity, type: type);
+        serverKnown = _serverKnownFor(existing, ctx);
+      } else {
+        final id = await _allocateId(ctx.merged);
+        entry = buildFlareEntry(
+          id: id,
+          categoryId: resolvedId,
+          severity: severity,
+          type: type,
+        );
+        serverKnown = false;
+      }
+      final ok = await _stageAndApply(entry,
+          serverKnown: serverKnown, fresh: ctx.fresh);
+      if (ok && mounted) {
+        setState(() => _checkInAnnouncement =
+            flareLoggedAnnouncement(severity, type: type));
+      }
+      return ok;
+    } catch (_) {
+      return false;
+    } finally {
+      _flareCommitInFlight = false;
+    }
+  }
+
+  // ── Good-day commit (outbox upsert) ─────────────────────────────
+
+  /// One good-day record per energy day, amended in place, in the
+  /// check-in's Mood & Energy category. Returns true only when the
+  /// LOCAL stage succeeded (Juno Item 11).
+  Future<bool> _commitGood(List<String> options) async {
+    if (_goodCommitInFlight) return false;
+    if (options.isEmpty) return false;
+    final categoryId = _feelingCategoryId;
+    if (categoryId == null) return false;
+    _goodCommitInFlight = true;
+    try {
+      final ctx = await _freshCommitContext();
+      final resolvedId = _feelingCategoryId ?? categoryId;
+      final existing =
+          findGoodRecord(ctx.merged, moodCategoryId: resolvedId);
+      final ordered = goodOptionsInSheetOrder(options);
+      final QuickLogEntry entry;
+      final bool serverKnown;
+      if (existing != null) {
+        entry = amendGoodEntry(existing, options: ordered);
+        serverKnown = _serverKnownFor(existing, ctx);
+      } else {
+        final id = await _allocateId(ctx.merged);
+        entry = buildGoodEntry(
+          id: id,
+          categoryId: resolvedId,
+          options: ordered,
+        );
+        serverKnown = false;
+      }
+      final ok = await _stageAndApply(entry,
+          serverKnown: serverKnown, fresh: ctx.fresh);
+      if (ok && mounted) {
+        setState(() => _checkInAnnouncement = goodBody(ordered));
+      }
+      return ok;
+    } catch (_) {
+      return false;
+    } finally {
+      _goodCommitInFlight = false;
+    }
+  }
+
+  /// The amend sheet's good commit. A non-empty selection amends
+  /// in place through [_commitGood], unchanged. An EMPTY selection
+  /// is the founder ruling (Oct 28, 2026, discharging Vera
+  /// condition M4): clearing all deletes the day's good-day
+  /// record. Amend mode only — the create sheet keeps [_commitGood]
+  /// directly, whose empty guard stands.
+  Future<bool> _commitGoodAmend(List<String> options) async {
+    if (options.isNotEmpty) return _commitGood(options);
+    return _deleteGoodRecord();
+  }
+
+  /// Deletes today's good-day record: the amend sheet's clear-all
+  /// (founder ruling, Oct 28, 2026). Mirrors History's _deleteEntry
+  /// classification: mark the row deleting (pushes starting now
+  /// skip it), join any in-flight push, cancel a pending upsert
+  /// first — a local-only record's cancel IS the whole delete —
+  /// then issue the server DELETE for a server-known row,
+  /// restoring the cancelled record when the DELETE fails. The
+  /// day's 1–5 ranking is a separate record and is never touched.
+  ///
+  /// Stricter than the upsert commits, deliberately: a delete
+  /// never splices a stale view, so when the fresh pull fails the
+  /// delete does not run at all and the sheet shows the existing
+  /// generic failure copy.
+  Future<bool> _deleteGoodRecord() async {
+    if (_goodCommitInFlight) return false;
+    final categoryId = _feelingCategoryId;
+    if (categoryId == null) return false;
+    _goodCommitInFlight = true;
+    try {
+      final ctx = await _freshCommitContext();
+      if (!ctx.pullOk) return false;
+      final resolvedId = _feelingCategoryId ?? categoryId;
+      final existing =
+          findGoodRecord(ctx.merged, moodCategoryId: resolvedId);
+      if (existing == null) {
+        // Already gone: the clear-all intent is satisfied. Adopt
+        // the fresh merged view so no stale summary can linger,
+        // and drop a stale announcement with the stale record.
+        if (!mounted) return true;
+        setState(() {
+          _mergedEntries = ctx.merged;
+          if (_goodToday != null) _checkInAnnouncement = null;
+        });
+        _deriveFromMerged();
+        return true;
+      }
+      final id = existing.id;
+      _outbox.markDeleting(id);
+      try {
+        await _outbox.settleInFlightPush();
+        if (!mounted) return false;
+        // Vera F1: classify on the SAME evidence the upsert
+        // commits use — the queue flag OR the fresh pull this
+        // delete already holds — never on the queue flag alone.
+        // A lost POST response or a kill in the confirmation gap
+        // can leave the queued record marked local-only while
+        // the server already holds the row; in that state the
+        // fresh pull is the truth, and a cancel-only delete
+        // would silently resurrect on the next pull.
+        final serverKnown = _serverKnownFor(existing, ctx);
+        final pending = _outbox.recordFor(id);
+        LogEntryOutboxRecord? cancelled;
+        if (pending != null) {
+          cancelled = await _outbox.cancel(id);
+          if (cancelled == null) return false;
+          if (!serverKnown) {
+            // A local-only record never reached the server:
+            // cancelling its pending upsert IS the whole delete.
+            if (mounted) _applyGoodDeletion(ctx.merged, id);
+            return true;
+          }
+        }
+        final ok = await _backend.deleteLogEntry(id);
+        if (!ok) {
+          if (cancelled != null) await _outbox.restore(cancelled);
+          return false;
+        }
+        if (mounted) _applyGoodDeletion(ctx.merged, id);
+        return true;
+      } finally {
+        _outbox.unmarkDeleting(id);
+      }
+    } catch (_) {
+      return false;
+    } finally {
+      _goodCommitInFlight = false;
+    }
+  }
+
+  /// Applies a completed good-record deletion to the local view:
+  /// the merged entries minus the deleted id, the announcement
+  /// cleared (a deletion has no ruled announcement copy — announce
+  /// nothing), state re-derived, and health data reloaded,
+  /// mirroring [_stageAndApply]'s post-steps.
+  void _applyGoodDeletion(List<QuickLogEntry> merged, int deletedId) {
+    setState(() {
+      _mergedEntries = [
+        for (final e in merged)
+          if (e.id != deletedId) e,
+      ];
+      _checkInAnnouncement = null;
+    });
+    _deriveFromMerged();
+    unawaited(_loadHealthData());
+  }
+
+  // ── Summary + amend ─────────────────────────────────────────────
+
+  int? get _todayRanking =>
+      _checkInToday == null ? null : feelingRankingOf(_checkInToday!);
+
+  /// Item 7 origin rule: ranking 1–2 + flare ⇒ number-origin;
+  /// ranking 3–5 + flare ⇒ late-added.
+  SummaryFlareOrigin get _summaryFlareOrigin {
+    final ranking = _todayRanking;
+    if (_flareToday == null || ranking == null) {
+      return SummaryFlareOrigin.none;
+    }
+    return ranking <= 2
+        ? SummaryFlareOrigin.numberOrigin
+        : SummaryFlareOrigin.lateAdded;
+  }
+
+  /// Tapping the summary card opens the amend sheet, with its
+  /// sections derived from today's state (Item 9).
+  Future<void> _onSummaryTap() async {
+    // Vera M1: re-entrancy guard, matching every other entry point
+    // in this flow — a second tap while the sheet is open does
+    // nothing.
+    if (_summarySheetOpen) return;
+    final ranking = _todayRanking;
+    if (ranking == null) return;
+    final flare = _flareToday;
+    final flareSeverity = flare == null ? null : flareSeverityOf(flare);
+    final flareKind =
+        flare == null ? null : flareTypesOf(flare).firstOrNull;
+    final showKind = flare != null || ranking <= 2;
+    final showFlareAdd = flare == null && ranking >= 3;
+    final showGood = ranking >= 4 || _goodToday != null;
+    _summarySheetOpen = true;
+    try {
+      await showCheckInAmendSheet(
+        context: context,
+        showKindSection: showKind,
+        currentKind: flareKind,
+        onKind: (kind) async {
+          // Vera F4: the severity must be SOURCEABLE — from the
+          // record itself (preserved verbatim, legacy `Bad`
+          // included) or from the number the user tapped. There is
+          // no invented fallback: when neither sources a severity,
+          // the commit does not write and returns false, so the
+          // sheet shows the existing generic failure copy.
+          final severity = flareSeverity ?? severityForRanking(ranking);
+          if (severity == null) return false;
+          return _commitFlare(severity: severity, type: kind);
+        },
+        showFlareAddSection: showFlareAdd,
+        onFlareAdd: _commitFlare,
+        showGoodSection: showGood,
+        initialGood:
+            _goodToday == null ? const [] : goodOptionsOf(_goodToday!),
+        // Amend mode: an empty commit is the founder-ruled
+        // clear-all delete (Oct 28, 2026), not _commitGood.
+        onGood: _commitGoodAmend,
+      );
+    } finally {
+      _summarySheetOpen = false;
+    }
+    if (!mounted) return;
+    _deriveCheckInState(_mergedEntries);
+  }
+
   /// Round 15c — resolves the once-per-day count-up gate from secure
   /// storage. The gate persists today's date BEFORE reporting true, so
   /// a rebuild mid-animation can never re-trigger it. Local read, so
@@ -1354,8 +1677,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final vitals = await _healthRepo.loadTodayVitals(connected: connected);
     final streak = await streakFuture;
     final cache = HomeDataCache.instance;
-    final changed =
-        cache.applyVitals(vitals) |
+    final changed = cache.applyVitals(vitals) |
         cache.applyStreak(streak.current, streak.best);
     // Persist in the background; never block the UI on storage.
     unawaited(cache.persist());
@@ -1409,8 +1731,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadWeather() async {
-    final reading = await (widget.weatherApi ?? WeatherApiClient())
-        .getCurrentWeatherCondition();
+    final reading =
+        await (widget.weatherApi ?? WeatherApiClient())
+            .getCurrentWeatherCondition();
     if (!mounted) return;
     setState(() {
       _temp = reading.temp;
@@ -1476,10 +1799,10 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final condition = await (widget.weatherApi ?? WeatherApiClient())
           .getConditionAt(
-            latitude: position.latitude,
-            longitude: position.longitude,
-            countryCode: _countryCode,
-          );
+        latitude: position.latitude,
+        longitude: position.longitude,
+        countryCode: _countryCode,
+      );
       if (!mounted) return;
       setState(() {
         _temp = condition.temp;
@@ -1540,7 +1863,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
-                          color: NotelColors.textPrimary.withValues(alpha: 0.8),
+                          color:
+                              NotelColors.textPrimary.withValues(alpha: 0.8),
                         ),
                       ),
                     if (_weatherLoaded) const SizedBox(width: 4),
@@ -1567,7 +1891,11 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             onPressed: () => unawaited(_openConnections()),
             icon: animationsDisabled(context)
-                ? const Icon(Icons.watch, size: 24, color: NotelColors.primary)
+                ? const Icon(
+                    Icons.watch,
+                    size: 24,
+                    color: NotelColors.primary,
+                  )
                 : const Hero(
                     tag: watchConnectionsHeroTag,
                     child: Icon(
@@ -1597,29 +1925,43 @@ class _HomeScreenState extends State<HomeScreen> {
             if (_feelingVisible)
               FeelingCheckInCard(
                 onSelect: _onFeelingSelect,
-                leaving: _feelingLeaving,
-                onExitComplete: () {
-                  if (!mounted) return;
-                  setState(() {
-                    _feelingVisible = false;
-                    _feelingLeaving = false;
-                  });
-                },
               ),
-            // Phase 1 item 1 — the persistent flare-day button,
-            // directly under the check-in: present every day (the
-            // user declares a flare; Tabs never detects one),
-            // rendered only once the Symptoms category resolves,
-            // and NOT premium-gated (logging is free-forever). It is
-            // not wrapped in StaggeredEntrance for the same reason
-            // the check-in card is not: it carries its own state
-            // change, which doubles as the commit confirmation.
-            if (_flareCategoryId != null)
-              FlareDayButton(
-                loggedSeverity: _flareToday == null
-                    ? null
-                    : flareSeverityOf(_flareToday!),
-                onTap: () => unawaited(_onFlareTap()),
+            // Merged check-in flow — once a ranking is logged, ONE
+            // summary card (Juno Item 7) replaces both the number
+            // card and the removed standalone flare button, in the
+            // same slot. Its composition derives from today's three
+            // records; tapping it opens the amend sheet. It is NOT
+            // premium-gated (logging is free-forever).
+            if (_checkInToday != null && _todayRanking != null)
+              CheckInSummaryCard(
+                label: checkInSummaryLabel(
+                  ranking: _todayRanking!,
+                  flareSeverity: _flareToday == null
+                      ? null
+                      : flareSeverityOf(_flareToday!),
+                  flareKind: _flareToday == null
+                      ? null
+                      : flareTypesOf(_flareToday!).firstOrNull,
+                  flareOrigin: _summaryFlareOrigin,
+                  goodOptions: _goodToday == null
+                      ? const []
+                      : goodOptionsOf(_goodToday!),
+                ),
+                semanticsLabel: checkInSummarySemantics(
+                  ranking: _todayRanking!,
+                  flareSeverity: _flareToday == null
+                      ? null
+                      : flareSeverityOf(_flareToday!),
+                  flareKind: _flareToday == null
+                      ? null
+                      : flareTypesOf(_flareToday!).firstOrNull,
+                  flareOrigin: _summaryFlareOrigin,
+                  goodOptions: _goodToday == null
+                      ? const []
+                      : goodOptionsOf(_goodToday!),
+                ),
+                announcement: _checkInAnnouncement,
+                onTap: () => unawaited(_onSummaryTap()),
               ),
             // Phase 1 item 4 — the salt & water card, directly under
             // the feeling check-in (founder Q5). Rendered only once
@@ -1658,9 +2000,7 @@ class _HomeScreenState extends State<HomeScreen> {
             // the background refresh lands, and cached values above it
             // keep rendering first either way.
             if (shouldShowHealthConnectBanner(
-              status: _hcStatus,
-              vitals: _vitals,
-            ))
+                status: _hcStatus, vitals: _vitals))
               HealthConnectBanner(
                 status: _hcStatus!,
                 errorCode: _hcStatusErrorCode,

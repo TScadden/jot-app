@@ -70,6 +70,15 @@ Map<String, dynamic> _checkInEntry() => {
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     };
 
+Map<String, dynamic> _goodDayEntry() => {
+      'id': 44,
+      'categoryId': 6,
+      'body': 'Good day · Energy, Clear head',
+      'chips': '["Good Day","Energy","Clear head"]',
+      'manualText': '',
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    };
+
 /// Stateful fake server: the sync pull reflects whatever the entries
 /// upsert accepted, exactly like the real backend. When [failPosts]
 /// is set, POSTs return 500 and server state never changes.
@@ -334,6 +343,30 @@ void main() {
       );
       expect(find.byIcon(Icons.lock), findsWidgets);
       // No save was (or could be) attempted.
+      expect(server.capturedPosts, isEmpty);
+    });
+
+    testWidgets(
+        'good-day entry detail (Vera F2): the body renders and '
+        'the option tiles render, but the reserved Good Day tag '
+        'never renders as a tile', (tester) async {
+      final server = _FakeServer([_goodDayEntry()]);
+      await _pumpHistory(tester, server);
+      expect(find.text('Good day · Energy, Clear head'), findsOneWidget);
+
+      await tester.tap(find.text('Good day · Energy, Clear head'));
+      await tester.pumpAndSettle();
+
+      // The detail shows the Juno Item 6 body…
+      expect(find.text('Good day · Energy, Clear head'), findsWidgets);
+      // …the user's own option chips as tiles…
+      expect(find.text('Energy'), findsOneWidget);
+      expect(find.text('Clear head'), findsOneWidget);
+      // …and NO tile carrying the reserved tag, character-exact.
+      expect(find.text('Good Day'), findsNothing);
+      // The stored chips are unchanged — filtering is render-only.
+      expect(server.entries.single['chips'],
+          '["Good Day","Energy","Clear head"]');
       expect(server.capturedPosts, isEmpty);
     });
 

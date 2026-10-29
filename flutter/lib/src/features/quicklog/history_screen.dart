@@ -9,6 +9,10 @@ import 'package:tabs_lab/src/features/tools/coach_mascot.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
+import 'package:tabs_lab/src/features/home/flare_day_logging.dart'
+    show flareTag;
+import 'package:tabs_lab/src/features/home/good_day_logging.dart'
+    show goodDayTag;
 import 'package:tabs_lab/src/features/home/intake_logging.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/skeleton.dart';
@@ -1407,7 +1411,14 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final chips = parseEntryChips(_entry.chips);
+    // Juno Item 6 / Vera F2: the reserved data tags (`Flare Day`,
+    // `Good Day`) are NOT display copy and never render as chips on
+    // any surface. They are filtered out of the RENDERED list only
+    // — the entry's stored chips are unchanged, and the user's own
+    // option chips (Energy, a severity, a kind, …) still render.
+    final chips = parseEntryChips(_entry.chips)
+        .where((chip) => chip != flareTag && chip != goodDayTag)
+        .toList();
     final pickerCats = sortedCategoriesForPicker(widget.categories);
     return AlertDialog(
       backgroundColor: NotelColors.surface,

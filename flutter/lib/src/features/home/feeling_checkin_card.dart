@@ -65,6 +65,27 @@ const int feelingCategoryFallbackId = 6;
 /// Native `ENERGY_DAY_START_HOUR` — the energy day starts 04:00 local.
 const int feelingDayStartHour = 4;
 
+/// Merged check-in flow (Juno ruling Oct 28, 2026, Item 1): the
+/// founder-pinned number meanings, in number order. These words are
+/// the visible captions under the buttons (Item 2 — every
+/// presentation, no shortened forms), the severity vocabulary for
+/// number-derived flares (1/2 only), and the summary words (Item 7).
+const List<String> feelingWords = [
+  'Really bad',
+  'Rough',
+  'Average',
+  'Good',
+  'Really good',
+];
+
+/// The Item 1 word for a ranking (1–5).
+String feelingWordForRanking(int level) => feelingWords[level - 1];
+
+/// Button semantics (Item 3): `Energy {n} of 5, {word}` with the
+/// word lowercased — the lowercasing is confined to semantics.
+String feelingButtonSemantics(int level) =>
+    'Energy $level of 5, ${feelingWordForRanking(level).toLowerCase()}';
+
 // ── Pure logic (ports of the native view model) ──────────────────────
 
 /// Port of native `energyDayStart()`: 04:00 local today, or 04:00
@@ -102,17 +123,44 @@ bool hasFeelingCheckIn(
   List<QuickLogEntry> entries, {
   required int moodCategoryId,
   DateTime? now,
+}) =>
+    findFeelingCheckInEntry(
+      entries,
+      moodCategoryId: moodCategoryId,
+      now: now,
+    ) !=
+    null;
+
+/// The current energy day's check-in entry, or null — the entry
+/// [hasFeelingCheckIn] tests for, returned so the merged flow can
+/// read today's ranking value off it. Newest wins when several
+/// match (should not happen — one check-in per day).
+QuickLogEntry? findFeelingCheckInEntry(
+  List<QuickLogEntry> entries, {
+  required int moodCategoryId,
+  DateTime? now,
 }) {
   final start = feelingDayStart(now ?? DateTime.now());
   final startMs = start.millisecondsSinceEpoch;
   final endMs = start.add(const Duration(days: 1)).millisecondsSinceEpoch;
-  return entries.any(
-    (e) =>
-        e.categoryId == moodCategoryId &&
-        e.timestamp >= startMs &&
-        e.timestamp < endMs &&
-        chipsContainFeelingTag(e.chips),
-  );
+  QuickLogEntry? found;
+  for (final e in entries) {
+    if (e.categoryId != moodCategoryId) continue;
+    if (e.timestamp < startMs || e.timestamp >= endMs) continue;
+    if (!chipsContainFeelingTag(e.chips)) continue;
+    if (found == null || e.timestamp > found.timestamp) found = e;
+  }
+  return found;
+}
+
+/// Today's ranking (1–5) parsed from a check-in entry's body
+/// `Feeling: N/5 Today` — the correlation engine's precedent
+/// (`deriveFeelingByDay` matches `^Feeling: ([1-5])/5`). Null when
+/// the body carries no ranking.
+int? feelingRankingOf(QuickLogEntry entry) {
+  final match = RegExp(r'^Feeling: ([1-5])/5\b').firstMatch(entry.body.trim());
+  if (match == null) return null;
+  return int.parse(match.group(1)!);
 }
 
 /// Resolves the Mood & Energy category id from the pulled category
@@ -133,21 +181,21 @@ int? resolveFeelingCategoryId(List<QuickLogCategory> categories) {
 }
 
 /// Builds the exact entry one tap writes (native `selectLevel`):
-/// id = max(existing ids) + 1 (the sync endpoint upserts on
-/// (user_id, local_id), so a fresh id is mandatory — round 19 rule),
 /// body "Feeling: N/5 Today", chips `["Daily Ranking"]`, manualText "".
+/// [id] is REQUIRED and must come from the outbox's post-load
+/// allocation (VC 100107 mechanism): the sync endpoint upserts on
+/// (user_id, local_id), so a fresh id is mandatory (round 19 rule),
+/// and a synchronous max+1 over a possibly-unloaded entry set is
+/// exactly the allocation that mechanism abolished — there is no
+/// fallback form of this builder.
 QuickLogEntry buildFeelingEntry({
   required int level,
   required int categoryId,
-  required List<QuickLogEntry> existing,
+  required int id,
   DateTime? now,
 }) {
-  var maxId = 0;
-  for (final e in existing) {
-    if (e.id > maxId) maxId = e.id;
-  }
   return QuickLogEntry(
-    id: maxId + 1,
+    id: id,
     categoryId: categoryId,
     body: 'Feeling: $level/5 Today',
     chips: jsonEncode(const [feelingCheckInTag]),
@@ -295,14 +343,38 @@ class _FeelingCheckInCardState extends State<FeelingCheckInCard>
                   ),
                   const SizedBox(height: 10),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       for (var level = 1; level <= 5; level++)
-                        _FeelingNumberButton(
-                          level: level,
-                          onTap: widget.leaving
-                              ? null
-                              : () => widget.onSelect(level),
+                        Expanded(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _FeelingNumberButton(
+                                level: level,
+                                onTap: widget.leaving
+                                    ? null
+                                    : () => widget.onSelect(level),
+                              ),
+                              const SizedBox(height: 4),
+                              // Juno Item 2 — visible word captions
+                              // under the buttons, on EVERY
+                              // presentation, verbatim, no shortened
+                              // forms. Load-bearing (binding
+                              // condition 1): the tap is an informed
+                              // declaration only because the meaning
+                              // is printed before it.
+                              Text(
+                                feelingWordForRanking(level),
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w500,
+                                  color: NotelColors.textSecondary,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
                         ),
                     ],
                   ),
@@ -336,7 +408,7 @@ class _FeelingNumberButtonState extends State<_FeelingNumberButton> {
     final pressed = _pressed;
     return Semantics(
       button: true,
-      label: 'Energy ${widget.level} of 5',
+      label: feelingButtonSemantics(widget.level),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTapDown: widget.onTap == null
