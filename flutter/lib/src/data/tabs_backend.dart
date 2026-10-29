@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:tabs_lab/src/data/auth_api.dart';
+import 'package:tabs_lab/src/data/daily_score_sync.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/medication_change_events.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
@@ -1304,6 +1305,50 @@ class TabsBackend {
     return _postJson('/api/sync/medication-events', {
       'events': events.map((e) => e.toJson()).toList(),
     });
+  }
+
+  /// Daily Score sync (Oct 28, 2026) — push a batch of Daily
+  /// Score records via `POST /api/sync/daily-scores` with
+  /// `{"scores": [...]}` → `{success, inserted, replaced,
+  /// ignored}`. Server write rules: `auto` inserts only when no
+  /// row exists; `manual_refresh` replaces an `auto` row or an
+  /// older `manual_refresh` row (see `daily_score_sync.dart`).
+  ///
+  /// True only when the server's body proves the batch landed:
+  /// `success` must be true, and when the body carries the full
+  /// count triple, inserted + replaced + ignored must account
+  /// for EVERY record sent (the Round 57 verified-count pattern —
+  /// a 200 that silently skipped rows must not clear the local
+  /// pending queue). Callers (the sync queue's flush) treat false
+  /// as "keep queued and retry on the next trigger".
+  Future<bool> postDailyScores(List<DailyScoreSyncRecord> scores) async {
+    final res = await _postJsonMap('/api/sync/daily-scores', {
+      'scores': scores.map((s) => s.toJson()).toList(),
+    });
+    if (res == null || res['success'] != true) return false;
+    final inserted = _asInt(res['inserted']);
+    final replaced = _asInt(res['replaced']);
+    final ignored = _asInt(res['ignored']);
+    if (inserted != null && replaced != null && ignored != null) {
+      return inserted + replaced + ignored == scores.length;
+    }
+    return true;
+  }
+
+  /// Daily Score sync (Oct 28, 2026) — the caller's server scores
+  /// via `GET /api/sync/daily-scores` → `{success, scores: [...]}`,
+  /// date-ascending. Malformed rows are skipped; an empty list on
+  /// any failure (the caller's honest outcome: nothing to merge).
+  Future<List<DailyScoreSyncRecord>> fetchDailyScores() async {
+    final body = await _getJson('/api/sync/daily-scores');
+    final scores = body?['scores'];
+    if (scores is! List) return const [];
+    final out = <DailyScoreSyncRecord>[];
+    for (final raw in scores) {
+      final record = DailyScoreSyncRecord.fromJson(raw);
+      if (record != null) out.add(record);
+    }
+    return out;
   }
 
   /// Round 29 — nickname update. Returns the decoded body on HTTP 200

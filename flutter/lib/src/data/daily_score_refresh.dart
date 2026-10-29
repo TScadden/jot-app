@@ -56,6 +56,7 @@
 library;
 
 import 'package:tabs_lab/src/data/daily_score.dart';
+import 'package:tabs_lab/src/data/daily_score_sync.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_history_sync.dart';
 
@@ -121,28 +122,57 @@ class DailyScoreRefresher {
   final HealthHistoryStore store;
   final ScoreCapture _capture;
 
-  DailyScoreRefresher._(this.store, this._capture);
+  /// Server-sync hook (Oct 28, 2026): when wired, a successful
+  /// [HealthHistoryStore.replaceScore] queues the recomputation
+  /// for upload as a [dailyScoreSourceManualRefresh] record.
+  /// Queueing is fire-and-forget — it never delays or fails the
+  /// refresh. The production factory wires
+  /// [DailyScoreSync.instance] when no explicit sync is given
+  /// through [DailyScoreRefreshOwner]'s production path — see
+  /// the factories below; the test factory leaves it null unless
+  /// a test injects one.
+  final DailyScoreSync? scoreSync;
+
+  /// Clock for the persisted score's `computedAt` stamp (the
+  /// same value the sync payload carries). Injectable for tests.
+  final DateTime Function() _now;
+
+  DailyScoreRefresher._(this.store, this._capture,
+      {this.scoreSync, DateTime Function()? now})
+      : _now = now ?? DateTime.now;
 
   /// Production wiring: the capture runs through a
   /// [HealthHistorySync] bound to [store], so the forced capture,
   /// its diagnostics, and the rescore all act on the same store
-  /// the screen is showing.
+  /// the screen is showing. Sync defaults to
+  /// [DailyScoreSync.instance] — the refresh button is a
+  /// production surface, and its manual_refresh records are
+  /// exactly what sync exists to push.
   factory DailyScoreRefresher({
     required HealthHistoryStore store,
     HealthHistorySync? sync,
+    DailyScoreSync? scoreSync,
+    DateTime Function()? now,
   }) =>
       DailyScoreRefresher._(
         store,
         (sync ?? HealthHistorySync.withDeps(store: store)).capture,
+        scoreSync: scoreSync ?? DailyScoreSync.instance,
+        now: now,
       );
 
   /// Test wiring: inject the capture directly (a fake that lands
   /// new data in the store, fails, or stalls, as the case needs).
+  /// Sync stays OFF unless [scoreSync] is injected, so the
+  /// pre-sync test suite's behavior is unchanged.
   factory DailyScoreRefresher.withCapture({
     required HealthHistoryStore store,
     required ScoreCapture capture,
+    DailyScoreSync? scoreSync,
+    DateTime Function()? now,
   }) =>
-      DailyScoreRefresher._(store, capture);
+      DailyScoreRefresher._(store, capture,
+          scoreSync: scoreSync, now: now);
 
   /// Re-scores [date] per the semantics in the file header. Never
   /// throws — a refresh failure must never break the detail
@@ -197,13 +227,19 @@ class DailyScoreRefresher {
     }
 
     // (f) Replace THAT DAY ONLY, through the store's explicit
-    // user-initiated overwrite path.
+    // user-initiated overwrite path. One computedAt stamps both
+    // the store's score metadata and the sync payload (see the
+    // engine's identical rule in daily_score.dart).
+    final computedAt = _now().millisecondsSinceEpoch;
     final replaced = await store.replaceScore(
       date,
       dailyScore: computation.dailyScore,
       scoreSleep: computation.sleepScoreRounded,
       scoreHrv: computation.hrvScoreRounded,
       scoreRestingHr: computation.restingHrScoreRounded,
+      scoreSource: dailyScoreSourceManualRefresh,
+      scoreComputedAt: computedAt,
+      scoreAlgorithmVersion: dailyScoreAlgorithmVersion,
     );
     if (!replaced) {
       // The day is not in the store (any more) — nothing was
@@ -213,6 +249,16 @@ class DailyScoreRefresher {
         newFailureCodes: newFailureCodes,
       );
     }
+    // Sync hook: queue the JUST-REPLACED computation for upload
+    // as a manual_refresh record. Fire-and-forget (see
+    // [scoreSync]); even a byte-identical rescore queues — the
+    // server's manual_refresh record is what lets another device
+    // adopt this day's manual provenance.
+    scoreSync?.queueComputation(
+      computation,
+      source: dailyScoreSourceManualRefresh,
+      computedAt: computedAt,
+    );
     return DailyScoreRefreshOutcome(
       status: DailyScoreRefreshStatus.refreshed,
       computation: computation,
