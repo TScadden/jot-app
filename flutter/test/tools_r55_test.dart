@@ -364,7 +364,7 @@ void main() {
             'autoUp': false,
             'isFavorite': false,
             'isArchived': archived,
-            if (deletedAt != null) 'deletedAt': deletedAt,
+            'deletedAt': ?deletedAt,
           };
       final stamp = ms(DateTime(2026, 10, 10));
       final ctx = buildCoachHealthContext(

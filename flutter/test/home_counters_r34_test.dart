@@ -382,7 +382,7 @@ void main() {
           'autoUp': autoUp,
           'isFavorite': false,
           'isArchived': isArchived,
-          if (deletedAt != null) 'deletedAt': deletedAt,
+          'deletedAt': ?deletedAt,
         };
 
     WeatherApiClient weather() => WeatherApiClient(

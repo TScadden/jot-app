@@ -646,6 +646,13 @@ class _MemFoodStore implements FoodHistoryStore {
   Future<void> saveEncyclopediaJson(String json) async {
     value = json;
   }
+
+  // VC 100110 combine fix: the interface gained this method on
+  // the onboarding-no-seeds branch (with a default in the abstract
+  // class, which `implements` does not inherit). The fake takes
+  // the documented default: no owner enforcement in memory.
+  @override
+  Future<bool> clearIfOwnerMismatch(String? email) async => false;
 }
 
 /// Connected fake Health Connect for Key Metrics: every read the
