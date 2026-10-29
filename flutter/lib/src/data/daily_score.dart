@@ -148,18 +148,22 @@ const double baselineAnchorScore = 70;
 /// leaves the device (server sync, see `daily_score_sync.dart`)
 /// and into the store's per-day score metadata.
 ///
-/// 1 = the scoring formula in THIS tree, whose sleep component is
-/// the LINEAR curve in [scoreSleepComponent] below (`100 × min(
-/// asleepRatio, 1.0)`), with the HRV / resting-HR piecewise maps
-/// as documented in the file header. A sibling branch is changing
-/// the sleep curve to a squared map; whichever tree changes the
-/// formula next MUST bump this constant at combine time, so a
-/// synced record can always be told apart from a score computed
-/// by a different formula. (Checked Oct 28, 2026: the sibling
-/// branch `feat/score-sleep-curve-squared` carries NO version
-/// marker yet — this constant is the first, and its bump is that
-/// branch's to make when the curves combine.)
-const int dailyScoreAlgorithmVersion = 1;
+/// 1 = the original scoring formula, whose sleep component is
+/// the LINEAR curve (`100 × min(asleepRatio, 1.0)`), with the
+/// HRV / resting-HR piecewise maps as documented in the file
+/// header. Every build that ever ran v1 (through VC 100109, and
+/// the server-sync branch itself) computed with the linear curve,
+/// so v1-stamped records are genuinely linear-curve scores.
+///
+/// 2 = v1 with ONE change: the sleep component is the SQUARED
+/// curve in [scoreSleepComponent] below (`100 × min(asleepRatio,
+/// 1.0)²` — squared below need, capped at need). The squared
+/// curve and this bump ship together in the VC 100110 combine:
+/// no earlier build contained the squared curve (verified at
+/// combine: the squared-curve branch carried no version marker
+/// and no sync code, and no shipped build contained the curve),
+/// so no v1-stamped squared-curve score was ever pushed.
+const int dailyScoreAlgorithmVersion = 2;
 
 /// Sync source for a score written by an automatic path (the
 /// engine's write-once first scoring). Server contract value.

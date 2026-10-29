@@ -161,12 +161,13 @@ class _SyncRig {
 
 void main() {
   group('algorithm version constant', () {
-    test('v1 is the linear sleep curve in this tree; no marker '
-        'existed on the sibling squared-curve branch', () {
-      expect(dailyScoreAlgorithmVersion, 1);
-      // The linear map itself: 50% of need → 50 (a squared map
-      // would give 25).
-      expect(scoreSleepComponent(0.5), 50);
+    test('v2 is the squared sleep curve (VC 100110 combine C2); '
+        'v1 was the linear curve and no v1-stamped squared score '
+        'was ever pushed', () {
+      expect(dailyScoreAlgorithmVersion, 2);
+      // The squared map itself: 50% of need → 25 (the v1 linear
+      // map gave 50).
+      expect(scoreSleepComponent(0.5), 25);
       expect(scoreSleepComponent(1.5), 100);
     });
   });
