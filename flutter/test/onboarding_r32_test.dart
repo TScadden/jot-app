@@ -369,6 +369,12 @@ void main() {
         'has_consented': 'true',
         'intro_consultation_seen': 'true',
         'onboarding_complete': 'false',
+        // VC 100110 combine fix: since onboarding-no-seeds, stored
+        // onboarding state is owner-stamped; unstamped state is
+        // wiped at restore BY DESIGN (pinned in
+        // onboarding_no_seeds_test.dart). This test models the
+        // account's OWN state, so it carries the owner's stamp.
+        'onboarding_owner_email': 'new@tabs.app',
       };
       await _pumpAppFlow(tester, session: session, onboardingMap: map);
       expect(find.text('Next Step'), findsOneWidget);
@@ -385,6 +391,9 @@ void main() {
         'has_consented': 'true',
         'intro_consultation_seen': 'true',
         'onboarding_complete': 'true',
+        // VC 100110 combine fix: owner stamp, as above — the
+        // account's own completed state.
+        'onboarding_owner_email': 'new@tabs.app',
       };
       await _pumpAppFlow(tester, session: session, onboardingMap: map);
       expect(find.byType(MainShell), findsOneWidget);
@@ -659,6 +668,9 @@ void main() {
         'has_consented': 'true',
         'intro_consultation_seen': 'true',
         'onboarding_complete': 'false',
+        // VC 100110 combine fix: owner stamp, as above — the
+        // reset account's own in-progress state.
+        'onboarding_owner_email': 'reset@tabs.app',
       };
       final backend = FakeOnboardingBackend(sessionStore: session)
         ..pullBody = {

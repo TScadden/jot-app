@@ -675,6 +675,12 @@ void main() {
         'has_consented': 'true',
         'intro_consultation_seen': 'true',
         'onboarding_complete': 'true',
+        // VC 100110 combine fix: since onboarding-no-seeds, stored
+        // onboarding state is owner-stamped; unstamped state is
+        // wiped at restore BY DESIGN (pinned in
+        // onboarding_no_seeds_test.dart). This test models the
+        // account's OWN completed state, so it carries the stamp.
+        'onboarding_owner_email': _email,
       };
       await pumpFlow(tester, store, onboardingMap: onboardingMap);
 
