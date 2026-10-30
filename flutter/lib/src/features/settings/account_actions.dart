@@ -17,6 +17,7 @@ import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/today_plan_store.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
+import 'package:tabs_lab/src/data/weekly_snapshot_cache.dart';
 
 /// Round 29 — logout / delete-account flows (plus the Oct 2026
 /// founder-fix [resetAccountStatus], which deliberately diverges
@@ -180,6 +181,14 @@ class AccountActions {
     // (and invalidates any in-flight refresh) with the store.
     try {
       DailyScoreRefreshOwner.instance.clear();
+    } catch (_) {}
+    // Weekly Snapshot session cache (Oct 30, 2026): the cached
+    // week is account-bound health data held in app-session
+    // memory — logout / reset / account deletion drops it (and
+    // its owner binding) with the rest, so a departed account's
+    // week never survives in memory behind the login funnel.
+    try {
+      WeeklySnapshotCache.instance.clear();
     } catch (_) {}
     // Round 65: cached extracted document text is account-bound
     // device-local medical text — the same wipe covers it.

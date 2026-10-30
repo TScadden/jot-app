@@ -200,7 +200,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
   }
 
   void _selectMetric(SnapshotMetric m) {
-    final cached = _cache.lookup(m);
+    final cached = widget.loadData == null ? null : _cache.lookup(m);
     setState(() {
       _selected = m;
       _selectedPoint = null; // native resets the tapped point on switch
