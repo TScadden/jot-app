@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/weekly_snapshot.dart';
+import 'package:tabs_lab/src/data/weekly_snapshot_cache.dart';
 import 'package:tabs_lab/src/features/tools/coach_mascot.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
@@ -27,10 +28,18 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// is null the card keeps the round-8 empty states (used by tests).
 ///
 /// Screen-load perf (Oct 26, 2026) — successful loads are cached per
-/// metric for the card session: switching back to a loaded metric
-/// paints its cached data instantly (no loading state) and revalidates
-/// in the background; first loads and the refresh button keep the
-/// foreground loading flow below.
+/// metric: switching back to a loaded metric paints its cached data
+/// instantly (no loading state) and revalidates in the background;
+/// first loads and the refresh button keep the foreground loading
+/// flow below.
+///
+/// Session-cache fix (Oct 30, 2026) — the cache used to be an instance
+/// field of this State, but MainShell has no IndexedStack/keep-alive,
+/// so every tab switch destroyed the State (and the cache) and coming
+/// back ran a full foreground reload. The cache now lives in the
+/// app-session owner [WeeklySnapshotCache], so a return visit paints
+/// the cached week instantly and revalidates in the background,
+/// exactly like an in-session metric switch-back.
 ///
 /// Founder spec (Oct 26, 2026) — no empty-state flash: while a load is in
 /// flight the card shows a loading state, never the no-data state. The
@@ -40,7 +49,12 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 class WeeklySnapshotCard extends StatefulWidget {
   final Future<WeeklySnapshotMetricData> Function(SnapshotMetric)? loadData;
 
-  const WeeklySnapshotCard({super.key, this.loadData});
+  /// The app-session result cache this card reads/writes. Null (the
+  /// production path) uses the shared [WeeklySnapshotCache.instance];
+  /// tests inject a fresh instance so entries never leak across cases.
+  final WeeklySnapshotCache? cache;
+
+  const WeeklySnapshotCard({super.key, this.loadData, this.cache});
 
   @override
   State<WeeklySnapshotCard> createState() => _WeeklySnapshotCardState();
@@ -54,14 +68,17 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
   /// Latest loaded data per metric; null until the first load completes.
   WeeklySnapshotMetricData? _loaded;
 
-  /// Per-metric result cache for this card session (screen-load perf,
-  /// Oct 26, 2026): switching back to a metric that already loaded
-  /// paints its cached data instantly — no loading state — while a
-  /// background refresh revalidates it. Only SUCCESSFUL loads are
-  /// cached: a throwing loader falls back to the empty state exactly
-  /// as before and never poisons an entry, so the next visit to that
-  /// metric runs the normal loading flow again.
-  final Map<SnapshotMetric, WeeklySnapshotMetricData> _cache = {};
+  /// Per-metric result cache (screen-load perf, Oct 26, 2026; hoisted
+  /// to the app session Oct 30, 2026): switching back — or returning
+  /// to Home after a tab switch destroyed this State — to a metric
+  /// that already loaded paints its cached data instantly, with no
+  /// loading state, while a background refresh revalidates it. Only
+  /// SUCCESSFUL loads are cached: a throwing loader falls back to the
+  /// empty state exactly as before and never poisons an entry, so the
+  /// next visit to that metric runs the normal loading flow again.
+  /// Day/week validity is judged by [WeeklySnapshotCache.lookup].
+  WeeklySnapshotCache get _cache =>
+      widget.cache ?? WeeklySnapshotCache.instance;
 
   /// Guards against stale loads when the user switches metrics quickly.
   int _loadGeneration = 0;
@@ -89,7 +106,19 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
   @override
   void initState() {
     super.initState();
-    _reload();
+    // Session-cache hit (e.g. returning to Home after a tab switch
+    // destroyed the previous State): paint the cached week NOW, with
+    // no loading state, and revalidate in the background. A miss —
+    // including an entry stamped for a previous day/week — runs the
+    // normal foreground flow, unchanged.
+    final cached =
+        widget.loadData == null ? null : _cache.lookup(_selected);
+    if (cached == null) {
+      _reload();
+    } else {
+      _loaded = cached;
+      _scheduleRevalidation(_selected);
+    }
   }
 
   @override
@@ -151,15 +180,27 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
     }
     if (!mounted || generation != _loadGeneration) return;
     _emptyTimer?.cancel();
-    _cache[metric] = data;
+    _cache.store(metric, data);
     setState(() {
       _loaded = data;
       _loadInFlight = false;
     });
   }
 
+  /// Revalidates [m] behind its painted cache entry, deferred to the
+  /// next event-loop turn so the cached paint lands first and is
+  /// never gated on the loader; dropped if the user has already
+  /// moved on. Shared by metric switch-back and card recreation.
+  void _scheduleRevalidation(SnapshotMetric m) {
+    _revalidateTimer?.cancel();
+    _revalidateTimer = Timer(Duration.zero, () {
+      if (!mounted || _selected != m) return;
+      _load(m, background: true);
+    });
+  }
+
   void _selectMetric(SnapshotMetric m) {
-    final cached = _cache[m];
+    final cached = _cache.lookup(m);
     setState(() {
       _selected = m;
       _selectedPoint = null; // native resets the tapped point on switch
@@ -174,14 +215,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
     if (cached == null) {
       _load(m, background: false);
     } else {
-      // Revalidate behind the painted cache, deferred to the next
-      // event-loop turn so the cached paint lands first and is never
-      // gated on the loader; dropped if the user has already moved on.
-      _revalidateTimer?.cancel();
-      _revalidateTimer = Timer(Duration.zero, () {
-        if (!mounted || _selected != m) return;
-        _load(m, background: true);
-      });
+      _scheduleRevalidation(m);
     }
   }
 

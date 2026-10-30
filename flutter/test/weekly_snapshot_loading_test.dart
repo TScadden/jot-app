@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/weekly_snapshot.dart';
+import 'package:tabs_lab/src/data/weekly_snapshot_cache.dart';
 import 'package:tabs_lab/src/features/home/weekly_snapshot_card.dart';
 
 /// Founder spec (Oct 26, 2026): the Weekly Snapshot must never flash its
@@ -26,11 +27,21 @@ void main() {
     );
   }
 
-  Widget wrap(Future<WeeklySnapshotMetricData> Function(SnapshotMetric) load) {
+  Widget wrap(
+    Future<WeeklySnapshotMetricData> Function(SnapshotMetric) load, {
+    WeeklySnapshotCache? cache,
+  }) {
     return MaterialApp(
       home: Scaffold(
         body: SingleChildScrollView(
-          child: WeeklySnapshotCard(loadData: load),
+          // Session-cache fix (Oct 30, 2026): every case gets its own
+          // cache instance unless it passes a shared one — the
+          // production default is the app-session singleton, and
+          // entries must never leak across cases through it.
+          child: WeeklySnapshotCard(
+            loadData: load,
+            cache: cache ?? WeeklySnapshotCache.testInstance(),
+          ),
         ),
       ),
     );
@@ -229,5 +240,129 @@ void main() {
     // Clean up the pending timer so the test can end.
     await tester.pump(const Duration(seconds: 30));
     expect(find.text('No heart rate data logged past 7 days'), findsOneWidget);
+  });
+
+  // Session-cache fix (Oct 30, 2026): the per-metric cache outlives
+  // the card State (MainShell destroys Home on every tab switch), so
+  // a return visit paints instantly and revalidates in the
+  // background instead of running the foreground load again.
+  group('session cache (dispose + recreate)', () {
+    WeeklySnapshotMetricData versionedData(String avgText) {
+      final now = DateTime.now();
+      return WeeklySnapshotMetricData(
+        metric: SnapshotMetric.sleepHours,
+        points: List.generate(7, (i) {
+          final d = now.subtract(Duration(days: 6 - i));
+          return DailySnapshotPoint(
+            dateStr: d.toIso8601String().substring(0, 10),
+            dayLabel: 'D$i',
+            value: 5.0 + i,
+          );
+        }),
+        averageOrTotalText: avgText,
+      );
+    }
+
+    testWidgets(
+        'recreated card paints the cached week with NO loading state '
+        'while revalidation is pending; updated data swaps in',
+        (tester) async {
+      final cache = WeeklySnapshotCache.testInstance();
+      final revalidation = Completer<WeeklySnapshotMetricData>();
+      var calls = 0;
+      Future<WeeklySnapshotMetricData> loader(SnapshotMetric m) {
+        calls++;
+        // First load resolves immediately; the return visit's
+        // background revalidation is held open on [revalidation].
+        return calls == 1
+            ? Future.value(versionedData('Avg v1'))
+            : revalidation.future;
+      }
+
+      // First visit: normal foreground load, result cached.
+      await tester.pumpWidget(wrap(loader, cache: cache));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.text('Avg v1'), findsOneWidget);
+      expect(calls, 1);
+
+      // Leave Home: the card State is destroyed (tab switch).
+      await tester.pumpWidget(
+          const MaterialApp(home: Scaffold(body: SizedBox())));
+      await tester.pump();
+
+      // Return: a fresh card State over the SAME session cache paints
+      // the cached week immediately — no loading state — while the
+      // background revalidation is still pending.
+      await tester.pumpWidget(wrap(loader, cache: cache));
+      await tester.pump();
+      expect(find.text('Avg v1'), findsOneWidget);
+      expect(find.text('Loading your week...'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+
+      // The revalidation runs behind the paint...
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(calls, 2,
+          reason: 'return visit must revalidate in the background');
+      expect(find.text('Avg v1'), findsOneWidget);
+      expect(find.text('Loading your week...'), findsNothing);
+
+      // ...and its result swaps in when it completes.
+      revalidation.complete(versionedData('Avg v2'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.text('Avg v2'), findsOneWidget);
+      expect(find.text('Avg v1'), findsNothing);
+      expect(find.text('Loading your week...'), findsNothing);
+    });
+
+    testWidgets(
+        'cold first load with an empty shared cache still shows the '
+        'loading state', (tester) async {
+      final cache = WeeklySnapshotCache.testInstance();
+      final completer = Completer<WeeklySnapshotMetricData>();
+      await tester.pumpWidget(wrap((_) => completer.future, cache: cache));
+      await tester.pump();
+
+      expect(find.text('Loading your week...'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.text('Not enough sleep data yet'), findsNothing);
+
+      completer.complete(versionedData('Avg v1'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.text('Avg v1'), findsOneWidget);
+    });
+
+    testWidgets(
+        'an entry stamped for a previous day does NOT instant-paint: '
+        'the recreated card runs the normal foreground flow',
+        (tester) async {
+      final cache = WeeklySnapshotCache.testInstance();
+      // Seed the shared cache as if yesterday's visit loaded fine.
+      cache.store(
+        SnapshotMetric.sleepHours,
+        versionedData('Avg yesterday'),
+        loadedAt: DateTime.now().subtract(const Duration(days: 1)),
+      );
+      expect(cache.lookup(SnapshotMetric.sleepHours), isNull,
+          reason: 'a previous-day entry is a miss, never a paint');
+
+      final completer = Completer<WeeklySnapshotMetricData>();
+      await tester.pumpWidget(wrap((_) => completer.future, cache: cache));
+      await tester.pump();
+
+      // Yesterday's week must not paint as the current week: the
+      // card is in the foreground loading state instead.
+      expect(find.text('Avg yesterday'), findsNothing);
+      expect(find.text('Loading your week...'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      completer.complete(versionedData('Avg today'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.text('Avg today'), findsOneWidget);
+      expect(find.text('Loading your week...'), findsNothing);
+    });
   });
 }
