@@ -2,7 +2,7 @@ name: tmp-flutter-apk
 on:
   workflow_dispatch:
 jobs:
-  verify:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,5 +15,15 @@ jobs:
           flutter-version: '3.47.7'
           channel: stable
       - run: cd flutter && flutter pub get
-      - run: cd flutter && flutter analyze
-      - run: cd flutter && flutter test
+      - name: Build DSN-live lab APK
+        run: cd flutter && flutter build apk --release --split-per-abi --flavor lab --dart-define=SENTRY_DSN=${{ secrets.SENTRY_LAB_DSN }}
+      - name: Stage DSN-live arm64 APK
+        run: mkdir -p /tmp/layer2 && cp flutter/build/app/outputs/flutter-apk/app-arm64-v8a-lab-release.apk /tmp/layer2/layer2_dsn_live_arm64.apk
+      - name: Build DSN-empty lab APK
+        run: cd flutter && flutter build apk --release --split-per-abi --flavor lab
+      - name: Stage DSN-empty arm64 APK
+        run: cp flutter/build/app/outputs/flutter-apk/app-arm64-v8a-lab-release.apk /tmp/layer2/layer2_dsn_empty_arm64.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tabs-lab-layer2-builds
+          path: /tmp/layer2/*.apk
