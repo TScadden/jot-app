@@ -292,6 +292,29 @@ void main() {
       expect(HeartDataCache.instance.hasDate(today), isFalse);
       expect(HeartDataCache.instance.isFresh(today), isFalse);
     });
+
+    test('a PARTIAL vitals read writes nothing through', () async {
+      // A partial read returns real samples with some chunks
+      // missing and records ONLY lastPartialErrorCode (F2) — the
+      // write-through gate must still refuse it, or the Heart
+      // screen would paint the incomplete series as fresh and
+      // complete inside the freshness window.
+      final hc = _RepoHc(
+        samples: [
+          HrSample(timeMs: _todayMs(10), bpm: 70),
+          HrSample(timeMs: _todayMs(12), bpm: 80),
+        ],
+        partial: true,
+      );
+      final vitals = await repoWith(hc).loadTodayVitals(connected: true);
+      expect(vitals.heartRate, 75,
+          reason: 'partial data still serves the Home vitals strip');
+      final today = _key(DateTime.now());
+      expect(HeartDataCache.instance.hasDate(today), isFalse,
+          reason: 'a partial series must never enter the Heart cache');
+      expect(HeartDataCache.instance.isFresh(today), isFalse,
+          reason: 'a partial read must never stamp freshness');
+    });
   });
 
   group('Sleep instant paint (perf package)', () {
@@ -373,19 +396,25 @@ void main() {
   });
 }
 
-/// Repository fake: serves fixed samples, or fails the read the way
-/// the real service does (empty result + recorded error code).
+/// Repository fake: serves fixed samples, fails the read the way
+/// the real service does (empty result + recorded error code), or
+/// returns a PARTIAL read the way the real service does (real
+/// samples + only the partial code recorded, per F2).
 class _RepoHc extends HealthConnectService {
-  _RepoHc({required this.samples, this.fail = false});
+  _RepoHc({required this.samples, this.fail = false, this.partial = false});
 
   final List<HrSample> samples;
   final bool fail;
+  final bool partial;
 
   @override
   Future<List<HrSample>> readHeartRateSamples(String dateStr) async {
     if (fail) {
       lastReadErrorCode = 'READ_FAILED';
       return const [];
+    }
+    if (partial) {
+      lastPartialErrorCode = 'HR_SAMPLES_PARTIAL';
     }
     return samples;
   }

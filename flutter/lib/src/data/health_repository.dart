@@ -116,6 +116,13 @@ class HealthRepository {
     int? activeCalories;
     int? sleepMinutes;
     try {
+      // The service keeps its read error codes without clearing
+      // them on success; reset them so the write-through gate
+      // below judges THIS load's reads, not a stale earlier one
+      // (mirrors heart_screen._load's reset before its read).
+      hc.lastReadErrorCode = null;
+      hc.lastPartialErrorCode = null;
+      hc.lastReadErrorDetails = null;
       final today = _dateStr(DateTime.now());
       // Round 60 fix (Vera blocker) — each read enters the wait
       // through its OWN error-isolating wrapper, so the wait itself
@@ -139,11 +146,16 @@ class HealthRepository {
       // writes an ownerless disk blob). A Heart open within the
       // cache's fresh window then needs NO Health Connect read at
       // all. Only a clean read writes through: the service records
-      // a failure code on any failed/partial-error read, and a
-      // failed read must never become the cache's "fresh" data
-      // (the cache itself also refuses to stamp failed applies).
-      // The zero rule is re-applied inside the cache's apply.
-      if (hc.lastReadErrorCode == null) {
+      // a failure code on any failed read, and a PARTIAL read
+      // records its own separate code (lastPartialErrorCode —
+      // deliberately kept apart from lastReadErrorCode per the F2
+      // rule, so partial data is never discarded as an outage).
+      // The gate must require BOTH codes null: a partial series
+      // has chunks missing, so it must never become the cache's
+      // "fresh" data or be painted as complete (the cache itself
+      // also refuses to stamp failed applies). The zero rule is
+      // re-applied inside the cache's apply.
+      if (hc.lastReadErrorCode == null && hc.lastPartialErrorCode == null) {
         try {
           HeartDataCache.instance.apply(today, hrSamples);
         } catch (_) {

@@ -387,8 +387,9 @@ class _SleepScreenState extends State<SleepScreen> {
     // is claimed inside the union, so the per-day reads get their
     // own chance to succeed — and to surface their error through
     // the normal path) or when nothing at all landed in the
-    // window. A successful range read with an empty window is
-    // authoritative: no second read.
+    // window — including a successful range read that came back
+    // empty: an empty window is NOT authoritative, so the per-day
+    // reads still run as the second read.
     if (union == null ||
         union.failed(HistoryMetric.sleep) ||
         !anyInWindow) {
