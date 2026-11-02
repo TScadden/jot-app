@@ -109,7 +109,7 @@ class _HeartScreenState extends State<HeartScreen> {
     await _checkConnectionAndLoad();
   }
 
-  Future<void> _checkConnectionAndLoad() async {
+  Future<void> _checkConnectionAndLoad({bool forceLoad = false}) async {
     var connected = false;
     try {
       // Bounded (same defect class as the BP screen's check and the
@@ -136,11 +136,31 @@ class _HeartScreenState extends State<HeartScreen> {
     }
     if (!mounted) return;
     setState(() => _connected = connected);
-    if (connected) await _load();
+    if (connected) await _load(force: forceLoad);
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool force = false}) async {
     if (_loading) return;
+    // Perf package (Nov 2, 2026) — freshness skip: when this date's
+    // series was successfully loaded within HeartDataCache's fresh
+    // window (by this screen, or by Home's vitals load writing
+    // through to the same cache), the painted cache IS the current
+    // data — re-reading the full raw day from Health Connect would
+    // return the same series and only cost the wait. The skip never
+    // applies to a forced load (refresh button, Connections return,
+    // permission grant), and a date with no cached series always
+    // loads as before.
+    if (!force && _cache.isFresh(_dateStr)) {
+      final cached = _cache.snapshot(_dateStr);
+      if (cached != null) {
+        setState(() {
+          _data = cached;
+          _lastSyncAt = _cache.lastSyncAt;
+          _error = null;
+        });
+        return;
+      }
+    }
     setState(() {
       _loading = true;
       _error = null;
@@ -259,7 +279,7 @@ class _HeartScreenState extends State<HeartScreen> {
           _error = 'No permissions were granted.';
         }
       });
-      if (connected) await _load();
+      if (connected) await _load(force: true);
     } on HealthConnectException catch (e) {
       if (mounted) {
         setState(() {
@@ -331,7 +351,9 @@ class _HeartScreenState extends State<HeartScreen> {
     );
     if (!mounted) return;
     // Native returns to the same shared state; re-check + refresh.
-    await _checkConnectionAndLoad();
+    // Forced: a permission fix made in Connections must take effect
+    // on this load, never be freshness-skipped.
+    await _checkConnectionAndLoad(forceLoad: true);
   }
 
   @override
@@ -405,7 +427,7 @@ class _HeartScreenState extends State<HeartScreen> {
           ),
           if (connected == true)
             IconButton(
-              onPressed: _loading ? null : () => unawaited(_load()),
+              onPressed: _loading ? null : () => unawaited(_load(force: true)),
               icon: const Icon(Icons.refresh,
                   size: 24, color: NotelColors.textSecondary),
               tooltip: 'Refresh',
@@ -738,7 +760,12 @@ class _HeartScreenState extends State<HeartScreen> {
             child: CustomPaint(
               size: Size.infinite,
               painter: _HeartPatternPainter(
-                samples: data.samples,
+                // Perf package: the painter draws a bucketed
+                // min/max downsample (every point a real sample,
+                // the day peak preserved exactly) instead of the
+                // full raw series. Cards and spike math above keep
+                // the raw series — see downsampleHrForChart.
+                samples: downsampleHrForChart(data.samples, 512),
                 date: _selectedDate,
                 use24Hour: MediaQuery.of(context).alwaysUse24HourFormat,
               ),

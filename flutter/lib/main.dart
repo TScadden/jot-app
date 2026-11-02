@@ -551,6 +551,13 @@ class _AppFlowState extends State<AppFlow>
     // app-session cache is account-bound too — session expiry drops
     // it like the other home caches (memory-only, synchronous).
     WeeklySnapshotCache.instance.clear();
+    // Perf package (Nov 2, 2026): the Heart series cache is
+    // account-bound too and, unlike its sibling caches, was only
+    // cleared on explicit logout (AccountActions) and on
+    // owner-mismatch at login — a session expiry left the expired
+    // account's heart series (and its new per-date freshness
+    // stamps) on device. Clear it here like the others.
+    unawaited(HeartDataCache.instance.clear());
     // Vera R35 re-review HIGH 2: the Today Summary stores are
     // account-bound too — a session expiry must leave none of the
     // expired account's summary on device (R29b standard). Each

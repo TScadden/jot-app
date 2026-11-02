@@ -59,9 +59,37 @@ class HeartDataCache {
 
   void _resetMemory() {
     _byDate.clear();
+    _fetchedAtByDate.clear();
     _lastSyncAt = null;
     _ownerEmail = null;
     _diskDateStr = null;
+  }
+
+  /// Perf package (Nov 2, 2026) — how long a completed load for a
+  /// date counts as FRESH: inside this window a surface that already
+  /// holds the date's series (this cache) does not re-read Health
+  /// Connect for it. Five minutes is parity with the native Heart
+  /// ViewModel's sync throttle (the Heart screen's own doc cites
+  /// it: native `viewModel.sync` throttles at 5 minutes; the Dart
+  /// bridge previously had no throttle at all, so every Heart open,
+  /// date re-pick and Home load re-read the full raw day).
+  static const Duration freshWindow = Duration(minutes: 5);
+
+  /// Per-date completion time of the last SUCCESSFUL load (memory
+  /// only — a disk-warmed entry is stamped from the blob's
+  /// `fetchedAt`, so a cold start can still be fresh).
+  final Map<String, DateTime> _fetchedAtByDate = {};
+
+  /// True when [dateStr] has a cached series whose successful load
+  /// completed within [freshWindow] of [now]. A failed load never
+  /// stamps (see [apply]), so a fresh verdict always rests on a
+  /// real completed read — never on a failed one.
+  bool isFresh(String dateStr, {DateTime? now}) {
+    if (!_byDate.containsKey(dateStr)) return false;
+    final at = _fetchedAtByDate[dateStr];
+    if (at == null) return false;
+    final diff = (now ?? DateTime.now()).difference(at);
+    return !diff.isNegative && diff <= freshWindow;
   }
 
   String? _ownerEmail;
@@ -138,6 +166,7 @@ class HeartDataCache {
     _byDate[dateStr] = valid;
     _diskDateStr = dateStr;
     _lastSyncAt = now ?? DateTime.now();
+    _fetchedAtByDate[dateStr] = _lastSyncAt!;
     bindToAccount(ownerEmail);
     return HeartDayData.fromSamples(valid);
   }
@@ -210,7 +239,10 @@ class HeartDataCache {
       _byDate[dateStr] = validHrSamples(samples);
       _diskDateStr = dateStr;
       final fetchedAt = DateTime.tryParse(map['fetchedAt'] as String? ?? '');
-      if (fetchedAt != null) _lastSyncAt = fetchedAt;
+      if (fetchedAt != null) {
+        _lastSyncAt = fetchedAt;
+        _fetchedAtByDate[dateStr] = fetchedAt;
+      }
       final rawOwner = map['ownerEmail'];
       if (rawOwner is String) _ownerEmail = _normalizeEmail(rawOwner);
     } catch (_) {
