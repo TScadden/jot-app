@@ -332,7 +332,13 @@ class _SleepScreenState extends State<SleepScreen> {
   /// Never throws — an unreadable store just means no early paint.
   Future<bool> _paintFromStore() async {
     try {
-      final stored = await _queries.store.readAll();
+      // Guarded like every other read on this screen: in
+      // production the store is warmed pre-frame and this is a
+      // memory read, but a wedged storage channel must never hang
+      // the paint — on guard expiry there is simply no early
+      // paint and the normal load proceeds.
+      final stored = await _guarded(() => _queries.store.readAll());
+      if (stored == null) return false;
       final map = <String, int>{
         for (final e in stored.entries)
           if (e.value.sleepMinutes != null && e.value.sleepMinutes! > 0)
@@ -557,7 +563,6 @@ class _SleepScreenState extends State<SleepScreen> {
     // Drop cached reads so the sync is a real re-read, not a replay.
     _history.clear();
     _backend.invalidateSyncPull();
-    final today = DateTime.now();
     // Perf package — the recent window re-reads through the union
     // range load (one bridge call, a genuine fresh fetch — the
     // union always reads Health Connect when asked), with the
