@@ -22,6 +22,14 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// Health Connect row states: Connected (green) / Partially connected
 /// (warning) / Available (tap → permission flow) / Not available on this
 /// device (disabled). Every channel failure surfaces visibly as [CODE].
+///
+/// Nov 2, 2026 fix (founder report): the Connected row is also rendered
+/// from persisted state while the live check is still pending, but the
+/// manage sheet's guard read only the live status and silently
+/// returned — a dead tap on a row showing "Connected" + chevron,
+/// permanent for the whole visit when the (unbounded) live check
+/// wedged. The sheet now opens on the EFFECTIVE (displayed) status,
+/// and a tap in any other state re-verifies instead of no-oping.
 class ConnectionsScreen extends StatefulWidget {
   final HealthConnectService? healthConnectService;
   final VoidCallback? onBack;
@@ -45,6 +53,19 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
   // bare "Partially connected". Empty when fully granted or when
   // the missing-set read failed.
   List<String> _missingLabels = const [];
+
+  /// The status the UI may act on. The live check ([_status]) is
+  /// authoritative once it lands, but the row also renders as
+  /// "Connected" from persisted state while the live check is still
+  /// pending (fast first paint, see [_loadStatus]) — and the live
+  /// check's first bridge calls carry no timeout, so a wedged
+  /// Health Connect can leave it pending indefinitely. In that
+  /// window the displayed status IS the persisted one: a row that
+  /// says "Connected" with a chevron must open the manage sheet
+  /// for that connection, never silently no-op.
+  HealthConnectStatus? get _effectiveStatus =>
+      _status ??
+      (_persistedConnected ? HealthConnectStatus.connected : null);
 
   @override
   void initState() {
@@ -90,6 +111,20 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
               ? HealthConnectStatus.connected
               : HealthConnectStatus.notConnected;
           _error = '[${e.code}] ${e.message}';
+        });
+      }
+    } catch (_) {
+      // Non-bridge failure (e.g. the persisted-state write inside
+      // getStatus): never leave _status pending forever with the
+      // row rendered from persisted state — fall back like the
+      // bridge-error path above, with a visible code (Home parity:
+      // UNKNOWN).
+      if (mounted) {
+        setState(() {
+          _status = _persistedConnected
+              ? HealthConnectStatus.connected
+              : HealthConnectStatus.notConnected;
+          _error = '[UNKNOWN] Status check failed.';
         });
       }
     }
@@ -147,11 +182,30 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
   }
 
   Future<void> _openManageSheet() async {
-    final status = _status;
+    // Act on the EFFECTIVE status — the one the row displays. The
+    // old guard read only the live [_status] and silently returned
+    // while it was still pending, which is exactly the dead tap on
+    // the persisted "Connected" row (founder report, Nov 2, 2026).
+    var status = _effectiveStatus;
     if (status != HealthConnectStatus.connected &&
         status != HealthConnectStatus.partiallyConnected) {
-      return;
+      // Never a silent no-op (LESSONS: silent channel failures):
+      // re-verify live. A bridge failure surfaces visibly as [CODE]
+      // via _loadStatus, and a changed grant re-renders the row in
+      // its true state.
+      await _loadStatus();
+      if (!mounted) return;
+      status = _effectiveStatus;
+      if (status != HealthConnectStatus.connected &&
+          status != HealthConnectStatus.partiallyConnected) {
+        return;
+      }
     }
+    // A settings-open failure from inside the sheet is kept here and
+    // applied AFTER the post-sheet re-verify below: setting _error
+    // while the sheet was open hid it behind the sheet, and the
+    // re-verify's success path then cleared it — a silent failure.
+    String? sheetError;
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: NotelColors.surface,
@@ -166,21 +220,26 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
           await _onDisconnect();
         },
         onManageSystem: () async {
+          Navigator.of(sheetContext).pop();
           try {
             await _service.openHealthConnectSettings();
           } on HealthConnectException catch (e) {
-            if (mounted) setState(() => _error = '[${e.code}] ${e.message}');
+            sheetError = '[${e.code}] ${e.message}';
           }
         },
       ),
     );
     // Re-verify after the sheet closes (user may have changed permissions).
-    _loadStatus();
+    await _loadStatus();
+    if (sheetError != null && mounted) {
+      setState(() => _error = sheetError);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final status = _status;
+    final effectiveStatus = _effectiveStatus;
     final showLoading = status == null && !_persistedConnected;
     return Scaffold(
       backgroundColor: NotelColors.background,
@@ -220,18 +279,19 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
             const SizedBox(height: 8),
             if (showLoading)
               const _LoadingRow()
-            else if (status == HealthConnectStatus.connected ||
-                status == HealthConnectStatus.partiallyConnected ||
-                (_persistedConnected && status == null))
+            else if (effectiveStatus == HealthConnectStatus.connected ||
+                effectiveStatus == HealthConnectStatus.partiallyConnected)
               _ConnectionItem(
                 logo: const _HealthConnectLogo(),
                 name: 'Android Health (Google Fit, Samsung)',
-                statusText: status == HealthConnectStatus.partiallyConnected
-                    ? 'Partially connected'
-                    : 'Connected',
-                statusColor: status == HealthConnectStatus.partiallyConnected
-                    ? NotelColors.warning
-                    : NotelColors.success,
+                statusText:
+                    effectiveStatus == HealthConnectStatus.partiallyConnected
+                        ? 'Partially connected'
+                        : 'Connected',
+                statusColor:
+                    effectiveStatus == HealthConnectStatus.partiallyConnected
+                        ? NotelColors.warning
+                        : NotelColors.success,
                 onTap: _openManageSheet,
               )
             else
@@ -475,13 +535,20 @@ class _ConnectionItem extends StatelessWidget {
                       ],
                     ),
                   ),
+                  // The chevron advertises a tap: show it ONLY on a
+                  // row that actually has one. The disabled
+                  // "Not available on this device" row (onTap null)
+                  // previously rendered one too — the same dishonest
+                  // affordance class as the dead Connected tap.
                   trailing ??
-                      Icon(
-                        Icons.chevron_right,
-                        color:
-                            NotelColors.textSecondary.withValues(alpha: 0.5),
-                        size: 20,
-                      ),
+                      (onTap == null
+                          ? const SizedBox.shrink()
+                          : Icon(
+                              Icons.chevron_right,
+                              color: NotelColors.textSecondary
+                                  .withValues(alpha: 0.5),
+                              size: 20,
+                            )),
                 ],
               ),
             ),
