@@ -294,6 +294,66 @@ List<HrSample> spikeContextReadings(List<HrSample> samples, SpikeEvent spike) {
   return valid.where((s) => s.timeMs >= lo && s.timeMs <= hi).toList();
 }
 
+/// Perf package (Nov 2, 2026) — display-only downsampling of a raw
+/// HR series for the pattern chart. The bridge returns EVERY sample
+/// for the day (a dense watch day is thousands of points for a
+/// ~300 px-wide plot); the painter now draws this bucketed series
+/// instead. Each time bucket contributes its minimum and maximum
+/// sample (in time order), so:
+/// - the output has at most [maxPoints] points,
+/// - the day's peak sample survives EXACTLY (it is its bucket's max,
+///   keeping its own timestamp — the chart's peak marker is
+///   unchanged),
+/// - no value is invented: every output point is a real sample.
+///
+/// This is a CHART input only. The cards, the spike computations
+/// ([computeHeartSpikesCard]'s 5-minute window, [detectSpikeEvents]'
+/// 3-minute gap rule) and every average keep running on the full
+/// raw series in [HeartDayData] — their semantics do not move.
+List<HrSample> downsampleHrForChart(List<HrSample> samples, int maxPoints) {
+  final valid = validHrSamples(samples);
+  if (maxPoints < 2 || valid.length <= maxPoints) return valid;
+  final bucketCount = (maxPoints / 2).ceil();
+  final startMs = valid.first.timeMs;
+  final span = valid.last.timeMs - startMs;
+  if (span <= 0) return valid;
+  final out = <HrSample>[];
+  var bucket = -1;
+  HrSample? lo;
+  HrSample? hi;
+  void flush() {
+    final l = lo;
+    final h = hi;
+    if (l == null || h == null) return;
+    if (l.timeMs == h.timeMs) {
+      out.add(l);
+    } else if (l.timeMs < h.timeMs) {
+      out
+        ..add(l)
+        ..add(h);
+    } else {
+      out
+        ..add(h)
+        ..add(l);
+    }
+  }
+
+  for (final s in valid) {
+    final b = ((s.timeMs - startMs) * bucketCount) ~/ (span + 1);
+    if (b != bucket) {
+      flush();
+      bucket = b;
+      lo = s;
+      hi = s;
+    } else {
+      if (s.bpm < lo!.bpm) lo = s;
+      if (s.bpm > hi!.bpm) hi = s;
+    }
+  }
+  flush();
+  return out;
+}
+
 /// Everything the Heart screen renders for one date, derived from the
 /// raw samples in one pass.
 class HeartDayData {

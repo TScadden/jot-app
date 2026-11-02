@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
+import 'package:tabs_lab/src/data/heart_data_cache.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart';
 import 'package:tabs_lab/src/data/health_history_sync.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -115,6 +116,13 @@ class HealthRepository {
     int? activeCalories;
     int? sleepMinutes;
     try {
+      // The service keeps its read error codes without clearing
+      // them on success; reset them so the write-through gate
+      // below judges THIS load's reads, not a stale earlier one
+      // (mirrors heart_screen._load's reset before its read).
+      hc.lastReadErrorCode = null;
+      hc.lastPartialErrorCode = null;
+      hc.lastReadErrorDetails = null;
       final today = _dateStr(DateTime.now());
       // Round 60 fix (Vera blocker) — each read enters the wait
       // through its OWN error-isolating wrapper, so the wait itself
@@ -130,7 +138,31 @@ class HealthRepository {
         _caloriesOrNull(today),
         _sleepOrNull(today),
       ]);
-      heartRate = daytimeHeartRateAvg(reads[0] as List<HrSample>);
+      final hrSamples = reads[0] as List<HrSample>;
+      // Perf package (Nov 2, 2026) — write-through: this load just
+      // paid the full raw-day HR read; share the series with the
+      // Heart screen through its cache (memory only here — the
+      // Heart screen persists its own loads, so this path never
+      // writes an ownerless disk blob). A Heart open within the
+      // cache's fresh window then needs NO Health Connect read at
+      // all. Only a clean read writes through: the service records
+      // a failure code on any failed read, and a PARTIAL read
+      // records its own separate code (lastPartialErrorCode —
+      // deliberately kept apart from lastReadErrorCode per the F2
+      // rule, so partial data is never discarded as an outage).
+      // The gate must require BOTH codes null: a partial series
+      // has chunks missing, so it must never become the cache's
+      // "fresh" data or be painted as complete (the cache itself
+      // also refuses to stamp failed applies). The zero rule is
+      // re-applied inside the cache's apply.
+      if (hc.lastReadErrorCode == null && hc.lastPartialErrorCode == null) {
+        try {
+          HeartDataCache.instance.apply(today, hrSamples);
+        } catch (_) {
+          // Cache write-through is an optimization; never fail vitals.
+        }
+      }
+      heartRate = daytimeHeartRateAvg(hrSamples);
       final cal = reads[1] as int?;
       // Biometric 0 = failed read → null, never shown/averaged.
       activeCalories = (cal != null && cal > 0) ? cal : null;

@@ -57,6 +57,14 @@ import 'package:tabs_lab/src/theme/skeleton.dart';
 ///   durations only, and the stage bridge read returns minutes +
 ///   efficiency — no session start/end ever reaches Dart — so
 ///   there is no clean source for windows. Omitted, never invented.
+///
+/// Perf package (Nov 2, 2026) — the load path above changed:
+/// the screen now PAINTS FIRST from the store (hero, Recent
+/// Nights, Sleep Need — the score screens' pattern), then serves
+/// the fresh load from ONE union range load instead of 14 per-day
+/// reads plus a second 90-day union load. The per-day reads remain
+/// only as the range read's fallback and for arbitrary picked
+/// dates (compare / past-date debt windows).
 /// Round 48 fix (the tools_team_b Sleep timeouts): every Health
 /// Connect read is wrapped in a timeout. Previously a single wedged
 /// channel call (unmocked in tests, stuck natively per the team
@@ -250,6 +258,24 @@ class _SleepScreenState extends State<SleepScreen> {
   }
 
   Future<void> _load() async {
+    // Perf package (Nov 2, 2026) — PAINT-FIRST, the score screens'
+    // pattern: the R70 history store is LOCAL (warmed before the
+    // first frame in main.dart), so the hero, Recent Nights and
+    // Sleep Need paint from it before any Health Connect call runs.
+    // The fresh load below then swaps current data in silently; a
+    // failed fresh load leaves the painted store data standing. If
+    // the store holds nothing, the skeleton shows exactly as
+    // before. Painted values are the store's real last data (the
+    // zero rule is applied on the way in — see _paintFromStore);
+    // today's deficit keeps its existing rule (profile-only) and
+    // renders "--" until the fresh load lands it.
+    final painted = await _paintFromStore();
+    if (painted && mounted) {
+      setState(() {
+        _connected = true;
+        _loading = false;
+      });
+    }
     final connected = await _guarded(() => _hc.isConnected()) ?? false;
     if (!connected) {
       if (!mounted) return;
@@ -261,46 +287,115 @@ class _SleepScreenState extends State<SleepScreen> {
       return;
     }
 
-    // Initial window: the last 14 days ending today — covers Recent
-    // Nights (7), the debt window (10) and the current-week average.
-    final today = DateTime.now();
-    final dates = [
-      for (var i = 13; i >= 0; i--) _dateKey(today.subtract(Duration(days: i))),
-    ];
     _hc.lastReadErrorCode = null;
     _hc.lastPartialErrorCode = null;
     _hc.lastReadErrorDetails = null;
     _readError = null;
-    await _readMinutesFor(dates);
-    await _applySelected(_dateKey(today), useProfileFallback: true);
+    // ONE union range load serves the whole open: the 14-day hero
+    // window (Recent Nights 7, debt window 10, week average) AND
+    // Sleep Need's 90-day depth arrive in a single readSleepHistory
+    // bridge call, merged into the store on the way. This replaces
+    // the old chain — 14 per-day readSleepMinutes calls followed
+    // later by a separate 90-day union load that re-read the same
+    // nights. The per-day reads remain as the fallback for a range
+    // read that yields nothing for the window (and for arbitrary
+    // picked dates elsewhere on this screen, which a
+    // today-anchored range read cannot serve).
+    final partial = await _loadWindowFromUnion();
+    await _applySelected(_dateKey(DateTime.now()),
+        useProfileFallback: true);
+    if (partial) _capturePartialError();
     if (!mounted) return;
-    // Perf fix — paint-first: the hero, Recent Nights and debt are
-    // fully computed from the reads above, so the screen paints
-    // NOW. The Sleep Need refresh (a trailing 90-day union load +
-    // full store read) used to gate _loading=false even though it
-    // only feeds that one section; it now continues behind the
-    // paint and repaints when it lands.
     setState(() {
       _connected = true;
       _loading = false;
       _refreshing = false;
     });
-    // Behind the paint, the Sleep Need section settles in two
-    // steps: the store's local depth first (no bridge call, no
-    // timer — it lands almost immediately), then the full union
-    // refresh. The background step deliberately runs UNGUARDED:
-    // arming the usual 5s read-guard timer behind a completed
-    // paint leaves a live timer (and a hung future) dangling off a
+    // Behind the paint, Sleep Need settles from the store the
+    // union load just refreshed — store-only, NO second Health
+    // Connect fetch. The step deliberately runs UNGUARDED: arming
+    // the usual 5s read-guard timer behind a completed paint
+    // leaves a live timer (and a hung future) dangling off a
     // screen the user can already use and leave, and loadDays
-    // never throws by contract — a wedged channel simply leaves
-    // the section on its store-painted state, exactly what a
-    // guard expiry would do. Sync (below) keeps the guarded path.
+    // never throws by contract. Sync (below) keeps the guarded
+    // path.
     unawaited(() async {
       await _refreshSleepNeed(guarded: false, storeOnly: true);
       if (mounted) setState(() {});
-      await _refreshSleepNeed(guarded: false);
-      if (mounted) setState(() {});
     }());
+  }
+
+  /// Perf package — the store-first paint for [_load]: fills the
+  /// hero / Recent Nights / Sleep Need state from the history
+  /// store's stored sleep minutes (local read, no bridge call).
+  /// Returns true when the store held at least one real night.
+  /// Never throws — an unreadable store just means no early paint.
+  Future<bool> _paintFromStore() async {
+    try {
+      // Guarded like every other read on this screen: in
+      // production the store is warmed pre-frame and this is a
+      // memory read, but a wedged storage channel must never hang
+      // the paint — on guard expiry there is simply no early
+      // paint and the normal load proceeds.
+      final stored = await _guarded(() => _queries.store.readAll());
+      if (stored == null) return false;
+      final map = <String, int>{
+        for (final e in stored.entries)
+          if (e.value.sleepMinutes != null && e.value.sleepMinutes! > 0)
+            e.key: e.value.sleepMinutes!,
+      };
+      if (map.isEmpty) return false;
+      _history.addAll(map);
+      final today = _dateKey(DateTime.now());
+      _selectedDate = today;
+      _selectedMins = _history[today];
+      final window = sevenDayWindow();
+      _nights = [
+        for (final d in window)
+          (dateStr: d.dateStr, dayLabel: d.dayLabel, mins: _history[d.dateStr]),
+      ];
+      _sleepNeed = estimateSleepNeed(map);
+      _needNights = evaluateRecentNights(map);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Perf package — loads the recent window through the union
+  /// helper (store ∪ ONE fresh range read, fresh rows merged into
+  /// the store before returning) and folds the result into
+  /// [_history]. When the union yields nothing for the 14-day hero
+  /// window, falls back to the per-day reads this replaces.
+  /// Returns the union's partial signal for the caller to surface.
+  Future<bool> _loadWindowFromUnion() async {
+    final today = DateTime.now();
+    final dates = [
+      for (var i = 13; i >= 0; i--) _dateKey(today.subtract(Duration(days: i))),
+    ];
+    final union = await _guarded(
+      () => _queries.loadDays(90, metrics: {HistoryMetric.sleep}),
+    );
+    var anyInWindow = false;
+    if (union != null) {
+      for (final e in union.sleepMinutes.entries) {
+        if (e.value > 0) _history[e.key] = e.value;
+      }
+      anyInWindow = dates.any((d) => _history.containsKey(d));
+    }
+    // Fall back when the range read failed outright (its failure
+    // is claimed inside the union, so the per-day reads get their
+    // own chance to succeed — and to surface their error through
+    // the normal path) or when nothing at all landed in the
+    // window — including a successful range read that came back
+    // empty: an empty window is NOT authoritative, so the per-day
+    // reads still run as the second read.
+    if (union == null ||
+        union.failed(HistoryMetric.sleep) ||
+        !anyInWindow) {
+      await _readMinutesFor(dates);
+    }
+    return union?.partial(HistoryMetric.sleep) ?? false;
   }
 
   /// R70 — refreshes the Personal Sleep Need state from the
@@ -323,7 +418,11 @@ class _SleepScreenState extends State<SleepScreen> {
       // hang the load — the section just keeps its prior state.
       final union = guarded
           ? await _guarded(
-              () => _queries.loadDays(90, metrics: {HistoryMetric.sleep}),
+              () => _queries.loadDays(
+                90,
+                metrics: {HistoryMetric.sleep},
+                fetchFromHealthConnect: !storeOnly,
+              ),
             )
           : await _queries.loadDays(
               90,
@@ -391,20 +490,34 @@ class _SleepScreenState extends State<SleepScreen> {
 
   /// Loads stages for [dateStr] and recomputes hero + debt + nights.
   /// Must be called inside/before a setState by callers that need one.
+  /// The profile pull for the hero fallback, failing soft to null
+  /// (the hero stays "--" — honest empty).
+  Future<Map<String, dynamic>?> _fetchProfileOrNull() async {
+    try {
+      return await _backend.fetchProfile();
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _applySelected(String dateStr,
       {bool useProfileFallback = false}) async {
+    // Perf package — the profile pull (network) and the stages
+    // read (bridge) are independent: the pull starts FIRST so the
+    // two overlap instead of paying them in series. Values and
+    // precedence are unchanged.
+    final profileFuture =
+        (useProfileFallback && dateStr == _dateKey(DateTime.now()))
+            ? _fetchProfileOrNull()
+            : null;
     final stages = await _guarded(() => _hc.readSleepStages(dateStr),
         timeout: const Duration(seconds: 3));
     var mins = _history[dateStr] ?? _positiveOrNull(stages?.minutesAsleep);
     int? profileDebt;
-    if (useProfileFallback && dateStr == _dateKey(DateTime.now())) {
-      try {
-        final profile = await _backend.fetchProfile();
-        mins ??= _asPositiveInt(profile?['todaySleepMins']);
-        profileDebt = _asInt(profile?['todaySleepDebt']);
-      } catch (_) {
-        // Hero stays "--" — honest empty.
-      }
+    if (profileFuture != null) {
+      final profile = await profileFuture;
+      mins ??= _asPositiveInt(profile?['todaySleepMins']);
+      profileDebt = _asInt(profile?['todaySleepDebt']);
     }
     // Debt needs the 10 nights ending at the selected date.
     final end = DateTime.tryParse(dateStr);
@@ -451,24 +564,28 @@ class _SleepScreenState extends State<SleepScreen> {
     // Drop cached reads so the sync is a real re-read, not a replay.
     _history.clear();
     _backend.invalidateSyncPull();
-    final today = DateTime.now();
-    final dates = [
-      for (var i = 13; i >= 0; i--) _dateKey(today.subtract(Duration(days: i))),
-    ];
-    // Re-read the selected date's window too when it is in the past.
+    // Perf package — the recent window re-reads through the union
+    // range load (one bridge call, a genuine fresh fetch — the
+    // union always reads Health Connect when asked), with the
+    // per-day fallback inside the helper. A past selected date's
+    // debt window still reads per-day: a today-anchored range read
+    // cannot serve arbitrary past dates.
+    final partial = await _loadWindowFromUnion();
     if (!_isTodaySelected) {
       final end = DateTime.tryParse(_selectedDate);
       if (end != null) {
-        dates.addAll([
+        await _readMinutesFor([
           for (var i = 9; i >= 0; i--)
             _dateKey(end.subtract(Duration(days: i))),
         ]);
       }
     }
-    await _readMinutesFor(dates.toSet().toList());
     await _applySelected(_selectedDate,
         useProfileFallback: _isTodaySelected);
-    await _refreshSleepNeed();
+    if (partial) _capturePartialError();
+    // The union load above already refreshed the store, so Sleep
+    // Need settles store-only — no second range fetch in one sync.
+    await _refreshSleepNeed(storeOnly: true);
     if (!mounted) return;
     setState(() => _refreshing = false);
   }
