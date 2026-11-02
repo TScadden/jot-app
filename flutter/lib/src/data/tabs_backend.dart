@@ -300,6 +300,30 @@ class TabsBackend {
       if (result is RefreshDefinitiveFailure) {
         return await _definitiveFailure();
       }
+      if (result is RefreshAlreadyRotated) {
+        // Server grace response: the refresh token this call
+        // presented had JUST been rotated — a racing isolate
+        // (typically the WorkManager background isolate replaying
+        // the token, or this app replaying the background's) won
+        // the rotation, and the winner saves the rotated pair to
+        // the shared session store. Re-read the stored pair NOW:
+        // if storage already holds a DIFFERENT access token than
+        // the one that failed, continue with it — the session
+        // heals itself with no re-login. If storage still holds
+        // the failed token (or none), fall through to the
+        // temporary outcome. This path NEVER reaches
+        // _definitiveFailure and never clears the session.
+        final storedPair = (
+          token: await _sessionStore.readToken(),
+          refreshToken: await _sessionStore.readRefreshToken(),
+        );
+        final storedToken = storedPair.token;
+        if (storedToken != null &&
+            storedToken.trim().isNotEmpty &&
+            storedToken != failedToken) {
+          return _RefreshSucceeded(storedToken);
+        }
+      }
       return const _RefreshTemporary();
     } catch (_) {
       // Storage surprise mid-refresh: preserve the session.

@@ -202,6 +202,59 @@ void main() {
       final result = await client.refreshSession(_oldRefresh);
       expect(result, isA<RefreshTemporaryFailure>());
     });
+
+    // Refresh self-heal package — the server's grace response for
+    // a replayed just-rotated token is its OWN result type:
+    // distinctly not definitive (the session must survive) and
+    // not a plain temporary (the caller can actively heal from
+    // the session store). The exact string matches none of the
+    // definitive keywords (no 'expired'/'revoked'/'invalid'/
+    // 'disabled' substring), verified by this test passing
+    // against the keyword check that runs after it.
+    test(
+        '200 refresh_already_rotated is RefreshAlreadyRotated, '
+        'explicitly NOT definitive', () async {
+      for (final error in [
+        'refresh_already_rotated',
+        'REFRESH_ALREADY_ROTATED',
+        'Refresh_Already_Rotated',
+      ]) {
+        final client = AuthApiClient(
+          client: MockClient((_) async => http.Response(
+              jsonEncode({
+                'error': error,
+                'message': 'This refresh token was already rotated.',
+              }),
+              200)),
+        );
+        final result = await client.refreshSession(_oldRefresh);
+        expect(result, isA<RefreshAlreadyRotated>(), reason: error);
+        expect(result, isNot(isA<RefreshDefinitiveFailure>()),
+            reason: error);
+        expect(result, isNot(isA<RefreshTemporaryFailure>()),
+            reason: error);
+        expect(result, isNot(isA<RefreshSuccess>()), reason: error);
+      }
+    });
+
+    // The grace case is an EXACT match: a longer error string
+    // merely containing the phrase does not take it (and this one
+    // carries no keyword and no token pair, so it stays
+    // temporary — never definitive, never success).
+    test(
+        '200 with a longer error merely containing the grace '
+        'phrase is temporary, not RefreshAlreadyRotated', () async {
+      final client = AuthApiClient(
+        client: MockClient((_) async => http.Response(
+            jsonEncode({
+              'error': 'refresh_already_rotated upstream hiccup',
+            }),
+            200)),
+      );
+      final result = await client.refreshSession(_oldRefresh);
+      expect(result, isA<RefreshTemporaryFailure>());
+      expect(result, isNot(isA<RefreshAlreadyRotated>()));
+    });
   });
 
   group('TabsBackend 401 → refresh → retry-once', () {
@@ -360,6 +413,108 @@ void main() {
       final streak = await backend.fetchStreak();
 
       expect(streak.current, isNull);
+      expect(store.token, _oldAccess);
+      expect(store.refreshToken, _oldRefresh);
+      expect(store.email, _email);
+      expect(expiredCalls, 0);
+    });
+
+    // Refresh self-heal package — the grace response heals from
+    // the store: a racing isolate won the rotation and saved the
+    // rotated pair while this refresh POST was in flight (the
+    // mock performs that save before answering, exactly the
+    // interleaving the shared store produces in production).
+    // _performRefresh must re-read the store, continue with the
+    // stored token, and retry — session never cleared, no
+    // session-expired callback.
+    test(
+        'refresh_already_rotated with the rotated pair already '
+        'stored: self-heals, retries with the stored token, '
+        'session preserved', () async {
+      final store = _seededStore();
+      var expiredCalls = 0;
+      var refreshCalls = 0;
+      var pullCalls = 0;
+      TabsBackend.onSessionExpired = () => expiredCalls++;
+      final backend = TabsBackend(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/auth/refresh-token') {
+            refreshCalls++;
+            // The winning isolate's saveSession lands first.
+            store.token = _newAccess;
+            store.refreshToken = _newRefresh;
+            return http.Response(
+              jsonEncode({
+                'error': 'refresh_already_rotated',
+                'message': 'This refresh token was already rotated.',
+              }),
+              200,
+            );
+          }
+          if (request.url.path == '/api/sync/pull') {
+            pullCalls++;
+            if (request.headers['Authorization'] == 'Bearer $_oldAccess') {
+              return http.Response('{"error":"expired"}', 401);
+            }
+            if (request.headers['Authorization'] == 'Bearer $_newAccess') {
+              return http.Response(
+                jsonEncode({
+                  'entries': [],
+                  'profile': {'currentStreak': 21, 'bestStreak': 34},
+                }),
+                200,
+              );
+            }
+          }
+          return http.Response('not found', 404);
+        }),
+        sessionStore: store,
+      );
+
+      final streak = await backend.fetchStreak();
+
+      expect(streak.current, 21);
+      expect(streak.best, 34);
+      expect(refreshCalls, 1);
+      expect(pullCalls, 2); // original + exactly one retry
+      expect(store.token, _newAccess);
+      expect(store.refreshToken, _newRefresh);
+      expect(store.email, _email);
+      expect(expiredCalls, 0);
+    });
+
+    // The other half of the branch: grace response but storage
+    // still holds the FAILED token (the winner's save has not
+    // landed / never happened) → temporary outcome: session
+    // preserved untouched, no callback, caller gets its normal
+    // failure. Never definitive.
+    test(
+        'refresh_already_rotated with storage unchanged: temporary '
+        'outcome, session preserved, no session-expired callback',
+        () async {
+      final store = _seededStore();
+      var expiredCalls = 0;
+      TabsBackend.onSessionExpired = () => expiredCalls++;
+      final backend = TabsBackend(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/auth/refresh-token') {
+            return http.Response(
+              jsonEncode({
+                'error': 'refresh_already_rotated',
+                'message': 'This refresh token was already rotated.',
+              }),
+              200,
+            );
+          }
+          return http.Response('{"error":"expired"}', 401);
+        }),
+        sessionStore: store,
+      );
+
+      final streak = await backend.fetchStreak();
+
+      expect(streak.current, isNull);
+      expect(streak.best, isNull);
       expect(store.token, _oldAccess);
       expect(store.refreshToken, _oldRefresh);
       expect(store.email, _email);

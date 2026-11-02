@@ -321,11 +321,20 @@ class AuthApiClient {
   ///    covers 5xx AND every other non-2xx (400 included) — an
   ///    `error` string on a non-200 response is NEVER definitive,
   ///    even when it contains a keyword below.
-  /// 3. Only on HTTP 200 is the body inspected: the `error` string
-  ///    (lowercased) containing "expired", "revoked", "invalid",
-  ///    or "disabled" → [RefreshDefinitiveFailure]; a non-blank
-  ///    `token` AND non-blank `refreshToken` → [RefreshSuccess];
-  ///    anything else (blank tokens, unparseable body) →
+  /// 3. Only on HTTP 200 is the body inspected, in this order:
+  ///    an `error` string exactly equal (case-insensitive) to
+  ///    "refresh_already_rotated" → [RefreshAlreadyRotated] (the
+  ///    server's grace response when a just-rotated token is
+  ///    replayed, e.g. by a racing background isolate — the exact
+  ///    string contains none of the definitive keywords below, so
+  ///    this case and the keyword check can never both match one
+  ///    body, and the equality match means a longer error string
+  ///    merely CONTAINING the phrase does not take this case);
+  ///    the `error` string (lowercased) containing "expired",
+  ///    "revoked", "invalid", or "disabled" →
+  ///    [RefreshDefinitiveFailure]; a non-blank `token` AND
+  ///    non-blank `refreshToken` → [RefreshSuccess]; anything
+  ///    else (blank tokens, unparseable body) →
   ///    [RefreshTemporaryFailure].
   /// - Transport failures (network exception/timeout) are always
   ///   [RefreshTemporaryFailure]. The session MUST be preserved on
@@ -365,10 +374,19 @@ class AuthApiClient {
       return const RefreshTemporaryFailure();
     }
 
-    // Taxonomy step 3 (HTTP 200 only): keyword check on the error
-    // string, then the rotated-pair check.
+    // Taxonomy step 3 (HTTP 200 only): the already-rotated grace
+    // case, then the keyword check on the error string, then the
+    // rotated-pair check.
     final body = _decodeJson(response.body);
     final error = body['error']?.toString().toLowerCase() ?? '';
+    // Grace case FIRST, as an exact (case-insensitive) equality —
+    // verified non-shadowing: 'refresh_already_rotated' contains
+    // none of 'expired' / 'revoked' / 'invalid' / 'disabled', so
+    // no body can match both this case and the keyword check
+    // below, in either order.
+    if (error == 'refresh_already_rotated') {
+      return const RefreshAlreadyRotated();
+    }
     if (error.contains('expired') ||
         error.contains('revoked') ||
         error.contains('invalid') ||
@@ -444,6 +462,19 @@ class RefreshSuccess extends RefreshResult {
 /// revoked / invalid / disabled). The session must be cleared.
 class RefreshDefinitiveFailure extends RefreshResult {
   const RefreshDefinitiveFailure();
+}
+
+/// The server's grace response: the presented refresh token had
+/// already been rotated (HTTP 200, `error` exactly
+/// "refresh_already_rotated") — typically because a concurrent
+/// isolate replayed the token the winning refresh just consumed.
+/// NOT a dead session and NOT a plain transient failure: the
+/// rotated pair may already sit in the session store (saved by
+/// the isolate that won the race), so the caller re-reads the
+/// store and continues with the stored pair when it has moved
+/// on. The session MUST be preserved on this outcome.
+class RefreshAlreadyRotated extends RefreshResult {
+  const RefreshAlreadyRotated();
 }
 
 /// Refresh could not complete for a transient reason. The stored
