@@ -13,6 +13,7 @@ import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_history_sync.dart';
 import 'package:tabs_lab/src/data/heart_data_cache.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
+import 'package:tabs_lab/src/data/weekly_snapshot_cache.dart';
 import 'package:tabs_lab/src/data/launch_trace.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
@@ -546,6 +547,10 @@ class _AppFlowState extends State<AppFlow>
     // but they are account-bound too — session expiry drops them
     // (and invalidates any in-flight refresh) alongside the store.
     DailyScoreRefreshOwner.instance.clear();
+    // Session-cache fix (Oct 30, 2026): the Weekly Snapshot
+    // app-session cache is account-bound too — session expiry drops
+    // it like the other home caches (memory-only, synchronous).
+    WeeklySnapshotCache.instance.clear();
     // Vera R35 re-review HIGH 2: the Today Summary stores are
     // account-bound too — a session expiry must leave none of the
     // expired account's summary on device (R29b standard). Each
@@ -637,6 +642,11 @@ class _AppFlowState extends State<AppFlow>
     // so a previous account's deferred outcome is gone before the
     // shell mounts, exactly like the store's memory wipe above.
     DailyScoreRefreshOwner.instance.clearIfOwnerMismatch(email);
+    // Session-cache fix (Oct 30, 2026): same owner-mismatch
+    // enforcement for the Weekly Snapshot app-session cache —
+    // synchronous, so a previous account's week is gone before the
+    // shell mounts for the new account.
+    WeeklySnapshotCache.instance.clearIfOwnerMismatch(email);
     // Vera R35 re-review HIGH 2: the Round 35 Today Summary stores
     // join the same owner-mismatch enforcement — a previous
     // account's cached summary / plan state must be gone before
@@ -926,6 +936,9 @@ class _AppFlowState extends State<AppFlow>
     // Refresh-scope fix (Oct 20, 2026): same enforcement for the
     // refresh owner's in-memory pending outcomes.
     DailyScoreRefreshOwner.instance.clearIfOwnerMismatch(email);
+    // Session-cache fix (Oct 30, 2026): same owner-mismatch
+    // enforcement for the Weekly Snapshot app-session cache.
+    WeeklySnapshotCache.instance.clearIfOwnerMismatch(email);
     // Vera R35 re-review HIGH 2: same owner-mismatch enforcement
     // as login (see _onLoginSuccess).
     unawaited(TodaySummaryCache.instance.clearIfOwnerMismatch(email));
