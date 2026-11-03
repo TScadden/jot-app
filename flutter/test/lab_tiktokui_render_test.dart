@@ -277,10 +277,20 @@ void main() {
           await image.toByteData(format: ui.ImageByteFormat.png);
       final png = byteData!.buffer.asUint8List();
       final home = Platform.environment['HOME'] ?? '/home/hatch';
-      await File('$home/workspace/tiktok-ui-lab/tabs_home_tiktokui_v1.png')
-          .writeAsBytes(png);
-      await File('$home/workspace/your_files/tabs_home_tiktokui_v1.png')
-          .writeAsBytes(png);
+      final labDir = Directory('$home/workspace/tiktok-ui-lab');
+      if (await labDir.exists()) {
+        // Local deliverable run: save the capture to both homes.
+        await File('${labDir.path}/tabs_home_tiktokui_v1.png')
+            .writeAsBytes(png);
+        await File('$home/workspace/your_files/tabs_home_tiktokui_v1.png')
+            .writeAsBytes(png);
+      } else {
+        // CI runner: no deliverable directory — keep the capture
+        // assertions meaningful and stash the PNG in temp instead.
+        await File(
+                '${Directory.systemTemp.path}/tabs_home_tiktokui_v1.png')
+            .writeAsBytes(png);
+      }
       return png;
     });
     // PNG signature + IHDR dimensions at fixed offsets.
