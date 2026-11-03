@@ -42,9 +42,17 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 ///   [TodaySummaryCache], never an error and never a blank section;
 ///   Health Connect gaps simply omit their trend sections, matching
 ///   native's per-section fail-safe repository.
-/// - No optimistic flips: rows render from loaded data only, and an
-///   action reloads quietly in the background (no spinner, no
-///   count-up replay — there are no animated numbers in this card).
+/// - Plan actions are optimistic (founder fix, Nov 2, 2026 —
+///   supersedes the R35 no-optimism rule for plan rows): a
+///   check-off slides the row away the same frame it is tapped,
+///   and the loader write + reconciling reload run in the
+///   background through a serialized chain (see [_actionChain]),
+///   so a slow or stalled connection never leaves a tapped row
+///   sitting motionless and rapid back-to-back taps on different
+///   rows all register. A reminder/habit write that reports
+///   failure restores its row on the reconciling reload — no
+///   phantom completions. (Still no spinner and no count-up
+///   replay — there are no animated numbers in this card.)
 /// - Plan and trends load in two phases (native's flows are likewise
 ///   independent): the plan never waits on Health Connect. One
 ///   micro-divergence from native: the trends area shows its empty
@@ -62,10 +70,12 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 ///   (see [_SlideAwayRowSlot]: 300ms, the app's standard slide
 ///   duration; slide eased with easeIn — the app's exit curve —
 ///   and the height collapse with easeInOut), then the item is
-///   gone from this card instance's view. Presentation only: the
-///   check-off persists through the exact same loader writes as
-///   before, BEFORE the slide starts, so navigating away
-///   mid-slide never loses it. Reduced motion
+///   gone from this card instance's view. The slide starts FIRST
+///   (optimistic, the same frame as the tap); the check-off then
+///   persists through the exact same loader writes as before,
+///   in the background through the serialized [_actionChain],
+///   and the reconciling reload that follows each write keeps
+///   the view honest. Reduced motion
 ///   (animationsDisabled) removes the item instantly, no slide.
 ///   Section rule (founder): the card auto-collapses ONLY when a
 ///   check-off removes the LAST remaining plan item, and only after
@@ -130,9 +140,23 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
   TodaySummaryData? _data;
   bool _trendsRefreshing = false;
 
-  /// One action at a time per row (native's writes are serialized by
-  /// its view-model scope; a double-tap must not double-post).
-  String? _actingItemId;
+  /// Background write chain for plan actions (Nov 2, 2026 fix).
+  /// Taps NEVER wait on this chain — the slide-away is optimistic
+  /// and starts the same frame — but the writes themselves must
+  /// execute sequentially in tap order: the loader allocates each
+  /// new log entry's id as server-max+1 from a fresh fetch, so two
+  /// concurrent writes could collide on the same id and clobber
+  /// each other's entry. Each link runs one write plus its
+  /// reconciling reload, and swallows its own errors so a failed
+  /// link never wedges the chain. There is deliberately NO global
+  /// acting lock: the pre-fix `_actingItemId` guard silently ate
+  /// taps on every other row for the whole in-flight window,
+  /// which is what broke the founder's rapid back-to-back med
+  /// routine. Idempotency is per item instead: an item already in
+  /// [_goneItemIds] (sliding, slid, or vanished) ignores further
+  /// taps, and once tapped its row is replaced by the inert slide
+  /// slot, so a same-row double-tap cannot re-fire.
+  Future<void> _actionChain = Future<void>.value();
 
   /// Slide-away exit state (see the class doc). At most one row
   /// slides out at a time; a second check-off finalizes the
@@ -147,17 +171,27 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
   /// substituted for a rendered row.
   TodayPlanItem? _exitingItem;
   int _exitingIndex = 0;
-  final GlobalKey<_SlideAwayRowSlotState> _exitSlotKey =
+
+  /// Key of the ACTIVE exit slot. Replaced with a fresh key for
+  /// every exit (see _slideOrVanish): a finalized slot's State is
+  /// spent (its gone latch is set, its controller stopped), and a
+  /// rapid second check-off can arrive before that slot has left
+  /// the tree — reusing its key would inherit the spent State and
+  /// freeze the new exit in place, unanimated, never completing.
+  GlobalKey<_SlideAwayRowSlotState> _exitSlotKey =
       GlobalKey<_SlideAwayRowSlotState>();
 
-  /// Post-persist step of a check-off: slide the row out (after
-  /// persist), or remove it instantly when reduced motion is on.
-  /// The write has ALREADY landed when this runs — presentation
-  /// only from here, so an unmount anywhere below loses nothing.
-  /// [index] is the row's position in the rendered list, captured
-  /// before the write; the item is marked gone immediately so a
-  /// stale plan that still carries it never double-renders it
-  /// alongside its slide slot.
+  /// First step of a check-off (Nov 2, 2026 fix): slide the row
+  /// out NOW, the same frame as the tap, or remove it instantly
+  /// when reduced motion is on. The loader write has NOT landed
+  /// yet — it runs in the background through [_actionChain] and
+  /// the reconciling reload follows it; a failed reminder/habit
+  /// write restores the row via [_restoreItem]. [index] is the
+  /// row's position in the currently rendered list (plan items
+  /// minus [_goneItemIds]), captured at tap time so back-to-back
+  /// exits slot correctly; the item is marked gone immediately
+  /// so a stale plan that still carries it never double-renders
+  /// it alongside its slide slot.
   void _slideOrVanish(TodayPlanItem item, int index) {
     if (!mounted || _goneItemIds.contains(item.id)) return;
     if (animationsDisabled(context)) {
@@ -166,6 +200,8 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
     }
     // One exit at a time: finalize the active one instantly.
     _exitSlotKey.currentState?.finalizeNow();
+    // Fresh slot State for THIS exit (see _exitSlotKey).
+    _exitSlotKey = GlobalKey<_SlideAwayRowSlotState>();
     setState(() {
       _goneItemIds.add(item.id);
       _exitingItem = item;
@@ -365,53 +401,96 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
     );
   }
 
-  Future<void> _onToggleItem(TodayPlanItem item) async {
-    if (_actingItemId != null) return;
-    // Round 41: rendered rows are never completed, so a toggle is
-    // always a check-off and always slides away on success. The
-    // list index is captured NOW, while the row is still rendered;
-    // the slide itself starts only after the write + reload land
-    // (see _slideOrVanish).
-    final index =
-        (_data?.plan.items ?? const <TodayPlanItem>[]).indexOf(item);
-    setState(() => _actingItemId = item.id);
-    var ok = false;
-    try {
-      switch (item.kind) {
-        case PlanItemKind.reminder:
-          ok = await _loader.setReminderCompleted(item, true);
-        case PlanItemKind.habit:
-          ok = await _loader.setHabitCompleted(item, true);
-        case PlanItemKind.medication:
-          return; // Meds use the Take/Skip controls, not a toggle.
-      }
-      await _load(includeTrends: false);
-    } finally {
-      if (mounted) setState(() => _actingItemId = null);
-    }
-    // The write has landed and the one-action guard is released —
-    // the slide is pure presentation from here and can never block
-    // or double-fire an action. A FAILED write leaves the row
-    // exactly as it was: no slide, no phantom completion.
-    if (ok) _slideOrVanish(item, index);
+  /// The row's index in the CURRENTLY RENDERED list (plan items
+  /// minus [_goneItemIds]) — the list the slide slot is inserted
+  /// into at build time. Captured at tap time, so back-to-back
+  /// exits slot correctly even while earlier rows are still
+  /// sliding out.
+  int _renderedIndexOf(TodayPlanItem item) {
+    final visible = (_data?.plan.items ?? const <TodayPlanItem>[])
+        .where((i) => !_goneItemIds.contains(i.id))
+        .toList();
+    final index = visible.indexOf(item);
+    return index < 0 ? visible.length : index;
   }
 
-  Future<void> _onMedAction(TodayPlanItem item, DoseStatus status) async {
-    if (_actingItemId != null) return;
+  /// Queues one background write + its reconciling reload on the
+  /// serialized [_actionChain]. The UI never waits on this: the
+  /// caller has already started the slide. Errors are swallowed
+  /// per link so one failure never wedges later writes.
+  void _enqueueAction(Future<void> Function() write) {
+    _actionChain = _actionChain.then((_) async {
+      try {
+        await write();
+        await _load(includeTrends: false);
+      } catch (_) {
+        // A background write/reload failure must never wedge the
+        // chain or surface as a crash; the next reconciling
+        // reload (or the next mount's load) re-reads the truth.
+      }
+    });
+  }
+
+  /// Failure rollback for reminder/habit toggles: the optimistic
+  /// exit is undone so the row honestly returns — no phantom
+  /// completion. (Medication actions have no rollback: they
+  /// return void and land device-locally first by design — the
+  /// local dose record governs the plan.)
+  void _restoreItem(TodayPlanItem item) {
+    if (!mounted) return;
+    setState(() {
+      _goneItemIds.remove(item.id);
+      if (_exitingItemId == item.id) {
+        _exitingItem = null;
+        _exitingItemId = null;
+      }
+    });
+  }
+
+  void _onToggleItem(TodayPlanItem item) {
+    // Per-item idempotency (replaces the pre-fix global acting
+    // lock): a tap on an item already exiting or gone is a no-op;
+    // taps on OTHER rows always register, instantly.
+    if (_goneItemIds.contains(item.id) || _exitingItemId == item.id) {
+      return;
+    }
+    if (item.kind == PlanItemKind.medication) {
+      return; // Meds use the Take/Skip controls, not a toggle.
+    }
+    // Round 41: rendered rows are never completed, so a toggle is
+    // always a check-off. Optimistic order (Nov 2, 2026 fix):
+    // slide FIRST, the same frame as the tap; the write runs in
+    // the background through the serialized chain, then the
+    // reconciling reload. A write that returns false restores
+    // the row — no slide-and-stay, no phantom completion.
+    _slideOrVanish(item, _renderedIndexOf(item));
+    _enqueueAction(() async {
+      final ok = switch (item.kind) {
+        PlanItemKind.reminder =>
+          await _loader.setReminderCompleted(item, true),
+        PlanItemKind.habit =>
+          await _loader.setHabitCompleted(item, true),
+        PlanItemKind.medication => true, // unreachable (guard above)
+      };
+      if (!ok) _restoreItem(item);
+    });
+  }
+
+  void _onMedAction(TodayPlanItem item, DoseStatus status) {
+    // Per-item idempotency, as in _onToggleItem.
+    if (_goneItemIds.contains(item.id) || _exitingItemId == item.id) {
+      return;
+    }
     // Only Take/Skip render on a plan row (Round 41 removed the
     // completed row and its Undo) — both resolve the dose, so the
-    // row slides away. The index is captured before the write;
-    // the slide starts after the write + reload land.
-    final index =
-        (_data?.plan.items ?? const <TodayPlanItem>[]).indexOf(item);
-    setState(() => _actingItemId = item.id);
-    try {
-      await _loader.setMedicationAction(item, status);
-      await _load(includeTrends: false);
-    } finally {
-      if (mounted) setState(() => _actingItemId = null);
-    }
-    _slideOrVanish(item, index);
+    // row slides away. Optimistic order (Nov 2, 2026 fix): slide
+    // FIRST, the same frame as the tap; the write + reconciling
+    // reload run in the background through the serialized chain.
+    // No rollback for meds: the loader records the action
+    // device-locally first by design, and that local record is
+    // what governs the plan.
+    _slideOrVanish(item, _renderedIndexOf(item));
+    _enqueueAction(() => _loader.setMedicationAction(item, status));
   }
 
   @override
@@ -459,7 +538,10 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
         final item = visibleItems[idx];
         planRows.add(_PlanItemRow(
           item: item,
-          busy: _actingItemId == item.id,
+          // Never busy: taps are optimistic and idempotent per
+          // item (see _onToggleItem), so no row is ever disabled
+          // by another row's in-flight write.
+          busy: false,
           onToggle: () => _onToggleItem(item),
           onMedAction: (s) => _onMedAction(item, s),
         ));
@@ -851,9 +933,9 @@ class _PlanItemRow extends StatelessWidget {
 /// exit curve for slides: "easeOut in / easeIn back") and the
 /// height collapse uses Curves.easeInOut (the card's own
 /// expand/collapse curve). No bounce, no spring. [finalizeNow] ends
-/// it instantly (a second check-off supersedes it) — the check-off
-/// itself was persisted before the slot ever appeared, so ending
-/// early loses nothing.
+/// it instantly (a second check-off supersedes it) — presentation
+/// only: the superseded check-off's write is already queued on
+/// the serialized background chain, so ending early loses nothing.
 class _SlideAwayRowSlot extends StatefulWidget {
   final Widget child;
   final VoidCallback onGone;
