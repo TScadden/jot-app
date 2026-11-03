@@ -27,8 +27,8 @@ enum DockTab { home, tools, quickLog, heart, settings }
 /// scoped snackbar inset from them (see
 /// [navDockSnackBarBottomInset]), so a snackbar parked above the
 /// pill can never drift out of sync with the pill itself.
-const double kNavDockHeightNoLabels = 56.0;
-const double kNavDockHeightWithLabels = 66.0;
+const double kNavDockHeightNoLabels = 64.0;
+const double kNavDockHeightWithLabels = 74.0;
 
 /// Space below the pill, above the system inset.
 const double kNavDockBottomGap = 12.0;
@@ -166,11 +166,13 @@ class _NavDockState extends State<NavDock>
       // beside each tab's Scaffold (not inside one), so without this the
       // ink responses have no Material to print on.
       child: Material(
-        color: NotelColors.surface.withValues(alpha: 0.94),
+        color: NotelColors.surface.withValues(alpha: 0.92),
+        elevation: 8,
+        shadowColor: Colors.black.withValues(alpha: 0.45),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(32),
           side: BorderSide(
-            color: NotelColors.primary.withValues(alpha: 0.18),
+            color: Colors.white.withValues(alpha: 0.10),
             width: 1,
           ),
         ),
@@ -186,8 +188,8 @@ class _NavDockState extends State<NavDock>
                   AnimatedBuilder(
                     animation: _controller,
                     builder: (_, _) {
-                      const pillWidth = 44.0;
-                      const pillHeight = 36.0;
+                      const pillWidth = 52.0;
+                      const pillHeight = 40.0;
                       final left = _controller.value * slotWidth +
                           (slotWidth - pillWidth) / 2;
                       return Positioned(
@@ -198,8 +200,8 @@ class _NavDockState extends State<NavDock>
                           width: pillWidth,
                           height: pillHeight,
                           decoration: BoxDecoration(
-                            color: NotelColors.primary.withValues(alpha: 0.20),
-                            borderRadius: BorderRadius.circular(12),
+                            color: NotelColors.primary.withValues(alpha: 0.28),
+                            borderRadius: BorderRadius.circular(20),
                           ),
                         ),
                       );
@@ -246,10 +248,10 @@ class _NavDockState extends State<NavDock>
                     onTap: () => widget.onSelect(DockTab.quickLog),
                     child: Container(
                       key: const ValueKey('dock_quicklog_ring'),
-                      width: 52,
-                      height: 48,
+                      width: 58,
+                      height: 58,
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(18),
+                        shape: BoxShape.circle,
                         border: Border.all(
                           color: widget.selected == DockTab.quickLog
                               ? NotelColors.textPrimary
@@ -260,19 +262,19 @@ class _NavDockState extends State<NavDock>
                       alignment: Alignment.center,
                       child: Material(
                         color: NotelColors.primary,
-                        borderRadius: BorderRadius.circular(16),
+                        shape: const CircleBorder(),
                         elevation:
-                            widget.selected == DockTab.quickLog ? 8 : 4,
+                            widget.selected == DockTab.quickLog ? 8 : 6,
                         child: InkWell(
-                          borderRadius: BorderRadius.circular(16),
+                          customBorder: const CircleBorder(),
                           onTap: () => widget.onSelect(DockTab.quickLog),
                           child: const SizedBox(
-                            width: 48,
-                            height: 44,
+                            width: 52,
+                            height: 52,
                             child: Center(
                               child: Icon(
                                 Icons.edit,
-                                size: 22,
+                                size: 24,
                                 color: Colors.white,
                                 semanticLabel: 'Quick log',
                               ),

@@ -8,6 +8,7 @@ import 'package:tabs_lab/src/data/daily_score.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/home/daily_score_circle.dart';
+import 'package:tabs_lab/src/features/home/daily_score_hero_card.dart';
 import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
 import 'package:tabs_lab/src/features/home/daily_score_vocabulary.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
@@ -636,7 +637,9 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump();
-      expect(find.byType(DailyScoreCircle), findsOneWidget);
+      // Lab (TikTok-UI): the score now renders in the hero card
+      // at the top of Home's scroll, not the header pairing.
+      expect(find.byType(DailyScoreHeroCard), findsOneWidget);
       expect(find.text('100'), findsOneWidget);
       expect(find.text('Great'), findsOneWidget);
     });

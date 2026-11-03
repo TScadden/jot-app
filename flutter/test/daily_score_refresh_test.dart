@@ -12,7 +12,7 @@ import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_history_sync.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
-import 'package:tabs_lab/src/features/home/daily_score_circle.dart';
+import 'package:tabs_lab/src/features/home/daily_score_hero_card.dart';
 import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 
@@ -709,7 +709,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump();
-      expect(find.byType(DailyScoreCircle), findsOneWidget);
+      expect(find.byType(DailyScoreHeroCard), findsOneWidget);
       expect(find.text('62'), findsOneWidget);
 
       // A refresh of today persists a new score (the exact write
@@ -718,7 +718,7 @@ void main() {
       // (_openDailyScore → _loadDailyScore) must surface it.
       await store.replaceScore(todayStr,
           dailyScore: 100, scoreHrv: 100, scoreRestingHr: 100);
-      await tester.tap(find.byType(DailyScoreCircle));
+      await tester.tap(find.byType(DailyScoreHeroCard));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pump();
@@ -727,7 +727,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pump();
-      expect(find.byType(DailyScoreCircle), findsOneWidget);
+      expect(find.byType(DailyScoreHeroCard), findsOneWidget);
       expect(find.text('100'), findsOneWidget);
       expect(find.text('Great'), findsOneWidget);
     });
@@ -1066,7 +1066,7 @@ void main() {
       for (var i = 0; i < 5; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }
-      expect(find.byType(DailyScoreCircle), findsOneWidget);
+      expect(find.byType(DailyScoreHeroCard), findsOneWidget);
       expect(find.text('Waiting'), findsOneWidget);
       expect(find.text('Building'), findsNothing);
       expect((await store.readAll())[todayStr]!.dailyScore, isNull);

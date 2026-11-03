@@ -1,4 +1,9 @@
 name: tmp-flutter-apk
+# LAB-ONLY patch (branch lab/tiktok-ui-home): after the standard
+# analyze + test gate, also build the Lab (playground) flavor
+# release APK split per ABI and upload ONLY the arm64 artifact.
+# This change lives on the lab branch only; the production
+# workflows are untouched.
 on:
   workflow_dispatch:
 jobs:
@@ -17,3 +22,14 @@ jobs:
       - run: cd flutter && flutter pub get
       - run: cd flutter && flutter analyze
       - run: cd flutter && flutter test
+      - name: Build Lab (playground) release APK, split per ABI
+        # Same command the production workflow's Lab identity line
+        # uses: the lab flavor itself yields versionCode 2001 /
+        # versionName 1.0.0 (verified in its badging checks).
+        run: cd flutter && flutter build apk --release --flavor lab --split-per-abi
+      - name: Upload arm64 Lab APK only
+        uses: actions/upload-artifact@v4
+        with:
+          name: tabs-lab-apk-arm64
+          path: flutter/build/app/outputs/flutter-apk/app-arm64-v8a-lab-release.apk
+          if-no-files-found: error

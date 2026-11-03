@@ -10,6 +10,7 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
+import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 import 'test_helpers.dart';
@@ -410,9 +411,12 @@ void main() {
         await pumpHome(tester, backend);
 
         expect(find.text('How are you feeling?'), findsOneWidget);
-        // Card is the first content on Home: it sits above the vitals strip.
+        // Card sits above the vitals strip. (Lab TikTok-UI: the
+        // Daily Score hero now tops the scroll above this card, so
+        // the old absolute <200 top bound is a relative one now.)
         final cardY = tester.getTopLeft(find.text('How are you feeling?')).dy;
-        expect(cardY, lessThan(200));
+        final vitalsY = tester.getTopLeft(find.byType(VitalsStrip)).dy;
+        expect(cardY, lessThan(vitalsY));
 
         await tester.tap(find.text('3'));
         await tester.pump();

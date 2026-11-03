@@ -1274,6 +1274,13 @@ void main() {
                 .isNotEmpty,
       );
       expect(find.text('Set targets'), findsOneWidget);
+      // Lab TikTok-UI: the Daily Score hero pushes the intake
+      // card lower on Home, so 'Set targets' can start below the
+      // test surface's fold — scroll it into view, as a user
+      // would, before tapping.
+      await tester.ensureVisible(find.text('Set targets'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
       await tester.tap(find.text('Set targets'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));

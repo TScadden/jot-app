@@ -40,7 +40,7 @@ void main() {
         ),
       );
 
-  testWidgets('labels off: no label texts, 56dp dock', (tester) async {
+  testWidgets('labels off: no label texts, 64dp dock', (tester) async {
     await tester.pumpWidget(dock(false));
     await tester.pump();
     for (final label in ['Home', 'Tools', 'Heart', 'Settings']) {
@@ -48,7 +48,7 @@ void main() {
     }
     // The dock container is the Material under the NavDock.
     final size = tester.getSize(find.byType(NavDock));
-    expect(size.height, 56 + 12); // dock + bottom padding (no inset)
+    expect(size.height, 64 + 12); // dock + bottom padding (no inset)
   });
 
   testWidgets('labels on: four labels, 66dp dock, native styling',
@@ -59,7 +59,7 @@ void main() {
       expect(find.text(label), findsOneWidget);
     }
     final size = tester.getSize(find.byType(NavDock));
-    expect(size.height, 66 + 12);
+    expect(size.height, 74 + 12);
     // Selected label: primary + bold. Unselected: secondary + medium.
     final heart = tester.widget<Text>(find.text('Heart'));
     expect(heart.style!.color, NotelColors.primary);

@@ -8,6 +8,7 @@ import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/today_plan_store.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
+import 'package:tabs_lab/src/features/home/home_section_label.dart';
 import 'package:tabs_lab/src/features/home/migraine_block.dart';
 import 'package:tabs_lab/src/features/quicklog/history_screen.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
@@ -550,52 +551,54 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
         planRows.add(slideSlot());
       }
     }
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
-      decoration: BoxDecoration(
-        color: NotelColors.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: NotelColors.legacyDarkDivider, width: 1),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Header row (tappable, 48dp+ target).
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: InkWell(
-                onTap: _toggle,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: 48),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Row(
-                              children: [
-                                Icon(
-                                  Icons.today,
-                                  size: 20,
-                                  color: NotelColors.primary,
-                                ),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Today Summary',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: NotelColors.textPrimary,
-                                  ),
-                                ),
-                              ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Lab (TikTok-UI exploration): the card's title is now the
+        // reference system's section label — small, muted, OUTSIDE
+        // and above the card. It is still this card's one and only
+        // 'Today Summary' text, and tapping it toggles exactly as
+        // the old in-card title row did. Presentation only: the
+        // toggle, subtitle, and all data flow below are unchanged.
+        HomeSectionLabel(text: 'Today Summary', onTap: _toggle),
+        Container(
+          margin: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 6.0),
+          decoration: BoxDecoration(
+            color: NotelColors.surface,
+            borderRadius: BorderRadius.circular(24),
+            border:
+                Border.all(color: NotelColors.legacyDarkHairline, width: 1),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Header row (tappable, 48dp+ target).
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    onTap: _toggle,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 48),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: const BoxDecoration(
+                              color: NotelColors.surfaceHigh,
+                              shape: BoxShape.circle,
                             ),
-                            const SizedBox(height: 4),
-                            Text(
+                            child: const Icon(
+                              Icons.today,
+                              size: 20,
+                              color: NotelColors.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
                               subtitle,
                               style: const TextStyle(
                                 fontSize: 13,
@@ -603,27 +606,25 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                                 color: NotelColors.textSecondary,
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                          IconButton(
+                            onPressed: _toggle,
+                            tooltip: _expanded
+                                ? 'Collapse Today Summary'
+                                : 'Expand Today Summary',
+                            icon: Icon(
+                              _expanded
+                                  ? Icons.keyboard_arrow_up
+                                  : Icons.keyboard_arrow_down,
+                              size: 26,
+                              color: NotelColors.primary,
+                            ),
+                          ),
+                        ],
                       ),
-                      IconButton(
-                        onPressed: _toggle,
-                        tooltip: _expanded
-                            ? 'Collapse Today Summary'
-                            : 'Expand Today Summary',
-                        icon: Icon(
-                          _expanded
-                              ? Icons.keyboard_arrow_up
-                              : Icons.keyboard_arrow_down,
-                          size: 26,
-                          color: NotelColors.primary,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            ),
             // Expanded content: Today's Plan & Trends.
             AnimatedSize(
               duration: const Duration(milliseconds: 220),
@@ -635,7 +636,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           const Divider(
-                            color: NotelColors.divider,
+                            color: NotelColors.legacyDarkHairline,
                             height: 1,
                           ),
                           const SizedBox(height: 12),
@@ -645,7 +646,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                           ),
                           const SizedBox(height: 14),
                           const Divider(
-                            color: NotelColors.divider,
+                            color: NotelColors.legacyDarkHairline,
                             height: 1,
                           ),
                           const SizedBox(height: 12),
@@ -682,7 +683,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                             ...planRows,
                           const SizedBox(height: 14),
                           const Divider(
-                            color: NotelColors.divider,
+                            color: NotelColors.legacyDarkHairline,
                             height: 1,
                           ),
                           const SizedBox(height: 12),
@@ -735,10 +736,12 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                       ),
                     )
                   : const SizedBox.shrink(),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -772,12 +775,16 @@ class _PlanItemRow extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4.0),
       decoration: BoxDecoration(
-        color: NotelColors.surfaceHigh,
-        borderRadius: BorderRadius.circular(10),
+        // Lab (TikTok-UI exploration): inner rows sit one tonal
+        // step DARKER than their card (the reference's nested
+        // depth), radius 17, hairline edge. Presentation only —
+        // the tap/write logic above this row is untouched.
+        color: NotelColors.background,
+        borderRadius: BorderRadius.circular(17),
         border: overdue
             ? Border.all(
                 color: NotelColors.error.withValues(alpha: 0.5), width: 1)
-            : null,
+            : Border.all(color: NotelColors.legacyDarkHairline, width: 1),
       ),
       child: Padding(
         padding: const EdgeInsets.all(10.0),
@@ -872,12 +879,12 @@ class _PlanItemRow extends StatelessWidget {
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
+                        // Lab: Take is a FILLED accent circle.
                         Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            color:
-                                NotelColors.primary.withValues(alpha: 0.15),
+                          width: 36,
+                          height: 36,
+                          decoration: const BoxDecoration(
+                            color: NotelColors.primary,
                             shape: BoxShape.circle,
                           ),
                         ),
@@ -891,28 +898,52 @@ class _PlanItemRow extends StatelessWidget {
                             minHeight: 48,
                           ),
                           tooltip: 'Take Medication',
-                          style: IconButton.styleFrom(
-                            foregroundColor: NotelColors.primary,
+                          icon: const Icon(
+                            Icons.check,
+                            size: 18,
+                            color: NotelColors.onPrimary,
                           ),
-                          icon: const Icon(Icons.check, size: 16),
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(width: 6),
-                  IconButton(
-                    onPressed:
-                        busy ? null : () => onMedAction(DoseStatus.skipped),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 48,
-                      minHeight: 48,
-                    ),
-                    tooltip: 'Skip Medication',
-                    icon: const Icon(
-                      Icons.block,
-                      size: 16,
-                      color: NotelColors.textSecondary,
+                  // Lab: Skip is a GHOST circle (hairline ring, no
+                  // fill) — same 48dp hit area, same callback.
+                  SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: NotelColors.legacyDarkDivider,
+                              width: 1,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: busy
+                              ? null
+                              : () => onMedAction(DoseStatus.skipped),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 48,
+                            minHeight: 48,
+                          ),
+                          tooltip: 'Skip Medication',
+                          icon: const Icon(
+                            Icons.block,
+                            size: 16,
+                            color: NotelColors.textSecondary,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -1021,9 +1052,9 @@ class _TrendRow extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4.0),
       decoration: BoxDecoration(
-        color: NotelColors.surfaceHigh,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: NotelColors.legacyDarkDivider, width: 1),
+        color: NotelColors.background,
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(color: NotelColors.legacyDarkHairline, width: 1),
       ),
       child: Padding(
         padding: const EdgeInsets.all(10.0),

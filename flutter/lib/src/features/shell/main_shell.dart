@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/billing_service.dart';
 import 'package:tabs_lab/src/data/lean_test_session.dart';
@@ -6,9 +8,12 @@ import 'package:tabs_lab/src/data/migraine_controller.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
+import 'package:tabs_lab/src/data/log_entry_outbox.dart';
+import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/heart/heart_screen.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/quicklog/quick_log_screen.dart';
+import 'package:tabs_lab/src/features/quicklog/quick_log_tray.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
 import 'package:tabs_lab/src/features/tools/tools_screen.dart';
@@ -99,6 +104,12 @@ class MainShell extends StatefulWidget {
   /// Null keeps the tile hidden (tests that do not exercise it).
   final LeanTestGateway? leanGateway;
 
+  /// Lab (TikTok-UI exploration) — injectable for tests; forwarded
+  /// to the Quick Log screen and the morphing quick-log tray.
+  /// Production defaults are the real instances, as before.
+  final TabsBackend? tabsBackend;
+  final LogEntryOutbox? logEntryOutbox;
+
   const MainShell(
       {super.key,
       this.email,
@@ -109,7 +120,9 @@ class MainShell extends StatefulWidget {
       this.settingsStore,
       this.billingService,
       this.migraineController,
-      this.leanGateway});
+      this.leanGateway,
+      this.tabsBackend,
+      this.logEntryOutbox});
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -298,6 +311,8 @@ class _MainShellState extends State<MainShell>
       DockTab.quickLog => QuickLogScreen(
           key: const ValueKey('quicklog_screen'),
           weatherApi: widget.weatherApi,
+          backend: widget.tabsBackend,
+          outbox: widget.logEntryOutbox,
         ),
       DockTab.heart => HeartScreen(
           key: const ValueKey('heart_screen'),
@@ -401,7 +416,22 @@ class _MainShellState extends State<MainShell>
             selected: _tab,
             showLabels: _showNavLabels,
             onSelect: (tab) {
-              _selectTab(tab);
+              // Lab (TikTok-UI exploration): the center log button
+              // opens the MORPHING TRAY instead of switching tabs;
+              // the tray's category rows route back here through
+              // _selectTab(DockTab.quickLog) to open the full
+              // Quick Log screen. Every other slot switches as
+              // before.
+              if (tab == DockTab.quickLog) {
+                unawaited(showQuickLogTray(
+                  context,
+                  backend: widget.tabsBackend,
+                  outbox: widget.logEntryOutbox,
+                  onOpenFullQuickLog: () => _selectTab(DockTab.quickLog),
+                ));
+              } else {
+                _selectTab(tab);
+              }
               _refreshNavLabels();
             },
           ),

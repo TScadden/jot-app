@@ -84,10 +84,18 @@ void main() {
     await settleDock(tester);
     expect(find.text('Today'), findsNothing);
 
-    // Quick log (center pencil) -> blank.
+    // Quick log (center pencil) -> the morphing tray opens OVER
+    // the current tab (Lab TikTok-UI change: the pencil no longer
+    // switches tabs). Home stays mounted underneath; the tray
+    // shows its root state. Dismiss it via its close button.
     await tester.tap(dockIcon(Icons.edit));
     await settleDock(tester);
     expect(find.text('Today'), findsNothing);
+    expect(find.text('Quick Log'), findsOneWidget);
+    expect(find.text('Your quick note'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.close));
+    await settleDock(tester);
+    expect(find.text('Your quick note'), findsNothing);
 
     // Home -> back to the real home screen.
     await tester.tap(dockIcon(Icons.home));

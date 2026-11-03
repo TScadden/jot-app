@@ -25,7 +25,7 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/data/widget_sync.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
-import 'package:tabs_lab/src/features/home/daily_score_circle.dart';
+import 'package:tabs_lab/src/features/home/daily_score_hero_card.dart';
 import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
 import 'package:tabs_lab/src/features/home/checkin_sheets.dart';
 import 'package:tabs_lab/src/features/home/checkin_summary_card.dart';
@@ -1846,25 +1846,39 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: NotelColors.background,
         elevation: 0,
         automaticallyImplyLeading: false,
-        title: const Text(
-          'Today',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w900,
-            color: NotelColors.textPrimary,
-          ),
+        // Lab (TikTok-UI exploration): the header follows the
+        // reference — an identity mark in a filled circle beside
+        // the title stack. The title text itself is unchanged
+        // ('Today'); the Daily Score moved OUT of this bar into
+        // the hero card at the top of the scroll (see body).
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: const BoxDecoration(
+                color: NotelColors.primary,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.task_alt,
+                size: 21,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Text(
+              'Today',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+                color: NotelColors.textPrimary,
+              ),
+            ),
+          ],
         ),
         actions: [
-          // R70 Daily Score — the score circle sits BESIDE the
-          // weather icon (founder spec). Null score = the
-          // baseline-building state, or the pending state while
-          // today waits for its data to complete. Tap opens the
-          // score history.
-          DailyScoreCircle(
-            score: _todayScore,
-            pending: _todayScorePending,
-            onTap: () => unawaited(_openDailyScore()),
-          ),
           // Weather: tap asks for device location (system dialog) and
           // upgrades the IP-based temp to GPS-based weather. Denial
           // falls back silently to the IP fetch.
@@ -1913,6 +1927,11 @@ class _HomeScreenState extends State<HomeScreen> {
           // (skipped under reduced motion, where heroes are omitted).
           IconButton(
             onPressed: () => unawaited(_openConnections()),
+            // Lab: header actions are circular filled buttons.
+            style: IconButton.styleFrom(
+              backgroundColor: NotelColors.surfaceHigh,
+              shape: const CircleBorder(),
+            ),
             icon: animationsDisabled(context)
                 ? const Icon(
                     Icons.watch,
@@ -1931,10 +1950,49 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+      body: Stack(
+        children: [
+          // Lab (TikTok-UI exploration) — the aurora wash: a
+          // Tabs-purple/violet radial glow bleeding from the top
+          // edge BEHIND the scroll content, fading into the
+          // background by ~35% of screen height. Home only,
+          // purely decorative (IgnorePointer, no data).
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 320,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: Alignment.topCenter,
+                    radius: 1.35,
+                    colors: [
+                      NotelColors.primary.withValues(alpha: 0.38),
+                      NotelColors.chipPurple.withValues(alpha: 0.16),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.45, 1.0],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Lab — the Daily Score HERO card tops the scroll
+                // (reference hero pattern): centered label, the
+                // score face at hero size, band caption under it.
+                // Same score state, same tap → detail as the old
+                // header circle; null renders '--' honestly.
+                DailyScoreHeroCard(
+                  score: _todayScore,
+                  pending: _todayScorePending,
+                  onTap: () => unawaited(_openDailyScore()),
+                ),
             // Round 14 — staggered entrance: the cards cascade in with a
             // fade + slight rise, ~80ms apart. Purely visual; data loads
             // independently underneath.
@@ -2042,6 +2100,13 @@ class _HomeScreenState extends State<HomeScreen> {
             StaggeredEntrance(
               index: 2,
               child: TodaySummaryCard(
+                // Lab wiring (no behavior change in production,
+                // where both resolve to the default backend): the
+                // card now reads through Home's own backend — the
+                // instance the check-in/intake flows already use —
+                // instead of constructing a second default one, so
+                // an injected backend governs the whole Home.
+                backend: _backend,
                 migraineController: widget.migraineController,
               ),
             ),
@@ -2052,10 +2117,12 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             // Clearance so the last content never hides behind the
-            // floating nav dock (dock ≈ 56dp + 12dp + nav inset).
-            const SizedBox(height: 110),
-          ],
-        ),
+            // floating nav dock (dock ≈ 64dp + 12dp + nav inset).
+            const SizedBox(height: 120),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

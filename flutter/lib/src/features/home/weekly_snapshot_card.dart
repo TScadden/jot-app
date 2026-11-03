@@ -230,8 +230,8 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
       margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
       decoration: BoxDecoration(
         color: NotelColors.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: NotelColors.legacyDarkDivider, width: 1),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: NotelColors.legacyDarkHairline, width: 1),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),

@@ -90,6 +90,88 @@ Set<String> activeMedicationNamesFromProfile(Map<String, dynamic>? profile) {
   return out;
 }
 
+/// Lab (TikTok-UI exploration) — the shared free-text note save,
+/// extracted from [QuickLogScreen]'s own save flow so the morphing
+/// quick-log tray writes through the EXISTING path, not a parallel
+/// one: same entry shape as `_saveEntry`'s chipless branch (body =
+/// manualText = the typed text, chips empty), same category rule
+/// (the account's "general" category, falling back to the
+/// top-ranked category — the tray has no selected category, where
+/// the screen falls back to its selection), same id allocation
+/// (outbox, after its disk load settles), same local-first staging
+/// through [LogEntryOutbox.stageForBackend], same background flush,
+/// and the same cache/home-count mirroring `_applyLocalEntry`
+/// performs. Returns the staged entry and the resulting today
+/// count, or null when there is no category to file under or the
+/// local stage failed — the honest failure states, never a fake
+/// save.
+Future<({QuickLogEntry entry, int todayCount})?> saveQuickLogNote({
+  required TabsBackend backend,
+  required LogEntryOutbox outbox,
+  required String text,
+}) async {
+  final trimmed = text.trim();
+  if (trimmed.isEmpty) return null;
+  final pull = await backend.fetchSyncPull();
+  if (pull == null) return null;
+  final entries = await backend.fetchLogEntryDtos();
+  final categories = await backend.fetchLogCategories();
+  if (categories.isEmpty) return null;
+  final ranked = rankCategories(categories, entries);
+  final categoryId = categories
+          .where((c) => c.name.trim().toLowerCase() == 'general')
+          .firstOrNull
+          ?.id ??
+      ranked.firstOrNull?.id ??
+      categories.first.id;
+  var serverMaxId = 0;
+  for (final e in entries) {
+    if (e.id > serverMaxId) serverMaxId = e.id;
+  }
+  final id = await outbox.allocateEntryIdForBackend(
+    backend: backend,
+    serverMaxId: serverMaxId,
+  );
+  final entry = QuickLogEntry(
+    id: id,
+    categoryId: categoryId,
+    body: trimmed,
+    chips: '',
+    manualText: trimmed,
+    timestamp: DateTime.now().millisecondsSinceEpoch,
+  );
+  final staged = await outbox.stageForBackend(
+    entry,
+    backend: backend,
+    serverKnown: false,
+  );
+  if (!staged) return null;
+  final merged = outbox.merge([...entries, entry]);
+  final todayCount = todayEntryCount(merged);
+  final recents = recentSuggestions(
+    merged,
+    activeMedicationNames: activeMedicationNamesFromProfile(
+        await backend.fetchProfile()),
+    medicationCategoryId: categories
+        .where(
+          (c) =>
+              c.name.trim().toLowerCase() == 'medication' ||
+              c.name.trim().toLowerCase() == 'medications',
+        )
+        .firstOrNull
+        ?.id,
+  );
+  QuickLogCache.instance.applyCounts(
+    todayCount: todayCount,
+    recentSuggestions: recents,
+  );
+  unawaited(QuickLogCache.instance.persist());
+  HomeDataCache.instance.applyLogCountToday(todayCount);
+  unawaited(HomeDataCache.instance.persist());
+  unawaited(outbox.flush(backend));
+  return (entry: entry, todayCount: todayCount);
+}
+
 class QuickLogScreen extends StatefulWidget {
   final TabsBackend? backend;
   final WeatherApiClient? weatherApi;

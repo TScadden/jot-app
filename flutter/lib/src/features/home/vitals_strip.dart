@@ -49,7 +49,7 @@ class VitalsStrip extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
       decoration: BoxDecoration(
         color: NotelColors.legacyDarkScrim,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: NotelColors.legacyDarkHairline, width: 1),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
