@@ -1102,23 +1102,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     fontSize: 22,
                     fontWeight: FontWeight.bold)),
           ),
+          // Juno Condition 3 fix (V6 fix round): the HIT AREA is
+          // 48dp (the accessibility standard the rest of this
+          // screen observes) while the VISUAL circle stays the
+          // reference's 36dp, pixel-identical. The 48dp gesture
+          // box is centered on the old 36dp circle's center: the
+          // right padding drops 12 -> 6 so the box extends 6dp
+          // past the circle on the right exactly as it does on
+          // the left, and the circle sits centered inside it.
+          // The key moves to the 48dp box (its rect IS the hit
+          // area); the inner 36dp InkWell keeps the original
+          // ripple on the visual circle, and both layers call
+          // the same close handler.
           Padding(
-            padding: const EdgeInsets.only(right: 12),
+            padding: const EdgeInsets.only(right: 6),
             child: Tooltip(
               message: 'Close',
-              child: Material(
-                color: const Color(0x1FFFFFFF), // white @ 12% circle
-                shape: const CircleBorder(),
-                clipBehavior: Clip.antiAlias,
-                child: InkWell(
-                  key: const ValueKey('settings_tray_close'),
-                  customBorder: const CircleBorder(),
-                  onTap: widget.onTrayClose,
-                  child: const SizedBox(
-                    width: 36,
-                    height: 36,
-                    child: Icon(Icons.close,
-                        size: 18, color: NotelColors.textPrimary),
+              child: GestureDetector(
+                key: const ValueKey('settings_tray_close'),
+                behavior: HitTestBehavior.opaque,
+                onTap: widget.onTrayClose,
+                child: SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: Center(
+                    child: Material(
+                      color: const Color(0x1FFFFFFF), // white @ 12% circle
+                      shape: const CircleBorder(),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: widget.onTrayClose,
+                        child: const SizedBox(
+                          width: 36,
+                          height: 36,
+                          child: Icon(Icons.close,
+                              size: 18, color: NotelColors.textPrimary),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),

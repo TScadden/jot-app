@@ -187,21 +187,43 @@ class _SettingsTrayState extends State<SettingsTray> {
                   ),
                   child: Stack(
                     children: [
-                      // Material ancestor for the hosted screen's
-                      // InkWells/switches (the tray route has no
-                      // Scaffold of its own — hosting fix 1 in
-                      // settings_screen.dart).
-                      Material(
-                        type: MaterialType.transparency,
-                        child: SettingsScreen(
-                          email: widget.email,
-                          onLogout: widget.onLogout,
-                          backend: widget.backend,
-                          settingsStore: widget.settingsStore,
-                          healthConnectService: widget.healthConnectService,
-                          billingService: widget.billingService,
-                          embeddedInTray: true,
-                          onTrayClose: widget.onClose,
+                      // Juno Condition 1 fix (V6 fix round): a
+                      // tray-local ScaffoldMessenger + a transparent
+                      // Scaffold host the hosted screen. Settings'
+                      // _snack() resolves ScaffoldMessenger.of() to
+                      // THIS messenger, whose only registered
+                      // Scaffold is the tray's own — so an error
+                      // snackbar fired while the tray is open renders
+                      // INSIDE the tray, above its glass, instead of
+                      // on the Scaffold in the route below (under
+                      // the barrier + ~90%-opaque tray, invisible).
+                      // The Scaffold is transparent (the tray glass
+                      // behind it is unchanged) and
+                      // resizeToAvoidBottomInset is false, so the
+                      // tray's fixed geometry and the hosted body's
+                      // layout (including its embedded 24dp bottom
+                      // padding) are exactly as before. The Material
+                      // ancestor for the hosted screen's
+                      // InkWells/switches is kept, inside the
+                      // Scaffold body.
+                      ScaffoldMessenger(
+                        child: Scaffold(
+                          backgroundColor: Colors.transparent,
+                          resizeToAvoidBottomInset: false,
+                          body: Material(
+                            type: MaterialType.transparency,
+                            child: SettingsScreen(
+                              email: widget.email,
+                              onLogout: widget.onLogout,
+                              backend: widget.backend,
+                              settingsStore: widget.settingsStore,
+                              healthConnectService:
+                                  widget.healthConnectService,
+                              billingService: widget.billingService,
+                              embeddedInTray: true,
+                              onTrayClose: widget.onClose,
+                            ),
+                          ),
                         ),
                       ),
                       // Specular top line: 1dp white @ 45%, inset

@@ -20,6 +20,14 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// system back). The dock-side additions (no settings cell,
 /// capsule = 1 of 4 cells) live in lab_navbar_test.dart (a)/(b).
 ///
+/// V6 FIX ROUND additions/changes (Juno SIGN WITH CONDITIONS on
+/// 41e4ebb8): (8) NEW — an error snackbar fired through a real
+/// _snack() path inside the open tray renders visibly INSIDE the
+/// tray's region (Condition 1, gates delivery); the ✕ test (3)
+/// is EXTENDED (count unchanged) with the Condition 3 pins: the
+/// close hit area is 48dp, the visual circle stays 36dp, and
+/// both share the same center.
+///
 /// The shell harness mirrors settings_r30_navlabels_test.dart:
 /// a real MainShell over an in-memory SettingsStore, with the
 /// secure-storage channel mocked to the signed-out answers so the
@@ -189,12 +197,127 @@ void main() {
     testWidgets('tray: ✕ closes it', (tester) async {
       await pumpShell(tester);
       await openTray(tester);
+      // Juno Condition 3 (V6 fix round): the keyed hit area is
+      // 48x48dp; the visual circle inside it is still exactly
+      // 36x36dp; and the two are concentric (the visual circle
+      // did not move — its center is the hit area's center).
+      final closeKey = find.byKey(const ValueKey('settings_tray_close'));
+      final hitRect = tester.getRect(closeKey);
+      expect(hitRect.width, 48);
+      expect(hitRect.height, 48);
+      final visual = find.descendant(
+          of: closeKey,
+          matching: find.byWidgetPredicate((w) =>
+              w is Material && w.shape is CircleBorder));
+      expect(visual, findsOneWidget);
+      expect(tester.getSize(visual), const Size(36, 36));
+      expect(tester.getRect(visual).center, hitRect.center);
       await tester.tap(find.byKey(const ValueKey('settings_tray_close')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       expect(tray(), findsNothing);
       // Home is still there underneath.
       expect(find.text('Today'), findsOneWidget);
+      await drainRealWork(tester);
+    });
+
+    testWidgets('tray: an in-tray error snackbar (Sync failed, a '
+        'real _snack path) renders visibly INSIDE the open tray '
+        '(Juno Condition 1)', (tester) async {
+      await pumpShell(tester);
+      await openTray(tester);
+
+      // The tray-local Scaffold host must not have changed the
+      // hosted body's layout: the embedded ListView keeps its
+      // designed padding, 24dp at the bottom included.
+      final bodyList = find.descendant(
+          of: tray(), matching: find.byType(ListView));
+      expect(bodyList, findsOneWidget);
+      expect(tester.widget<ListView>(bodyList).padding,
+          const EdgeInsets.fromLTRB(16, 16, 16, 24));
+
+      // Navigate inside the tray to Sync Settings and tap Sync
+      // Now. In this harness the shell is signed out (secure
+      // storage reads return null), so the manual sync's pull
+      // fails and _manualSync runs its real failure path:
+      // _snack('Sync failed. Check your connection and try
+      // again.') — a genuine _snack() call site, not a synthetic
+      // ScaffoldMessenger call from the test.
+      await tester.ensureVisible(find.text('Sync Settings'));
+      await tester.pump();
+      await tester.tap(find.text('Sync Settings'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(tray(), findsOneWidget);
+      // The in-body page swap keeps the ListView's scrolled
+      // offset (the menu hunt scrolled it down), so scroll the
+      // tray's list back to the top of the Sync page first —
+      // its first row is then present — and the Sync Now button
+      // still sits below the viewport's build extent, so scroll
+      // down until it builds.
+      for (var i = 0; i < 3; i++) {
+        await tester.drag(bodyList, const Offset(0, 500));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+      }
+      expect(find.text('Share data with friends'), findsOneWidget);
+      final syncButton = find.byKey(const ValueKey('sync_now_button'));
+      for (var i = 0;
+          i < 6 && syncButton.evaluate().isEmpty;
+          i++) {
+        await tester.drag(bodyList, const Offset(0, -300));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+      }
+      expect(syncButton, findsOneWidget);
+      await tester.ensureVisible(syncButton);
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('sync_now_button')));
+      // The pull rides real-async replies; alternate real drains
+      // with pumps (drainRealWork's pattern) until the snackbar
+      // lands, stopping well inside its 4s display window.
+      for (var i = 0; i < 10 && find.byType(SnackBar).evaluate().isEmpty;
+          i++) {
+        await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 50)));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // PROOF: the snackbar is rendered, its text is the real
+      // sync-failure message, the tray is still open, and the
+      // snackbar's rect lies WITHIN the tray's rect — visible
+      // above the tray glass, not on the route below it.
+      // The descendant assertion is the discriminating one:
+      // rect containment alone does NOT discriminate, because
+      // a snackbar presented on the route BELOW (the pre-fix
+      // behavior) anchors at the screen bottom, geometrically
+      // inside the tray's footprint while painting UNDER the
+      // barrier and the tray glass. Only a snackbar hosted by
+      // the tray's own Scaffold is an element DESCENDANT of
+      // the tray subtree — and this test was verified to fail
+      // on the pre-fix tray for exactly this assertion.
+      expect(tray(), findsOneWidget);
+      expect(find.byType(SnackBar), findsOneWidget);
+      expect(
+          find.descendant(
+              of: tray(), matching: find.byType(SnackBar)),
+          findsOneWidget);
+      expect(
+          find.text('Sync failed. Check your connection and try again.'),
+          findsOneWidget);
+      final trayRect = tester.getRect(tray());
+      final barRect = tester.getRect(find.byType(SnackBar));
+      expect(barRect.top, greaterThanOrEqualTo(trayRect.top));
+      expect(barRect.bottom, lessThanOrEqualTo(trayRect.bottom + 0.5));
+      expect(barRect.left, greaterThanOrEqualTo(trayRect.left));
+      expect(barRect.right, lessThanOrEqualTo(trayRect.right + 0.5));
+
+      // Expire the snackbar so no timer pends at teardown.
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byType(SnackBar), findsNothing);
       await drainRealWork(tester);
     });
 
