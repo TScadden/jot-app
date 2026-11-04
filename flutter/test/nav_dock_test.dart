@@ -4,9 +4,14 @@ import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
 import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 
-/// Round 9 — nav dock tests: all five tabs tappable, home shows the real
-/// home screen, the other four show blank placeholders, and the active
+/// Round 9 — nav dock tests: all four tabs tappable, home shows the real
+/// home screen, the others show their screens, and the active
 /// highlight follows the selection.
+///
+/// Settings-gear round (Lab): the dock has FOUR tabs — Settings
+/// left the dock for the Home header gear (bottom tray). The
+/// settings steps below were removed / retargeted for exactly
+/// that intentional change; test count unchanged.
 ///
 /// Round 14 note: the home header's weather icon now animates on a
 /// repeating controller, so these tests use explicit timed pumps instead
@@ -36,18 +41,19 @@ void main() {
     return widget.color!;
   }
 
-  testWidgets('all five dock tabs are present and tappable', (tester) async {
+  testWidgets('all four dock tabs are present and tappable', (tester) async {
     await tester.pumpWidget(shell());
     for (final icon in [
       Icons.home,
       Icons.assignment,
       Icons.edit,
       Icons.favorite,
-      Icons.settings,
     ]) {
       expect(dockIcon(icon), findsOneWidget,
           reason: 'dock icon $icon missing');
     }
+    // No Settings cell in the dock anymore (header gear instead).
+    expect(dockIcon(Icons.settings), findsNothing);
     await settleDock(tester);
   });
 
@@ -79,11 +85,6 @@ void main() {
         findsOneWidget);
     expect(find.text('Today'), findsOneWidget);
 
-    // Settings -> blank.
-    await tester.tap(dockIcon(Icons.settings));
-    await settleDock(tester);
-    expect(find.text('Today'), findsNothing);
-
     // Quick log (center pencil) -> blank.
     await tester.tap(dockIcon(Icons.edit));
     await settleDock(tester);
@@ -110,7 +111,6 @@ void main() {
       Icons.assignment,
       Icons.edit,
       Icons.favorite,
-      Icons.settings,
     ]) {
       expect(iconColor(tester, icon), LabBlackColors.textPrimary);
     }
@@ -130,9 +130,9 @@ void main() {
 
   testWidgets('dock stays visible on blank tabs', (tester) async {
     await tester.pumpWidget(shell());
-    await tester.tap(dockIcon(Icons.settings));
+    await tester.tap(dockIcon(Icons.assignment));
     await settleDock(tester);
-    // The dock (with all five icons) is still on screen.
+    // The dock (with all four icons) is still on screen.
     expect(find.byType(NavDock), findsOneWidget);
     expect(dockIcon(Icons.home), findsOneWidget);
   });

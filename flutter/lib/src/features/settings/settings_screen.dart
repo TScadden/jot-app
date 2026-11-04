@@ -161,6 +161,25 @@ class SettingsScreen extends StatefulWidget {
   /// destination, not reached from the Settings menu).
   final bool openEventCounters;
 
+  /// Settings-gear round (Lab) — tray hosting. When true this
+  /// screen is hosted inside the bottom settings tray
+  /// (settings_tray.dart) instead of standing as its own route:
+  /// the outer Scaffold + AppBar chrome is SUPPRESSED (hosting fix
+  /// 1) and replaced by an in-body tray header (title = the same
+  /// [_title] string the AppBar showed, the same back arrow on
+  /// sub-pages, plus the tray's ✕ close at the right — the video's
+  /// tray grammar, SETTINGS_SPEC §5.1). The body ListView's bottom
+  /// padding drops from 110dp (floating-dock clearance) to 24dp
+  /// (hosting fix 2: the dock is covered by the tray while it is
+  /// open, so the clearance has nothing to clear). Content,
+  /// strings, page swaps, and behavior are otherwise untouched.
+  final bool embeddedInTray;
+
+  /// Settings-gear round — the tray's ✕ handler, supplied by the
+  /// tray host when [embeddedInTray] is true. Null in the pushed /
+  /// tab forms, where no ✕ exists.
+  final VoidCallback? onTrayClose;
+
   const SettingsScreen({
     super.key,
     this.email,
@@ -182,6 +201,8 @@ class SettingsScreen extends StatefulWidget {
     this.migrationPicker,
     this.migrationShare,
     this.openEventCounters = false,
+    this.embeddedInTray = false,
+    this.onTrayClose,
   });
 
   @override
@@ -965,65 +986,145 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // the app exits from the shell tab) exactly as before.
     final bool interceptBack = _page != _Page.main &&
         !(widget.openEventCounters && _page == _Page.eventCounters);
+    // The body's page dispatch — identical in the standalone route
+    // and in the tray host; only the chrome around it differs.
+    final body = ListView(
+      padding: widget.embeddedInTray
+          // Hosting fix 2 (see [SettingsScreen.embeddedInTray]):
+          // no floating dock to clear inside the tray.
+          ? const EdgeInsets.fromLTRB(16, 16, 16, 24)
+          : const EdgeInsets.fromLTRB(16, 16, 16, 110),
+      children: [
+        if (_page == _Page.main || _page == _Page.membership)
+          _segmentedHeader(),
+        if (_page == _Page.membership) _membershipPage(),
+        if (_page == _Page.main) ..._mainPage(),
+        if (_page == _Page.userProfile) ..._userProfilePage(),
+        if (_page == _Page.customize) ..._customizePage(),
+        if (_page == _Page.connectedApps) ..._connectedAppsPage(),
+        if (_page == _Page.aiKnowledge) ..._aiPage(),
+        if (_page == _Page.eventCounters) ..._countersPage(),
+        if (_page == _Page.notifications) ..._notificationsPage(),
+        if (_page == _Page.syncSettings) ..._syncPage(),
+        if (_page == _Page.jotLive) ..._unavailablePage(
+            'Tabs Live Beta streams live heart data from a connected band over Bluetooth. Bluetooth streaming is not available in the Flutter Lab yet.'),
+        if (_page == _Page.debug) ..._unavailablePage(
+            'The Developer Terminal fires test notifications from the native app. Test notifications are not available in the Flutter Lab yet.'),
+        if (_page == _Page.progressReports)
+          ProgressReportsPage(
+            // Round 66 — the real Progress Reports page (native
+            // ProgressReportsScreen.kt port): type/range pickers,
+            // preview, PDF generation via the pure-Dart pdf
+            // package, share confirmation, appointment card.
+            profileData: _data,
+            backend: _backend,
+            store: _store,
+            healthConnectService: _hc,
+            notificationService: _notifs,
+            knowledgeStore: _kStore,
+          ),
+      ],
+    );
     return PopScope(
       canPop: !interceptBack,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         _back();
       },
-      child: Scaffold(
-      backgroundColor: NotelColors.background,
-      appBar: AppBar(
-        backgroundColor: NotelColors.background,
-        elevation: 0,
-        leading: _page == _Page.main
-            ? null
-            : IconButton(
-                icon: const Icon(Icons.arrow_back,
-                    color: NotelColors.textSecondary),
-                onPressed: _back,
+      child: widget.embeddedInTray
+          // Hosting fix 1: no Scaffold / AppBar inside the tray —
+          // the tray supplies the glass surface, and the header
+          // below supplies the title / back / ✕ row. The PopScope
+          // above is unchanged, so system back inside the tray
+          // still steps sub-page → main first (via [_back]) and
+          // only then pops the tray route itself.
+          ? Column(
+              children: [
+                _trayHeader(),
+                const Divider(height: 1, color: Color(0x14FFFFFF)),
+                Expanded(child: body),
+              ],
+            )
+          : Scaffold(
+              backgroundColor: NotelColors.background,
+              appBar: AppBar(
+                backgroundColor: NotelColors.background,
+                elevation: 0,
+                leading: _page == _Page.main
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.arrow_back,
+                            color: NotelColors.textSecondary),
+                        onPressed: _back,
+                      ),
+                title: Text(_title,
+                    style: const TextStyle(
+                        color: NotelColors.textPrimary,
+                        // R49 SE7/S3: explicit root-title size (was inherited
+                        // from the M3 default text theme).
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold)),
               ),
-        title: Text(_title,
-            style: const TextStyle(
-                color: NotelColors.textPrimary,
-                // R49 SE7/S3: explicit root-title size (was inherited
-                // from the M3 default text theme).
-                fontSize: 22,
-                fontWeight: FontWeight.bold)),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 110),
-        children: [
-          if (_page == _Page.main || _page == _Page.membership)
-            _segmentedHeader(),
-          if (_page == _Page.membership) _membershipPage(),
-          if (_page == _Page.main) ..._mainPage(),
-          if (_page == _Page.userProfile) ..._userProfilePage(),
-          if (_page == _Page.customize) ..._customizePage(),
-          if (_page == _Page.connectedApps) ..._connectedAppsPage(),
-          if (_page == _Page.aiKnowledge) ..._aiPage(),
-          if (_page == _Page.eventCounters) ..._countersPage(),
-          if (_page == _Page.notifications) ..._notificationsPage(),
-          if (_page == _Page.syncSettings) ..._syncPage(),
-          if (_page == _Page.jotLive) ..._unavailablePage(
-              'Tabs Live Beta streams live heart data from a connected band over Bluetooth. Bluetooth streaming is not available in the Flutter Lab yet.'),
-          if (_page == _Page.debug) ..._unavailablePage(
-              'The Developer Terminal fires test notifications from the native app. Test notifications are not available in the Flutter Lab yet.'),
-          if (_page == _Page.progressReports)
-            ProgressReportsPage(
-              // Round 66 — the real Progress Reports page (native
-              // ProgressReportsScreen.kt port): type/range pickers,
-              // preview, PDF generation via the pure-Dart pdf
-              // package, share confirmation, appointment card.
-              profileData: _data,
-              backend: _backend,
-              store: _store,
-              healthConnectService: _hc,
-              notificationService: _notifs,
-              knowledgeStore: _kStore,
+              body: body,
             ),
+    );
+  }
+
+  /// Settings-gear round — the tray header row (the video's tray
+  /// grammar, SETTINGS_SPEC §5.1/§5.2): a left-aligned title (the
+  /// same [_title] string + title style the AppBar used: on the
+  /// main page that is the existing string "Settings"), the SAME
+  /// back arrow the AppBar showed on sub-pages (same icon, color,
+  /// and [_back] handler — in-page back behavior unchanged), a
+  /// hairline divider under the row (added by the caller), and the
+  /// root-tray ✕ close affordance at the right: a gray translucent
+  /// circle with a white ✕, per the reference's header circle
+  /// buttons (Ø ≈33–39pt). ✕ dismissal itself was NOT IN VIDEO as
+  /// a captured click (SETTINGS_SPEC §8.2) — wiring it to close is
+  /// a named interpretation of this package.
+  Widget _trayHeader() {
+    return SizedBox(
+      height: 56,
+      child: Row(
+        children: [
+          if (_page == _Page.main)
+            const SizedBox(width: 16)
+          else
+            IconButton(
+              icon: const Icon(Icons.arrow_back,
+                  color: NotelColors.textSecondary),
+              onPressed: _back,
+            ),
+          Expanded(
+            child: Text(_title,
+                style: const TextStyle(
+                    color: NotelColors.textPrimary,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold)),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: Tooltip(
+              message: 'Close',
+              child: Material(
+                color: const Color(0x1FFFFFFF), // white @ 12% circle
+                shape: const CircleBorder(),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  key: const ValueKey('settings_tray_close'),
+                  customBorder: const CircleBorder(),
+                  onTap: widget.onTrayClose,
+                  child: const SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: Icon(Icons.close,
+                        size: 18, color: NotelColors.textPrimary),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
-      ),
       ),
     );
   }

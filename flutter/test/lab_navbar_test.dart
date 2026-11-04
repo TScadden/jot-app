@@ -21,7 +21,9 @@ import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 /// Default test surface is 800x600 logical dp, viewPadding 0
 /// unless a test sets it. Bar math at 800 wide: outer width
 /// 800 - 32 margins = 768; inner width 768 - 8 padding = 760;
-/// cell = 152.
+/// cell = 190 (settings-gear round: FOUR cells — Settings left
+/// the dock for the Home header gear; every other geometry value
+/// is the signed navbar invariant, re-pinned below).
 void main() {
   Finder dockGradientBar() => find.byWidgetPredicate(
         (w) =>
@@ -83,8 +85,8 @@ void main() {
       // Total widget height = bar + bottom float (27 at inset 0).
       expect(tester.getSize(find.byType(NavDock)).height, 62 + 27);
 
-      // Capsule per tab: full cell (152) x 52, radius 26,
-      // left = barLeft + 4 + i x 152, top = barTop + 5.
+      // Capsule per tab: full cell (190 = inner 760 / 4) x 52,
+      // radius 26, left = barLeft + 4 + i x 190, top = barTop + 5.
       final barTopLeft = tester.getTopLeft(dockGradientBar());
       final pill = find.byKey(const ValueKey('dock_selection_pill'));
       for (var i = 0; i < DockTab.values.length; i++) {
@@ -92,10 +94,10 @@ void main() {
           dock(selected: DockTab.values[i], disableAnimations: true),
         );
         await tester.pump();
-        expect(tester.getSize(pill), const Size(152, 52),
+        expect(tester.getSize(pill), const Size(190, 52),
             reason: 'capsule size for ${DockTab.values[i]}');
         final tl = tester.getTopLeft(pill);
-        expect(tl.dx, closeTo(barTopLeft.dx + 4 + i * 152, 0.01),
+        expect(tl.dx, closeTo(barTopLeft.dx + 4 + i * 190, 0.01),
             reason: 'capsule left for ${DockTab.values[i]}');
         expect(tl.dy, closeTo(barTopLeft.dy + 5, 0.01),
             reason: 'capsule top for ${DockTab.values[i]}');
@@ -113,8 +115,9 @@ void main() {
     });
 
     testWidgets(
-        '(b) icons: five glyphs, 24dp near-white in both states, '
-        'no labels ever, center cell plain', (tester) async {
+        '(b) icons: four glyphs, 24dp near-white in both states, '
+        'no labels ever, center cell plain, NO settings cell',
+        (tester) async {
       await tester.pumpWidget(
         dock(selected: DockTab.heart, showLabels: true),
       );
@@ -125,20 +128,27 @@ void main() {
             find.descendant(of: find.byType(NavDock), matching: find.byType(Icon)),
           )
           .toList();
+      // Settings-gear round: exactly four cells, order unchanged,
+      // and NO settings glyph anywhere in the dock (Settings lives
+      // on the Home header gear now — covered by
+      // lab_settingsgear_test.dart).
       expect(icons.map((i) => i.icon), [
         Icons.home,
         Icons.assignment,
         Icons.edit,
         Icons.favorite,
-        Icons.settings,
       ]);
-      // Semantic labels unchanged (they are strings; identical).
+      expect(
+        find.descendant(
+            of: find.byType(NavDock), matching: find.byIcon(Icons.settings)),
+        findsNothing,
+      );
+      // Semantic labels of the remaining cells unchanged.
       expect(icons.map((i) => i.semanticLabel), [
         'Home',
         'Tools',
         'Quick log',
         'Heart',
-        'Settings',
       ]);
       for (final icon in icons) {
         expect(icon.size, 24);
@@ -279,10 +289,12 @@ void main() {
       final pill = find.byKey(const ValueKey('dock_selection_pill'));
       final startLeft = tester.getTopLeft(pill).dx;
 
-      // Worst-case flip: home -> settings (4 cells of travel).
+      // Worst-case flip: home -> heart (3 cells of travel — the
+      // widest jump the 4-cell dock has; was home -> settings
+      // before Settings left the dock).
       await tester.tap(find.descendant(
         of: find.byType(NavDock),
-        matching: find.byIcon(Icons.settings),
+        matching: find.byIcon(Icons.favorite),
       ));
       final samples = <({int ms, double left})>[];
       await tester.pump();
@@ -296,7 +308,7 @@ void main() {
       // leaves its trace for diagnosis.
       final out = Platform.environment['NAVBAR_TRACE_OUT'];
       if (out != null) {
-        final tgt = startLeft + 4 * 152.0;
+        final tgt = startLeft + 3 * 190.0;
         int? st;
         for (var i = 0; i < samples.length; i++) {
           if (samples.skip(i).every((x) => (x.left - tgt).abs() <= 0.5)) {
@@ -324,7 +336,7 @@ void main() {
         );
       }
 
-      final targetLeft = startLeft + 4 * 152.0;
+      final targetLeft = startLeft + 3 * 190.0;
       final travel = targetLeft - startLeft;
 
       // (a) Monotonic approach (no sample ever moves backwards).

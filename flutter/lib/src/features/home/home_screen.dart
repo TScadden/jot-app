@@ -35,6 +35,7 @@ import 'package:tabs_lab/src/features/home/intake_logging.dart';
 import 'package:tabs_lab/src/features/home/good_day_logging.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
+import 'package:tabs_lab/src/features/settings/settings_tray.dart';
 import 'package:tabs_lab/src/features/home/health_connect_banner.dart';
 import 'package:tabs_lab/src/features/home/migraine_block.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
@@ -1040,6 +1041,28 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_loadCounters());
   }
 
+  /// Settings-gear round — the header gear's tap: opens Tabs'
+  /// settings as the bottom tray (SETTINGS_SPEC behavior, see
+  /// settings_tray.dart), forwarding the same dependencies the
+  /// counter slot's Settings push receives below. On dismissal the
+  /// pull cache is invalidated and the counters re-read — the same
+  /// refresh the counter-slot push runs on return — because the
+  /// tray can archive / edit counters too.
+  Future<void> _openSettings() async {
+    await showSettingsTray(
+      context,
+      email: widget.email,
+      onLogout: widget.onLogout,
+      backend: _backend,
+      settingsStore: widget.settingsStore,
+      healthConnectService: widget.healthConnectService,
+      billingService: widget.billingService,
+    );
+    if (!mounted) return;
+    _backend.invalidateSyncPull();
+    unawaited(_loadCounters());
+  }
+
   /// Merged check-in — resolves ALL of today's check-in state
   /// (ranking visibility, flare record, good record) from the REAL
   /// pulled entries overlaid with the outbox. Any failure leaves
@@ -1904,6 +1927,24 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
+          ),
+          // Settings gear (settings-gear round): sits IMMEDIATELY
+          // LEFT of the watch button — Tabs' own gear glyph (the
+          // same Icons.settings the retired dock cell used), 24dp,
+          // in NotelColors.primary, the watch button's own color,
+          // so the pair carries equal visual weight; standard 48dp
+          // IconButton target. Tap opens Settings as the bottom
+          // tray (settings_tray.dart), NOT a tab switch and NOT a
+          // page push.
+          IconButton(
+            key: const ValueKey('home_settings_gear'),
+            onPressed: () => unawaited(_openSettings()),
+            icon: const Icon(
+              Icons.settings,
+              size: 24,
+              color: NotelColors.primary,
+            ),
+            tooltip: 'Settings',
           ),
           // Watch: opens the data-connections screen (native
           // onNavigateToConnections). Round 12b: explicit slide-in-from-right —

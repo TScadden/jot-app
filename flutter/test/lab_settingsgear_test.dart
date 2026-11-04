@@ -1,0 +1,319 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:tabs_lab/src/data/health_history_store.dart';
+import 'package:tabs_lab/src/data/settings_store.dart';
+import 'package:tabs_lab/src/data/weather_api.dart';
+import 'package:tabs_lab/src/features/home/home_screen.dart';
+import 'package:tabs_lab/src/features/settings/settings_tray.dart';
+import 'package:tabs_lab/src/features/shell/main_shell.dart';
+import 'package:tabs_lab/src/features/shell/nav_dock.dart';
+import 'package:tabs_lab/src/theme/notel_colors.dart';
+
+/// Settings-gear round (Lab) — NAMED additions of this package:
+/// the Home header gear (presence + numeric placement against the
+/// watch button), and the settings tray it opens (SETTINGS_SPEC
+/// behavior: grows from the bar zone, hosts the real Settings
+/// menu, navigates inside itself, dismisses by ✕ / tap-outside /
+/// system back). The dock-side additions (no settings cell,
+/// capsule = 1 of 4 cells) live in lab_navbar_test.dart (a)/(b).
+///
+/// The shell harness mirrors settings_r30_navlabels_test.dart:
+/// a real MainShell over an in-memory SettingsStore, with the
+/// secure-storage channel mocked to the signed-out answers so the
+/// real backend's loads complete deterministically.
+void main() {
+  const secureStorageChannel =
+      MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
+
+  setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(secureStorageChannel, (call) async {
+      return switch (call.method) {
+        'read' => null,
+        'readAll' => <String, String>{},
+        _ => null,
+      };
+    });
+  });
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(secureStorageChannel, null);
+  });
+
+  SettingsStore storeOver(Map<String, String> map) =>
+      SettingsStore.withStorage(
+        read: (k) async => map[k],
+        write: (k, v) async => map[k] = v,
+        delete: (k) async => map.remove(k),
+      );
+
+  Future<void> pumpShell(WidgetTester tester) async {
+    final map = <String, String>{};
+    await tester.pumpWidget(
+        MaterialApp(home: MainShell(settingsStore: storeOver(map))));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+  }
+
+  Finder gear() => find.byKey(const ValueKey('home_settings_gear'));
+  Finder tray() => find.byKey(const ValueKey('settings_tray'));
+
+  /// Lets Home's background chains finish before teardown. The
+  /// Daily Score chain's Health Connect reads ride REAL async
+  /// platform replies (unmocked channel), so fake pumps alone
+  /// leave a bounded-read timeout timer pending at teardown;
+  /// alternating real-async drains with pumps (the settings_r30
+  /// seed-loop pattern) runs the chain to completion.
+  Future<void> drainRealWork(WidgetTester tester) async {
+    for (var i = 0; i < 10; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+  }
+
+  /// Opens the tray from Home and waits out the 220ms grow plus
+  /// the hosted Settings load.
+  Future<void> openTray(WidgetTester tester) async {
+    await tester.tap(gear());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(tray(), findsOneWidget);
+  }
+
+  group('Lab settings gear + tray (settings-gear named additions)', () {
+    testWidgets('gear: present in Home header, immediately left of '
+        'the watch button, 24dp in NotelColors.primary', (tester) async {
+      // Standalone Home (not the shell): the header is the unit
+      // under test, and the injected history store + snapshot
+      // stub keep Home's Daily Score chain out of the Health
+      // Connect capture path (whose 30s bounded reads would
+      // otherwise pend at teardown — the shell harness's chain
+      // restarts them indefinitely).
+      final disk = <String, String>{};
+      final scoreStore = HealthHistoryStore.testInstance();
+      scoreStore.debugSetStore(
+        read: (k) async => disk[k],
+        write: (k, v) async => disk[k] = v,
+        delete: (k) async => disk.remove(k),
+      );
+      scoreStore.debugReset();
+      await tester.pumpWidget(MaterialApp(
+        home: HomeScreen(
+          weatherApi: WeatherApiClient(
+            client: MockClient((request) async {
+              if (request.url.host == 'ipinfo.io') {
+                return http.Response(
+                    '{"city":"Orem","loc":"40.2969,-111.6946","country":"US"}',
+                    200);
+              }
+              return http.Response(
+                  '{"current":{"temperature_2m":61.0,"weather_code":2,"is_day":1}}',
+                  200);
+            }),
+          ),
+          healthHistoryStore: scoreStore,
+          dailyScoreSnapshotCapture: ({bool force = false}) async => true,
+        ),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(gear(), findsOneWidget);
+      // Tabs' own gear glyph, same as the retired dock cell used.
+      final glyph = tester.widget<Icon>(find.descendant(
+          of: gear(), matching: find.byIcon(Icons.settings)));
+      expect(glyph.size, 24);
+      expect(glyph.color, NotelColors.primary);
+      expect(find.byTooltip('Settings'), findsOneWidget);
+
+      // Placement, numerically: the gear's 48dp box is CONTIGUOUS
+      // with the watch button's box (gear right edge == watch left
+      // edge) and they share a vertical center band. The watch
+      // button itself did not move: it is still the rightmost
+      // header action (its right edge is the surface edge). The
+      // watch rect is read from its IconButton (the ancestor of
+      // the 'Connections' tooltip — the Tooltip's own render box
+      // is the button's centered 40dp visual box, not its 48dp
+      // target box).
+      final gearRect = tester.getRect(gear());
+      final watchRect = tester.getRect(find.ancestor(
+          of: find.byTooltip('Connections'),
+          matching: find.byType(IconButton)));
+      expect(gearRect.right, closeTo(watchRect.left, 0.5));
+      expect(gearRect.center.dy, closeTo(watchRect.center.dy, 0.5));
+      expect(gearRect.width, 48);
+      expect(gearRect.height, 48);
+      expect(watchRect.right, closeTo(800, 0.5));
+      // Let the staggered-entrance delay timers fire (no pending
+      // timers at teardown).
+      await tester.pump(const Duration(milliseconds: 300));
+    });
+
+    testWidgets('tray: gear tap opens the tray anchored over the '
+        'bar zone, hosting the real Settings menu', (tester) async {
+      await pumpShell(tester);
+      await openTray(tester);
+
+      // Geometry: full width, bottom edge at the screen bottom
+      // (bar zone inside its footprint), height at the 0.78 cap
+      // on the 800x600 test surface.
+      final rect = tester.getRect(tray());
+      expect(rect.left, 0);
+      expect(rect.right, 800);
+      expect(rect.bottom, closeTo(600, 0.5));
+      expect(rect.height, closeTo(600 * 0.78, 0.5));
+      // The tray covers the dock zone completely: the dock's top
+      // edge is BELOW the tray's top edge (dock hidden beneath).
+      final dockTop = tester.getTopLeft(find.byType(NavDock)).dy;
+      expect(rect.top, lessThan(dockTop));
+
+      // Real Settings content inside: tray header ✕ + the actual
+      // main-menu rows (strings untouched).
+      expect(find.byKey(const ValueKey('settings_tray_close')),
+          findsOneWidget);
+      await tester.ensureVisible(find.text('User Profile'));
+      await tester.pump();
+      expect(find.text('User Profile'), findsOneWidget);
+      await tester.ensureVisible(find.text('Customize'));
+      await tester.pump();
+      expect(find.text('Customize'), findsOneWidget);
+      await drainRealWork(tester);
+    });
+
+    testWidgets('tray: ✕ closes it', (tester) async {
+      await pumpShell(tester);
+      await openTray(tester);
+      await tester.tap(find.byKey(const ValueKey('settings_tray_close')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tray(), findsNothing);
+      // Home is still there underneath.
+      expect(find.text('Today'), findsOneWidget);
+      await drainRealWork(tester);
+    });
+
+    testWidgets('tray: tap outside (barrier above the tray) '
+        'dismisses it', (tester) async {
+      await pumpShell(tester);
+      await openTray(tester);
+      // The tray's top edge sits at 600 - 468 = 132 on this
+      // surface; (400, 20) is squarely in the barrier region.
+      await tester.tapAt(const Offset(400, 20));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tray(), findsNothing);
+      expect(find.text('Today'), findsOneWidget);
+      await drainRealWork(tester);
+    });
+
+    testWidgets('tray: selecting an entry navigates INSIDE the '
+        'tray (no dismissal); in-tray back returns to the menu',
+        (tester) async {
+      await pumpShell(tester);
+      await openTray(tester);
+
+      await tester.ensureVisible(find.text('Customize'));
+      await tester.pump();
+      await tester.tap(find.text('Customize'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      // The tray is still open, now showing the Customize page —
+      // proven by its nav-labels toggle (the Round 30 row).
+      expect(tray(), findsOneWidget);
+      expect(find.byKey(const ValueKey('nav_labels_toggle')),
+          findsOneWidget);
+
+      // In-tray back arrow (the SettingsScreen AppBar arrow's
+      // replacement in the tray header) returns to the main menu;
+      // the tray stays open.
+      await tester.tap(find.descendant(
+          of: tray(), matching: find.byIcon(Icons.arrow_back)));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(tray(), findsOneWidget);
+      await tester.ensureVisible(find.text('User Profile'));
+      await tester.pump();
+      expect(find.text('User Profile'), findsOneWidget);
+      await drainRealWork(tester);
+    });
+
+    testWidgets('tray: system back steps sub-page -> menu first, '
+        'then dismisses the tray before Home', (tester) async {
+      await pumpShell(tester);
+      await openTray(tester);
+
+      // Into a sub-page, then system back: the tray must stay
+      // open on the main menu (SettingsScreen's own PopScope).
+      await tester.ensureVisible(find.text('Customize'));
+      await tester.pump();
+      await tester.tap(find.text('Customize'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byKey(const ValueKey('nav_labels_toggle')),
+          findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tray(), findsOneWidget,
+          reason: 'first back should land on the Settings menu, '
+              'not dismiss the tray');
+      expect(find.byKey(const ValueKey('nav_labels_toggle')),
+          findsNothing);
+
+      // Second system back: the tray dismisses; Home remains.
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tray(), findsNothing);
+      expect(find.text('Today'), findsOneWidget);
+      await drainRealWork(tester);
+    });
+
+    testWidgets('tray geometry: height grows from the bar zone to '
+        'the 0.78 cap monotonically; reduced motion snaps to final',
+        (tester) async {
+      // Standalone tray pumps (the dialog animation replaced by a
+      // stopped animation at fixed values). On the 800x600
+      // surface with viewPadding 0: bar zone = 27 float + 62 bar
+      // = 89; final = 0.78 x 600 = 468.
+      Future<double> trayHeightAt(double v,
+          {bool reduced = false}) async {
+        final trayWidget = SettingsTray(
+          key: ValueKey('tray_probe_${v}_$reduced'),
+          animation: AlwaysStoppedAnimation(v),
+          onClose: () {},
+        );
+        await tester.pumpWidget(MaterialApp(
+          home: reduced
+              ? Builder(
+                  builder: (context) => MediaQuery(
+                    // copyWith from the AMBIENT data — a bare
+                    // MediaQueryData would zero the size the tray
+                    // measures its cap from.
+                    data: MediaQuery.of(context)
+                        .copyWith(disableAnimations: true),
+                    child: trayWidget,
+                  ),
+                )
+              : trayWidget,
+        ));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        return tester.getSize(tray()).height;
+      }
+
+      expect(await trayHeightAt(0), closeTo(89, 0.5));
+      // easeOutCubic(0.5) = 0.875 -> 89 + (468 - 89) x 0.875.
+      expect(await trayHeightAt(0.5), closeTo(420.6, 1.0));
+      expect(await trayHeightAt(1), closeTo(468, 0.5));
+      // Reduced motion: final height instantly, even at value 0.
+      expect(await trayHeightAt(0, reduced: true), closeTo(468, 0.5));
+    });
+  });
+}

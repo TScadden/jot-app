@@ -518,12 +518,17 @@ void main() {
     // For every tab, the pill's center must sit on that tab's own
     // icon center. Before the fix, slots 2–4 clamped to slot 1
     // (Tools) because the controller was bounded 0–1.
+    // Settings-gear round: the loop covers the FOUR remaining
+    // dock tabs — the (DockTab.settings, Icons.settings) entry is
+    // REMOVED because the dock no longer has a Settings cell
+    // (Settings moved to the Home header gear). This loop
+    // therefore generates 4 tests instead of 5; the removed test
+    // is named in the package's suite reconciliation.
     for (final (tab, icon) in <(DockTab, IconData)>[
       (DockTab.home, Icons.home),
       (DockTab.tools, Icons.assignment),
       (DockTab.quickLog, Icons.edit),
       (DockTab.heart, Icons.favorite),
-      (DockTab.settings, Icons.settings),
     ]) {
       testWidgets('pill centers on $tab', (tester) async {
         await tester.pumpWidget(MaterialApp(

@@ -9,7 +9,6 @@ import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/heart/heart_screen.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/quicklog/quick_log_screen.dart';
-import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
 import 'package:tabs_lab/src/features/tools/tools_screen.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
@@ -25,9 +24,11 @@ import 'package:tabs_lab/src/theme/animations.dart';
 ///   real categories, AI suggestions, history view.
 /// - Heart → the real Heart screen (round 25): native FitbitScreen
 ///   port (summary, today's pattern chart, spikes, spike review).
-/// - Settings → the real Settings screen (round 29): native
-///   SettingsScreen port with membership, profile-backed toggles,
-///   and real logout / delete-account flows.
+/// - Settings is NOT a dock tab anymore (settings-gear round,
+///   Lab): it opens from the Home header gear as a bottom tray
+///   hosting the real Settings screen (round 29's port, unchanged),
+///   and stays reachable as a push from Home's counter slot and
+///   from Research. The shell no longer builds a Settings tab.
 /// - The dock stays visible on every tab. The active icon highlights in
 ///   `NotelPrimary`, matching the native dock's selected state.
 /// - The dock is NOT shown on splash / welcome / login — same as native
@@ -50,7 +51,7 @@ import 'package:tabs_lab/src/theme/animations.dart';
 ///   Screens never change slots mid-life, so neither screen's State is
 ///   ever recreated by the transition machinery itself.
 /// - Direction is pure index comparison (DockTab order IS the spec
-///   order 0 Home, 1 Tools, 2 Quick Log, 3 Heart, 4 Settings):
+///   order 0 Home, 1 Tools, 2 Quick Log, 3 Heart):
 ///   target index > current → incoming enters from the right and the
 ///   outgoing exits left; target < current → mirror image. Both use
 ///   the same eased progress, so the two screens tile exactly (their
@@ -87,7 +88,7 @@ class MainShell extends StatefulWidget {
   final SettingsStore? settingsStore;
 
   /// The app-owned billing service (single instance), forwarded
-  /// to Settings (tab + pushed routes via Home/Tools) — consumed
+  /// to Settings (pushed / tray routes via Home/Tools) — consumed
   /// there, never constructed or disposed by the shell or screens.
   final BillingService? billingService;
 
@@ -156,7 +157,8 @@ class _MainShellState extends State<MainShell>
   //
   // Customize-wiring fix (Oct 2026): the refresh is LIVE, not
   // tab-switch-timed. The shell listens to the shared SettingsStore
-  // (see [_screenFor] — Settings receives THIS instance, not a
+  // (see [_screenFor] — Home receives THIS instance and forwards it
+  // into every Settings surface it opens, tray included, not a
   // fresh one), and setShowNavLabels notifies after its write
   // lands, so flipping the Customize toggle while sitting in
   // Settings updates the visible dock on that same screen, in both
@@ -280,9 +282,9 @@ class _MainShellState extends State<MainShell>
           weatherApi: widget.weatherApi,
           locationService: widget.locationService,
           healthConnectService: widget.healthConnectService,
-          // Same shared instance as the Settings tab (see the
-          // settings case below): Home pushes a Settings route for
-          // Event Counters and forwards this store into it, so a
+          // The shell's shared instance: Home forwards it into
+          // every Settings surface it opens (the Event Counters
+          // push and the header-gear settings tray), so a
           // Customize change made there notifies this shell too.
           settingsStore: _settingsStore,
           billingService: widget.billingService,
@@ -303,21 +305,6 @@ class _MainShellState extends State<MainShell>
           key: const ValueKey('heart_screen'),
           email: widget.email,
           healthConnectService: widget.healthConnectService,
-        ),
-      DockTab.settings => SettingsScreen(
-          key: const ValueKey('settings_screen'),
-          email: widget.email,
-          onLogout: widget.onLogout,
-          // Customize-wiring fix: Settings MUST write through the
-          // shell's store instance. Two default instances share the
-          // secure-storage backing (so reads always agreed), but a
-          // change notification only reaches listeners on the
-          // instance that was written — without this hand-off the
-          // live dock refresh above could never fire in the shell
-          // tree.
-          settingsStore: _settingsStore,
-          healthConnectService: widget.healthConnectService,
-          billingService: widget.billingService,
         ),
     };
   }

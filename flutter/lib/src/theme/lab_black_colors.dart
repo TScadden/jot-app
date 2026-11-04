@@ -131,6 +131,33 @@ abstract final class LabBlackColors {
   /// purple tint fails the reference.
   static const navbarCapsuleFill = Color(0xFF050505);
 
+  // ── Settings tray glass (SETTINGS_SPEC §3 / GLASS_STUDY tray
+  // recipe) ─────────────────────────────────────────────────────
+  //
+  // The settings tray is the GLASS_STUDY TRAY recipe, a different,
+  // more opaque surface than the bar's glass: near-flat dark fill
+  // one tonal step lighter than the inset cards (#1A1A1E), milky
+  // tint over a real BackdropFilter blur at [glassBlurSigma] (14),
+  // ~90% opaque (SETTINGS_SPEC: 85–90%, backdrop ghosts through as
+  // a blur), a specular top line ([glassSpecular]), and a ~30dp
+  // radius at the TOP corners only — the bottom edge is anchored
+  // in the bottom-bar zone (square bottom corners).
+  static const settingsTrayGradient = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    stops: [0.0, 0.18, 1.0],
+    colors: [
+      Color(0xE62E2E34), // ~90% — specular zone, one step up
+      Color(0xE62A2A30), // ~90%
+      Color(0xE626262B), // ~90% — GLASS_STUDY tray interior family
+    ],
+  );
+
+  /// Settings tray corner radius at the top corners
+  /// (SETTINGS_SPEC §3: ≈30pt). Bottom corners are square (0) —
+  /// the tray is anchored in the bar zone, not a floating card.
+  static const settingsTrayRadius = 30.0;
+
   /// Selection-pill glass — the v4 dock pill recipe, retained for
   /// the record; the Phase 2 replica capsule is the solid
   /// [navbarCapsuleFill] above, not this gradient.

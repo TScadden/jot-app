@@ -13,14 +13,24 @@ import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 /// - Centered floating pill: full width minus 16dp margins each
 ///   side (production's existing footprint — the reference's 0.665
 ///   width fraction is a consequence of its 3 cells x 85pt and
-///   cannot hold Tabs' 5 destinations), height exactly 62dp in ALL
+///   cannot hold Tabs' destinations), height exactly 62dp in ALL
 ///   states, corner radius 31dp (height/2, a true pill).
-/// - Five equal cells, icon-only in every state: the reference
+/// - Four equal cells, icon-only in every state: the reference
 ///   renders no text labels in any state, so this presentation
 ///   never draws labels and the height never varies. The
 ///   [NavDock.showLabels] preference parameter stays in the API
 ///   (MainShell still feeds it from SettingsStore) but does not
 ///   change this presentation.
+/// - Settings-gear round (Lab): Settings is NO LONGER a dock
+///   destination — it moved to the Home header gear (left of the
+///   watch icon), which opens Settings as a bottom tray
+///   (SETTINGS_SPEC). The dock keeps Home, Tools, Quick log,
+///   Heart in their original order; every signed navbar invariant
+///   (62dp height, radius 31, inner padding 4, margins 16, bottom
+///   float max(27, viewPadding + 4), full-cell solid #050505
+///   capsule 52dp / radius 26, spring 900/57, 24dp near-white
+///   icons, no labels) is unchanged — only the cell count (and
+///   therefore the cell/capsule width) changed.
 /// - Selection capsule: one FULL cell wide, 52dp high, radius
 ///   26dp, vertically centered (5dp top/bottom), gliding so its
 ///   left edge is 4dp + i x cellWidth (the bar's horizontal inner
@@ -50,7 +60,7 @@ import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 ///   spring is tuned to that language (see
 ///   [kNavDockCapsuleSpring]) and proven by the widget test in
 ///   lab_navbar_test.dart.
-enum DockTab { home, tools, quickLog, heart, settings }
+enum DockTab { home, tools, quickLog, heart }
 
 /// Shared nav-dock geometry contract.
 ///
@@ -134,13 +144,13 @@ double navDockSnackBarBottomInset({
     kNavDockSnackBarGap;
 
 /// The selected-tab capsule glides between tabs on a real spring
-/// ([SpringSimulation]). All five slots are equal-width (Expanded),
+/// ([SpringSimulation]). All four slots are equal-width (Expanded),
 /// so the capsule's left edge is deterministic: slot i ->
 /// i * slotWidth (inside the bar's 4dp inner padding). Under
 /// reduced motion the capsule jumps to its slot with no animation.
 ///
 /// The controller is UNBOUNDED (round 19c): its value is a slot
-/// index (0-4), not a 0-1 progress — a bounded controller clamps
+/// index (0-3), not a 0-1 progress — a bounded controller clamps
 /// every tab past Tools onto the Tools slot.
 class NavDock extends StatefulWidget {
   final DockTab selected;
@@ -173,14 +183,13 @@ class _NavDockState extends State<NavDock>
         DockTab.tools => 1,
         DockTab.quickLog => 2,
         DockTab.heart => 3,
-        DockTab.settings => 4,
       };
 
   @override
   void initState() {
     super.initState();
     // No fixed duration: the spring simulation drives the timing.
-    // UNBOUNDED (round 19c): the value is a slot index (0-4).
+    // UNBOUNDED (round 19c): the value is a slot index (0-3).
     _controller = AnimationController.unbounded(vsync: this);
     _controller.value = _slotFor(widget.selected);
   }
@@ -261,7 +270,7 @@ class _NavDockState extends State<NavDock>
                 ),
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    final slotWidth = constraints.maxWidth / 5;
+                    final slotWidth = constraints.maxWidth / 4;
                     return Stack(
                       children: [
                         // The gliding selection capsule, behind the
@@ -323,7 +332,7 @@ class _NavDockState extends State<NavDock>
                               onTap: () => widget.onSelect(DockTab.tools),
                             ),
                             // Center quick-log, FLATTENED: a plain
-                            // equal cell like the other four (no
+                            // equal cell like the other three (no
                             // raised button, fill, elevation, or
                             // ring). Tap behavior is unchanged.
                             _DockIcon(
@@ -336,11 +345,9 @@ class _NavDockState extends State<NavDock>
                               semanticLabel: 'Heart',
                               onTap: () => widget.onSelect(DockTab.heart),
                             ),
-                            _DockIcon(
-                              icon: Icons.settings,
-                              semanticLabel: 'Settings',
-                              onTap: () => widget.onSelect(DockTab.settings),
-                            ),
+                            // No Settings cell: Settings moved to
+                            // the Home header gear + bottom tray
+                            // (settings-gear round, SETTINGS_SPEC).
                           ],
                         ),
                         // Specular top edge: a 1dp white @ 45% line

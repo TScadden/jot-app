@@ -273,8 +273,23 @@ void main() {
     });
 
     final boundaryKey = GlobalKey();
+    // Settings-gear round: a SECOND boundary around the whole
+    // MaterialApp. The inner boundary wraps the Home+dock Stack
+    // (a page) and therefore cannot see the settings TRAY, which
+    // is a route in the Navigator overlay above the page; the
+    // root boundary captures it. Hero/plan captures keep using
+    // the inner boundary exactly as the frozen baseline did.
+    final rootBoundaryKey = GlobalKey();
     await tester.pumpWidget(
-      MaterialApp(
+      RepaintBoundary(
+        key: rootBoundaryKey,
+        child: MaterialApp(
+        // The root-boundary frames (tray / sequence) would
+        // otherwise carry the debug banner ribbon at the top
+        // right; the production app disables it, and the inner
+        // hero/plan captures never contained it (it lives outside
+        // the inner boundary), so this changes nothing there.
+        debugShowCheckedModeBanner: false,
         theme: ThemeData(
           fontFamily: 'Roboto',
           fontFamilyFallback: const ['Noto Color Emoji', 'Noto Sans Symbols 2'],
@@ -305,6 +320,7 @@ void main() {
               ],
             ),
           ),
+        ),
         ),
       ),
     );
@@ -370,6 +386,35 @@ void main() {
       );
       add('tooltip:Take Medication', find.byTooltip('Take Medication'));
       add('tooltip:Skip Medication', find.byTooltip('Skip Medication'));
+      // Settings-gear round — placement proof for the header
+      // gear + watch pair: the gear by its stable Key, the watch
+      // button as the IconButton ancestor of its 'Connections'
+      // tooltip (the Tooltip's own box is the button's centered
+      // 40dp visual box; the ancestor's is the 48dp target box —
+      // the placement numbers are read off the BUTTON boxes).
+      add(
+        'key:home_settings_gear',
+        find.byKey(const ValueKey('home_settings_gear')),
+      );
+      add('tooltip:Connections', find.byTooltip('Connections'));
+      add(
+        'button:watch_connections',
+        find.ancestor(
+          of: find.byTooltip('Connections'),
+          matching: find.byType(IconButton),
+        ),
+      );
+      // The tray + its close affordance (present only in the
+      // tray / sequence frames; absent — no entries — in the
+      // hero/plan frames, exactly as the dock ring was).
+      add(
+        'key:settings_tray',
+        find.byKey(const ValueKey('settings_tray')),
+      );
+      add(
+        'key:settings_tray_close',
+        find.byKey(const ValueKey('settings_tray_close')),
+      );
       // Every visible Text widget, by its string.
       final seen = <String, int>{};
       for (final e in find.byType(Text).evaluate()) {
@@ -456,5 +501,71 @@ void main() {
 
     // FRAME 2 — plan frame.
     await capture('plan', '_plan');
+
+    // ── Settings-gear round frames (root boundary — the tray is
+    // a Navigator-overlay route and lives OUTSIDE the inner
+    // boundary). The page-level MediaQuery disables animations
+    // for Home's own widgets, but the tray reads the ROOT
+    // MediaQuery (animations enabled), so its 220ms grow runs on
+    // the fake clock and the mid frame below is a true mid-grow
+    // state.
+    Future<void> captureRoot(String frame, String suffix) async {
+      final boundary =
+          rootBoundaryKey.currentContext!.findRenderObject()!
+              as RenderRepaintBoundary;
+      final boxes = collectBoxes();
+      await tester.runAsync(() async {
+        final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+        if (image.width != 1080 || image.height != 2400) {
+          throw StateError(
+            'capture size ${image.width}x${image.height}, want 1080x2400',
+          );
+        }
+        final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+        final bytes = byteData!.buffer.asUint8List();
+        await File('${outDir.path}/$prefix$suffix.png').writeAsBytes(bytes);
+        await File('${outDir.path}/$prefix$suffix.json').writeAsString(
+          const JsonEncoder.withIndent('  ').convert({
+            'frame': frame,
+            'viewport_physical': [1080, 2400],
+            'units': 'logical px (DPR 3.0)',
+            'elements': boxes,
+          }),
+        );
+      });
+    }
+
+    final gearFinder = find.byKey(const ValueKey('home_settings_gear'));
+    final trayFinder = find.byKey(const ValueKey('settings_tray'));
+
+    // FRAME 3 — tray open (settled): tap the header gear, let the
+    // grow finish and the hosted Settings load land.
+    await tester.tap(gearFinder);
+    await tester.pump();
+    await _bridge(tester);
+    await tester.pump(const Duration(seconds: 3));
+    expect(trayFinder, findsOneWidget);
+    await captureRoot('tray', '_tray');
+
+    // Dismiss by tapping the barrier region above the tray (the
+    // tray's top edge is at 800 - 624 = 176 logical; y=40 is
+    // squarely in the scrim region), so the sequence below starts
+    // from the closed state.
+    await tester.tapAt(const Offset(180, 40));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(trayFinder, findsNothing);
+
+    // FRAMES 4–6 — the open sequence: closed / mid-grow / open.
+    await captureRoot('seq_closed', '_seq_closed');
+    await tester.tap(gearFinder);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 110)); // mid-grow
+    await captureRoot('seq_mid', '_seq_mid');
+    await tester.pump(const Duration(milliseconds: 300));
+    await _bridge(tester);
+    await tester.pump(const Duration(seconds: 3));
+    expect(trayFinder, findsOneWidget);
+    await captureRoot('seq_open', '_seq_open');
   });
 }

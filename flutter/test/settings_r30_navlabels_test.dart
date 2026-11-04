@@ -145,21 +145,28 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
   }
 
-  /// From a freshly pumped shell on Home: switch to the Settings
-  /// tab and open Customize. Returns with the toggle on screen AND
-  /// showing [toggleValue]: the wait matters — Settings seeds the
-  /// toggle from its async _load(), and a tap that lands before
-  /// the load would toggle the initial default instead of the
-  /// stored value (leg (d) caught exactly that race: the switch
-  /// still showed the initial true, so the tap wrote false again).
+  /// From a freshly pumped shell on Home: open Settings via the
+  /// Home header GEAR (settings-gear round: Settings is no longer
+  /// a dock tab — the gear opens it as a bottom tray over Home)
+  /// and open Customize inside the tray. Returns with the toggle
+  /// on screen AND showing [toggleValue]: the wait matters —
+  /// Settings seeds the toggle from its async _load(), and a tap
+  /// that lands before the load would toggle the initial default
+  /// instead of the stored value (leg (d) caught exactly that
+  /// race: the switch still showed the initial true, so the tap
+  /// wrote false again).
   Future<void> openCustomize(WidgetTester tester,
       {required bool toggleValue}) async {
-    await tester.tap(find.descendant(
-        of: find.byType(NavDock), matching: find.byIcon(Icons.settings)));
+    await tester.tap(find.byKey(const ValueKey('home_settings_gear')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.ensureVisible(find.text('Customize'));
+    // A pump after ensureVisible is REQUIRED in the tray host:
+    // the scroll jump lands on the next frame, and tapping from
+    // the pre-scroll layout misses the row (it sits below the
+    // tray's viewport until the frame builds).
+    await tester.pump();
     await tester.tap(find.text('Customize'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
@@ -252,11 +259,12 @@ void main() {
     await tapNavLabelsToggle(tester);
     expect(map[SettingsStore.showNavLabelsKey], 'false');
     expectDockLabels(tester, shown: false);
-    // Still sitting in Settings on the Customize page: no tab
-    // switch was involved in the refresh.
+    // Still sitting in Settings (the tray) on the Customize page:
+    // no tab switch was involved in the refresh — the dock never
+    // left Home, because the tray is an overlay over Home.
     expect(find.text('Appearance'), findsOneWidget);
     expect(tester.widget<NavDock>(find.byType(NavDock)).selected,
-        DockTab.settings);
+        DockTab.home);
 
     // Leg (c): ON — labels return live, same screen.
     await tapNavLabelsToggle(tester);
