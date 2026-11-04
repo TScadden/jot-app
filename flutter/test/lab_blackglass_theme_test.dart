@@ -91,12 +91,15 @@ void main() {
       expect(gradients, isNot(contains(LabBlackColors.dockGlassGradient)));
       // The selection capsule is SOLID opaque near-black (spec §3),
       // one full cell wide x 52dp. Default test surface is 800dp
-      // wide: cell = (800 - 32 margins - 8 inner padding) / 5 = 152.
+      // wide: cell = (800 - 32 margins - 8 inner padding) / 4 = 190.
       // (Updated from the v4 glass-pill expectation — 44x36 purple
-      // glass gradient — for exactly this intentional change.)
+      // glass gradient — for exactly this intentional change; the
+      // divisor went 5 -> 4 in the settings-gear round, when the
+      // Settings cell left the dock — same test, same assertion,
+      // new intentional width.)
       final pill = find.byKey(const ValueKey('dock_selection_pill'));
       expect(pill, findsOneWidget);
-      expect(tester.getSize(pill), const Size(152, 52));
+      expect(tester.getSize(pill), const Size(190, 52));
       final container = tester.widget<Container>(pill);
       final deco = container.decoration! as BoxDecoration;
       expect(deco.color, LabBlackColors.navbarCapsuleFill);
