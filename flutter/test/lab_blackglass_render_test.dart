@@ -506,7 +506,7 @@ void main() {
     // a Navigator-overlay route and lives OUTSIDE the inner
     // boundary). The page-level MediaQuery disables animations
     // for Home's own widgets, but the tray reads the ROOT
-    // MediaQuery (animations enabled), so its 220ms grow runs on
+    // MediaQuery (animations enabled), so its 180ms grow runs on
     // the fake clock and the mid frame below is a true mid-grow
     // state.
     Future<void> captureRoot(String frame, String suffix) async {
@@ -567,5 +567,23 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
     expect(trayFinder, findsOneWidget);
     await captureRoot('seq_open', '_seq_open');
+
+    // FRAME 7 — tray SUB-PAGE (settings-fidelity round; the V6
+    // harness never captured a sub-state, audit §7): tap
+    // 'Customize' inside the tray, let the 220ms content/header
+    // morph settle, capture. Settled states only — the harness's
+    // root MediaQuery has animations ENABLED for the tray, so we
+    // pump past the morph before capturing.
+    final customizeFinder = find.text('Customize');
+    await tester.ensureVisible(customizeFinder);
+    await tester.pump();
+    await tester.tap(customizeFinder);
+    await tester.pump();
+    await _bridge(tester);
+    await tester.pump(const Duration(seconds: 3));
+    expect(trayFinder, findsOneWidget);
+    expect(find.byKey(const ValueKey('nav_labels_toggle')),
+        findsOneWidget);
+    await captureRoot('tray_sub', '_tray_sub');
   });
 }

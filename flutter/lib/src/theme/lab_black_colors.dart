@@ -35,11 +35,18 @@ abstract final class LabBlackColors {
   /// Page background — true near-black, neutral.
   static const background = Color(0xFF0A0A0B);
 
-  /// Inset card — one shade up from black.
-  static const card = Color(0xFF1A1A1E);
+  /// Inset card — one tonal step up from black.
+  /// Settings-fidelity round (audit P2): #1A1A1E → #101013 — the
+  /// card-over-background step drops from +16.3 to +6.5 levels,
+  /// inside the reference's measured +5–10 band (DNA
+  /// `surface.card`, segment-C/settings shot anchored).
+  static const card = Color(0xFF101013);
 
   /// Nested row inside a card — one shade DARKER than the card.
-  static const nested = Color(0xFF121215);
+  /// Settings-fidelity round (audit P3, INDETERMINATE direction —
+  /// resolved to the UI_FORMAT_SPEC / Restore-pair side): #121215
+  /// → #0C0C0F, −4 levels under the new card.
+  static const nested = Color(0xFF0C0C0F);
 
   /// Hairlines on the themed surfaces: white at 8% alpha.
   static const hairline = Color(0x14FFFFFF);
@@ -136,27 +143,59 @@ abstract final class LabBlackColors {
   //
   // The settings tray is the GLASS_STUDY TRAY recipe, a different,
   // more opaque surface than the bar's glass: near-flat dark fill
-  // one tonal step lighter than the inset cards (#1A1A1E), milky
-  // tint over a real BackdropFilter blur at [glassBlurSigma] (14),
-  // ~90% opaque (SETTINGS_SPEC: 85–90%, backdrop ghosts through as
-  // a blur), a specular top line ([glassSpecular]), and a ~30dp
-  // radius at the TOP corners only — the bottom edge is anchored
-  // in the bottom-bar zone (square bottom corners).
+  // above the inset cards, milky tint over a real BackdropFilter
+  // blur at [glassBlurSigma] (14), ~90% opaque (SETTINGS_SPEC:
+  // 85–90%, backdrop ghosts through as a blur), a specular top
+  // line ([settingsTraySpecular] + skirt), ~30dp top corners and
+  // ~33dp bottom corners (the tray floats inset, audit D2/D4).
   static const settingsTrayGradient = LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
     stops: [0.0, 0.18, 1.0],
     colors: [
-      Color(0xE62E2E34), // ~90% — specular zone, one step up
-      Color(0xE62A2A30), // ~90%
-      Color(0xE626262B), // ~90% — GLASS_STUDY tray interior family
+      // Settings-fidelity round (audit P4): neutral equivalents at
+      // the DNA's measured lightness/deltas — #202027 -> #1D1D22
+      // -> #1A1A1F @ ~90% (lum 32.6 / 29.4 / 26.3; amplitude 6.3;
+      // bottom stop = new card +9.8). The old stops (#2E2E34 top,
+      // lum 46.5) were lighter than every reference tray reading.
+      Color(0xE6202027), // ~90% — specular zone
+      Color(0xE61D1D22), // ~90% — DNA surface.elevated #231D23 de-warmed
+      Color(0xE61A1A1F), // ~90%
     ],
   );
 
   /// Settings tray corner radius at the top corners
-  /// (SETTINGS_SPEC §3: ≈30pt). Bottom corners are square (0) —
-  /// the tray is anchored in the bar zone, not a floating card.
+  /// (SETTINGS_SPEC §3: ≈30pt).
   static const settingsTrayRadius = 30.0;
+
+  /// Settings tray BOTTOM corner radius (audit D4): ≈33pt,
+  /// following the phone corner zone — the fidelity tray FLOATS
+  /// inset (0.89W, bottom gap ≈0.043H) instead of merging with
+  /// the screen's bottom edge, so its bottom corners are rounded
+  /// like the reference's.
+  static const settingsTrayBottomRadius = 33.0;
+
+  /// Tray specular core: white @ 65% (GLASS_STUDY: the reference
+  /// core reads white ~50–80%; the dock's [glassSpecular] @ 45%
+  /// is the signed bar recipe and is NOT retargeted — this token
+  /// is tray-only).
+  static const settingsTraySpecular = Color(0xA6FFFFFF);
+
+  /// Tray specular falloff skirt: white @ 18% at the core's foot,
+  /// fading to transparent over ≤4dp (audit D7).
+  static const settingsTraySpecularSkirt = Color(0x2EFFFFFF);
+
+  // ── Segmented control (tray root, audit D11) ─────────────────
+  //
+  // Reference form: ~36pt tall, full-pill, NO icons, selected
+  // capsule LIGHTER than its track by ≈ +28 luminance (DNA:
+  // track #2E252A family, capsule #4C3F46 family, as captured).
+  // Neutral equivalents at that delta: track #17171B (lum ≈23.4),
+  // capsule #33333A (lum ≈51.7) — delta +28.3. (The delivered
+  // build had the polarity INVERTED: selected #1A1A1E rendered
+  // ~5 levels DARKER than its track.)
+  static const segmentedTrack = Color(0xFF17171B);
+  static const segmentedSelected = Color(0xFF33333A);
 
   /// Selection-pill glass — the v4 dock pill recipe, retained for
   /// the record; the Phase 2 replica capsule is the solid

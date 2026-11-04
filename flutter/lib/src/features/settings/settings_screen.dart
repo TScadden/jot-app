@@ -30,6 +30,7 @@ import 'package:tabs_lab/src/features/settings/crash_test_hook.dart';
 import 'package:tabs_lab/src/features/settings/progress_reports_page.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
+import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
 
@@ -37,6 +38,14 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 /// passing precedent for text on Tabs purple: 5.21:1 vs white's 3.80:1
 /// (R49 audit S1).
 const _chipInk = Color(0xFF0A0A0E);
+
+/// Settings-fidelity round — tray-internal morph duration
+/// (SETTINGS_SPEC §4.2: root ⇄ sub morphs measure 150–285ms;
+/// 220ms sits mid-band). Content crossfades + slides vertically,
+/// the header chrome crossfades ✕ ⇄ back-chevron in place, the
+/// tray height stays constant (forced, audit D16). Zero overshoot
+/// (glass = brittle). Reduced motion renders the swap instantly.
+const Duration kSettingsTrayMorphDuration = Duration(milliseconds: 220);
 
 /// Round 29 — the Flutter Settings tab: a port of native
 /// `SettingsScreen.kt` (5933 lines, SettingsMenu MAIN / MEMBERSHIP /
@@ -991,8 +1000,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final body = ListView(
       padding: widget.embeddedInTray
           // Hosting fix 2 (see [SettingsScreen.embeddedInTray]):
-          // no floating dock to clear inside the tray.
-          ? const EdgeInsets.fromLTRB(16, 16, 16, 24)
+          // no floating dock to clear inside the tray. Top padding
+          // 12 in the fidelity round (tray height arithmetic,
+          // settings_tray.dart).
+          ? const EdgeInsets.fromLTRB(16, 12, 16, 24)
           : const EdgeInsets.fromLTRB(16, 16, 16, 110),
       children: [
         if (_page == _Page.main || _page == _Page.membership)
@@ -1042,7 +1053,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 _trayHeader(),
                 const Divider(height: 1, color: Color(0x14FFFFFF)),
-                Expanded(child: body),
+                Expanded(child: _trayMorph(body)),
               ],
             )
           : Scaffold(
@@ -1070,75 +1081,108 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// Settings-gear round — the tray header row (the video's tray
-  /// grammar, SETTINGS_SPEC §5.1/§5.2): a left-aligned title (the
-  /// same [_title] string + title style the AppBar used: on the
-  /// main page that is the existing string "Settings"), the SAME
-  /// back arrow the AppBar showed on sub-pages (same icon, color,
-  /// and [_back] handler — in-page back behavior unchanged), a
-  /// hairline divider under the row (added by the caller), and the
-  /// root-tray ✕ close affordance at the right: a gray translucent
-  /// circle with a white ✕, per the reference's header circle
-  /// buttons (Ø ≈33–39pt). ✕ dismissal itself was NOT IN VIDEO as
-  /// a captured click (SETTINGS_SPEC §8.2) — wiring it to close is
-  /// a named interpretation of this package.
+  /// Settings-fidelity round — tray-internal morph (audit D16,
+  /// SETTINGS_SPEC §4.2): when the page changes inside the tray,
+  /// the two content sets crossfade with a vertical slide
+  /// (outgoing ghosts up, incoming enters from below) over
+  /// [kSettingsTrayMorphDuration]; the tray container itself —
+  /// and its height — persists. Monotonic, no overshoot.
+  /// Reduced motion swaps instantly. Standalone (non-tray)
+  /// hosting never passes through here.
+  Widget _trayMorph(Widget child) {
+    final reduced = animationsDisabled(context);
+    return AnimatedSwitcher(
+      duration: reduced ? Duration.zero : kSettingsTrayMorphDuration,
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 0.04),
+            end: Offset.zero,
+          ).animate(animation),
+          child: child,
+        ),
+      ),
+      child: KeyedSubtree(key: ValueKey(_page), child: child),
+    );
+  }
+
+  /// Settings-fidelity round — the tray header (SETTINGS_SPEC
+  /// §5.1/§5.2, audit D9/D10). Two chrome forms, crossfaded in
+  /// place when the tray crosses between them:
+  /// - ROOT form (main menu + Membership segment): left-aligned
+  ///   bold title at the reference's 18sp (DNA heading_2 18/700;
+  ///   the delivered 22sp was +22% over) + the ✕ circle top-right.
+  ///   The typeface stays Roboto — no Barlow asset exists in the
+  ///   repo (named forced residue of D9).
+  /// - SUB form (every other in-tray page): a back-chevron CIRCLE
+  ///   top-left (36dp visual in a 48dp hit box, the ✕'s exact
+  ///   construction), the title CENTERED, and NO ✕ (the delivered
+  ///   tray kept a plain arrow + left title + ✕ on sub-pages).
+  /// The back glyph stays Icons.arrow_back (the glyph every
+  /// existing test and the standalone AppBar use); its FORM —
+  /// grey circle, near-white glyph — is the reference's.
+  /// ✕ dismissal remains a named interpretation (SETTINGS_SPEC
+  /// §8.2: the affordance is in video, its click is not).
   Widget _trayHeader() {
-    return SizedBox(
+    final isRoot = _page == _Page.main || _page == _Page.membership;
+    final row = SizedBox(
+      key: ValueKey(isRoot ? 'tray_header_root' : 'tray_header_sub'),
       height: 56,
-      child: Row(
-        children: [
-          if (_page == _Page.main)
-            const SizedBox(width: 16)
-          else
-            IconButton(
-              icon: const Icon(Icons.arrow_back,
-                  color: NotelColors.textSecondary),
-              onPressed: _back,
-            ),
-          Expanded(
-            child: Text(_title,
-                style: const TextStyle(
-                    color: NotelColors.textPrimary,
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold)),
-          ),
-          // Juno Condition 3 fix (V6 fix round): the HIT AREA is
-          // 48dp (the accessibility standard the rest of this
-          // screen observes) while the VISUAL circle stays the
-          // reference's 36dp, pixel-identical. The 48dp gesture
-          // box is centered on the old 36dp circle's center: the
-          // right padding drops 12 -> 6 so the box extends 6dp
-          // past the circle on the right exactly as it does on
-          // the left, and the circle sits centered inside it.
-          // The key moves to the 48dp box (its rect IS the hit
-          // area); the inner 36dp InkWell keeps the original
-          // ripple on the visual circle, and both layers call
-          // the same close handler.
-          Padding(
-            padding: const EdgeInsets.only(right: 6),
-            child: Tooltip(
-              message: 'Close',
-              child: GestureDetector(
-                key: const ValueKey('settings_tray_close'),
-                behavior: HitTestBehavior.opaque,
-                onTap: widget.onTrayClose,
-                child: SizedBox(
-                  width: 48,
-                  height: 48,
-                  child: Center(
-                    child: Material(
-                      color: const Color(0x1FFFFFFF), // white @ 12% circle
-                      shape: const CircleBorder(),
-                      clipBehavior: Clip.antiAlias,
-                      child: InkWell(
-                        customBorder: const CircleBorder(),
-                        onTap: widget.onTrayClose,
-                        child: const SizedBox(
-                          width: 36,
-                          height: 36,
-                          child: Icon(Icons.close,
-                              size: 18, color: NotelColors.textPrimary),
-                        ),
+      child: isRoot ? _trayRootHeaderRow() : _traySubHeaderRow(),
+    );
+    final reduced = animationsDisabled(context);
+    return AnimatedSwitcher(
+      duration: reduced ? Duration.zero : kSettingsTrayMorphDuration,
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      child: row,
+    );
+  }
+
+  Widget _trayRootHeaderRow() {
+    return Row(
+      children: [
+        const SizedBox(width: 16),
+        Expanded(
+          child: Text(_title,
+              style: const TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold)),
+        ),
+        // Juno Condition 3 (V6 fix round, carried over): the HIT
+        // AREA is 48dp while the VISUAL circle stays the
+        // reference's 36dp, concentric inside it (right padding 6
+        // centers the box on the circle's center). The key is on
+        // the 48dp box; the inner InkWell keeps the ripple on the
+        // visual circle; both call the same close handler.
+        Padding(
+          padding: const EdgeInsets.only(right: 6),
+          child: Tooltip(
+            message: 'Close',
+            child: GestureDetector(
+              key: const ValueKey('settings_tray_close'),
+              behavior: HitTestBehavior.opaque,
+              onTap: widget.onTrayClose,
+              child: SizedBox(
+                width: 48,
+                height: 48,
+                child: Center(
+                  child: Material(
+                    color: const Color(0x1FFFFFFF), // white @ 12% circle
+                    shape: const CircleBorder(),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: widget.onTrayClose,
+                      child: const SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: Icon(Icons.close,
+                            size: 18, color: NotelColors.textPrimary),
                       ),
                     ),
                   ),
@@ -1146,48 +1190,96 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
+    );
+  }
+
+  Widget _traySubHeaderRow() {
+    return Stack(
+      children: [
+        // Back circle top-left: the ✕'s construction mirrored —
+        // 48dp hit box, 36dp grey circle visual, near-white glyph.
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 6),
+            child: SizedBox(
+              width: 48,
+              height: 48,
+              child: Center(
+                child: Material(
+                  color: const Color(0x1FFFFFFF), // white @ 12% circle
+                  shape: const CircleBorder(),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: _back,
+                    child: const SizedBox(
+                      width: 36,
+                      height: 36,
+                      child: Icon(Icons.arrow_back,
+                          size: 18, color: NotelColors.textPrimary),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        // Centered title (reference sub-state form, §5.2).
+        Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 56),
+            child: Text(_title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    color: NotelColors.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold)),
+          ),
+        ),
+      ],
     );
   }
 
   // ── Shared pieces ────────────────────────────────────────────────
 
+  /// Settings-fidelity round (audit D11): the reference's
+  /// segmented form — full-pill track + full-pill capsule, NO
+  /// icons, and the selected capsule LIGHTER than the track by
+  /// ≈+28 luminance (the delivered build had the polarity
+  /// inverted: selected rendered ~5 levels DARKER than track).
+  /// Tokens: [LabBlackColors.segmentedTrack] /
+  /// [LabBlackColors.segmentedSelected]. Total height 48dp
+  /// (4dp track padding + 40dp capsule) keeps the R49 SE3 ≥48dp
+  /// hit height for the control as a whole; the capsule's visual
+  /// height (40) sits next to the reference's ~36pt.
   Widget _segmentedHeader() {
-    Widget seg(String label, IconData icon, _Page page) {
+    Widget seg(String label, _Page page) {
       final selected = _page == page;
       return Expanded(
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => setState(() => _page = page),
           child: Container(
-            // R49 SE3: segment hit height ≥48dp (was ≈38dp).
-            constraints: const BoxConstraints(minHeight: 48),
+            constraints: const BoxConstraints(minHeight: 40),
             alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(vertical: 10),
             decoration: BoxDecoration(
-              color: selected ? NotelColors.surface : Colors.transparent,
-              borderRadius: BorderRadius.circular(10),
+              color: selected
+                  ? LabBlackColors.segmentedSelected
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(20),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon,
-                    size: 18,
+            child: Text(label,
+                style: TextStyle(
                     color: selected
                         ? NotelColors.textPrimary
-                        : NotelColors.textSecondary),
-                const SizedBox(width: 8),
-                Text(label,
-                    style: TextStyle(
-                        color: selected
-                            ? NotelColors.textPrimary
-                            : NotelColors.textSecondary,
-                        fontWeight:
-                            selected ? FontWeight.bold : FontWeight.w500,
-                        fontSize: 14)),
-              ],
-            ),
+                        : NotelColors.textSecondary,
+                    fontWeight:
+                        selected ? FontWeight.bold : FontWeight.w500,
+                    fontSize: 14)),
           ),
         ),
       );
@@ -1195,15 +1287,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return Container(
       padding: const EdgeInsets.all(4),
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: NotelColors.surfaceHigh.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(14),
+        color: LabBlackColors.segmentedTrack,
+        borderRadius: BorderRadius.circular(24),
       ),
       child: Row(children: [
-        seg('Settings', Icons.subtitles, _Page.main),
-        seg('Membership', Icons.wallet, _Page.membership),
+        seg('Settings', _Page.main),
+        seg('Membership', _Page.membership),
       ]),
+    );
+  }
+
+  /// Settings-fidelity round (audit D15/P8): the menu hairline —
+  /// white @ 8% (the tray-header hairline token), INSET to the
+  /// label edge (16dp card padding + 22dp glyph + 16dp gap = 54),
+  /// replacing the full-bleed #9A9AA3 @ 20% dividers that rendered
+  /// ~2× the reference hairline weight across the whole card.
+  Widget _menuHairline() {
+    return const Padding(
+      padding: EdgeInsets.only(left: 54),
+      child: Divider(color: LabBlackColors.hairline, height: 1),
     );
   }
 
@@ -1216,13 +1320,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 fontWeight: FontWeight.w600)),
       );
 
-  Widget _card(List<Widget> children, {EdgeInsets? padding}) {
+  Widget _card(List<Widget> children,
+      {EdgeInsets? padding, double radius = 16}) {
     return Container(
       width: double.infinity,
       padding: padding ?? const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: NotelColors.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(radius),
       ),
       child: Column(
           crossAxisAlignment: CrossAxisAlignment.start, children: children),
@@ -1342,30 +1447,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   List<Widget> _mainPage() {
     return [
-      // 1. Personal Context (native SettingsScreen.kt:915-993)
-      _card([
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text('Personal Context',
+      // 1. Personal Context (native SettingsScreen.kt:915-993).
+      // Settings-fidelity round (audit D13, reference Profile-list
+      // construction): the section label now sits OUTSIDE/above
+      // its card (small, muted — DNA overline 13/500, title case),
+      // with the SAME string and the SAME eye-toggle handler; the
+      // card below holds the caption + editor only. (The other
+      // groups on this page get no outside label: the zero-new-
+      // strings carry-over forbids inventing label copy, and no
+      // existing string names them — forced, named in BUILD.md.)
+      Row(
+        children: [
+          const Expanded(
+            child: Text('Personal Context',
                 style: TextStyle(
-                    color: NotelColors.textPrimary,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 15)),
-            IconButton(
-              icon: Icon(
-                  _contextHidden
-                      ? Icons.visibility_off
-                      : Icons.visibility,
-                  color: NotelColors.primary),
-              onPressed: () async {
-                final v = !_contextHidden;
-                setState(() => _contextHidden = v);
-                await _store.setUserContextHidden(v);
-              },
-            ),
-          ],
-        ),
+                    color: NotelColors.textSecondary,
+                    fontWeight: FontWeight.w500,
+                    fontSize: 13)),
+          ),
+          IconButton(
+            icon: Icon(
+                _contextHidden
+                    ? Icons.visibility_off
+                    : Icons.visibility,
+                color: NotelColors.primary),
+            onPressed: () async {
+              final v = !_contextHidden;
+              setState(() => _contextHidden = v);
+              await _store.setUserContextHidden(v);
+            },
+          ),
+        ],
+      ),
+      const SizedBox(height: 6),
+      _card(radius: 24, [
         // Workstream 3 — disclosure caption (replaces the old
         // goals framing, "Tell Tabs about your goals (e.g.
         // 'training for a marathon')"): this text is not a
@@ -1445,38 +1560,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _contextMedNameHint(),
       ]),
       const SizedBox(height: 16),
-      // 2. Grouped menu (native :998-1113)
+      // 2. Grouped menu (native :998-1113) — fidelity round:
+      // grouped inset card at the reference's card radius
+      // (DNA medium 22–26pt), hairlines inset to the label edge.
       _card(
         [
           _menuRow(Icons.person, 'User Profile', _Page.userProfile,
               key: const ValueKey('menu_user_profile')),
-          const Divider(color: NotelColors.divider, height: 1),
+          _menuHairline(),
           _menuRow(Icons.tune, 'Customize', _Page.customize),
-          const Divider(color: NotelColors.divider, height: 1),
+          _menuHairline(),
           _menuRow(Icons.auto_awesome, 'AI & Clinical Advocate',
               _Page.aiKnowledge),
-          const Divider(color: NotelColors.divider, height: 1),
+          _menuHairline(),
           _menuRow(Icons.timer, 'Event Counters', _Page.eventCounters),
-          const Divider(color: NotelColors.divider, height: 1),
+          _menuHairline(),
           _menuRow(Icons.notifications, 'Notifications', _Page.notifications),
-          const Divider(color: NotelColors.divider, height: 1),
+          _menuHairline(),
           _menuRow(Icons.sync, 'Sync Settings', _Page.syncSettings),
           if (_data.isAdmin) ...[
-            const Divider(color: NotelColors.divider, height: 1),
+            _menuHairline(),
             _menuRow(Icons.bluetooth, 'Tabs Live Beta', _Page.jotLive),
           ],
         ],
         padding: EdgeInsets.zero,
+        radius: 24,
       ),
       const SizedBox(height: 16),
-      // 3. Connected Apps singled-out card (native :1118-1137)
+      // 3. Connected Apps singled-out card (native :1118-1137).
+      // Fidelity round: its leading glyph takes the reference's
+      // near-white row-glyph treatment like every other menu row
+      // (was the one purple glyph in the list, audit D14).
       _card(
         [
           _menuRow(Icons.favorite, 'Connected Apps', _Page.connectedApps,
-              iconColor: NotelColors.primary,
               key: const ValueKey('menu_connected_apps')),
         ],
         padding: EdgeInsets.zero,
+        radius: 24,
       ),
       const SizedBox(height: 16),
       // R70 WS3 — health-history import: fills older days in the
@@ -1492,7 +1613,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Row(
                 children: [
                   Icon(Icons.upload_file,
-                      color: NotelColors.textSecondary, size: 22),
+                      color: NotelColors.textPrimary, size: 22),
                   SizedBox(width: 16),
                   Expanded(
                     child: Column(
@@ -1521,6 +1642,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
         padding: EdgeInsets.zero,
+        radius: 24,
       ),
       const SizedBox(height: 24),
       // 4. Log out pill (native :1142-1154, color 0xFF801515)
@@ -1622,7 +1744,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _menuRow(IconData icon, String title, _Page page,
-      {Color iconColor = NotelColors.textSecondary, Key? key}) {
+      {Color iconColor = NotelColors.textPrimary, Key? key}) {
     return InkWell(
       key: key,
       onTap: () {
@@ -1642,7 +1764,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         }
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        // Settings-fidelity round (audit D14): row pitch 56 ->
+        // 50dp (reference band 48–52pt; 13 + 24 content + 13),
+        // leading glyph near-white (DNA iconography), row label
+        // semibold (DNA heading_3 16/600). The 50dp pitch keeps
+        // the row above the 48dp hit-area floor.
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
         child: Row(
           children: [
             Icon(icon, color: iconColor, size: 22),
@@ -1651,7 +1778,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Text(title,
                   style: const TextStyle(
                       color: NotelColors.textPrimary,
-                      fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.w600,
                       // R49 SE7: row-title role unified at 16.
                       fontSize: 16)),
             ),

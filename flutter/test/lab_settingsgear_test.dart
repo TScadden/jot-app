@@ -28,6 +28,15 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// close hit area is 48dp, the visual circle stays 36dp, and
 /// both share the same center.
 ///
+/// SETTINGS-FIDELITY ROUND changes (audit-driven): the tray
+/// geometry pins move to the measured reference values — width
+/// 0.89W with ≈0.057W side insets, bottom edge at ≈0.957H
+/// (0.043H gap), height 0.70H (the audit §4 arithmetic, NOT the
+/// old 0.78 cap), NO scrim (transparent barrier), open 180ms —
+/// and (9) NEW: the sub-state header form (back-chevron circle
+/// top-left + CENTERED title + no ✕) vs the root form
+/// (left-aligned title + ✕).
+///
 /// The shell harness mirrors settings_r30_navlabels_test.dart:
 /// a real MainShell over an in-memory SettingsStore, with the
 /// secure-storage channel mocked to the signed-out answers so the
@@ -84,7 +93,7 @@ void main() {
     }
   }
 
-  /// Opens the tray from Home and waits out the 220ms grow plus
+  /// Opens the tray from Home and waits out the 180ms grow plus
   /// the hosted Settings load.
   Future<void> openTray(WidgetTester tester) async {
     await tester.tap(gear());
@@ -168,14 +177,24 @@ void main() {
       await pumpShell(tester);
       await openTray(tester);
 
-      // Geometry: full width, bottom edge at the screen bottom
-      // (bar zone inside its footprint), height at the 0.78 cap
-      // on the 800x600 test surface.
+      // Geometry (settings-fidelity round, audit D1/D2/D3):
+      // the tray FLOATS inset like the reference — width 0.89W
+      // (side insets (1-0.89)/2 = 0.055W), bottom edge at
+      // ≈0.957H (0.043H of screen below it), height 0.70H (the
+      // audit §4 arithmetic height) on the 800x600 test surface.
       final rect = tester.getRect(tray());
-      expect(rect.left, 0);
-      expect(rect.right, 800);
-      expect(rect.bottom, closeTo(600, 0.5));
-      expect(rect.height, closeTo(600 * 0.78, 0.5));
+      expect(rect.left, closeTo(800 * 0.055, 0.5));
+      expect(rect.right, closeTo(800 * 0.945, 0.5));
+      expect(rect.width, closeTo(800 * 0.89, 0.5));
+      expect(rect.bottom, closeTo(600 * 0.957, 0.5));
+      expect(rect.height, closeTo(600 * 0.70, 0.5));
+      // NO scrim (audit D5): the modal barrier paints nothing —
+      // Flutter represents the route's fully-transparent
+      // barrierColor as a null ModalBarrier color (no scrim
+      // layer at all); it is a tap-outside target only.
+      final barrier = tester.widget<ModalBarrier>(
+          find.byType(ModalBarrier).first);
+      expect(barrier.color, isNull);
       // The tray covers the dock zone completely: the dock's top
       // edge is BELOW the tray's top edge (dock hidden beneath).
       final dockTop = tester.getTopLeft(find.byType(NavDock)).dy;
@@ -229,12 +248,15 @@ void main() {
 
       // The tray-local Scaffold host must not have changed the
       // hosted body's layout: the embedded ListView keeps its
-      // designed padding, 24dp at the bottom included.
+      // designed padding, 24dp at the bottom included. (Top
+      // padding 16 -> 12 is the settings-fidelity round's
+      // intentional change — the tray height arithmetic in
+      // settings_tray.dart — not a host side effect.)
       final bodyList = find.descendant(
           of: tray(), matching: find.byType(ListView));
       expect(bodyList, findsOneWidget);
       expect(tester.widget<ListView>(bodyList).padding,
-          const EdgeInsets.fromLTRB(16, 16, 16, 24));
+          const EdgeInsets.fromLTRB(16, 12, 16, 24));
 
       // Navigate inside the tray to Sync Settings and tap Sync
       // Now. In this harness the shell is signed out (secure
@@ -325,8 +347,9 @@ void main() {
         'dismisses it', (tester) async {
       await pumpShell(tester);
       await openTray(tester);
-      // The tray's top edge sits at 600 - 468 = 132 on this
-      // surface; (400, 20) is squarely in the barrier region.
+      // The tray's top edge sits at 600 x 0.957 - 600 x 0.70 =
+      // 154.2 on this surface; (400, 20) is squarely in the
+      // (transparent) barrier region.
       await tester.tapAt(const Offset(400, 20));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
@@ -398,15 +421,59 @@ void main() {
       await drainRealWork(tester);
     });
 
+    testWidgets('tray: sub-page header is the reference sub-state '
+        'form — back-chevron CIRCLE top-left, CENTERED title, '
+        'no ✕ (audit D10)', (tester) async {
+      await pumpShell(tester);
+      await openTray(tester);
+
+      // Root form first: 'Settings' title LEFT-aligned (its box
+      // starts at the tray's left edge + 16dp header padding),
+      // ✕ present.
+      final trayRect = tester.getRect(tray());
+      final rootTitle = tester.getRect(find.descendant(
+          of: tray(), matching: find.text('Settings').first));
+      expect(rootTitle.left, closeTo(trayRect.left + 16, 1.0));
+      expect(find.byKey(const ValueKey('settings_tray_close')),
+          findsOneWidget);
+
+      // Into a sub-page (Customize) and let the 220ms header
+      // morph settle.
+      await tester.ensureVisible(find.text('Customize'));
+      await tester.pump();
+      await tester.tap(find.text('Customize'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Sub form: NO ✕ anywhere in the tray; the back affordance
+      // is a 36dp grey CIRCLE (Material with CircleBorder) at the
+      // top-left; the 'Customize' title is CENTERED in the tray.
+      expect(find.byKey(const ValueKey('settings_tray_close')),
+          findsNothing);
+      final backCircle = find.descendant(
+          of: tray(),
+          matching: find.byWidgetPredicate((w) =>
+              w is Material && w.shape is CircleBorder));
+      expect(backCircle, findsOneWidget);
+      expect(tester.getSize(backCircle), const Size(36, 36));
+      expect(tester.getRect(backCircle).left,
+          closeTo(trayRect.left + 12, 1.0));
+      final subTitle = tester.getRect(find.descendant(
+          of: tray(), matching: find.text('Customize').first));
+      expect(subTitle.center.dx, closeTo(trayRect.center.dx, 1.0));
+      await drainRealWork(tester);
+    });
+
     testWidgets('tray geometry: height grows from the bar zone to '
-        'the 0.78 cap monotonically; reduced motion snaps to final',
-        (tester) async {
+        'the 0.70 fidelity height monotonically; reduced motion '
+        'snaps to final', (tester) async {
       // Standalone tray pumps (the dialog animation replaced by a
       // stopped animation at fixed values). On the 800x600
       // surface with viewPadding 0: bar zone = 27 float + 62 bar
-      // = 89; final = 0.78 x 600 = 468.
-      Future<double> trayHeightAt(double v,
-          {bool reduced = false}) async {
+      // = 89; final = 0.70 x 600 = 420; bottom gap = 0.043 x 600
+      // = 25.8, so the bottom edge sits at 574.2 and the width is
+      // 0.89 x 800 = 712 with 44dp insets.
+      Future<Rect> trayRectAt(double v, {bool reduced = false}) async {
         final trayWidget = SettingsTray(
           key: ValueKey('tray_probe_${v}_$reduced'),
           animation: AlwaysStoppedAnimation(v),
@@ -428,15 +495,20 @@ void main() {
         ));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 500));
-        return tester.getSize(tray()).height;
+        return tester.getRect(tray());
       }
 
-      expect(await trayHeightAt(0), closeTo(89, 0.5));
-      // easeOutCubic(0.5) = 0.875 -> 89 + (468 - 89) x 0.875.
-      expect(await trayHeightAt(0.5), closeTo(420.6, 1.0));
-      expect(await trayHeightAt(1), closeTo(468, 0.5));
+      final at0 = await trayRectAt(0);
+      expect(at0.height, closeTo(89, 0.5));
+      expect(at0.left, closeTo(44, 0.5));
+      expect(at0.width, closeTo(712, 0.5));
+      expect(at0.bottom, closeTo(574.2, 0.5));
+      // easeOutCubic(0.5) = 0.875 -> 89 + (420 - 89) x 0.875.
+      expect((await trayRectAt(0.5)).height, closeTo(378.6, 1.0));
+      expect((await trayRectAt(1)).height, closeTo(420, 0.5));
       // Reduced motion: final height instantly, even at value 0.
-      expect(await trayHeightAt(0, reduced: true), closeTo(468, 0.5));
+      expect((await trayRectAt(0, reduced: true)).height,
+          closeTo(420, 0.5));
     });
   });
 }
