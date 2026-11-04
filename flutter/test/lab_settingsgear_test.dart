@@ -41,6 +41,8 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// a real MainShell over an in-memory SettingsStore, with the
 /// secure-storage channel mocked to the signed-out answers so the
 /// real backend's loads complete deterministically.
+void _noopClose() {}
+
 void main() {
   const secureStorageChannel =
       MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
@@ -462,6 +464,29 @@ void main() {
           of: tray(), matching: find.text('Customize').first));
       expect(subTitle.center.dx, closeTo(trayRect.center.dx, 1.0));
       await drainRealWork(tester);
+    });
+
+    testWidgets('tray: keyboard up — the tray rides above the '
+        'keyboard as one stack (audit D18)', (tester) async {
+      // 300dp keyboard on the 800x600 logical surface (900
+      // physical px at the test view's DPR 3): the tray's bottom
+      // edge sits at keyboard top + the ≈9dp Status-tray gap,
+      // and its height clamps to the space above the keyboard
+      // (SETTINGS_SPEC §2.3/§4.4 — tray + keyboard move as one).
+      tester.view.viewInsets = const FakeViewPadding(bottom: 900);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pumpWidget(const MaterialApp(
+        home: SettingsTray(
+          animation: AlwaysStoppedAnimation(1),
+          onClose: _noopClose,
+        ),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      final rect = tester.getRect(tray());
+      expect(rect.bottom, closeTo(600 - 309, 0.5));
+      expect(rect.height, closeTo(600 - 309, 0.5));
+      expect(rect.width, closeTo(800 * 0.89, 0.5));
     });
 
     testWidgets('tray geometry: height grows from the bar zone to '
