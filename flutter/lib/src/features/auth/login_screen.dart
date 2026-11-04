@@ -497,35 +497,6 @@ class _LoginScreenState extends State<LoginScreen> {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 20),
-          _buildEmailField(),
-          const SizedBox(height: 14),
-          if (!_isForgotPasswordMode) ...[
-            _buildPasswordField(),
-            const SizedBox(height: 8),
-          ],
-          // Forgot-password link (login mode only), right aligned.
-          if (!_isRegisterMode && !_isForgotPasswordMode)
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () =>
-                    setState(() => _isForgotPasswordMode = true),
-                style: TextButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: const Text(
-                  'Forgot Password?',
-                  style: TextStyle(
-                    color: NotelColors.primary,
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-            )
-          else
-            const SizedBox(height: 8),
           // 13+ attestation (sign-up form only).
           if (_isRegisterMode && !_isForgotPasswordMode) ...[
             GestureDetector(
@@ -560,6 +531,35 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
             const SizedBox(height: 4),
           ],
+          _buildEmailField(),
+          const SizedBox(height: 14),
+          if (!_isForgotPasswordMode) ...[
+            _buildPasswordField(),
+            const SizedBox(height: 8),
+          ],
+          // Forgot-password link (login mode only), right aligned.
+          if (!_isRegisterMode && !_isForgotPasswordMode)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () =>
+                    setState(() => _isForgotPasswordMode = true),
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text(
+                  'Forgot Password?',
+                  style: TextStyle(
+                    color: NotelColors.primary,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            )
+          else
+            const SizedBox(height: 8),
           // Main action button. "Log In" (login mode) performs the real
           // login (Round 5); "Sign Up" (register mode) performs the
           // real registration (Round 32); "Send Reset Link" stays a

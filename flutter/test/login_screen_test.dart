@@ -16,6 +16,24 @@ void main() {
     expect(find.text('Already have an account? Log In'), findsOneWidget);
   });
 
+  testWidgets('age attestation renders above the email field in register mode',
+      (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
+    // Attestation (text row and its checkbox) sits above the first
+    // text field (email) in the form column.
+    final attestationY =
+        tester.getCenter(find.text('I confirm I am 13 or older.')).dy;
+    final checkboxY = tester.getCenter(find.byType(Checkbox)).dy;
+    final emailFieldY = tester.getCenter(find.byType(TextField).first).dy;
+    expect(attestationY, lessThan(emailFieldY));
+    expect(checkboxY, lessThan(emailFieldY));
+    // Toggling to login mode removes the attestation entirely.
+    await tester.tap(find.text('Already have an account? Log In'));
+    await tester.pump();
+    expect(find.text('I confirm I am 13 or older.'), findsNothing);
+    expect(find.byType(Checkbox), findsNothing);
+  });
+
   testWidgets('toggle switches to login mode', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
     await tester.tap(find.text('Already have an account? Log In'));
