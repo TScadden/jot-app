@@ -70,20 +70,36 @@ abstract final class LabBlackColors {
     offset: Offset(0, 6),
   );
 
-  /// Dock surface glass: Tabs purple, gradient top→bottom —
-  /// sheen-lit top (white sheen over primary @ 48%), primary @ 40%
-  /// through the upper fifth, primary @ 30% at the base. Painted
-  /// over a real BackdropFilter blur at [glassBlurSigma]; the
-  /// composited result over the near-black page is a dark,
-  /// saturated purple glass, brightest at its top edge.
+  /// Dock surface glass: milky Tabs purple, gradient top→bottom —
+  /// sheen-lit top @ 28%, @ 22% through the upper fifth, @ 16% at
+  /// the base. Painted over a real BackdropFilter blur at
+  /// [glassBlurSigma].
+  ///
+  /// BlackGlass v4 iteration (Vera Gate 2, Nov 3, 2026): the v4
+  /// stops (primary @ 49% → 40% → 30%) buried the σ14 blur — dock
+  /// interior sampled at saturation mean 0.46 / median 0.51 with
+  /// zero non-purple hues reading through, vs the reference
+  /// interior at ≈0.21 saturation under a ~20–25% LIGHT milky
+  /// tint. Two-part fix, measured in the iteration round:
+  /// (1) alphas cut to Vera's specified 28% → 22% → 16%, so the
+  /// backdrop carries 72–84% of the composite and saturated
+  /// content ghosts through with its hue intact; (2) the tint
+  /// itself lightened toward white (milky lavender, tint
+  /// saturation ≈0.29 in place of primary's 0.57) — an alpha-only
+  /// cut was measured first in this round and the interior only
+  /// fell to mean 0.476, because a saturated tint over near-black
+  /// stays saturated at any alpha, while the reference's 0.21
+  /// interior is the signature of a light tint. Gradient shape /
+  /// stops, the specular line, the sheen, and σ14 blur are
+  /// unchanged — paint values only.
   static const dockGlassGradient = LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
     stops: [0.0, 0.18, 1.0],
     colors: [
-      Color(0x7D8A7FFF), // white-sheened purple — specular zone
-      Color(0x667C6EFF), // primary @ 40%
-      Color(0x4D7C6EFF), // primary @ 30%
+      Color(0x47CDC6FF), // milky lavender @ 28% — specular zone
+      Color(0x38BEB5FF), // milky lavender @ 22%
+      Color(0x29B2A8FF), // milky lavender @ 16%
     ],
   );
 
