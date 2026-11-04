@@ -10,6 +10,7 @@ import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/settings/settings_tray.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
+import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Settings-gear round (Lab) — NAMED additions of this package:
@@ -36,6 +37,15 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// and (9) NEW: the sub-state header form (back-chevron circle
 /// top-left + CENTERED title + no ✕) vs the root form
 /// (left-aligned title + ✕).
+///
+/// V7 FIX ROUND (Juno SIGN WITH CONDITIONS on 42300573, §5/§6):
+/// test (9) is EXTENDED (count unchanged) with Condition 1's
+/// pins — the back circle's keyed hit rect is 48x48, the 36dp
+/// visual is concentric inside it, and a tap in the 36–48dp
+/// RING navigates back — and (10) NEW (+1 test): the segmented
+/// control's per-segment hit-rect height is >=48dp with the
+/// 40dp capsule visual unchanged, including a tap in the band
+/// above the capsule (Condition 2, restoring R49 SE3).
 ///
 /// The shell harness mirrors settings_r30_navlabels_test.dart:
 /// a real MainShell over an in-memory SettingsStore, with the
@@ -463,6 +473,111 @@ void main() {
       final subTitle = tester.getRect(find.descendant(
           of: tray(), matching: find.text('Customize').first));
       expect(subTitle.center.dx, closeTo(trayRect.center.dx, 1.0));
+
+      // V7 FIX ROUND (Juno Condition 1): the back circle's HIT
+      // AREA is a true 48x48dp — the keyed opaque GestureDetector
+      // box, mirroring the ✕'s construction — with the 36dp
+      // visual circle CONCENTRIC inside it. The pre-fix build
+      // wrapped a bare SizedBox around the 36dp InkWell, so the
+      // effective hit area was 36dp; the visual-only pins above
+      // could not see that, so this extension also TAPS THE RING.
+      final backKey = find.byKey(const ValueKey('settings_tray_back'));
+      expect(backKey, findsOneWidget);
+      final backHit = tester.getRect(backKey);
+      expect(backHit.width, 48);
+      expect(backHit.height, 48);
+      expect(tester.getRect(backCircle).center, backHit.center);
+      // Ring point: 21dp above the center — OUTSIDE the 36dp
+      // visual circle (radius 18), INSIDE the 48dp hit box.
+      await tester.tapAt(backHit.center + const Offset(0, -21));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      // The ring tap navigated BACK: the tray is still open, the
+      // root form is restored (✕ back, back key gone), and the
+      // Customize page is gone.
+      expect(tray(), findsOneWidget);
+      expect(find.byKey(const ValueKey('settings_tray_back')),
+          findsNothing);
+      expect(find.byKey(const ValueKey('settings_tray_close')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('nav_labels_toggle')),
+          findsNothing);
+      await drainRealWork(tester);
+    });
+
+    testWidgets('tray: segmented segments keep a >=48dp HIT '
+        'height while the capsule VISUAL stays 40dp (V7 fix '
+        'round, Juno Condition 2)', (tester) async {
+      await pumpShell(tester);
+      await openTray(tester);
+
+      // A segment's detector is the GestureDetector nearest above
+      // its label; its capsule visual is the decorated Container
+      // inside it; the track is the decorated Container above
+      // both segments.
+      Finder segOf(String label) => find
+          .ancestor(
+              of: find.descendant(
+                  of: tray(), matching: find.text(label)),
+              matching: find.byType(GestureDetector))
+          .first;
+      Finder capsuleOf(String label) => find.descendant(
+          of: segOf(label),
+          matching: find.byWidgetPredicate((w) =>
+              w is Container && w.decoration is BoxDecoration));
+      // The track's painted box is its DecoratedBox (the track
+      // Container's own render object would also carry its 12dp
+      // bottom margin, so the box is measured directly).
+      final trackBox = find.ancestor(
+          of: segOf('Settings'),
+          matching: find.byWidgetPredicate((w) =>
+              w is DecoratedBox &&
+              w.decoration is BoxDecoration &&
+              (w.decoration as BoxDecoration).color ==
+                  LabBlackColors.segmentedTrack));
+
+      // The track's TOTAL height is unchanged at 48dp, and each
+      // segment's tappable rect now spans it fully (>=48dp hit
+      // height — the R49 SE3 fix, restored) while the rendered
+      // capsule inside stays exactly 40dp tall.
+      expect(tester.getSize(trackBox).height, 48);
+      for (final label in ['Settings', 'Membership']) {
+        final hit = tester.getRect(segOf(label));
+        expect(hit.height, greaterThanOrEqualTo(48),
+            reason: '$label segment hit height regressed below 48dp');
+        expect(tester.getSize(capsuleOf(label)).height, 40,
+            reason: '$label capsule visual must stay 40dp');
+        expect(tester.getRect(capsuleOf(label)).center.dy,
+            hit.center.dy,
+            reason: '$label capsule stays centered in its hit box');
+      }
+      // The selected capsule keeps its polarity token.
+      expect(
+          (tester.widget<Container>(capsuleOf('Settings')).decoration
+                  as BoxDecoration)
+              .color,
+          LabBlackColors.segmentedSelected);
+
+      // Band tap: switch to Membership by its label, then tap
+      // the Settings segment 2dp below its hit rect's top —
+      // INSIDE the detector but OUTSIDE the 40dp capsule (which
+      // starts 4dp in). Pre-fix that point sat in the track's
+      // padding, outside either segment's detector, and tapped
+      // through to nothing.
+      await tester.tap(find.descendant(
+          of: tray(), matching: find.text('Membership')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('User Profile'), findsNothing);
+      final settingsHit = tester.getRect(segOf('Settings'));
+      await tester.tapAt(
+          Offset(settingsHit.center.dx, settingsHit.top + 2));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      // The band tap switched back to the Settings segment.
+      await tester.ensureVisible(find.text('User Profile'));
+      await tester.pump();
+      expect(find.text('User Profile'), findsOneWidget);
       await drainRealWork(tester);
     });
 

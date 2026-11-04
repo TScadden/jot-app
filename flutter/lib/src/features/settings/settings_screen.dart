@@ -1198,28 +1198,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _traySubHeaderRow() {
     return Stack(
       children: [
-        // Back circle top-left: the ✕'s construction mirrored —
-        // 48dp hit box, 36dp grey circle visual, near-white glyph.
+        // Back circle top-left: the ✕'s construction mirrored
+        // EXACTLY (V7 fix round, Juno Condition 1). The HIT AREA
+        // is a true 48x48dp opaque GestureDetector box (keyed
+        // `settings_tray_back`); the VISUAL circle stays the
+        // reference's 36dp, concentric inside it (left padding 6
+        // centers the box on the circle's center, exactly as the
+        // ✕'s right padding 6 does). The inner InkWell keeps the
+        // ripple on the visual circle; both call the same _back
+        // handler. The fidelity round's original construction
+        // put a bare SizedBox around the 36dp InkWell with NO
+        // opaque detector, so the ring between circle and box
+        // edge tapped through to nothing — the effective hit
+        // area was 36dp, not the claimed 48dp (Juno §5).
         Align(
           alignment: Alignment.centerLeft,
           child: Padding(
             padding: const EdgeInsets.only(left: 6),
-            child: SizedBox(
-              width: 48,
-              height: 48,
-              child: Center(
-                child: Material(
-                  color: const Color(0x1FFFFFFF), // white @ 12% circle
-                  shape: const CircleBorder(),
-                  clipBehavior: Clip.antiAlias,
-                  child: InkWell(
-                    customBorder: const CircleBorder(),
-                    onTap: _back,
-                    child: const SizedBox(
-                      width: 36,
-                      height: 36,
-                      child: Icon(Icons.arrow_back,
-                          size: 18, color: NotelColors.textPrimary),
+            child: GestureDetector(
+              key: const ValueKey('settings_tray_back'),
+              behavior: HitTestBehavior.opaque,
+              onTap: _back,
+              child: SizedBox(
+                width: 48,
+                height: 48,
+                child: Center(
+                  child: Material(
+                    color: const Color(0x1FFFFFFF), // white @ 12% circle
+                    shape: const CircleBorder(),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: _back,
+                      child: const SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: Icon(Icons.arrow_back,
+                            size: 18, color: NotelColors.textPrimary),
+                      ),
                     ),
                   ),
                 ),
@@ -1252,10 +1268,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// ≈+28 luminance (the delivered build had the polarity
   /// inverted: selected rendered ~5 levels DARKER than track).
   /// Tokens: [LabBlackColors.segmentedTrack] /
-  /// [LabBlackColors.segmentedSelected]. Total height 48dp
-  /// (4dp track padding + 40dp capsule) keeps the R49 SE3 ≥48dp
-  /// hit height for the control as a whole; the capsule's visual
-  /// height (40) sits next to the reference's ~36pt.
+  /// [LabBlackColors.segmentedSelected]. The capsule's VISUAL
+  /// height is 40dp (next to the reference's ~36pt) centered in
+  /// a 48dp track. PER-SEGMENT HIT HEIGHT is a true 48dp (V7
+  /// fix round, Juno Condition 2): each segment's opaque
+  /// detector spans the full track height — the 4dp bands
+  /// above/below the capsule are INSIDE the detector (vertical
+  /// padding on the detector's child, not on the track), the
+  /// same grow-the-detector pattern as the ✕ / back circles.
+  /// The fidelity round's original construction padded the
+  /// TRACK by 4dp and wrapped only the 40dp capsule in the
+  /// detector, so the per-segment hit height was 40dp —
+  /// silently reversing the R49 SE3 ≥48dp fix (Juno §5).
   Widget _segmentedHeader() {
     Widget seg(String label, _Page page) {
       final selected = _page == page;
@@ -1263,30 +1287,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => setState(() => _page = page),
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 40),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: selected
-                  ? LabBlackColors.segmentedSelected
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 40),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected
+                    ? LabBlackColors.segmentedSelected
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(label,
+                  style: TextStyle(
+                      color: selected
+                          ? NotelColors.textPrimary
+                          : NotelColors.textSecondary,
+                      fontWeight:
+                          selected ? FontWeight.bold : FontWeight.w500,
+                      fontSize: 14)),
             ),
-            child: Text(label,
-                style: TextStyle(
-                    color: selected
-                        ? NotelColors.textPrimary
-                        : NotelColors.textSecondary,
-                    fontWeight:
-                        selected ? FontWeight.bold : FontWeight.w500,
-                    fontSize: 14)),
           ),
         ),
       );
     }
 
     return Container(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: LabBlackColors.segmentedTrack,
