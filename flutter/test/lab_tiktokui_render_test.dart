@@ -17,6 +17,7 @@ import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/data/migraine_controller.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
+import 'package:tabs_lab/src/features/home/daily_score_hero_card.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
 
@@ -33,6 +34,11 @@ import 'test_helpers.dart';
 /// 1080x2400, logical 360x800 @ DPR 3.0), expands Today Summary
 /// so the plan rows render, and captures the RepaintBoundary to
 /// a PNG at exactly 1080x2400.
+///
+/// Fix round (Vera C1): the capture is taken at scroll offset 0 —
+/// the v1 frame's deliberate -120dp drag severed the hero numeral;
+/// v2 shows the greeting header and the FULL hero card, then the
+/// content below it in natural order.
 ///
 /// Substitution note (also in BUILD.md): the plan rows render
 /// because Home now passes its own backend to the Today Summary
@@ -206,12 +212,43 @@ void main() {
       } catch (_) {
         // Icons fall back to boxes; text stays legible either way.
       }
+      // Fix round (Vera C3a) — emoji support for the streak pills:
+      // the streak glyphs (🔥 / 🏆) are real emoji codepoints that
+      // neither Roboto nor MaterialIcons carries, so in the v1
+      // capture they fell back to a near-black smudge. The host's
+      // Noto Color Emoji (with Noto Sans Symbols 2 behind it) is
+      // loaded here and named in the theme's fontFamilyFallback
+      // below, so the glyphs render as the real flame / trophy.
+      // HARNESS ONLY: production code keeps its real glyphs and
+      // renders them through the device's own emoji font.
+      for (final (family, path) in [
+        ('Noto Color Emoji', '/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf'),
+        ('Noto Sans Symbols 2',
+            '/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf'),
+      ]) {
+        try {
+          final bytes = await File(path).readAsBytes();
+          final emojiLoader = FontLoader(family);
+          emojiLoader.addFont(Future.value(
+              ByteData.view(Uint8List.fromList(bytes).buffer)));
+          await emojiLoader.load();
+        } catch (_) {
+          // Font absent on this host (e.g. a CI runner): glyphs
+          // fall back as before; the capture assertions still hold.
+        }
+      }
     });
 
     final boundaryKey = GlobalKey();
     await tester.pumpWidget(
       MaterialApp(
-        theme: ThemeData(fontFamily: 'Roboto'),
+        theme: ThemeData(
+          fontFamily: 'Roboto',
+          // Harness emoji fallback (Vera C3a, see the font loading
+          // above): only codepoints Roboto lacks — the streak
+          // glyphs — ever reach these families.
+          fontFamilyFallback: const ['Noto Color Emoji', 'Noto Sans Symbols 2'],
+        ),
         home: MediaQuery(
           data: const MediaQueryData(disableAnimations: true),
           child: RepaintBoundary(
@@ -256,12 +293,42 @@ void main() {
     expect(find.text('SS-31 Peptide'), findsOneWidget);
     expect(find.text('Ivabradine'), findsOneWidget);
     expect(find.text('78'), findsOneWidget);
-    // Scroll so the hero's lower half and the expanded Today's
-    // Plan rows share the captured frame.
-    await tester.drag(
-        find.byType(SingleChildScrollView), const Offset(0, -120));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+    // Fix round (Vera C1): NO scroll drag — the capture is taken
+    // top-anchored at offset 0, so the frame shows the greeting
+    // header and the FULL hero card (label, ring + numeral, and
+    // the 'Good' caption line all inside the viewport).
+    final scrollable = tester.state<ScrollableState>(
+        find.byType(Scrollable).first);
+    expect(scrollable.position.pixels, 0);
+    expect(find.text('Daily Score'), findsOneWidget);
+    expect(find.text('Good'), findsOneWidget);
+    final heroTop = tester.getTopLeft(find.byType(DailyScoreHeroCard));
+    final heroBottom =
+        tester.getBottomRight(find.byType(DailyScoreHeroCard));
+    expect(heroTop.dy, greaterThanOrEqualTo(0));
+    expect(heroBottom.dy, lessThan(800));
+    // Fix round (Vera C3b): the medication name sits on ONE line
+    // at this 360dp width — a single 13sp line is ~16dp tall; a
+    // wrapped second line would roughly double it.
+    expect(tester.getSize(find.text('SS-31 Peptide')).height,
+        lessThan(20));
+    expect(tester.getSize(find.text('Ivabradine')).height, lessThan(20));
+    // …and when the 'Overdue' indicator is present it sits on
+    // the DOSE line: below the title's line and vertically
+    // centered on the '0.05 · Daily' line (in the top-anchored
+    // frame the row sits under the floating dock, so geometry —
+    // not pixels — is the checkable proof here). Presence is
+    // wall-clock dependent by design: the seeded Daily slot only
+    // turns overdue at 18:00 local (today_summary.dart), so this
+    // half is asserted whenever the indicator renders.
+    if (find.text('Overdue').evaluate().isNotEmpty) {
+      final titleRect = tester.getRect(find.text('SS-31 Peptide'));
+      final doseRect = tester.getRect(find.text('0.05 · Daily'));
+      final overdueRect = tester.getRect(find.text('Overdue').first);
+      expect(overdueRect.top, greaterThanOrEqualTo(titleRect.bottom - 1));
+      expect((overdueRect.center.dy - doseRect.center.dy).abs(),
+          lessThanOrEqualTo(2));
+    }
 
     final boundary = boundaryKey.currentContext!.findRenderObject()!
         as RenderRepaintBoundary;
@@ -280,15 +347,17 @@ void main() {
       final labDir = Directory('$home/workspace/tiktok-ui-lab');
       if (await labDir.exists()) {
         // Local deliverable run: save the capture to both homes.
-        await File('${labDir.path}/tabs_home_tiktokui_v1.png')
+        // Fix round: v2 is a NEW unique filename (v1 stays as the
+        // before-frame; never overwrite a delivered image).
+        await File('${labDir.path}/tabs_home_tiktokui_v2.png')
             .writeAsBytes(png);
-        await File('$home/workspace/your_files/tabs_home_tiktokui_v1.png')
+        await File('$home/workspace/your_files/tabs_home_tiktokui_v2.png')
             .writeAsBytes(png);
       } else {
         // CI runner: no deliverable directory — keep the capture
         // assertions meaningful and stash the PNG in temp instead.
         await File(
-                '${Directory.systemTemp.path}/tabs_home_tiktokui_v1.png')
+                '${Directory.systemTemp.path}/tabs_home_tiktokui_v2.png')
             .writeAsBytes(png);
       }
       return png;

@@ -825,40 +825,43 @@ class _PlanItemRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Lab fix round (Vera C3): the title owns its line
+                  // — the 'Overdue' indicator moved to the dose line
+                  // below — so a medication name never wraps just
+                  // because the tag shared its row (production rows
+                  // show the name on one line). Presentation only;
+                  // same strings, same styles.
+                  Text(
+                    item.title,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: NotelColors.textPrimary,
+                    ),
+                  ),
                   Row(
                     children: [
-                      Expanded(
-                        child: Text(
-                          item.title,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: NotelColors.textPrimary,
-                          ),
+                      Text(
+                        isMed
+                            ? '${item.dose} · ${item.timeDisplay}'
+                            : item.timeDisplay,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: NotelColors.textSecondary,
                         ),
                       ),
-                      if (overdue)
-                        const Padding(
-                          padding: EdgeInsets.only(right: 8.0),
-                          child: Text(
-                            'Overdue',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: NotelColors.error,
-                            ),
+                      if (overdue) ...[
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Overdue',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: NotelColors.error,
                           ),
                         ),
+                      ],
                     ],
-                  ),
-                  Text(
-                    isMed
-                        ? '${item.dose} · ${item.timeDisplay}'
-                        : item.timeDisplay,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: NotelColors.textSecondary,
-                    ),
                   ),
                 ],
               ),

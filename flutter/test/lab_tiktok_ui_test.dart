@@ -14,8 +14,10 @@ import 'package:tabs_lab/src/data/migraine_controller.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
+import 'package:tabs_lab/src/features/home/daily_score_circle.dart';
 import 'package:tabs_lab/src/features/home/daily_score_hero_card.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
+import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/features/quicklog/quick_log_tray.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
@@ -288,5 +290,64 @@ void main() {
     expect(find.text('Good'), findsOneWidget);
     expect(find.text('Daily Score'), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 300));
+  });
+
+  // Fix round (Vera C2) — the hero is QUIET: it must not reuse the
+  // old score face (purple liquid disc), the numeral is large and
+  // in textPrimary on the card surface, and the band is a caption
+  // line — no solid filled chip anywhere in the hero subtree.
+  testWidgets('(d) hero is quiet: no score face, no filled chip, '
+      'large textPrimary numeral', (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: DailyScoreHeroCard(score: 78)),
+    ));
+    await tester.pump();
+
+    expect(find.byType(DailyScoreHeroCard), findsOneWidget);
+    // The old disc (with its purple fill) is not in the hero.
+    expect(
+      find.descendant(
+          of: find.byType(DailyScoreHeroCard),
+          matching: find.byType(DailyScoreFace)),
+      findsNothing,
+    );
+    final numeral = tester.widget<Text>(find.text('78'));
+    expect(numeral.style!.fontSize, greaterThanOrEqualTo(60));
+    expect(numeral.style!.color, NotelColors.textPrimary);
+    expect(find.text('Good'), findsOneWidget);
+    // No filled chip: no Container in the hero paints the band
+    // color or the primary as a solid decoration (the card's own
+    // surface fill is the only solid decoration allowed).
+    for (final container in tester.widgetList<Container>(
+      find.descendant(
+          of: find.byType(DailyScoreHeroCard),
+          matching: find.byType(Container)),
+    )) {
+      final decoration = container.decoration;
+      if (decoration is BoxDecoration) {
+        expect(decoration.color,
+            isNot(anyOf(NotelColors.success, NotelColors.primary)));
+      }
+    }
+  });
+
+  // Fix round (Vera C2) — the hero's honest states still render:
+  // null score shows '--' (never an invented number) with the
+  // building / waiting caption distinguishing the two null states.
+  testWidgets('(e) hero null states render honestly', (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: DailyScoreHeroCard(score: null)),
+    ));
+    await tester.pump();
+    expect(find.text('--'), findsOneWidget);
+    expect(find.text('Building'), findsOneWidget);
+
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(
+          body: DailyScoreHeroCard(score: null, pending: true)),
+    ));
+    await tester.pump();
+    expect(find.text('--'), findsOneWidget);
+    expect(find.text('Waiting'), findsOneWidget);
   });
 }
