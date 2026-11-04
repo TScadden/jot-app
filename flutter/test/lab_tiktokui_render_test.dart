@@ -40,6 +40,14 @@ import 'test_helpers.dart';
 /// v2 shows the greeting header and the FULL hero card, then the
 /// content below it in natural order.
 ///
+/// Lab v3 (near-black + purple glass): TWO frames are captured —
+/// the top-anchored hero frame and a companion plan-rows frame
+/// scrolled so both plan rows sit fully clear of the floating
+/// dock. Per Vera C4, the UI settles ~3s of pumped time after the
+/// expand tap before any capture, so no tap ripple freezes into
+/// a shot. Geometry is v2's exactly (layout freeze): only the
+/// palette/glass changed.
+///
 /// Substitution note (also in BUILD.md): the plan rows render
 /// because Home now passes its own backend to the Today Summary
 /// card (see home_screen.dart); the harness injects that backend
@@ -288,7 +296,10 @@ void main() {
     await tester.tap(find.text('Today Summary'));
     await tester.pump();
     await _bridge(tester);
-    await tester.pump(const Duration(milliseconds: 300));
+    // Vera C4: let the label's tap feedback fully fade (~3s of
+    // pumped time) before capturing — a 300ms settle froze the
+    // ripple into the v2 frame as a gray pill.
+    await tester.pump(const Duration(seconds: 3));
 
     expect(find.text('SS-31 Peptide'), findsOneWidget);
     expect(find.text('Ivabradine'), findsOneWidget);
@@ -334,41 +345,76 @@ void main() {
         as RenderRepaintBoundary;
     // Capture + file writes are REAL async work: they must run in
     // runAsync, or their futures never complete in the fake zone.
-    final bytes = await tester.runAsync(() async {
-      final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
-      if (image.width != 1080 || image.height != 2400) {
-        throw StateError(
-            'capture size ${image.width}x${image.height}, want 1080x2400');
-      }
-      final byteData =
-          await image.toByteData(format: ui.ImageByteFormat.png);
-      final png = byteData!.buffer.asUint8List();
-      final home = Platform.environment['HOME'] ?? '/home/hatch';
-      final labDir = Directory('$home/workspace/tiktok-ui-lab');
-      if (await labDir.exists()) {
-        // Local deliverable run: save the capture to both homes.
-        // Fix round: v2 is a NEW unique filename (v1 stays as the
-        // before-frame; never overwrite a delivered image).
-        await File('${labDir.path}/tabs_home_tiktokui_v2.png')
-            .writeAsBytes(png);
-        await File('$home/workspace/your_files/tabs_home_tiktokui_v2.png')
-            .writeAsBytes(png);
-      } else {
-        // CI runner: no deliverable directory — keep the capture
-        // assertions meaningful and stash the PNG in temp instead.
-        await File(
-                '${Directory.systemTemp.path}/tabs_home_tiktokui_v2.png')
-            .writeAsBytes(png);
-      }
+    Future<Uint8List> captureFrame(String fileName) async {
+      final png = await tester.runAsync(() async {
+        final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+        if (image.width != 1080 || image.height != 2400) {
+          throw StateError(
+              'capture size ${image.width}x${image.height}, want 1080x2400');
+        }
+        final byteData =
+            await image.toByteData(format: ui.ImageByteFormat.png);
+        final bytes = byteData!.buffer.asUint8List();
+        final home = Platform.environment['HOME'] ?? '/home/hatch';
+        final labDir = Directory('$home/workspace/tiktok-ui-lab');
+        if (await labDir.exists()) {
+          // Local deliverable run: save the capture to both homes.
+          // Lab v3: NEW unique filenames (the v2/v3-named v2 images
+          // stay untouched as the before-frames).
+          await File('${labDir.path}/$fileName').writeAsBytes(bytes);
+          await File('$home/workspace/your_files/$fileName')
+              .writeAsBytes(bytes);
+        } else {
+          // CI runner: no deliverable directory — keep the capture
+          // assertions meaningful and stash the PNG in temp instead.
+          await File('${Directory.systemTemp.path}/$fileName')
+              .writeAsBytes(bytes);
+        }
+        return bytes;
+      });
+      // PNG signature + IHDR dimensions at fixed offsets.
+      expect(png!.sublist(0, 4), [0x89, 0x50, 0x4E, 0x47]);
+      final w = (png[16] << 24) |
+          (png[17] << 16) |
+          (png[18] << 8) |
+          png[19];
+      final h = (png[20] << 24) |
+          (png[21] << 16) |
+          (png[22] << 8) |
+          png[23];
+      expect(w, 1080);
+      expect(h, 2400);
       return png;
-    });
-    // PNG signature + IHDR dimensions at fixed offsets.
-    expect(bytes!.sublist(0, 4), [0x89, 0x50, 0x4E, 0x47]);
-    final w =
-        (bytes[16] << 24) | (bytes[17] << 16) | (bytes[18] << 8) | bytes[19];
-    final h =
-        (bytes[20] << 24) | (bytes[21] << 16) | (bytes[22] << 8) | bytes[23];
-    expect(w, 1080);
-    expect(h, 2400);
+    }
+
+    // FRAME 1 — the hero frame, top-anchored at offset 0.
+    await captureFrame('tabs_home_tiktokui_black_v1.png');
+
+    // FRAME 2 — the plan-rows frame (Vera C4 companion): scroll
+    // just far enough that BOTH plan rows (names, dose lines,
+    // Take/Skip) sit fully clear of the floating dock, then let
+    // the UI settle again before capturing.
+    final dockTop = tester.getTopLeft(find.byType(NavDock)).dy;
+    final doseRect = tester.getRect(find.text('7.5mg · Daily'));
+    // Row bottom = dose-line bottom + row padding/margin (~14dp);
+    // add clearance so the row's edge clears the dock's top.
+    final shift = doseRect.bottom + 14 + 8 - dockTop;
+    if (shift > 0) {
+      scrollable.position
+          .jumpTo(scrollable.position.pixels + shift);
+    }
+    await tester.pump();
+    await _bridge(tester);
+    await tester.pump(const Duration(seconds: 3));
+    // Both rows fully in frame and fully clear of the dock.
+    expect(tester.getRect(find.text('SS-31 Peptide')).top,
+        greaterThanOrEqualTo(0));
+    expect(
+        tester.getRect(find.text('7.5mg · Daily')).bottom + 14,
+        lessThan(dockTop));
+    expect(
+        tester.getRect(find.text('0.05 · Daily')).bottom + 14,
+        lessThan(dockTop));
+    await captureFrame('tabs_home_tiktokui_black_v1_plan.png');
   });
 }

@@ -3,6 +3,7 @@ import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/features/home/event_counter_rotator.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
+import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Round 17b — formats sleep minutes exactly like the native
@@ -48,9 +49,10 @@ class VitalsStrip extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
       decoration: BoxDecoration(
-        color: NotelColors.legacyDarkScrim,
+        // Lab v3: near-black card (#1A1A1E) + 8% white hairline.
+        color: LabBlackColors.card,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: NotelColors.legacyDarkHairline, width: 1),
+        border: Border.all(color: LabBlackColors.hairline, width: 1),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
       child: Row(
@@ -114,7 +116,7 @@ class VitalsStrip extends StatelessWidget {
   static const _valueStyle = TextStyle(
     fontSize: 14,
     fontWeight: FontWeight.bold,
-    color: NotelColors.legacyDarkOnDark,
+    color: LabBlackColors.textPrimary,
   );
 
   Widget _cell({
@@ -140,7 +142,7 @@ class VitalsStrip extends StatelessWidget {
       child: Container(
         width: 1,
         height: 16,
-        color: NotelColors.legacyDarkDivider,
+        color: LabBlackColors.hairline,
       ),
     );
   }
@@ -251,7 +253,7 @@ class HomeStreakRow extends StatelessWidget {
     return Container(
       height: 34,
       decoration: BoxDecoration(
-        color: NotelColors.surfaceHigh.withValues(alpha: 0.15),
+        color: LabBlackColors.raised.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: const Color(0xFFFFFFFF).withValues(alpha: 0.08),

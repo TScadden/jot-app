@@ -17,6 +17,7 @@ import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/home/daily_score_circle.dart';
 import 'package:tabs_lab/src/features/home/daily_score_hero_card.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
+import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/features/quicklog/quick_log_tray.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
@@ -313,7 +314,9 @@ void main() {
     );
     final numeral = tester.widget<Text>(find.text('78'));
     expect(numeral.style!.fontSize, greaterThanOrEqualTo(60));
-    expect(numeral.style!.color, NotelColors.textPrimary);
+    // Lab v3: the numeral sits in the near-black palette's text
+    // primary (#F5F5F7) on the near-black card.
+    expect(numeral.style!.color, LabBlackColors.textPrimary);
     expect(find.text('Good'), findsOneWidget);
     // No filled chip: no Container in the hero paints the band
     // color or the primary as a solid decoration (the card's own
@@ -349,5 +352,158 @@ void main() {
     await tester.pump();
     expect(find.text('--'), findsOneWidget);
     expect(find.text('Waiting'), findsOneWidget);
+  });
+
+  // Lab v3 — the hero card surface is the near-black card tone
+  // (#1A1A1E) with the 8% white hairline, not the old navy surface.
+  testWidgets('(f) hero card uses the near-black palette', (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: DailyScoreHeroCard(score: 78)),
+    ));
+    await tester.pump();
+
+    final card = tester.widget<Container>(
+      find
+          .descendant(
+              of: find.byType(DailyScoreHeroCard),
+              matching: find.byType(Container))
+          .first,
+    );
+    final decoration = card.decoration! as BoxDecoration;
+    expect(decoration.color, LabBlackColors.card);
+    expect(decoration.color, const Color(0xFF1A1A1E));
+    expect(decoration.border!.top.color, LabBlackColors.hairline);
+    // The palette constants themselves are the brief's values.
+    expect(LabBlackColors.background, const Color(0xFF0A0A0B));
+    expect(LabBlackColors.nested, const Color(0xFF121215));
+    expect(LabBlackColors.raised, const Color(0xFF232329));
+    expect(LabBlackColors.textPrimary, const Color(0xFFF5F5F7));
+    expect(LabBlackColors.textSecondary, const Color(0xFF9A9AA3));
+  });
+
+  // Lab v3 — the dock's selection capsule and center log button
+  // are PURPLE GLASS: translucent primary over a real
+  // BackdropFilter blur, with a 1px light edge — same geometry as
+  // v2 (52x40 capsule, 52x52 center circle, 64dp pill).
+  testWidgets('(g) dock capsule + center button are purple glass',
+      (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.bottomCenter,
+            child: NavDock(selected: DockTab.home, onSelect: _noopSelect),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // Real blur lives in the dock (capsule + center button).
+    expect(
+      find.descendant(
+          of: find.byType(NavDock), matching: find.byType(BackdropFilter)),
+      findsNWidgets(2),
+    );
+    // Capsule: glass color + light edge, unchanged 52x40 geometry.
+    final capsule = tester.widget<Container>(
+        find.byKey(const ValueKey('dock_selection_pill')));
+    final capsuleDeco = capsule.decoration! as BoxDecoration;
+    expect(capsuleDeco.color, LabBlackColors.glassCapsule);
+    expect(capsuleDeco.color!.a, closeTo(0.30, 0.01));
+    expect(capsuleDeco.border!.top.color, LabBlackColors.glassEdge);
+    expect(capsuleDeco.border!.top.width, 1);
+    expect(tester.getSize(find.byKey(const ValueKey('dock_selection_pill'))),
+        const Size(52, 40));
+    // Center button: the strongest glass (45% primary) on a
+    // Material circle, unchanged 52x52 geometry.
+    final centerMaterial = tester.widget<Material>(
+      find.byWidgetPredicate(
+        (w) => w is Material && w.color == LabBlackColors.glassCenterButton,
+      ),
+    );
+    expect(centerMaterial.shape, isA<CircleBorder>());
+    expect(LabBlackColors.glassCenterButton.a, closeTo(0.45, 0.01));
+    expect(
+      tester.getSize(find.byKey(const ValueKey('dock_quicklog_ring'))),
+      const Size(58, 58),
+    );
+    // The pill surface itself is the near-black card tone.
+    final pillMaterial = tester.widget<Material>(
+      find
+          .descendant(
+              of: find.byType(NavDock), matching: find.byType(Material))
+          .first,
+    );
+    expect(pillMaterial.color,
+        LabBlackColors.card.withValues(alpha: 0.94));
+  });
+
+  // Lab v3 — the tray surface is purple glass over a real blur,
+  // and its primary action ('Log') is glass too. Geometry and
+  // morph are v2's; only the surface treatment changed.
+  testWidgets('(h) tray surface + Log button are purple glass',
+      (tester) async {
+    final server = _TrayServer();
+    final session = FakeSessionStore()
+      ..token = 'tok'
+      ..email = 'a@x.com';
+    final backend =
+        TabsBackend(client: server.client, sessionStore: session);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: QuickLogTray(
+          backend: backend,
+          outbox: LogEntryOutbox.instance,
+        ),
+      ),
+    ));
+    await tester.pump();
+    await _bridge(tester);
+
+    expect(find.byType(QuickLogTray), findsOneWidget);
+    // The tray's glass surface: a BackdropFilter over a translucent
+    // purple-tinted container.
+    expect(
+      find.descendant(
+          of: find.byType(QuickLogTray),
+          matching: find.byType(BackdropFilter)),
+      findsWidgets,
+    );
+    final surface = tester.widgetList<Container>(
+      find.descendant(
+          of: find.byType(QuickLogTray), matching: find.byType(Container)),
+    ).firstWhere((c) =>
+        c.decoration is BoxDecoration &&
+        (c.decoration! as BoxDecoration).color == LabBlackColors.trayGlass);
+    expect((surface.decoration! as BoxDecoration).border!.top.color,
+        LabBlackColors.hairline);
+
+    // Morph to the editor: the 'Log' button is glass (45% primary
+    // with the light edge), still a 50dp full-width pill. (The
+    // category-load morph settles first — the same settle test (a)
+    // pumps — so the row is inside the tray's hit area.)
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text('Your quick note'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    final logButton = tester.widget<ElevatedButton>(
+        find.widgetWithText(ElevatedButton, 'Log'));
+    final style = logButton.style!;
+    expect(
+      style.backgroundColor!.resolve(<WidgetState>{}),
+      LabBlackColors.glassLogButton,
+    );
+    expect(
+      style.side!.resolve(<WidgetState>{})!.color,
+      LabBlackColors.glassEdge,
+    );
+    expect(
+      find.descendant(
+          of: find.byType(QuickLogTray),
+          matching: find.byType(BackdropFilter)),
+      findsWidgets,
+    );
+    expect(tester.takeException(), isNull);
   });
 }

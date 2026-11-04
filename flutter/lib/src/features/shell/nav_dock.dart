@@ -1,6 +1,9 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
+import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Round 9 — the floating bottom nav dock.
@@ -166,13 +169,15 @@ class _NavDockState extends State<NavDock>
       // beside each tab's Scaffold (not inside one), so without this the
       // ink responses have no Material to print on.
       child: Material(
-        color: NotelColors.surface.withValues(alpha: 0.92),
+        // Lab v3: the pill sits in the near-black system — card
+        // tone at 94% over the page, 8% white hairline.
+        color: LabBlackColors.card.withValues(alpha: 0.94),
         elevation: 8,
         shadowColor: Colors.black.withValues(alpha: 0.45),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(32),
-          side: BorderSide(
-            color: Colors.white.withValues(alpha: 0.10),
+          side: const BorderSide(
+            color: LabBlackColors.hairline,
             width: 1,
           ),
         ),
@@ -195,13 +200,31 @@ class _NavDockState extends State<NavDock>
                       return Positioned(
                         left: left,
                         top: (dockHeight - pillHeight) / 2,
-                        child: Container(
-                          key: const ValueKey('dock_selection_pill'),
-                          width: pillWidth,
-                          height: pillHeight,
-                          decoration: BoxDecoration(
-                            color: NotelColors.primary.withValues(alpha: 0.28),
-                            borderRadius: BorderRadius.circular(20),
+                        // Lab v3: the capsule is PURPLE GLASS — the
+                        // same 52x40 pill in the same slot, now
+                        // translucent primary (30%) over a real
+                        // BackdropFilter blur (sigma 14) with a 1px
+                        // light edge, so it reads as a proper glass
+                        // pill floating over the dock (Vera v2
+                        // polish note, closed).
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(20),
+                          child: BackdropFilter(
+                            filter: ui.ImageFilter.blur(
+                                sigmaX: 14, sigmaY: 14),
+                            child: Container(
+                              key: const ValueKey('dock_selection_pill'),
+                              width: pillWidth,
+                              height: pillHeight,
+                              decoration: BoxDecoration(
+                                color: LabBlackColors.glassCapsule,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: LabBlackColors.glassEdge,
+                                  width: 1,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       );
@@ -260,23 +283,41 @@ class _NavDockState extends State<NavDock>
                         ),
                       ),
                       alignment: Alignment.center,
-                      child: Material(
-                        color: NotelColors.primary,
-                        shape: const CircleBorder(),
-                        elevation:
-                            widget.selected == DockTab.quickLog ? 8 : 6,
-                        child: InkWell(
-                          customBorder: const CircleBorder(),
-                          onTap: () => widget.onSelect(DockTab.quickLog),
-                          child: const SizedBox(
-                            width: 52,
-                            height: 52,
-                            child: Center(
-                              child: Icon(
-                                Icons.edit,
-                                size: 24,
-                                color: Colors.white,
-                                semanticLabel: 'Quick log',
+                      // Lab v3: the center log button is the
+                      // strongest PURPLE GLASS of the set — the same
+                      // 52x52 circle in the same place, now primary
+                      // at 45% over a real BackdropFilter blur
+                      // (sigma 14) with a 1px light edge. Still
+                      // clearly the primary action.
+                      child: ClipOval(
+                        child: BackdropFilter(
+                          filter:
+                              ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                          child: Material(
+                            color: LabBlackColors.glassCenterButton,
+                            shape: const CircleBorder(
+                              side: BorderSide(
+                                color: LabBlackColors.glassEdge,
+                                width: 1,
+                              ),
+                            ),
+                            elevation:
+                                widget.selected == DockTab.quickLog ? 8 : 6,
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: () =>
+                                  widget.onSelect(DockTab.quickLog),
+                              child: const SizedBox(
+                                width: 52,
+                                height: 52,
+                                child: Center(
+                                  child: Icon(
+                                    Icons.edit,
+                                    size: 24,
+                                    color: Colors.white,
+                                    semanticLabel: 'Quick log',
+                                  ),
+                                ),
                               ),
                             ),
                           ),
@@ -340,7 +381,7 @@ class _DockIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color =
-        selected ? NotelColors.primary : NotelColors.textSecondary;
+        selected ? NotelColors.primary : LabBlackColors.textSecondary;
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),

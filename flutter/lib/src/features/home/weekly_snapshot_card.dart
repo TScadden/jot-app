@@ -6,6 +6,7 @@ import 'package:tabs_lab/src/data/weekly_snapshot_cache.dart';
 import 'package:tabs_lab/src/features/tools/coach_mascot.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
+import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Round 8 — Weekly Snapshot card.
@@ -229,9 +230,9 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
       decoration: BoxDecoration(
-        color: NotelColors.surface,
+        color: LabBlackColors.card,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: NotelColors.legacyDarkHairline, width: 1),
+        border: Border.all(color: LabBlackColors.hairline, width: 1),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -291,7 +292,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
               'Loading your week...',
               style: TextStyle(
                 fontSize: 13,
-                color: NotelColors.textSecondary,
+                color: LabBlackColors.textSecondary,
               ),
               textAlign: TextAlign.center,
             ),
@@ -314,7 +315,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
-                color: NotelColors.textPrimary,
+                color: LabBlackColors.textPrimary,
               ),
             ),
           ],
@@ -332,7 +333,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
           icon: const Icon(
             Icons.refresh,
             size: 16,
-            color: NotelColors.textSecondary,
+            color: LabBlackColors.textSecondary,
           ),
         ),
       ],
@@ -354,7 +355,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
               data.emptyMessage ?? 'No data available past 7 days',
               style: const TextStyle(
                 fontSize: 13,
-                color: NotelColors.textSecondary,
+                color: LabBlackColors.textSecondary,
               ),
               textAlign: TextAlign.center,
             ),
@@ -373,7 +374,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
           style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w500,
-            color: NotelColors.textSecondary,
+            color: LabBlackColors.textSecondary,
           ),
         ),
         // Blood Pressure Sys/Dia legend (native shows it when available).
@@ -384,13 +385,13 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
               SizedBox(width: 4),
               Text('Sys',
                   style: TextStyle(
-                      fontSize: 10, color: NotelColors.textSecondary)),
+                      fontSize: 10, color: LabBlackColors.textSecondary)),
               SizedBox(width: 8),
               _LegendDot(color: NotelColors.info),
               SizedBox(width: 4),
               Text('Dia',
                   style: TextStyle(
-                      fontSize: 10, color: NotelColors.textSecondary)),
+                      fontSize: 10, color: LabBlackColors.textSecondary)),
             ],
           ),
       ],
@@ -406,9 +407,9 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
     return Container(
       margin: const EdgeInsets.only(bottom: 8.0),
       decoration: BoxDecoration(
-        color: NotelColors.surfaceHigh,
+        color: LabBlackColors.raised,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: NotelColors.legacyDarkDivider, width: 1),
+        border: Border.all(color: LabBlackColors.hairline, width: 1),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
       child: Row(
@@ -435,7 +436,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
             icon: const Icon(
               Icons.close,
               size: 18,
-              color: NotelColors.textSecondary,
+              color: LabBlackColors.textSecondary,
             ),
           ),
         ],
@@ -548,10 +549,10 @@ class _MetricSelectorState extends State<_MetricSelector> {
               child: Container(
                 width: width,
                 decoration: BoxDecoration(
-                  color: NotelColors.surfaceHigh,
+                  color: LabBlackColors.raised,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                      color: NotelColors.legacyDarkDivider, width: 1),
+                      color: LabBlackColors.hairline, width: 1),
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -585,7 +586,7 @@ class _MetricSelectorState extends State<_MetricSelector> {
                                     : FontWeight.normal,
                                 color: isCurrent
                                     ? NotelColors.primaryText
-                                    : NotelColors.textPrimary,
+                                    : LabBlackColors.textPrimary,
                               ),
                             ),
                           ),
@@ -614,10 +615,10 @@ class _MetricSelectorState extends State<_MetricSelector> {
         child: Container(
           height: 48,
           decoration: BoxDecoration(
-            color: NotelColors.surfaceHigh,
+            color: LabBlackColors.raised,
             borderRadius: BorderRadius.circular(10),
             border:
-                Border.all(color: NotelColors.legacyDarkDivider, width: 1),
+                Border.all(color: LabBlackColors.hairline, width: 1),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 12.0),
           child: Row(
@@ -780,7 +781,7 @@ class _SnapshotChartPainter extends CustomPainter {
           style: TextStyle(
             fontSize: 11,
             fontWeight: isSel ? FontWeight.bold : FontWeight.w500,
-            color: isSel ? NotelColors.primaryText : NotelColors.textSecondary,
+            color: isSel ? NotelColors.primaryText : LabBlackColors.textSecondary,
           ),
         ),
         textDirection: TextDirection.ltr,

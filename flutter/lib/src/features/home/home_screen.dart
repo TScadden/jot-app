@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -42,6 +43,7 @@ import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/features/home/weather_sheet.dart';
 import 'package:tabs_lab/src/features/home/weekly_snapshot_card.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
+import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
 
@@ -1841,9 +1843,11 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: NotelColors.background,
+      // Lab v3: the adapted Home sits on true near-black (#0A0A0B,
+      // neutral — the navy tint is killed on this screen only).
+      backgroundColor: LabBlackColors.background,
       appBar: AppBar(
-        backgroundColor: NotelColors.background,
+        backgroundColor: LabBlackColors.background,
         elevation: 0,
         automaticallyImplyLeading: false,
         // Lab (TikTok-UI exploration): the header follows the
@@ -1873,7 +1877,7 @@ class _HomeScreenState extends State<HomeScreen> {
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w900,
-                color: NotelColors.textPrimary,
+                color: LabBlackColors.textPrimary,
               ),
             ),
           ],
@@ -1900,8 +1904,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
-                          color:
-                              NotelColors.textPrimary.withValues(alpha: 0.8),
+                          color: LabBlackColors.textPrimary
+                              .withValues(alpha: 0.8),
                         ),
                       ),
                     if (_weatherLoaded) const SizedBox(width: 4),
@@ -1929,7 +1933,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () => unawaited(_openConnections()),
             // Lab: header actions are circular filled buttons.
             style: IconButton.styleFrom(
-              backgroundColor: NotelColors.surfaceHigh,
+              backgroundColor: LabBlackColors.raised,
               shape: const CircleBorder(),
             ),
             icon: animationsDisabled(context)
@@ -1957,23 +1961,35 @@ class _HomeScreenState extends State<HomeScreen> {
           // edge BEHIND the scroll content, fading into the
           // background by ~35% of screen height. Home only,
           // purely decorative (IgnorePointer, no data).
+          // Lab v3: the wash is now PURPLE GLASS — the same box in
+          // the same place, but the gradient is purple-only and
+          // runs through a heavy blur (sigma 30) so it reads as
+          // frosted light bleeding from the hero's top edge into
+          // the near-black, never as a painted shape.
           Positioned(
             top: 0,
             left: 0,
             right: 0,
             height: 320,
             child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: RadialGradient(
-                    center: Alignment.topCenter,
-                    radius: 1.35,
-                    colors: [
-                      NotelColors.primary.withValues(alpha: 0.38),
-                      NotelColors.chipPurple.withValues(alpha: 0.16),
-                      Colors.transparent,
-                    ],
-                    stops: const [0.0, 0.45, 1.0],
+              child: ImageFiltered(
+                imageFilter: ui.ImageFilter.blur(
+                  sigmaX: 30,
+                  sigmaY: 30,
+                  tileMode: TileMode.clamp,
+                ),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      center: Alignment.topCenter,
+                      radius: 1.35,
+                      colors: [
+                        NotelColors.primary.withValues(alpha: 0.36),
+                        NotelColors.chipPurple.withValues(alpha: 0.14),
+                        Colors.transparent,
+                      ],
+                      stops: const [0.0, 0.45, 1.0],
+                    ),
                   ),
                 ),
               ),

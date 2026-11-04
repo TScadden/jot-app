@@ -12,6 +12,7 @@ import 'package:tabs_lab/src/features/home/home_section_label.dart';
 import 'package:tabs_lab/src/features/home/migraine_block.dart';
 import 'package:tabs_lab/src/features/quicklog/history_screen.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
+import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
 
@@ -564,10 +565,10 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
         Container(
           margin: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 6.0),
           decoration: BoxDecoration(
-            color: NotelColors.surface,
+            color: LabBlackColors.card,
             borderRadius: BorderRadius.circular(24),
             border:
-                Border.all(color: NotelColors.legacyDarkHairline, width: 1),
+                Border.all(color: LabBlackColors.hairline, width: 1),
           ),
           child: Padding(
             padding: const EdgeInsets.all(16.0),
@@ -587,7 +588,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                             width: 36,
                             height: 36,
                             decoration: const BoxDecoration(
-                              color: NotelColors.surfaceHigh,
+                              color: LabBlackColors.raised,
                               shape: BoxShape.circle,
                             ),
                             child: const Icon(
@@ -603,7 +604,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                               style: const TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w500,
-                                color: NotelColors.textSecondary,
+                                color: LabBlackColors.textSecondary,
                               ),
                             ),
                           ),
@@ -636,7 +637,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           const Divider(
-                            color: NotelColors.legacyDarkHairline,
+                            color: LabBlackColors.hairline,
                             height: 1,
                           ),
                           const SizedBox(height: 12),
@@ -646,7 +647,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                           ),
                           const SizedBox(height: 14),
                           const Divider(
-                            color: NotelColors.legacyDarkHairline,
+                            color: LabBlackColors.hairline,
                             height: 1,
                           ),
                           const SizedBox(height: 12),
@@ -655,7 +656,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
-                              color: NotelColors.textPrimary,
+                              color: LabBlackColors.textPrimary,
                             ),
                           ),
                           const SizedBox(height: 6),
@@ -675,7 +676,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                                     : 'No plans recorded today',
                                 style: const TextStyle(
                                   fontSize: 12,
-                                  color: NotelColors.textSecondary,
+                                  color: LabBlackColors.textSecondary,
                                 ),
                               ),
                             )
@@ -683,7 +684,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                             ...planRows,
                           const SizedBox(height: 14),
                           const Divider(
-                            color: NotelColors.legacyDarkHairline,
+                            color: LabBlackColors.hairline,
                             height: 1,
                           ),
                           const SizedBox(height: 12),
@@ -696,7 +697,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.bold,
-                                  color: NotelColors.textPrimary,
+                                  color: LabBlackColors.textPrimary,
                                 ),
                               ),
                               IconButton(
@@ -712,7 +713,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                                 icon: const Icon(
                                   Icons.refresh,
                                   size: 16,
-                                  color: NotelColors.textSecondary,
+                                  color: LabBlackColors.textSecondary,
                                 ),
                               ),
                             ],
@@ -725,7 +726,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                                 'Not enough data yet',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: NotelColors.textSecondary,
+                                  color: LabBlackColors.textSecondary,
                                 ),
                               ),
                             )
@@ -779,12 +780,12 @@ class _PlanItemRow extends StatelessWidget {
         // step DARKER than their card (the reference's nested
         // depth), radius 17, hairline edge. Presentation only —
         // the tap/write logic above this row is untouched.
-        color: NotelColors.background,
+        color: LabBlackColors.nested,
         borderRadius: BorderRadius.circular(17),
         border: overdue
             ? Border.all(
                 color: NotelColors.error.withValues(alpha: 0.5), width: 1)
-            : Border.all(color: NotelColors.legacyDarkHairline, width: 1),
+            : Border.all(color: LabBlackColors.hairline, width: 1),
       ),
       child: Padding(
         padding: const EdgeInsets.all(10.0),
@@ -801,7 +802,7 @@ class _PlanItemRow extends StatelessWidget {
                     ? const Color(0xFFFFA500)
                     : overdue
                         ? NotelColors.error
-                        : NotelColors.textSecondary,
+                        : LabBlackColors.textSecondary,
               ),
               const SizedBox(width: 10),
             ] else ...[
@@ -816,7 +817,7 @@ class _PlanItemRow extends StatelessWidget {
                 icon: const Icon(
                   Icons.radio_button_unchecked,
                   size: 18,
-                  color: NotelColors.textSecondary,
+                  color: LabBlackColors.textSecondary,
                 ),
               ),
               const SizedBox(width: 6),
@@ -836,7 +837,7 @@ class _PlanItemRow extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
-                      color: NotelColors.textPrimary,
+                      color: LabBlackColors.textPrimary,
                     ),
                   ),
                   Row(
@@ -847,7 +848,7 @@ class _PlanItemRow extends StatelessWidget {
                             : item.timeDisplay,
                         style: const TextStyle(
                           fontSize: 11,
-                          color: NotelColors.textSecondary,
+                          color: LabBlackColors.textSecondary,
                         ),
                       ),
                       if (overdue) ...[
@@ -925,7 +926,7 @@ class _PlanItemRow extends StatelessWidget {
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: NotelColors.legacyDarkDivider,
+                              color: LabBlackColors.hairline,
                               width: 1,
                             ),
                           ),
@@ -943,7 +944,7 @@ class _PlanItemRow extends StatelessWidget {
                           icon: const Icon(
                             Icons.block,
                             size: 16,
-                            color: NotelColors.textSecondary,
+                            color: LabBlackColors.textSecondary,
                           ),
                         ),
                       ],
@@ -1055,9 +1056,9 @@ class _TrendRow extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4.0),
       decoration: BoxDecoration(
-        color: NotelColors.background,
+        color: LabBlackColors.nested,
         borderRadius: BorderRadius.circular(17),
-        border: Border.all(color: NotelColors.legacyDarkHairline, width: 1),
+        border: Border.all(color: LabBlackColors.hairline, width: 1),
       ),
       child: Padding(
         padding: const EdgeInsets.all(10.0),
@@ -1073,7 +1074,7 @@ class _TrendRow extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.bold,
-                      color: NotelColors.textPrimary,
+                      color: LabBlackColors.textPrimary,
                     ),
                   ),
                 ),
@@ -1081,7 +1082,7 @@ class _TrendRow extends StatelessWidget {
                   trend.dataSource,
                   style: const TextStyle(
                     fontSize: 10,
-                    color: NotelColors.textSecondary,
+                    color: LabBlackColors.textSecondary,
                   ),
                 ),
               ],

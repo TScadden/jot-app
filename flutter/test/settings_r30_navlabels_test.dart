@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
+import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Round 30 Step 4 — the Nav Bar Labels preference is wired: NavDock
@@ -66,7 +67,7 @@ void main() {
     expect(heart.style!.fontWeight, FontWeight.bold);
     expect(heart.style!.fontSize, 10);
     final home = tester.widget<Text>(find.text('Home'));
-    expect(home.style!.color, NotelColors.textSecondary);
+    expect(home.style!.color, LabBlackColors.textSecondary);
     expect(home.style!.fontWeight, FontWeight.w500);
     // The center quick-log button never carries a label (native).
     expect(find.text('Quick log'), findsNothing);

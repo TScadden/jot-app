@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
@@ -7,6 +8,7 @@ import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/quicklog/quick_log_screen.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
+import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Lab (TikTok-UI exploration) — the MORPHING quick-log tray.
@@ -176,34 +178,73 @@ class _QuickLogTrayState extends State<QuickLogTray> {
     final reduced = animationsDisabled(context);
     final morphDuration =
         reduced ? Duration.zero : const Duration(milliseconds: 340);
+    // Lab v3: the tray surface is PURPLE GLASS — the same tray in
+    // the same place (12dp side/bottom inset, 28dp radius, same
+    // morph), now a translucent purple tint (primary 18% over the
+    // #232329 base, at 92%) over a real BackdropFilter blur
+    // (sigma 18) of the Home content it floats above, with a
+    // hairline border and a light top edge.
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-      decoration: BoxDecoration(
-        color: NotelColors.surfaceHigh,
+      child: ClipRRect(
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: NotelColors.legacyDarkHairline, width: 1),
-      ),
-      child: AnimatedSize(
-        duration: morphDuration,
-        curve: Curves.easeInOutCubic,
-        alignment: Alignment.bottomCenter,
-        child: AnimatedSwitcher(
-          duration: morphDuration,
-          switchInCurve: Curves.easeInOutCubic,
-          switchOutCurve: Curves.easeInOutCubic,
-          transitionBuilder: (child, animation) => FadeTransition(
-            opacity: animation,
-            child: SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(0, 0.04),
-                end: Offset.zero,
-              ).animate(animation),
-              child: child,
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: Container(
+            decoration: BoxDecoration(
+              color: LabBlackColors.trayGlass,
+              borderRadius: BorderRadius.circular(28),
+              border:
+                  Border.all(color: LabBlackColors.hairline, width: 1),
+            ),
+            child: Stack(
+              children: [
+                AnimatedSize(
+                  duration: morphDuration,
+                  curve: Curves.easeInOutCubic,
+                  alignment: Alignment.bottomCenter,
+                  child: AnimatedSwitcher(
+                    duration: morphDuration,
+                    switchInCurve: Curves.easeInOutCubic,
+                    switchOutCurve: Curves.easeInOutCubic,
+                    transitionBuilder: (child, animation) =>
+                        FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0, 0.04),
+                          end: Offset.zero,
+                        ).animate(animation),
+                        child: child,
+                      ),
+                    ),
+                    child: _state == _TrayState.root
+                        ? _buildRoot(key: const ValueKey('tray_root'))
+                        : _buildEditor(key: const ValueKey('tray_editor')),
+                  ),
+                ),
+                // The glass top edge: a 1px light line fading at
+                // both ends, sitting on the tray's top border.
+                Positioned(
+                  top: 0,
+                  left: 28,
+                  right: 28,
+                  child: Container(
+                    height: 1,
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.transparent,
+                          LabBlackColors.glassEdge,
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          child: _state == _TrayState.root
-              ? _buildRoot(key: const ValueKey('tray_root'))
-              : _buildEditor(key: const ValueKey('tray_editor')),
         ),
       ),
     );
@@ -226,7 +267,7 @@ class _QuickLogTrayState extends State<QuickLogTray> {
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  color: NotelColors.textPrimary,
+                  color: LabBlackColors.textPrimary,
                 ),
               ),
               if (onBack != null)
@@ -255,7 +296,7 @@ class _QuickLogTrayState extends State<QuickLogTray> {
             ],
           ),
         ),
-        const Divider(color: NotelColors.legacyDarkHairline, height: 1),
+        const Divider(color: LabBlackColors.hairline, height: 1),
       ],
     );
   }
@@ -266,7 +307,7 @@ class _QuickLogTrayState extends State<QuickLogTray> {
     required VoidCallback onTap,
   }) {
     return Material(
-      color: NotelColors.surface,
+      color: LabBlackColors.nested,
       shape: const CircleBorder(),
       child: InkWell(
         customBorder: const CircleBorder(),
@@ -274,7 +315,7 @@ class _QuickLogTrayState extends State<QuickLogTray> {
         child: SizedBox(
           width: 36,
           height: 36,
-          child: Icon(icon, size: size, color: NotelColors.textPrimary),
+          child: Icon(icon, size: size, color: LabBlackColors.textPrimary),
         ),
       ),
     );
@@ -328,7 +369,7 @@ class _QuickLogTrayState extends State<QuickLogTray> {
               width: 38,
               height: 38,
               decoration: const BoxDecoration(
-                color: NotelColors.surface,
+                color: LabBlackColors.nested,
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -344,14 +385,14 @@ class _QuickLogTrayState extends State<QuickLogTray> {
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
-                  color: NotelColors.textPrimary,
+                  color: LabBlackColors.textPrimary,
                 ),
               ),
             ),
             const Icon(
               Icons.chevron_right,
               size: 20,
-              color: NotelColors.textSecondary,
+              color: LabBlackColors.textSecondary,
             ),
           ],
         ),
@@ -379,7 +420,7 @@ class _QuickLogTrayState extends State<QuickLogTray> {
                 controller: _noteController,
                 autofocus: true,
                 style: const TextStyle(
-                  color: NotelColors.textPrimary,
+                  color: LabBlackColors.textPrimary,
                   fontSize: 14,
                 ),
                 cursorColor: NotelColors.primary,
@@ -388,11 +429,11 @@ class _QuickLogTrayState extends State<QuickLogTray> {
                 decoration: InputDecoration(
                   hintText: 'Add optional details about these symptoms…',
                   hintStyle: const TextStyle(
-                    color: NotelColors.textSecondary,
+                    color: LabBlackColors.textSecondary,
                     fontSize: 13,
                   ),
                   filled: true,
-                  fillColor: NotelColors.surface,
+                  fillColor: LabBlackColors.nested,
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 14,
@@ -400,7 +441,7 @@ class _QuickLogTrayState extends State<QuickLogTray> {
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
                     borderSide: const BorderSide(
-                      color: NotelColors.legacyDarkHairline,
+                      color: LabBlackColors.hairline,
                     ),
                   ),
                   focusedBorder: OutlineInputBorder(
@@ -424,26 +465,41 @@ class _QuickLogTrayState extends State<QuickLogTray> {
                 ),
               ],
               const SizedBox(height: 14),
+              // Lab v3: the tray's primary action is its strongest
+              // glass element — the same 50dp full-width pill in the
+              // same place, now primary at 45% over a real
+              // BackdropFilter blur (sigma 12) with a 1px light
+              // edge. Disabled (empty note) drops to a faint tint.
               SizedBox(
                 height: 50,
-                child: ElevatedButton(
-                  onPressed: _hasText && !_saving ? _saveNote : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: NotelColors.primary,
-                    disabledBackgroundColor:
-                        NotelColors.primary.withValues(alpha: 0.35),
-                    foregroundColor: Colors.white,
-                    disabledForegroundColor:
-                        Colors.white.withValues(alpha: 0.5),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(25),
-                    ),
-                  ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(25),
+                  child: BackdropFilter(
+                    filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                    child: ElevatedButton(
+                      onPressed: _hasText && !_saving ? _saveNote : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: LabBlackColors.glassLogButton,
+                        disabledBackgroundColor:
+                            NotelColors.primary.withValues(alpha: 0.18),
+                        foregroundColor: Colors.white,
+                        disabledForegroundColor:
+                            Colors.white.withValues(alpha: 0.5),
+                        side: const BorderSide(
+                          color: LabBlackColors.glassEdge,
+                          width: 1,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(25),
+                        ),
+                      ),
                   child: const Text(
                     'Log',
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.bold,
+                    ),
+                  ),
                     ),
                   ),
                 ),

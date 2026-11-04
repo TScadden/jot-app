@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/features/home/daily_score_vocabulary.dart';
-import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 
 /// Lab (TikTok-UI exploration) — the Daily Score HERO card.
 ///
@@ -48,9 +48,11 @@ class DailyScoreHeroCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
       decoration: BoxDecoration(
-        color: NotelColors.surface,
+        // Lab v3: near-black card (#1A1A1E) + 8% white hairline —
+        // the LabBlack palette scoped to the adapted Home.
+        color: LabBlackColors.card,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: NotelColors.legacyDarkHairline, width: 1),
+        border: Border.all(color: LabBlackColors.hairline, width: 1),
       ),
       child: Material(
         color: Colors.transparent,
@@ -74,7 +76,7 @@ class DailyScoreHeroCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: NotelColors.textSecondary,
+                      color: LabBlackColors.textSecondary,
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -89,7 +91,7 @@ class DailyScoreHeroCard extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
-                      color: NotelColors.textSecondary,
+                      color: LabBlackColors.textSecondary,
                     ),
                   ),
                 ],
@@ -129,7 +131,7 @@ class _HeroScoreRing extends StatelessWidget {
             size: const Size(_size, _size),
             painter: _HeroArcPainter(
               score: score,
-              arcColor: band?.color ?? NotelColors.surfaceHigh,
+              arcColor: band?.color ?? LabBlackColors.raised,
             ),
           ),
           Text(
@@ -141,8 +143,8 @@ class _HeroScoreRing extends StatelessWidget {
               height: 1.0,
               fontWeight: FontWeight.w900,
               color: score == null
-                  ? NotelColors.textSecondary
-                  : NotelColors.textPrimary,
+                  ? LabBlackColors.textSecondary
+                  : LabBlackColors.textPrimary,
             ),
           ),
         ],
@@ -166,11 +168,11 @@ class _HeroArcPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2 - _strokeWidth / 2;
 
-    // Track: the full circle in the elevated surface tone.
+    // Track: the full circle in the raised neutral tone.
     final track = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = _strokeWidth
-      ..color = NotelColors.surfaceHigh;
+      ..color = LabBlackColors.raised;
     canvas.drawCircle(center, radius, track);
 
     // Progress arc: sweep ∝ score from the top, band color only.

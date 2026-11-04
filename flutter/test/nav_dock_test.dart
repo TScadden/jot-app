@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
+import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Round 9 — nav dock tests: all five tabs tappable, home shows the real
@@ -108,13 +109,13 @@ void main() {
 
     // Home starts selected (purple); the rest are muted.
     expect(iconColor(tester, Icons.home), NotelColors.primary);
-    expect(iconColor(tester, Icons.favorite), NotelColors.textSecondary);
+    expect(iconColor(tester, Icons.favorite), LabBlackColors.textSecondary);
 
     // Select Heart: highlight moves, home goes muted.
     await tester.tap(dockIcon(Icons.favorite));
     await settleDock(tester);
     expect(iconColor(tester, Icons.favorite), NotelColors.primary);
-    expect(iconColor(tester, Icons.home), NotelColors.textSecondary);
+    expect(iconColor(tester, Icons.home), LabBlackColors.textSecondary);
 
     // Tapping the active tab again keeps it selected (no-op, no crash).
     await tester.tap(dockIcon(Icons.favorite));

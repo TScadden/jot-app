@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 
 /// Lab (TikTok-UI exploration) — the reference layout system's
 /// section label: small (~13sp) semibold muted text sitting
@@ -22,7 +22,7 @@ class HomeSectionLabel extends StatelessWidget {
         style: const TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w600,
-          color: NotelColors.textSecondary,
+          color: LabBlackColors.textSecondary,
         ),
       ),
     );

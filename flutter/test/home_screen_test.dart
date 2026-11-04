@@ -8,6 +8,7 @@ import 'package:tabs_lab/main.dart';
 import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
+import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 import 'package:tabs_lab/src/data/weather_api.dart';
@@ -92,7 +93,7 @@ void main() {
     await tester.pump();
     final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
     // Native today route: Scaffold containerColor = NotelBackground.
-    expect(scaffold.backgroundColor, NotelColors.background);
+    expect(scaffold.backgroundColor, LabBlackColors.background);
     expect(NotelColors.background.toARGB32(), 0xFF080E1A);
     // Today header (native topBar): title, weather icon, watch icon.
     expect(find.text('Today'), findsOneWidget);
