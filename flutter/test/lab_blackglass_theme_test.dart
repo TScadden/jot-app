@@ -73,16 +73,35 @@ void main() {
       expect(filters, findsOneWidget);
       final bf = tester.widget<BackdropFilter>(filters);
       expect(bf.filter, isA<ui.ImageFilter>());
-      // The selection pill carries the glass gradient, not a flat
-      // tint (the v3 miss), inside its unchanged 44x36 box.
+      // Phase 2 navbar replica (NAVBAR_SPEC §5): the BAR glass is
+      // now the NEUTRAL white gradient (the v4 lavender tint is
+      // dropped in the bar only) — some Container in the dock
+      // carries exactly that gradient.
+      final gradients = tester
+          .widgetList<Container>(
+            find.descendant(
+              of: find.byType(NavDock),
+              matching: find.byType(Container),
+            ),
+          )
+          .map((c) => (c.decoration as BoxDecoration?)?.gradient)
+          .whereType<Gradient>()
+          .toList();
+      expect(gradients, contains(LabBlackColors.navbarGlassGradient));
+      expect(gradients, isNot(contains(LabBlackColors.dockGlassGradient)));
+      // The selection capsule is SOLID opaque near-black (spec §3),
+      // one full cell wide x 52dp. Default test surface is 800dp
+      // wide: cell = (800 - 32 margins - 8 inner padding) / 5 = 152.
+      // (Updated from the v4 glass-pill expectation — 44x36 purple
+      // glass gradient — for exactly this intentional change.)
       final pill = find.byKey(const ValueKey('dock_selection_pill'));
       expect(pill, findsOneWidget);
-      expect(tester.getSize(pill), const Size(44, 36));
+      expect(tester.getSize(pill), const Size(152, 52));
       final container = tester.widget<Container>(pill);
       final deco = container.decoration! as BoxDecoration;
-      expect(deco.gradient, LabBlackColors.pillGlassGradient);
-      expect(deco.color, isNull);
-      expect(deco.border!.top.color, LabBlackColors.pillGlassEdge);
+      expect(deco.color, LabBlackColors.navbarCapsuleFill);
+      expect(deco.gradient, isNull);
+      expect(deco.border, isNull);
     });
   });
 }

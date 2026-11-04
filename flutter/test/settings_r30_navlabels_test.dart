@@ -4,12 +4,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
-import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 
-/// Round 30 Step 4 — the Nav Bar Labels preference is wired: NavDock
-/// renders native's labeled geometry (MainActivity.kt:657 dock
-/// height 66, NavIcon :1005-1043 label style) when the preference is
-/// on, and MainShell feeds it from SettingsStore.
+/// Round 30 Step 4 — the Nav Bar Labels preference is wired:
+/// MainShell feeds it from SettingsStore to NavDock's showLabels
+/// parameter.
+///
+/// Navbar replica update (Phase 2, NAVBAR_SPEC): the reference
+/// renders no labels in ANY state, so the replica presentation is
+/// icon-only at a fixed 62dp height regardless of the preference.
+/// The preference wiring itself (store -> shell -> dock parameter)
+/// is unchanged and still proven by the tests below; what changed
+/// is only what the dock DRAWS with the value (nothing) — each
+/// expectation below was updated for exactly that intentional
+/// presentation change, with the test count unchanged.
 void main() {
   // The Customize integration tests (grouped below) mount a real
   // MainShell, whose Settings tab builds the REAL TabsBackend. Its
@@ -40,37 +48,41 @@ void main() {
         ),
       );
 
-  testWidgets('labels off: no label texts, 56dp dock', (tester) async {
+  testWidgets('labels off: no label texts, 62dp dock', (tester) async {
     await tester.pumpWidget(dock(false));
     await tester.pump();
     for (final label in ['Home', 'Tools', 'Heart', 'Settings']) {
       expect(find.text(label), findsNothing);
     }
-    // The dock container is the Material under the NavDock.
+    // Total NavDock height = 62dp bar + 27dp bottom float
+    // (viewPadding 0, so the float rule gives max(27, 0 + 4)).
     final size = tester.getSize(find.byType(NavDock));
-    expect(size.height, 56 + 12); // dock + bottom padding (no inset)
+    expect(size.height, 62 + 27);
   });
 
-  testWidgets('labels on: four labels, 66dp dock, native styling',
+  testWidgets('labels on: replica stays icon-only, same 62dp dock',
       (tester) async {
     await tester.pumpWidget(dock(true, selected: DockTab.heart));
     await tester.pump();
+    // The preference reaches the widget (API stable) but the
+    // replica never draws labels — in either state.
+    expect(tester.widget<NavDock>(find.byType(NavDock)).showLabels,
+        isTrue);
     for (final label in ['Home', 'Tools', 'Heart', 'Settings']) {
-      expect(find.text(label), findsOneWidget);
+      expect(find.text(label), findsNothing);
     }
-    final size = tester.getSize(find.byType(NavDock));
-    expect(size.height, 66 + 12);
-    // Selected label: primary + bold. Unselected: secondary + medium.
-    final heart = tester.widget<Text>(find.text('Heart'));
-    expect(heart.style!.color, NotelColors.primary);
-    expect(heart.style!.fontWeight, FontWeight.bold);
-    expect(heart.style!.fontSize, 10);
-    final home = tester.widget<Text>(find.text('Home'));
-    expect(home.style!.color, NotelColors.textSecondary);
-    expect(home.style!.fontWeight, FontWeight.w500);
-    // The center quick-log button never carries a label (native).
     expect(find.text('Quick log'), findsNothing);
     expect(find.text('Log'), findsNothing);
+    // Height does not vary with the preference.
+    final size = tester.getSize(find.byType(NavDock));
+    expect(size.height, 62 + 27);
+    // Icons are near-white in both states (capsule-only signal).
+    for (final icon in [Icons.home, Icons.favorite]) {
+      final w = tester.widget<Icon>(find.descendant(
+          of: find.byType(NavDock), matching: find.byIcon(icon)));
+      expect(w.color, LabBlackColors.textPrimary);
+      expect(w.size, 24);
+    }
   });
 
   testWidgets('MainShell feeds the stored preference to the dock',
@@ -199,10 +211,14 @@ void main() {
   }
 
   void expectDockLabels(WidgetTester tester, {required bool shown}) {
+    // The preference VALUE still flows store -> shell -> dock
+    // exactly as Round 30 wired it (that is what these legs prove).
     expect(tester.widget<NavDock>(find.byType(NavDock)).showLabels, shown);
+    // The replica presentation never renders the labels, whatever
+    // the preference says (NAVBAR_SPEC: no labels in any state).
     for (final label in ['Home', 'Tools', 'Heart', 'Settings']) {
-      expect(dockLabel(label), shown ? findsOneWidget : findsNothing,
-          reason: 'dock label "$label"');
+      expect(dockLabel(label), findsNothing,
+          reason: 'dock label "$label" (replica is icon-only)');
     }
   }
 

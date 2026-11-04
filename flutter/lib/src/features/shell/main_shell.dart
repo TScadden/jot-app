@@ -359,9 +359,10 @@ class _MainShellState extends State<MainShell>
         // at its base (the Scaffold's bottom, capped at the
         // viewPadding line the dock also resolves against) minus
         // the theme's insetPadding.bottom, which is derived from
-        // the shared dock geometry in nav_dock.dart and reads the
-        // same _showNavLabels field that drives the dock, so the
-        // inset tracks the labels preference (56 vs 66) exactly.
+        // the shared dock geometry in nav_dock.dart (Phase 2
+        // replica: 62dp height in all states + the
+        // max(27, viewPadding + 4) float rule), so the inset
+        // tracks the dock exactly in every state.
         // Left/right stay 0, so the bar keeps its full-width look;
         // colors / shape / text style / duration come untouched
         // from the ambient theme. Screens outside the shell
@@ -376,7 +377,11 @@ class _MainShellState extends State<MainShell>
                 0,
                 5,
                 0,
-                navDockSnackBarBottomInset(showLabels: _showNavLabels),
+                navDockSnackBarBottomInset(
+                  showLabels: _showNavLabels,
+                  viewPaddingBottom:
+                      MediaQuery.viewPaddingOf(context).bottom,
+                ),
               ),
             ),
           ),

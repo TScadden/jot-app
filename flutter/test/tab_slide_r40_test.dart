@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
+import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
 
@@ -239,8 +240,17 @@ void main() {
     expect(find.byKey(homeKey), findsNothing);
     expect(mountedSlots(tester), 1);
     // Dock selection agrees with the body (Round 19c single source).
+    // Navbar replica update: agreement is read off the CAPSULE
+    // position (the replica's only selection signal — icons are
+    // near-white in both states), not the old primary icon tint.
     final heartIcon = tester.widget<Icon>(dockIcon(Icons.favorite).first);
-    expect(heartIcon.color, NotelColors.primary);
+    expect(heartIcon.color, LabBlackColors.textPrimary);
+    final pillCenter = tester
+        .getCenter(find.byKey(const ValueKey('dock_selection_pill')))
+        .dx;
+    final iconCenter = tester.getCenter(dockIcon(Icons.favorite).first).dx;
+    expect((pillCenter - iconCenter).abs(), lessThan(1.0),
+        reason: 'capsule must sit on the Heart slot');
     expect(tester.takeException(), isNull);
   });
 

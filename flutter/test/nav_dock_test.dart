@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
-import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 
 /// Round 9 — nav dock tests: all five tabs tappable, home shows the real
 /// home screen, the other four show blank placeholders, and the active
@@ -98,20 +98,34 @@ void main() {
   testWidgets('active highlight follows the selected tab', (tester) async {
     await tester.pumpWidget(shell());
 
-    // Home starts selected (purple); the rest are muted.
-    expect(iconColor(tester, Icons.home), NotelColors.primary);
-    expect(iconColor(tester, Icons.favorite), NotelColors.textSecondary);
+    // Navbar replica (NAVBAR_SPEC §4): the black capsule is the
+    // ONLY selection signal — every icon is near-white in both
+    // states (no primary tint, no gray dimming). Updated from the
+    // pre-replica primary/secondary expectation for exactly that
+    // intentional change; the selection itself is proven by the
+    // capsule-position tests in lab_navbar_test.dart and the
+    // round-19c pill audit.
+    for (final icon in [
+      Icons.home,
+      Icons.assignment,
+      Icons.edit,
+      Icons.favorite,
+      Icons.settings,
+    ]) {
+      expect(iconColor(tester, icon), LabBlackColors.textPrimary);
+    }
 
-    // Select Heart: highlight moves, home goes muted.
+    // Select Heart: icon colors do NOT change with selection.
     await tester.tap(dockIcon(Icons.favorite));
     await settleDock(tester);
-    expect(iconColor(tester, Icons.favorite), NotelColors.primary);
-    expect(iconColor(tester, Icons.home), NotelColors.textSecondary);
+    for (final icon in [Icons.home, Icons.favorite]) {
+      expect(iconColor(tester, icon), LabBlackColors.textPrimary);
+    }
 
     // Tapping the active tab again keeps it selected (no-op, no crash).
     await tester.tap(dockIcon(Icons.favorite));
     await settleDock(tester);
-    expect(iconColor(tester, Icons.favorite), NotelColors.primary);
+    expect(iconColor(tester, Icons.favorite), LabBlackColors.textPrimary);
   });
 
   testWidgets('dock stays visible on blank tabs', (tester) async {

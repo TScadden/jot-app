@@ -548,23 +548,39 @@ void main() {
       });
     }
 
-    testWidgets('quick-log ring shows only when Quick Log is selected',
-        (tester) async {
+    testWidgets(
+        'quick log is a plain cell: no ring in any state, capsule '
+        'centers under it when selected', (tester) async {
+      // Navbar replica update (Phase 2, NAVBAR_SPEC §7): the
+      // reference has NO center/raised item, so the round-19c
+      // selected ring is REMOVED — this test replaces the ring
+      // expectation (same test count). The capsule itself now
+      // carries the quick-log selected state like any other tab
+      // (its opaque fill is no longer hidden behind a button).
       Widget dock(DockTab tab) => MaterialApp(
-            home: Scaffold(body: NavDock(selected: tab, onSelect: (_) {})),
+            home: MediaQuery(
+              data: const MediaQueryData(disableAnimations: true),
+              child: Scaffold(body: NavDock(selected: tab, onSelect: (_) {})),
+            ),
           );
       await tester.pumpWidget(dock(DockTab.home));
       await tester.pump();
-      var ring = tester.widget<Container>(
-          find.byKey(const ValueKey('dock_quicklog_ring')));
-      expect((ring.decoration! as BoxDecoration).border!.top.color,
-          Colors.transparent);
+      expect(find.byKey(const ValueKey('dock_quicklog_ring')),
+          findsNothing);
       await tester.pumpWidget(dock(DockTab.quickLog));
       await tester.pump();
-      ring = tester.widget<Container>(
-          find.byKey(const ValueKey('dock_quicklog_ring')));
-      expect((ring.decoration! as BoxDecoration).border!.top.color,
-          isNot(Colors.transparent));
+      expect(find.byKey(const ValueKey('dock_quicklog_ring')),
+          findsNothing);
+      final pill = find.byKey(const ValueKey('dock_selection_pill'));
+      final pillCenter = tester.getCenter(pill).dx;
+      final iconCenter = tester
+          .getCenter(find.descendant(
+            of: find.byType(NavDock),
+            matching: find.byIcon(Icons.edit),
+          ))
+          .dx;
+      expect((pillCenter - iconCenter).abs(), lessThan(1.0),
+          reason: 'capsule must center on the quick-log slot');
     });
   });
 }

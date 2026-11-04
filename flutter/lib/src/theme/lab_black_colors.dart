@@ -103,8 +103,37 @@ abstract final class LabBlackColors {
     ],
   );
 
-  /// Selection-pill glass (the dock's existing gliding pill):
-  /// the same recipe at pill scale.
+  // ── Navbar replica glass (Phase 2, NAVBAR_SPEC.md §5) ────────
+  //
+  // The nav bar ONLY drops the lavender tint for the reference's
+  // neutral milky glass: a vertical WHITE-tint gradient, top
+  // lighter (~25% → 20% → 15% white over the backdrop, the spec's
+  // ~20–25% white-equivalent lift with an alpha profile analogous
+  // to the v4 dock stops 0 / 0.18 / 1), over the same sigma-14
+  // BackdropFilter, with the same specular line, sheen, rim
+  // ([glassEdge]), and shadow ([glassShadow]) tokens as v4.
+  // Everything above the dock band keeps the v4 treatment,
+  // including [dockGlassGradient] and the score disc.
+  static const navbarGlassGradient = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    stops: [0.0, 0.18, 1.0],
+    colors: [
+      Color(0x40FFFFFF), // white @ 25% — specular zone
+      Color(0x33FFFFFF), // white @ 20%
+      Color(0x26FFFFFF), // white @ 15%
+    ],
+  );
+
+  /// Selection capsule fill (NAVBAR_SPEC §3): SOLID opaque
+  /// near-black, measured constant across backdrops in the
+  /// reference (build range #000–#0A0A0A). Any translucency or
+  /// purple tint fails the reference.
+  static const navbarCapsuleFill = Color(0xFF050505);
+
+  /// Selection-pill glass — the v4 dock pill recipe, retained for
+  /// the record; the Phase 2 replica capsule is the solid
+  /// [navbarCapsuleFill] above, not this gradient.
   static const pillGlassGradient = LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
