@@ -319,10 +319,25 @@ void main() {
 
     List<Map<String, dynamic>> collectBoxes() {
       final out = <Map<String, dynamic>>[];
+      // Rect from the ELEMENT's render object, not getRect(byWidget):
+      // a shared const widget instance mounted twice (the plan
+      // rows' identical const 'Overdue' chip, which appears from
+      // 18:00 local when 'Daily' items go overdue) makes byWidget
+      // ambiguous and crashes the capture. Element rects are the
+      // identical boxes getRect returns when unambiguous, so the
+      // frozen-baseline comparison is unaffected. (Navbar round
+      // harness fix: the crash reproduced byte-identically on the
+      // unmodified base branch at 18:xx UTC — pre-existing
+      // time-of-day fragility, not a product change.)
+      Rect rectOf(Element e) {
+        final ro = e.renderObject! as RenderBox;
+        return ro.localToGlobal(Offset.zero) & ro.size;
+      }
+
       void add(String id, Finder finder) {
         var i = 0;
         for (final e in finder.evaluate()) {
-          final r = tester.getRect(find.byWidget(e.widget));
+          final r = rectOf(e);
           out.add({
             'id': i == 0 ? id : '$id#$i',
             'rect': [
@@ -362,7 +377,7 @@ void main() {
         final s = w.data ?? w.textSpan?.toPlainText() ?? '';
         final n = seen[s] ?? 0;
         seen[s] = n + 1;
-        final r = tester.getRect(find.byWidget(w));
+        final r = rectOf(e);
         out.add({
           'id': n == 0 ? 'text:$s' : 'text:$s#$n',
           'rect': [
