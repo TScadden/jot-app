@@ -1,6 +1,9 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
+import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Round 9 — the floating bottom nav dock.
@@ -165,19 +168,41 @@ class _NavDockState extends State<NavDock>
       // Material ancestor for the InkWell ripples below: the dock floats
       // beside each tab's Scaffold (not inside one), so without this the
       // ink responses have no Material to print on.
-      child: Material(
-        color: NotelColors.surface.withValues(alpha: 0.94),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(
-            color: NotelColors.primary.withValues(alpha: 0.18),
-            width: 1,
-          ),
+      //
+      // BlackGlass v4 (Lab branch only, GLASS_STUDY.md): the dock's
+      // surface rendering becomes purple glass — a real BackdropFilter
+      // blur (sigma 14), a vertical gradient fill (sheen-lit top →
+      // primary @ 30% base), a white @ 20% rim, and a soft drop
+      // shadow. Every wrapper sizes exactly to the dock it wraps:
+      // no geometry, string, or behavior change.
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          borderRadius: BorderRadius.all(Radius.circular(20)),
+          boxShadow: [LabBlackColors.glassShadow],
         ),
-        child: Container(
-          height: dockHeight,
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: LayoutBuilder(
+        child: ClipRRect(
+          borderRadius: const BorderRadius.all(Radius.circular(20)),
+          child: BackdropFilter(
+            filter: ui.ImageFilter.blur(
+              sigmaX: LabBlackColors.glassBlurSigma,
+              sigmaY: LabBlackColors.glassBlurSigma,
+            ),
+            child: Material(
+              color: Colors.transparent,
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.all(Radius.circular(20)),
+                side: BorderSide(
+                  color: LabBlackColors.glassEdge,
+                  width: 1,
+                ),
+              ),
+              child: Container(
+                height: dockHeight,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: const BoxDecoration(
+                  gradient: LabBlackColors.dockGlassGradient,
+                ),
+                child: LayoutBuilder(
             builder: (context, constraints) {
               final slotWidth = constraints.maxWidth / 5;
               return Stack(
@@ -198,7 +223,14 @@ class _NavDockState extends State<NavDock>
                           width: pillWidth,
                           height: pillHeight,
                           decoration: BoxDecoration(
-                            color: NotelColors.primary.withValues(alpha: 0.20),
+                            // BlackGlass v4: the pill is glass too —
+                            // same gradient recipe at pill scale plus
+                            // its brighter rim. Same 44x36 box.
+                            gradient: LabBlackColors.pillGlassGradient,
+                            border: Border.all(
+                              color: LabBlackColors.pillGlassEdge,
+                              width: 1,
+                            ),
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
@@ -303,9 +335,25 @@ class _NavDockState extends State<NavDock>
             ),
           ],
         ),
+                  // Specular top edge (GLASS_STUDY.md): a 1dp
+                  // white @ 45% line inset to clear the corners,
+                  // painted inside the dock's existing bounds.
+                  const Positioned(
+                    left: 16,
+                    right: 16,
+                    top: 0,
+                    height: 1,
+                    child: DecoratedBox(
+                      decoration:
+                          BoxDecoration(color: LabBlackColors.glassSpecular),
+                    ),
+                  ),
                 ],
               );
             },
+                ),
+              ),
+            ),
           ),
         ),
       ),

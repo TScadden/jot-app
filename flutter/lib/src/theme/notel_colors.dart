@@ -3,9 +3,16 @@ import 'package:flutter/material.dart';
 /// Tabs design tokens, ported verbatim from the native app's
 /// `DarkNotelPalette` (the native default) in `ui/theme/Color.kt`.
 abstract final class NotelColors {
-  static const background = Color(0xFF080E1A); // Very deep navy — page background
-  static const surface = Color(0xFF0D1428); // Deep navy — card background
-  static const surfaceHigh = Color(0xFF152040); // Elevated surfaces
+  // LAB BRANCH ONLY (BlackGlass v4, Nov 3, 2026): the near-black
+  // theme values live at the token level on this branch so every
+  // surface that reads these tokens takes the theme with zero
+  // geometry/string/behavior change. Production keeps the navy
+  // values on release/*. Contrast: textPrimary on background
+  // 18.18:1, textSecondary on surface 6.70:1 (AA, v3-verified
+  // values re-checked for this palette).
+  static const background = Color(0xFF0A0A0B); // Near-black — page background
+  static const surface = Color(0xFF1A1A1E); // Near-black — card background
+  static const surfaceHigh = Color(0xFF121215); // Nested rows / elevated
   static const primary = Color(0xFF7C6EFF); // Tabs purple — primary actions
 
   /// Lighter tint of the brand hue for small purple text on L2 /
@@ -18,8 +25,8 @@ abstract final class NotelColors {
   /// tokenize-only — replaces the raw literal in settings_screen.dart
   /// when that file is next touched).
   static const logoutRed = Color(0xFF801515);
-  static const textPrimary = Color(0xFFF0EEFF); // Near-white
-  static const textSecondary = Color(0xFF7A8FAF); // Muted blue-grey
+  static const textPrimary = Color(0xFFF5F5F7); // Near-white
+  static const textSecondary = Color(0xFF9A9AA3); // Muted neutral grey
 
   /// Ink on a [primary] fill — the `_chipInk` precedent from the
   /// History / Quick Log category chips (native `LegacyDarkChipInk`),
@@ -56,13 +63,13 @@ abstract final class NotelColors {
   static const cardBorder = Color(0x267C6EFF);
 
   /// Unfocused text-field border (native: NotelTextSecondary.copy(alpha = 0.4f)).
-  static const fieldBorderIdle = Color(0x667A8FAF);
+  static const fieldBorderIdle = Color(0x669A9AA3);
 
   /// Unchecked checkbox border (native: NotelTextSecondary.copy(alpha = 0.6f)).
-  static const checkboxBorderIdle = Color(0x997A8FAF);
+  static const checkboxBorderIdle = Color(0x999A9AA3);
 
   /// "or" divider line (native: NotelTextSecondary.copy(alpha = 0.2f)).
-  static const divider = Color(0x337A8FAF);
+  static const divider = Color(0x339A9AA3);
 
   /// Weekly Snapshot chart tokens (native `WeeklySnapshotCard.kt`, dark theme).
   static const chartGrid = Color(0x0FFFFFFF); // White @ 6% — chart gridlines

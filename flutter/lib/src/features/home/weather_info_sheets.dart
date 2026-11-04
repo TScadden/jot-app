@@ -195,7 +195,7 @@ void showInfoSheet({
 }) {
   showModalBottomSheet<void>(
     context: context,
-    backgroundColor: const Color(0xFF080E1A),
+    backgroundColor: NotelColors.background,
     isScrollControlled: true,
     showDragHandle: true,
     builder: (_) => SafeArea(
