@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:tabs_lab/src/data/migraine_attack_store.dart';
 import 'package:tabs_lab/src/data/migraine_controller.dart';
 import 'package:tabs_lab/src/data/migraine_time_format.dart';
+import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Migraine log trio fix 1 — the completion line (Juno ruling
@@ -70,7 +71,7 @@ class MigraineBlock extends StatelessWidget {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.bold,
-                color: NotelColors.textPrimary,
+                color: LabBlackColors.textPrimary,
               ),
             ),
             const SizedBox(height: 6),
@@ -141,7 +142,7 @@ class _IdleContent extends StatelessWidget {
           'One tap. Pressure attaches automatically.',
           style: TextStyle(
             fontSize: 12,
-            color: NotelColors.textSecondary,
+            color: LabBlackColors.textSecondary,
           ),
         ),
         if (logged != null) ...[
