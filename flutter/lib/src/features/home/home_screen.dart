@@ -35,7 +35,6 @@ import 'package:tabs_lab/src/features/home/intake_logging.dart';
 import 'package:tabs_lab/src/features/home/good_day_logging.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
-import 'package:tabs_lab/src/features/settings/settings_tray.dart';
 import 'package:tabs_lab/src/features/home/health_connect_banner.dart';
 import 'package:tabs_lab/src/features/home/migraine_block.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
@@ -1042,21 +1041,29 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// Settings-gear round — the header gear's tap: opens Tabs'
-  /// settings as the bottom tray (SETTINGS_SPEC behavior, see
-  /// settings_tray.dart), forwarding the same dependencies the
-  /// counter slot's Settings push receives below. On dismissal the
+  /// settings. Settings-fullscreen round (V8, founder direction:
+  /// "instead of the settings pop up it just changes to the
+  /// settings screen we had before"): the bottom tray is REMOVED;
+  /// the gear pushes the full-screen SettingsScreen as a standard
+  /// route — the same SlidePageRoute idiom the counter slot's
+  /// Settings push above uses — forwarding the same dependencies
+  /// that push (and the retired tray call) received. On return the
   /// pull cache is invalidated and the counters re-read — the same
-  /// refresh the counter-slot push runs on return — because the
-  /// tray can archive / edit counters too.
+  /// refresh the counter-slot push runs on return — because
+  /// Settings can archive / edit counters too.
   Future<void> _openSettings() async {
-    await showSettingsTray(
-      context,
-      email: widget.email,
-      onLogout: widget.onLogout,
-      backend: _backend,
-      settingsStore: widget.settingsStore,
-      healthConnectService: widget.healthConnectService,
-      billingService: widget.billingService,
+    await Navigator.of(context).push(
+      SlidePageRoute(
+        reducedMotion: animationsDisabled(context),
+        builder: (_) => SettingsScreen(
+          email: widget.email,
+          onLogout: widget.onLogout,
+          backend: _backend,
+          settingsStore: widget.settingsStore,
+          healthConnectService: widget.healthConnectService,
+          billingService: widget.billingService,
+        ),
+      ),
     );
     if (!mounted) return;
     _backend.invalidateSyncPull();
@@ -1933,9 +1940,10 @@ class _HomeScreenState extends State<HomeScreen> {
           // same Icons.settings the retired dock cell used), 24dp,
           // in NotelColors.primary, the watch button's own color,
           // so the pair carries equal visual weight; standard 48dp
-          // IconButton target. Tap opens Settings as the bottom
-          // tray (settings_tray.dart), NOT a tab switch and NOT a
-          // page push.
+          // IconButton target. Tap pushes the full-screen
+          // SettingsScreen (settings-fullscreen round: the bottom
+          // tray the gear originally opened is removed), NOT a tab
+          // switch. The gear's position/size/icon are unchanged.
           IconButton(
             key: const ValueKey('home_settings_gear'),
             onPressed: () => unawaited(_openSettings()),

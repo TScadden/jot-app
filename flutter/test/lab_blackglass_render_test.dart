@@ -25,6 +25,7 @@ import 'package:tabs_lab/src/features/home/migraine_block.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/features/home/weekly_snapshot_card.dart';
+import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
 
 import 'test_helpers.dart';
@@ -275,16 +276,18 @@ void main() {
     final boundaryKey = GlobalKey();
     // Settings-gear round: a SECOND boundary around the whole
     // MaterialApp. The inner boundary wraps the Home+dock Stack
-    // (a page) and therefore cannot see the settings TRAY, which
-    // is a route in the Navigator overlay above the page; the
-    // root boundary captures it. Hero/plan captures keep using
-    // the inner boundary exactly as the frozen baseline did.
+    // (a page) and therefore cannot see a pushed ROUTE (the
+    // settings tray in V6/V7; the full-screen SettingsScreen
+    // since the settings-fullscreen round), which lives in the
+    // Navigator overlay above the page; the root boundary
+    // captures it. Hero/plan captures keep using the inner
+    // boundary exactly as the frozen baseline did.
     final rootBoundaryKey = GlobalKey();
     await tester.pumpWidget(
       RepaintBoundary(
         key: rootBoundaryKey,
         child: MaterialApp(
-        // The root-boundary frames (tray / sequence) would
+        // The root-boundary frames (settings / settings-sub) would
         // otherwise carry the debug banner ribbon at the top
         // right; the production app disables it, and the inner
         // hero/plan captures never contained it (it lives outside
@@ -404,16 +407,16 @@ void main() {
           matching: find.byType(IconButton),
         ),
       );
-      // The tray + its close affordance (present only in the
-      // tray / sequence frames; absent — no entries — in the
-      // hero/plan frames, exactly as the dock ring was).
+      // The pushed full-screen SettingsScreen + its Customize
+      // sub-page toggle (settings-fullscreen round: present only
+      // in the settings / settings-sub frames; absent — no
+      // entries — in the hero/plan frames, exactly as the dock
+      // ring was). The tray keys this replaces no longer exist
+      // anywhere in the app.
+      add('type:SettingsScreen', find.byType(SettingsScreen));
       add(
-        'key:settings_tray',
-        find.byKey(const ValueKey('settings_tray')),
-      );
-      add(
-        'key:settings_tray_close',
-        find.byKey(const ValueKey('settings_tray_close')),
+        'key:nav_labels_toggle',
+        find.byKey(const ValueKey('nav_labels_toggle')),
       );
       // Every visible Text widget, by its string.
       final seen = <String, int>{};
@@ -502,14 +505,20 @@ void main() {
     // FRAME 2 — plan frame.
     await capture('plan', '_plan');
 
-    // ── Settings-gear round frames (root boundary — the tray is
-    // a Navigator-overlay route and lives OUTSIDE the inner
-    // boundary). The page-level MediaQuery disables animations
-    // for Home's own widgets, but the tray reads the ROOT
-    // MediaQuery (animations enabled), so its 180ms grow runs on
-    // the fake clock and the mid frame below is a true mid-grow
-    // state.
-    Future<void> captureRoot(String frame, String suffix) async {
+    // ── Settings frames (root boundary — the pushed Settings
+    // route is a Navigator-overlay route and lives OUTSIDE the
+    // inner boundary). Settings-fullscreen round: the gear pushes
+    // the full-screen SettingsScreen (the tray frames this block
+    // used to capture are gone with the tray). The page-level
+    // MediaQuery disables animations for Home's own widgets, so
+    // the gear's SlidePageRoute is built with reducedMotion and
+    // the pushed screen is settled when captured.
+    // Explicit-filename root capture for the settings frames:
+    // their deliverable names are fixed by the package
+    // (tabs_settings_fullscreen_v1.png /
+    // tabs_settings_fullscreen_subpage_v1.png), not derived from
+    // the Home prefix. The JSON sidecar carries the same stem.
+    Future<void> captureRootAs(String frame, String fileStem) async {
       final boundary =
           rootBoundaryKey.currentContext!.findRenderObject()!
               as RenderRepaintBoundary;
@@ -523,8 +532,8 @@ void main() {
         }
         final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
         final bytes = byteData!.buffer.asUint8List();
-        await File('${outDir.path}/$prefix$suffix.png').writeAsBytes(bytes);
-        await File('${outDir.path}/$prefix$suffix.json').writeAsString(
+        await File('${outDir.path}/$fileStem.png').writeAsBytes(bytes);
+        await File('${outDir.path}/$fileStem.json').writeAsString(
           const JsonEncoder.withIndent('  ').convert({
             'frame': frame,
             'viewport_physical': [1080, 2400],
@@ -536,44 +545,23 @@ void main() {
     }
 
     final gearFinder = find.byKey(const ValueKey('home_settings_gear'));
-    final trayFinder = find.byKey(const ValueKey('settings_tray'));
+    final settingsFinder = find.byType(SettingsScreen);
 
-    // FRAME 3 — tray open (settled): tap the header gear, let the
-    // grow finish and the hosted Settings load land.
+    // FRAME 3 — full-screen Settings (settled): tap the header
+    // gear, let the push finish and the Settings load land. The
+    // pushed screen fills the whole surface (no tray exists).
     await tester.tap(gearFinder);
     await tester.pump();
     await _bridge(tester);
     await tester.pump(const Duration(seconds: 3));
-    expect(trayFinder, findsOneWidget);
-    await captureRoot('tray', '_tray');
+    expect(settingsFinder, findsOneWidget);
+    expect(tester.getRect(settingsFinder),
+        const Rect.fromLTWH(0, 0, 360, 800));
+    await captureRootAs('settings', 'tabs_settings_fullscreen_v1');
 
-    // Dismiss by tapping the barrier region above the tray (the
-    // tray's top edge is at 800 - 624 = 176 logical; y=40 is
-    // squarely in the scrim region), so the sequence below starts
-    // from the closed state.
-    await tester.tapAt(const Offset(180, 40));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(trayFinder, findsNothing);
-
-    // FRAMES 4–6 — the open sequence: closed / mid-grow / open.
-    await captureRoot('seq_closed', '_seq_closed');
-    await tester.tap(gearFinder);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 110)); // mid-grow
-    await captureRoot('seq_mid', '_seq_mid');
-    await tester.pump(const Duration(milliseconds: 300));
-    await _bridge(tester);
-    await tester.pump(const Duration(seconds: 3));
-    expect(trayFinder, findsOneWidget);
-    await captureRoot('seq_open', '_seq_open');
-
-    // FRAME 7 — tray SUB-PAGE (settings-fidelity round; the V6
-    // harness never captured a sub-state, audit §7): tap
-    // 'Customize' inside the tray, let the 220ms content/header
-    // morph settle, capture. Settled states only — the harness's
-    // root MediaQuery has animations ENABLED for the tray, so we
-    // pump past the morph before capturing.
+    // FRAME 4 — Settings SUB-PAGE (Customize): tap 'Customize'
+    // inside the pushed screen; the page swaps in place under
+    // the screen's own AppBar (back arrow + 'Customize' title).
     final customizeFinder = find.text('Customize');
     await tester.ensureVisible(customizeFinder);
     await tester.pump();
@@ -581,9 +569,10 @@ void main() {
     await tester.pump();
     await _bridge(tester);
     await tester.pump(const Duration(seconds: 3));
-    expect(trayFinder, findsOneWidget);
+    expect(settingsFinder, findsOneWidget);
     expect(find.byKey(const ValueKey('nav_labels_toggle')),
         findsOneWidget);
-    await captureRoot('tray_sub', '_tray_sub');
+    await captureRootAs(
+        'settings_sub', 'tabs_settings_fullscreen_subpage_v1');
   });
 }
