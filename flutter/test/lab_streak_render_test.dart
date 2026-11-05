@@ -109,16 +109,29 @@ Future<void> _bridge(WidgetTester tester) async {
   await tester.pump();
 }
 
+/// Captures MUST run inside tester.runAsync (the blackglass
+/// harness pattern): calling toImage directly in the fake-async
+/// zone lets the body finish but wedges test completion — the
+/// test reports "did not complete" at teardown. Bisected Nov 5,
+/// 2026 (probe D: body done in 919 ms, completion hung).
 Future<void> _capture(
+  WidgetTester tester,
   GlobalKey boundaryKey,
   Directory outDir,
   String name,
 ) async {
   final boundary =
       boundaryKey.currentContext!.findRenderObject()! as RenderRepaintBoundary;
-  final image = await boundary.toImage(pixelRatio: 3.0);
-  final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-  File('${outDir.path}/$name').writeAsBytesSync(bytes!.buffer.asUint8List());
+  await tester.runAsync(() async {
+    final image = await boundary.toImage(pixelRatio: 3.0);
+    if (image.width != 1080 || image.height != 2400) {
+      throw StateError(
+        'capture size ${image.width}x${image.height}, want 1080x2400',
+      );
+    }
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    File('${outDir.path}/$name').writeAsBytesSync(bytes!.buffer.asUint8List());
+  });
 }
 
 void main() {
@@ -244,7 +257,6 @@ void main() {
           fontFamilyFallback: const ['Noto Color Emoji', 'Noto Sans Symbols 2'],
         );
 
-    // ── Home capture ─────────────────────────────────────────────
     final homeBoundary = GlobalKey();
     await tester.pumpWidget(
       MaterialApp(
@@ -284,7 +296,7 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
     // The streak pills carry the engine's seeded values.
     expect(find.byKey(const Key('homeStreakPills')), findsOneWidget);
-    await _capture(homeBoundary, outDir, 'tabs_home_streakscreen_v1.png');
+    await _capture(tester, homeBoundary, outDir, 'tabs_home_streakscreen_v1.png');
 
     // Rect evidence for the gate: the streak row + pill target box
     // on Home (logical px @ DPR 3.0, same convention as the other
@@ -308,7 +320,6 @@ void main() {
       }),
     );
 
-    // ── Streak screen, restore still available ───────────────────
     final now = DateTime.now();
     final freshState = streakSeed(current: 6, best: 12, now: now);
     final screenBoundary = GlobalKey();
@@ -328,9 +339,8 @@ void main() {
     await tester.pump();
     await _bridge(tester);
     expect(find.text('1 restore left this month'), findsOneWidget);
-    await _capture(screenBoundary, outDir, 'tabs_streak_screen_v1.png');
+    await _capture(tester, screenBoundary, outDir, 'tabs_streak_screen_v1.png');
 
-    // ── Streak screen, saved day (scrolled to History) ───────────
     var savedState = streakSeed(
       current: 5,
       best: 12,
@@ -370,6 +380,6 @@ void main() {
       ),
       findsOneWidget,
     );
-    await _capture(savedBoundary, outDir, 'tabs_streak_screen_saved_v1.png');
+    await _capture(tester, savedBoundary, outDir, 'tabs_streak_screen_saved_v1.png');
   });
 }

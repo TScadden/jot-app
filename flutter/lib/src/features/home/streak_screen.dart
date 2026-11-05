@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 
 import 'package:tabs_lab/src/data/streak_engine.dart';
@@ -115,28 +113,59 @@ class StreakScreen extends StatelessWidget {
       body: Stack(
         children: [
           // Aurora wash (f_011): ember → violet → blue bleeding
-          // from the top edge, blurred into the background.
+          // from the top edge. Painted as three radial gradients —
+          // soft-edged color fields that read as a blurred glow
+          // with NO blur filter (a full-width high-sigma blur layer
+          // is prohibitively slow in the software renderer and a
+          // needless battery cost on device).
           Positioned(
-            top: -70,
-            left: -40,
-            right: -40,
+            top: 0,
+            left: 0,
+            right: 0,
             height: 300,
             child: IgnorePointer(
-              child: ImageFiltered(
-                imageFilter: ui.ImageFilter.blur(sigmaX: 60, sigmaY: 60),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.topRight,
-                      colors: [
-                        const Color(0xFFF26B1D).withValues(alpha: 0.55),
-                        NotelColors.primary.withValues(alpha: 0.55),
-                        const Color(0xFF2E6BFF).withValues(alpha: 0.55),
-                      ],
+              child: Stack(
+                children: [
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: RadialGradient(
+                        center: const Alignment(-0.95, -1.0),
+                        radius: 1.15,
+                        colors: [
+                          const Color(0xFFF26B1D).withValues(alpha: 0.55),
+                          const Color(0xFFF26B1D).withValues(alpha: 0),
+                        ],
+                      ),
                     ),
+                    child: const SizedBox.expand(),
                   ),
-                ),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: RadialGradient(
+                        center: const Alignment(0, -1.0),
+                        radius: 1.15,
+                        colors: [
+                          NotelColors.primary.withValues(alpha: 0.55),
+                          NotelColors.primary.withValues(alpha: 0),
+                        ],
+                      ),
+                    ),
+                    child: const SizedBox.expand(),
+                  ),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: RadialGradient(
+                        center: const Alignment(0.95, -1.0),
+                        radius: 1.15,
+                        colors: [
+                          const Color(0xFF2E6BFF).withValues(alpha: 0.55),
+                          const Color(0xFF2E6BFF).withValues(alpha: 0),
+                        ],
+                      ),
+                    ),
+                    child: const SizedBox.expand(),
+                  ),
+                ],
               ),
             ),
           ),
