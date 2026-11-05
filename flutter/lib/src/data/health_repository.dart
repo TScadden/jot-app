@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:tabs_lab/src/data/correlation_engine.dart'
+    show deriveFeelingByDay;
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/heart_data_cache.dart';
@@ -228,8 +230,9 @@ class HealthRepository {
   /// 7-day snapshot for one metric, oldest → today, device-local dates.
   ///
   /// Health Connect metrics load ONLY when connected — otherwise the
-  /// native empty state for that metric. Logs/habits/manual-BP come from
-  /// the backend when a session token exists. Never throws.
+  /// native empty state for that metric. Logs/habits/manual-BP and the
+  /// Morning Score (Daily Ranking entries) come from the backend when
+  /// a session token exists. Never throws.
   Future<WeeklySnapshotMetricData> loadSnapshot(SnapshotMetric metric) async {
     final window = sevenDayWindow();
     final dateStrs = [for (final w in window) w.dateStr];
@@ -237,7 +240,8 @@ class HealthRepository {
     final connected = await _connected();
     final hcOnly = metric != SnapshotMetric.logs &&
         metric != SnapshotMetric.habitCompletion &&
-        metric != SnapshotMetric.bloodPressure;
+        metric != SnapshotMetric.bloodPressure &&
+        metric != SnapshotMetric.morningScore;
     if (!connected && hcOnly) return emptyMetricData(metric);
     // R70 WS1b — a connected snapshot load also feeds the history
     // store (throttled, fire-and-forget; the load below is
@@ -284,6 +288,20 @@ class HealthRepository {
           if (connected) records.addAll(await hc.readBloodPressure(7));
           if (await _loggedIn()) records.addAll(await backend.fetchManualBpLogs());
           return buildBpMetric(dateStrs, labels, records);
+        case SnapshotMetric.morningScore:
+          // The Daily Ranking lives in the sync pull (a Quick Log
+          // entry), not Health Connect — logged out means the honest
+          // empty week, exactly like Logs with no session.
+          if (!await _loggedIn()) {
+            return buildMorningScoreMetric(dateStrs, labels, const {});
+          }
+          final entries = await backend.fetchLogEntryDtos();
+          final categories = await backend.fetchLogCategories();
+          return buildMorningScoreMetric(
+            dateStrs,
+            labels,
+            deriveFeelingByDay(entries, categories),
+          );
       }
     } catch (_) {
       return emptyMetricData(metric);

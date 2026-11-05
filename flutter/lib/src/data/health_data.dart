@@ -419,6 +419,60 @@ WeeklySnapshotMetricData buildLogsMetric(
   );
 }
 
+/// Morning Score: the day's Daily Ranking (1–5) from the Home
+/// "How are you feeling?" check-in. [rankingByDay] is keyed by ENERGY
+/// day label ("YYYY-MM-DD", 04:00 local start) — the correlation
+/// engine's `deriveFeelingByDay` output, the app's own derivation:
+/// the check-in entry for an energy day, newest wins when several
+/// match. The snapshot window's calendar dates read the same labels,
+/// which is exactly how entry-derived series join everywhere else
+/// in the app (correlation engine day-key rule, spec §2.2).
+///
+/// A day with no check-in is a null point: the line chart breaks
+/// there (a gap) and the day is never plotted as 0 and never
+/// interpolated — a missing ranking is missing data, not a score.
+/// Values outside 1–5 are dropped to null defensively (the stored
+/// body only ever carries 1–5; anything else is not a ranking).
+WeeklySnapshotMetricData buildMorningScoreMetric(
+  List<String> dateStrs,
+  List<String> dayLabels,
+  Map<String, int> rankingByDay,
+) {
+  final points = <DailySnapshotPoint>[];
+  for (var i = 0; i < dateStrs.length; i++) {
+    final ranking = rankingByDay[dateStrs[i]];
+    points.add(DailySnapshotPoint(
+      dateStr: dateStrs[i],
+      dayLabel: dayLabels[i],
+      value: (ranking != null && ranking >= 1 && ranking <= 5)
+          ? ranking.toDouble()
+          : null,
+    ));
+  }
+  final valid = points.map((p) => p.value).whereType<double>().toList();
+  String avgText;
+  String? emptyMsg;
+  if (valid.isNotEmpty) {
+    final avg = valid.reduce((a, b) => a + b) / valid.length;
+    avgText = '7-Day Avg: ${_formatScoreAverage(avg)} / 5';
+  } else {
+    avgText = 'No morning scores logged past 7 days';
+    emptyMsg = 'No morning scores logged past 7 days';
+  }
+  return WeeklySnapshotMetricData(
+    metric: SnapshotMetric.morningScore,
+    points: points,
+    averageOrTotalText: avgText,
+    emptyMessage: emptyMsg,
+  );
+}
+
+/// Score averages read naturally: whole numbers without a trailing
+/// ".0", otherwise one decimal (4 → "4", 3.43 → "3.4") — the
+/// Daily Score screen's baseline formatting rule.
+String _formatScoreAverage(double v) =>
+    v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(1);
+
 /// Habits: pct = completed/total*100 per day (completed when dateStr ∈
 /// habit.logs); mirrors the native aggregator including its messages.
 WeeklySnapshotMetricData buildHabitsMetric(
