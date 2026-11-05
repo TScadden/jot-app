@@ -87,10 +87,13 @@ class StreakScreen extends StatelessWidget {
       return '${_monthAbbr[a.month - 1]} ${a.day}–${b.day}';
     }
     if (a.year == b.year) {
-      return '${_monthAbbr[a.month - 1]} ${a.day} – '
+      // Juno C8 correction (Nov 5, 2026): tight en dash in every
+      // range form, matching the signed "Sep 1–8" — "Sep 28–Oct 5".
+      return '${_monthAbbr[a.month - 1]} ${a.day}–'
           '${_monthAbbr[b.month - 1]} ${b.day}';
     }
-    return '${_monthAbbr[a.month - 1]} ${a.day}, ${a.year} – '
+    // Cross-year signed form: "Dec 28, 2025–Jan 4, 2026".
+    return '${_monthAbbr[a.month - 1]} ${a.day}, ${a.year}–'
         '${_monthAbbr[b.month - 1]} ${b.day}, ${b.year}';
   }
 
