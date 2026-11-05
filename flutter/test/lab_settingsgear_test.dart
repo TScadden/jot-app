@@ -106,8 +106,9 @@ void main() {
   }
 
   group('Lab settings gear + full-screen Settings (V8)', () {
-    testWidgets('gear: present in Home header, immediately left of '
-        'the watch button, 24dp in NotelColors.primary', (tester) async {
+    testWidgets('settings button (person glyph): present in Home '
+        'header, immediately left of the watch button, 24dp in '
+        'NotelColors.primary', (tester) async {
       // Standalone Home (not the shell): the header is the unit
       // under test, and the injected history store + snapshot
       // stub keep Home's Daily Score chain out of the Health
@@ -144,11 +145,20 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
 
       expect(gear(), findsOneWidget);
-      // Tabs' own gear glyph, same as the retired dock cell used.
+      // The glyph is the reference video's person (founder steer,
+      // settings-fullscreen round): the OUTLINE head-and-shoulders
+      // Icons.person_outlined — not the gear, not the filled
+      // person. Same 24dp ink size and color the gear glyph had;
+      // the 'Settings' tooltip (destination semantics) is
+      // unchanged.
       final glyph = tester.widget<Icon>(find.descendant(
-          of: gear(), matching: find.byIcon(Icons.settings)));
+          of: gear(), matching: find.byIcon(Icons.person_outlined)));
       expect(glyph.size, 24);
       expect(glyph.color, NotelColors.primary);
+      expect(
+          find.descendant(
+              of: gear(), matching: find.byIcon(Icons.settings)),
+          findsNothing);
       expect(find.byTooltip('Settings'), findsOneWidget);
 
       // Placement, numerically: the gear's 48dp box is CONTIGUOUS

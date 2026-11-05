@@ -1935,20 +1935,31 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-          // Settings gear (settings-gear round): sits IMMEDIATELY
-          // LEFT of the watch button — Tabs' own gear glyph (the
-          // same Icons.settings the retired dock cell used), 24dp,
-          // in NotelColors.primary, the watch button's own color,
-          // so the pair carries equal visual weight; standard 48dp
-          // IconButton target. Tap pushes the full-screen
-          // SettingsScreen (settings-fullscreen round: the bottom
-          // tray the gear originally opened is removed), NOT a tab
-          // switch. The gear's position/size/icon are unchanged.
+          // Settings button (settings-gear round; glyph swapped
+          // in the settings-fullscreen round, founder steer Nov 4,
+          // 2026): sits IMMEDIATELY LEFT of the watch button,
+          // standard 48dp IconButton target, in NotelColors.primary,
+          // the watch button's own color, so the pair carries equal
+          // visual weight. Tap pushes the full-screen
+          // SettingsScreen (the bottom tray it originally opened
+          // is removed), NOT a tab switch. The button's box,
+          // position, hit area, and 'Settings' tooltip are exactly
+          // as the gear round placed them — ONLY THE GLYPH CHANGED:
+          // gear out, person in. The person is the reference
+          // video's settings entry (in @dbzzle's app the profile /
+          // person page IS the settings list — NAVBAR_SPEC §2: a
+          // light OUTLINE head-and-shoulders, hollow head circle +
+          // shoulders arc, ≈24pt symbol box, stroke ≈2.5–3pt).
+          // Icons.person_outlined is that outline person in this
+          // icon set (the M3 outlined variant; preferred over the
+          // filled Icons.person and the heavier legacy
+          // Icons.person_outline), at the same 24dp ink size the
+          // gear glyph used.
           IconButton(
             key: const ValueKey('home_settings_gear'),
             onPressed: () => unawaited(_openSettings()),
             icon: const Icon(
-              Icons.settings,
+              Icons.person_outlined,
               size: 24,
               color: NotelColors.primary,
             ),
