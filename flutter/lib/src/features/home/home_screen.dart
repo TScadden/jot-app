@@ -19,6 +19,8 @@ import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/data/migraine_controller.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
+import 'package:tabs_lab/src/data/streak_engine.dart';
+import 'package:tabs_lab/src/data/streak_store.dart';
 import 'package:tabs_lab/src/data/launch_trace.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -38,6 +40,7 @@ import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 import 'package:tabs_lab/src/features/settings/settings_tray.dart';
 import 'package:tabs_lab/src/features/home/health_connect_banner.dart';
 import 'package:tabs_lab/src/features/home/migraine_block.dart';
+import 'package:tabs_lab/src/features/home/streak_screen.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/features/home/weather_sheet.dart';
@@ -1722,9 +1725,34 @@ class _HomeScreenState extends State<HomeScreen> {
     final connected = status == HealthConnectStatus.connected;
     final vitals = await _healthRepo.loadTodayVitals(connected: connected);
     final streak = await streakFuture;
+    // Lab (streak screen package, Nov 4, 2026) — the app-open point
+    // for the local streak engine: seeded from this pull, it settles
+    // today (including the monthly save for a single missed day) and
+    // its values are what Home displays. Honest-states guard: the
+    // engine's numbers are used ONLY when it is seeded — from this
+    // pull or an earlier one. An unseeded engine (pull failed, no
+    // local record) leaves the pulled values (nulls → "--") exactly
+    // as before; nothing is invented. Any engine/storage failure
+    // degrades to the pulled counters.
+    var displayStreak = streak;
+    try {
+      final engineState = await StreakStore.instance.recordOpen(
+        seedCurrent: streak.current,
+        seedBest: streak.best,
+        now: DateTime.now(),
+      );
+      if (engineState.seeded) {
+        displayStreak = (
+          current: streakCurrent(engineState, DateTime.now()),
+          best: streakBest(engineState),
+        );
+      }
+    } catch (_) {
+      // Pulled counters stand.
+    }
     final cache = HomeDataCache.instance;
     final changed = cache.applyVitals(vitals) |
-        cache.applyStreak(streak.current, streak.best);
+        cache.applyStreak(displayStreak.current, displayStreak.best);
     // Persist in the background; never block the UI on storage.
     unawaited(cache.persist());
     // Round 60 — launch milestone: the background refresh has landed
@@ -1740,8 +1768,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (changed || statusChanged) {
       setState(() {
         _vitals = vitals;
-        _currentStreak = streak.current;
-        _bestStreak = streak.best;
+        _currentStreak = displayStreak.current;
+        _bestStreak = displayStreak.best;
         _hcStatus = status;
         _hcStatusErrorCode = statusErrorCode;
       });
@@ -2078,6 +2106,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 animateCountUps: _countUpsAnimate,
                 counters: _counters,
                 onCountersTap: () => unawaited(_openEventCounters()),
+                onStreakTap: () => unawaited(StreakScreen.open(context)),
               ),
             ),
             StaggeredEntrance(

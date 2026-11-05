@@ -13,6 +13,7 @@ import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_history_sync.dart';
 import 'package:tabs_lab/src/data/heart_data_cache.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
+import 'package:tabs_lab/src/data/streak_store.dart';
 import 'package:tabs_lab/src/data/weekly_snapshot_cache.dart';
 import 'package:tabs_lab/src/data/launch_trace.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
@@ -430,6 +431,11 @@ class _AppFlowState extends State<AppFlow>
       // no-op (the house fail-open pattern).
       final hadStateBeforeClaim = await _onboardingStore.hasAnyState();
       await _onboardingStore.clearIfOwnerMismatch(email);
+      // Lab (streak screen package, Nov 4, 2026): same restore-claim
+      // enforcement for the local streak record, awaited here so a
+      // previous account's streak can never surface under this
+      // session's Home.
+      await StreakStore.instance.clearIfOwnerMismatch(email);
       final gate = await _readOnboardingGate();
       final hasState = hadStateBeforeClaim;
       final resumeStep = hadStateBeforeClaim ? gate.resumeStep : null;
@@ -631,6 +637,9 @@ class _AppFlowState extends State<AppFlow>
     _billingSync?.service.resetErrorMessageForAccountChange();
     unawaited(QuickLogCache.instance.clearIfOwnerMismatch(email));
     unawaited(HomeDataCache.instance.clearIfOwnerMismatch(email));
+    // Lab (streak screen package, Nov 4, 2026): same enforcement
+    // for the local streak record.
+    unawaited(StreakStore.instance.clearIfOwnerMismatch(email));
     // Optimistic logging: a previous account's unconfirmed entries
     // must never render under, or push into, the new account.
     unawaited(LogEntryOutbox.instance.clearIfOwnerMismatch(email));
@@ -933,6 +942,9 @@ class _AppFlowState extends State<AppFlow>
     _billingSync?.service.resetErrorMessageForAccountChange();
     unawaited(QuickLogCache.instance.clearIfOwnerMismatch(email));
     unawaited(HomeDataCache.instance.clearIfOwnerMismatch(email));
+    // Lab (streak screen package, Nov 4, 2026): same enforcement
+    // for the local streak record.
+    unawaited(StreakStore.instance.clearIfOwnerMismatch(email));
     unawaited(LogEntryOutbox.instance.clearIfOwnerMismatch(email));
     // R70 fix pass (Vera F1 / Juno C1) — same owner-mismatch
     // enforcement for the historical health store.
