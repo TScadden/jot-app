@@ -19,6 +19,8 @@ import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/data/migraine_controller.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
+import 'package:tabs_lab/src/data/streak_engine.dart';
+import 'package:tabs_lab/src/data/streak_store.dart';
 import 'package:tabs_lab/src/data/launch_trace.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -37,6 +39,7 @@ import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 import 'package:tabs_lab/src/features/home/health_connect_banner.dart';
 import 'package:tabs_lab/src/features/home/migraine_block.dart';
+import 'package:tabs_lab/src/features/home/streak_screen.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/features/home/weather_sheet.dart';
@@ -1699,6 +1702,21 @@ class _HomeScreenState extends State<HomeScreen> {
     final connected = status == HealthConnectStatus.connected;
     final vitals = await _healthRepo.loadTodayVitals(connected: connected);
     final streak = await streakFuture;
+    // Streak engine (Lab package Nov 4, 2026; authoritative
+    // pipeline VC 100115) — the engine settles today against the
+    // server profile record (including the monthly save for a
+    // single missed day) OFF this load's critical path: the pulled
+    // counters flow through exactly as before, and the engine's
+    // settled values swap in silently when they land — the same
+    // stale-while-revalidate idiom as the rest of this load. The
+    // engine is NEVER awaited here: its store is a real platform
+    // channel, and awaiting real I/O in this path stalls every
+    // fake-async-driven flow (the harness deadlock lesson). The
+    // settle future is kept in [_streakSettle] so the streak
+    // screen's tap target can await the SAME settle instead of
+    // ever evaluating on its own. See [_settleStreakWithEngine].
+    _streakSettle = _settleStreakWithEngine();
+    unawaited(_streakSettle!);
     final cache = HomeDataCache.instance;
     final changed = cache.applyVitals(vitals) |
         cache.applyStreak(streak.current, streak.best);
@@ -1732,6 +1750,72 @@ class _HomeScreenState extends State<HomeScreen> {
     // read. Every refresh path that calls _loadHealthData (the
     // feeling check-in, the connections return) inherits this.
     unawaited(_loadDailyScore());
+  }
+
+  /// The in-flight (or last) streak settle for this Home mount.
+  /// The streak screen's tap target awaits this future — it never
+  /// evaluates the engine itself (VC 100115 anti-fabrication rule).
+  Future<StreakState?>? _streakSettle;
+
+  /// Settle the streak engine for this app open against the
+  /// authoritative server record, off the load's critical path.
+  /// The engine records today (consuming the monthly save for a
+  /// single missed day), pushes the settled record back to the
+  /// profile, and — when its values differ from what Home already
+  /// shows — swaps them in silently (and through the home cache,
+  /// so the Android widget follows). Honest-states guard: engine
+  /// numbers apply ONLY when the state is seeded (adopted from a
+  /// successful pull or an existing local record); an unseeded
+  /// result (pull failed, no record anywhere) leaves the pulled
+  /// values (nulls → "--") untouched. Any failure degrades to
+  /// silence. Returns the settled state (or the store's current
+  /// state on failure) for the streak screen's tap path.
+  Future<StreakState?> _settleStreakWithEngine() async {
+    try {
+      final rec = await _healthRepo.loadStreakRecord();
+      final engineState = await StreakStore.instance.recordOpen(
+        pullSucceeded: rec.succeeded,
+        seedCurrent: rec.current,
+        seedBest: rec.best,
+        seedStateJson: rec.stateJson,
+        now: DateTime.now(),
+        push: _healthRepo.pushStreakRecord,
+      );
+      if (!engineState.seeded || !mounted) return engineState;
+      final engineCurrent = streakCurrent(engineState, DateTime.now());
+      final engineBest = streakBest(engineState);
+      if (engineCurrent == _currentStreak && engineBest == _bestStreak) {
+        return engineState;
+      }
+      final cache = HomeDataCache.instance;
+      if (cache.applyStreak(engineCurrent, engineBest)) {
+        unawaited(cache.persist());
+      }
+      setState(() {
+        _currentStreak = engineCurrent;
+        _bestStreak = engineBest;
+      });
+      return engineState;
+    } catch (_) {
+      // The pulled counters stand; the engine retries next load.
+      return StreakStore.instance.state;
+    }
+  }
+
+  /// Streak pills tap: open the Streak screen with the settled
+  /// state. Awaits the load's own settle when it has not landed
+  /// yet (starting one if Home has not loaded); when no seeded
+  /// record exists anywhere the tap does nothing — the screen is
+  /// never opened on a fabricated run (the Lab build's fresh-1
+  /// bug, fixed by construction in VC 100115).
+  Future<void> _openStreakScreen() async {
+    var s = StreakStore.instance.state;
+    if (s == null || !s.seeded) {
+      _streakSettle ??= _settleStreakWithEngine();
+      s = await _streakSettle;
+    }
+    if (!mounted || s == null || !s.seeded) return;
+    await StreakScreen.openWith(context, state: s);
   }
 
   /// Opens the data-connections screen — the one destination/flow
@@ -2037,6 +2121,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 animateCountUps: _countUpsAnimate,
                 counters: _counters,
                 onCountersTap: () => unawaited(_openEventCounters()),
+                onStreakTap: () => unawaited(_openStreakScreen()),
               ),
             ),
             StaggeredEntrance(

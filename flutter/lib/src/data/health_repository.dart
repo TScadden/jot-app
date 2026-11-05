@@ -299,6 +299,29 @@ class HealthRepository {
       return (current: null, best: null);
     }
   }
+
+  /// The full authoritative streak record (VC 100115); a failed
+  /// pull reports `succeeded: false` so the streak store never
+  /// fabricates a run from silence.
+  Future<({bool succeeded, int? current, int? best, String? stateJson})>
+      loadStreakRecord() async {
+    try {
+      return await backend.fetchStreakRecord();
+    } catch (_) {
+      return (succeeded: false, current: null, best: null, stateJson: null);
+    }
+  }
+
+  /// Push one settled streak record back to the profile
+  /// (VC 100115). False on any failure — the local record stays
+  /// strictly newer and re-pushes on the next settle.
+  Future<bool> pushStreakRecord(int current, int best, String stateJson) async {
+    try {
+      return await backend.pushStreakRecord(current, best, stateJson);
+    } catch (_) {
+      return false;
+    }
+  }
 }
 
 String _dateStr(DateTime d) =>

@@ -178,13 +178,20 @@ class HomeStreakRow extends StatelessWidget {
   /// Counters). Null disables the tap.
   final VoidCallback? onCountersTap;
 
+  /// Lab (streak screen package, Nov 4, 2026) — tap on the streak
+  /// pills (opens the Streak detail screen). Null disables the tap.
+  /// The pills' visuals are unchanged; the two pills together form
+  /// one tap target.
+  final VoidCallback? onStreakTap;
+
   const HomeStreakRow(
       {super.key,
       this.currentStreak,
       this.bestStreak,
       this.animateCountUps = true,
       this.counters = const [],
-      this.onCountersTap});
+      this.onCountersTap,
+      this.onStreakTap});
 
   @override
   Widget build(BuildContext context) {
@@ -194,37 +201,44 @@ class HomeStreakRow extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Left: streak pills.
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _streakPill(
-                glyph: '🔥',
-                // Round 14 — counts up to the real streak on load.
-                value: CountUp(
-                  value: currentStreak,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: NotelColors.warning,
+          // Left: streak pills. Lab (streak screen package) — the
+          // pair is one tap target for the Streak detail screen
+          // when [onStreakTap] is provided; visuals unchanged.
+          GestureDetector(
+            key: const Key('homeStreakPills'),
+            behavior: HitTestBehavior.opaque,
+            onTap: onStreakTap,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _streakPill(
+                  glyph: '🔥',
+                  // Round 14 — counts up to the real streak on load.
+                  value: CountUp(
+                    value: currentStreak,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: NotelColors.warning,
+                    ),
+                    animate: animateCountUps,
                   ),
-                  animate: animateCountUps,
                 ),
-              ),
-              const SizedBox(width: 8),
-              _streakPill(
-                glyph: '🏆',
-                value: CountUp(
-                  value: bestStreak,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: NotelColors.streakGold,
+                const SizedBox(width: 8),
+                _streakPill(
+                  glyph: '🏆',
+                  value: CountUp(
+                    value: bestStreak,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: NotelColors.streakGold,
+                    ),
+                    animate: animateCountUps,
                   ),
-                  animate: animateCountUps,
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           // Right: event-counter slot (round 34) — the native rotating
           // pager. Zero active counters render NOTHING here (the row

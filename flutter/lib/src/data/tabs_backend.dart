@@ -1021,6 +1021,42 @@ class TabsBackend {
     );
   }
 
+  /// The full authoritative streak record from `/api/sync/pull`
+  /// (VC 100115): the counters plus the day-level `streakState`
+  /// blob. [succeeded] is false ONLY when the pull itself failed —
+  /// the streak store's anti-fabrication rule turns on that
+  /// distinction (a successful pull with no streak fields is a
+  /// confirmed-empty record, not a failure).
+  Future<({bool succeeded, int? current, int? best, String? stateJson})>
+      fetchStreakRecord() async {
+    final body = await fetchSyncPull();
+    if (body == null) {
+      return (succeeded: false, current: null, best: null, stateJson: null);
+    }
+    final profile = body['profile'];
+    if (profile is! Map<String, dynamic>) {
+      return (succeeded: true, current: null, best: null, stateJson: null);
+    }
+    final rawState = profile['streakState'];
+    return (
+      succeeded: true,
+      current: _asInt(profile['currentStreak']),
+      best: _asInt(profile['bestStreak']),
+      stateJson: rawState is String ? rawState : null,
+    );
+  }
+
+  /// Push one settled streak record to the profile (VC 100115):
+  /// counters + day-level blob in a single partial profile push —
+  /// the server's COALESCE upsert means no other field is touched.
+  Future<bool> pushStreakRecord(int current, int best, String stateJson) {
+    return postSyncProfile({
+      'currentStreak': current,
+      'bestStreak': best,
+      'streakState': stateJson,
+    });
+  }
+
   /// Log-entry timestamps (epoch ms) from `/api/sync/pull` `entries`.
   Future<List<int>> fetchLogEntries() async {
     // Shared TTL pull cache; see fetchStreak.
