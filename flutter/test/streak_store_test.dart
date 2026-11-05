@@ -92,6 +92,32 @@ void main() {
     expect(streakBest(merged), 9);
   });
 
+  test('the same pull pair never re-seeds: local opens keep '
+      'growing the run past the frozen counters', () async {
+    await store.recordOpen(seedCurrent: 6, seedBest: 12, now: at(2026, 11, 4));
+    final next = await store.recordOpen(
+      seedCurrent: 6,
+      seedBest: 12,
+      now: at(2026, 11, 5),
+    );
+    expect(streakCurrent(next, at(2026, 11, 5)), 7);
+    expect(streakBest(next), 12);
+  });
+
+  test('a changed pull pair re-seeds: new server truth is adopted',
+      () async {
+    await store.recordOpen(seedCurrent: 6, seedBest: 12, now: at(2026, 11, 4));
+    final reseeded = await store.recordOpen(
+      seedCurrent: 2,
+      seedBest: 3,
+      now: at(2026, 11, 5),
+    );
+    expect(streakCurrent(reseeded, at(2026, 11, 5)), 2);
+    expect(streakBest(reseeded), 3);
+    expect(reseeded.countedDays.contains('2026-11-04'), isTrue);
+    expect(reseeded.countedDays.contains('2026-11-03'), isFalse);
+  });
+
   test('owner mismatch drops the record; the same owner keeps it',
       () async {
     await store.clearIfOwnerMismatch('a@example.com');

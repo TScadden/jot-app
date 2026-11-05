@@ -68,6 +68,12 @@ String _addDays(String day, int n) {
 @immutable
 class StreakState {
   final bool seeded;
+
+  /// The pull counters this state was last seeded/merged with.
+  /// A later pull carrying a DIFFERENT pair re-seeds (the server
+  /// truth moved — another client, an account's real numbers); the
+  /// same pair never re-seeds, so local opens keep growing the run.
+  final int seededCurrent;
   final int seededBest;
   final Set<String> countedDays;
   final Set<String> restoredDays;
@@ -80,6 +86,7 @@ class StreakState {
 
   const StreakState({
     this.seeded = false,
+    this.seededCurrent = 0,
     this.seededBest = 0,
     this.countedDays = const {},
     this.restoredDays = const {},
@@ -89,8 +96,14 @@ class StreakState {
 
   static const empty = StreakState();
 
+  /// Lab-local history worth protecting from a re-seed: any restored
+  /// day or consumed save exists only in this record.
+  bool get hasProtectedHistory =>
+      restoredDays.isNotEmpty || consumedSaveMonths.isNotEmpty;
+
   StreakState copyWith({
     bool? seeded,
+    int? seededCurrent,
     int? seededBest,
     Set<String>? countedDays,
     Set<String>? restoredDays,
@@ -99,6 +112,7 @@ class StreakState {
   }) {
     return StreakState(
       seeded: seeded ?? this.seeded,
+      seededCurrent: seededCurrent ?? this.seededCurrent,
       seededBest: seededBest ?? this.seededBest,
       countedDays: countedDays ?? this.countedDays,
       restoredDays: restoredDays ?? this.restoredDays,
@@ -110,6 +124,7 @@ class StreakState {
   Map<String, dynamic> toJson() => {
         'v': 1,
         'seeded': seeded,
+        'seededCurrent': seededCurrent,
         'seededBest': seededBest,
         'countedDays': countedDays.toList()..sort(),
         'restoredDays': restoredDays.toList()..sort(),
@@ -124,11 +139,16 @@ class StreakState {
       return v.whereType<String>().toSet();
     }
 
-    final best = json['seededBest'];
+    int intOf(String key) {
+      final v = json[key];
+      return v is int ? v : 0;
+    }
+
     final last = json['lastEvaluatedDay'];
     return StreakState(
       seeded: json['seeded'] == true,
-      seededBest: best is int ? best : 0,
+      seededCurrent: intOf('seededCurrent'),
+      seededBest: intOf('seededBest'),
       countedDays: setOf('countedDays'),
       restoredDays: setOf('restoredDays'),
       consumedSaveMonths: setOf('consumedSaveMonths'),
@@ -140,6 +160,7 @@ class StreakState {
   bool operator ==(Object other) =>
       other is StreakState &&
       other.seeded == seeded &&
+      other.seededCurrent == seededCurrent &&
       other.seededBest == seededBest &&
       setEquals(other.countedDays, countedDays) &&
       setEquals(other.restoredDays, restoredDays) &&
@@ -149,6 +170,7 @@ class StreakState {
   @override
   int get hashCode => Object.hash(
         seeded,
+        seededCurrent,
         seededBest,
         Object.hashAllUnordered(countedDays),
         Object.hashAllUnordered(restoredDays),
@@ -260,6 +282,7 @@ StreakState streakSeed({
   }
   return StreakState(
     seeded: true,
+    seededCurrent: current > 0 ? current : 0,
     seededBest: best > 0 ? best : 0,
     countedDays: counted,
     lastEvaluatedDay: counted.contains(today) ? today : null,

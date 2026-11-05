@@ -1725,34 +1725,19 @@ class _HomeScreenState extends State<HomeScreen> {
     final connected = status == HealthConnectStatus.connected;
     final vitals = await _healthRepo.loadTodayVitals(connected: connected);
     final streak = await streakFuture;
-    // Lab (streak screen package, Nov 4, 2026) — the app-open point
-    // for the local streak engine: seeded from this pull, it settles
-    // today (including the monthly save for a single missed day) and
-    // its values are what Home displays. Honest-states guard: the
-    // engine's numbers are used ONLY when it is seeded — from this
-    // pull or an earlier one. An unseeded engine (pull failed, no
-    // local record) leaves the pulled values (nulls → "--") exactly
-    // as before; nothing is invented. Any engine/storage failure
-    // degrades to the pulled counters.
-    var displayStreak = streak;
-    try {
-      final engineState = await StreakStore.instance.recordOpen(
-        seedCurrent: streak.current,
-        seedBest: streak.best,
-        now: DateTime.now(),
-      );
-      if (engineState.seeded) {
-        displayStreak = (
-          current: streakCurrent(engineState, DateTime.now()),
-          best: streakBest(engineState),
-        );
-      }
-    } catch (_) {
-      // Pulled counters stand.
-    }
+    // Lab (streak screen package, Nov 4, 2026) — the local streak
+    // engine settles today (including the monthly save for a single
+    // missed day) OFF this load's critical path: the pulled counters
+    // flow through exactly as before, and the engine's values swap
+    // in silently when they land — the same stale-while-revalidate
+    // idiom as the rest of this load. The engine is NEVER awaited
+    // here: its store is a real platform channel, and awaiting real
+    // I/O in this path stalls every fake-async-driven flow (the
+    // harness deadlock lesson). See [_settleStreakWithEngine].
+    unawaited(_settleStreakWithEngine(streak.current, streak.best));
     final cache = HomeDataCache.instance;
     final changed = cache.applyVitals(vitals) |
-        cache.applyStreak(displayStreak.current, displayStreak.best);
+        cache.applyStreak(streak.current, streak.best);
     // Persist in the background; never block the UI on storage.
     unawaited(cache.persist());
     // Round 60 — launch milestone: the background refresh has landed
@@ -1768,8 +1753,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (changed || statusChanged) {
       setState(() {
         _vitals = vitals;
-        _currentStreak = displayStreak.current;
-        _bestStreak = displayStreak.best;
+        _currentStreak = streak.current;
+        _bestStreak = streak.best;
         _hcStatus = status;
         _hcStatusErrorCode = statusErrorCode;
       });
@@ -1783,6 +1768,42 @@ class _HomeScreenState extends State<HomeScreen> {
     // read. Every refresh path that calls _loadHealthData (the
     // feeling check-in, the connections return) inherits this.
     unawaited(_loadDailyScore());
+  }
+
+  /// Lab (streak screen package, Nov 4, 2026) — settle the local
+  /// streak engine for this app open, off the load's critical path.
+  /// Seeded from the pull, the engine records today (consuming the
+  /// monthly save for a single missed day) and, when its values
+  /// differ from what Home already shows, swaps them in silently
+  /// (and through the home cache, so the Android widget follows).
+  /// Honest-states guard: engine numbers apply ONLY when it is
+  /// seeded — from this pull or an earlier one; an unseeded engine
+  /// (pull failed, no local record) leaves the pulled values
+  /// (nulls → "--") untouched. Any failure degrades to silence.
+  Future<void> _settleStreakWithEngine(int? current, int? best) async {
+    try {
+      final engineState = await StreakStore.instance.recordOpen(
+        seedCurrent: current,
+        seedBest: best,
+        now: DateTime.now(),
+      );
+      if (!engineState.seeded || !mounted) return;
+      final engineCurrent = streakCurrent(engineState, DateTime.now());
+      final engineBest = streakBest(engineState);
+      if (engineCurrent == _currentStreak && engineBest == _bestStreak) {
+        return;
+      }
+      final cache = HomeDataCache.instance;
+      if (cache.applyStreak(engineCurrent, engineBest)) {
+        unawaited(cache.persist());
+      }
+      setState(() {
+        _currentStreak = engineCurrent;
+        _bestStreak = engineBest;
+      });
+    } catch (_) {
+      // The pulled counters stand; the engine retries next load.
+    }
   }
 
   /// Opens the data-connections screen — the one destination/flow

@@ -46,6 +46,10 @@ void main() {
         '8');
     expect(find.text('day streak'), findsOneWidget);
     expect(find.text('Best 12 days'), findsOneWidget);
+    // Juno C6: the hero reads as one value. (Asserted now, while
+    // the hero is in the ListView's built region — the scroll below
+    // disposes it.)
+    expect(find.bySemanticsLabel('8 day streak'), findsOneWidget);
 
     // Streaks rows.
     expect(find.text('Current Streak'), findsOneWidget);
@@ -86,8 +90,6 @@ void main() {
     );
     // Juno C6: the restored day is identifiable without color.
     expect(find.bySemanticsLabel('November 2, restored'), findsOneWidget);
-    // Juno C6: the hero reads as one value.
-    expect(find.bySemanticsLabel('8 day streak'), findsOneWidget);
   });
 
   testWidgets('restore status shows the unused grant in a fresh month',

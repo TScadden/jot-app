@@ -131,12 +131,14 @@ class StreakStore {
     // this owner by the check above.
   }
 
-  /// One app-open evaluation: seed from the profile pull on first
-  /// run, then apply the engine at [now]. [seedCurrent]/[seedBest]
-  /// are the pull's counters (either may be null — a failed pull
-  /// seeds nothing and never erases local state). Returns the state
-  /// to display. Storage failures degrade to in-memory only; this
-  /// method never throws into the UI path.
+  /// One app-open evaluation: seed/re-seed from the profile pull
+  /// per the pair rule in the body, then apply the engine at [now].
+  /// [seedCurrent]/[seedBest] are the pull's counters (either may be
+  /// null — a failed pull seeds nothing and never erases local
+  /// state). Returns the state to display. Storage failures degrade
+  /// to in-memory only; this method never throws into the UI path.
+  /// Callers in UI load paths must NOT await this (real platform
+  /// I/O) — fire it and let it settle, the HomeDataCache idiom.
   Future<StreakState> recordOpen({
     required int? seedCurrent,
     required int? seedBest,
@@ -144,19 +146,26 @@ class StreakStore {
   }) async {
     await ensureLoaded();
     var s = _state ?? StreakState.empty;
-    if (!s.seeded && seedCurrent != null && seedBest != null) {
-      final today = streakDayStr(now);
-      final hasLocalHistory = s.countedDays.any((d) => d != today);
-      if (!hasLocalHistory) {
-        s = streakSeed(current: seedCurrent, best: seedBest, now: now);
-      } else {
-        // Local day-level history already exists (e.g. the first
-        // opens happened offline): never overwrite it with the
-        // pull's counters — just take the best as a floor.
+    if (seedCurrent != null && seedBest != null) {
+      // Re-seed rule: a pull whose counters DIFFER from the pair
+      // this state was seeded with is new server truth — adopt it
+      // wholesale. The SAME pair never re-seeds (the pull is a
+      // frozen native-era record; local opens must keep growing
+      // the run past it). Protected Lab history (a restored day or
+      // a consumed save exists only locally) is never overwritten:
+      // the pull's best is taken as a floor and the pair is marked
+      // seen.
+      final pairChanged = !s.seeded ||
+          s.seededCurrent != seedCurrent ||
+          s.seededBest != seedBest;
+      if (pairChanged && s.hasProtectedHistory) {
         s = s.copyWith(
           seeded: true,
+          seededCurrent: seedCurrent,
           seededBest: seedBest > s.seededBest ? seedBest : s.seededBest,
         );
+      } else if (pairChanged) {
+        s = streakSeed(current: seedCurrent, best: seedBest, now: now);
       }
     }
     final next = streakEvaluate(s, now);

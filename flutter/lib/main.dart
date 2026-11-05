@@ -432,10 +432,13 @@ class _AppFlowState extends State<AppFlow>
       final hadStateBeforeClaim = await _onboardingStore.hasAnyState();
       await _onboardingStore.clearIfOwnerMismatch(email);
       // Lab (streak screen package, Nov 4, 2026): same restore-claim
-      // enforcement for the local streak record, awaited here so a
-      // previous account's streak can never surface under this
-      // session's Home.
-      await StreakStore.instance.clearIfOwnerMismatch(email);
+      // enforcement for the local streak record. UNAWAITED, like
+      // every other cache claim: the claim stamp and any in-memory
+      // wipe run synchronously inside the call, and the disk-side
+      // enforcement completes in the background — a real platform
+      // channel must never be awaited in this funnel (it stalls
+      // fake-async-driven flows; the harness deadlock lesson).
+      unawaited(StreakStore.instance.clearIfOwnerMismatch(email));
       final gate = await _readOnboardingGate();
       final hasState = hadStateBeforeClaim;
       final resumeStep = hadStateBeforeClaim ? gate.resumeStep : null;
