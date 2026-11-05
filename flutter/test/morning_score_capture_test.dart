@@ -1,8 +1,10 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/health_data.dart'
     show buildMorningScoreMetric, sevenDayWindow;
@@ -42,6 +44,45 @@ void main() {
     // fake-async test zone deadlocks (harness lesson, Nov 3).
     outDir.createSync(recursive: true);
 
+    // Real fonts before any layout (the blackglass harness pattern):
+    // without them the test font's wide glyphs overflow the card's
+    // fixed rows and the frames would not show production metrics.
+    await tester.runAsync(() async {
+      final loader = FontLoader('Roboto');
+      loader.addFont(rootBundle.load('assets/fonts/Roboto-Regular.ttf'));
+      loader.addFont(rootBundle.load('assets/fonts/Roboto-Bold.ttf'));
+      await loader.load();
+      try {
+        final icons = await File(
+          '${Platform.environment['HOME']}/workspace/tools/flutter/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
+        ).readAsBytes();
+        final iconLoader = FontLoader('MaterialIcons');
+        iconLoader.addFont(
+          Future.value(ByteData.view(Uint8List.fromList(icons).buffer)),
+        );
+        await iconLoader.load();
+      } catch (_) {}
+      for (final (family, path) in [
+        (
+          'Noto Color Emoji',
+          '/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf',
+        ),
+        (
+          'Noto Sans Symbols 2',
+          '/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf',
+        ),
+      ]) {
+        try {
+          final bytes = await File(path).readAsBytes();
+          final emojiLoader = FontLoader(family);
+          emojiLoader.addFont(
+            Future.value(ByteData.view(Uint8List.fromList(bytes).buffer)),
+          );
+          await emojiLoader.load();
+        } catch (_) {}
+      }
+    });
+
     final boundaryKey = GlobalKey();
 
     Future<WeeklySnapshotMetricData> Function(SnapshotMetric) loader(
@@ -70,7 +111,13 @@ void main() {
           key: boundaryKey,
           child: MaterialApp(
             debugShowCheckedModeBanner: false,
-            theme: ThemeData(fontFamily: 'Roboto'),
+            theme: ThemeData(
+              fontFamily: 'Roboto',
+              fontFamilyFallback: const [
+                'Noto Color Emoji',
+                'Noto Sans Symbols 2',
+              ],
+            ),
             home: MediaQuery(
               data: const MediaQueryData(disableAnimations: true),
               child: Scaffold(

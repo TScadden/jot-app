@@ -357,6 +357,24 @@ void main() {
       await tester.pump(const Duration(milliseconds: 700));
     }
 
+    /// The snapshot chart's rect: the one CustomPaint in the card
+    /// with the chart's fixed 160dp height (other paints in the
+    /// subtree — progress indicators and the like — are not it).
+    Rect chartRect(WidgetTester tester) {
+      final paints = find.descendant(
+        of: find.byType(WeeklySnapshotCard),
+        matching: find.byType(CustomPaint),
+      );
+      Rect? found;
+      for (var i = 0; i < paints.evaluate().length; i++) {
+        final r = tester.getRect(paints.at(i));
+        if (r.height == 160) found = r;
+      }
+      expect(found, isNotNull,
+          reason: 'the 160dp snapshot chart should be rendered');
+      return found!;
+    }
+
     testWidgets('the option is listed and selecting it graphs the week',
         (tester) async {
       await tester.pumpWidget(
@@ -397,12 +415,11 @@ void main() {
       );
       await tester.pumpAndSettle();
       await selectMorningScore(tester);
+      // Selection + load landed (single plotted day: the average is
+      // that day's score) before any tap is attempted.
+      expect(find.text('7-Day Avg: 2 / 5'), findsOneWidget);
 
-      final chart = find.descendant(
-        of: find.byType(WeeklySnapshotCard),
-        matching: find.byType(CustomPaint),
-      );
-      final rect = tester.getRect(chart.first);
+      final rect = chartRect(tester);
       await tester.tapAt(
         Offset(rect.left + rect.width * (3.5 / 7), rect.center.dy),
       );
@@ -429,12 +446,9 @@ void main() {
       );
       await tester.pumpAndSettle();
       await selectMorningScore(tester);
+      expect(find.text('7-Day Avg: 2 / 5'), findsOneWidget);
 
-      final chart = find.descendant(
-        of: find.byType(WeeklySnapshotCard),
-        matching: find.byType(CustomPaint),
-      );
-      final rect = tester.getRect(chart.first);
+      final rect = chartRect(tester);
       await tester.tapAt(
         Offset(rect.left + rect.width * (1.5 / 7), rect.center.dy),
       );
