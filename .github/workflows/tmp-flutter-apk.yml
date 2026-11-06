@@ -24,14 +24,21 @@ jobs:
       # LAB-ONLY patch (branch lab/morning-score-graph): the Morning
       # Score capture harness writes its PNGs to MORNING_CAPTURE_OUT;
       # uploaded as an artifact below for the delivery record.
+      # LAB-ONLY patch (branch lab/blackglass-combined): the
+      # blackglass and streak capture harnesses also write to the
+      # same captures dir (BLACKGLASS_OUT / STREAK_OUT), with the
+      # Home capture prefix set to the combined package name.
       - run: cd flutter && flutter test
         env:
           MORNING_CAPTURE_OUT: ${{ github.workspace }}/captures
-      - name: Upload Morning Score captures
+          BLACKGLASS_OUT: ${{ github.workspace }}/captures
+          BLACKGLASS_PREFIX: tabs_home_blackglass_combined_v1
+          STREAK_OUT: ${{ github.workspace }}/captures
+      - name: Upload combined captures
         uses: actions/upload-artifact@v4
         with:
-          name: morning-score-captures
-          path: captures/*.png
+          name: combined-captures
+          path: captures/*
           if-no-files-found: error
       - name: Build Lab (playground) release APK, split per ABI
         # Same command the production workflow's Lab identity line
