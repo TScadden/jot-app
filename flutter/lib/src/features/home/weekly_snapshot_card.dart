@@ -528,6 +528,32 @@ class _MetricSelectorState extends State<_MetricSelector> {
     final renderBox =
         _targetKey.currentContext?.findRenderObject() as RenderBox?;
     final width = renderBox?.size.width ?? 300.0;
+    // Overflow fix (Nov 6, 2026): the panel used to be an uncapped
+    // Column of all 8 rows (>= 386dp), so when the selector sat low
+    // on screen the trailing rows ran past the viewport bottom and
+    // could not be seen or tapped (Blood Pressure cut, Morning
+    // Score unreachable on the founder's phone). Cap the panel to
+    // the space actually available below the anchor — viewport
+    // height minus the anchor's global bottom, the 4dp follower
+    // offset, the bottom safe-area padding, and a 16dp bottom
+    // margin — and scroll the rows inside that cap (see the
+    // SingleChildScrollView below). Viewport metrics come from
+    // View.of(context), the source MediaQuery itself is derived
+    // from in the real app (identical values on device): two
+    // in-repo capture harnesses wrap the card in a synthetic
+    // MediaQuery whose size is Size.zero, and a MediaQuery-based
+    // cap collapsed the panel to zero height there.
+    final view = View.of(context);
+    final devicePixelRatio = view.devicePixelRatio;
+    final anchorBottom = (renderBox?.localToGlobal(Offset.zero).dy ?? 0) +
+        (renderBox?.size.height ?? 0);
+    final availableBelow = view.physicalSize.height / devicePixelRatio -
+        view.viewPadding.bottom / devicePixelRatio -
+        anchorBottom -
+        4 -
+        16;
+    final maxPanelHeight =
+        availableBelow.clamp(0.0, double.infinity).toDouble();
     _entry = OverlayEntry(
       builder: (ctx) => Stack(
         children: [
@@ -546,17 +572,22 @@ class _MetricSelectorState extends State<_MetricSelector> {
             child: Material(
               color: Colors.transparent,
               child: Container(
+                key: const ValueKey('weekly_snapshot_metric_panel'),
                 width: width,
+                constraints: BoxConstraints(maxHeight: maxPanelHeight),
+                clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
                   color: NotelColors.surfaceHigh,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                       color: NotelColors.legacyDarkDivider, width: 1),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: SnapshotMetric.values.map((m) {
+                child: SingleChildScrollView(
+                  key: const ValueKey('weekly_snapshot_metric_options'),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: SnapshotMetric.values.map((m) {
                     final isCurrent = m == widget.selected;
                     return InkWell(
                       onTap: () {
@@ -593,6 +624,7 @@ class _MetricSelectorState extends State<_MetricSelector> {
                       ),
                     );
                   }).toList(),
+                    ),
                 ),
               ),
             ),
@@ -796,8 +828,13 @@ class _SnapshotChartPainter extends CustomPainter {
     final points = data.points;
     final valid = points.map((p) => p.value).whereType<double>().toList();
     if (valid.isEmpty) return;
-    final minV = valid.reduce((a, b) => a < b ? a : b);
-    final maxV = valid.reduce((a, b) => a > b ? a : b);
+    // Bounded-scale metrics (Morning Score, 1–5) draw against their
+    // fixed domain so the line's height means the same thing every
+    // week; every other metric keeps the native data-range scaling.
+    final minV = data.metric.chartMin ??
+        valid.reduce((a, b) => a < b ? a : b);
+    final maxV = data.metric.chartMax ??
+        valid.reduce((a, b) => a > b ? a : b);
     final range = (maxV - minV) == 0 ? 1.0 : (maxV - minV);
 
     double cx(int i) => (i + 0.5) * stepX;

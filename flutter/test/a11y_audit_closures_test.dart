@@ -375,24 +375,35 @@ void main() {
     );
 
     test('bubble fill composites to the audited #191C3C', () {
-      // The audit's #191C3C is the rounded composite; the engine
-      // keeps sub-byte precision, so compare per channel.
-      expect(bubbleFill.r, closeTo(0x19 / 255, 1 / 255));
-      expect(bubbleFill.g, closeTo(0x1C / 255, 1 / 255));
-      expect(bubbleFill.b, closeTo(0x3C / 255, 1 / 255));
+      // The audit's #191C3C is the composite over the PRODUCTION
+      // navy background (#080E1A). BlackGlass v4 NAMED DELTA (Lab
+      // branch only): over this branch's near-black background
+      // (#0A0A0B) the same 15% primary blend composites to
+      // #1B1930 — same per-channel comparison, re-based values.
+      expect(bubbleFill.r, closeTo(0x1B / 255, 1 / 255));
+      expect(bubbleFill.g, closeTo(0x19 / 255, 1 / 255));
+      expect(bubbleFill.b, closeTo(0x30 / 255, 1 / 255));
       expect(bubbleFill.a, 1.0);
     });
 
-    test('shipped ink (primary) reproduces the audit defect at ~4.35:1',
-        () {
+    test('shipped ink (primary) on this theme measures ~4.50:1', () {
+      // Production audit defect: primary ink on the bubble measured
+      // ~4.35:1, BELOW AA. BlackGlass v4 NAMED DELTA (Lab branch
+      // only): the darker neutral background lifts the same ink to
+      // ~4.50:1 — the defect does not reproduce on this theme; it
+      // now clears AA (barely), and the picked ink below clears it
+      // by a wide margin.
       final ratio = _contrastRatio(NotelColors.primary, bubbleFill);
-      expect(ratio, closeTo(4.35, 0.05));
-      expect(ratio, lessThan(4.5));
+      expect(ratio, closeTo(4.50, 0.05));
+      expect(ratio, greaterThanOrEqualTo(4.5));
     });
 
-    test('picked ink (textPrimary) measures ~14.44:1 and clears AA', () {
+    test('picked ink (textPrimary) measures ~15.71:1 and clears AA',
+        () {
+      // ~14.44:1 on production tokens; BlackGlass v4 NAMED DELTA:
+      // #F5F5F7 on the re-based fill measures ~15.71:1.
       final ratio = _contrastRatio(NotelColors.textPrimary, bubbleFill);
-      expect(ratio, closeTo(14.44, 0.1));
+      expect(ratio, closeTo(15.71, 0.1));
       expect(ratio, greaterThanOrEqualTo(4.5));
     });
 

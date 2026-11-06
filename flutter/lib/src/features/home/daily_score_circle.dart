@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/features/home/daily_score_vocabulary.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
+import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// R70 Daily Score — the score face and the Home header pairing,
@@ -177,7 +178,33 @@ class _ScoreFacePainter extends CustomPainter {
     canvas.clipPath(
       Path()..addOval(Rect.fromCircle(center: center, radius: innerRadius)),
     );
-    canvas.drawCircle(center, innerRadius, Paint()..color = NotelColors.surface);
+    // BlackGlass v4 (Lab branch only, GLASS_STUDY.md): the disc's
+    // fill is purple glass — a vertical gradient (primary blended
+    // 42% → 16% over the card tone) with a soft sheen lens at the
+    // top, painted inside the SAME clip oval. Paint only: the
+    // disc's geometry, the liquid, and the number are untouched.
+    canvas.drawCircle(
+      center,
+      innerRadius,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            LabBlackColors.scoreGlassTop,
+            LabBlackColors.scoreGlassBottom,
+          ],
+        ).createShader(Rect.fromCircle(center: center, radius: innerRadius)),
+    );
+    canvas.drawOval(
+      Rect.fromLTRB(
+        center.dx - innerRadius,
+        center.dy - innerRadius * 1.55,
+        center.dx + innerRadius,
+        center.dy + innerRadius * 0.45,
+      ),
+      Paint()..color = LabBlackColors.scoreGlassSheen,
+    );
     if (s != null && s > 0) {
       final diameter = innerRadius * 2;
       final level = diameter * (s / 100);
@@ -207,6 +234,18 @@ class _ScoreFacePainter extends CustomPainter {
           ..color = NotelColors.primaryText.withValues(alpha: 0.55),
       );
     }
+    // Specular arc along the disc's top edge (glass study: the rim
+    // is brightest at the top), still inside the clip.
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: innerRadius - 0.75),
+      -math.pi * 0.85,
+      math.pi * 0.7,
+      false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1.0, size.width * 0.02)
+        ..color = LabBlackColors.scoreGlassSpecular,
+    );
     canvas.restore();
   }
 

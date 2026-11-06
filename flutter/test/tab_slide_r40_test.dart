@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
+import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
 
@@ -9,8 +10,11 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 ///
 /// Spec: tapping a tab to the RIGHT of the current tab slides the new
 /// screen in from the right; tapping a tab to the LEFT slides it in
-/// from the left. Tab order: 0 Home, 1 Tools, 2 Quick Log, 3 Heart,
-/// 4 Settings; direction is pure index comparison. The slide is
+/// from the left. Tab order: 0 Home, 1 Tools, 2 Quick Log, 3 Heart
+/// (settings-gear round: Settings left the dock — the widest left
+/// jump below is now Heart -> Tools, retargeted from Settings ->
+/// Tools for exactly that intentional change; test count
+/// unchanged). Direction is pure index comparison. The slide is
 /// paired (outgoing travels the same direction), 300ms, fully opaque,
 /// no fade. Same-tab taps are no-ops; reduced motion stays instant.
 ///
@@ -33,7 +37,6 @@ void main() {
   const homeKey = ValueKey('home_screen');
   const toolsKey = ValueKey('tools_screen');
   const heartKey = ValueKey('heart_screen');
-  const settingsKey = ValueKey('settings_screen');
   const slot0 = ValueKey('tab_slide_slot_0');
   const slot1 = ValueKey('tab_slide_slot_1');
 
@@ -130,31 +133,31 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('left jump Settings -> Tools slides in from the left',
+  testWidgets('left jump Heart -> Tools slides in from the left',
       (tester) async {
     await tester.pumpWidget(shell());
 
-    // Get to Settings first (a right jump), and settle there.
-    await tester.tap(dockIcon(Icons.settings));
+    // Get to Heart first (a right jump), and settle there.
+    await tester.tap(dockIcon(Icons.favorite));
     await settleTabs(tester);
-    expect(find.byKey(settingsKey), findsOneWidget);
+    expect(find.byKey(heartKey), findsOneWidget);
     expect(find.byKey(homeKey), findsNothing);
 
-    // Settings (4) -> Tools (1): left jump. Incoming takes slot 0,
-    // outgoing Settings stays in slot 1.
+    // Heart (3) -> Tools (1): left jump. Incoming takes slot 0,
+    // outgoing Heart stays in slot 1.
     await tapMidSlide(tester, Icons.assignment);
     expect(slotDx(tester, slot0), lessThan(-0.2),
         reason: 'incoming Tools should be offset left of rest');
     expect(slotDx(tester, slot1), greaterThan(0.2),
-        reason: 'outgoing Settings should be offset right of rest');
+        reason: 'outgoing Heart should be offset right of rest');
     expect(slotDx(tester, slot1) - slotDx(tester, slot0),
         closeTo(1.0, 0.01));
     expect(find.byKey(toolsKey), findsOneWidget);
-    expect(find.byKey(settingsKey), findsOneWidget);
+    expect(find.byKey(heartKey), findsOneWidget);
 
     await settleTabs(tester);
     expect(find.byKey(toolsKey), findsOneWidget);
-    expect(find.byKey(settingsKey), findsNothing);
+    expect(find.byKey(heartKey), findsNothing);
     expect(mountedSlots(tester), 1);
     expect(tester.takeException(), isNull);
   });
@@ -239,8 +242,17 @@ void main() {
     expect(find.byKey(homeKey), findsNothing);
     expect(mountedSlots(tester), 1);
     // Dock selection agrees with the body (Round 19c single source).
+    // Navbar replica update: agreement is read off the CAPSULE
+    // position (the replica's only selection signal — icons are
+    // near-white in both states), not the old primary icon tint.
     final heartIcon = tester.widget<Icon>(dockIcon(Icons.favorite).first);
-    expect(heartIcon.color, NotelColors.primary);
+    expect(heartIcon.color, LabBlackColors.textPrimary);
+    final pillCenter = tester
+        .getCenter(find.byKey(const ValueKey('dock_selection_pill')))
+        .dx;
+    final iconCenter = tester.getCenter(dockIcon(Icons.favorite).first).dx;
+    expect((pillCenter - iconCenter).abs(), lessThan(1.0),
+        reason: 'capsule must sit on the Heart slot');
     expect(tester.takeException(), isNull);
   });
 

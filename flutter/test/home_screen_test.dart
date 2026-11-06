@@ -93,7 +93,7 @@ void main() {
     final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
     // Native today route: Scaffold containerColor = NotelBackground.
     expect(scaffold.backgroundColor, NotelColors.background);
-    expect(NotelColors.background.toARGB32(), 0xFF080E1A);
+    expect(NotelColors.background.toARGB32(), 0xFF0A0A0B); // BlackGlass v4 Lab theme token (named delta)
     // Today header (native topBar): title, weather icon, watch icon.
     expect(find.text('Today'), findsOneWidget);
     // Round 14: the header icon is the living AnimatedWeatherIcon (a

@@ -30,6 +30,7 @@ import 'package:tabs_lab/src/features/settings/crash_test_hook.dart';
 import 'package:tabs_lab/src/features/settings/progress_reports_page.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
+import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
 
@@ -1030,6 +1031,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // ── Shared pieces ────────────────────────────────────────────────
 
+  /// Settings-fullscreen round (V8) — NAMED INTERPRETATION:
+  /// the segmented control's STRUCTURE is the pre-tray form
+  /// restored from bfaaa8b5 (icons, 10dp capsule radius on a
+  /// 14dp track, ≥48dp hit height per R49 SE3), but its two
+  /// COLORS stay the V7 palette tokens — the dispatch's
+  /// KEEP-the-V7-palette rule: where the pre-tray file referenced
+  /// the older surface values the V7 round re-tokened through
+  /// LabBlackColors, the token references are kept and only the
+  /// structure reverts. Track = [LabBlackColors.segmentedTrack],
+  /// selected capsule = [LabBlackColors.segmentedSelected]
+  /// (selected LIGHTER than track by ≈+28 luminance, audit D11
+  /// polarity, pinned by lab_blackglass_theme_test (d)).
   Widget _segmentedHeader() {
     Widget seg(String label, IconData icon, _Page page) {
       final selected = _page == page;
@@ -1043,7 +1056,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(vertical: 10),
             decoration: BoxDecoration(
-              color: selected ? NotelColors.surface : Colors.transparent,
+              color: selected
+                  ? LabBlackColors.segmentedSelected
+                  : Colors.transparent,
               borderRadius: BorderRadius.circular(10),
             ),
             child: Row(
@@ -1074,7 +1089,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       padding: const EdgeInsets.all(4),
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: NotelColors.surfaceHigh.withValues(alpha: 0.5),
+        color: LabBlackColors.segmentedTrack,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(children: [

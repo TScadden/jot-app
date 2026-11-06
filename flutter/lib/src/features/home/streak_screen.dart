@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 
 import 'package:tabs_lab/src/data/streak_engine.dart';
+import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
 
-/// Streak detail screen (Lab streak package Nov 4, 2026, ported to
-/// the release line in VC 100115) — built in the reference video's
-/// form (tiktok-ui-lab STREAK_SPEC.md; frame f_011) and skinned in
-/// the PRODUCTION NotelColors tokens:
+/// Streak detail screen (Lab streak package Nov 4, 2026) — built
+/// in the reference video's form (tiktok-ui-lab STREAK_SPEC.md;
+/// frame f_011) and skinned in the Lab black-glass tokens
+/// (ported to the release line in VC 100116):
 ///
-/// - Aurora wash bleeding from the top edge (violet → purple →
-///   blue fields in the production palette) behind the header
-///   and hero.
+/// - Aurora wash bleeding from the top edge (ember → violet →
+///   blue, heavily blurred) behind the header and hero.
 /// - Circular back button top-left, centered title "Streak".
 /// - Hero card: pale flame glyph, 64sp extra-bold numeral with
 ///   "day streak" on its baseline, "Best N days" caption.
@@ -19,14 +19,17 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 ///   "Streaks" (Current / Longest rows in a darker nested card),
 ///   "Restore" (the monthly save: status row + explainer caption),
 ///   "History" (current-month calendar in a nested card; counted
-///   days filled, restored days ringed in Tabs purple, today
-///   ringed).
+///   days filled, restored days filled in Tabs purple and marked,
+///   today ringed).
 ///
 /// All copy is Juno-signed (JUNO_REVIEW_STREAK.md, carried verbatim
 /// from the Lab package; re-signed for the release line in the
 /// VC 100115 Juno pass). Data is the authoritative streak record:
 /// the engine state settled against the server profile on app
-/// open (see streak_store.dart).
+/// open (see streak_store.dart). VC 100116 ports ONLY this
+/// screen's Lab black-glass visual design onto that data path;
+/// the engine/store/backend are the VC 100115 release code,
+/// untouched.
 class StreakScreen extends StatelessWidget {
   final StreakState state;
   final DateTime now;
@@ -115,7 +118,7 @@ class StreakScreen extends StatelessWidget {
     final monthCount = streakCountedDaysInMonth(state, now.year, now.month);
 
     return Scaffold(
-      backgroundColor: NotelColors.background,
+      backgroundColor: LabBlackColors.background,
       body: Stack(
         children: [
           // Aurora wash (f_011): ember → violet → blue bleeding
@@ -138,8 +141,8 @@ class StreakScreen extends StatelessWidget {
                         center: const Alignment(-0.95, -1.0),
                         radius: 1.15,
                         colors: [
-                          NotelColors.chipPurple.withValues(alpha: 0.55),
-                          NotelColors.chipPurple.withValues(alpha: 0),
+                          const Color(0xFFF26B1D).withValues(alpha: 0.55),
+                          const Color(0xFFF26B1D).withValues(alpha: 0),
                         ],
                       ),
                     ),
@@ -164,8 +167,8 @@ class StreakScreen extends StatelessWidget {
                         center: const Alignment(0.95, -1.0),
                         radius: 1.15,
                         colors: [
-                          NotelColors.info.withValues(alpha: 0.55),
-                          NotelColors.info.withValues(alpha: 0),
+                          const Color(0xFF2E6BFF).withValues(alpha: 0.55),
+                          const Color(0xFF2E6BFF).withValues(alpha: 0),
                         ],
                       ),
                     ),
@@ -189,9 +192,9 @@ class StreakScreen extends StatelessWidget {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      NotelColors.background.withValues(alpha: 0.05),
-                      NotelColors.background.withValues(alpha: 0.55),
-                      NotelColors.background,
+                      LabBlackColors.background.withValues(alpha: 0.05),
+                      LabBlackColors.background.withValues(alpha: 0.55),
+                      LabBlackColors.background,
                     ],
                     stops: const [0.0, 0.62, 1.0],
                   ),
@@ -216,7 +219,7 @@ class StreakScreen extends StatelessWidget {
                         const Divider(
                           height: 1,
                           thickness: 1,
-                          color: NotelColors.legacyDarkHairline,
+                          color: LabBlackColors.hairline,
                         ),
                         _statRow(
                           'Longest Streak',
@@ -242,7 +245,7 @@ class StreakScreen extends StatelessWidget {
                               const Icon(
                                 Icons.autorenew,
                                 size: 20,
-                                color: NotelColors.textPrimary,
+                                color: LabBlackColors.textPrimary,
                               ),
                               const SizedBox(width: 10),
                               Expanded(
@@ -254,7 +257,7 @@ class StreakScreen extends StatelessWidget {
                                   style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w700,
-                                    color: NotelColors.textPrimary,
+                                    color: LabBlackColors.textPrimary,
                                   ),
                                 ),
                               ),
@@ -274,7 +277,7 @@ class StreakScreen extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 14,
                           height: 1.35,
-                          color: NotelColors.textSecondary,
+                          color: LabBlackColors.textSecondary,
                         ),
                       ),
                     ],
@@ -306,7 +309,7 @@ class StreakScreen extends StatelessWidget {
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w700,
-              color: NotelColors.textPrimary,
+              color: LabBlackColors.textPrimary,
             ),
           ),
           Align(
@@ -324,13 +327,13 @@ class StreakScreen extends StatelessWidget {
                       width: 36,
                       height: 36,
                       decoration: const BoxDecoration(
-                        color: NotelColors.surface,
+                        color: LabBlackColors.card,
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
                         Icons.chevron_left,
                         size: 22,
-                        color: NotelColors.textPrimary,
+                        color: LabBlackColors.textPrimary,
                       ),
                     ),
                   ),
@@ -346,7 +349,7 @@ class StreakScreen extends StatelessWidget {
   Widget _heroCard(int current, int best) {
     return Container(
       decoration: BoxDecoration(
-        color: NotelColors.surface,
+        color: LabBlackColors.card,
         borderRadius: BorderRadius.circular(24),
       ),
       padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
@@ -355,7 +358,7 @@ class StreakScreen extends StatelessWidget {
           const Icon(
             Icons.local_fire_department,
             size: 46,
-            color: NotelColors.textPrimary,
+            color: LabBlackColors.textPrimary,
           ),
           const SizedBox(height: 10),
           // Juno C6: numeral + unit are exposed to assistive
@@ -376,7 +379,7 @@ class StreakScreen extends StatelessWidget {
                       fontSize: 64,
                       fontWeight: FontWeight.w800,
                       height: 1.0,
-                      color: NotelColors.textPrimary,
+                      color: LabBlackColors.textPrimary,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -385,7 +388,7 @@ class StreakScreen extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w600,
-                      color: NotelColors.textPrimary,
+                      color: LabBlackColors.textPrimary,
                     ),
                   ),
                 ],
@@ -397,7 +400,7 @@ class StreakScreen extends StatelessWidget {
             best == 1 ? 'Best 1 day' : 'Best $best days',
             style: const TextStyle(
               fontSize: 14,
-              color: NotelColors.textSecondary,
+              color: LabBlackColors.textSecondary,
             ),
           ),
         ],
@@ -408,7 +411,7 @@ class StreakScreen extends StatelessWidget {
   Widget _sectionCard({required String label, required Widget child}) {
     return Container(
       decoration: BoxDecoration(
-        color: NotelColors.surface,
+        color: LabBlackColors.card,
         borderRadius: BorderRadius.circular(24),
       ),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
@@ -420,7 +423,7 @@ class StreakScreen extends StatelessWidget {
             style: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w500,
-              color: NotelColors.textSecondary,
+              color: LabBlackColors.textSecondary,
             ),
           ),
           const SizedBox(height: 10),
@@ -433,7 +436,7 @@ class StreakScreen extends StatelessWidget {
   Widget _nested({required Widget child}) {
     return Container(
       decoration: BoxDecoration(
-        color: NotelColors.background,
+        color: LabBlackColors.nested,
         borderRadius: BorderRadius.circular(18),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -456,7 +459,7 @@ class StreakScreen extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: NotelColors.textPrimary,
+                    color: LabBlackColors.textPrimary,
                   ),
                 ),
                 if (subCaption != null) ...[
@@ -465,7 +468,7 @@ class StreakScreen extends StatelessWidget {
                     subCaption,
                     style: const TextStyle(
                       fontSize: 13,
-                      color: NotelColors.textSecondary,
+                      color: LabBlackColors.textSecondary,
                     ),
                   ),
                 ],
@@ -477,7 +480,7 @@ class StreakScreen extends StatelessWidget {
             style: const TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w600,
-              color: NotelColors.textPrimary,
+              color: LabBlackColors.textPrimary,
             ),
           ),
         ],
@@ -519,7 +522,7 @@ class StreakScreen extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w700,
-                    color: NotelColors.textPrimary,
+                    color: LabBlackColors.textPrimary,
                   ),
                 ),
               ),
@@ -527,7 +530,7 @@ class StreakScreen extends StatelessWidget {
                 _streakDays(monthCount),
                 style: const TextStyle(
                   fontSize: 13,
-                  color: NotelColors.textSecondary,
+                  color: LabBlackColors.textSecondary,
                 ),
               ),
             ],
@@ -544,7 +547,7 @@ class StreakScreen extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: NotelColors.textSecondary,
+                      color: LabBlackColors.textSecondary,
                     ),
                   ),
                 ),
@@ -566,7 +569,7 @@ class StreakScreen extends StatelessWidget {
             'A day with a purple ring was restored.',
             style: TextStyle(
               fontSize: 12,
-              color: NotelColors.textSecondary,
+              color: LabBlackColors.textSecondary,
             ),
           ),
         ],
@@ -590,24 +593,24 @@ class StreakScreen extends StatelessWidget {
       // not color alone; its semantics label also states it (C6).
       decoration = BoxDecoration(
         shape: BoxShape.circle,
-        color: NotelColors.surfaceHigh,
+        color: LabBlackColors.segmentedSelected,
         border: Border.all(color: NotelColors.primary, width: 2),
       );
-      numberColor = NotelColors.textPrimary;
+      numberColor = LabBlackColors.textPrimary;
       numberWeight = FontWeight.w700;
     } else if (counted) {
       decoration = const BoxDecoration(
         shape: BoxShape.circle,
-        color: NotelColors.surfaceHigh,
+        color: LabBlackColors.segmentedSelected,
       );
       // Today reads by its numeral color (the ring is reserved for
       // restored days so the two marks can never be confused).
       numberColor =
-          isToday ? NotelColors.primaryText : NotelColors.textPrimary;
+          isToday ? NotelColors.primaryText : LabBlackColors.textPrimary;
       numberWeight = isToday ? FontWeight.w800 : FontWeight.w600;
     } else {
       decoration = const BoxDecoration(shape: BoxShape.circle);
-      numberColor = NotelColors.textSecondary.withValues(alpha: 0.55);
+      numberColor = LabBlackColors.textSecondary.withValues(alpha: 0.55);
     }
 
     final cell = SizedBox(

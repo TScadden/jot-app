@@ -147,7 +147,9 @@ void main() {
       ));
       final pill = find.byKey(const ValueKey('dock_selection_pill'));
       final leftBefore = tester.getTopLeft(pill).dx;
-      await tester.tap(find.byIcon(Icons.settings));
+      // Settings-gear round: the dock has no settings icon to tap
+      // anymore — the Tools cell drives the same instant jump.
+      await tester.tap(find.byIcon(Icons.assignment));
       await tester.pump();
       final leftAfter = tester.getTopLeft(pill).dx;
       expect(leftAfter, greaterThan(leftBefore));

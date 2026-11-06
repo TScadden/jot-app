@@ -4,12 +4,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
-import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 
-/// Round 30 Step 4 — the Nav Bar Labels preference is wired: NavDock
-/// renders native's labeled geometry (MainActivity.kt:657 dock
-/// height 66, NavIcon :1005-1043 label style) when the preference is
-/// on, and MainShell feeds it from SettingsStore.
+/// Round 30 Step 4 — the Nav Bar Labels preference is wired:
+/// MainShell feeds it from SettingsStore to NavDock's showLabels
+/// parameter.
+///
+/// Navbar replica update (Phase 2, NAVBAR_SPEC): the reference
+/// renders no labels in ANY state, so the replica presentation is
+/// icon-only at a fixed 62dp height regardless of the preference.
+/// The preference wiring itself (store -> shell -> dock parameter)
+/// is unchanged and still proven by the tests below; what changed
+/// is only what the dock DRAWS with the value (nothing) — each
+/// expectation below was updated for exactly that intentional
+/// presentation change, with the test count unchanged.
 void main() {
   // The Customize integration tests (grouped below) mount a real
   // MainShell, whose Settings tab builds the REAL TabsBackend. Its
@@ -40,37 +48,41 @@ void main() {
         ),
       );
 
-  testWidgets('labels off: no label texts, 56dp dock', (tester) async {
+  testWidgets('labels off: no label texts, 62dp dock', (tester) async {
     await tester.pumpWidget(dock(false));
     await tester.pump();
     for (final label in ['Home', 'Tools', 'Heart', 'Settings']) {
       expect(find.text(label), findsNothing);
     }
-    // The dock container is the Material under the NavDock.
+    // Total NavDock height = 62dp bar + 27dp bottom float
+    // (viewPadding 0, so the float rule gives max(27, 0 + 4)).
     final size = tester.getSize(find.byType(NavDock));
-    expect(size.height, 56 + 12); // dock + bottom padding (no inset)
+    expect(size.height, 62 + 27);
   });
 
-  testWidgets('labels on: four labels, 66dp dock, native styling',
+  testWidgets('labels on: replica stays icon-only, same 62dp dock',
       (tester) async {
     await tester.pumpWidget(dock(true, selected: DockTab.heart));
     await tester.pump();
+    // The preference reaches the widget (API stable) but the
+    // replica never draws labels — in either state.
+    expect(tester.widget<NavDock>(find.byType(NavDock)).showLabels,
+        isTrue);
     for (final label in ['Home', 'Tools', 'Heart', 'Settings']) {
-      expect(find.text(label), findsOneWidget);
+      expect(find.text(label), findsNothing);
     }
-    final size = tester.getSize(find.byType(NavDock));
-    expect(size.height, 66 + 12);
-    // Selected label: primary + bold. Unselected: secondary + medium.
-    final heart = tester.widget<Text>(find.text('Heart'));
-    expect(heart.style!.color, NotelColors.primary);
-    expect(heart.style!.fontWeight, FontWeight.bold);
-    expect(heart.style!.fontSize, 10);
-    final home = tester.widget<Text>(find.text('Home'));
-    expect(home.style!.color, NotelColors.textSecondary);
-    expect(home.style!.fontWeight, FontWeight.w500);
-    // The center quick-log button never carries a label (native).
     expect(find.text('Quick log'), findsNothing);
     expect(find.text('Log'), findsNothing);
+    // Height does not vary with the preference.
+    final size = tester.getSize(find.byType(NavDock));
+    expect(size.height, 62 + 27);
+    // Icons are near-white in both states (capsule-only signal).
+    for (final icon in [Icons.home, Icons.favorite]) {
+      final w = tester.widget<Icon>(find.descendant(
+          of: find.byType(NavDock), matching: find.byIcon(icon)));
+      expect(w.color, LabBlackColors.textPrimary);
+      expect(w.size, 24);
+    }
   });
 
   testWidgets('MainShell feeds the stored preference to the dock',
@@ -124,8 +136,16 @@ void main() {
         delete: (k) async => map.remove(k),
       );
 
+  // Settings-fullscreen round (V8): while Settings is open it is
+  // an OPAQUE pushed route (SlidePageRoute, opaque since Round
+  // 22), so the shell subtree underneath is offstage to default
+  // finders. Dock reads that run while Settings is open pass
+  // skipOffstage: false — the dock widget is alive underneath
+  // and still receives the store's live updates; only finder
+  // visibility changed, never the wiring under test.
   Finder dockLabel(String label) => find.descendant(
-      of: find.byType(NavDock), matching: find.text(label));
+      of: find.byType(NavDock, skipOffstage: false),
+      matching: find.text(label));
 
   Future<void> pumpShell(WidgetTester tester, SettingsStore store) async {
     await tester.pumpWidget(MaterialApp(home: MainShell(settingsStore: store)));
@@ -133,21 +153,29 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
   }
 
-  /// From a freshly pumped shell on Home: switch to the Settings
-  /// tab and open Customize. Returns with the toggle on screen AND
-  /// showing [toggleValue]: the wait matters — Settings seeds the
-  /// toggle from its async _load(), and a tap that lands before
-  /// the load would toggle the initial default instead of the
-  /// stored value (leg (d) caught exactly that race: the switch
-  /// still showed the initial true, so the tap wrote false again).
+  /// From a freshly pumped shell on Home: open Settings via the
+  /// Home header gear (settings-gear round: Settings is no longer
+  /// a dock tab — the gear/button opens it; settings-fullscreen
+  /// round: as a full-screen pushed route, the tray is removed)
+  /// and open Customize inside it. Returns with the toggle
+  /// on screen AND showing [toggleValue]: the wait matters —
+  /// Settings seeds the toggle from its async _load(), and a tap
+  /// that lands before the load would toggle the initial default
+  /// instead of the stored value (leg (d) caught exactly that
+  /// race: the switch still showed the initial true, so the tap
+  /// wrote false again).
   Future<void> openCustomize(WidgetTester tester,
       {required bool toggleValue}) async {
-    await tester.tap(find.descendant(
-        of: find.byType(NavDock), matching: find.byIcon(Icons.settings)));
+    await tester.tap(find.byKey(const ValueKey('home_settings_gear')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.ensureVisible(find.text('Customize'));
+    // A pump after ensureVisible is REQUIRED in this host:
+    // the scroll jump lands on the next frame, and tapping from
+    // the pre-scroll layout misses the row (it sits below the
+    // viewport until the frame builds).
+    await tester.pump();
     await tester.tap(find.text('Customize'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
@@ -199,10 +227,21 @@ void main() {
   }
 
   void expectDockLabels(WidgetTester tester, {required bool shown}) {
-    expect(tester.widget<NavDock>(find.byType(NavDock)).showLabels, shown);
+    // The preference VALUE still flows store -> shell -> dock
+    // exactly as Round 30 wired it (that is what these legs prove).
+    // skipOffstage: false — while Settings is open (an opaque
+    // push since V8) the shell sits offstage underneath it; the
+    // value still lands live, which is the point of these legs.
+    expect(
+        tester
+            .widget<NavDock>(find.byType(NavDock, skipOffstage: false))
+            .showLabels,
+        shown);
+    // The replica presentation never renders the labels, whatever
+    // the preference says (NAVBAR_SPEC: no labels in any state).
     for (final label in ['Home', 'Tools', 'Heart', 'Settings']) {
-      expect(dockLabel(label), shown ? findsOneWidget : findsNothing,
-          reason: 'dock label "$label"');
+      expect(dockLabel(label), findsNothing,
+          reason: 'dock label "$label" (replica is icon-only)');
     }
   }
 
@@ -237,10 +276,15 @@ void main() {
     expect(map[SettingsStore.showNavLabelsKey], 'false');
     expectDockLabels(tester, shown: false);
     // Still sitting in Settings on the Customize page: no tab
-    // switch was involved in the refresh.
+    // switch was involved in the refresh — the shell underneath
+    // never left Home, because Settings is a pushed route over
+    // it (settings-fullscreen round; the tray overlay before it).
     expect(find.text('Appearance'), findsOneWidget);
-    expect(tester.widget<NavDock>(find.byType(NavDock)).selected,
-        DockTab.settings);
+    expect(
+        tester
+            .widget<NavDock>(find.byType(NavDock, skipOffstage: false))
+            .selected,
+        DockTab.home);
 
     // Leg (c): ON — labels return live, same screen.
     await tapNavLabelsToggle(tester);

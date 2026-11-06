@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
+import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Round 1 — the opening splash screen.
 ///
@@ -21,7 +22,10 @@ class SplashScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
-      backgroundColor: Color(0xFF080E1A),
+      // VC 100116 follow-up: the hard-coded 0xFF080E1A is tokenized
+      // to NotelColors.background (the token's ported black-glass
+      // value now governs the splash like every other surface).
+      backgroundColor: NotelColors.background,
       body: Center(
         child: _SplashContent(),
       ),

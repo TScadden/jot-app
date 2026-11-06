@@ -1043,6 +1043,36 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_loadCounters());
   }
 
+  /// Settings-gear round — the header gear's tap: opens Tabs'
+  /// settings. Settings-fullscreen round (V8, founder direction:
+  /// "instead of the settings pop up it just changes to the
+  /// settings screen we had before"): the bottom tray is REMOVED;
+  /// the gear pushes the full-screen SettingsScreen as a standard
+  /// route — the same SlidePageRoute idiom the counter slot's
+  /// Settings push above uses — forwarding the same dependencies
+  /// that push (and the retired tray call) received. On return the
+  /// pull cache is invalidated and the counters re-read — the same
+  /// refresh the counter-slot push runs on return — because
+  /// Settings can archive / edit counters too.
+  Future<void> _openSettings() async {
+    await Navigator.of(context).push(
+      SlidePageRoute(
+        reducedMotion: animationsDisabled(context),
+        builder: (_) => SettingsScreen(
+          email: widget.email,
+          onLogout: widget.onLogout,
+          backend: _backend,
+          settingsStore: widget.settingsStore,
+          healthConnectService: widget.healthConnectService,
+          billingService: widget.billingService,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    _backend.invalidateSyncPull();
+    unawaited(_loadCounters());
+  }
+
   /// Merged check-in — resolves ALL of today's check-in state
   /// (ranking visibility, flare record, good record) from the REAL
   /// pulled entries overlaid with the outbox. Any failure leaves
@@ -1988,6 +2018,36 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
+          ),
+          // Settings button (settings-gear round; glyph swapped
+          // in the settings-fullscreen round, founder steer Nov 4,
+          // 2026): sits IMMEDIATELY LEFT of the watch button,
+          // standard 48dp IconButton target, in NotelColors.primary,
+          // the watch button's own color, so the pair carries equal
+          // visual weight. Tap pushes the full-screen
+          // SettingsScreen (the bottom tray it originally opened
+          // is removed), NOT a tab switch. The button's box,
+          // position, hit area, and 'Settings' tooltip are exactly
+          // as the gear round placed them — ONLY THE GLYPH CHANGED:
+          // gear out, person in. The person is the reference
+          // video's settings entry (in @dbzzle's app the profile /
+          // person page IS the settings list — NAVBAR_SPEC §2: a
+          // light OUTLINE head-and-shoulders, hollow head circle +
+          // shoulders arc, ≈24pt symbol box, stroke ≈2.5–3pt).
+          // Icons.person_outlined is that outline person in this
+          // icon set (the M3 outlined variant; preferred over the
+          // filled Icons.person and the heavier legacy
+          // Icons.person_outline), at the same 24dp ink size the
+          // gear glyph used.
+          IconButton(
+            key: const ValueKey('home_settings_gear'),
+            onPressed: () => unawaited(_openSettings()),
+            icon: const Icon(
+              Icons.person_outlined,
+              size: 24,
+              color: NotelColors.primary,
+            ),
+            tooltip: 'Settings',
           ),
           // Watch: opens the data-connections screen (native
           // onNavigateToConnections). Round 12b: explicit slide-in-from-right —
