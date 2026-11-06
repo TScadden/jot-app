@@ -8,6 +8,7 @@ import 'package:tabs_lab/src/data/clinician_report_pdf.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/medication_change_events.dart';
+import 'package:tabs_lab/src/data/medication_timeline.dart';
 import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/progress_report.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
@@ -721,9 +722,14 @@ void main() {
 
     test('captured events replace the declared form; windows print at the '
         'D1 floor with no delta anywhere', () async {
-      // Dose change Oct 14; scores 60 for 14 days before (change
-      // day in AFTER for dose changes: before = Sep 30–Oct 13,
-      // after = Oct 14–27). Give after-window days scores too.
+      // Dose change Oct 14; scores 60 throughout (change day in
+      // AFTER for dose changes: before nominally Sep 30–Oct 13,
+      // after = Oct 14–27). The medication list below declares
+      // an Oct 5 start, which the panel seeds and which now
+      // bounds Z5 identically (Juno condition): the before
+      // window truncates at the declared start's regimen,
+      // Oct 5–13 = 9 scored days, average unchanged at 60
+      // because every scored day is 60.
       final scores = {
         for (var d = 29; d <= 30; d++) _key(9, d): 60,
         for (var d = 1; d <= 27; d++) _key(10, d): 60,
@@ -752,7 +758,7 @@ void main() {
       final windowLine = z5.firstWhere((l) => l.startsWith('Average'));
       expect(
           windowLine,
-          'Average Daily Score, 14 days before: 60 · 14 scored days. '
+          'Average Daily Score, 14 days before: 60 · 9 scored days. '
           'Average Daily Score, 14 days after: 60 · 14 scored days.');
       // No delta, no arrow, no percent (Item 2 · R2).
       expect(z5.join(' '), isNot(contains('+')));
@@ -779,25 +785,45 @@ void main() {
       expect(z5.any((l) => l.startsWith('Average')), isFalse);
     });
 
-    test('window rule: a stop counts its change day in the BEFORE window',
-        () {
-      // Scores: Oct 1 (change day) = 90, after-window days at 60.
+    test('window rule: a stop counts its change day in the BEFORE window '
+        '(UNIFIED semantics — supersedes the old duplicate computation)',
+        () async {
+      // UPDATED for the Z5 unification: this test previously
+      // drove the private `computeMedChangeWindows` duplicate
+      // and expected its one-decimal average (62.14). Z5 now
+      // runs item 2's computeMedicationWindows, so the same
+      // fixture yields the panel's whole-number average (62).
+      // Scores: Oct 14 (change day) = 90, all other days 60.
       // Stop on Oct 14: before = Oct 1..14, after = Oct 15..28.
-      final scores = {
+      final scores = <String, int?>{
         for (var d = 1; d <= 28; d++) _key(10, d): 60,
         _key(10, 14): 90,
       };
-      final w = computeMedChangeWindows(
-        changeDay: DateTime(2026, 10, 14),
-        changeDayInAfter: false,
-        scores: scores,
+      final data = await _extend(
+        _snapshot(),
+        scores: {for (final e in scores.entries) e.key: e.value!},
+        events: [
+          makeEvent(
+              type: 'stop',
+              name: 'Ivabradine',
+              oldDose: '7.5 mg',
+              recordedAt: _ts(10, 14)),
+        ],
       );
-      expect(w, isNotNull);
-      // Before average includes the 90: (13*60 + 90)/14 = 62.1.
-      expect(w!.before.scoredDays, 14);
-      expect(w.before.average, closeTo(62.14, 0.01));
-      expect(w.after.scoredDays, 14);
-      expect(w.after.average, 60);
+      final change = data.medChanges.single;
+      // Before average includes the 90: (13*60 + 90)/14 = 62.14,
+      // printed by the panel (and now by Z5) as the whole number 62.
+      expect(change.beforeWindow!.scoredDays, 14);
+      expect(change.beforeWindow!.average, 62);
+      expect(change.afterWindow!.scoredDays, 14);
+      expect(change.afterWindow!.average, 60);
+      final z5 = _lines(data, 'Z5');
+      expect(
+        z5,
+        contains('Average Daily Score, 14 days before: 62 · 14 scored '
+            'days. Average Daily Score, 14 days after: 60 · 14 scored days.'),
+      );
+      expect(z5.join(' '), isNot(contains('62.1')));
     });
 
     test('S6 required at full coverage too (Juno R4)', () async {
@@ -819,6 +845,320 @@ void main() {
             fluidTarget: '1 gallon of water'),
         'Targets recorded in Tabs: 6,000 mg electrolytes and 1 gallon of water daily.',
       );
+    });
+  });
+
+  group('Z5 unification: PDF windows ARE the item 2 panel windows', () {
+    MedicationChangeEvent ev({
+      required String id,
+      required String type,
+      required DateTime recorded,
+      String? effectiveDate,
+    }) =>
+        MedicationChangeEvent(
+          id: id,
+          medId: 'm1',
+          medName: 'MedA',
+          type: type,
+          oldSnapshot: const MedicationFieldSnapshot(
+              dose: '5 mg',
+              frequency: 'Once daily',
+              startDate: '',
+              endDate: '',
+              isPresent: true),
+          newSnapshot: MedicationFieldSnapshot(
+              dose: '5 mg',
+              frequency: 'Once daily',
+              startDate: '',
+              endDate: '',
+              isPresent: type != 'stop'),
+          effectiveDate: effectiveDate,
+          recordedAt: recorded.millisecondsSinceEpoch,
+          source: 'settings',
+        );
+
+    // The panel surface for the same fixture: item 2's timeline
+    // derivation over the same events, the same medication list
+    // (its seeded rows included), and the same stored-score map,
+    // read through its §5 handoff (changeSummaries), which runs
+    // the identical windowsFor the panel renders.
+    MedicationTimelineData panel(
+            List<MedicationChangeEvent> events, Map<String, int?> scores,
+            {List<MedicationEntry> medications = const []}) =>
+        buildMedicationTimeline(
+          events: events,
+          medications: medications,
+          scoresByDate: scores,
+          entries: const [],
+          categories: const [],
+          today: DateTime(2026, 10, 28),
+        );
+
+    void expectAgreement(
+      List<MedicationChangeEvent> events,
+      Map<String, int?> scores, {
+      List<MedicationEntry> medications = const [],
+      required DateTime rangeStart,
+      required DateTime rangeEnd,
+    }) {
+      final changes = deriveCapturedMedChanges(
+        events,
+        medications: medications,
+        scores: scores,
+        rangeStart: rangeStart,
+        rangeEnd: rangeEnd,
+      );
+      final data = panel(events, scores, medications: medications);
+      // Z5 prints CAPTURED changes only — seeded panel markers
+      // bound the windows but produce no Z5 line — so agreement
+      // is asserted over the panel's captured summaries.
+      final summaries = data
+          .changeSummaries(data.rangeStart, data.rangeEnd)
+          .where((s) => !s.seeded)
+          .toList();
+      expect(changes.length, summaries.length);
+      for (final summary in summaries) {
+        // Match on day AND change kind (the Z5 label carries the
+        // kind) — two changes can share one day.
+        bool matches(ClinicianMedChange c) =>
+            c.day == summary.date &&
+            switch (summary.eventType) {
+              'start' => c.label.startsWith('Started'),
+              'stop' => c.label.startsWith('Stopped'),
+              'dose_change' => c.label.contains('dose changed'),
+              'frequency_change' => c.label.contains('schedule changed'),
+              'restore' => c.label.startsWith('Restarted'),
+              _ => false,
+            };
+        final change = changes.singleWhere(matches);
+        expect(change.beforeWindow?.average, summary.windows.beforeAverage,
+            reason: 'before average for ${summary.eventType} '
+                'on ${summary.date}');
+        expect(change.afterWindow?.average, summary.windows.afterAverage,
+            reason: 'after average for ${summary.eventType} '
+                'on ${summary.date}');
+        if (summary.windows.floorMet) {
+          expect(change.beforeWindow?.scoredDays,
+              summary.windows.beforeScoredDays);
+          expect(change.afterWindow?.scoredDays,
+              summary.windows.afterScoredDays);
+        } else {
+          expect(change.beforeWindow, isNull);
+          expect(change.afterWindow, isNull);
+        }
+      }
+    }
+
+    test('neighboring change inside the window truncates at the REGIMEN '
+        'boundary (11 scored days — the old anchor-exclusive duplicate '
+        'gave 10)', () {
+      final events = [
+        ev(
+            id: 'e-start',
+            type: 'start',
+            effectiveDate: 'Sep 10, 2026',
+            recorded: DateTime(2026, 9, 10, 9)),
+        ev(
+            id: 'e-stop',
+            type: 'stop',
+            effectiveDate: 'Sep 20, 2026',
+            recorded: DateTime(2026, 9, 20, 9)),
+      ];
+      final scores = <String, int?>{
+        for (var d = 1; d <= 9; d++) _key(9, d): 60,
+        for (var d = 10; d <= 19; d++) _key(9, d): 70,
+        _key(9, 20): 75,
+        for (var d = 21; d <= 30; d++) _key(9, d): 50,
+        for (var d = 1; d <= 4; d++) _key(10, d): 50,
+      };
+      final changes = deriveCapturedMedChanges(
+        events,
+        medications: const [],
+        scores: scores,
+        rangeStart: DateTime(2026, 9, 1),
+        rangeEnd: DateTime(2026, 10, 31),
+      );
+      final start = changes.singleWhere((c) => c.day == DateTime(2026, 9, 10));
+      // Before: Sep 1–9 (series edge clips Aug 27 start) = 9 × 60.
+      expect(start.beforeWindow, (average: 60, scoredDays: 9));
+      // After: Sep 10–20 — the stop day belongs to the stop's
+      // BEFORE regimen, so the start's after window runs THROUGH
+      // Sep 20: (10×70 + 75) / 11 = 70.45 → whole number 70.
+      expect(start.afterWindow, (average: 70, scoredDays: 11));
+      final stop = changes.singleWhere((c) => c.day == DateTime(2026, 9, 20));
+      // Before: Sep 10–20 (bounded below by the start's regimen).
+      expect(stop.beforeWindow, (average: 70, scoredDays: 11));
+      // After: Sep 21 – Oct 4 = 14 × 50.
+      expect(stop.afterWindow, (average: 50, scoredDays: 14));
+      expectAgreement(events, scores,
+          rangeStart: DateTime(2026, 9, 1), rangeEnd: DateTime(2026, 10, 31));
+    });
+
+    test('change-day ownership + non-whole average: dose change day '
+        'counts in AFTER and 53.57 prints as the panel whole number 54',
+        () {
+      final events = [
+        ev(
+            id: 'e-dose',
+            type: 'dose_change',
+            recorded: DateTime(2026, 10, 14, 9)),
+      ];
+      final scores = <String, int?>{
+        for (var d = 1; d <= 13; d++) _key(10, d): 50,
+        _key(10, 14): 100, // the change day itself
+        for (var d = 15; d <= 28; d++) _key(10, d): 50,
+      };
+      final changes = deriveCapturedMedChanges(
+        events,
+        medications: const [],
+        scores: scores,
+        rangeStart: DateTime(2026, 10, 1),
+        rangeEnd: DateTime(2026, 10, 31),
+      );
+      final change = changes.single;
+      // Before: Oct 1–13 (series edge) = 13 × 50 — the 100 on the
+      // change day is NOT in the before window.
+      expect(change.beforeWindow, (average: 50, scoredDays: 13));
+      // After: Oct 14–27 = (100 + 13×50) / 14 = 53.57 → 54.
+      expect(change.afterWindow, (average: 54, scoredDays: 14));
+      expectAgreement(events, scores,
+          rangeStart: DateTime(2026, 10, 1), rangeEnd: DateTime(2026, 10, 31));
+    });
+
+    test('same-day neighboring changes bound each other: the D1 floor '
+        'fails identically on both surfaces (no Z5 averages)', () {
+      final events = [
+        ev(
+            id: 'e-dose',
+            type: 'dose_change',
+            recorded: DateTime(2026, 10, 15, 9)),
+        ev(
+            id: 'e-stop',
+            type: 'stop',
+            effectiveDate: 'Oct 15, 2026',
+            recorded: DateTime(2026, 10, 15, 18)),
+      ];
+      final scores = <String, int?>{
+        for (var d = DateTime(2026, 9, 20);
+            !d.isAfter(DateTime(2026, 11, 15));
+            d = DateTime(d.year, d.month, d.day + 1))
+          _key(d.month, d.day): 60,
+      };
+      final data = panel(events, scores);
+      final dose = data.markers
+          .firstWhere((m) => m.kind == TimelineMarkerKind.doseChange);
+      final stop = data.markers
+          .firstWhere((m) => m.kind == TimelineMarkerKind.stop);
+      // The panel's own spans: each window is cut to the single
+      // shared day by the other change.
+      expect(data.windowsFor(dose, 14).afterSpanDays, 1);
+      expect(data.windowsFor(stop, 14).beforeSpanDays, 1);
+      expect(data.windowsFor(dose, 14).floorMet, isFalse);
+      expect(data.windowsFor(stop, 14).floorMet, isFalse);
+      final changes = deriveCapturedMedChanges(
+        events,
+        medications: const [],
+        scores: scores,
+        rangeStart: DateTime(2026, 10, 1),
+        rangeEnd: DateTime(2026, 10, 31),
+      );
+      expect(changes, hasLength(2));
+      for (final change in changes) {
+        expect(change.beforeWindow, isNull);
+        expect(change.afterWindow, isNull);
+      }
+      expectAgreement(events, scores,
+          rangeStart: DateTime(2026, 10, 1), rangeEnd: DateTime(2026, 10, 31));
+    });
+
+    test('boundary fixture (Juno condition): a declared (seeded) start '
+        'inside a captured dose change\'s before-window bounds Z5 '
+        'exactly as the panel bounds it', () {
+      // Juno's divergence shape: MedA's declared start is Sep 1
+      // (seeded from the medication list, never captured) and a
+      // captured dose change lands Sep 10. The panel bounds the
+      // dose change's before-window at Sep 1 (9 days); a
+      // captured-only bounding set ran the full 14 days across
+      // the start.
+      final medications = [
+        MedicationEntry(
+          id: 'm1',
+          name: 'MedA',
+          dose: '5 mg',
+          frequency: 'Once daily',
+          startDate: 'Sep 1, 2026',
+          endDate: 'Present',
+          isPresent: true,
+        ),
+      ];
+      final events = [
+        ev(
+            id: 'e-dose',
+            type: 'dose_change',
+            recorded: DateTime(2026, 9, 10, 9)),
+      ];
+      // Scores arranged so the bounding CHANGES the result: the
+      // five pre-start days (Aug 27–31) score 100, the bounded
+      // before-window days (Sep 1–9) score 50, the after window
+      // (Sep 10–23) scores 70. Unbounded, the before average
+      // would be (5×100 + 9×50) / 14 = 67.86 → 68 over 14 scored
+      // days; bounded, it is 50 over 9 scored days.
+      final scores = <String, int?>{
+        for (var d = 27; d <= 31; d++) _key(8, d): 100,
+        for (var d = 1; d <= 9; d++) _key(9, d): 50,
+        for (var d = 10; d <= 23; d++) _key(9, d): 70,
+      };
+      final changes = deriveCapturedMedChanges(
+        events,
+        medications: medications,
+        scores: scores,
+        rangeStart: DateTime(2026, 9, 1),
+        rangeEnd: DateTime(2026, 10, 31),
+      );
+      // The seeded start is bounding ONLY: it prints no Z5 line
+      // in captured form — the one printed change is the
+      // captured dose change.
+      expect(changes, hasLength(1));
+      final change = changes.single;
+      expect(change.captured, isTrue);
+      expect(change.day, DateTime(2026, 9, 10));
+      expect(change.label, contains('dose changed'));
+      // Bounded values: before Sep 1–9 = 9 × 50; after
+      // Sep 10–23 = 14 × 70. Floor outcome: MET (9 ≥ 5,
+      // 14 ≥ 5, 23 ≥ 14) — averages exist at all only because
+      // the floor is met on the bounded counts.
+      expect(change.beforeWindow, (average: 50, scoredDays: 9));
+      expect(change.afterWindow, (average: 70, scoredDays: 14));
+      // The fixture is bounding-sensitive: over a captured-only
+      // marker set the same computation gives the divergent
+      // before result (68 over 14) Juno flagged.
+      final capturedOnly = computeMedicationWindows(
+        marker: capturedTimelineMarker(events.single)!,
+        allMarkers: [capturedTimelineMarker(events.single)!],
+        scoresByDate: scores,
+        windowDays: 14,
+      );
+      expect(capturedOnly.beforeAverage, 68);
+      expect(capturedOnly.beforeScoredDays, 14);
+      // Panel agreement over the identical inputs (averages,
+      // scored-day counts, floor outcome), with the panel's
+      // seeded summary present and marked seeded.
+      final data = panel(events, scores, medications: medications);
+      final summaries =
+          data.changeSummaries(data.rangeStart, data.rangeEnd);
+      final seededSummary = summaries.singleWhere((s) => s.seeded);
+      expect(seededSummary.eventType, 'start');
+      expect(seededSummary.date, DateTime(2026, 9, 1));
+      final capturedSummary = summaries.singleWhere((s) => !s.seeded);
+      expect(capturedSummary.windows.floorMet, isTrue);
+      expect(capturedSummary.windows.beforeAverage, 50);
+      expect(capturedSummary.windows.beforeScoredDays, 9);
+      expect(capturedSummary.windows.afterAverage, 70);
+      expect(capturedSummary.windows.afterScoredDays, 14);
+      expectAgreement(events, scores,
+          medications: medications,
+          rangeStart: DateTime(2026, 9, 1),
+          rangeEnd: DateTime(2026, 10, 31));
     });
   });
 }

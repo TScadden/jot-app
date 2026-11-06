@@ -155,7 +155,7 @@ List<ClinicianLine> clinicianPageLines(ClinicianReportData data) {
         lines.add((
           zone: 'Z5',
           text:
-              'Average Daily Score, 14 days before: ${clinicianAverageText(before.average)} · ${before.scoredDays} scored days. Average Daily Score, 14 days after: ${clinicianAverageText(after.average)} · ${after.scoredDays} scored days.',
+              'Average Daily Score, 14 days before: ${before.average} · ${before.scoredDays} scored days. Average Daily Score, 14 days after: ${after.average} · ${after.scoredDays} scored days.',
         ));
       }
     }
