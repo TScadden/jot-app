@@ -19,6 +19,8 @@ import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/data/migraine_controller.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
+import 'package:tabs_lab/src/data/streak_engine.dart';
+import 'package:tabs_lab/src/data/streak_store.dart';
 import 'package:tabs_lab/src/data/launch_trace.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -37,6 +39,7 @@ import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 import 'package:tabs_lab/src/features/home/health_connect_banner.dart';
 import 'package:tabs_lab/src/features/home/migraine_block.dart';
+import 'package:tabs_lab/src/features/home/streak_screen.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/features/home/weather_sheet.dart';
@@ -1729,6 +1732,16 @@ class _HomeScreenState extends State<HomeScreen> {
     final connected = status == HealthConnectStatus.connected;
     final vitals = await _healthRepo.loadTodayVitals(connected: connected);
     final streak = await streakFuture;
+    // Lab (streak screen package, Nov 4, 2026) — the local streak
+    // engine settles today (including the monthly save for a single
+    // missed day) OFF this load's critical path: the pulled counters
+    // flow through exactly as before, and the engine's values swap
+    // in silently when they land — the same stale-while-revalidate
+    // idiom as the rest of this load. The engine is NEVER awaited
+    // here: its store is a real platform channel, and awaiting real
+    // I/O in this path stalls every fake-async-driven flow (the
+    // harness deadlock lesson). See [_settleStreakWithEngine].
+    unawaited(_settleStreakWithEngine(streak.current, streak.best));
     final cache = HomeDataCache.instance;
     final changed = cache.applyVitals(vitals) |
         cache.applyStreak(streak.current, streak.best);
@@ -1762,6 +1775,42 @@ class _HomeScreenState extends State<HomeScreen> {
     // read. Every refresh path that calls _loadHealthData (the
     // feeling check-in, the connections return) inherits this.
     unawaited(_loadDailyScore());
+  }
+
+  /// Lab (streak screen package, Nov 4, 2026) — settle the local
+  /// streak engine for this app open, off the load's critical path.
+  /// Seeded from the pull, the engine records today (consuming the
+  /// monthly save for a single missed day) and, when its values
+  /// differ from what Home already shows, swaps them in silently
+  /// (and through the home cache, so the Android widget follows).
+  /// Honest-states guard: engine numbers apply ONLY when it is
+  /// seeded — from this pull or an earlier one; an unseeded engine
+  /// (pull failed, no local record) leaves the pulled values
+  /// (nulls → "--") untouched. Any failure degrades to silence.
+  Future<void> _settleStreakWithEngine(int? current, int? best) async {
+    try {
+      final engineState = await StreakStore.instance.recordOpen(
+        seedCurrent: current,
+        seedBest: best,
+        now: DateTime.now(),
+      );
+      if (!engineState.seeded || !mounted) return;
+      final engineCurrent = streakCurrent(engineState, DateTime.now());
+      final engineBest = streakBest(engineState);
+      if (engineCurrent == _currentStreak && engineBest == _bestStreak) {
+        return;
+      }
+      final cache = HomeDataCache.instance;
+      if (cache.applyStreak(engineCurrent, engineBest)) {
+        unawaited(cache.persist());
+      }
+      setState(() {
+        _currentStreak = engineCurrent;
+        _bestStreak = engineBest;
+      });
+    } catch (_) {
+      // The pulled counters stand; the engine retries next load.
+    }
   }
 
   /// Opens the data-connections screen — the one destination/flow
@@ -2097,6 +2146,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 animateCountUps: _countUpsAnimate,
                 counters: _counters,
                 onCountersTap: () => unawaited(_openEventCounters()),
+                onStreakTap: () => unawaited(StreakScreen.open(context)),
               ),
             ),
             StaggeredEntrance(
