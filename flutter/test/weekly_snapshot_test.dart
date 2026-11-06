@@ -154,6 +154,57 @@ void main() {
       }
     });
 
+    testWidgets(
+        'dropdown panel is capped to the viewport at a constrained '
+        'height, Morning Score scrolls into view and selects',
+        (tester) async {
+      // Constrained viewport height: 400 logical px tall (width
+      // stays at the suite's usual 800 so the test font's wide
+      // glyphs do not overflow the card header — a harness artifact
+      // only). The selector sits near the top, so the uncapped
+      // 8-row panel (>= 386dp) would run well past the 400dp
+      // bottom edge — the exact founder defect (Blood Pressure
+      // cut, Morning Score unreachable) reproduced at small scale.
+      tester.view.physicalSize = const Size(800, 400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        const MaterialApp(home: Scaffold(body: WeeklySnapshotCard())),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.arrow_drop_down));
+      await tester.pumpAndSettle();
+
+      // (1) The panel's bottom edge is within the viewport.
+      final panel = find.byKey(
+        const ValueKey('weekly_snapshot_metric_panel'),
+      );
+      expect(panel, findsOneWidget);
+      final panelRect = tester.getRect(panel);
+      expect(panelRect.bottom, lessThanOrEqualTo(400));
+      expect(panelRect.height, lessThan(8 * 48));
+
+      // (2) Morning Score (8th option) can be scrolled into view
+      // inside the capped panel.
+      await tester.ensureVisible(find.text('Morning Score'));
+      await tester.pumpAndSettle();
+      final morningRect = tester.getRect(find.text('Morning Score').last);
+      expect(morningRect.bottom, lessThanOrEqualTo(panelRect.bottom + 1));
+      expect(morningRect.top, greaterThanOrEqualTo(panelRect.top - 1));
+
+      // (3) Tapping it switches the selected metric.
+      await tester.tap(find.text('Morning Score').last);
+      await tester.pumpAndSettle();
+      expect(find.text('No morning scores logged past 7 days'),
+          findsOneWidget);
+      // Dropdown closed after selection; the selector itself now
+      // shows Morning Score.
+      expect(panel, findsNothing);
+      expect(find.text('Morning Score'), findsOneWidget);
+    });
+
     testWidgets('emptyMetricData never invents values', (tester) async {
       for (final m in SnapshotMetric.values) {
         final data = emptyMetricData(m);
