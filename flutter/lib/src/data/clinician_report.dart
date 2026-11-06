@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:tabs_lab/src/data/medication_change_events.dart';
+import 'package:tabs_lab/src/data/medication_timeline.dart';
 import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/migraine_controller.dart'
     show categoryIdByName;
@@ -162,12 +163,14 @@ class ClinicianMedChange {
   final bool captured;
 
   /// Window averages of stored Daily Scores (14 days either
-  /// side, item 2 §3). Non-null ONLY when the D1 floor is met
-  /// for both windows (each ≥ 5 scored days, ≥ 14 in total);
-  /// below the floor no average prints — there is no partial
-  /// average and no zero average.
-  final ({double average, int scoredDays})? beforeWindow;
-  final ({double average, int scoredDays})? afterWindow;
+  /// side, item 2 §3), computed by item 2's
+  /// [computeMedicationWindows] — the exact panel computation,
+  /// whole numbers, exactly as the panel formats them. Non-null
+  /// ONLY when the D1 floor is met for both windows (each ≥ 5
+  /// scored days, ≥ 14 in total); below the floor no average
+  /// prints — there is no partial average and no zero average.
+  final ({int average, int scoredDays})? beforeWindow;
+  final ({int average, int scoredDays})? afterWindow;
 
   const ClinicianMedChange({
     required this.day,
@@ -179,104 +182,60 @@ class ClinicianMedChange {
   });
 }
 
-/// Item 2 §3 window computation, shared with the (future) item
-/// 2b panel — reused here, not recomputed differently for print
-/// (item 2 spec §5).
-///
-/// [scores] maps device-local `yyyy-MM-dd` day keys to STORED
-/// Daily Scores. The change day belongs to the AFTER window for
-/// starts and dose/frequency changes and restores, and to the
-/// BEFORE window for stops (Juno Item 2 · R4 rule). Windows are
-/// 14 days, truncated at neighboring same-medication change
-/// days ([neighborDays], exclusive bounds: a before window
-/// starts after the previous change day; an after window ends
-/// before the next change day) and at the edges of the stored
-/// series. Returns null for a window pair unless the D1 floor
-/// is met for BOTH windows.
-({({double average, int scoredDays}) before, ({double average, int scoredDays}) after})?
-    computeMedChangeWindows({
-  required DateTime changeDay,
-  required bool changeDayInAfter,
-  required Map<String, int> scores,
-  List<DateTime> neighborDays = const [],
-}) {
-  final beforeStartBound = neighborDays
-      .where((d) => d.isBefore(changeDay))
-      .fold<DateTime?>(null, (a, d) => a == null || d.isAfter(a) ? d : a);
-  final afterEndBound = neighborDays
-      .where((d) => d.isAfter(changeDay))
-      .fold<DateTime?>(null, (a, d) => a == null || d.isBefore(a) ? d : a);
+// ── Z5 windows — UNIFIED onto item 2's computation ─────────────
+//
+// Z5 window-semantics fix (ship-checklist production gate):
+// this file previously carried a private duplicate window
+// computation (`computeMedChangeWindows`) whose semantics
+// diverged from the item 2b panel — anchor-exclusive neighbor
+// bounds and non-whole averages printed at one decimal, where
+// the panel truncates at the neighboring change's REGIMEN
+// boundary and prints whole numbers. That duplicate is REMOVED.
+// Z5 now runs item 2's [computeMedicationWindows] over the
+// markers built by [capturedTimelineMarker] — the same call,
+// the same inputs (the full stored Daily Score map, the change
+// marker, every captured marker as the neighbor set), and the
+// same D1 floor semantics the panel and the correlation
+// engine's F5 family already share (item 2 spec §5: "the exact
+// §3 panel computation, reused, not recomputed differently for
+// print"). What remains here is only the projection from
+// [TimelineWindowResult] onto the printed line's shape.
 
-  List<int> windowScores(DateTime first, DateTime last) {
-    final out = <int>[];
-    for (var d = first;
-        !d.isAfter(last);
-        d = DateTime(d.year, d.month, d.day + 1)) {
-      final v = scores[_dayKey(d)];
-      if (v != null && v > 0) out.add(v);
-    }
-    return out;
-  }
+/// The Z5 window length: item 2's panel default (14 days either
+/// side), matching the printed "14 days before / after" wording.
+const int clinicianWindowDays = 14;
 
-  final DateTime beforeFirst, beforeLast, afterFirst, afterLast;
-  if (changeDayInAfter) {
-    beforeLast = DateTime(changeDay.year, changeDay.month, changeDay.day - 1);
-    beforeFirst =
-        DateTime(changeDay.year, changeDay.month, changeDay.day - 14);
-    afterFirst = changeDay;
-    afterLast = DateTime(changeDay.year, changeDay.month, changeDay.day + 13);
-  } else {
-    beforeFirst =
-        DateTime(changeDay.year, changeDay.month, changeDay.day - 13);
-    beforeLast = changeDay;
-    afterFirst =
-        DateTime(changeDay.year, changeDay.month, changeDay.day + 1);
-    afterLast = DateTime(changeDay.year, changeDay.month, changeDay.day + 14);
-  }
-  var bf = beforeFirst, al = afterLast;
-  if (beforeStartBound != null &&
-      !bf.isAfter(beforeStartBound)) {
-    bf = DateTime(
-        beforeStartBound.year, beforeStartBound.month, beforeStartBound.day + 1);
-  }
-  if (afterEndBound != null && !al.isBefore(afterEndBound)) {
-    al = DateTime(
-        afterEndBound.year, afterEndBound.month, afterEndBound.day - 1);
-  }
-
-  final before = windowScores(bf, beforeLast);
-  final after = windowScores(afterFirst, al);
-  // D1 floor (Juno): averages render only when each window has
-  // at least 5 scored days and the two windows have 14 scored
-  // days in total. Below the floor: no averages at all.
-  if (before.length < 5 || after.length < 5 || before.length + after.length < 14) {
-    return null;
-  }
-  double avg(List<int> xs) => xs.fold<int>(0, (a, b) => a + b) / xs.length;
+/// Projects item 2's window result onto Z5's printed pair.
+/// Below the D1 floor the canonical result carries NO averages
+/// (they are discarded in item 2's layer, not merely hidden),
+/// and Z5 prints none either — there is no partial average.
+({
+  ({int average, int scoredDays})? before,
+  ({int average, int scoredDays})? after,
+}) _z5WindowsFrom(TimelineWindowResult result) {
+  if (!result.floorMet) return (before: null, after: null);
   return (
-    before: (average: avg(before), scoredDays: before.length),
-    after: (average: avg(after), scoredDays: after.length),
+    before: (
+      average: result.beforeAverage!,
+      scoredDays: result.beforeScoredDays,
+    ),
+    after: (
+      average: result.afterAverage!,
+      scoredDays: result.afterScoredDays,
+    ),
   );
 }
 
-/// Average formatting for the window patterns: whole numbers
-/// print without a decimal, everything else at one decimal.
+/// Average formatting for the Z3 range average ONLY: whole
+/// numbers print without a decimal, everything else at one
+/// decimal. Z5 window averages do NOT use this — they are
+/// item 2's whole-number averages and print as integers.
 String clinicianAverageText(double average) =>
     average == average.roundToDouble()
         ? '${average.round()}'
         : average.toStringAsFixed(1);
 
 // ── Z5 derivations ───────────────────────────────────────────────
-
-/// Whether a captured event type counts as a regimen change for
-/// the change-day window rule's "after" side. Stops (and
-/// deletes of present meds, which end a regimen the same way)
-/// put the change day in the BEFORE window.
-bool _changeDayInAfter(String type) =>
-    type == 'start' ||
-    type == 'dose_change' ||
-    type == 'frequency_change' ||
-    type == 'restore';
 
 /// The event types Z5 prints. `delete` has no Juno label pattern
 /// (a row removal is not a recorded stop) and `dates_edit` is a
@@ -346,9 +305,21 @@ String _capturedDateLabel(MedicationChangeEvent e) {
 /// Z5, captured form: change lines from item 2a's captured
 /// events (Juno Item 3 · R3: this form replaces the declared
 /// form whenever captured events exist). Most recent first.
+///
+/// Window averages come from item 2's [computeMedicationWindows]
+/// over the [capturedTimelineMarker] marker set built from ALL
+/// printable events (not just in-range ones, so a window never
+/// silently crosses a neighboring change) — the identical call
+/// the panel makes. [scores] is the FULL stored Daily Score map
+/// (`yyyy-MM-dd` → stored score or null), not a range-truncated
+/// subset: a change near the range edge windows over the stored
+/// days on both sides of it, exactly as the panel does. The
+/// marker's anchor day is the day the printed line carries
+/// ([_capturedChangeDay] implements the same anchor rule,
+/// including the C1 restore exception, for the label).
 List<ClinicianMedChange> deriveCapturedMedChanges(
   List<MedicationChangeEvent> events, {
-  required Map<String, int> scores,
+  required Map<String, int?> scores,
   required DateTime rangeStart,
   required DateTime rangeEnd,
 }) {
@@ -356,37 +327,35 @@ List<ClinicianMedChange> deriveCapturedMedChanges(
     for (final e in events)
       if (_printableEventTypes.contains(e.type)) e,
   ];
-  // Neighbor days per medication (identity: medId when both
-  // sides carry one, else the recorded name) — across ALL
-  // printable events, not just in-range ones, so a window never
-  // silently crosses a neighboring change (item 2 §3).
-  String medKey(MedicationChangeEvent e) =>
-      e.medId.isNotEmpty ? 'id:${e.medId}' : 'name:${e.medName}';
-  final daysByMed = <String, List<DateTime>>{};
+  // The neighbor/bounding set is item 2's marker set: one
+  // marker per printable event, built by the timeline
+  // derivation's own constructor. Non-marker types (`delete`,
+  // `dates_edit`) are already excluded by _printableEventTypes
+  // and would project to null here regardless.
+  final paired = <({MedicationChangeEvent event, TimelineMarker marker})>[];
   for (final e in printable) {
-    daysByMed.putIfAbsent(medKey(e), () => []).add(_capturedChangeDay(e));
+    final marker = capturedTimelineMarker(e);
+    if (marker != null) paired.add((event: e, marker: marker));
   }
+  final allMarkers = [for (final p in paired) p.marker];
   final out = <ClinicianMedChange>[];
-  for (final e in printable) {
+  for (final p in paired) {
+    final e = p.event;
     final day = _capturedChangeDay(e);
     if (day.isBefore(rangeStart) || day.isAfter(rangeEnd)) continue;
-    final neighbors = [
-      for (final d in daysByMed[medKey(e)] ?? const <DateTime>[])
-        if (d != day) d,
-    ];
-    final windows = computeMedChangeWindows(
-      changeDay: day,
-      changeDayInAfter: _changeDayInAfter(e.type),
-      scores: scores,
-      neighborDays: neighbors,
-    );
+    final windows = _z5WindowsFrom(computeMedicationWindows(
+      marker: p.marker,
+      allMarkers: allMarkers,
+      scoresByDate: scores,
+      windowDays: clinicianWindowDays,
+    ));
     out.add(ClinicianMedChange(
       day: day,
       dateLabel: _capturedDateLabel(e),
       label: _capturedChangeLabel(e),
       captured: true,
-      beforeWindow: windows?.before,
-      afterWindow: windows?.after,
+      beforeWindow: windows.before,
+      afterWindow: windows.after,
     ));
   }
   out.sort((a, b) => b.day.compareTo(a.day));
@@ -722,7 +691,11 @@ class ClinicianReportCollector {
       captured = true;
       changes = deriveCapturedMedChanges(
         events,
-        scores: {for (final e in series) e.$1: e.$2},
+        // The FULL stored score map — the same input the panel
+        // windows over — not the range-truncated Z3 series: a
+        // change near the range edge needs its stored days from
+        // both sides of the edge.
+        scores: scores,
         rangeStart: range.start,
         rangeEnd: range.end,
       );
