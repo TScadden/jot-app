@@ -98,7 +98,7 @@ void main() {
       expect(find.text('Not enough sleep data yet'), findsOneWidget);
     });
 
-    testWidgets('dropdown lists all 7 metrics and switching works',
+    testWidgets('dropdown lists all metrics and switching works',
         (tester) async {
       await tester.pumpWidget(
         const MaterialApp(home: Scaffold(body: WeeklySnapshotCard())),

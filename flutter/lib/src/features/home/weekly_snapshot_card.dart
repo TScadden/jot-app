@@ -796,8 +796,13 @@ class _SnapshotChartPainter extends CustomPainter {
     final points = data.points;
     final valid = points.map((p) => p.value).whereType<double>().toList();
     if (valid.isEmpty) return;
-    final minV = valid.reduce((a, b) => a < b ? a : b);
-    final maxV = valid.reduce((a, b) => a > b ? a : b);
+    // Bounded-scale metrics (Morning Score, 1–5) draw against their
+    // fixed domain so the line's height means the same thing every
+    // week; every other metric keeps the native data-range scaling.
+    final minV = data.metric.chartMin ??
+        valid.reduce((a, b) => a < b ? a : b);
+    final maxV = data.metric.chartMax ??
+        valid.reduce((a, b) => a > b ? a : b);
     final range = (maxV - minV) == 0 ? 1.0 : (maxV - minV);
 
     double cx(int i) => (i + 0.5) * stepX;

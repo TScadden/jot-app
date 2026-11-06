@@ -21,6 +21,10 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// - logs → local log DB (`LogEntryDao.getEntriesInDateRangeDirect`)
 /// - habit_completion → server habits (`HabitRepository.habits`)
 /// - blood_pressure → `BloodPressureRepository` (Health Connect + manual)
+/// - morning_score → WIRED (Nov 4, 2026): the Daily Ranking check-in
+///   entries from the sync pull, derived per energy day by the
+///   correlation engine's `deriveFeelingByDay` (see
+///   `HealthRepository.loadSnapshot`).
 ///
 /// Until then every metric reports the native empty state — no values
 /// are invented. The one exception is Logs: the native aggregator
@@ -34,7 +38,12 @@ enum SnapshotMetric {
   calories('calories', 'Active Calories', 'kcal'),
   logs('logs', 'Logs', ''),
   habitCompletion('habit_completion', 'Habit Completion', '%'),
-  bloodPressure('blood_pressure', 'Blood Pressure', 'mmHg');
+  bloodPressure('blood_pressure', 'Blood Pressure', 'mmHg'),
+  // Founder addition (Nov 4, 2026): the morning 1–5 Daily Ranking
+  // from the Home "How are you feeling?" check-in, as one more option
+  // in this selector. Appended LAST so the seven native options keep
+  // their order. Unit is empty — values render bare ("4"), like Logs.
+  morningScore('morning_score', 'Morning Score', '');
 
   final String stableKey;
   final String displayName;
@@ -60,8 +69,20 @@ enum SnapshotMetric {
         return NotelColors.warning;
       case SnapshotMetric.bloodPressure:
         return NotelColors.error; // systolic; diastolic uses NotelColors.info
+      case SnapshotMetric.morningScore:
+        // Tabs purple — the check-in card's own color family.
+        return NotelColors.primary;
     }
   }
+
+  /// Fixed y-axis domain for the line chart, when the metric's scale
+  /// is a known bounded range rather than the data's own min/max.
+  /// Morning Score is a 1–5 scale: the line is drawn against 1–5 so
+  /// a one-point move reads as one quarter of the chart, never
+  /// stretched to fill it. Null for every other metric (the painter
+  /// keeps the native data-range scaling).
+  double? get chartMin => this == SnapshotMetric.morningScore ? 1.0 : null;
+  double? get chartMax => this == SnapshotMetric.morningScore ? 5.0 : null;
 
   bool get isBarChart => switch (this) {
         SnapshotMetric.hrSpikes ||
@@ -192,6 +213,13 @@ WeeklySnapshotMetricData emptyMetricData(SnapshotMetric metric) {
         averageOrTotalText: 'No blood pressure records found',
         isAvailable: false,
         emptyMessage: 'No blood pressure records found',
+      );
+    case SnapshotMetric.morningScore:
+      return WeeklySnapshotMetricData(
+        metric: metric,
+        points: points(7),
+        averageOrTotalText: 'No morning scores logged past 7 days',
+        emptyMessage: 'No morning scores logged past 7 days',
       );
   }
 }
