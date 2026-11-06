@@ -315,7 +315,7 @@ class CalendarException implements Exception {
 /// The Health Coach screen keeps its historical name for this
 /// string as an alias (`coachCalendarPermissionDisclosure`).
 const String calendarCoachDisclosure =
-    'Tabs Coach needs read and write access to your calendar. When Google Calendar is connected, the Coach reads the titles and times of your events for today and the next 14 days and sends them to the Tabs AI service so it can answer with your schedule in context. The Coach can also add events to, and delete events from, your calendar, only for proposals you tap Approve on. Nothing is added or deleted without your approval. Tap Continue to allow calendar access.';
+    'Tabs Coach needs read and write access to your calendar. If you connect Google Calendar and grant calendar permission, the Coach reads the titles and start times of your events for today and the next 14 days and transmits them to our backend and the Google Gemini API as context for your Coach conversations. The Coach may propose calendar events and deletions, and it adds or deletes an event only after you tap Approve on the proposal. Nothing is added or deleted without your approval. Disconnecting Google Calendar in Settings > Connected Apps stops this access, and you can revoke calendar permission at any time in Android system settings. Tap Continue to proceed.';
 
 // ── Native outcome copy (CoachViewModel.kt, verbatim) ───────────────────────
 

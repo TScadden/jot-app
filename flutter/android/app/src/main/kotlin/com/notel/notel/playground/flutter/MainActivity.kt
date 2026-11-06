@@ -1055,8 +1055,8 @@ class MainActivity : FlutterFragmentActivity() {
     /// as a PERMISSION_DENIED error (takeover disclosures, audit
     /// P4 — Dart substitutes the permission-missing context, never
     /// "No events found."); any other failure surfaces as
-    /// CALENDAR_READ_FAILED (Dart substitutes native's "Calendar
-    /// events are unavailable right now."). An empty success here
+    /// CALENDAR_READ_FAILED (Dart substitutes Juno's ruled guard
+    /// strings). An empty success here
     /// must mean the calendar is genuinely empty, never
     /// "permission missing".
     private fun getUpcomingCalendarEvents(result: MethodChannel.Result) {
@@ -1088,7 +1088,7 @@ class MainActivity : FlutterFragmentActivity() {
                 // query below can filter them out at calendar-ID
                 // level, before any row is read or formatted.
                 val excludedCalendarIds = mutableListOf<Long>()
-                contentResolver.query(
+                (contentResolver.query(
                     CalendarContract.Calendars.CONTENT_URI,
                     arrayOf(
                         CalendarContract.Calendars._ID,
@@ -1096,7 +1096,9 @@ class MainActivity : FlutterFragmentActivity() {
                         CalendarContract.Calendars.CALENDAR_DISPLAY_NAME
                     ),
                     null, null, null
-                )?.use { cursor ->
+                ) ?: throw IllegalStateException(
+                    "Calendar provider returned no Calendars cursor"
+                )).use { cursor ->
                     val idCol = cursor.getColumnIndex(CalendarContract.Calendars._ID)
                     val accNameCol =
                         cursor.getColumnIndex(CalendarContract.Calendars.ACCOUNT_NAME)
@@ -1151,13 +1153,15 @@ class MainActivity : FlutterFragmentActivity() {
                         .map { it.toString() }
                         .toTypedArray()
                 }
-                    contentResolver.query(
+                    (contentResolver.query(
                         instancesUriBuilder.build(),
                         instanceProjection,
                         instanceSelection,
                         instanceSelectionArgs,
                         "${CalendarContract.Instances.BEGIN} ASC"
-                    )?.use { cursor ->
+                    ) ?: throw IllegalStateException(
+                        "Calendar provider returned no Instances cursor"
+                    )).use { cursor ->
                         val titleCol = cursor.getColumnIndex(CalendarContract.Instances.TITLE)
                         val beginCol = cursor.getColumnIndex(CalendarContract.Instances.BEGIN)
                         val allDayCol = cursor.getColumnIndex(CalendarContract.Instances.ALL_DAY)
