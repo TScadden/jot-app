@@ -354,6 +354,7 @@ void main() {
       );
       final changes = deriveCapturedMedChanges(
         [restore],
+        medications: const [],
         scores: const {},
         rangeStart: DateTime(2026, 10, 1),
         rangeEnd: DateTime(2026, 10, 31),
@@ -371,6 +372,7 @@ void main() {
       );
       final startChanges = deriveCapturedMedChanges(
         [start],
+        medications: const [],
         scores: const {},
         rangeStart: DateTime(2026, 10, 1),
         rangeEnd: DateTime(2026, 10, 31),

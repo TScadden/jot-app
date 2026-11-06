@@ -657,28 +657,16 @@ TimelineMarker? _capturedMarker(MedicationChangeEvent e) {
   );
 }
 
-/// The full derivation: captured markers + seeded markers
-/// (deduped, captured wins), the calendar-continuous day axis
-/// with the score/flare/migraine/symptom series, and the
-/// per-medication lanes.
-MedicationTimelineData buildMedicationTimeline({
-  required List<MedicationChangeEvent> events,
-  required List<MedicationEntry> medications,
-  required Map<String, int?> scoresByDate,
-  required List<QuickLogEntry> entries,
-  required List<QuickLogCategory> categories,
-  required DateTime today,
-}) {
-  final todayDay = _dayOnly(today);
-
-  // ── Captured markers ────────────────────────────────────────
-  final captured = <TimelineMarker>[];
-  for (final e in events) {
-    final m = _capturedMarker(e);
-    if (m != null) captured.add(m);
-  }
-
-  // ── Seeds from surviving (not deleted) rows ─────────────────
+/// The seeded markers derived from the current medication
+/// list (declared start for surviving rows, declared stop for
+/// archived rows), plus the count of seed candidates that
+/// produced no marker because their declared date string was
+/// blank or unparseable. This is THE seeding implementation:
+/// every surface that needs the panel's marker set (the panel
+/// itself, the clinician PDF's Z5 bounding set) builds its
+/// seeds here — never a second copy that can drift.
+({List<TimelineMarker> markers, int skippedSeedCount})
+    seededTimelineMarkers(List<MedicationEntry> medications) {
   var skippedSeeds = 0;
   final seeds = <TimelineMarker>[];
   for (final row in medications) {
@@ -687,7 +675,8 @@ MedicationTimelineData buildMedicationTimeline({
 
     // Declared start (active and archived rows alike).
     final startRaw = row.startDate.trim();
-    final startDate = startRaw.isEmpty ? null : parseMedicationDate(startRaw);
+    final startDate =
+        startRaw.isEmpty ? null : parseMedicationDate(startRaw);
     if (startDate == null) {
       // Blank or unparseable — no marker, counted (test 10).
       skippedSeeds++;
@@ -737,10 +726,18 @@ MedicationTimelineData buildMedicationTimeline({
       }
     }
   }
+  return (markers: seeds, skippedSeedCount: skippedSeeds);
+}
 
-  // Dedup: a captured marker suppresses a seed for the same med
-  // (id match when both non-empty, else name match) + same class
-  // (start/stop) + same declared date string. Captured wins.
+/// Merges [captured] and [seeded] markers with the
+/// captured-wins dedup: a captured marker suppresses a seed for
+/// the same medication (id match when both non-empty, else name
+/// match) + same class (start/stop) + same declared date string.
+/// The single dedup implementation every surface shares.
+List<TimelineMarker> mergeTimelineMarkersCapturedWins({
+  required List<TimelineMarker> captured,
+  required List<TimelineMarker> seeded,
+}) {
   bool capturedSuppresses(TimelineMarker seed) {
     for (final c in captured) {
       if (c.kind != seed.kind) continue;
@@ -754,12 +751,46 @@ MedicationTimelineData buildMedicationTimeline({
     return false;
   }
 
-  final markers =
-      <TimelineMarker>[
-        ...captured,
-        for (final s in seeds)
-          if (!capturedSuppresses(s)) s,
-      ]..sort((a, b) {
+  return <TimelineMarker>[
+    ...captured,
+    for (final s in seeded)
+      if (!capturedSuppresses(s)) s,
+  ];
+}
+
+/// The full derivation: captured markers + seeded markers
+/// (deduped, captured wins), the calendar-continuous day axis
+/// with the score/flare/migraine/symptom series, and the
+/// per-medication lanes.
+MedicationTimelineData buildMedicationTimeline({
+  required List<MedicationChangeEvent> events,
+  required List<MedicationEntry> medications,
+  required Map<String, int?> scoresByDate,
+  required List<QuickLogEntry> entries,
+  required List<QuickLogCategory> categories,
+  required DateTime today,
+}) {
+  final todayDay = _dayOnly(today);
+
+  // ── Captured markers ────────────────────────────────────────
+  final captured = <TimelineMarker>[];
+  for (final e in events) {
+    final m = _capturedMarker(e);
+    if (m != null) captured.add(m);
+  }
+
+  // ── Seeds from surviving (not deleted) rows, merged with
+  // the captured-wins dedup — the shared implementations above
+  // ([seededTimelineMarkers] /
+  // [mergeTimelineMarkersCapturedWins]), so every surface
+  // bounding on this marker set agrees. ──────────────────────
+  final seededResult = seededTimelineMarkers(medications);
+  final skippedSeeds = seededResult.skippedSeedCount;
+
+  final markers = mergeTimelineMarkersCapturedWins(
+        captured: captured,
+        seeded: seededResult.markers,
+      )..sort((a, b) {
         final byDate = a.date.compareTo(b.date);
         if (byDate != 0) return byDate;
         // Same-day order is capture sequence (the windowing

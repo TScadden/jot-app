@@ -200,6 +200,15 @@ class ClinicianMedChange {
 // §3 panel computation, reused, not recomputed differently for
 // print"). What remains here is only the projection from
 // [TimelineWindowResult] onto the printed line's shape.
+//
+// Juno condition (Z5 unification follow-up): the neighbor set
+// above is the panel's FULL marker set — captured markers plus
+// the seeded markers from the medication list, merged by the
+// panel's own seeding/dedup functions in
+// [deriveCapturedMedChanges]. A captured-only set let a window
+// run across a declared-but-never-captured start the panel
+// truncates at, printing a different average beside the same
+// change.
 
 /// The Z5 window length: item 2's panel default (14 days either
 /// side), matching the printed "14 days before / after" wording.
@@ -307,18 +316,30 @@ String _capturedDateLabel(MedicationChangeEvent e) {
 /// form whenever captured events exist). Most recent first.
 ///
 /// Window averages come from item 2's [computeMedicationWindows]
-/// over the [capturedTimelineMarker] marker set built from ALL
-/// printable events (not just in-range ones, so a window never
-/// silently crosses a neighboring change) — the identical call
-/// the panel makes. [scores] is the FULL stored Daily Score map
-/// (`yyyy-MM-dd` → stored score or null), not a range-truncated
-/// subset: a change near the range edge windows over the stored
-/// days on both sides of it, exactly as the panel does. The
-/// marker's anchor day is the day the printed line carries
-/// ([_capturedChangeDay] implements the same anchor rule,
-/// including the C1 restore exception, for the label).
+/// over the SAME marker set the panel bounds on: the captured
+/// markers built by [capturedTimelineMarker] from ALL printable
+/// events (not just in-range ones, so a window never silently
+/// crosses a neighboring change) PLUS the seeded markers the
+/// panel derives from the full medication list
+/// ([seededTimelineMarkers] over [medications], merged with the
+/// panel's captured-wins dedup,
+/// [mergeTimelineMarkersCapturedWins]) — Juno condition on the
+/// Z5 unification: a declared start that was never captured
+/// still bounds a captured change's window, exactly as it does
+/// on the panel. Seeded markers are BOUNDING ONLY: they never
+/// print as Z5 lines here (the printed lines below iterate the
+/// captured pairs only; declared-form rendering is
+/// [deriveDeclaredMedChanges], unchanged). [scores] is the FULL
+/// stored Daily Score map (`yyyy-MM-dd` → stored score or
+/// null), not a range-truncated subset: a change near the range
+/// edge windows over the stored days on both sides of it,
+/// exactly as the panel does. The marker's anchor day is the
+/// day the printed line carries ([_capturedChangeDay] implements
+/// the same anchor rule, including the C1 restore exception, for
+/// the label).
 List<ClinicianMedChange> deriveCapturedMedChanges(
   List<MedicationChangeEvent> events, {
+  required List<MedicationEntry> medications,
   required Map<String, int?> scores,
   required DateTime rangeStart,
   required DateTime rangeEnd,
@@ -337,7 +358,10 @@ List<ClinicianMedChange> deriveCapturedMedChanges(
     final marker = capturedTimelineMarker(e);
     if (marker != null) paired.add((event: e, marker: marker));
   }
-  final allMarkers = [for (final p in paired) p.marker];
+  final allMarkers = mergeTimelineMarkersCapturedWins(
+    captured: [for (final p in paired) p.marker],
+    seeded: seededTimelineMarkers(medications).markers,
+  );
   final out = <ClinicianMedChange>[];
   for (final p in paired) {
     final e = p.event;
@@ -691,6 +715,10 @@ class ClinicianReportCollector {
       captured = true;
       changes = deriveCapturedMedChanges(
         events,
+        // The FULL medication list — the panel's seeding source
+        // for the bounding marker set (bounding only; seeded
+        // changes never print in captured form).
+        medications: allMedications,
         // The FULL stored score map — the same input the panel
         // windows over — not the range-truncated Z3 series: a
         // change near the range edge needs its stored days from
