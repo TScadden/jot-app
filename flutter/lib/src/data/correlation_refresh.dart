@@ -2,6 +2,7 @@ import 'correlation_engine.dart';
 import 'correlation_insight_store.dart';
 import 'health_history_store.dart';
 import 'medication_change_events.dart';
+import 'medications.dart';
 import 'quick_log_models.dart';
 import 'settings_store.dart';
 import 'tabs_backend.dart';
@@ -28,7 +29,11 @@ import '../features/home/intake_logging.dart';
 /// The Empty providers remain as the constructor defaults for
 /// tests and fail-safe contexts; the engine handles empty
 /// honestly (F2 target splits stay unclassifiable, F5 renders
-/// its S7 unavailable record).
+/// its S7 unavailable record). A third seam joined later (F5
+/// seeded-bounds fix): [BackendMedicationListProvider] reads
+/// the profile blob's medication rows so F5 bounds its windows
+/// on the same seeded marker set as the panel and the
+/// clinician PDF.
 
 /// Production target-history provider: empty until item 4's store
 /// lands (see the file header).
@@ -46,6 +51,16 @@ class EmptyMedChangeEventProvider implements MedChangeEventProvider {
 
   @override
   Future<List<MedChangeEventInput>> loadMedChangeEvents() async => const [];
+}
+
+/// Production med-list provider: empty until the refresher
+/// wires the profile read path (see
+/// [BackendMedicationListProvider]).
+class EmptyMedicationListProvider implements MedicationListProvider {
+  const EmptyMedicationListProvider();
+
+  @override
+  Future<List<MedicationEntry>> loadMedications() async => const [];
 }
 
 /// Production target-history provider (VC 100109 combine): reads
@@ -130,6 +145,31 @@ class BackendMedChangeEventProvider implements MedChangeEventProvider {
   }
 }
 
+/// Production med-list provider (F5 seeded-bounds fix): reads
+/// the medication list from the same sync-pull profile blob the
+/// item 2 panel and the clinician report read —
+/// [TabsBackend.fetchProfile] → [TabsBackend.decodeProfileList]
+/// → [parseMedicationBlob] — so the seeded markers F5 bounds on
+/// derive from the identical rows the panel seeds from. A
+/// failed fetch (null) degrades to an empty list: F5 then
+/// bounds on captured markers only until a successful refresh
+/// lands the real list.
+class BackendMedicationListProvider implements MedicationListProvider {
+  final TabsBackend _backend;
+
+  BackendMedicationListProvider({TabsBackend? backend})
+    : _backend = backend ?? TabsBackend();
+
+  @override
+  Future<List<MedicationEntry>> loadMedications() async {
+    final profile = await _backend.fetchProfile();
+    if (profile == null) return const [];
+    return parseMedicationBlob(
+      TabsBackend.decodeProfileList(profile['medications']),
+    );
+  }
+}
+
 /// What one refresh did — returned for tests and diagnostics; the
 /// refresher never throws, so a failed refresh is a value.
 class CorrelationRefreshOutcome {
@@ -167,6 +207,7 @@ class CorrelationRefresher {
   final CorrelationInsightStore _insightStore;
   final IntakeTargetHistoryProvider _targetProvider;
   final MedChangeEventProvider _medEventProvider;
+  final MedicationListProvider _medListProvider;
   final Future<String?> Function() _readEmail;
   final DateTime Function() _now;
 
@@ -176,6 +217,7 @@ class CorrelationRefresher {
     required this._insightStore,
     this._targetProvider = const EmptyIntakeTargetHistoryProvider(),
     this._medEventProvider = const EmptyMedChangeEventProvider(),
+    this._medListProvider = const EmptyMedicationListProvider(),
     Future<String?> Function()? readEmail,
     DateTime Function()? now,
   }) : _backend = backend,
@@ -189,9 +231,12 @@ class CorrelationRefresher {
       historyStore: HealthHistoryStore.instance,
       insightStore: CorrelationInsightStore.instance,
       // VC 100109 combine: the real read paths behind the seams
-      // (item 4's target store; the item 2b med-event GET).
+      // (item 4's target store; the item 2b med-event GET). The
+      // med-list seam joined them with the F5 seeded-bounds fix
+      // (the profile blob's medication rows).
       targetProvider: SettingsIntakeTargetHistoryProvider(),
       medEventProvider: BackendMedChangeEventProvider(backend: backend),
+      medListProvider: BackendMedicationListProvider(backend: backend),
     );
   }
 
@@ -215,6 +260,7 @@ class CorrelationRefresher {
         _historyStore.readAll(),
         _targetProvider.loadTargetHistory(),
         _medEventProvider.loadMedChangeEvents(),
+        _medListProvider.loadMedications(),
       ]);
       final inputs = CorrelationInputs(
         entries: results[0] as List<QuickLogEntry>,
@@ -222,6 +268,7 @@ class CorrelationRefresher {
         biometrics: results[2] as Map<String, DailyBiometrics>,
         targetHistory: results[3] as List<IntakeTargetHistoryEntry>,
         medEvents: results[4] as List<MedChangeEventInput>,
+        medications: results[5] as List<MedicationEntry>,
         nowDayKey: _dayKeyOf(_now()),
       );
 
