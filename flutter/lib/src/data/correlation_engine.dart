@@ -29,7 +29,7 @@ import 'correlation_copy.dart';
 import 'health_history_store.dart';
 import 'medication_change_events.dart';
 import 'medication_timeline.dart';
-import 'medications.dart' show parseMedicationDate;
+import 'medications.dart' show MedicationEntry, parseMedicationDate;
 import 'quick_log_models.dart';
 import 'sleep_need.dart';
 import 'today_summary.dart' show dateStrOf;
@@ -704,6 +704,14 @@ abstract class MedChangeEventProvider {
   Future<List<MedChangeEventInput>> loadMedChangeEvents();
 }
 
+/// Provider seam for the current medication list (the declared
+/// start/stop dates F5's seeded bounding markers derive from).
+/// Production defaults return empty until the refresher wires
+/// the profile read path — see correlation_refresh.dart.
+abstract class MedicationListProvider {
+  Future<List<MedicationEntry>> loadMedications();
+}
+
 /// Everything the pure compute consumes. Assembled by
 /// correlation_refresh.dart in production; built by hand in tests.
 class CorrelationInputs {
@@ -712,6 +720,14 @@ class CorrelationInputs {
   final List<QuickLogCategory> categories;
   final List<IntakeTargetHistoryEntry> targetHistory;
   final List<MedChangeEventInput> medEvents;
+
+  /// The current medication list (declared start/stop dates).
+  /// F5 bounds its windows on the seeded markers derived from
+  /// this list — the same marker set the item 2 panel and the
+  /// clinician PDF bound on. Defaults empty (captured-only
+  /// bounding) for callers that hold no medication list; the
+  /// production refresher always passes the real list.
+  final List<MedicationEntry> medications;
 
   /// Fallback 'through' day key when no input series has any day.
   final String nowDayKey;
@@ -722,6 +738,7 @@ class CorrelationInputs {
     required this.categories,
     required this.targetHistory,
     required this.medEvents,
+    this.medications = const [],
     required this.nowDayKey,
   });
 }
@@ -1210,15 +1227,30 @@ class F5WindowResult {
 }
 
 /// Computes the F5 before/after windows for [event] by running
-/// item 2's [computeMedicationWindows] over the marker set
-/// built from [allEvents] — the passthrough the item-5 spec
-/// requires (§8 test 4 asserts the F5 record equals this
-/// function's output, and this function's output equals item
-/// 2's own result over the same markers).
+/// item 2's [computeMedicationWindows] over the FULL marker
+/// set — the passthrough the item-5 spec requires (§8 test 4
+/// asserts the F5 record equals this function's output, and
+/// this function's output equals item 2's own result over the
+/// same markers).
+///
+/// The bounding set is the shared one every surface uses: the
+/// captured markers built from [allEvents] PLUS the seeded
+/// markers derived from [medications] (the declared start/stop
+/// dates on the medication list), merged with the panel's
+/// captured-wins dedup ([seededTimelineMarkers] /
+/// [mergeTimelineMarkersCapturedWins]) — the exact construction
+/// the clinician PDF's Z5 zone adopted for its bounding set. A
+/// declared start or stop that was never captured therefore
+/// bounds an F5 window exactly as it bounds the panel's and
+/// Z5's windows for the same period. Seeded markers are
+/// BOUNDING ONLY: F5 records are still created per captured
+/// event (the job loop iterates [CorrelationInputs.medEvents]),
+/// never per seed, and no seeded change renders as a change.
 F5WindowResult computeF5Windows({
   required MedChangeEventInput event,
   required List<MedChangeEventInput> allEvents,
   required Map<String, DailyBiometrics> biometrics,
+  List<MedicationEntry> medications = const [],
 }) {
   final anchor = medChangeAnchorDay(event);
   final own = _f5OwnMarker(event);
@@ -1235,10 +1267,13 @@ F5WindowResult computeF5Windows({
       afterNeighborTruncated: false,
     );
   }
-  final markers = <TimelineMarker>[
-    for (final e in allEvents)
-      ?capturedTimelineMarker(medChangeContractEvent(e)),
-  ];
+  final markers = mergeTimelineMarkersCapturedWins(
+    captured: <TimelineMarker>[
+      for (final e in allEvents)
+        ?capturedTimelineMarker(medChangeContractEvent(e)),
+    ],
+    seeded: seededTimelineMarkers(medications).markers,
+  );
   final w = computeMedicationWindows(
     marker: own,
     allMarkers: markers,
@@ -1256,6 +1291,23 @@ F5WindowResult computeF5Windows({
     afterSpanDays: w.afterSpanDays,
     afterNeighborTruncated: w.afterNeighborTruncated,
   );
+}
+
+/// A compact signature of the seeded half of F5's bounding
+/// marker set — the markers [seededTimelineMarkers] derives
+/// from [medications]. The F5 fingerprint carries it so a
+/// declared start/stop change that produces NO captured event
+/// (a profile-only edit, or a list that arrives by sync ahead
+/// of its events) still marks the F5 records stale; without it
+/// the refresh would keep serving windows computed against the
+/// old bounding set. No other family reads the medication
+/// list, so no other fingerprint carries it.
+int f5SeededBoundsSignature(List<MedicationEntry> medications) {
+  final descriptors = <String>[
+    for (final m in seededTimelineMarkers(medications).markers)
+      '${m.medId}|${m.medName}|${m.kind.name}|${m.dateDisplay}',
+  ]..sort();
+  return descriptors.join(';').hashCode;
 }
 
 /// The item-2 Draft 6 header label for an F5 event. Null for
@@ -1759,10 +1811,15 @@ List<_Job> _buildJobs(CorrelationInputs inputs, _Derived d, int computedAtMs) {
               ? byAnchor
               : a.recordedAt.compareTo(b.recordedAt);
         });
+    // The seeded bounding set is an F5 input in its own right:
+    // its signature rides every F5 fingerprint (see
+    // [f5SeededBoundsSignature]).
+    final seedBounds = f5SeededBoundsSignature(inputs.medications);
     for (final event in eligible) {
       final fp = _fingerprint('F5', d.through, {
         'bio': inputs.biometrics.length,
         'events': inputs.medEvents.length,
+        'seeds': seedBounds,
         'event': event.recordedAt,
         'eventId': event.id.hashCode,
         'eventType': event.type.hashCode,
@@ -1774,6 +1831,7 @@ List<_Job> _buildJobs(CorrelationInputs inputs, _Derived d, int computedAtMs) {
             event: event,
             allEvents: inputs.medEvents,
             biometrics: inputs.biometrics,
+            medications: inputs.medications,
           );
           final numbers = meetsCorrelationFloor(
             windows.beforeN,

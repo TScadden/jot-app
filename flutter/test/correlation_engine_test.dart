@@ -5,6 +5,7 @@ import 'package:tabs_lab/src/data/correlation_copy.dart';
 import 'package:tabs_lab/src/data/correlation_engine.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/medication_timeline.dart';
+import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 
 /// Phase 1, item 5 — engine tests (spec §8 numbering).
@@ -84,6 +85,7 @@ CorrelationInputs inputs({
   List<QuickLogEntry> entries = const [],
   List<IntakeTargetHistoryEntry> targetHistory = const [],
   List<MedChangeEventInput> medEvents = const [],
+  List<MedicationEntry> medications = const [],
   String nowDayKey = '2026-09-28',
 }) =>
     CorrelationInputs(
@@ -92,6 +94,7 @@ CorrelationInputs inputs({
       categories: categories,
       targetHistory: targetHistory,
       medEvents: medEvents,
+      medications: medications,
       nowDayKey: nowDayKey,
     );
 
@@ -897,6 +900,308 @@ void main() {
         correlationFlareIncidenceSentence(x: 7, n: 7, y: 0, m: 7),
         'A flare was logged on 7 of the 7 days after days your logged intake reached your target, and on 0 of the 7 days after days your logged intake was below your target.',
       );
+    });
+  });
+
+  group('F5 seeded bounding', () {
+    // The F5 bounding set is the shared full marker set:
+    // captured markers PLUS the seeded markers derived from the
+    // medication list (declared start/stop dates), merged with
+    // the panel's captured-wins dedup — the construction the
+    // clinician PDF's Z5 zone adopted in PR #32. A
+    // declared-but-never-captured start or stop must bound an
+    // F5 window exactly as it bounds the panel's window for the
+    // same period.
+
+    MedChangeEventInput doseChange({
+      required String id,
+      required String medId,
+      required String medName,
+      required String dayKey,
+      required String declared,
+    }) =>
+        MedChangeEventInput(
+          id: id,
+          medId: medId,
+          medName: medName,
+          type: 'dose_change',
+          oldSnapshot: const MedFieldSnapshot(
+              dose: '5 mg',
+              frequency: 'Daily',
+              startDate: '',
+              endDate: 'Present',
+              isPresent: true),
+          newSnapshot: const MedFieldSnapshot(
+              dose: '10 mg',
+              frequency: 'Daily',
+              startDate: '',
+              endDate: 'Present',
+              isPresent: true),
+          effectiveDate: declared,
+          recordedAt: tsFor(dayKey, hour: 9),
+          source: 'tools',
+        );
+
+    test('seeded start (declared, never captured) bounds a '
+        'captured dose change\'s before window; F5 equals item 2 '
+        'over the shared merged set', () {
+      final rows = <DailyBiometrics>[];
+      // Aug 27–31 score 90 (before the declared start), Sep 1–9
+      // score 50 (on the med, before the change), Sep 10–23
+      // score 70 (after the change).
+      for (var i = 0; i < 28; i++) {
+        rows.add(bio(addDaysToDayKey('2026-08-27', i),
+            score: i < 5 ? 90 : (i < 14 ? 50 : 70)));
+      }
+      final event = doseChange(
+        id: 'ev-dc',
+        medId: 'm1',
+        medName: 'MedA',
+        dayKey: '2026-09-10',
+        declared: 'Sep 10, 2026',
+      );
+      final medications = [
+        MedicationEntry(
+          id: 'm1',
+          name: 'MedA',
+          dose: '5 mg',
+          frequency: 'Once daily',
+          startDate: 'Sep 1, 2026',
+          endDate: 'Present',
+          isPresent: true,
+        ),
+      ];
+
+      final bounded = computeF5Windows(
+        event: event,
+        allEvents: [event],
+        biometrics: bioMap(rows),
+        medications: medications,
+      );
+      // The before window truncates at the declared start's
+      // regimen: Sep 1–9, 9 scored days averaging 50.
+      expect(bounded.beforeNeighborTruncated, isTrue);
+      expect(bounded.beforeSpanDays, 9);
+      expect(bounded.beforeN, 9);
+      expect(bounded.beforeMean, 50);
+      expect(bounded.afterNeighborTruncated, isFalse);
+      expect(bounded.afterN, 14);
+      expect(bounded.afterMean, 70);
+
+      // Captured-only set (no medication list): the before
+      // window runs the full 14 days across the declared start
+      // and averages the pre-start 90s in — the divergence this
+      // fix closes.
+      final unbounded = computeF5Windows(
+        event: event,
+        allEvents: [event],
+        biometrics: bioMap(rows),
+      );
+      expect(unbounded.beforeNeighborTruncated, isFalse);
+      expect(unbounded.beforeN, 14);
+      expect(unbounded.beforeMean, 64); // (5*90 + 9*50) / 14
+
+      // Panel agreement: item 2's own computation over the
+      // shared merged marker set produces identical windows.
+      final ownMarker =
+          capturedTimelineMarker(medChangeContractEvent(event))!;
+      final item2 = computeMedicationWindows(
+        marker: ownMarker,
+        allMarkers: mergeTimelineMarkersCapturedWins(
+          captured: [ownMarker],
+          seeded: seededTimelineMarkers(medications).markers,
+        ),
+        scoresByDate: scoreMapFromHistoryRows(bioMap(rows)),
+        windowDays: correlationF5WindowDays,
+      );
+      expect(bounded.beforeN, item2.beforeScoredDays);
+      expect(bounded.beforeMean, item2.beforeAverage?.toDouble());
+      expect(bounded.beforeSpanDays, item2.beforeSpanDays);
+      expect(
+          bounded.beforeNeighborTruncated, item2.beforeNeighborTruncated);
+      expect(bounded.afterN, item2.afterScoredDays);
+      expect(bounded.afterMean, item2.afterAverage?.toDouble());
+      expect(bounded.afterSpanDays, item2.afterSpanDays);
+      expect(bounded.afterNeighborTruncated, item2.afterNeighborTruncated);
+
+      // End to end: the engine's F5 record carries the bounded
+      // numbers when the inputs carry the medication list.
+      final records = computeCorrelationInsights(inputs(
+        biometrics: bioMap(rows),
+        medEvents: [event],
+        medications: medications,
+      ));
+      final f5 = find(records, 'ev-dc');
+      expect(f5.state, InsightState.numbers);
+      expect(f5.groups[0].n, 9);
+      expect(f5.groups[0].mean, 50);
+      expect(f5.groups[1].n, 14);
+      expect(f5.groups[1].mean, 70);
+      expect(f5.beforeTruncatedSpan, 9);
+      expect(f5.afterTruncatedSpan, isNull);
+    });
+
+    test('seeded stop (declared on an archived row, never '
+        'captured) bounds a captured dose change\'s after window',
+        () {
+      final rows = <DailyBiometrics>[];
+      // Sep 1–9 score 50 (before the change), Sep 10–20 score
+      // 70 (after, through the declared stop day), Sep 21–30
+      // score 30 (off-med days a captured-only set averages in).
+      for (var i = 0; i < 30; i++) {
+        rows.add(bio(addDaysToDayKey('2026-09-01', i),
+            score: i < 9 ? 50 : (i < 20 ? 70 : 30)));
+      }
+      final event = doseChange(
+        id: 'ev-dc2',
+        medId: 'm2',
+        medName: 'MedB',
+        dayKey: '2026-09-10',
+        declared: 'Sep 10, 2026',
+      );
+      final medications = [
+        MedicationEntry(
+          id: 'm2',
+          name: 'MedB',
+          dose: '5 mg',
+          frequency: 'Once daily',
+          startDate: '',
+          endDate: 'Sep 20, 2026',
+          isPresent: false,
+        ),
+      ];
+
+      final bounded = computeF5Windows(
+        event: event,
+        allEvents: [event],
+        biometrics: bioMap(rows),
+        medications: medications,
+      );
+      // The after window truncates at the declared stop's
+      // regimen end: Sep 10–20, 11 scored days averaging 70.
+      expect(bounded.afterNeighborTruncated, isTrue);
+      expect(bounded.afterSpanDays, 11);
+      expect(bounded.afterN, 11);
+      expect(bounded.afterMean, 70);
+      expect(bounded.beforeNeighborTruncated, isFalse);
+      expect(bounded.beforeN, 9);
+      expect(bounded.beforeMean, 50);
+
+      final unbounded = computeF5Windows(
+        event: event,
+        allEvents: [event],
+        biometrics: bioMap(rows),
+      );
+      expect(unbounded.afterNeighborTruncated, isFalse);
+      expect(unbounded.afterN, 14);
+      expect(unbounded.afterMean, 61); // (11*70 + 3*30) / 14
+    });
+
+    test('a captured start suppresses its own seed (captured '
+        'wins): windows identical with and without the list', () {
+      final rows = <DailyBiometrics>[];
+      for (var i = 0; i < 28; i++) {
+        rows.add(bio(addDaysToDayKey('2026-09-01', i),
+            score: i < 14 ? 60 : 80));
+      }
+      final event = MedChangeEventInput(
+        id: 'ev-s',
+        medId: 'm1',
+        medName: 'MedA',
+        type: 'start',
+        newSnapshot: const MedFieldSnapshot(
+            dose: '5 mg',
+            frequency: 'Daily',
+            startDate: '2026-09-15',
+            endDate: 'Present',
+            isPresent: true),
+        effectiveDate: 'Sep 15, 2026',
+        recordedAt: tsFor('2026-09-15', hour: 9),
+        source: 'tools',
+      );
+      // The row declares the same start the event captured, in
+      // the same date string the captured marker carries — the
+      // dedup must suppress the seed; an unsuppressed same-day
+      // seed would bind as a previous marker and zero the
+      // before window.
+      final medications = [
+        MedicationEntry(
+          id: 'm1',
+          name: 'MedA',
+          dose: '5 mg',
+          frequency: 'Once daily',
+          startDate: 'Sep 15, 2026',
+          endDate: 'Present',
+          isPresent: true,
+        ),
+      ];
+      final withList = computeF5Windows(
+        event: event,
+        allEvents: [event],
+        biometrics: bioMap(rows),
+        medications: medications,
+      );
+      final withoutList = computeF5Windows(
+        event: event,
+        allEvents: [event],
+        biometrics: bioMap(rows),
+      );
+      expect(withList.beforeN, 14);
+      expect(withList.beforeMean, 60);
+      expect(withList.afterN, 14);
+      expect(withList.afterMean, 80);
+      expect(withList.beforeN, withoutList.beforeN);
+      expect(withList.beforeMean, withoutList.beforeMean);
+      expect(withList.beforeSpanDays, withoutList.beforeSpanDays);
+      expect(withList.beforeNeighborTruncated,
+          withoutList.beforeNeighborTruncated);
+      expect(withList.afterN, withoutList.afterN);
+      expect(withList.afterMean, withoutList.afterMean);
+      expect(withList.afterSpanDays, withoutList.afterSpanDays);
+      expect(withList.afterNeighborTruncated,
+          withoutList.afterNeighborTruncated);
+    });
+
+    test('F5 fingerprint moves when only the medication list '
+        'changes; the other families\' fingerprints do not', () {
+      final rows = <DailyBiometrics>[];
+      for (var i = 0; i < 28; i++) {
+        rows.add(bio(addDaysToDayKey('2026-08-27', i), score: 60));
+      }
+      final event = doseChange(
+        id: 'ev-dc',
+        medId: 'm1',
+        medName: 'MedA',
+        dayKey: '2026-09-10',
+        declared: 'Sep 10, 2026',
+      );
+      final base = inputs(biometrics: bioMap(rows), medEvents: [event]);
+      final withMeds = inputs(
+        biometrics: bioMap(rows),
+        medEvents: [event],
+        medications: [
+          MedicationEntry(
+            id: 'm1',
+            name: 'MedA',
+            dose: '5 mg',
+            frequency: 'Once daily',
+            startDate: 'Sep 1, 2026',
+            endDate: 'Present',
+            isPresent: true,
+          ),
+        ],
+      );
+      final fpBase = computeCorrelationFingerprints(base);
+      final fpMeds = computeCorrelationFingerprints(withMeds);
+      expect(fpMeds.keys.toSet(), fpBase.keys.toSet());
+      // The seeded bounding set changed, so the F5 record must
+      // read stale and recompute on the next refresh.
+      expect(fpMeds['F5/ev-dc'], isNot(fpBase['F5/ev-dc']));
+      // No other family reads the medication list.
+      for (final k in fpBase.keys) {
+        if (k.startsWith('F5/')) continue;
+        expect(fpMeds[k], fpBase[k], reason: k);
+      }
     });
   });
 
