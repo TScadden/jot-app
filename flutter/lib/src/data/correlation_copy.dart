@@ -101,9 +101,16 @@ String correlationProgressSentence({
     'Not enough days yet. This pattern needs at least 5 days in each group, and 14 days in total. So far: $groupAN $groupALabel, $groupBN $groupBLabel — ${groupAN + groupBN} days in total.';
 
 // ── S7 — unavailable families ──────────────────────────────────────
+//
+// F2 form: Juno's fresh ruling of Nov 8, 2026
+// (team/compliance/2026-11-08-patterns-f2-s7-juno-ruling.md),
+// which withdrew the Oct 28, 2026 F2 form in full — that form's
+// app-level claim went stale when item 4 intake logging shipped;
+// this form states the per-user data absence instead. The F5 form
+// stands exactly as ruled Oct 28, 2026 (expressly not revisited).
 
 const String correlationUnavailableF2 =
-    'This pattern needs salt and fluid logging, which is not in Tabs yet.';
+    'This pattern needs salt and fluid logging. There is no recorded salt and fluid intake in Tabs yet.';
 
 const String correlationUnavailableF5 =
     'This pattern needs your medication change history. There are no recorded medication changes in Tabs yet.';

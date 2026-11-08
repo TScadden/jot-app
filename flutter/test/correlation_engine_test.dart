@@ -1220,7 +1220,7 @@ void main() {
       expect(correlationCaption,
           'A pattern in your records, not a cause. Other things differed between these days too.');
       expect(correlationUnavailableF2,
-          'This pattern needs salt and fluid logging, which is not in Tabs yet.');
+          'This pattern needs salt and fluid logging. There is no recorded salt and fluid intake in Tabs yet.');
       expect(correlationUnavailableF5,
           'This pattern needs your medication change history. There are no recorded medication changes in Tabs yet.');
       expect(correlationSurfaceDisclaimer,

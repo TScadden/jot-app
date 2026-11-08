@@ -31,6 +31,11 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///   the tree, no teaser/locked copy — no ruled copy exists for
 ///   that state), while progress and unavailable cards render
 ///   normally for everyone.
+/// - F2 unavailable records collapse to ONE card on this surface
+///   (the first in display order stands for the family) and F2
+///   progress cards carry their ruled split header — Juno's
+///   composition sign-off of Nov 8, 2026. Renderer only: the
+///   engine's per-split records are never altered here.
 class PatternsScreen extends StatefulWidget {
   /// Records rendered directly (tests, previews). When null, the
   /// screen loads the cached records through [recordsLoader] or
@@ -131,10 +136,10 @@ class _PatternsScreenState extends State<PatternsScreen> {
     final display = records.isEmpty && _loaded
         ? placeholderRecords()
         : orderedRecords(records);
-    final visible = [
+    final visible = collapseF2UnavailableRecords([
       for (final record in display)
         if (_isUnlimited || record.state != InsightState.numbers) record,
-    ];
+    ]);
     return Scaffold(
       backgroundColor: NotelColors.background,
       appBar: AppBar(
@@ -216,6 +221,32 @@ List<InsightRecord> orderedRecords(List<InsightRecord> records) {
     return a.key.compareTo(b.key);
   });
   return [for (final e in indexed) e.value];
+}
+
+/// F2 unavailable collapse (Juno, Nov 8, 2026 — composition
+/// sign-off (b) points 1–3): the engine emits one unavailable
+/// record per F2 split (six), all carrying the single family-level
+/// fact that no intake is logged yet. The surface renders that
+/// fact ONCE: the first F2 unavailable record in display order
+/// stands for the whole family at the family's fixed position,
+/// and the rest are not rendered. Renderer only — the engine,
+/// the store, and the per-split records are untouched, and only
+/// the unavailable state collapses: progress and numbers F2 cards
+/// stay per-split.
+List<InsightRecord> collapseF2UnavailableRecords(
+  List<InsightRecord> records,
+) {
+  var f2UnavailableSeen = false;
+  final out = <InsightRecord>[];
+  for (final record in records) {
+    if (record.familyId == 'F2' &&
+        record.state == InsightState.unavailable) {
+      if (f2UnavailableSeen) continue;
+      f2UnavailableSeen = true;
+    }
+    out.add(record);
+  }
+  return out;
 }
 
 /// Zero-count progress records for the global new-user state
@@ -514,7 +545,18 @@ class _InsightCardState extends State<_InsightCard> {
     // F5 progress uses its pinned before/after group labels.
     final labelA = _isF5 ? f5GroupALabel : a.label;
     final labelB = _isF5 ? f5GroupBLabel : b.label;
-    final out = <Widget>[
+    final out = <Widget>[];
+    // F2 progress cards carry their ruled split header (Fluid
+    // target / Sodium target), same style and position as the
+    // numbers state, so fluid and sodium cards are distinguishable
+    // in this state too (Juno, Nov 8, 2026 — composition sign-off
+    // (b) point 2). No other family gains a header here.
+    final splitHeader = _splitHeader;
+    if (splitHeader != null) {
+      out.add(_headerText(splitHeader));
+      out.add(const SizedBox(height: 8));
+    }
+    out.add(
       _bodyText(
         correlationProgressSentence(
           groupALabel: labelA,
@@ -523,7 +565,7 @@ class _InsightCardState extends State<_InsightCard> {
           groupBN: b.n,
         ),
       ),
-    ];
+    );
     final s8 = _s8Line();
     if (s8 != null) {
       out.add(const SizedBox(height: 8));
