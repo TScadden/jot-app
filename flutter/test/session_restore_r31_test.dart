@@ -419,6 +419,125 @@ void main() {
       expect(expiredCalls, 0);
     });
 
+    // Spurious-logout fix (Nov 8, 2026) — a null/empty
+    // refresh-token RE-READ is a local storage outcome, not a
+    // server verdict: the server is never even asked, so it
+    // cannot have revoked anything. It must behave like the
+    // (already safe) storage THROW: temporary failure, session
+    // preserved, no callback, no refresh POST. Before the fix
+    // this branch routed to _definitiveFailure and wiped the
+    // session with zero server trace — the best-fit explanation
+    // for the founder's Nov 8 logout (server proved his refresh
+    // family intact, zero revocations). The null form is locked
+    // by the updated Round 31 test further below ('401 with NO
+    // stored refresh token: TEMPORARY after the Nov 8 fix');
+    // this case locks the empty-string form of the same re-read.
+    test(
+        '401 with refresh-token re-read returning EMPTY STRING: '
+        'session preserved, no clear, no callback, refresh never '
+        'sent', () async {
+      final store = _seededStore()..refreshToken = '';
+      var expiredCalls = 0;
+      var refreshCalls = 0;
+      TabsBackend.onSessionExpired = () => expiredCalls++;
+      final backend = TabsBackend(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/auth/refresh-token') {
+            refreshCalls++;
+            return http.Response(
+              jsonEncode({'token': _newAccess, 'refreshToken': _newRefresh}),
+              200,
+            );
+          }
+          return http.Response('{"error":"expired"}', 401);
+        }),
+        sessionStore: store,
+      );
+
+      final streak = await backend.fetchStreak();
+
+      expect(streak.current, isNull);
+      expect(streak.best, isNull);
+      expect(refreshCalls, 0);
+      expect(store.token, _oldAccess);
+      expect(store.refreshToken, '');
+      expect(store.email, _email);
+      expect(expiredCalls, 0);
+    });
+
+    // The genuine path stays fully intact: a definitive verdict
+    // delivered by an actual server response (here the HTTP 200
+    // classified-error form; the 401-status form is locked by the
+    // 'definitive refresh rejection (401)' test above) still
+    // clears the session and fires the callback exactly once.
+    test(
+        'genuine server definitive verdict (200 with revoked error '
+        'body): session still cleared, callback fired once',
+        () async {
+      final store = _seededStore();
+      var expiredCalls = 0;
+      TabsBackend.onSessionExpired = () => expiredCalls++;
+      final backend = TabsBackend(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/auth/refresh-token') {
+            return http.Response(
+                '{"error":"Refresh token revoked"}', 200);
+          }
+          return http.Response('{"error":"expired"}', 401);
+        }),
+        sessionStore: store,
+      );
+
+      final streak = await backend.fetchStreak();
+
+      expect(streak.current, isNull);
+      expect(streak.best, isNull);
+      expect(store.token, isNull);
+      expect(store.refreshToken, isNull);
+      expect(store.email, isNull);
+      expect(expiredCalls, 1);
+    });
+
+    // Background-isolate variant (Nov 8, 2026 fix): the
+    // WorkManager runners (CorrelationRefresher /
+    // DailyScoreSync) construct their own TabsBackend in a
+    // headless isolate where onSessionExpired is NEVER
+    // registered. A definitive classification arising there
+    // WITHOUT a server verdict — the null refresh-token re-read —
+    // must not wipe the shared stored session silently; the user
+    // would otherwise discover a logout at next open with no
+    // server trace. With no callback registered, the run must
+    // simply fail temporarily and leave the store untouched.
+    test(
+        'background isolate (onSessionExpired unregistered): null '
+        'refresh-token re-read does NOT clear the stored session',
+        () async {
+      final store = _seededStore()..refreshToken = null;
+      // Explicitly the isolate condition: no callback registered
+      // (setUp/tearDown also reset it, stated here for intent).
+      TabsBackend.onSessionExpired = null;
+      final backend = TabsBackend(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/auth/refresh-token') {
+            return http.Response(
+              jsonEncode({'token': _newAccess, 'refreshToken': _newRefresh}),
+              200,
+            );
+          }
+          return http.Response('{"error":"expired"}', 401);
+        }),
+        sessionStore: store,
+      );
+
+      final streak = await backend.fetchStreak();
+
+      expect(streak.current, isNull);
+      expect(streak.best, isNull);
+      expect(store.token, _oldAccess);
+      expect(store.email, _email);
+      expect(TabsBackend.onSessionExpired, isNull);
+    });
+
     // Refresh self-heal package — the grace response heals from
     // the store: a racing isolate won the rotation and saved the
     // rotated pair while this refresh POST was in flight (the
@@ -680,13 +799,22 @@ void main() {
       expect(store.email, _email);
     });
 
-    // Round 31 fix pass (Vera SHOULD-FIX 3) — a 401 with no stored
-    // refresh token at all is definitive WITHOUT ever calling the
-    // refresh endpoint: session cleared, callback fired.
+    // Round 31 fix pass (Vera SHOULD-FIX 3) ORIGINALLY locked
+    // this case as definitive (session cleared, callback fired).
+    // SUPERSEDED by the Nov 8, 2026 spurious-logout fix: a 401
+    // whose refresh-token re-read returns null is a LOCAL storage
+    // outcome — the refresh endpoint is never called, the server
+    // delivers no verdict, and nothing may be cleared. (Server
+    // evidence for the Nov 8 incident: the founder's refresh
+    // family was intact with zero revocations while the app had
+    // destroyed the local session through exactly this branch.)
+    // The case is now TEMPORARY: refresh endpoint still never
+    // called, but the session is preserved and no callback fires;
+    // a later call/open retries once storage reads succeed.
     test(
-        '401 with NO stored refresh token: definitive — session '
-        'cleared, callback fired, refresh endpoint never called',
-        () async {
+        '401 with NO stored refresh token: TEMPORARY after the '
+        'Nov 8 fix — session preserved, no callback, refresh '
+        'endpoint never called', () async {
       final store = FakeSessionStore()
         ..token = _oldAccess
         ..email = _email; // refreshToken deliberately null
@@ -711,10 +839,12 @@ void main() {
 
       expect(streak.current, isNull);
       expect(refreshHit, isFalse);
-      expect(store.token, isNull);
+      // Session NOT cleared: clear() would have nulled the
+      // access token and the email as well.
+      expect(store.token, _oldAccess);
       expect(store.refreshToken, isNull);
-      expect(store.email, isNull);
-      expect(expiredCalls, 1);
+      expect(store.email, _email);
+      expect(expiredCalls, 0);
     });
 
     // Round 31 fix pass (Vera SHOULD-FIX 2) — linkGoogle routes

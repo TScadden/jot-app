@@ -283,8 +283,25 @@ class TabsBackend {
       }
       final refreshToken = await _sessionStore.readRefreshToken();
       if (refreshToken == null || refreshToken.trim().isEmpty) {
-        // Native parity: no refresh token → reconnect required.
-        return await _definitiveFailure();
+        // A null/empty refresh-token READ is a local storage
+        // outcome, NOT a server verdict: the server was never
+        // asked, so it cannot have revoked anything. A transient
+        // per-key secure-storage hiccup (e.g. an
+        // EncryptedSharedPreferences/Keystore read coming back
+        // empty for this one key on the first launch after an
+        // update) must not destroy the session — this branch used
+        // to route to _definitiveFailure and wipe the stored
+        // session with zero server trace (the Nov 8, 2026 spurious
+        // logout). Treat it exactly like a storage throw (caught
+        // below): temporary failure, session preserved, the next
+        // call/open retries the refresh. Only an actual server
+        // response classified [RefreshDefinitiveFailure] by
+        // [AuthApiClient.refreshSession] may clear the session.
+        // This also covers the WorkManager background isolate,
+        // which runs this same code with no onSessionExpired
+        // registered: a local read outcome there must never wipe
+        // the shared stored session silently either.
+        return const _RefreshTemporary();
       }
       final result = await _authApi.refreshSession(refreshToken);
       if (result is RefreshSuccess) {
@@ -333,6 +350,15 @@ class TabsBackend {
 
   /// Definitive failure handling — the ONE place the session is
   /// cleared on refresh rejection. Clears first, then notifies.
+  ///
+  /// INVARIANT: this is reachable ONLY on an actual server verdict
+  /// — a [RefreshDefinitiveFailure] returned by
+  /// [AuthApiClient.refreshSession] from a real refresh response
+  /// (HTTP 401/403, or a 200 body carrying a classified error).
+  /// No local condition (a null/empty/throwing storage read, in
+  /// the foreground or in the WorkManager background isolate) may
+  /// route here: local outcomes are temporary failures and the
+  /// session is preserved.
   Future<_RefreshOutcome> _definitiveFailure() async {
     try {
       await _sessionStore.clear();
