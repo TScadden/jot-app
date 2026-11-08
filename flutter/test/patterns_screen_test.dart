@@ -217,7 +217,7 @@ void main() {
     ]);
     expect(
       find.text(
-          'This pattern needs salt and fluid logging, which is not in Tabs yet.'),
+          'This pattern needs salt and fluid logging. There is no recorded salt and fluid intake in Tabs yet.'),
       findsOneWidget,
     );
     expect(
@@ -225,6 +225,133 @@ void main() {
           'This pattern needs your medication change history. There are no recorded medication changes in Tabs yet.'),
       findsOneWidget,
     );
+  });
+
+  testWidgets(
+      'six computed F2 unavailable records collapse to ONE card at the '
+      'F2 position (Juno Nov 8 2026, composition (b) points 1-3)',
+      (tester) async {
+    // Tall viewport: every card must be built by the ListView for
+    // the position assertions to be measurable.
+    tester.view.physicalSize = const Size(800, 6000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await pumpPatterns(tester, [
+      rec(
+        familyId: 'F3',
+        splitId: 'F3',
+        state: InsightState.progress,
+        groups: [
+          grp('days you logged a flare', 0),
+          grp('days with no flare logged', 89),
+        ],
+      ),
+      for (final split in [
+        'sodium-migraine',
+        'fluid-score',
+        'sodium-flare',
+        'fluid-migraine',
+        'sodium-score',
+        'fluid-flare',
+      ])
+        rec(familyId: 'F2', splitId: split, state: InsightState.unavailable),
+      rec(
+        familyId: 'F1',
+        splitId: 'F1a',
+        state: InsightState.progress,
+        groups: [
+          grp('nights under 6 hours of sleep', 3),
+          grp('nights with 6 or more hours of sleep', 4),
+        ],
+      ),
+    ]);
+    // The S7 sentence renders exactly once for the whole family,
+    // and exactly three cards render in total (one S3 caption per
+    // card): F1 progress, the collapsed F2 card, F3 progress.
+    expect(
+      find.text(
+          'This pattern needs salt and fluid logging. There is no recorded salt and fluid intake in Tabs yet.'),
+      findsOneWidget,
+    );
+    expect(find.text(correlationCaption), findsNWidgets(3));
+    // The collapsed card carries NO split header (Juno (b) point 3:
+    // neither header alone heads a card standing for the family).
+    expect(find.text('Fluid target'), findsNothing);
+    expect(find.text('Sodium target'), findsNothing);
+    // The withdrawn Oct 28 F2 form renders nowhere.
+    final texts = allRenderedTexts(tester).join('\n');
+    expect(texts.contains('which is not in Tabs yet'), isFalse);
+    // The collapsed card occupies the F2 family's fixed position:
+    // after the F1 card, before the F3 card (Juno (b) point 3 /
+    // R1 fixed order).
+    double dyOf(String needle) =>
+        tester.getTopLeft(find.textContaining(needle).first).dy;
+    final f1Dy = dyOf('nights under 6 hours of sleep');
+    final f2Dy = dyOf('There is no recorded salt and fluid intake');
+    final f3Dy = dyOf('days you logged a flare');
+    expect(f2Dy, greaterThan(f1Dy));
+    expect(f3Dy, greaterThan(f2Dy));
+  });
+
+  testWidgets(
+      'F2 progress cards carry exactly their own split header '
+      '(Juno Nov 8 2026, composition (b) point 2)', (tester) async {
+    tester.view.physicalSize = const Size(800, 6000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    InsightRecord f2Progress(String split, int a, int b) => rec(
+          familyId: 'F2',
+          splitId: split,
+          state: InsightState.progress,
+          groups: [
+            grp('days your logged intake reached your target', a),
+            grp('days your logged intake was below your target', b),
+          ],
+        );
+    await pumpPatterns(tester, [
+      rec(
+        familyId: 'F1',
+        splitId: 'F1a',
+        state: InsightState.progress,
+        groups: [
+          grp('nights under 6 hours of sleep', 3),
+          grp('nights with 6 or more hours of sleep', 4),
+        ],
+      ),
+      f2Progress('fluid-score', 1, 2),
+      f2Progress('sodium-score', 1, 3),
+      f2Progress('fluid-flare', 2, 2),
+      f2Progress('sodium-flare', 2, 3),
+      f2Progress('fluid-migraine', 3, 2),
+      f2Progress('sodium-migraine', 3, 3),
+    ]);
+    // Three fluid cards, three sodium cards; the F1 progress card
+    // carries neither header (headers are F2-only).
+    expect(find.text('Fluid target'), findsNWidgets(3));
+    expect(find.text('Sodium target'), findsNWidgets(3));
+    // Headers interleave in fixed engine order (fluid split before
+    // sodium split within each outcome kind), each heading its own
+    // card — a swapped header would break the sequence.
+    double headerDy(String text, int i) =>
+        tester.getTopLeft(find.text(text).at(i)).dy;
+    final sequence = [
+      headerDy('Fluid target', 0),
+      headerDy('Sodium target', 0),
+      headerDy('Fluid target', 1),
+      headerDy('Sodium target', 1),
+      headerDy('Fluid target', 2),
+      headerDy('Sodium target', 2),
+    ];
+    for (var i = 1; i < sequence.length; i++) {
+      expect(sequence[i], greaterThan(sequence[i - 1]),
+          reason: 'split headers out of order: $sequence');
+    }
+    // The first header stands below the F1 card's sentence: no
+    // header was added to the non-F2 card above it.
+    final f1Dy = tester
+        .getTopLeft(find.textContaining('nights under 6 hours of sleep').first)
+        .dy;
+    expect(sequence.first, greaterThan(f1Dy));
   });
 
   testWidgets('disclaimer renders exactly once, title + intro present',
@@ -446,7 +573,7 @@ void main() {
         findsOneWidget);
     expect(
       find.text(
-          'This pattern needs salt and fluid logging, which is not in Tabs yet.'),
+          'This pattern needs salt and fluid logging. There is no recorded salt and fluid intake in Tabs yet.'),
       findsOneWidget,
     );
     final texts = allRenderedTexts(tester).join('\n');
@@ -509,7 +636,7 @@ void main() {
       expect(correlationFluidHeader, 'Fluid target');
       expect(correlationSodiumHeader, 'Sodium target');
       expect(correlationUnavailableF2,
-          'This pattern needs salt and fluid logging, which is not in Tabs yet.');
+          'This pattern needs salt and fluid logging. There is no recorded salt and fluid intake in Tabs yet.');
       expect(
         correlationUnavailableF5,
         'This pattern needs your medication change history. There are no recorded medication changes in Tabs yet.',
