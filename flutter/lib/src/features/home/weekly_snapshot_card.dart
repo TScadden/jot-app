@@ -571,61 +571,14 @@ class _MetricSelectorState extends State<_MetricSelector> {
             offset: const Offset(0, 4),
             child: Material(
               color: Colors.transparent,
-              child: Container(
-                key: const ValueKey('weekly_snapshot_metric_panel'),
+              child: _MetricDropdownPanel(
                 width: width,
-                constraints: BoxConstraints(maxHeight: maxPanelHeight),
-                clipBehavior: Clip.antiAlias,
-                decoration: BoxDecoration(
-                  color: NotelColors.surfaceHigh,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                      color: NotelColors.legacyDarkDivider, width: 1),
-                ),
-                child: SingleChildScrollView(
-                  key: const ValueKey('weekly_snapshot_metric_options'),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: SnapshotMetric.values.map((m) {
-                    final isCurrent = m == widget.selected;
-                    return InkWell(
-                      onTap: () {
-                        _removeEntry();
-                        widget.onSelect(m);
-                      },
-                      // Audit 6a (Oct 27, 2026) — rows measured
-                      // ~41-44dp (12dp vertical padding + 14sp text);
-                      // expand ONLY the hit area to the 48dp floor
-                      // with the in-app ConstrainedBox(minHeight: 48)
-                      // pattern. Row look is unchanged: same padding,
-                      // same text, centered in the taller hit box.
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(minHeight: 48),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12.0, vertical: 12.0),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              m.displayName,
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: isCurrent
-                                    ? FontWeight.bold
-                                    : FontWeight.normal,
-                                color: isCurrent
-                                    ? NotelColors.primaryText
-                                    : NotelColors.textPrimary,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                    ),
-                ),
+                maxHeight: maxPanelHeight,
+                selected: widget.selected,
+                onSelect: (m) {
+                  _removeEntry();
+                  widget.onSelect(m);
+                },
               ),
             ),
           ),
@@ -670,6 +623,187 @@ class _MetricSelectorState extends State<_MetricSelector> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The floating metric-dropdown panel: the Nov 6, 2026 capped,
+/// internally scrolling list, plus a scroll affordance (Nov 8, 2026).
+///
+/// The cap is UNCHANGED: the panel container still takes a
+/// [BoxConstraints] maxHeight computed by the selector from the space
+/// available below its anchor, and the rows still scroll inside it.
+///
+/// Affordance: a persistent slim scrollbar (Tabs-purple thumb on a
+/// faint track, [NotelColors] tokens only) shown whenever the row
+/// list actually overflows the cap — not only while dragging — plus
+/// a bottom-edge fade into the panel's own [NotelColors.surfaceHigh]
+/// that is present only while more rows sit below the fold and
+/// disappears at scroll end. Neither carries any user-visible text.
+/// The scrollbar is drawn over the panel's right edge, in the empty
+/// space to the right of the left-aligned row labels, and no padding
+/// or sizing is added to the rows, so row layout is unchanged.
+class _MetricDropdownPanel extends StatefulWidget {
+  final double width;
+  final double maxHeight;
+  final SnapshotMetric selected;
+  final ValueChanged<SnapshotMetric> onSelect;
+
+  const _MetricDropdownPanel({
+    required this.width,
+    required this.maxHeight,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  @override
+  State<_MetricDropdownPanel> createState() => _MetricDropdownPanelState();
+}
+
+class _MetricDropdownPanelState extends State<_MetricDropdownPanel> {
+  final ScrollController _scrollController = ScrollController();
+
+  /// True once the laid-out row list is known to overflow the cap.
+  /// Until the first layout measures it (and whenever all rows fit)
+  /// the scrollbar stays inert: no persistent thumb, no fade.
+  bool _isScrollable = false;
+
+  /// True while scrollable content remains below the visible fold.
+  bool _hasMoreBelow = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_syncAffordance);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_syncAffordance);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  /// Recomputes [_isScrollable] / [_hasMoreBelow] from the live
+  /// scroll position. Called on every scroll update (via the
+  /// controller listener) and after each build (post-frame, so the
+  /// first layout is measured too); it only setStates on a change,
+  /// so the post-frame probe terminates.
+  void _syncAffordance() {
+    if (!mounted || !_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    final scrollable = position.maxScrollExtent > 0.5;
+    final hasMore =
+        scrollable && position.pixels < position.maxScrollExtent - 0.5;
+    if (scrollable != _isScrollable || hasMore != _hasMoreBelow) {
+      setState(() {
+        _isScrollable = scrollable;
+        _hasMoreBelow = hasMore;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncAffordance());
+    return Container(
+      key: const ValueKey('weekly_snapshot_metric_panel'),
+      width: widget.width,
+      constraints: BoxConstraints(maxHeight: widget.maxHeight),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: NotelColors.surfaceHigh,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: NotelColors.legacyDarkDivider, width: 1),
+      ),
+      child: Stack(
+        children: [
+          RawScrollbar(
+            key: const ValueKey('weekly_snapshot_metric_scrollbar'),
+            controller: _scrollController,
+            // Persistent whenever the list overflows the cap, so the
+            // hidden rows are discoverable without touching the
+            // panel; inert (no thumb/track) when every row fits.
+            thumbVisibility: _isScrollable,
+            trackVisibility: _isScrollable,
+            thumbColor: NotelColors.primary,
+            trackColor: NotelColors.divider,
+            trackBorderColor: Colors.transparent,
+            thickness: 4,
+            radius: const Radius.circular(2),
+            child: SingleChildScrollView(
+              key: const ValueKey('weekly_snapshot_metric_options'),
+              controller: _scrollController,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: SnapshotMetric.values.map((m) {
+                  final isCurrent = m == widget.selected;
+                  return InkWell(
+                    onTap: () => widget.onSelect(m),
+                      // Audit 6a (Oct 27, 2026) — rows measured
+                      // ~41-44dp (12dp vertical padding + 14sp text);
+                      // expand ONLY the hit area to the 48dp floor
+                      // with the in-app ConstrainedBox(minHeight: 48)
+                      // pattern. Row look is unchanged: same padding,
+                      // same text, centered in the taller hit box.
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 48),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12.0, vertical: 12.0),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              m.displayName,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: isCurrent
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                                color: isCurrent
+                                    ? NotelColors.primaryText
+                                    : NotelColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+              ),
+            ),
+          ),
+          // Bottom fade: present only while more rows sit below the
+          // fold; the gradient runs from transparent into the panel's
+          // own surface color, so it reads as the list continuing
+          // under the panel edge rather than as a new element. It is
+          // pointer-transparent and carries no text.
+          if (_hasMoreBelow)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: IgnorePointer(
+                child: Container(
+                  key: const ValueKey(
+                      'weekly_snapshot_metric_bottom_fade'),
+                  height: 24,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        NotelColors.surfaceHigh.withValues(alpha: 0),
+                        NotelColors.surfaceHigh,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
