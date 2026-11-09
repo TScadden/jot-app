@@ -7,11 +7,10 @@ import 'package:tabs_lab/src/data/lean_test_session.dart';
 import 'package:tabs_lab/src/data/lean_test_strings.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/features/tools/lean_test_screen.dart';
-import 'package:tabs_lab/src/features/tools/tools_screen.dart';
 
 // Widget half of the item-6 suite: safety-screen order/gating
 // (§8.13–14), stop presence (§8.15), full-flow, stop outcomes,
-// interrupted paths, assist confirmation, past tests, tile hiding.
+// interrupted paths, assist confirmation, past tests.
 
 LeanTestSessionStore _memoryStore(Map<String, String> backing) =>
     LeanTestSessionStore.withStorage(
@@ -775,38 +774,10 @@ void main() {
     });
   });
 
-  group('Tools tile (§8.10 widget path)', () {
-    ToolOrderStore orderStore() {
-      final store = ToolOrderStore();
-      final map = <String, String>{};
-      store.debugSetIO(
-        read: (key) async => map[key],
-        write: (key, value) async => map[key] = value,
-      );
-      return store;
-    }
-
-    testWidgets('tile hides when Symptoms cannot be name-resolved',
-        (tester) async {
-      final gateway = FakeLeanGateway()..categoryId = null;
-      await tester.pumpWidget(MaterialApp(
-        home: ToolsScreen(orderStore: orderStore(), leanGateway: gateway),
-      ));
-      await tester.pumpAndSettle();
-      expect(find.text(leanS1Label), findsNothing);
-    });
-
-    testWidgets('tile shows with S1 label and subtitle when resolved',
-        (tester) async {
-      final gateway = FakeLeanGateway()..categoryId = 7;
-      await tester.pumpWidget(MaterialApp(
-        home: ToolsScreen(orderStore: orderStore(), leanGateway: gateway),
-      ));
-      await tester.pumpAndSettle();
-      // The grid is lazy; scroll the lean tile into view.
-      await tester.scrollUntilVisible(find.text(leanS1Label), 200);
-      expect(find.text(leanS1Label), findsOneWidget);
-      expect(find.text(leanS1Subtitle), findsOneWidget);
-    });
-  });
+  // The §8.10 'Tools tile' widget group was removed by the
+  // Session #1 safety pull (2026-11-09): the tile and its route no
+  // longer exist in any state. Replacement coverage (no entry in
+  // the default state, no entry from a stale saved order, and
+  // History still rendering past results) lives in
+  // lean_test_pull_session1_test.dart.
 }

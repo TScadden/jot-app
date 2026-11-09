@@ -887,7 +887,7 @@ void main() {
 
   group('§8.16 no-auto-start structure', () {
     test('the only session construction is the safety-screen start, '
-        'and the only LeanTestScreen route is the Tools tile', () {
+        'and no LeanTestScreen route remains (Session #1 pull)', () {
       final screenSource =
           File('lib/src/features/tools/lean_test_screen.dart')
               .readAsStringSync();
@@ -899,8 +899,11 @@ void main() {
       // behind the R4 confirmation in the screen.
       expect('LeanTestSession(startedAtMs'.allMatches(screenSource).length, 1);
       expect(sessionSource.contains('LeanTestSession(startedAtMs'), isFalse);
-      // The tile route is the only place the screen is pushed.
-      expect('LeanTestScreen('.allMatches(toolsSource).length, 1);
+      // Session #1 safety pull (2026-11-09): the Tools tile route
+      // was the only place the screen was pushed, and it is gone —
+      // the screen stays in the tree, dormant and unreachable.
+      expect('LeanTestScreen('.allMatches(toolsSource).length, 0);
+      expect(toolsSource.contains('lean_test'), isFalse);
       expect(screenSource.contains('standingStartedAtMs: _nowMs'), isTrue);
     });
   });

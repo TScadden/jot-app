@@ -43,8 +43,6 @@ import 'package:tabs_lab/src/features/auth/login_screen.dart';
 import 'package:tabs_lab/src/features/settings/report_generation_presenter.dart';
 import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
-import 'package:tabs_lab/src/features/tools/lean_test_screen.dart'
-    show BackendLeanTestGateway;
 import 'package:tabs_lab/src/features/onboarding/onboarding_flow.dart';
 import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
 import 'package:tabs_lab/src/features/splash/splash_screen.dart';
@@ -1383,7 +1381,6 @@ class _AppFlowState extends State<AppFlow>
               healthConnectService: widget.healthConnectService,
               billingService: _billingSync?.service,
               migraineController: _migraineController,
-              leanGateway: BackendLeanTestGateway(backend: _tabsBackend),
               onLogout: _onLogout),
         if (_splashVisible && animationsDisabled(context))
           // Audit 6c — reduced motion: the splash renders plain, with
