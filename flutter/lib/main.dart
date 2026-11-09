@@ -441,6 +441,7 @@ class _AppFlowState extends State<AppFlow>
       // channel must never be awaited in this funnel (it stalls
       // fake-async-driven flows; the harness deadlock lesson).
       unawaited(StreakStore.instance.clearIfOwnerMismatch(email));
+      unawaited(MedicationChangeEventOutbox.instance.clearIfOwnerMismatch(email));
       final gate = await _readOnboardingGate();
       final hasState = hadStateBeforeClaim;
       final resumeStep = hadStateBeforeClaim ? gate.resumeStep : null;
