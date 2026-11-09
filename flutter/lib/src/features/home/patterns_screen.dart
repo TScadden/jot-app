@@ -5,7 +5,9 @@ import 'package:tabs_lab/src/data/correlation_copy.dart';
 import 'package:tabs_lab/src/data/correlation_engine.dart';
 import 'package:tabs_lab/src/data/correlation_insight_store.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
+import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/skeleton.dart';
 
 /// Phase 1 item 5 — the Patterns surface (spec §5/§6, Juno's final
 /// rulings for item 5).
@@ -30,7 +32,14 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///   numbers cards are OMITTED entirely (no averages anywhere in
 ///   the tree, no teaser/locked copy — no ruled copy exists for
 ///   that state), while progress and unavailable cards render
-///   normally for everyone.
+///   normally for everyone. The gate is tri-state (H1-05P): an
+///   UNKNOWN membership holds the numbers decision in a pending
+///   state instead of reading as non-member.
+/// - Failure states (H1-08 + Juno's signed follow-up ruling): a
+///   failed records read — or a failed membership resolution —
+///   renders the Slot 1 error state INSTEAD of the card list;
+///   a successful read of zero records is the new-user state
+///   and never routes to the error string.
 /// - F2 unavailable records collapse to ONE card on this surface
 ///   (the first in display order stands for the family) and F2
 ///   progress cards carry their ruled split header — Juno's
@@ -51,11 +60,24 @@ class PatternsScreen extends StatefulWidget {
   /// `getAll`), never on any compute API the store may also carry.
   final Object? insightStore;
 
-  /// Premium flag. When null, production reads
-  /// [QuickLogCache.instance.snapshot] the way the other surfaces
-  /// seed their gate (unknown membership reads as not unlimited,
-  /// so numbers never leak on an unknown gate).
+  /// Premium flag — tri-state (H1-05P). An explicit value wins.
+  /// When null, the [QuickLogCache] snapshot seeds the gate ONLY
+  /// when its membership is known; when it is genuinely unknown
+  /// the screen holds the numbers decision in a pending state
+  /// (skeleton + Juno's pending label, other cards normal) and
+  /// resolves membership itself via [membershipLoader] (default:
+  /// the backend's failure-distinguishing fetch). Unknown never
+  /// reads as non-member, so a Premium user's numbers are never
+  /// silently filtered by a cold cache.
   final bool? isUnlimited;
+
+  /// Injectable membership resolver for the unknown-gate path:
+  /// returns the resolved `isUnlimited`, or null when the
+  /// resolution itself failed. A timeout counts as failure
+  /// (Juno's signed follow-up ruling): failure lands in the
+  /// Slot 1 error state, and Try again re-runs both the records
+  /// load and this resolution.
+  final Future<bool?> Function()? membershipLoader;
 
   /// Counting compute callback for the no-compute-on-open test
   /// (spec §8 A7). The screen NEVER invokes it; it exists so a
@@ -68,6 +90,7 @@ class PatternsScreen extends StatefulWidget {
     this.recordsLoader,
     this.insightStore,
     this.isUnlimited,
+    this.membershipLoader,
     this.computeCallback,
   });
 
@@ -79,55 +102,179 @@ class _PatternsScreenState extends State<PatternsScreen> {
   List<InsightRecord> _records = const [];
   bool _loaded = false;
 
-  bool get _isUnlimited =>
-      widget.isUnlimited ?? QuickLogCache.instance.snapshot.isUnlimited;
+  /// Records-load failure (H1-08): a thrown/failed read is NOT an
+  /// empty store. Kept separate from [_membershipResolveFailed]
+  /// so a late records success can never clear a membership
+  /// failure (or vice versa); either one puts the surface in the
+  /// Slot 1 error state.
+  bool _recordsLoadFailed = false;
+
+  /// Membership-resolution failure (Juno's signed follow-up
+  /// ruling): also lands in the Slot 1 error state — the same
+  /// error string, the same retry, no membership-specific copy.
+  bool _membershipResolveFailed = false;
+
+  bool get _loadFailed => _recordsLoadFailed || _membershipResolveFailed;
+
+  /// Tri-state gate (H1-05P): null means membership is genuinely
+  /// unknown — the numbers decision is held, never guessed.
+  bool? _isUnlimitedResolved;
+
+  /// The pending state renders only while membership is unknown
+  /// AND no failure has landed: the error state and the pending
+  /// state never coexist (one state at a time).
+  bool get _membershipPending =>
+      _isUnlimitedResolved == null && !_loadFailed;
+
+  /// Defined bound on the screen's own membership resolution
+  /// (Juno follow-up condition 5): a resolution that has not
+  /// answered inside this window counts as failed — no unbounded
+  /// pending.
+  static const Duration _membershipResolveTimeout = Duration(seconds: 20);
 
   @override
   void initState() {
     super.initState();
+    // Tri-state seed: explicit widget value wins; else the cache
+    // snapshot ONLY when its membership is known (the Quick Log
+    // discipline — seed if known, never guess if not).
+    _isUnlimitedResolved = widget.isUnlimited ??
+        (QuickLogCache.instance.snapshot.membershipKnown
+            ? QuickLogCache.instance.snapshot.isUnlimited
+            : null);
     if (widget.records != null) {
       _records = widget.records!;
       _loaded = true;
-      return;
+    } else {
+      unawaited(_loadCached());
     }
-    unawaited(_loadCached());
+    if (_isUnlimitedResolved == null) {
+      unawaited(_resolveMembership());
+    }
   }
 
   /// Cache read only. Reading the insight store is not a compute:
   /// [PatternsScreen.computeCallback] is never touched here or
   /// anywhere else in this screen.
+  ///
+  /// A failed read lands in the Slot 1 error state (H1-08); a
+  /// successful read returning zero records is the legitimate
+  /// new-user state and renders placeholders as before.
   Future<void> _loadCached() async {
-    List<InsightRecord> loaded = const [];
     try {
-      if (widget.recordsLoader != null) {
-        loaded = await widget.recordsLoader!();
-      } else {
-        final dynamic store =
-            widget.insightStore ?? CorrelationInsightStore.instance;
-        dynamic result;
+      final loaded = widget.recordsLoader != null
+          ? await widget.recordsLoader!()
+          : await _readStoreRecords();
+      if (!mounted) return;
+      setState(() {
+        _records = loaded;
+        _loaded = true;
+        _recordsLoadFailed = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loaded = true;
+        _recordsLoadFailed = true;
+      });
+    }
+  }
+
+  /// Reads the insight store, distinguishing a genuine failure
+  /// from an empty result. The real store goes through its
+  /// failure-distinguishing read; duck-typed test stores keep the
+  /// readAll/load/getAll chain, but if EVERY read throws, the
+  /// failure propagates instead of reading as empty.
+  Future<List<InsightRecord>> _readStoreRecords() async {
+    final dynamic store =
+        widget.insightStore ?? CorrelationInsightStore.instance;
+    if (store is CorrelationInsightStore) {
+      final map = await store.readAllOrThrow();
+      return map.values.toList();
+    }
+    dynamic result;
+    var ok = false;
+    Object? failure;
+    try {
+      result = await store.readAll();
+      ok = true;
+    } catch (e) {
+      failure = e;
+      try {
+        result = await store.load();
+        ok = true;
+      } catch (e) {
+        failure = e;
         try {
-          result = await store.readAll();
-        } catch (_) {
-          try {
-            result = await store.load();
-          } catch (_) {
-            result = await store.getAll();
-          }
-        }
-        if (result is List) {
-          loaded = result.whereType<InsightRecord>().toList();
-        } else if (result is Map) {
-          loaded = result.values.whereType<InsightRecord>().toList();
+          result = await store.getAll();
+          ok = true;
+        } catch (e) {
+          failure = e;
         }
       }
+    }
+    if (!ok) {
+      throw failure ?? StateError('insight store read failed');
+    }
+    if (result is List) {
+      return result.whereType<InsightRecord>().toList();
+    }
+    if (result is Map) {
+      return result.values.whereType<InsightRecord>().toList();
+    }
+    return const [];
+  }
+
+  /// The screen's own membership resolution for the unknown-gate
+  /// path. Success resolves the gate in a single state update
+  /// (the pending label disappears in that same update). Failure
+  /// — a null result, a throw, or the resolve timeout — lands in
+  /// the Slot 1 error state (Juno's signed follow-up ruling).
+  Future<void> _resolveMembership() async {
+    bool? result;
+    try {
+      final future = widget.membershipLoader != null
+          ? widget.membershipLoader!()
+          : _fetchMembershipFromBackend();
+      result = await future.timeout(
+        _membershipResolveTimeout,
+        onTimeout: () => null,
+      );
     } catch (_) {
-      loaded = const [];
+      result = null;
     }
     if (!mounted) return;
+    if (result == null) {
+      setState(() {
+        _membershipResolveFailed = true;
+        _loaded = true;
+      });
+    } else {
+      setState(() {
+        _isUnlimitedResolved = result;
+        _membershipResolveFailed = false;
+      });
+    }
+  }
+
+  Future<bool?> _fetchMembershipFromBackend() async {
+    final membership = await TabsBackend().fetchMembershipOrNull();
+    return membership?.isUnlimited;
+  }
+
+  /// Slot 1 retry: re-runs BOTH the records load and (while the
+  /// gate is still unresolved) the membership resolution. The
+  /// pending state may reappear for the fresh in-flight check;
+  /// if either side fails again, the surface returns to the same
+  /// Slot 1 error state.
+  void _retry() {
     setState(() {
-      _records = loaded;
-      _loaded = true;
+      _recordsLoadFailed = false;
+      _membershipResolveFailed = false;
+      if (widget.records == null) _loaded = false;
     });
+    if (widget.records == null) unawaited(_loadCached());
+    if (_isUnlimitedResolved == null) unawaited(_resolveMembership());
   }
 
   @override
@@ -136,9 +283,15 @@ class _PatternsScreenState extends State<PatternsScreen> {
     final display = records.isEmpty && _loaded
         ? placeholderRecords()
         : orderedRecords(records);
+    // Numbers cards render only for a KNOWN unlimited gate:
+    // known non-members omit them (as before), and while the
+    // gate is unknown the decision is held (pending state) —
+    // numbers are never presented as final on an unknown gate.
     final visible = collapseF2UnavailableRecords([
       for (final record in display)
-        if (_isUnlimited || record.state != InsightState.numbers) record,
+        if (_isUnlimitedResolved == true ||
+            record.state != InsightState.numbers)
+          record,
     ]);
     return Scaffold(
       backgroundColor: NotelColors.background,
@@ -169,9 +322,50 @@ class _PatternsScreenState extends State<PatternsScreen> {
             style: TextStyle(fontSize: 11, color: NotelColors.textSecondary),
           ),
           const SizedBox(height: 16),
-          for (var i = 0; i < visible.length; i++) ...[
-            if (i > 0) const SizedBox(height: 12),
-            _InsightCard(record: visible[i]),
+          if (_loadFailed) ...[
+            // Slot 1 (Juno S1 + signed follow-up ruling): the
+            // error state REPLACES the card list entirely — no
+            // placeholder, progress, unavailable, or numbers
+            // cards, no skeleton, and no pending label alongside
+            // it. One state at a time.
+            const Text(
+              correlationLoadError,
+              style: TextStyle(
+                fontSize: 14,
+                color: NotelColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: _retry,
+                child: const Text(correlationLoadRetryLabel),
+              ),
+            ),
+          ] else ...[
+            if (_membershipPending) ...[
+              // H1-05P pending state (Juno S4): skeleton + the
+              // pending label exactly once, only while membership
+              // is genuinely unknown. Progress and unavailable
+              // cards render normally below; numbers are held.
+              const SkeletonGroup(
+                child: SkeletonBox(height: 96, radius: 18),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                correlationMembershipPendingLabel,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: NotelColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            for (var i = 0; i < visible.length; i++) ...[
+              if (i > 0) const SizedBox(height: 12),
+              _InsightCard(record: visible[i]),
+            ],
           ],
           const SizedBox(height: 94),
         ],
