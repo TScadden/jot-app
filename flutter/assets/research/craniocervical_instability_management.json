@@ -1,0 +1,20 @@
+{
+  "conditionTags": [
+    "Craniocervical Instability (CCI)"
+  ],
+  "detail": "A systematic review in the Global Spine Journal analyzed the literature on diagnostic methods and criteria for craniocervical instability (CCI) in Ehlers-Danlos syndrome (EDS). Sixteen articles, including 78 surgical patients, met the inclusion criteria. The main diagnostic measures for CCI were dynamic x-rays and CT imaging. Ten different radiographic parameters were reported, of which four were the most frequently applied for surgical decision-making: the clivo-axial angle (CXA), the Harris measurement, the Grabb-Mapstone-Oakes measurement, and the angular displacement of C1 to C2.\n\nThe reviewers recommend that the CXA, Harris measurement, Grabb-Mapstone-Oakes measurement, and the angular displacement of C1 to C2 be used to evaluate suspected CCI in EDS patients, and that surgical fixation of suspected CCI should only be performed in cases with clear radiographic presence of instability and concordant symptoms and signs. The Ehlers-Danlos Society similarly describes surgery as something that may be needed in cases of severe headache and worsening function due to problems in the brainstem and upper spinal cord, after failure of non-surgery options.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about craniocervical instability evaluation and treatment.",
+  "id": "craniocervical_instability_management",
+  "sourceHandle": "",
+  "sourceName": "PubMed (Global Spine Journal)",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://pubmed.ncbi.nlm.nih.gov/35195459/",
+  "sourceVideoTitle": "",
+  "summary": "A Global Spine Journal systematic review of craniocervical instability in Ehlers-Danlos syndrome describes dynamic x-rays and CT imaging as the main diagnostic measures, names the four radiographic measurements most often used for surgical decisions, and recommends surgical fixation only where there is clear radiographic instability with matching symptoms.",
+  "takeaways": [
+    "dynamic x-rays and ct imaging are the main diagnostic measures described",
+    "four radiographic measurements are most often used for surgical decisions",
+    "fixation is recommended only with clear instability and matching symptoms"
+  ],
+  "title": "Craniocervical instability: how evaluation and surgical decisions are made",
+  "videoDurationSeconds": 0
+}

@@ -105,12 +105,17 @@ void main() {
     'Osteoporosis',
     'Gout',
     'Complex Regional Pain Syndrome (CRPS)',
+    // Catalog gap batch: conditions added to commonConditions
+    // (Nov 9, 2026) so these entries have catalog names to tag.
+    'Adenomyosis',
+    'Craniocervical Instability (CCI)',
+    'Median Arcuate Ligament Syndrome (MALS)',
   ];
 
   test('real rootBundle loads the full library (production path)',
       () async {
     final entries = await loadResearchEntries(rootBundle);
-    expect(entries.length, 210,
+    expect(entries.length, 219,
         reason: 'the bundled library should load every entry file');
     for (final condition in coveredConditions) {
       expect(entriesForCondition(entries, condition), isNotEmpty,
@@ -125,7 +130,7 @@ void main() {
         .whereType<File>()
         .where((f) => f.path.endsWith('.json'))
         .toList();
-    expect(files.length, 210);
+    expect(files.length, 219);
 
     final ids = <String>{};
     final covered = <String>{};
