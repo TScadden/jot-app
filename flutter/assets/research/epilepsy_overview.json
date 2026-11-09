@@ -1,0 +1,20 @@
+{
+ "conditionTags": [
+  "Epilepsy / Seizure Disorder"
+ ],
+ "detail": "MedlinePlus describes epilepsy as a brain disorder that causes people to have recurring seizures. The seizures happen when clusters of nerve cells, or neurons, in the brain send out the wrong signals. MedlinePlus notes that epilepsy has many possible causes, which can include illness, brain injury, and abnormal brain development, and that in many cases the cause is unknown.\n\nPresentations vary widely: MedlinePlus notes that people may have strange sensations and emotions or behave strangely during seizures, and symptoms can include violent muscle spasms or loss of consciousness, while other seizure types are milder. Doctors use brain scans and other tests to diagnose epilepsy. MedlinePlus states that there is no cure for epilepsy and that medicines can control seizures for most people, and it presents prompt treatment after diagnosis as important.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about epilepsy symptoms and diagnosis.",
+ "id": "epilepsy_overview",
+ "sourceHandle": "",
+ "sourceName": "MedlinePlus",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://medlineplus.gov/epilepsy.html",
+ "sourceVideoTitle": "",
+ "summary": "MedlinePlus describes epilepsy as a brain disorder in which clusters of neurons send out the wrong signals and cause recurring seizures, with causes that can include illness, brain injury, and abnormal brain development, and no identified cause in many cases.",
+ "takeaways": [
+  "epilepsy is a brain disorder causing recurring seizures",
+  "causes can include illness, brain injury, or abnormal brain development",
+  "in many cases the cause is unknown"
+ ],
+ "title": "Epilepsy: recurring seizures from disturbed brain signals",
+ "videoDurationSeconds": 0
+}

@@ -1,0 +1,20 @@
+{
+ "conditionTags": [
+  "Epilepsy / Seizure Disorder"
+ ],
+ "detail": "The Centers for Disease Control and Prevention (CDC) describes the most common treatments for epilepsy as medicine, surgical procedures, devices, and a special diet. Anti-seizure medicines limit the spread of seizures in the brain, and CDC notes that finding the right medicine can take time and that medicines work for about 2 in 3 people with epilepsy. CDC identifies neurologists, and epileptologists, neurologists who specialize in epilepsy, among the specialists who treat the condition.\n\nWhen seizures continue despite medicine, CDC describes other options clinicians may consider. Surgery can be helpful when seizures come from a single area of the brain. Devices include vagus nerve stimulation, in which an electrical device placed under the skin of the upper chest sends energy pulses to the brain through the vagus nerve, and responsive nerve stimulation. CDC also describes the ketogenic diet, a strict high-fat, low-carbohydrate diet typically used in children whose seizures do not stop, as an option within clinician-supervised care.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about managing epilepsy and seizure treatment.",
+ "id": "epilepsy_management",
+ "sourceHandle": "",
+ "sourceName": "Centers for Disease Control and Prevention",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.cdc.gov/epilepsy/treatment/index.html",
+ "sourceVideoTitle": "",
+ "summary": "CDC describes epilepsy treatment as centered on anti-seizure medicines, which work for about 2 in 3 people, with surgery, stimulation devices, and a ketogenic diet among the options clinicians consider when seizures continue.",
+ "takeaways": [
+  "anti-seizure medicines work for about 2 in 3 people with epilepsy",
+  "options beyond medicine include surgery, stimulation devices, and the ketogenic diet",
+  "never start, stop, or change medicines without your doctor"
+ ],
+ "title": "Epilepsy: medicines, surgery, devices, and diet as treatment options",
+ "videoDurationSeconds": 0
+}

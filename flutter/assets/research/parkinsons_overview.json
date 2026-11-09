@@ -1,0 +1,20 @@
+{
+ "conditionTags": [
+  "Parkinson's Disease"
+ ],
+ "detail": "The National Institute of Neurological Disorders and Stroke (NINDS) describes Parkinson's disease as a progressive movement disorder of the nervous system. It develops as nerve cells (neurons) in parts of the brain weaken, become damaged, and die; the most common symptoms result from loss of neurons in an area near the base of the brain called the substantia nigra, whose neurons produce dopamine, the chemical messenger that transmits signals in the brain to produce smooth, purposeful movement. NINDS notes that most people with Parkinson's have lost 60 to 80% or more of the dopamine-producing cells in the substantia nigra by the time symptoms appear.\n\nThe four primary symptoms NINDS lists are tremor, rigidity or muscle stiffness, bradykinesia, a slowing of spontaneous and automatic movement, and impaired balance. People with Parkinson's also lose the nerve endings that produce norepinephrine, the main chemical messenger of the part of the nervous system that controls automatic functions such as pulse and blood pressure, which relates to non-motor symptoms. NINDS notes that the affected brain cells contain Lewy bodies, deposits of the protein alpha-synuclein, and that researchers do not yet know why Lewy bodies form or what role they play in the disease.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about Parkinson's disease symptoms and diagnosis.",
+ "id": "parkinsons_overview",
+ "sourceHandle": "",
+ "sourceName": "National Institute of Neurological Disorders and Stroke",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.ninds.nih.gov/health-information/disorders/parkinsons-disease",
+ "sourceVideoTitle": "",
+ "summary": "NINDS describes Parkinson's disease as a progressive movement disorder driven by loss of dopamine-producing neurons in the substantia nigra, with primary symptoms of tremor, rigidity, slowed movement, and impaired balance.",
+ "takeaways": [
+  "parkinson's follows loss of dopamine-producing neurons in the substantia nigra",
+  "primary symptoms are tremor, rigidity, slowed movement, and impaired balance",
+  "affected brain cells contain lewy bodies of the protein alpha-synuclein"
+ ],
+ "title": "Parkinson's disease: dopamine cell loss and the symptoms that follow",
+ "videoDurationSeconds": 0
+}

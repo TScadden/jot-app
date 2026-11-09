@@ -1,0 +1,20 @@
+{
+ "conditionTags": [
+  "Parkinson's Disease"
+ ],
+ "detail": "MedlinePlus Magazine describes Parkinson's disease care as treatment that can help manage symptoms, since there is not yet a cure. Medications are the mainstay in the article: the most common medicines for Parkinson's work by replenishing dopamine levels in the brain to help control motor symptoms, usually combined with a second medication to reduce side effects, and other medications can help treat tremor, rigidity, and non-motor symptoms such as depression. The Magazine notes that most treatments focus on improving the primary movement symptoms, while some medications and therapies can also improve problems with sleep, constipation, and cognition.\n\nFor severe cases where medications are not working well enough, the Magazine describes deep brain stimulation (DBS), in which electrodes implanted in the brain send electrical pulses to the parts of the brain that control movement, which can help reduce movement-related symptoms and improve motor function. Supportive and complementary therapies in the article include a healthy diet, exercise, and therapies such as tai chi or dance, which the Magazine presents as helping manage symptoms and improve overall well-being. The Magazine also notes that there is no way to predict how quickly or severely the disease will progress for any one person.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about managing Parkinson's disease.",
+ "id": "parkinsons_management",
+ "sourceHandle": "",
+ "sourceName": "MedlinePlus Magazine",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://magazine.medlineplus.gov/article/parkinsons-disease-explained/",
+ "sourceVideoTitle": "",
+ "summary": "MedlinePlus Magazine describes Parkinson's treatment as symptom management built on dopamine-replenishing medicines, with deep brain stimulation for severe cases where medicines are not enough and supportive therapies such as exercise and tai chi alongside.",
+ "takeaways": [
+  "medicines that replenish dopamine are the mainstay of symptom treatment",
+  "deep brain stimulation is described for severe cases when medicines fall short",
+  "never start, stop, or change medicines without your doctor"
+ ],
+ "title": "Parkinson's disease: medicines, deep brain stimulation, and supportive therapies",
+ "videoDurationSeconds": 0
+}

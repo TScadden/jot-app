@@ -1,0 +1,20 @@
+{
+  "conditionTags": [
+    "Meniere's Disease"
+  ],
+  "detail": "The American Hearing Research Foundation (AHRF) reports on a genetic study of familial Ménière's disease that it funded, led by researchers at the University of Illinois at Chicago and in Spain. Familial cases, in which there is a family history of the disorder, are estimated at between 5 and 15 percent of all Ménière's cases. The team identified gene variants found in affected family members and not in unaffected siblings, including variants in the genes FAM136A and DTNA.\n\nTo separate the effects of the two genes, the researchers studied mice lacking each gene over 24 months of testing. According to the foundation's report, the results suggested that the DTNA variant may account for the vestibular (balance) loss and the FAM136A variant for the hearing loss seen in the condition. The findings were published in the European Journal of Neuroscience in August 2023, and the team has since pursued larger-scale work on more specific gene variants.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about Ménière's disease research and clinical trials.",
+  "id": "menieres_research",
+  "sourceHandle": "",
+  "sourceName": "American Hearing Research Foundation",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://www.american-hearing.org/blog/familial-menieres-disease-study-reveals-genetic-associations/",
+  "sourceVideoTitle": "",
+  "summary": "The American Hearing Research Foundation reports a funded study of familial Ménière's disease that linked variants in the FAM136A and DTNA genes to the hearing and balance features of the condition, tested in mouse models.",
+  "takeaways": [
+    "familial cases are estimated at 5 to 15 percent of all cases",
+    "mouse studies tied one gene to balance loss and another to hearing loss",
+    "research participation is optional; talk to your doctor about studies"
+  ],
+  "title": "Ménière's Disease: genetic clues from families with the condition",
+  "videoDurationSeconds": 0
+}

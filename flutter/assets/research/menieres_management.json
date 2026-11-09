@@ -1,0 +1,20 @@
+{
+  "conditionTags": [
+    "Meniere's Disease"
+  ],
+  "detail": "Mayo Clinic states that there is no cure for Ménière's disease, and that treatment aims to lessen how often vertigo attacks happen and how serious they are; the source also notes there are no treatments to reverse long-lasting hearing loss, although the care team may suggest ways to protect remaining hearing. Diagnosis typically rests on a pattern of at least two vertigo attacks lasting between 20 minutes and 12 hours, hearing loss confirmed by a hearing test, and tinnitus or a feeling of fullness or pressure in the ear.\n\nTreatment options Mayo Clinic describes include motion sickness medicines and anti-nausea medicines taken during an attack, longer-term medicines such as diuretics and betahistine intended to reduce fluid and improve vertigo, and lifestyle measures such as limiting dietary salt. Nonsurgical options include vestibular rehabilitation therapy, which retrains balance between attacks, hearing aids, and medicines injected into the middle ear. When vertigo attacks are severe and other treatments have not helped, Mayo Clinic describes surgical options including endolymphatic sac surgery and labyrinthectomy.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about managing Ménière's disease and its treatments.",
+  "id": "menieres_management",
+  "sourceHandle": "",
+  "sourceName": "Mayo Clinic",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://www.mayoclinic.org/diseases-conditions/menieres-disease/diagnosis-treatment/drc-20374916",
+  "sourceVideoTitle": "",
+  "summary": "Mayo Clinic describes Ménière's disease care aimed at reducing vertigo frequency and severity, using attack medicines, diuretics and salt limits, vestibular rehabilitation, middle ear injections, and surgery for severe cases.",
+  "takeaways": [
+    "treatment targets vertigo attacks; hearing loss cannot be reversed",
+    "long-term options the source describes include diuretics and lower salt intake",
+    "never start, stop, or change medicines without your doctor"
+  ],
+  "title": "Ménière's Disease: easing vertigo attacks and protecting hearing",
+  "videoDurationSeconds": 0
+}

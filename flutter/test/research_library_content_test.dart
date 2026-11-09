@@ -61,12 +61,34 @@ void main() {
     'Endometriosis',
     'Anemia (Iron Deficiency)',
     'High Cholesterol (Hyperlipidemia)',
+    // Expansion batch 2 (cardiovascular + neuro/psych).
+    'Hypertension (High Blood Pressure)',
+    'Atrial Fibrillation (AFib)',
+    'Congestive Heart Failure (CHF)',
+    'Depression (Major Depressive Disorder / MDD)',
+    'Major Depressive Disorder',
+    'Anxiety Disorder (Generalized / GAD)',
+    'ADHD (Attention-Deficit/Hyperactivity Disorder)',
+    'Post-Traumatic Stress Disorder (PTSD)',
+    'Bipolar I Disorder',
+    'Bipolar II Disorder',
+    'Obsessive-Compulsive Disorder (OCD)',
+    'Insomnia (Chronic)',
+    'Epilepsy / Seizure Disorder',
+    "Parkinson's Disease",
+    'Restless Legs Syndrome (RLS)',
+    'Narcolepsy (Type 1 / Type 2)',
+    'Essential Tremor',
+    'Trigeminal Neuralgia',
+    "Meniere's Disease",
+    'Idiopathic Intracranial Hypertension (IIH / Pseudotumor Cerebri)',
+    'Chiari Malformation',
   ];
 
   test('real rootBundle loads the full library (production path)',
       () async {
     final entries = await loadResearchEntries(rootBundle);
-    expect(entries.length, 106,
+    expect(entries.length, 163,
         reason: 'the bundled library should load every entry file');
     for (final condition in coveredConditions) {
       expect(entriesForCondition(entries, condition), isNotEmpty,
@@ -81,7 +103,7 @@ void main() {
         .whereType<File>()
         .where((f) => f.path.endsWith('.json'))
         .toList();
-    expect(files.length, 106);
+    expect(files.length, 163);
 
     final ids = <String>{};
     final covered = <String>{};

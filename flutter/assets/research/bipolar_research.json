@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Bipolar I Disorder",
+  "Bipolar II Disorder"
+ ],
+ "detail": "A genome-wide association study published in Nature Genetics and archived in PubMed Central analyzed 41,917 bipolar disorder cases and 371,549 controls of European ancestry, in work by the Bipolar Disorder Working Group of the Psychiatric Genomics Consortium. The study identified 64 associated genomic loci, making it the largest genome-wide study of bipolar disorder reported at the time of publication.\n\nThe researchers reported that bipolar disorder risk alleles were enriched in genes involved in synaptic signaling pathways and in brain-expressed genes, particularly genes with high expression in neurons of the prefrontal cortex and hippocampus. Integrating gene-expression data implicated 15 genes robustly linked to bipolar disorder, including genes the authors describe as druggable targets. The study also produced the best-powered bipolar disorder polygenic scores to date in the samples tested, and the authors frame the findings as new insight into the underlying biology of the disorder rather than as a clinical test.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about bipolar disorder research and genetics.",
+ "id": "bipolar_research",
+ "sourceHandle": "",
+ "sourceName": "PubMed Central",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8192451/",
+ "sourceVideoTitle": "",
+ "summary": "A Psychiatric Genomics Consortium genome-wide study of 41,917 bipolar disorder cases and 371,549 controls identified 64 associated genomic loci and pointed to synaptic signaling and brain-expressed genes in the disorder's biology.",
+ "takeaways": [
+  "the study analyzed 41,917 cases and 371,549 controls",
+  "64 genomic loci were associated with bipolar disorder",
+  "risk genes clustered in synaptic signaling and brain-expressed genes"
+ ],
+ "title": "Bipolar disorder: a genome-wide study of more than 40,000 cases",
+ "videoDurationSeconds": 0
+}
