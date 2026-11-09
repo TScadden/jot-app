@@ -34,6 +34,7 @@ class FakeCalendarBridge {
   bool malformedUpcoming = false;
   bool throwOnInsert = false;
   bool throwInvalidArgsOnInsert = false;
+  bool throwInvalidArgsOnDelete = false;
 
   final List<MethodCall> calls = [];
 
@@ -66,6 +67,15 @@ class FakeCalendarBridge {
         }
         return insertOutcome;
       case 'deleteEvents':
+        if (throwInvalidArgsOnDelete) {
+          // Mirrors the Kotlin bridge after the pass-2 B-07 fix: a
+          // non-blank unparseable date aborts with INVALID_ARGS
+          // before any delete runs.
+          throw PlatformException(
+              code: 'INVALID_ARGS',
+              message:
+                  'Calendar event date must be a valid yyyy-MM-dd date.');
+        }
         return deleteRows;
       case 'getUpcomingEvents':
         if (malformedUpcoming) {
@@ -751,6 +761,24 @@ void main() {
           findsNothing);
       expect(find.textContaining('has been added to your calendar'),
           findsNothing);
+    });
+
+    testWidgets('delete INVALID_ARGS (pass-2 B-07: unparseable date '
+        'aborts natively) → proposal stays pending with honest '
+        'error, no deleted confirmation', (tester) async {
+      final bridge = FakeCalendarBridge()
+        ..throwInvalidArgsOnDelete = true;
+      await pumpChat(tester, bridge: bridge, messages: const [_deleteMsg]);
+      await tester.tap(find.text('Approve & Delete'));
+      await tester.pumpAndSettle();
+      expect(bridge.callsTo('deleteEvents'), hasLength(1));
+      expect(
+          find.text('I could not remove that from your calendar. '
+              'Want me to try again? [INVALID_ARGS]'),
+          findsOneWidget);
+      expect(find.text('Approve & Delete'), findsOneWidget); // pending
+      expect(find.text('✓ Event Deleted from Calendar'), findsNothing);
+      expect(find.textContaining('Successfully deleted'), findsNothing);
     });
 
     testWidgets('no writable calendar → honest failure posted, '

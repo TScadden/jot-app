@@ -11,13 +11,21 @@ import 'package:flutter/services.dart';
 /// - Insert (`approveProposedCalendarEvent`, CoachViewModel.kt:778):
 ///   writable-calendar selection (access >= 500, connected-email
 ///   preference, else first writable) happens in Kotlin at write
-///   time; the raw date/time strings are parsed in Kotlin with
-///   native's `yyyy-MM-dd hh:mm a` → `HH:mm` fallback → now rule;
-///   the event is inserted with native's field mapping and the
-///   sync-adapter URI parameters; end = start + 1 hour.
+///   time; the raw date/time strings are parsed in Kotlin
+///   (non-lenient `yyyy-MM-dd hh:mm a` → `HH:mm`); the event is
+///   inserted with native's field mapping and the sync-adapter
+///   URI parameters; end = start + 1 hour. Pass-2 deviations
+///   (B-05/B-06): a writable-calendar query failure surfaces as
+///   CALENDAR_INSERT_FAILED (never "noWritableCalendar"), and a
+///   supplied-but-unparseable date/time aborts with INVALID_ARGS
+///   before any insert — native's "now" default remains only
+///   when both date and time are absent.
 /// - Delete (`approveProposedCalendarDeleteEvent`, :941): exact
 ///   TITLE match across ALL calendars, plus the parsed date's day
 ///   window when a date is present; returns the rows deleted.
+///   Pass-2 deviation (B-07): a non-blank unparseable date aborts
+///   with INVALID_ARGS before any delete; the title-only delete
+///   remains only for an absent date.
 /// - Upcoming events (`getUpcomingCalendarEvents`, :1461): events
 ///   from the earlier of local/UTC midnight today through local
 ///   midnight + 15 days, formatted by [formatUpcomingCalendarEvents]
