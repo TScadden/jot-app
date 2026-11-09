@@ -29,9 +29,22 @@ import 'package:tabs_lab/src/theme/animations.dart';
 /// for everyone and is untouched. The gate follows the app's
 /// existing pattern: the app-owned [BillingService] threaded
 /// through Tools → Medications when one exists, else the
-/// server-membership check ([TabsBackend.fetchMembership] — the
-/// Health Coach / Tips gate). No new gating mechanism, no Lab
-/// bypass.
+/// server-membership check — the Health Coach / Tips gate. No
+/// new gating mechanism, no Lab bypass.
+///
+/// The gate is TRI-STATE (H1-05 fix): a positively-known member
+/// unlocks, a positively-known non-member gets the locked view,
+/// and an INDETERMINATE status (billing `isUnlimited` null —
+/// whose own contract says null must not be treated as "not
+/// premium" — with the failure-distinguishing server check
+/// [TabsBackend.fetchMembershipOrNull] also unable to answer)
+/// gets the distinct membership-unknown state (Juno's
+/// `membershipUnknownMessage` + Try again), never the locked
+/// view. The load is likewise failure-preserving (H1-06 fix,
+/// reversing the VC 100109 combine's signed empty-on-any-failure
+/// behavior): a failed read renders Juno's load-failure state,
+/// and `noChangesInRange` stands for successful genuinely-empty
+/// loads only.
 ///
 /// Score integrity: this screen READS [HealthHistoryStore] only
 /// (coverage + readRange). It never writes the store and never
@@ -124,8 +137,21 @@ class _MedicationTimelineScreenState extends State<MedicationTimelineScreen> {
   late final HealthHistoryStore _historyStore;
   late final MedicationTimelineSeenStore _seenStore;
 
-  /// null = gate check still running; true = unlocked.
+  /// null = gate check still running; true = unlocked;
+  /// false = positively-known non-member (locked view).
   bool? _unlocked;
+
+  /// The gate ran but membership is INDETERMINATE (billing
+  /// status unknown and the server check could not answer).
+  /// Renders Juno's membership-unknown state — distinct from
+  /// the locked view, with no upsell or membership-required
+  /// wording.
+  bool _gateUnknown = false;
+
+  /// The gate resolved unlocked but the load itself failed.
+  /// Renders Juno's load-failure state instead of the timeline
+  /// (and instead of the genuinely-empty string).
+  bool _loadFailed = false;
   bool _loading = true;
   bool _showFirstOpenDisclaimer = false;
   MedicationTimelineData? _data;
@@ -157,43 +183,149 @@ class _MedicationTimelineScreenState extends State<MedicationTimelineScreen> {
     super.dispose();
   }
 
+  /// Billing stream handler. A positively-known value applies
+  /// directly (a later `true` emission unlocks and loads, as
+  /// before); a `null` emission is NOT a verdict — the status
+  /// is still (or again) unknown, so it never collapses into
+  /// the locked view here; the tri-state determination lives
+  /// in [_checkGate].
+  void _onBillingState(BillingState state) {
+    if (!mounted) return;
+    final value = state.isUnlimited;
+    if (value == null) return;
+    if (value == _unlocked && !_gateUnknown) return;
+    setState(() {
+      _unlocked = value;
+      _gateUnknown = false;
+    });
+    if (value && _data == null) unawaited(_load());
+  }
+
   Future<void> _checkGate() async {
+    if (_gateUnknown && mounted) {
+      // Re-check from the unknown state (its Try again): back
+      // to the checking spinner until the new check resolves.
+      setState(() {
+        _gateUnknown = false;
+        _unlocked = null;
+      });
+    }
     final service = widget.billingService;
     if (service != null) {
-      setState(() => _unlocked = service.state.isUnlimited == true);
-      _billingSub = service.states.listen((state) {
-        if (!mounted) return;
-        final unlocked = state.isUnlimited == true;
-        if (unlocked == _unlocked) return;
-        setState(() => _unlocked = unlocked);
-        if (unlocked && _data == null) unawaited(_load());
+      _billingSub ??= service.states.listen(_onBillingState);
+      final current = service.state.isUnlimited;
+      if (current == true) {
+        setState(() {
+          _unlocked = true;
+          _gateUnknown = false;
+        });
+        await _load();
+        return;
+      }
+      if (current == false) {
+        setState(() {
+          _unlocked = false;
+          _gateUnknown = false;
+        });
+        return;
+      }
+      // Billing status unknown (null): BillingService's own
+      // contract says null must NOT be treated as "not
+      // premium" — fall back to the failure-distinguishing
+      // server membership check before rendering anything.
+      ({bool isUnlimited, bool isAdmin})? membership;
+      try {
+        membership = await _backend.fetchMembershipOrNull();
+      } catch (_) {
+        membership = null;
+      }
+      if (!mounted) return;
+      // A stream emission may have resolved the gate while the
+      // server check was in flight; it has already applied (and
+      // loaded, when true) — do not overwrite it.
+      if (_unlocked != null || _gateUnknown) return;
+      if (membership == null) {
+        setState(() {
+          _unlocked = false;
+          _gateUnknown = true;
+        });
+        return;
+      }
+      setState(() {
+        _unlocked = membership!.isUnlimited;
+        _gateUnknown = false;
       });
       if (_unlocked == true) await _load();
       return;
     }
+    // No billing service: the server membership check IS the
+    // gate, in its failure-distinguishing form (the Health
+    // Coach precedent: a null pull is "could not verify", not
+    // "not a member").
+    ({bool isUnlimited, bool isAdmin})? membership;
     try {
-      final membership = await _backend.fetchMembership();
-      if (!mounted) return;
-      setState(() => _unlocked = membership.isUnlimited);
+      membership = await _backend.fetchMembershipOrNull();
     } catch (_) {
-      if (!mounted) return;
-      setState(() => _unlocked = false);
+      membership = null;
     }
+    if (!mounted) return;
+    if (membership == null) {
+      setState(() {
+        _unlocked = false;
+        _gateUnknown = true;
+      });
+      return;
+    }
+    setState(() {
+      _unlocked = membership!.isUnlimited;
+      _gateUnknown = false;
+    });
     if (_unlocked == true) await _load();
   }
 
   Future<void> _load() async {
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _loadFailed = false;
+      });
+    }
     try {
       final profile = await _backend.fetchProfile();
+      // H1-06: failure is PRESERVED, never erased into an empty
+      // list. The events fetch is nullable by design (null =
+      // the fetch failed); the pull-derived reads use their
+      // failure-distinguishing variants (fetchProfile is
+      // already nullable; entries/categories via their OrNull
+      // forms).
+      //
+      // Partial-failure choice (documented for the PR): if ANY
+      // read that determines the changes list failed — events,
+      // profile (the medication list the seeds/lanes derive
+      // from), entries, or categories — the WHOLE load is a
+      // failure and renders Juno's load-failure state. No
+      // partial timeline is built over the reads that happened
+      // to succeed: a timeline missing one input would present
+      // an incomplete history as complete. This REVERSES the
+      // VC 100109 combine's signed behavior (empty list on any
+      // failure, falsified-empty render).
+      final events = await _backend.fetchMedicationChangeEvents();
+      final entries = await _backend.fetchLogEntryDtosOrNull();
+      final categories = await _backend.fetchLogCategoriesOrNull();
+      if (events == null ||
+          profile == null ||
+          entries == null ||
+          categories == null) {
+        if (!mounted) return;
+        setState(() {
+          _data = null;
+          _loading = false;
+          _loadFailed = true;
+        });
+        return;
+      }
       final medRows = parseMedicationBlob(
-          TabsBackend.decodeProfileList(profile?['medications']));
-      // VC 100109 combine: the unified read path is nullable
-      // (item 3's degradation semantics); this screen's signed
-      // behavior is the empty list on any failure.
-      final events =
-          await _backend.fetchMedicationChangeEvents() ?? const [];
-      final entries = await _backend.fetchLogEntryDtos();
-      final categories = await _backend.fetchLogCategories();
+          TabsBackend.decodeProfileList(profile['medications']));
 
       // Score read bounds: the store's own coverage, widened to
       // cover every marker anchor and entry day, so readRange
@@ -250,22 +382,16 @@ class _MedicationTimelineScreenState extends State<MedicationTimelineScreen> {
       _scrollChartToEnd();
     } catch (_) {
       if (!mounted) return;
-      // Honest empty on any failure: the timeline is built over
-      // fully empty inputs, so the screen renders its ruled
-      // empty states and nothing is invented. (VC 100109
-      // combine — Vera C3 comment correction: the earlier text
-      // overstated this fallback as rendering seeds + scores;
-      // on a load failure neither is available.)
+      // H1-06: an exception anywhere in the load (score-store
+      // read included) is a LOAD FAILURE, rendered as Juno's
+      // load-failure state — never a timeline built over empty
+      // inputs, which would falsify a failed load as a
+      // genuinely empty history. (This replaces the VC 100109
+      // combine's signed honest-empty fallback.)
       setState(() {
-        _data = buildMedicationTimeline(
-          events: const [],
-          medications: const [],
-          scoresByDate: const {},
-          entries: const [],
-          categories: const [],
-          today: DateTime.now(),
-        );
+        _data = null;
         _loading = false;
+        _loadFailed = true;
       });
     }
   }
@@ -377,10 +503,15 @@ class _MedicationTimelineScreenState extends State<MedicationTimelineScreen> {
   }
 
   Widget _buildBody() {
-    if (_unlocked == null || (_unlocked == true && _loading)) {
+    if (_gateUnknown) return _membershipUnknownView();
+    if (_unlocked == null) {
       return const Center(child: CircularProgressIndicator());
     }
     if (_unlocked != true) return _lockedView();
+    if (_loadFailed) return _loadFailureView();
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
     final data = _data;
     if (data == null) {
       return const Center(child: CircularProgressIndicator());
@@ -413,6 +544,72 @@ class _MedicationTimelineScreenState extends State<MedicationTimelineScreen> {
           for (final lane in data.lanes) _medRow(lane),
         ],
       ],
+    );
+  }
+
+  /// The membership-unknown state (H1-05; Juno ruling): the
+  /// gate could not determine membership. The body is the
+  /// message plus the shared Try again button (which re-runs
+  /// the gate check) ONLY — it is not the locked view and
+  /// carries no upsell, CTA, or membership-required wording.
+  /// When the re-check resolves, this state clears in the same
+  /// state update (member → load; verified non-member → the
+  /// locked view exactly as before).
+  Widget _membershipUnknownView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              MedicationTimelineStrings.membershipUnknownMessage,
+              style: TextStyle(
+                  fontSize: 14, height: 1.5, color: NotelColors.textSecondary),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () => unawaited(_checkGate()),
+              style: FilledButton.styleFrom(
+                  backgroundColor: NotelColors.primary),
+              child: const Text(MedicationTimelineStrings.tryAgainLabel),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The load-failure state (H1-06; Juno ruling): the gate
+  /// resolved unlocked but the timeline load failed. It
+  /// replaces EVERYTHING (no chart, toggles, markers, or
+  /// lanes) and never renders `noChangesInRange` — that string
+  /// stands for successful genuinely-empty loads only. Try
+  /// again re-runs the load.
+  Widget _loadFailureView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              MedicationTimelineStrings.loadErrorMessage,
+              style: TextStyle(
+                  fontSize: 14, height: 1.5, color: NotelColors.textSecondary),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () => unawaited(_load()),
+              style: FilledButton.styleFrom(
+                  backgroundColor: NotelColors.primary),
+              child: const Text(MedicationTimelineStrings.tryAgainLabel),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

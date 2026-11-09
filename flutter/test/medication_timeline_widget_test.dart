@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -5,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:tabs_lab/src/data/billing_models.dart';
+import 'package:tabs_lab/src/data/billing_service.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/medication_timeline.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -76,6 +79,118 @@ MedicationTimelineData _dataWithMarker(
     lanes: const [],
     scoresByDate: base.scoresByDate,
   );
+}
+
+/// Mutable per-path control for the parameterized backend mock
+/// (H2-02): each endpoint's status / throw behavior can be set
+/// before the pump and flipped mid-test (the Try-again cases).
+class _BackendControl {
+  bool unlimited = true;
+  int pullStatus = 200;
+  bool pullThrows = false;
+  int eventsStatus = 200;
+  bool eventsThrows = false;
+
+  /// Events list empty AND pull carrying an empty medication
+  /// list / no entries / no categories (a genuinely empty
+  /// history, successfully loaded).
+  bool emptyHistory = false;
+}
+
+// ── Billing fakes ──────────────────────────────────────────────
+// Copied verbatim from billing_takeover_test.dart (the
+// FakeBillingStore / FakeBillingBackend pair) for the H2-02
+// gate tests — importing another test file crashes the test
+// compiler, so the fakes are reused by copy, exactly as defined
+// there.
+class FakeBillingStore implements BillingStore {
+  final List<String> log;
+  FakeBillingStore(this.log);
+
+  bool available = true;
+  List<BillingProduct> catalog = const [];
+  List<BillingPurchase> owned = const [];
+  bool launchResult = true;
+  Object? queryError;
+  Object? completeError;
+
+  final List<Set<String>> queriedProductIdSets = [];
+
+  final StreamController<List<BillingPurchase>> updates =
+      StreamController<List<BillingPurchase>>.broadcast();
+
+  @override
+  Future<bool> isAvailable() async {
+    log.add('store.isAvailable');
+    return available;
+  }
+
+  @override
+  Stream<List<BillingPurchase>> get purchaseUpdates => updates.stream;
+
+  @override
+  Future<List<BillingProduct>> queryProducts(Set<String> productIds) async {
+    log.add('store.queryProducts');
+    queriedProductIdSets.add(Set<String>.of(productIds));
+    if (queryError != null) throw queryError!;
+    return catalog;
+  }
+
+  @override
+  Future<bool> launchPurchase(BillingProduct product, BillingOffer offer) async {
+    log.add('store.launch:${product.id}:${offer.offerToken}');
+    return launchResult;
+  }
+
+  @override
+  Future<List<BillingPurchase>> queryOwnedPurchases() async {
+    log.add('store.queryOwned');
+    return owned;
+  }
+
+  @override
+  Future<void> completePurchase(BillingPurchase purchase) async {
+    log.add('store.complete:${purchase.purchaseToken}');
+    if (completeError != null) throw completeError!;
+  }
+
+  void emit(List<BillingPurchase> purchases) => updates.add(purchases);
+}
+
+class FakeBillingBackend implements BillingBackend {
+  final List<String> log;
+  FakeBillingBackend(this.log);
+
+  BillingVerifyOutcome verifyOutcome = const BillingVerifyOutcome(
+      success: true, isUnlimited: true);
+  bool? syncResult = false;
+  Object? verifyError;
+  Object? syncError;
+
+  Completer<void>? verifyGate;
+  final List<String> verifiedTokens = [];
+  final List<List<String>> syncedTokenLists = [];
+
+  @override
+  Future<BillingVerifyOutcome> verifyPurchase({
+    required String productId,
+    required String purchaseToken,
+    int quantity = 1,
+  }) async {
+    log.add('backend.verify:$productId:$purchaseToken:$quantity');
+    verifiedTokens.add(purchaseToken);
+    if (verifyGate != null) await verifyGate!.future;
+    if (verifyError != null) throw verifyError!;
+    return verifyOutcome;
+  }
+
+  @override
+  Future<bool?> syncSubscriptions(List<String> activeTokens) async {
+    log.add('backend.sync:$activeTokens');
+    syncedTokenLists.add(List.of(activeTokens));
+    if (syncError != null) throw syncError!;
+    return syncResult;
+  }
 }
 
 List<String> _allTexts(WidgetTester tester) {
@@ -215,6 +330,11 @@ void main() {
         'Migraine days',
         'Symptom logs',
         'Tabs is not a medical device. It does not diagnose, treat, cure, or prevent any condition.',
+        // Gate / load failure states (Juno ruling, H1-05/H1-06
+        // package — verbatim).
+        'Could not verify membership. Check your connection and try again.',
+        'Could not load your medication timeline. Check your connection and try again.',
+        'Try again',
       ];
       for (final s in approved) {
         expect(stringsSource.contains(s), isTrue,
@@ -305,72 +425,117 @@ void main() {
       }
     }
 
-    TabsBackend backend({required bool unlimited}) {
+    /// The existing mock, parameterized per path (H2-02): the
+    /// medication-events endpoint and the sync pull each honor
+    /// [control]'s status / throw / empty settings, and the
+    /// control can be flipped mid-test for the retry cases.
+    TabsBackend backendControlled(_BackendControl control) {
       final session = FakeSessionStore()..token = 'tok';
       final client = MockClient((request) async {
         if (request.url.path == '/api/sync/medication-events') {
+          if (control.eventsThrows) {
+            throw StateError('mock transport failure (events)');
+          }
+          if (control.eventsStatus != 200) {
+            return http.Response('nope', control.eventsStatus);
+          }
           return http.Response(
             jsonEncode({
               'success': true,
-              'events': [
-                {
-                  'id': 'e1',
-                  'medId': 'm1',
-                  'medName': 'Med A',
-                  'type': 'start',
-                  'old': null,
-                  'new': {
-                    'dose': '10 mg',
-                    'frequency': 'Once daily',
-                    'startDate': 'Oct 15, 2026',
-                    'endDate': 'Present',
-                    'isPresent': true,
-                  },
-                  'effectiveDate': 'Oct 15, 2026',
-                  'recordedAt': _d(10, 15).millisecondsSinceEpoch,
-                  'source': 'tools',
-                },
-              ],
+              'events': control.emptyHistory
+                  ? <dynamic>[]
+                  : [
+                      {
+                        'id': 'e1',
+                        'medId': 'm1',
+                        'medName': 'Med A',
+                        'type': 'start',
+                        'old': null,
+                        'new': {
+                          'dose': '10 mg',
+                          'frequency': 'Once daily',
+                          'startDate': 'Oct 15, 2026',
+                          'endDate': 'Present',
+                          'isPresent': true,
+                        },
+                        'effectiveDate': 'Oct 15, 2026',
+                        'recordedAt': _d(10, 15).millisecondsSinceEpoch,
+                        'source': 'tools',
+                      },
+                    ],
             }),
             200,
           );
         }
         // /api/sync/pull
+        if (control.pullThrows) {
+          throw StateError('mock transport failure (pull)');
+        }
+        if (control.pullStatus != 200) {
+          return http.Response('nope', control.pullStatus);
+        }
         return http.Response(
           jsonEncode({
-            'isUnlimited': unlimited,
+            'isUnlimited': control.unlimited,
             'isAdmin': false,
             'profile': {
-              'medications': jsonEncode([
-                {
-                  'id': 'm1',
-                  'name': 'Med A',
-                  'startDate': 'Oct 15, 2026',
-                  'endDate': 'Present',
-                  'isPresent': true,
-                  'dose': '10 mg',
-                  'frequency': 'Once daily',
-                  'updatedAt': 0,
-                  'isDeleted': false,
-                },
-              ]),
+              'medications': control.emptyHistory
+                  ? '[]'
+                  : jsonEncode([
+                      {
+                        'id': 'm1',
+                        'name': 'Med A',
+                        'startDate': 'Oct 15, 2026',
+                        'endDate': 'Present',
+                        'isPresent': true,
+                        'dose': '10 mg',
+                        'frequency': 'Once daily',
+                        'updatedAt': 0,
+                        'isDeleted': false,
+                      },
+                    ]),
             },
             'entries': <dynamic>[],
-            'categories': [
-              {
-                'id': 1,
-                'name': 'Symptoms',
-                'icon': 'circle',
-                'colorHex': '#CCCCCC',
-                'isDefault': true,
-                'sortOrder': 0,
-              },
-            ],
+            'categories': control.emptyHistory
+                ? <dynamic>[]
+                : [
+                    {
+                      'id': 1,
+                      'name': 'Symptoms',
+                      'icon': 'circle',
+                      'colorHex': '#CCCCCC',
+                      'isDefault': true,
+                      'sortOrder': 0,
+                    },
+                  ],
           }),
           200,
         );
       });
       return TabsBackend(client: client, sessionStore: session);
+    }
+
+    TabsBackend backend({required bool unlimited}) {
+      final control = _BackendControl()..unlimited = unlimited;
+      return backendControlled(control);
+    }
+
+    /// A [BillingService] over the billing takeover fakes (the
+    /// FakeBillingStore / FakeBillingBackend copied verbatim
+    /// from billing_takeover_test.dart above), NOT yet
+    /// initialized or synced — its state starts with
+    /// `isUnlimited == null` (unknown).
+    ({
+      FakeBillingStore store,
+      FakeBillingBackend backend,
+      BillingService service,
+    }) makeBillingService() {
+      final log = <String>[];
+      final store = FakeBillingStore(log);
+      final backend = FakeBillingBackend(log);
+      final service = BillingService(
+          store: store, backend: backend, isProductionBuild: true);
+      return (store: store, backend: backend, service: service);
     }
 
     MedicationTimelineSeenStore seenStore({required bool seen}) {
@@ -465,6 +630,234 @@ void main() {
       expect(find.byIcon(Icons.lock_outline), findsOneWidget);
       expect(find.text('Started Med A · 10 mg'), findsNothing);
       expect(find.byType(MedicationChangePanel), findsNothing);
+    });
+
+    // ── H1-05 / H1-06 / H2-02 — failure states ─────────────────
+    // Juno's verbatim strings for the two NEW states (asserted
+    // as literals so these tests compile — and fail — against
+    // the pre-fix code):
+    const unknownMessage =
+        'Could not verify membership. Check your connection and try again.';
+    const loadErrorMessage =
+        'Could not load your medication timeline. Check your connection and try again.';
+    const tryAgainLabel = 'Try again';
+    const noChanges = 'No medication changes in this range.';
+
+    Future<void> pumpScreen(
+      WidgetTester tester, {
+      required TabsBackend tabsBackend,
+      BillingService? billingService,
+    }) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await seedScores();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MedicationTimelineScreen(
+            backend: tabsBackend,
+            historyStore: historyStore,
+            seenStore: seenStore(seen: true),
+            billingService: billingService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets(
+        'H2-02 (1): BillingService state null, server pull says '
+        'isUnlimited:true → timeline content, not the lock',
+        (tester) async {
+      final billing = makeBillingService();
+      // Never initialized / synced: the billing state is unknown.
+      expect(billing.service.state.isUnlimited, isNull);
+      await pumpScreen(
+        tester,
+        tabsBackend: backend(unlimited: true),
+        billingService: billing.service,
+      );
+      expect(find.text('Started Med A · 10 mg'), findsOneWidget);
+      expect(find.byIcon(Icons.lock_outline), findsNothing);
+      expect(find.text(unknownMessage), findsNothing);
+    });
+
+    testWidgets('H2-02 (2a): sync resolves true → unlocked and loads',
+        (tester) async {
+      final billing = makeBillingService();
+      billing.backend.syncResult = true;
+      await billing.service.syncSubscriptionStatus();
+      expect(billing.service.state.isUnlimited, isTrue);
+      await pumpScreen(
+        tester,
+        tabsBackend: backend(unlimited: true),
+        billingService: billing.service,
+      );
+      expect(find.text('Started Med A · 10 mg'), findsOneWidget);
+      expect(find.byIcon(Icons.lock_outline), findsNothing);
+      expect(find.text(unknownMessage), findsNothing);
+    });
+
+    testWidgets('H2-02 (2b): sync resolves false → locked view',
+        (tester) async {
+      final billing = makeBillingService();
+      billing.backend.syncResult = false;
+      await billing.service.syncSubscriptionStatus();
+      expect(billing.service.state.isUnlimited, isFalse);
+      await pumpScreen(
+        tester,
+        tabsBackend: backend(unlimited: true),
+        billingService: billing.service,
+      );
+      expect(find.byIcon(Icons.lock_outline), findsOneWidget);
+      expect(find.text('Started Med A · 10 mg'), findsNothing);
+      expect(find.text(unknownMessage), findsNothing);
+    });
+
+    testWidgets(
+        'H2-02 (2c): stream transition null/false → true unlocks '
+        'and loads', (tester) async {
+      final billing = makeBillingService();
+      billing.backend.syncResult = false;
+      await billing.service.syncSubscriptionStatus();
+      await pumpScreen(
+        tester,
+        tabsBackend: backend(unlimited: true),
+        billingService: billing.service,
+      );
+      expect(find.byIcon(Icons.lock_outline), findsOneWidget);
+      expect(find.text('Started Med A · 10 mg'), findsNothing);
+
+      billing.backend.syncResult = true;
+      await billing.service.syncSubscriptionStatus();
+      await tester.pumpAndSettle();
+      expect(find.text('Started Med A · 10 mg'), findsOneWidget);
+      expect(find.byIcon(Icons.lock_outline), findsNothing);
+    });
+
+    testWidgets(
+        'H2-02 (3): Play unavailable (isAvailable false) → unknown '
+        'state, not the plain locked view', (tester) async {
+      final billing = makeBillingService();
+      billing.store.available = false;
+      await billing.service.initialize();
+      // Play unavailable leaves the status unknown (null).
+      expect(billing.service.state.isUnlimited, isNull);
+      final control = _BackendControl()..pullStatus = 500;
+      await pumpScreen(
+        tester,
+        tabsBackend: backendControlled(control),
+        billingService: billing.service,
+      );
+      expect(find.text(unknownMessage), findsOneWidget);
+      expect(find.text(tryAgainLabel), findsOneWidget);
+      expect(find.byIcon(Icons.lock_outline), findsNothing);
+      expect(find.text('Started Med A · 10 mg'), findsNothing);
+    });
+
+    testWidgets(
+        'H2-02 (4a): non-billing path, pull 500 → unknown/verify '
+        'state, not locked, not timeline; Try again re-checks the '
+        'gate and unlocks once the pull is healthy', (tester) async {
+      final control = _BackendControl()..pullStatus = 500;
+      await pumpScreen(tester, tabsBackend: backendControlled(control));
+      expect(find.text(unknownMessage), findsOneWidget);
+      expect(find.text(tryAgainLabel), findsOneWidget);
+      expect(find.byIcon(Icons.lock_outline), findsNothing);
+      expect(find.text('Started Med A · 10 mg'), findsNothing);
+
+      control.pullStatus = 200;
+      await tester.tap(find.text(tryAgainLabel));
+      await tester.pumpAndSettle();
+      expect(find.text(unknownMessage), findsNothing);
+      expect(find.text('Started Med A · 10 mg'), findsOneWidget);
+    });
+
+    testWidgets(
+        'H2-02 (4b): non-billing path, pull throws → unknown/verify '
+        'state, not locked, not timeline', (tester) async {
+      final control = _BackendControl()..pullThrows = true;
+      await pumpScreen(tester, tabsBackend: backendControlled(control));
+      expect(find.text(unknownMessage), findsOneWidget);
+      expect(find.text(tryAgainLabel), findsOneWidget);
+      expect(find.byIcon(Icons.lock_outline), findsNothing);
+      expect(find.text('Started Med A · 10 mg'), findsNothing);
+    });
+
+    testWidgets(
+        'H2-02 (5a): gate unlocked, medication-events 500 with the '
+        'pull OK → load-failure state, empty string ABSENT',
+        (tester) async {
+      final control = _BackendControl()..eventsStatus = 500;
+      await pumpScreen(tester, tabsBackend: backendControlled(control));
+      expect(find.text(loadErrorMessage), findsOneWidget);
+      expect(find.text(tryAgainLabel), findsOneWidget);
+      expect(find.text(noChanges), findsNothing);
+      expect(find.byIcon(Icons.lock_outline), findsNothing);
+      expect(
+          find.text(MedicationTimelineStrings.toggleDailyScore),
+          findsNothing);
+      expect(find.text('Started Med A · 10 mg'), findsNothing);
+    });
+
+    testWidgets(
+        'H2-02 (5b): gate unlocked via billing, BOTH endpoints '
+        'failing → load-failure state, empty string ABSENT',
+        (tester) async {
+      final billing = makeBillingService();
+      billing.backend.syncResult = true;
+      await billing.service.syncSubscriptionStatus();
+      final control = _BackendControl()
+        ..eventsStatus = 500
+        ..pullStatus = 500;
+      await pumpScreen(
+        tester,
+        tabsBackend: backendControlled(control),
+        billingService: billing.service,
+      );
+      expect(find.text(loadErrorMessage), findsOneWidget);
+      expect(find.text(tryAgainLabel), findsOneWidget);
+      expect(find.text(noChanges), findsNothing);
+      expect(find.text(unknownMessage), findsNothing);
+      expect(find.text('Started Med A · 10 mg'), findsNothing);
+    });
+
+    testWidgets(
+        'H2-02 (5c): gate unlocked, both endpoints 200 empty → '
+        'genuinely-empty string PRESENT, no failure state',
+        (tester) async {
+      final control = _BackendControl()..emptyHistory = true;
+      await pumpScreen(tester, tabsBackend: backendControlled(control));
+      expect(find.text(noChanges), findsOneWidget);
+      expect(find.text(loadErrorMessage), findsNothing);
+      expect(find.text(unknownMessage), findsNothing);
+      expect(find.byIcon(Icons.lock_outline), findsNothing);
+    });
+
+    testWidgets(
+        'H2-02 (6): from the load-failure state, flip the mock '
+        'healthy and tap Try again → the timeline renders',
+        (tester) async {
+      final billing = makeBillingService();
+      billing.backend.syncResult = true;
+      await billing.service.syncSubscriptionStatus();
+      final control = _BackendControl()
+        ..eventsStatus = 500
+        ..pullStatus = 500;
+      await pumpScreen(
+        tester,
+        tabsBackend: backendControlled(control),
+        billingService: billing.service,
+      );
+      expect(find.text(loadErrorMessage), findsOneWidget);
+      expect(find.text('Started Med A · 10 mg'), findsNothing);
+
+      control.eventsStatus = 200;
+      control.pullStatus = 200;
+      await tester.tap(find.text(tryAgainLabel));
+      await tester.pumpAndSettle();
+      expect(find.text(loadErrorMessage), findsNothing);
+      expect(find.text('Started Med A · 10 mg'), findsOneWidget);
     });
 
     testWidgets('Medications tool entry opens the timeline screen',
