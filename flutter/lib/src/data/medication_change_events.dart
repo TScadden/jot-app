@@ -1,3 +1,4 @@
+import 'package:tabs_lab/src/data/medication_change_event_outbox.dart';
 import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 
@@ -15,7 +16,9 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 ///
 /// Events are emitted ONLY after the profile push succeeds
 /// (spec §2.6): a failed or refused push emits no event.
-/// Emission is best-effort — see [emitMedicationChangeEvents].
+/// Emission is best-effort toward the caller but DURABLE —
+/// see [emitMedicationChangeEvents] and the H1-07 outbox in
+/// `medication_change_event_outbox.dart`.
 ///
 /// This file has NO user-visible strings and no UI; the
 /// timeline view (item 2b) is a separate package.
@@ -389,15 +392,56 @@ List<MedicationChangeEvent> diffMedicationLists({
 /// swallowed: a capture failure must never surface to the user
 /// or un-save a completed save (the medication list push has
 /// already landed by the time this runs).
+///
+/// H1-07: emission now goes through the durable
+/// [MedicationChangeEventOutbox]. The events are staged to disk
+/// (owner-stamped, original objects with their original ids)
+/// BEFORE any network attempt, and they leave the queue only
+/// when the POST returns true — a transport failure / timeout /
+/// 500 (which [TabsBackend.postMedicationChangeEvents] reports
+/// as `false`, never a throw) now means "queued for the next
+/// flush trigger", not "gone". The old fire-and-forget body
+/// discarded that bool, and because each later edit diffs
+/// against the already-pushed list, a lost transition could
+/// never be re-derived. Callers may fire this unawaited: the
+/// staging persist precedes the network attempt inside the
+/// outbox, so the ordering guarantee does not depend on the
+/// caller awaiting.
 Future<void> emitMedicationChangeEvents(
   TabsBackend backend,
-  List<MedicationChangeEvent> events,
-) async {
+  List<MedicationChangeEvent> events, {
+  MedicationChangeEventOutbox? outbox,
+}) async {
   if (events.isEmpty) return;
   try {
-    await backend.postMedicationChangeEvents(events);
+    await (outbox ?? MedicationChangeEventOutbox.instance).stageAndFlush(
+      events,
+      poster: backend.postMedicationChangeEvents,
+      ownerProvider: backend.readEmail,
+    );
   } catch (_) {
     // Best-effort capture (spec §2.6): never surface, never
-    // un-save a completed save.
+    // un-save a completed save. A staging/flush failure leaves
+    // whatever was staged queued for the next trigger.
+  }
+}
+
+/// One flush trigger for the H1-07 outbox, through [backend]:
+/// posts any staged medication change events and drains the
+/// queue only on a verified success. Wired at sign-in landing /
+/// app resume (`main.dart`, alongside the Daily Score trigger)
+/// and when the Medications screen opens. Never throws;
+/// returns true when the queue is fully flushed.
+Future<bool> flushMedicationChangeEvents(
+  TabsBackend backend, {
+  MedicationChangeEventOutbox? outbox,
+}) async {
+  try {
+    return await (outbox ?? MedicationChangeEventOutbox.instance).flush(
+      poster: backend.postMedicationChangeEvents,
+      ownerProvider: backend.readEmail,
+    );
+  } catch (_) {
+    return false;
   }
 }

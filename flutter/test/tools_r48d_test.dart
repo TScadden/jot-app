@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:tabs_lab/src/data/medication_change_event_outbox.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/tools/habits_screen.dart';
 import 'package:tabs_lab/src/features/tools/medications_screen.dart';
@@ -171,6 +172,29 @@ void main() {
   // reset between cases so one case's cached habits cannot be
   // served to the next case's fresh fake server.
   setUp(TabsBackend.debugResetSharedCaches);
+  // H1-07: MedicationsScreen saves now stage their change
+  // events through the singleton MedicationChangeEventOutbox
+  // before posting; wire its storage IO to an in-memory disk
+  // (the settings_r29 debugSetStore pattern) so the staging
+  // futures can complete in the fake-async zone — the real
+  // FlutterSecureStorage channel has no handler here and its
+  // futures never settle, which would park the awaited emit
+  // inside the save and wedge the write-serialization state
+  // this file pins.
+  setUp(() {
+    final disk = <String, String>{};
+    MedicationChangeEventOutbox.instance
+      ..debugReset()
+      ..debugSetStore(
+        read: (key) async => disk[key],
+        write: (key, value) async {
+          disk[key] = value;
+        },
+        delete: (key) async {
+          disk.remove(key);
+        },
+      );
+  });
   group('r48d habits: fetchHabitsOrNull distinguishes failure', () {
     test('500 → null; fetchHabits still flattens to []', () async {
       final backend = _backendWith(

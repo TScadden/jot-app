@@ -6,6 +6,7 @@ import 'package:tabs_lab/src/data/daily_score_sync.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
+import 'package:tabs_lab/src/data/medication_change_event_outbox.dart';
 import 'package:tabs_lab/src/data/lean_test_session.dart';
 import 'package:tabs_lab/src/data/migraine_attack_store.dart';
 import 'package:tabs_lab/src/data/migraine_notification.dart';
@@ -175,6 +176,26 @@ class AccountActions {
     try {
       await DailyScoreSync.instance.clear();
     } catch (_) {}
+    // H1-07: the medication change-event outbox is owner-stamped
+    // account data too — the same wipe covers it on explicit
+    // logout / account deletion. (Session EXPIRY deliberately
+    // does not wipe it: see main.dart's _onSessionExpired and the
+    // outbox file header — the events exist nowhere else locally,
+    // so the owner-stamped blob is retained for the same
+    // account's return and dropped unsent by a different
+    // account's sign-in.)
+    // Deliberately NOT awaited, on the LeanTestSessionStore
+    // precedent directly above: this funnel has no test-injected
+    // storage for the outbox, so its delete reaches the real
+    // FlutterSecureStorage channel — a channel future that
+    // cannot complete in a caller's async zone would park the
+    // whole wipe (and the logout) behind it. clear() drops the
+    // in-memory queue and owner binding SYNCHRONOUSLY before its
+    // first await, so the wipe takes effect here; only the blob
+    // delete completes in the background, and a surviving blob
+    // stays guarded (flush re-checks the owner, and login's
+    // clearIfOwnerMismatch re-wipes a mismatched blob).
+    unawaited(MedicationChangeEventOutbox.instance.clear());
     // Refresh-scope fix (Oct 20, 2026): the refresh owner's
     // pending outcomes live only in memory, but they belong to
     // the account too — logout / account deletion drops them
