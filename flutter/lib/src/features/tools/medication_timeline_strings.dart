@@ -45,6 +45,32 @@ abstract final class MedicationTimelineStrings {
   /// Draft 8, first string — the changes-list empty state.
   static const String noChangesInRange = 'No medication changes in this range.';
 
+  // ── Gate states (Juno ruling for the H1-05 / H1-06
+  // failure-states package — the header-required Juno ruling
+  // for these three strings, verbatim) ─────────────────────
+
+  /// The gate could not determine membership (billing status
+  /// unknown AND the server membership check indeterminate).
+  /// Renders ONLY in the new membership-unknown state: this
+  /// message plus the [tryAgainLabel] button — never the
+  /// locked view, never any membership-required/upsell copy.
+  /// Byte-identical to the Health Coach / Tips string for the
+  /// same state.
+  static const String membershipUnknownMessage =
+      'Could not verify membership. Check your connection and try again.';
+
+  /// The gate resolved unlocked but the timeline load itself
+  /// failed. Renders ONLY in the load-failure state (message
+  /// plus the [tryAgainLabel] button), replacing the whole
+  /// timeline — it may never substitute for
+  /// [noChangesInRange], which stands for successful
+  /// genuinely-empty loads only.
+  static const String loadErrorMessage =
+      'Could not load your medication timeline. Check your connection and try again.';
+
+  /// The ONE shared retry label for both failure states above.
+  static const String tryAgainLabel = 'Try again';
+
   /// Draft 9 — series toggle labels (plain series names).
   static const String toggleDailyScore = 'Daily Score';
   static const String toggleFlareDays = 'Flare days';

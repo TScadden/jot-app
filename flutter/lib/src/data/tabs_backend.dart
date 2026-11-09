@@ -1502,10 +1502,11 @@ class TabsBackend {
   /// declared form on null instead of mistaking a failure for
   /// "no changes captured" (spec §4.5: failures land in
   /// degradation, never in falsified content), and item 2b's
-  /// timeline screen maps null to its honest empty changes state
-  /// (`?? const []` at its call site; seeded markers and scores
-  /// still render). Malformed event rows are skipped; never
-  /// throws.
+  /// timeline screen now maps null to its load-failure state
+  /// (the H1-06 fix, reversing the VC 100109 combine's
+  /// `?? const []` mapping — a failed fetch must not render as
+  /// a genuinely empty history). Malformed event rows are
+  /// skipped; never throws.
   Future<List<MedicationChangeEvent>?> fetchMedicationChangeEvents() async {
     final body = await _getJson('/api/sync/medication-events');
     if (body == null || body['success'] != true) return null;
