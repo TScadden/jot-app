@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Anemia (Iron Deficiency)"
+ ],
+ "detail": "MedlinePlus describes iron deficiency anemia care as rebuilding iron stores while clinicians identify and address why iron became low, which can include blood loss, low dietary iron, or poor absorption. Iron-rich foods are part of the picture sources describe, alongside treatment of any bleeding source or absorption condition a clinician finds. NHLBI similarly notes the condition may be preventable when causes of blood loss or absorption problems can be treated.\n\nThe most common treatment MedlinePlus and NHLBI describe is iron supplements, also called oral iron, most often ferrous sulfate, which build up the body's iron stores over weeks to months. In some situations clinicians may use intravenous iron or, for severe anemia, transfusion, chosen by the care team. Follow-up blood tests are used to check hemoglobin and iron stores, and MedlinePlus notes anemia often improves or resolves after a period of iron therapy, with clinicians continuing evaluation if it does not.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about iron deficiency anemia treatment and follow-up.",
+ "id": "iron_deficiency_anemia_management",
+ "sourceHandle": "",
+ "sourceName": "MedlinePlus",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.nlm.nih.gov/medlineplus/ency/article/000584.htm",
+ "sourceVideoTitle": "Iron deficiency anemia: MedlinePlus Medical Encyclopedia",
+ "summary": "MedlinePlus describes iron deficiency anemia treatment as including iron supplements, most often ferrous sulfate, and eating iron-rich foods, while clinicians address the underlying cause of low iron.",
+ "takeaways": [
+  "replacing iron and finding its cause are both described as essential",
+  "iron supplements are the most common treatment sources describe",
+  "never start, stop, or change medicines without your doctor",
+  "follow-up blood tests check whether hemoglobin and iron stores recover"
+ ],
+ "title": "Managing iron deficiency anemia day to day",
+ "videoDurationSeconds": 0
+}

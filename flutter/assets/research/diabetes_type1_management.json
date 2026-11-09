@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Diabetes (Type 1)"
+ ],
+ "detail": "NIDDK describes diabetes management as built around monitoring blood glucose, following an individual care plan made with the health care team, and tracking the diabetes ABCs: A1C, blood pressure, and cholesterol. Sources describe checking glucose at home with a meter, and many people who take insulin are described as benefiting from a continuous glucose monitor, a sensor under the skin that shows glucose changes through the day and night. The A1C test, done at a clinic or lab, shows average glucose over the past three months; NIDDK notes guidelines discuss a goal below 7 percent for many adults, with individual goals set by the care team.\n\nBecause the body makes little or no insulin in type 1 diabetes, insulin replacement is the central medicine clinicians use, delivered by injections or a pump in regimens matched to meals, activity, and glucose readings. NIDDK also describes regular screening and follow-up for complications, including eye, kidney, nerve, heart, and foot checks, and attention to blood pressure, cholesterol, sleep, and not smoking as part of long-term care.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about managing type 1 diabetes and glucose monitoring.",
+ "id": "diabetes_type1_management",
+ "sourceHandle": "",
+ "sourceName": "National Institute of Diabetes and Digestive and Kidney Diseases",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.niddk.nih.gov/health-information/diabetes/overview/managing-diabetes",
+ "sourceVideoTitle": "Managing Diabetes - NIDDK",
+ "summary": "NIDDK's guide to managing diabetes covers glucose monitoring with meters and continuous glucose monitors, the A1C test, and the diabetes ABCs of A1C, blood pressure, and cholesterol.",
+ "takeaways": [
+  "glucose monitoring and A1C checks are central parts of care clinicians describe",
+  "insulin is essential in type 1 diabetes; regimens are individualized",
+  "never start, stop, or change medicines without your doctor",
+  "care also includes blood pressure, cholesterol, eye, kidney, and foot screening"
+ ],
+ "title": "Managing type 1 diabetes day to day",
+ "videoDurationSeconds": 0
+}

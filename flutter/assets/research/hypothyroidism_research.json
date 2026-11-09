@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Hypothyroidism"
+ ],
+ "detail": "Levothyroxine is the standard thyroid hormone replacement, and researchers continue to study whether some people do better on other preparations. In a randomized, double-blind crossover trial at Walter Reed, 70 people with primary hypothyroidism who were stable on levothyroxine were assigned to desiccated thyroid extract, an older preparation containing more than one thyroid hormone, or to levothyroxine for 16 weeks, then crossed over to the other treatment for 16 weeks, without knowing which they were taking.\n\nThe trial found no differences between the two treatments in symptoms or neurocognitive testing. Weight was modestly lower on the extract, by about 3 pounds, and at the end of the study 48.6 percent of participants preferred the extract, 18.6 percent preferred levothyroxine, and 32.9 percent had no preference. The authors concluded that the extract did not significantly improve quality of life and may be relevant for some patients; the findings did not change standard care, and which patients, if any, benefit most remains a research question.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about hypothyroidism treatment research.",
+ "id": "hypothyroidism_research",
+ "sourceHandle": "",
+ "sourceName": "PubMed (National Library of Medicine)",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://pubmed.ncbi.nlm.nih.gov/23539727/",
+ "sourceVideoTitle": "Desiccated thyroid extract compared with levothyroxine in the treatment of hypothyroidism: a randomized, double-blind, crossover study",
+ "summary": "A randomized, double-blind crossover trial indexed by PubMed compared desiccated thyroid extract with levothyroxine in 70 people with hypothyroidism, measuring symptoms, neurocognitive testing, weight, and patient preference.",
+ "takeaways": [
+  "research compares standard replacement with other hormone preparations",
+  "patient preference and symptoms are studied alongside blood tests",
+  "no alternative is established as better for everyone",
+  "research participation is optional; talk to your doctor about studies"
+ ],
+ "title": "Where hypothyroidism research is heading",
+ "videoDurationSeconds": 0
+}

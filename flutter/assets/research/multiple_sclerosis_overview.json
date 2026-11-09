@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Multiple Sclerosis (MS - RRMS / PPMS)"
+ ],
+ "detail": "NIH MedlinePlus Magazine describes multiple sclerosis (MS) as a nervous system disease affecting the brain, optic nerve, and spinal cord. The immune system attacks myelin, the coating on nerve fibers, which makes it harder for nerve cells to send signals across the body. MS courses can include relapsing-remitting disease, with episodes of new symptoms followed by recovery, and progressive forms such as primary-progressive MS.\n\nSymptoms can include vision problems, numbness or tingling, muscle weakness, trouble with balance or coordination, and fatigue, depending on where damage occurs. MedlinePlus Magazine notes there is no single test for MS: evaluation usually combines a medical history, a neurologic exam, MRI scans looking for characteristic lesions, and sometimes spinal fluid testing, while clinicians rule out other conditions that can produce similar symptoms.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about evaluation for multiple sclerosis symptoms.",
+ "id": "multiple_sclerosis_overview",
+ "sourceHandle": "",
+ "sourceName": "NIH MedlinePlus Magazine",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://magazine.medlineplus.gov/article/multiple-sclerosis-what-you-need-to-know",
+ "sourceVideoTitle": "Multiple sclerosis: What you need to know",
+ "summary": "NIH MedlinePlus Magazine gives an overview of multiple sclerosis, explaining how immune damage to myelin disrupts signals in the brain, optic nerve, and spinal cord, and how the condition is diagnosed and treated.",
+ "takeaways": [
+  "ms involves immune damage to myelin, the coating on nerve fibers",
+  "symptoms can include vision changes, numbness, weakness, and fatigue",
+  "diagnosis usually combines history, a neurologic exam, and mri",
+  "courses include relapsing-remitting and progressive forms"
+ ],
+ "title": "Multiple sclerosis: when myelin comes under attack",
+ "videoDurationSeconds": 0
+}

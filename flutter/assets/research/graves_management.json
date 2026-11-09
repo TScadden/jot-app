@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Graves' Disease"
+ ],
+ "detail": "Mayo Clinic describes Graves' disease treatment as aiming to stop the thyroid from making hormones and to block the effect of those hormones on the body, with regular thyroid function testing to follow the response. No single option fits everyone, so clinicians weigh factors such as age, other health conditions, eye involvement, and personal preference, and follow-up continues after hormone levels settle.\n\nThe main approaches Mayo Clinic lists are anti-thyroid medicines, which block the thyroid from using iodine to make hormones; radioiodine therapy, in which radioactive iodine taken by mouth gradually destroys hormone-producing thyroid cells; and surgery to remove part or all of the thyroid. Beta blockers may be used to ease symptoms such as rapid heartbeat and tremor while other treatment takes effect. Mayo Clinic notes radioiodine and surgery usually lead to taking daily thyroid hormone medicine long term, and that thyroid eye disease has its own treatments when it occurs.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about ongoing Graves' disease management.",
+ "id": "graves_management",
+ "sourceHandle": "",
+ "sourceName": "Mayo Clinic",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.mayoclinic.org/diseases-conditions/graves-disease/diagnosis-treatment/drc-20356245",
+ "sourceVideoTitle": "Diagnosis and treatment",
+ "summary": "Mayo Clinic describes Graves' disease treatment as aiming to stop the thyroid from making hormones and to block their effects, covering radioiodine therapy, anti-thyroid medicines, beta blockers, surgery, and thyroid eye disease care.",
+ "takeaways": [
+  "three main approaches: anti-thyroid medicines, radioiodine, and surgery",
+  "beta blockers ease symptoms like rapid heartbeat while other treatment works",
+  "radioiodine and surgery usually lead to lifelong thyroid hormone replacement",
+  "never start, stop, or change medicines without your doctor"
+ ],
+ "title": "Managing Graves' disease day to day",
+ "videoDurationSeconds": 0
+}

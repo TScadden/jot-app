@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "PCOS (Polycystic Ovary Syndrome)"
+ ],
+ "detail": "NICHD describes polycystic ovary syndrome (PCOS) as a set of symptoms related to a hormonal imbalance that can affect metabolism, menstrual and reproductive health, heart and blood vessel function, and outward features. Health care providers usually look for at least two of three features: absence of ovulation leading to irregular or absent periods, high levels of androgens or signs of high androgens such as increased facial or body hair, and growths in one or both ovaries, often clumps of follicles that stopped developing.\n\nSymptoms can include menstrual cycle changes, acne, increased hair growth, dark patches of skin, weight gain, and infertility, and NICHD notes PCOS is the most common cause of infertility resulting from absence of ovulation. Evaluation usually combines history, examination, blood tests for hormone levels, and sometimes ultrasound, while clinicians also consider and rule out other causes of similar symptoms. NICHD notes genetic and environmental factors contribute, and the exact cause remains unknown.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about PCOS symptoms, diagnosis, and metabolic health.",
+ "id": "pcos_overview",
+ "sourceHandle": "",
+ "sourceName": "Eunice Kennedy Shriver National Institute of Child Health and Human Development",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.nichd.nih.gov/health/topics/pcos/conditioninfo",
+ "sourceVideoTitle": "About Polycystic Ovary Syndrome (PCOS)",
+ "summary": "NICHD describes PCOS as a set of symptoms related to a hormonal imbalance, usually identified by at least two of irregular ovulation, high androgen levels or signs of them, and growths in one or both ovaries.",
+ "takeaways": [
+  "pcos is a hormonal imbalance with varied symptoms",
+  "diagnosis usually looks for two of three features clinicians describe",
+  "symptoms can include irregular periods, acne, and extra hair growth",
+  "pcos is linked in sources to infertility and metabolic risk"
+ ],
+ "title": "PCOS: a hormonal pattern affecting cycles, skin, and metabolism",
+ "videoDurationSeconds": 0
+}

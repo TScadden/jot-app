@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Diabetes (Type 2)"
+ ],
+ "detail": "The NIDDK Central Repository describes the Diabetes Prevention Program (DPP) as a multicenter trial testing whether an intensive lifestyle program or metformin could prevent or delay type 2 diabetes in high-risk adults with prediabetes. The study found both approaches reduced the development of diabetes compared with placebo, with the lifestyle intervention proving more effective in the original trial.\n\nIts long-term follow-up, the Diabetes Prevention Program Outcomes Study (DPPOS), continues to examine whether prevention or delay persists over time and how it relates to complications such as retinopathy, kidney and nerve disease, cardiovascular disease, and cancer. NIDDK summaries of the broader field also point to ongoing study of newer glucose-lowering medicine classes and their heart and kidney outcomes, alongside genetics and prevention research in high-risk populations.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about type 2 diabetes prevention and research studies.",
+ "id": "diabetes_type2_research",
+ "sourceHandle": "",
+ "sourceName": "NIDDK Central Repository",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://repository.niddk.nih.gov/study/40",
+ "sourceVideoTitle": "NIDDK Central Repository - Diabetes Prevention Program Outcomes Study (DPPOS)",
+ "summary": "The NIDDK Central Repository describes the Diabetes Prevention Program and its long-term Outcomes Study, which tested intensive lifestyle intervention and metformin for preventing or delaying type 2 diabetes in high-risk adults.",
+ "takeaways": [
+  "prevention research showed lifestyle programs can delay type 2 diabetes",
+  "long-term follow-up studies track complications over decades",
+  "newer medicine classes continue to be studied for glucose and heart outcomes",
+  "research participation is optional; talk to your doctor about studies"
+ ],
+ "title": "Where type 2 diabetes research is heading",
+ "videoDurationSeconds": 0
+}

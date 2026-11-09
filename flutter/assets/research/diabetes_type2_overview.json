@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Diabetes (Type 2)"
+ ],
+ "detail": "NIDDK describes type 2 diabetes as the most common type of diabetes, a disease that occurs when blood glucose, also called blood sugar, is too high. In type 2 diabetes, the cells in the body do not use insulin properly, a pattern called insulin resistance, and the pancreas may not make enough insulin to keep glucose in the usual range. NIDDK lists risk factors that can include overweight or obesity, family history, age, and lack of physical activity.\n\nSymptoms can include increased thirst and urination, fatigue, blurred vision, and slow-healing sores, and NIDDK notes they often develop slowly over years and may be mild enough to go unnoticed. Clinicians usually diagnose type 2 diabetes with blood tests such as the A1C test, fasting plasma glucose, or an oral glucose tolerance test, often confirming a result with repeat testing unless symptoms are clear. Evaluation also commonly includes blood pressure, cholesterol, and screening for eye, kidney, and nerve complications.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about type 2 diabetes symptoms and diagnosis.",
+ "id": "diabetes_type2_overview",
+ "sourceHandle": "",
+ "sourceName": "National Institute of Diabetes and Digestive and Kidney Diseases",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.niddk.nih.gov/health-information/diabetes/overview/what-is-diabetes/type-2-diabetes",
+ "sourceVideoTitle": "Type 2 Diabetes",
+ "summary": "NIDDK describes type 2 diabetes, the most common form of diabetes, as a condition in which blood glucose is too high because cells do not use insulin properly and the pancreas may not make enough.",
+ "takeaways": [
+  "type 2 is the most common form of diabetes",
+  "symptoms can develop slowly and may be mild at first",
+  "diagnosis uses A1C and other blood glucose tests",
+  "risk factors sources list include family history and overweight"
+ ],
+ "title": "Type 2 diabetes: when cells stop responding well to insulin",
+ "videoDurationSeconds": 0
+}

@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Hyperthyroidism"
+ ],
+ "detail": "NIDDK describes hyperthyroidism care as treatment chosen to bring thyroid hormone levels back to normal, prevent long-term health problems, and relieve symptoms, with the choice depending on the cause and severity. No single treatment works for everyone in NIDDK's account. Follow-up thyroid blood tests are used to judge whether hormone levels are coming under control and whether treatment needs to change.\n\nThe main treatment approaches NIDDK describes are medicines, radioiodine therapy, and thyroid surgery. Antithyroid medicines, with methimazole described as used most often, reduce hormone production, while beta blockers are described as helping symptoms such as rapid heartbeat while other treatment takes effect. Radioiodine therapy and surgery reduce or remove thyroid tissue, and NIDDK notes people often need thyroid hormone replacement and ongoing monitoring afterward if hormone levels then fall too low.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about hyperthyroidism treatment options and monitoring.",
+ "id": "hyperthyroidism_management",
+ "sourceHandle": "",
+ "sourceName": "National Institute of Diabetes and Digestive and Kidney Diseases",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.niddk.nih.gov/health-information/endocrine-diseases/hyperthyroidism",
+ "sourceVideoTitle": "Hyperthyroidism (Overactive Thyroid)",
+ "summary": "NIDDK describes hyperthyroidism treatment as bringing thyroid hormone levels back to usual levels using antithyroid medicines, radioiodine therapy, or thyroid surgery, with beta blockers sometimes used for symptoms.",
+ "takeaways": [
+  "no single treatment fits everyone, sources emphasize",
+  "medicine classes include antithyroid medicines and beta blockers",
+  "never start, stop, or change medicines without your doctor",
+  "follow-up thyroid blood tests guide treatment choices"
+ ],
+ "title": "Managing hyperthyroidism day to day",
+ "videoDurationSeconds": 0
+}

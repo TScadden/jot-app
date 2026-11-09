@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Psoriasis (Plaque / Guttate)"
+ ],
+ "detail": "NIAMS describes psoriasis as a chronic disease in which the immune system becomes overactive, causing skin cells to multiply too quickly and pile up into scaly, inflamed patches. Scientists do not fully understand the cause, but describe a mix of genetics and environmental factors, and triggers can include infections, stress, skin injury, and some medicines. Plaque psoriasis, the most common form, produces raised patches often covered with silvery scale; guttate psoriasis produces smaller, drop-like spots and often appears after a streptococcal throat infection, especially in younger people.\n\nPatches appear most often on the scalp, elbows, and knees, but any area can be affected, including nails, palms, and soles. Symptoms can include itching, soreness, and cracked skin, and they typically cycle, flaring for weeks or months and then subsiding. Clinicians usually diagnose psoriasis from the appearance of the skin, sometimes with a small skin biopsy to exclude look-alike conditions such as eczema, and they also ask about joint pain and stiffness because psoriatic arthritis develops in a share of people with psoriasis.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about psoriasis symptoms and evaluation.",
+ "id": "psoriasis_overview",
+ "sourceHandle": "",
+ "sourceName": "National Institute of Arthritis and Musculoskeletal and Skin Diseases",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.niams.nih.gov/health-topics/psoriasis",
+ "sourceVideoTitle": "Psoriasis Symptoms, Causes, & Risk Factors | NIAMS",
+ "summary": "NIAMS describes psoriasis as a chronic immune-driven disease that speeds skin cell growth, most often as scaly plaques on the scalp, elbows, and knees, with guttate spots sometimes following strep infection, diagnosed mainly by skin examination.",
+ "takeaways": [
+  "an overactive immune response speeds skin cell growth",
+  "plaque and guttate are two common patterns",
+  "symptoms cycle between flares and quieter periods",
+  "clinicians also screen for joint involvement"
+ ],
+ "title": "Psoriasis: when skin cells turn over too fast",
+ "videoDurationSeconds": 0
+}

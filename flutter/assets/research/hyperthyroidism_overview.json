@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Hyperthyroidism"
+ ],
+ "detail": "NIDDK describes hyperthyroidism, also called overactive thyroid, as a condition in which the thyroid gland makes more thyroid hormones than the body needs. Thyroid hormones affect metabolism, heart rate, and temperature, so excess hormone speeds many body functions up. NIDDK lists causes that can include Graves' disease, an autoimmune condition, overactive thyroid nodules, and inflammation of the thyroid.\n\nSymptoms can include weight loss despite usual eating, rapid or irregular heartbeat, nervousness, tremor, sweating and trouble tolerating heat, frequent bowel movements, fatigue, and sleep problems. Clinicians usually evaluate suspected hyperthyroidism with blood tests for thyroid-stimulating hormone and thyroid hormone levels, and may use additional antibody tests, uptake studies, or imaging to identify the cause, since treatment depends on what is driving the excess hormone.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about hyperthyroidism symptoms and diagnosis.",
+ "id": "hyperthyroidism_overview",
+ "sourceHandle": "",
+ "sourceName": "National Institute of Diabetes and Digestive and Kidney Diseases",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.niddk.nih.gov/health-information/endocrine-diseases/hyperthyroidism",
+ "sourceVideoTitle": "Hyperthyroidism (Overactive Thyroid)",
+ "summary": "NIDDK describes hyperthyroidism, or overactive thyroid, as a condition in which the thyroid gland makes more thyroid hormone than the body needs, with Graves' disease among its causes.",
+ "takeaways": [
+  "hyperthyroidism means too much thyroid hormone",
+  "symptoms can include weight loss, rapid heartbeat, and heat intolerance",
+  "diagnosis uses thyroid blood tests and sometimes imaging",
+  "graves' disease is a common cause sources describe"
+ ],
+ "title": "Hyperthyroidism: when the thyroid makes too much hormone",
+ "videoDurationSeconds": 0
+}

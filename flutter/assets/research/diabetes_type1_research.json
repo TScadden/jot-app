@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Diabetes (Type 1)"
+ ],
+ "detail": "Breakthrough T1D reports that a major research direction is cell therapy: replacing the insulin-producing islet cells destroyed in type 1 diabetes. The organization describes stem cell-derived islets being transplanted in clinical trials and producing insulin in a small number of participants, in some cases reducing or eliminating the need for insulin therapy for a period of time. These approaches are still being studied and are not standard care.\n\nA second direction Breakthrough T1D describes is protecting replacement cells from the immune system, including donor islet transplants paired with newer immune-protecting treatments and lab-made cells designed to survive without standard immune-suppressing drugs. NIDDK also notes teplizumab, a medicine described as delaying the onset of symptoms in some people at risk. Together, sources frame the field as moving toward restoring insulin production and intervening earlier in the autoimmune process.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about type 1 diabetes research and clinical trials.",
+ "id": "diabetes_type1_research",
+ "sourceHandle": "",
+ "sourceName": "Breakthrough T1D",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://breakthrought1d.ca/research-update-restoring-insulin-production-through-cell-therapies/",
+ "sourceVideoTitle": "Research update: Restoring insulin production through cell therapies",
+ "summary": "Breakthrough T1D reports on cell therapies in clinical trials that replace insulin-producing islet cells, including stem cell-derived islets and approaches designed to protect transplanted cells from the immune system.",
+ "takeaways": [
+  "cell therapies aim to restore insulin production, and remain in trials",
+  "protecting transplanted cells from immune attack is a major focus",
+  "teplizumab is described by sources as delaying onset in some at-risk people",
+  "research participation is optional; talk to your doctor about studies"
+ ],
+ "title": "Where type 1 diabetes research is heading",
+ "videoDurationSeconds": 0
+}

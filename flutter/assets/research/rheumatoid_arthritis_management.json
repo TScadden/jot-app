@@ -1,0 +1,22 @@
+{
+ "conditionTags": [
+  "Rheumatoid Arthritis (RA)",
+  "Arthritis (Rheumatoid / RA)"
+ ],
+ "detail": "NIAMS describes rheumatoid arthritis care as a combination that can change over time, with goals of relieving pain, decreasing inflammation and swelling, and preventing, slowing, or stopping joint and organ damage. Foundations sources describe include routine monitoring and ongoing care, physical therapy to regain and maintain strength, and occupational therapy to protect joints during daily activities.\n\nMedication classes doctors may use include anti-inflammatory medicines for pain and inflammation, corticosteroids, and disease-modifying antirheumatic drugs (DMARDs), which NIAMS describes as helping to slow or change the progression of the disease; Janus kinase (JAK) inhibitors are described as a DMARD class that acts inside cells. Surgery may be considered when there is permanent damage or pain that limits daily activities. Follow-up visits track symptoms, joint damage, and how well the current plan is working.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about ongoing rheumatoid arthritis management.",
+ "id": "rheumatoid_arthritis_management",
+ "sourceHandle": "",
+ "sourceName": "National Institute of Arthritis and Musculoskeletal and Skin Diseases",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.niams.nih.gov/health-topics/rheumatoid-arthritis/diagnosis-treatment-and-steps-to-take",
+ "sourceVideoTitle": "Rheumatoid Arthritis: Diagnosis, Treatment, and Steps to Take",
+ "summary": "NIAMS describes rheumatoid arthritis care, including physical and occupational therapy, the medication classes doctors may use, surgery for severe damage, and routine monitoring over time.",
+ "takeaways": [
+  "treatment goals include less inflammation and protected joints",
+  "physical and occupational therapy help maintain strength and function",
+  "dmards are the medication class sources describe as slowing disease progression",
+  "never start, stop, or change medicines without your doctor"
+ ],
+ "title": "Managing rheumatoid arthritis day to day",
+ "videoDurationSeconds": 0
+}

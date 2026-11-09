@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Psoriasis (Plaque / Guttate)"
+ ],
+ "detail": "The National Psoriasis Foundation describes its 2026 grant and fellowship awards as focused on precision medicine, new therapeutic pathways, and the systemic inflammatory nature of psoriatic disease. It notes that there are currently no validated biomarkers for managing psoriatic disease, and several funded projects aim at that gap, including work using wearable activity monitors and artificial intelligence to develop early, non-invasive digital markers of treatment response.\n\nOther funded directions include an imaging biomarker project intended to identify people with psoriasis at higher risk of heart disease, work predicting which people with psoriatic arthritis face the highest risk of progression and joint damage, a translational study using skin and blood samples before and after GLP-1 treatment to examine how inflammation changes at the cellular level, and research on nerve and immune interactions as a possible route to reducing skin inflammation and pain.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about psoriasis research directions.",
+ "id": "psoriasis_research",
+ "sourceHandle": "",
+ "sourceName": "National Psoriasis Foundation",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.psoriasis.org/npf-awards-2026-grants-and-fellowships/",
+ "sourceVideoTitle": "National Psoriasis Foundation Awards New Grants and Fellowships to Continue the Drive Toward a Cure",
+ "summary": "The National Psoriasis Foundation's 2026 awards fund work on biomarkers and digital markers of treatment response, cardiovascular risk imaging, prediction of joint damage, and cellular effects of metabolic treatment in psoriatic disease.",
+ "takeaways": [
+  "no validated psoriasis biomarkers exist yet; finding them is a priority",
+  "wearables and ai are being tested as response markers",
+  "heart risk and joint damage prediction are funded directions",
+  "research participation is optional; talk to your doctor about studies"
+ ],
+ "title": "Where psoriasis research is heading",
+ "videoDurationSeconds": 0
+}

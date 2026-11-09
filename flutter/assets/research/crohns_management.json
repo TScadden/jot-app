@@ -1,0 +1,22 @@
+{
+ "conditionTags": [
+  "Crohn's Disease"
+ ],
+ "detail": "MedlinePlus describes Crohn's disease care as aimed at decreasing intestinal inflammation, relieving symptoms, and preventing complications, with no single treatment that works for everyone. Foundations in the sources include eating a balanced diet that supports nutrition during and between flares, working with the care team on foods that worsen symptoms for that individual, and bowel rest, drinking only certain liquids or taking nutrition by tube or IV, when symptoms are severe.\n\nMedication classes clinicians may use include anti-inflammatory medicines, corticosteroids for short-term flare control, immunomodulators that reduce immune system activity, biologic therapies that target specific immune pathways, and antibiotics when infection complicates the disease. Surgery does not cure Crohn's, but MedlinePlus describes it as a way to treat complications such as blockages, fistulas, and abscesses or to remove a damaged section when other treatment is not enough. Follow-up generally includes symptom and lab monitoring, endoscopic checks of healing, and, for long-standing disease involving the colon, periodic colonoscopy surveillance for precancerous changes and colorectal cancer.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about Crohn's disease treatment and monitoring.",
+ "id": "crohns_management",
+ "sourceHandle": "",
+ "sourceName": "MedlinePlus",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://medlineplus.gov/crohnsdisease.html",
+ "sourceVideoTitle": "Crohn's Disease | MedlinePlus",
+ "summary": "MedlinePlus outlines Crohn's disease treatment as medicines that reduce inflammation and immune activity, bowel rest for severe symptoms, and surgery for complications, chosen individually because no single treatment works for everyone.",
+ "takeaways": [
+  "treatment aims for remission and fewer complications",
+  "nutrition support and bowel rest feature in flare care",
+  "medicine classes include immunomodulators and biologics",
+  "surgery treats complications but does not cure crohn's",
+  "never start, stop, or change medicines without your doctor"
+ ],
+ "title": "Managing Crohn's disease day to day",
+ "videoDurationSeconds": 0
+}

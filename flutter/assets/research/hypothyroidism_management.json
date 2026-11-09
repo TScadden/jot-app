@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Hypothyroidism"
+ ],
+ "detail": "MedlinePlus describes the foundation of hypothyroidism care as replacing the thyroid hormone the body is lacking. Levothyroxine is described as the most commonly used medicine for this purpose, usually taken as a pill. Clinicians are described as prescribing the lowest dose that relieves symptoms and brings blood thyroid hormone levels back to the usual range, starting with a very small dose in some older adults and people with heart disease.\n\nFollow-up is a central part of care in MedlinePlus's account. After starting levothyroxine, a clinician may check hormone levels every two to three months at first, and once the dose is stable, thyroid hormone levels are usually monitored at least once a year. MedlinePlus notes most people with an underactive thyroid take thyroid hormone medicine for life, with doses adjusted as needs, other medicines, or health conditions change.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about hypothyroidism treatment and hormone monitoring.",
+ "id": "hypothyroidism_management",
+ "sourceHandle": "",
+ "sourceName": "MedlinePlus",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://medlineplus.gov/ency/article/000353.htm",
+ "sourceVideoTitle": "Hypothyroidism: MedlinePlus Medical Encyclopedia",
+ "summary": "MedlinePlus describes hypothyroidism treatment as replacing the missing thyroid hormone, most commonly with levothyroxine, with dose checks using blood tests after starting and then at least yearly once stable.",
+ "takeaways": [
+  "treatment sources describe is thyroid hormone replacement",
+  "levothyroxine is the medicine most commonly described",
+  "never start, stop, or change medicines without your doctor",
+  "blood tests guide dose adjustments over time"
+ ],
+ "title": "Managing hypothyroidism day to day",
+ "videoDurationSeconds": 0
+}

@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Diabetes (Type 2)"
+ ],
+ "detail": "NIDDK describes managing type 2 diabetes as starting with foundations: planning healthy meals and beverages, limiting calories when a person has overweight or obesity, being physically active, getting enough sleep, and managing stress, together with monitoring blood glucose, blood pressure, and cholesterol. Some people are described as controlling glucose with lifestyle changes alone, while many also take medicines, and care plans are made with the health care team.\n\nWhen medicines are used, NIDDK describes several classes clinicians may choose from. Oral medicines include metformin, which is described as reducing liver glucose production and helping the body use insulin better, along with other pill classes. Injectable options described include insulin and GLP-1 receptor agonists, which can keep glucose from rising too high after eating. Over time, clinicians may combine medicines and screen regularly for eye, kidney, nerve, and cardiovascular complications.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about managing type 2 diabetes, medicines, and monitoring.",
+ "id": "diabetes_type2_management",
+ "sourceHandle": "",
+ "sourceName": "National Institute of Diabetes and Digestive and Kidney Diseases",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments",
+ "sourceVideoTitle": "Insulin, Medicines, & Other Diabetes Treatments",
+ "summary": "NIDDK describes type 2 diabetes medicines, including oral medicines such as metformin and injectable medicines such as insulin and GLP-1 receptor agonists, alongside healthy eating, activity, sleep, and stress management.",
+ "takeaways": [
+  "meal planning, activity, and weight management are foundations sources describe",
+  "medicine classes include oral agents, GLP-1 medicines, and insulin",
+  "never start, stop, or change medicines without your doctor",
+  "follow-up includes A1C, blood pressure, cholesterol, and complication screening"
+ ],
+ "title": "Managing type 2 diabetes day to day",
+ "videoDurationSeconds": 0
+}

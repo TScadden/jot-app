@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Lupus (Systemic Lupus Erythematosus / SLE)"
+ ],
+ "detail": "The Lupus Research Alliance describes engineered cell therapy as an active research direction for lupus. In CAR T cell therapy, a person's own T cells are reprogrammed to target CD19, a protein on B cells, which play a central role in lupus. The Alliance notes that early studies in people with severe lupus that had not responded to standard treatments reported deep remissions in some participants.\n\nCurrent projects the Alliance describes focus on the mechanisms behind those results: how CAR T cells can lose effectiveness through a process called trogocytosis, or cell nibbling, whether B cells are fully cleared from tissues such as the lymph nodes, and whether the therapy resets the immune system so it stops attacking the body. The Alliance frames this work as building the scientific foundation for future therapies, and the approach remains investigational.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about lupus research and clinical trials.",
+ "id": "lupus_research",
+ "sourceHandle": "",
+ "sourceName": "Lupus Research Alliance",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.lupusresearch.org/lupus-research-alliance-awards-lupus-insight-prize-to-two-trailblazers-in-car-t-cell-therapy-drs-marko-radic-and-georg-schett-honored-at-focis-2024-meeting/",
+ "sourceVideoTitle": "Lupus Research Alliance Awards Lupus Insight Prize to Two Trailblazers in CAR T Cell Therapy",
+ "summary": "The Lupus Research Alliance describes its Lupus Insight Prize work on CAR T cell therapy, an approach that reprograms a person's own T cells to target B cells, and the questions researchers are studying next.",
+ "takeaways": [
+  "car t cell therapy is being studied for severe, treatment-resistant lupus",
+  "researchers are studying how immune resetting works and why relapse can occur",
+  "this approach is investigational and studied in clinical trials",
+  "talk to your doctor before considering any clinical trial"
+ ],
+ "title": "Where lupus research is heading",
+ "videoDurationSeconds": 0
+}

@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Hashimoto's Thyroiditis"
+ ],
+ "detail": "MedlinePlus Genetics describes Hashimoto's disease as thought to result from a combination of genetic and environmental factors, a framing that shapes current research. It notes that Hashimoto's is a form of chronic inflammation that can damage the thyroid and reduce its ability to produce hormones, and that it is the most common cause of hypothyroidism in the United States.\n\nOn the research side, MedlinePlus Genetics notes that variations in several genes have been studied as possible risk factors for the condition, and that family history raises risk even though the inheritance pattern is not a simple single-gene one. Understanding which genetic and environmental factors combine to trigger the autoimmune attack is the direction sources describe for explaining susceptibility and, over time, refining how risk and progression are understood.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about Hashimoto's thyroiditis research directions.",
+ "id": "hashimotos_research",
+ "sourceHandle": "",
+ "sourceName": "MedlinePlus",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://medlineplus.gov/genetics/condition/hashimotos-disease/",
+ "sourceVideoTitle": "Hashimoto's disease: MedlinePlus Genetics",
+ "summary": "MedlinePlus Genetics describes Hashimoto's disease genetics: the condition is thought to result from a combination of genetic and environmental factors, and variations in several genes have been studied as possible risk factors.",
+ "takeaways": [
+  "hashimoto's is thought to arise from genetic and environmental factors together",
+  "variations in several genes have been studied as possible risk factors",
+  "inheritance is not a simple single-gene pattern",
+  "research aims to explain why the immune system turns on the thyroid"
+ ],
+ "title": "Where Hashimoto's thyroiditis research is heading",
+ "videoDurationSeconds": 0
+}

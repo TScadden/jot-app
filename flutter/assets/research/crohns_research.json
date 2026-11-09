@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Crohn's Disease"
+ ],
+ "detail": "The Crohn's & Colitis Foundation describes a research program built around precision medicine for inflammatory bowel disease. Its timeline highlights the Global IBD Registry (GLIDE), launched with an international consortium to link patient data across countries, and IBD Plexus, its research platform combining patient data and biosamples, both intended to show how IBD develops, progresses, and responds to treatment so care can be matched more closely to the individual.\n\nOther directions the Foundation describes include a wearable device that measures calprotectin, an inflammation marker, in sweat in real time, offering a possible non-invasive way to track flares; an artificial-intelligence collaboration searching for antifibrotic drug candidates, aimed at the intestinal scarring that current anti-inflammatory drugs do not reverse; and early drug discovery targeting the PAI-1 protein in the gut to help restore and protect the intestinal lining. Ventures funding from the Foundation has moved several projects on inflammation, fibrosis, and intestinal wall damage into clinical trials.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about inflammatory bowel disease research.",
+ "id": "crohns_research",
+ "sourceHandle": "",
+ "sourceName": "Crohn's & Colitis Foundation",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.crohnscolitisfoundation.org/research-impact",
+ "sourceVideoTitle": "Research Timeline | Crohn's & Colitis Foundation",
+ "summary": "The Crohn's & Colitis Foundation describes research directions including global registries and data platforms for precision medicine, wearable inflammation sensors, AI-assisted antifibrotic drug discovery, and gut-targeted therapies now moving into trials.",
+ "takeaways": [
+  "registries link patient data to speed precision medicine",
+  "wearable sensors may track inflammation without blood draws",
+  "antifibrotic drugs target scarring current drugs do not reverse",
+  "research participation is optional; talk to your doctor about studies"
+ ],
+ "title": "Where Crohn's disease research is heading",
+ "videoDurationSeconds": 0
+}

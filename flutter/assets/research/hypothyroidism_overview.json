@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Hypothyroidism"
+ ],
+ "detail": "NIDDK describes hypothyroidism, also called underactive thyroid, as a condition in which the thyroid gland does not make enough thyroid hormones to meet the body's needs. The thyroid is a small, butterfly-shaped gland in the front of the neck, and its hormones affect how the body uses energy. NIDDK lists causes that can include Hashimoto's disease, an autoimmune condition, as well as thyroid surgery, radiation treatment, and some medicines.\n\nSymptoms can include fatigue, weight gain, trouble tolerating cold, joint and muscle pain, dry skin or dry and thinning hair, heavy or irregular menstrual periods, slowed heart rate, and depression, and NIDDK notes they vary from person to person and overlap with other conditions. For that reason, clinicians usually diagnose hypothyroidism with blood tests measuring thyroid-stimulating hormone and thyroid hormone levels, rather than symptoms alone, and consider the person's history and examination.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about hypothyroidism symptoms and thyroid testing.",
+ "id": "hypothyroidism_overview",
+ "sourceHandle": "",
+ "sourceName": "National Institute of Diabetes and Digestive and Kidney Diseases",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.niddk.nih.gov/health-information/endocrine-diseases/hypothyroidism",
+ "sourceVideoTitle": "Hypothyroidism (Underactive Thyroid)",
+ "summary": "NIDDK describes hypothyroidism, or underactive thyroid, as a condition in which the thyroid gland does not make enough thyroid hormone to meet the body's needs, often caused by Hashimoto's disease.",
+ "takeaways": [
+  "hypothyroidism means too little thyroid hormone",
+  "symptoms can include fatigue, weight gain, and cold intolerance",
+  "diagnosis relies on thyroid blood tests, not symptoms alone",
+  "hashimoto's disease is a common cause sources describe"
+ ],
+ "title": "Hypothyroidism: when the thyroid makes too little hormone",
+ "videoDurationSeconds": 0
+}

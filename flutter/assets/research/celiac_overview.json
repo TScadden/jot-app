@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Celiac Disease"
+ ],
+ "detail": "NIDDK describes celiac disease as a chronic digestive and immune disorder that damages the small intestine. It is triggered by eating foods containing gluten, a protein found in wheat, barley, and rye. In people with the condition, gluten sets off an immune reaction that harms the villi, the small finger-like projections that absorb nutrients, which is why effects can reach well beyond digestion.\n\nSymptoms vary widely and can come and go, and some people have none. NIDDK notes that symptoms can include bloating, chronic diarrhea, constipation, gas, abdominal pain, and nausea, along with problems outside the gut such as fatigue, anemia, joint pain, and an itchy, blistering skin rash. Clinicians usually diagnose celiac disease using medical and family history, a physical exam, blood tests that look for celiac antibodies, and biopsies of the small intestine; genetic tests are sometimes added. Sources note that testing is generally done while the person is still eating gluten, because starting a gluten-free diet first can change the results.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about celiac disease testing and symptoms.",
+ "id": "celiac_overview",
+ "sourceHandle": "",
+ "sourceName": "National Institute of Diabetes and Digestive and Kidney Diseases",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.niddk.nih.gov/health-information/digestive-diseases/celiac-disease",
+ "sourceVideoTitle": "Celiac Disease - NIDDK",
+ "summary": "NIDDK explains celiac disease as an immune disorder triggered by gluten that damages the small intestine, with widely varying symptoms and a diagnosis built on history, blood tests, and intestinal biopsy.",
+ "takeaways": [
+  "gluten triggers immune damage to the small intestine",
+  "symptoms vary widely and some people have none",
+  "diagnosis usually combines blood tests and a small intestine biopsy",
+  "testing is usually done before starting a gluten-free diet"
+ ],
+ "title": "Celiac disease: when gluten triggers an immune attack on the gut",
+ "videoDurationSeconds": 0
+}
