@@ -310,11 +310,25 @@ class HealthRepository {
 
   /// Streak pair from the backend; nulls when logged out or on any
   /// failure — the streak row renders "--".
-  Future<({int? current, int? best})> loadStreak() async {
+  ///
+  /// C-02 — the result carries the success bit (the same distinction
+  /// [loadStreakRecord] already makes via `fetchStreakRecord`): a
+  /// failed pull reports `succeeded: false` with null counters,
+  /// while a successful pull of a profile with no streak fields is
+  /// a confirmed-empty streak (`succeeded: true`, nulls). Callers
+  /// that CACHE the pair must skip the cache write on failure —
+  /// nulls produced by a failure are not data and must never
+  /// overwrite the last known streak.
+  Future<({bool succeeded, int? current, int? best})> loadStreak() async {
     try {
-      return await backend.fetchStreak();
+      final rec = await backend.fetchStreakRecord();
+      return (
+        succeeded: rec.succeeded,
+        current: rec.current,
+        best: rec.best
+      );
     } catch (_) {
-      return (current: null, best: null);
+      return (succeeded: false, current: null, best: null);
     }
   }
 

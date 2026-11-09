@@ -1751,8 +1751,15 @@ class _HomeScreenState extends State<HomeScreen> {
     _streakSettle = _settleStreakWithEngine();
     unawaited(_streakSettle!);
     final cache = HomeDataCache.instance;
+    // C-02a — a FAILED streak pull (succeeded: false) is not data:
+    // its nulls must not overwrite the cached streak (the cache's
+    // own contract: a failed refresh keeps the old cache), in the
+    // cache via applyStreak or on screen via the setState below.
+    // Only a successful pull — including a confirmed-empty one —
+    // applies. The engine settle may still swap in seeded values.
+    final streakOk = streak.succeeded;
     final changed = cache.applyVitals(vitals) |
-        cache.applyStreak(streak.current, streak.best);
+        (streakOk ? cache.applyStreak(streak.current, streak.best) : false);
     // Persist in the background; never block the UI on storage.
     unawaited(cache.persist());
     // Round 60 — launch milestone: the background refresh has landed
@@ -1768,8 +1775,11 @@ class _HomeScreenState extends State<HomeScreen> {
     if (changed || statusChanged) {
       setState(() {
         _vitals = vitals;
-        _currentStreak = streak.current;
-        _bestStreak = streak.best;
+        // C-02a — on a failed streak pull the seeded pills stand.
+        if (streakOk) {
+          _currentStreak = streak.current;
+          _bestStreak = streak.best;
+        }
         _hcStatus = status;
         _hcStatusErrorCode = statusErrorCode;
       });

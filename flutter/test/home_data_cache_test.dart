@@ -12,6 +12,7 @@ import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
+import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 
 /// In-memory fake for the cache's storage functions, so no test touches
 /// platform channels.
@@ -27,6 +28,19 @@ class _FakeStore {
 
   Future<void> delete(String key) async {
     values.remove(key);
+  }
+}
+
+/// Fake store whose reads can be made to throw (C-02b): a transient
+/// storage failure must be distinguishable from a missing/corrupt
+/// blob. Writes/deletes behave like [_FakeStore].
+class _FlakyStore extends _FakeStore {
+  bool throwOnRead = false;
+
+  @override
+  Future<String?> read(String key) async {
+    if (throwOnRead) throw StateError('storage read failed');
+    return super.read(key);
   }
 }
 
@@ -58,8 +72,8 @@ class _StalledRepository extends HealthRepository {
       Completer<TodayVitals>().future;
 
   @override
-  Future<({int? current, int? best})> loadStreak() =>
-      Completer<({int? current, int? best})>().future;
+  Future<({bool succeeded, int? current, int? best})> loadStreak() =>
+      Completer<({bool succeeded, int? current, int? best})>().future;
 }
 
 /// Repository that resolves with the given values after [delay].
@@ -81,9 +95,9 @@ class _DelayedRepository extends HealthRepository {
   }
 
   @override
-  Future<({int? current, int? best})> loadStreak() async {
+  Future<({bool succeeded, int? current, int? best})> loadStreak() async {
     await Future<void>.delayed(const Duration(milliseconds: 100));
-    return (current: currentStreak, best: bestStreak);
+    return (succeeded: true, current: currentStreak, best: bestStreak);
   }
 }
 
@@ -279,6 +293,130 @@ void main() {
       // Streaks are still within their 7-day window.
       expect(s.streakLoaded, isTrue);
       expect(s.currentStreak, 12);
+    });
+
+    test(
+        'C-02c: fresh vitals/log-count applies do not re-stamp an old '
+        'streak as fresh', () {
+      // The streak was fetched 8 days ago (past streakMaxAge); vitals
+      // and the log count are refreshed NOW. The shared-stamp bug kept
+      // the streak "fresh" forever on those unrelated re-stamps.
+      final old = DateTime.now().subtract(const Duration(days: 8));
+      HomeDataCache.instance.applyStreak(12, 30, now: old);
+      final now = DateTime.now();
+      HomeDataCache.instance
+          .applyVitals(const TodayVitals(heartRate: 72), now: now);
+      HomeDataCache.instance.applyLogCountToday(4, now: now);
+      final s = HomeDataCache.instance.snapshot;
+      expect(s.vitalsLoaded, isTrue);
+      expect(s.streakLoaded, isFalse,
+          reason: 'an 8-day-old streak must not ride a fresh vitals '
+              'stamp back inside streakMaxAge');
+      expect(s.currentStreak, isNull);
+      expect(s.bestStreak, isNull);
+    });
+
+    test(
+        'C-02c: an old streak stays stale after persist + warm, even '
+        'with fresh vitals in the same blob', () async {
+      final old = DateTime.now().subtract(const Duration(days: 8));
+      HomeDataCache.instance.applyStreak(12, 30, now: old);
+      HomeDataCache.instance
+          .applyVitals(const TodayVitals(heartRate: 72));
+      HomeDataCache.instance.applyLogCountToday(4);
+      await HomeDataCache.instance.persist();
+
+      HomeDataCache.instance.debugReset();
+      await HomeDataCache.instance.warmFromDisk();
+      final s = HomeDataCache.instance.snapshot;
+      expect(s.vitalsLoaded, isTrue);
+      expect(s.streakLoaded, isFalse);
+      expect(s.currentStreak, isNull);
+    });
+
+    test('C-02c: the persisted blob carries its own streakFetchedAt',
+        () async {
+      final t = DateTime.now().subtract(const Duration(days: 2));
+      HomeDataCache.instance.applyStreak(9, 18, now: t);
+      await HomeDataCache.instance.persist();
+      final decoded = jsonDecode(store.values[HomeDataCache.storageKey]!)
+          as Map<String, dynamic>;
+      expect(decoded['streakFetchedAt'], t.toIso8601String());
+    });
+
+    test(
+        'C-02 migration: a legacy blob without streakFetchedAt does '
+        'not resurrect its streak as fresh', () async {
+      // Pre-C-02 blobs carry only the shared fetchedAt, which any
+      // vitals/log-count apply could re-stamp — it cannot prove when
+      // the streak itself was fetched, so the streak section is
+      // treated as stale (never adopted as fresh) and is rewritten
+      // with its own stamp by the next successful streak pull.
+      final now = DateTime.now();
+      store.values[HomeDataCache.storageKey] = jsonEncode({
+        'ownerEmail': null,
+        'fetchedAt': now.toIso8601String(),
+        'vitalsLoaded': false,
+        'vitals': null,
+        'streakLoaded': true,
+        'currentStreak': 12,
+        'bestStreak': 30,
+        'countersLoaded': false,
+        'counters': <dynamic>[],
+        'countersFetchedAt': null,
+      });
+      await HomeDataCache.instance.warmFromDisk(now: now);
+      final s = HomeDataCache.instance.snapshot;
+      expect(s.streakLoaded, isFalse);
+      expect(s.currentStreak, isNull);
+      expect(s.bestStreak, isNull);
+    });
+
+    test(
+        'C-02b: a throwing warm read gates persist — the on-disk blob '
+        'survives a partial apply byte-identical, and the next warm '
+        'does not delete it', () async {
+      final cache = HomeDataCache.instance;
+      const counter = EventCounterItem(
+          id: 'c1', name: 'Trip', targetDate: 1893456000000);
+      cache.applyVitals(const TodayVitals(heartRate: 70, logCountToday: 2),
+          ownerEmail: 'owner@example.com');
+      cache.applyStreak(7, 21, ownerEmail: 'owner@example.com');
+      cache.applyCounters(const [counter],
+          ownerEmail: 'owner@example.com');
+      await cache.persist();
+      final blob = store.values[HomeDataCache.storageKey]!;
+      expect(blob, contains('"ownerEmail":"owner@example.com"'));
+
+      // Cold start against a storage layer whose reads throw.
+      final flaky = _FlakyStore();
+      flaky.values[HomeDataCache.storageKey] = blob;
+      flaky.throwOnRead = true;
+      cache.debugSetStore(
+          read: flaky.read, write: flaky.write, delete: flaky.delete);
+      cache.debugReset();
+      await cache.warmFromDisk(currentEmail: 'owner@example.com');
+
+      // A partial apply + persist (the Quick Log / Home path) must
+      // not overwrite the unread blob with the partial memory image.
+      cache.applyVitals(const TodayVitals(heartRate: 99, logCountToday: 5));
+      await cache.persist();
+      expect(flaky.writes, 0,
+          reason: 'persist must no-op until a warm has succeeded');
+      expect(flaky.values[HomeDataCache.storageKey], blob,
+          reason: 'counters and owner must survive on disk untouched');
+
+      // Reads heal: the following warm adopts the original blob —
+      // the owner matches, so nothing is deleted as foreign.
+      flaky.throwOnRead = false;
+      await cache.warmFromDisk(currentEmail: 'owner@example.com');
+      expect(flaky.values.containsKey(HomeDataCache.storageKey), isTrue);
+      final s = cache.snapshot;
+      expect(s.ownerEmail, 'owner@example.com');
+      expect(s.countersLoaded, isTrue);
+      expect(s.counters.single.id, 'c1');
+      expect(s.currentStreak, 7);
+      expect(s.bestStreak, 21);
     });
 
     test('clear wipes memory and disk', () async {

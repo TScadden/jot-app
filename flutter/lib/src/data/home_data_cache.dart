@@ -30,7 +30,10 @@ import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 ///   day drops them and the fresh load runs as usual.
 /// - Streaks move slowly: cached streaks apply for up to
 ///   [streakMaxAge] (7 days), then drop. The background refresh corrects
-///   them within seconds anyway.
+///   them within seconds anyway. Streak freshness is judged on the
+///   streak's OWN fetch stamp (`streakFetchedAt`, C-02c) — never on
+///   the vitals stamp, which vitals/log-count applies re-stamp
+///   without refreshing the streak.
 ///
 /// The *absence* of data is cached too: a completed load that found no
 /// data (e.g. Health Connect not connected) marks the section loaded, so
@@ -96,11 +99,23 @@ class HomeDataCache {
     _bestStreak = null;
     _streakLoaded = false;
     _fetchedAt = null;
+    _streakFetchedAt = null;
     _counters = const [];
     _countersLoaded = false;
     _countersFetchedAt = null;
     _ownerEmail = null;
+    _warmed = false;
   }
+
+  /// C-02b (PR #44 warm gate, ported from HealthHistoryStore) —
+  /// whether a disk warm has SUCCEEDED in this process. A warm whose
+  /// storage READ throws leaves this false, and [persist] no-ops
+  /// while it is false: the in-memory image may be a partial apply
+  /// over a perfectly valid on-disk blob it never loaded, and
+  /// writing it would erase the unwarmed sections (counters, owner)
+  /// from that blob. [clear] re-arms writes explicitly (it marks
+  /// the cache warmed over an authoritative-empty memory).
+  bool _warmed = false;
 
   /// The account this snapshot belongs to (normalized session email),
   /// or null when no load has ever been bound to an account.
@@ -149,6 +164,14 @@ class HomeDataCache {
   bool _streakLoaded = false;
   DateTime? _fetchedAt;
 
+  /// C-02c — when the STREAK section itself was last fetched.
+  /// Split from [_fetchedAt] (now the vitals stamp only): before
+  /// the split, every vitals/log-count apply re-stamped the shared
+  /// stamp and kept an arbitrarily old streak "fresh" forever.
+  /// Persisted as its own blob field; see [_applyDiskMap] for the
+  /// legacy-blob migration rule.
+  DateTime? _streakFetchedAt;
+
   // ── Round 34: event counters ─────────────────────────────────────
   /// The ACTIVE counters from the last completed profile pull, in
   /// Settings list order. The day counts are NOT cached — they are
@@ -179,8 +202,8 @@ class HomeDataCache {
         _fetchedAt != null &&
         _dayString(_fetchedAt!) == _dayString(now);
     final streakFresh = _streakLoaded &&
-        _fetchedAt != null &&
-        now.difference(_fetchedAt!).abs() <= streakMaxAge;
+        _streakFetchedAt != null &&
+        now.difference(_streakFetchedAt!).abs() <= streakMaxAge;
     final countersFresh = _countersLoaded &&
         _countersFetchedAt != null &&
         now.difference(_countersFetchedAt!).abs() <= countersMaxAge;
@@ -201,6 +224,7 @@ class HomeDataCache {
   /// data on request). Never throws.
   Future<void> clear() async {
     _resetMemory();
+    _warmed = true; // memory is authoritative-empty until next write
     try {
       await _delete(storageKey);
     } catch (_) {}
@@ -265,9 +289,16 @@ class HomeDataCache {
     return changed;
   }
 
-  /// Stores a completed streak load. Nulls are honest (logged out or
-  /// backend failure) and cached as "loaded, empty". Returns true when
+  /// Stores a completed streak load. Nulls are honest for a
+  /// CONFIRMED-empty load (the pull succeeded and the profile holds
+  /// no streak) and are cached as "loaded, empty" — but a FAILED
+  /// pull must never reach this method at all (C-02a): the caller
+  /// checks the load's success bit and skips the apply on failure,
+  /// so the previously cached streak stands. Returns true when
   /// the in-memory snapshot changed.
+  ///
+  /// Stamps ONLY the streak's own [_streakFetchedAt] (C-02c) —
+  /// never the vitals stamp [_fetchedAt].
   bool applyStreak(int? current, int? best,
       {DateTime? now, String? ownerEmail}) {
     final changed = !_streakLoaded ||
@@ -276,7 +307,7 @@ class HomeDataCache {
     _currentStreak = current;
     _bestStreak = best;
     _streakLoaded = true;
-    _fetchedAt = now ?? DateTime.now();
+    _streakFetchedAt = now ?? DateTime.now();
     bindToAccount(ownerEmail);
     return changed;
   }
@@ -308,8 +339,22 @@ class HomeDataCache {
   /// Persists the current memory state to disk. No-op when nothing has
   /// ever loaded. Never throws — storage failures keep the memory
   /// cache and are silently dropped.
+  ///
+  /// C-02b warm gate (PR #44 pattern): a no-op until a disk warm has
+  /// SUCCEEDED in this process. [persist] first ensures that warm
+  /// itself (the [_ensureWarmed] idiom from HealthHistoryStore, so
+  /// callers that never warm cannot write blind either): the warm
+  /// adopts any sections the caller did not apply, and only then is
+  /// the whole-blob write safe. When the warm's storage read throws,
+  /// the cache stays unwarmed and this write is dropped — the
+  /// on-disk blob (counters, owner, unwarmed sections) survives
+  /// untouched until a later warm succeeds.
   Future<void> persist() async {
     if (!_vitalsLoaded && !_streakLoaded && !_countersLoaded) return;
+    if (!_warmed) {
+      await warmFromDisk();
+      if (!_warmed) return;
+    }
     try {
       await _write(storageKey, jsonEncode(_toJson()));
     } catch (_) {
@@ -329,7 +374,9 @@ class HomeDataCache {
 
   /// Cold-start warm: reads the disk blob into memory, applying the
   /// staleness policy. Call once before `runApp()`. Never throws — a
-  /// missing or corrupt cache starts empty.
+  /// missing or corrupt cache starts empty. A storage READ failure
+  /// is neither: the warm does not complete and the cache stays
+  /// unwarmed (C-02b — see the read gate in the body).
   ///
   /// Sections already loaded in memory are left alone (warm is only
   /// meant to fill an empty cache).
@@ -341,8 +388,34 @@ class HomeDataCache {
   /// bound in its place.
   Future<void> warmFromDisk({DateTime? now, String? currentEmail}) async {
     final at = now ?? DateTime.now();
-    final map = await _readCacheMap();
-    if (map == null) return;
+    // C-02b — the read is separated from the decode so a storage
+    // READ failure is neither missing nor corrupt (the pre-PR-#44
+    // conflation): on a throw the warm does not complete — the
+    // cache stays unwarmed, binds nothing, resets nothing, and
+    // [persist] stays gated off — so a transient failure can never
+    // be mistaken for an empty blob and overwritten by a later
+    // partial apply. The next warm (or [persist]'s ensure-warm)
+    // retries the read.
+    String? raw;
+    try {
+      raw = await _read(storageKey);
+    } catch (_) {
+      return;
+    }
+    if (raw == null || raw.isEmpty) {
+      // Missing blob: a completed warm over an empty disk.
+      _warmed = true;
+      return;
+    }
+    Map<String, dynamic> map;
+    try {
+      map = jsonDecode(raw) as Map<String, dynamic>;
+    } catch (_) {
+      // Corrupt blob: provably unusable — a completed warm that
+      // starts empty (the blob may safely be overwritten later).
+      _warmed = true;
+      return;
+    }
     final expected = _normalizeEmail(currentEmail);
     if (expected != null) {
       final rawOwner = map['ownerEmail'];
@@ -350,6 +423,7 @@ class HomeDataCache {
       if (blobOwner != expected) {
         _resetMemory();
         _ownerEmail = expected;
+        _warmed = true;
         try {
           await _delete(storageKey);
         } catch (_) {}
@@ -367,6 +441,7 @@ class HomeDataCache {
     } catch (_) {
       // Malformed blob (wrong types): start empty. Never crash startup.
     }
+    _warmed = true;
   }
 
   /// Applies a decoded disk blob to memory, enforcing the staleness
@@ -379,7 +454,14 @@ class HomeDataCache {
     final countersAt =
         DateTime.tryParse(map['countersFetchedAt'] as String? ?? '') ??
             fetchedAt;
-    if (fetchedAt == null && countersAt == null) return;
+    // C-02c: the streak's own fetch stamp. Absent on every blob
+    // written before the split (see the migration rule at the
+    // streak adoption below).
+    final streakAt =
+        DateTime.tryParse(map['streakFetchedAt'] as String? ?? '');
+    if (fetchedAt == null && countersAt == null && streakAt == null) {
+      return;
+    }
     final rawOwner = map['ownerEmail'];
     if (rawOwner is String) _ownerEmail = _normalizeEmail(rawOwner);
 
@@ -397,14 +479,28 @@ class HomeDataCache {
       );
       _vitalsLoaded = true;
     }
-    // Streaks: valid up to streakMaxAge.
-    if (fetchedAt != null &&
+    // Streaks: valid up to streakMaxAge, judged on the streak's
+    // OWN stamp alone (C-02c).
+    //
+    // MIGRATION (legacy blobs): a blob written before
+    // `streakFetchedAt` existed carries no streak stamp — its only
+    // stamp is the shared `fetchedAt`, which vitals and log-count
+    // applies also re-stamped, so it cannot prove when the streak
+    // itself was fetched. Falling back to it could present an
+    // arbitrarily old streak as fresh (sub-claim (c) itself), so a
+    // legacy streak is treated as STALE and not adopted: the next
+    // successful streak pull rewrites the blob with its own stamp.
+    // The one cost is a single cold start showing the streak's
+    // loading/"--" state until that refresh lands — honest, and
+    // never a resurrected stale number.
+    if (streakAt != null &&
         !_streakLoaded &&
         map['streakLoaded'] == true &&
-        at.difference(fetchedAt).abs() <= streakMaxAge) {
+        at.difference(streakAt).abs() <= streakMaxAge) {
       _currentStreak = map['currentStreak'] as int?;
       _bestStreak = map['bestStreak'] as int?;
       _streakLoaded = true;
+      _streakFetchedAt = streakAt;
     }
     // Counters (round 34): valid up to countersMaxAge, judged on
     // their own fetch stamp (falling back to the blob's stamp for
@@ -422,19 +518,9 @@ class HomeDataCache {
       _countersLoaded = true;
       _countersFetchedAt = countersAt;
     }
-    if (_vitalsLoaded || _streakLoaded) _fetchedAt = fetchedAt;
-  }
-
-  /// Reads and decodes the disk blob. Null on missing/corrupt —
-  /// the caller starts empty.
-  Future<Map<String, dynamic>?> _readCacheMap() async {
-    try {
-      final raw = await _read(storageKey);
-      if (raw == null || raw.isEmpty) return null;
-      return jsonDecode(raw) as Map<String, dynamic>;
-    } catch (_) {
-      return null;
-    }
+    // _fetchedAt is the VITALS stamp only (C-02c): restoring it is
+    // tied to the vitals section, never to the streak's adoption.
+    if (_vitalsLoaded) _fetchedAt = fetchedAt;
   }
 
   Map<String, dynamic> _toJson() => {
@@ -452,6 +538,7 @@ class HomeDataCache {
         'streakLoaded': _streakLoaded,
         'currentStreak': _currentStreak,
         'bestStreak': _bestStreak,
+        'streakFetchedAt': _streakFetchedAt?.toIso8601String(),
         'countersLoaded': _countersLoaded,
         'counters': _counters.map((c) => c.toMap()).toList(),
         'countersFetchedAt': _countersFetchedAt?.toIso8601String(),
