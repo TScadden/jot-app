@@ -212,8 +212,11 @@ class HealthHistorySync {
   /// native read):
   /// - resting HR: full window 180 days (`readRestingHrHistory`)
   /// - sleep + deep: full window 90 days (`readSleepHistory`)
-  /// - HRV: ONE range read (`readHrvSamples`) over 90 days on the
-  ///   first-ever capture, 31 days on routine captures; raw samples
+  /// - HRV: ONE range read (`readHrvSamples`) over 90 days until
+  ///   the backfill completes, 31 days after (see
+  ///   [HealthHistoryStore.hrvBackfillComplete]: the window is
+  ///   keyed off that persisted flag — set only by a CLEAN HRV
+  ///   read — not off the day count, B-02); raw samples
   ///   are attributed to local calendar days and reduced to the
   ///   daily top-tier average in Dart (`attributeDailyHrv`). The
   ///   range window retro-fills HRV for days the store already
@@ -232,8 +235,8 @@ class HealthHistorySync {
   /// is the time since the last capture — only the gap plus
   /// margin needs re-reading, floored at 31 days so the score's
   /// 28-day baseline window is always fully re-read. The spikes
-  /// and HRV windows are not gap-aware (fixed first/routine
-  /// windows, above).
+  /// and HRV windows are not gap-aware (fixed windows, above:
+  /// spikes first/routine, HRV keyed off the backfill flag).
   ///
   /// Sleep-totals upgrade (Oct 28, 2026): when the store's
   /// sleep-totals rule version is stale (see
@@ -318,13 +321,42 @@ class HealthHistorySync {
       // (failures recorded, successes clear their metric's entry).
       final captureFailures = <String, String>{};
       final captureSucceeded = <String>{};
+      // B-02 — set when ANY leg of this capture came back
+      // partial (real data, some chunks missing). A partial
+      // capture is not a clean capture: it must not complete
+      // the HRV backfill, must not clear the affected metric's
+      // recorded failure, and must not run the post-capture
+      // score compute (write-once scores would lock past days
+      // without the components the failed chunks held).
+      var captureHadPartial = false;
       void noteRead(String metric) {
         final code = _hc.lastReadErrorCode;
         if (code != null && code.isNotEmpty) {
           captureFailures[metric] = code;
-        } else {
-          captureSucceeded.add(metric);
+          return;
         }
+        final partialCode = _hc.lastPartialErrorCode;
+        if (partialCode != null && partialCode.isNotEmpty) {
+          captureHadPartial = true;
+          if (metric == 'hrv') {
+            // The HRV partial is already durably recorded via
+            // the hrvPartialCode snapshot passed to
+            // recordCaptureDiagnostics below (its entry is
+            // rewritten with the partial code, never cleared) —
+            // adding it to captureFailures here would rewrite
+            // that entry's errorCode with the partial code and
+            // regress that contract. It is in NEITHER set.
+          } else {
+            // A partial read is NOT a success for its metric:
+            // recording the partial code as the metric's failure
+            // keeps its earlier failure entry on record instead
+            // of the succeeded-loop clearing it (B-02: a partial
+            // sleep read used to clear sleep's recorded failure).
+            captureFailures[metric] = partialCode;
+          }
+          return;
+        }
+        captureSucceeded.add(metric);
       }
 
       void resetReadCodes() {
@@ -379,9 +411,14 @@ class HealthHistorySync {
       // HRV — ONE range read of raw samples; day attribution +
       // the daily top-tier rule run in Dart (attributeDailyHrv).
       // The window retro-fills HRV onto days already in the store
-      // from other metrics: the first capture reaches back 90
-      // days, routine captures 31.
-      final hrvWindowDays = isFirst ? 90 : 31;
+      // from other metrics: it reaches back 90 days UNTIL the
+      // backfill completes and 31 days after. B-02: the window is
+      // keyed off the store's persisted backfill-complete flag —
+      // NOT the dayCount-derived isFirst, which collapsed to
+      // "routine" the moment any sibling metric merged data, so
+      // HRV in chunks that failed during the first capture
+      // (days 31–90) was never re-read.
+      final hrvWindowDays = _store.hrvBackfillComplete ? 31 : 90;
       final today = DateTime(now.year, now.month, now.day);
       final hrvDates = <String>{
         for (var i = 0; i < hrvWindowDays; i++)
@@ -398,6 +435,12 @@ class HealthHistorySync {
       // code, so a recurrence is diagnosable from the diagnostics
       // record alone. Counts are operational metadata, not values.
       final hrvPartialCode = _hc.lastPartialErrorCode;
+      // Snapshot the HRV leg's cleanliness NOW, before the
+      // sibling legs' resetReadCodes() wipes both codes: the
+      // backfill flag below may be set only by a clean read
+      // (no error, no partial).
+      final hrvReadClean =
+          _hc.lastReadErrorCode == null && hrvPartialCode == null;
       final dailyHrv = attributeDailyHrv(hrvSamples, hrvDates);
       for (final entry in dailyHrv.entries) {
         put(entry.key, hrv: entry.value);
@@ -439,6 +482,13 @@ class HealthHistorySync {
         await _store.markSleepTotalsRuleVersion(
             HealthHistoryStore.currentSleepTotalsRuleVersion);
       }
+      // HRV backfill (B-02): the persisted flag is set ONLY by a
+      // clean HRV read — a partial or failed read leaves it
+      // unset, so the next capture still spans the full 90 days
+      // and the chunks that failed get re-read.
+      if (hrvReadClean) {
+        await _store.markHrvBackfillComplete();
+      }
       await _store.markCaptured(now.millisecondsSinceEpoch);
       // R70 Daily Score — after-capture compute trigger: any day
       // whose inputs now exist gets its (write-once) score. The
@@ -453,10 +503,20 @@ class HealthHistorySync {
       // ALL THREE components are available, otherwise it stays
       // pending for a later capture to retry. Past days in the
       // same run score under the day-boundary fallback.
-      await DailyScoreEngine(store: _store, scoreSync: _scoreSync)
-          .computeMissingScores(
-        completeOnlyDate: _historyDateStr(now),
-      );
+      //
+      // B-02: the run is skipped ENTIRELY on a capture where any
+      // leg was partial. Past days carry no completeness gate
+      // (only today does), so scoring after a partial capture
+      // would write-once-lock past days whose sleep/HRV is
+      // missing BECAUSE a chunk failed. The merged partial data
+      // stays in the store; the next clean capture scores those
+      // days exactly as a clean capture always did.
+      if (!captureHadPartial) {
+        await DailyScoreEngine(store: _store, scoreSync: _scoreSync)
+            .computeMissingScores(
+          completeOnlyDate: _historyDateStr(now),
+        );
+      }
       return true;
     } catch (e, st) {
       // Capture failure must never break a screen. C7 allowlisted

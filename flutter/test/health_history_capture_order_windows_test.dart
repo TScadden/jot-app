@@ -24,8 +24,12 @@ import 'package:tabs_lab/src/data/health_history_sync.dart';
 ///   last-capture stamp, otherwise
 ///   clamp(ceil(gapDays) + 2, 31, fullCap) with fullCap 180 for
 ///   RHR / calories and 90 for sleep;
-/// - spikes and HRV windows are UNCHANGED (180 / 90 first,
-///   31 routine).
+/// - spikes windows are UNCHANGED (180 first, 31 routine);
+///   the HRV window is 90 until the backfill completes and 31
+///   after (B-02: keyed off the store's persisted
+///   backfill-complete flag, set only by a clean HRV read — the
+///   seeded routine stores below pre-stamp it, exactly as they
+///   pre-stamp the sleep-totals rule version).
 
 /// Recording fake: notes the invocation order and the requested
 /// window of every read, returns empty windows. While
@@ -124,6 +128,12 @@ Future<({_RecordingHc hc, HealthHistoryStore store})> _runCapture({
     // upgrade behavior is pinned in sleep_totals_upgrade_test.dart.
     await store.markSleepTotalsRuleVersion(
         HealthHistoryStore.currentSleepTotalsRuleVersion);
+    // Same modelling for B-02: a seeded store stands for one
+    // whose HRV backfill already completed on a clean read, so
+    // its routine HRV window is 31. (Backfill-incomplete stores
+    // keep reading 90 — pinned in
+    // health_history_partial_capture_b02_test.dart.)
+    await store.markHrvBackfillComplete();
   }
   final recording = hc ?? _RecordingHc();
   final sync = HealthHistorySync.withDeps(

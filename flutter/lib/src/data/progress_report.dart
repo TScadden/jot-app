@@ -817,52 +817,54 @@ class ReportDataCollector {
         end: n,
         metrics: HistoryMetric.values.toSet(),
       );
+      // B-02: a metric whose fresh HC read FAILED or came back
+      // PARTIAL reports the existing error status — never a
+      // status derived from emptiness alone (a partial-empty
+      // read used to report noData and a truncated non-empty
+      // series success, hiding that some of the series could
+      // not be read). The surviving series itself is still
+      // collected below exactly as before; only its status
+      // tells the truth. The error status reuses the existing
+      // availability wording — no new user-visible copy.
+      DataSourceStatus hcStatus(HistoryMetric metric, bool isEmpty) {
+        if (union.failed(metric) || union.partial(metric)) {
+          return DataSourceStatus.error;
+        }
+        return isEmpty ? DataSourceStatus.noData : DataSourceStatus.success;
+      }
+
       sleep = [
         for (final e in union.sleepMinutes.entries) (e.key, e.value),
       ]..sort((a, b) => a.$1.compareTo(b.$1));
       deep = [
         for (final e in union.deepSleepMinutes.entries) (e.key, e.value),
       ]..sort((a, b) => a.$1.compareTo(b.$1));
-      meta('sleep',
-          sleep.isEmpty ? DataSourceStatus.noData : DataSourceStatus.success,
+      meta('sleep', hcStatus(HistoryMetric.sleep, sleep.isEmpty),
           sleep.length);
-      meta(
-          'deepSleep',
-          deep.isEmpty ? DataSourceStatus.noData : DataSourceStatus.success,
+      meta('deepSleep', hcStatus(HistoryMetric.sleep, deep.isEmpty),
           deep.length);
 
       hr = [
         for (final e in union.restingHr.entries) (e.key, e.value),
       ]..sort((a, b) => a.$1.compareTo(b.$1));
-      meta('heartRate',
-          hr.isEmpty ? DataSourceStatus.noData : DataSourceStatus.success,
+      meta('heartRate', hcStatus(HistoryMetric.restingHr, hr.isEmpty),
           hr.length);
 
       hrv = [
         for (final e in union.hrv.entries) (e.key, e.value),
       ]..sort((a, b) => a.$1.compareTo(b.$1));
-      meta('hrv',
-          hrv.isEmpty ? DataSourceStatus.noData : DataSourceStatus.success,
-          hrv.length);
+      meta('hrv', hcStatus(HistoryMetric.hrv, hrv.isEmpty), hrv.length);
 
       calories = [
         for (final e in union.calories.entries) (e.key, e.value),
       ]..sort((a, b) => a.$1.compareTo(b.$1));
-      meta(
-          'calories',
-          calories.isEmpty
-              ? DataSourceStatus.noData
-              : DataSourceStatus.success,
+      meta('calories', hcStatus(HistoryMetric.calories, calories.isEmpty),
           calories.length);
 
       spikes = [
         for (final e in union.spikes.entries) (e.key, e.value),
       ]..sort((a, b) => a.$1.compareTo(b.$1));
-      meta(
-          'hrSpikes',
-          spikes.isEmpty
-              ? DataSourceStatus.noData
-              : DataSourceStatus.success,
+      meta('hrSpikes', hcStatus(HistoryMetric.spikes, spikes.isEmpty),
           spikes.length);
     }
 

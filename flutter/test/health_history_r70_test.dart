@@ -417,6 +417,11 @@ void main() {
             sleepMinutes: 432,
             deepSleepMinutes: 88),
       ]);
+      // B-02: the routine 31-day HRV window now keys off the
+      // store's backfill-complete flag (set only by a clean HRV
+      // read), not the day count — this seeded store models one
+      // whose backfill already completed.
+      await store.markHrvBackfillComplete();
       final hc = _FakeHc();
       hc.hrvSamples = [
         (
