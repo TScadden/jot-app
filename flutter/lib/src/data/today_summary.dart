@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart';
+import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -1474,6 +1475,16 @@ class TodaySummaryLoader {
   ///   deleting the log entry in History, which restores the dose.
   /// The local record happens even if the entry post fails — native's
   /// occurrence write is local-first the same way.
+  ///
+  /// C-07 (Pass 2 audit): a failed entry write is NOT dropped. The
+  /// pre-fix code ignored `postLogEntries`' bool result (production
+  /// returns false on HTTP failure instead of throwing), swallowed
+  /// throws in a bare catch, and skipped the post entirely when the
+  /// category failed to resolve — so the entry vanished in-session
+  /// with no History row for the founder's delete-to-undo to act on.
+  /// Every failure path now stages the constructed entry in
+  /// [LogEntryOutbox] (the quick-log/history pattern), where it
+  /// survives restart and flushes on the next sync trigger.
   Future<void> setMedicationAction(TodayPlanItem item, DoseStatus status,
       {DateTime? now}) async {
     final at = now ?? DateTime.now();
@@ -1486,67 +1497,167 @@ class TodaySummaryLoader {
       slot: item.slot,
       status: status,
     );
+    if (status != DoseStatus.taken && status != DoseStatus.skipped) {
+      return;
+    }
+    backend.invalidateSyncPull();
+    var entries = const <QuickLogEntry>[];
+    var categories = const <QuickLogCategory>[];
     try {
-      if (status == DoseStatus.taken || status == DoseStatus.skipped) {
-        backend.invalidateSyncPull();
-        final entries = await backend.fetchLogEntryDtos();
-        final categories = await backend.fetchLogCategories();
-        final medCategoryId = resolveSummaryCategoryId(categories,
-            name: 'Medication', fallbackId: 8);
-        if (medCategoryId != null) {
-          final took = _findTookEntry(item.title, entries, medCategoryId, at);
-          if (status == DoseStatus.taken && took == null) {
-            var maxId = 0;
-            for (final e in entries) {
-              if (e.id > maxId) maxId = e.id;
-            }
-            final dose = item.dose.trim();
-            await backend.postLogEntries([
-              QuickLogEntry(
-                id: maxId + 1,
-                categoryId: medCategoryId,
-                body: 'Took ${item.title}${dose.isNotEmpty ? ' $dose' : ''}',
-                chips: '[]',
-                manualText: '',
-                timestamp: at.millisecondsSinceEpoch,
-              ),
-            ]);
-          } else if (status == DoseStatus.skipped && took != null) {
-            await backend.postLogEntries([
-              QuickLogEntry(
-                id: took.id,
-                categoryId: took.categoryId,
-                body: '[Corrected to Skipped] ${took.body}',
-                chips: took.chips,
-                manualText: took.manualText,
-                timestamp: took.timestamp,
-              ),
-            ]);
-          } else if (status == DoseStatus.skipped && took == null) {
-            // Round 41: a skip from pending still logs — directly
-            // in the corrected shape (see the method doc).
-            var maxId = 0;
-            for (final e in entries) {
-              if (e.id > maxId) maxId = e.id;
-            }
-            final dose = item.dose.trim();
-            await backend.postLogEntries([
-              QuickLogEntry(
-                id: maxId + 1,
-                categoryId: medCategoryId,
-                body: '[Corrected to Skipped] '
-                    'Took ${item.title}${dose.isNotEmpty ? ' $dose' : ''}',
-                chips: '[]',
-                manualText: '',
-                timestamp: at.millisecondsSinceEpoch,
-              ),
-            ]);
-          }
-        }
-        backend.invalidateSyncPull();
-      }
+      entries = await backend.fetchLogEntryDtos();
+      categories = await backend.fetchLogCategories();
     } catch (_) {
-      // Entry sync is best-effort; the local action already landed.
+      // The production reads degrade to [] on pull failure rather
+      // than throwing; a throwing read lands in the same place —
+      // no entries, no categories — and the null-category staging
+      // path below handles it.
+      entries = const <QuickLogEntry>[];
+      categories = const <QuickLogCategory>[];
+    }
+    final dose = item.dose.trim();
+    final doseSuffix = dose.isNotEmpty ? ' $dose' : '';
+    final body = status == DoseStatus.taken
+        ? 'Took ${item.title}$doseSuffix'
+        : '[Corrected to Skipped] Took ${item.title}$doseSuffix';
+    final medCategoryId = resolveSummaryCategoryId(categories,
+        name: 'Medication', fallbackId: 8);
+    if (medCategoryId == null) {
+      // The pull failed (or carries no Medication category), so the
+      // post cannot even be attempted and any standing "Took …" row
+      // is unknowable. Stage the entry the action would have created
+      // (the skip-from-pending shape for a skip) under the native
+      // seeded Medication id — the same fallback
+      // [resolveSummaryCategoryId] matches when the category row
+      // exists — so the log is recovered on the next flush instead
+      // of being silently dropped.
+      await _stageNewMedEntry(
+        categoryId: 8,
+        body: body,
+        timestamp: at.millisecondsSinceEpoch,
+        serverMaxId: _maxEntryId(entries),
+      );
+      backend.invalidateSyncPull();
+      return;
+    }
+    final took = _findTookEntry(item.title, entries, medCategoryId, at);
+    if (status == DoseStatus.taken && took != null) {
+      // Already logged — exactly one entry stands (idempotent).
+      backend.invalidateSyncPull();
+      return;
+    }
+    final QuickLogEntry entry;
+    final bool serverKnown;
+    if (status == DoseStatus.skipped && took != null) {
+      entry = QuickLogEntry(
+        id: took.id,
+        categoryId: took.categoryId,
+        body: '[Corrected to Skipped] ${took.body}',
+        chips: took.chips,
+        manualText: took.manualText,
+        timestamp: took.timestamp,
+      );
+      serverKnown = true;
+    } else {
+      // A take with no standing entry, or a Round 41 skip from
+      // pending (logged directly in the corrected shape — see the
+      // method doc).
+      entry = QuickLogEntry(
+        id: _maxEntryId(entries) + 1,
+        categoryId: medCategoryId,
+        body: body,
+        chips: '[]',
+        manualText: '',
+        timestamp: at.millisecondsSinceEpoch,
+      );
+      serverKnown = false;
+    }
+    await _deliverMedEntry(entry,
+        serverKnown: serverKnown, serverMaxId: _maxEntryId(entries));
+    backend.invalidateSyncPull();
+  }
+
+  static int _maxEntryId(List<QuickLogEntry> entries) {
+    var maxId = 0;
+    for (final e in entries) {
+      if (e.id > maxId) maxId = e.id;
+    }
+    return maxId;
+  }
+
+  /// Posts one medication entry, checking the result the way
+  /// [_postCompletionEntry] does: `postLogEntries` returns false on
+  /// HTTP failure instead of throwing, so BOTH outcomes are failure.
+  /// On failure the entry is staged in [LogEntryOutbox] instead of
+  /// dropped (C-07). Never throws.
+  Future<void> _deliverMedEntry(QuickLogEntry entry,
+      {required bool serverKnown, required int serverMaxId}) async {
+    var ok = false;
+    try {
+      ok = await backend.postLogEntries([entry]);
+    } catch (_) {
+      ok = false;
+    }
+    if (ok) return;
+    if (serverKnown) {
+      // A rewrite of a row the server already holds: stage the exact
+      // entry under its own id.
+      try {
+        await LogEntryOutbox.instance.stageForBackend(
+          entry,
+          backend: backend,
+          serverKnown: true,
+        );
+      } catch (_) {
+        // Staging must never crash the med action (see
+        // [_stageNewMedEntry]).
+      }
+    } else {
+      await _stageNewMedEntry(
+        categoryId: entry.categoryId,
+        body: entry.body,
+        timestamp: entry.timestamp,
+        serverMaxId: serverMaxId,
+      );
+    }
+  }
+
+  /// Stages a brand-new medication entry in [LogEntryOutbox]. The
+  /// id is allocated through the outbox (never reused from the
+  /// possibly-unloaded pulled list alone), mirroring quick-log's
+  /// allocate-then-stage order.
+  ///
+  /// Honest failure handling (PR #51): [LogEntryOutbox] allocation
+  /// throws StateError when its disk load failed, and staging
+  /// returns false in that window. Neither may crash the med
+  /// action — the local record already landed, and inventing an id
+  /// in that window could overwrite a staged entry the failed load
+  /// never saw, so the entry is left unstaged rather than risk a
+  /// second silent loss.
+  Future<void> _stageNewMedEntry({
+    required int categoryId,
+    required String body,
+    required int timestamp,
+    required int serverMaxId,
+  }) async {
+    try {
+      final id = await LogEntryOutbox.instance.allocateEntryIdForBackend(
+        backend: backend,
+        serverMaxId: serverMaxId,
+      );
+      await LogEntryOutbox.instance.stageForBackend(
+        QuickLogEntry(
+          id: id,
+          categoryId: categoryId,
+          body: body,
+          chips: '[]',
+          manualText: '',
+          timestamp: timestamp,
+        ),
+        backend: backend,
+        serverKnown: false,
+      );
+    } catch (_) {
+      // See the doc above: absorbed deliberately, never a crash.
     }
   }
 
