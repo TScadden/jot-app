@@ -1,20 +1,20 @@
 {
- "conditionTags": [
-  "PTSD (Post-Traumatic Stress Disorder)"
- ],
- "detail": "The National Institute of Mental Health (NIMH) brochure on post-traumatic stress disorder states that the main treatments are psychotherapy, medications, or a combination of the two, provided by a mental health professional who has experience treating PTSD. NIMH describes psychotherapy, sometimes called talk therapy, as a set of techniques clinicians use to help people identify and change troubling emotions, thoughts, and behaviors, with the approach and length of treatment varying by person.\n\nApproaches clinicians use in the brochure include cognitive behavioral therapy, exposure therapy, and cognitive restructuring, each concerned with how memories, thoughts, and reactions connected with the trauma are processed. On the medication side, NIMH notes that the U.S. Food and Drug Administration has approved two selective serotonin reuptake inhibitors (SSRIs), a type of antidepressant medication, for the treatment of PTSD, and that other medication classes are sometimes used for particular symptoms as part of a clinician-directed plan. NIMH presents treatment as individualized, since people respond differently to both psychotherapy and medication.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about managing post-traumatic stress disorder.",
- "id": "ptsd_management",
- "sourceHandle": "",
- "sourceName": "National Institute of Mental Health",
- "sourcePlatform": "Article",
- "sourceUrl": "https://www.nimh.nih.gov/sites/default/files/documents/health/publications/post-traumatic-stress-disorder-ptsd/post-traumatic-stress-disorder_1.pdf",
- "sourceVideoTitle": "",
- "summary": "NIMH's PTSD brochure describes treatment built on psychotherapy, medication, or a combination of the two, with clinicians using approaches such as cognitive behavioral therapy and exposure therapy and SSRIs among the approved medication options.",
- "takeaways": [
-  "the main treatments are psychotherapy, medications, or a combination",
-  "clinicians use approaches such as cognitive behavioral therapy and exposure therapy",
-  "never start, stop, or change medicines without your doctor"
- ],
- "title": "Post-traumatic stress disorder: psychotherapy and medication as the main treatments",
- "videoDurationSeconds": 0
+  "conditionTags": [
+    "Post-Traumatic Stress Disorder (PTSD)"
+  ],
+  "detail": "The National Institute of Mental Health (NIMH) brochure on post-traumatic stress disorder states that the main treatments are psychotherapy, medications, or a combination of the two, provided by a mental health professional who has experience treating PTSD. NIMH describes psychotherapy, sometimes called talk therapy, as a set of techniques clinicians use to help people identify and change troubling emotions, thoughts, and behaviors, with the approach and length of treatment varying by person.\n\nApproaches clinicians use in the brochure include cognitive behavioral therapy, exposure therapy, and cognitive restructuring, each concerned with how memories, thoughts, and reactions connected with the trauma are processed. On the medication side, NIMH notes that the U.S. Food and Drug Administration has approved two selective serotonin reuptake inhibitors (SSRIs), a type of antidepressant medication, for the treatment of PTSD, and that other medication classes are sometimes used for particular symptoms as part of a clinician-directed plan. NIMH presents treatment as individualized, since people respond differently to both psychotherapy and medication.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about managing post-traumatic stress disorder.",
+  "id": "ptsd_management",
+  "sourceHandle": "",
+  "sourceName": "National Institute of Mental Health",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://www.nimh.nih.gov/sites/default/files/documents/health/publications/post-traumatic-stress-disorder-ptsd/post-traumatic-stress-disorder_1.pdf",
+  "sourceVideoTitle": "",
+  "summary": "NIMH's PTSD brochure describes treatment built on psychotherapy, medication, or a combination of the two, with clinicians using approaches such as cognitive behavioral therapy and exposure therapy and SSRIs among the approved medication options.",
+  "takeaways": [
+    "the main treatments are psychotherapy, medications, or a combination",
+    "clinicians use approaches such as cognitive behavioral therapy and exposure therapy",
+    "never start, stop, or change medicines without your doctor"
+  ],
+  "title": "Post-traumatic stress disorder: psychotherapy and medication as the main treatments",
+  "videoDurationSeconds": 0
 }

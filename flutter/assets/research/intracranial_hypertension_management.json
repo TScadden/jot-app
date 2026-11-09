@@ -1,1 +1,20 @@
-{"conditionTags":["Intracranial Hypertension (IIH)"],"detail":"The MedlinePlus medical encyclopedia describes idiopathic intracranial hypertension, also listed under its older names pseudotumor cerebri syndrome and benign intracranial hypertension, as a condition in which pressure inside the skull is increased and the brain is affected in a way that appears to be, but is not, a tumor. Treatment, the encyclopedia states, is aimed at the cause where one is found, and the main goals of treatment are to preserve vision and reduce the severity of headaches.\n\nOptions the source lists include fluid or salt restriction, weight loss, and medicines in classes such as carbonic anhydrase inhibitors and diuretics, with corticosteroids also named. A lumbar puncture can help relieve pressure in the brain, and procedures described for persistent cases include shunting to drain spinal fluid buildup and surgery to relieve pressure on the optic nerve. The encyclopedia emphasizes that vision needs close monitoring, because vision loss from the condition can be permanent, and follow-up imaging may be used to check for other causes of raised pressure.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about managing intracranial hypertension and protecting vision.","id":"intracranial_hypertension_management","sourceHandle":"","sourceName":"MedlinePlus","sourcePlatform":"Article","sourceUrl":"https://medlineplus.gov/ency/article/000351.htm","sourceVideoTitle":"","summary":"MedlinePlus describes IIH management aimed at preserving vision and easing headaches, using weight loss, fluid or salt restriction, pressure-lowering medicine classes, and shunt or optic nerve surgery when pressure persists.","takeaways":["preserving vision is the main treatment goal in the source","weight loss and pressure-lowering medicine classes are core options","never start, stop, or change medicines without your doctor"],"title":"Intracranial Hypertension: managing pressure to protect vision","videoDurationSeconds":0}
+{
+  "conditionTags": [
+    "Idiopathic Intracranial Hypertension (IIH / Pseudotumor Cerebri)"
+  ],
+  "detail": "The MedlinePlus medical encyclopedia describes idiopathic intracranial hypertension, also listed under its older names pseudotumor cerebri syndrome and benign intracranial hypertension, as a condition in which pressure inside the skull is increased and the brain is affected in a way that appears to be, but is not, a tumor. Treatment, the encyclopedia states, is aimed at the cause where one is found, and the main goals of treatment are to preserve vision and reduce the severity of headaches.\n\nOptions the source lists include fluid or salt restriction, weight loss, and medicines in classes such as carbonic anhydrase inhibitors and diuretics, with corticosteroids also named. A lumbar puncture can help relieve pressure in the brain, and procedures described for persistent cases include shunting to drain spinal fluid buildup and surgery to relieve pressure on the optic nerve. The encyclopedia emphasizes that vision needs close monitoring, because vision loss from the condition can be permanent, and follow-up imaging may be used to check for other causes of raised pressure.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about managing intracranial hypertension and protecting vision.",
+  "id": "intracranial_hypertension_management",
+  "sourceHandle": "",
+  "sourceName": "MedlinePlus",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://medlineplus.gov/ency/article/000351.htm",
+  "sourceVideoTitle": "",
+  "summary": "MedlinePlus describes IIH management aimed at preserving vision and easing headaches, using weight loss, fluid or salt restriction, pressure-lowering medicine classes, and shunt or optic nerve surgery when pressure persists.",
+  "takeaways": [
+    "preserving vision is the main treatment goal in the source",
+    "weight loss and pressure-lowering medicine classes are core options",
+    "never start, stop, or change medicines without your doctor"
+  ],
+  "title": "Intracranial Hypertension: managing pressure to protect vision",
+  "videoDurationSeconds": 0
+}

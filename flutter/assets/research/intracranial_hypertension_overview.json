@@ -1,1 +1,20 @@
-{"conditionTags":["Intracranial Hypertension (IIH)"],"detail":"The National Eye Institute (NEI) describes idiopathic intracranial hypertension (IIH) as high pressure around the brain that causes symptoms like vision changes and headaches. The institute breaks the name down directly: idiopathic means the cause is not known, intracranial means in the skull, and hypertension means high pressure. IIH happens when too much cerebrospinal fluid, the fluid around the brain and spinal cord, builds up in the skull, putting extra pressure on the brain and on the optic nerve at the back of the eye.\n\nSymptoms can include headaches, blind spots, and loss of peripheral (side) vision, and NEI notes that IIH symptoms are often similar to those of a brain tumor, which is why the condition is sometimes called pseudotumor cerebri, or false tumor. Diagnosis in the source involves a dilated eye exam, vision testing, and other medical tests to look for a cause; when doctors cannot find a reason for the high pressure, the condition is called IIH. The institute lists weight loss, medicine, and surgery among the treatment approaches.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about intracranial hypertension symptoms and vision checks.","id":"intracranial_hypertension_overview","sourceHandle":"","sourceName":"National Eye Institute","sourcePlatform":"Article","sourceUrl":"https://www.nei.nih.gov/learn-about-eye-health/eye-conditions-and-diseases/idiopathic-intracranial-hypertension","sourceVideoTitle":"","summary":"The National Eye Institute explains idiopathic intracranial hypertension as a buildup of cerebrospinal fluid that raises pressure in the skull for no known cause, producing headaches and vision changes that can mimic a brain tumor.","takeaways":["pressure rises because cerebrospinal fluid builds up in the skull","symptoms can include headaches, blind spots, and side vision loss","eye and vision exams are central to diagnosis, per the source"],"title":"Intracranial Hypertension: pressure in the skull with no known cause","videoDurationSeconds":0}
+{
+  "conditionTags": [
+    "Idiopathic Intracranial Hypertension (IIH / Pseudotumor Cerebri)"
+  ],
+  "detail": "The National Eye Institute (NEI) describes idiopathic intracranial hypertension (IIH) as high pressure around the brain that causes symptoms like vision changes and headaches. The institute breaks the name down directly: idiopathic means the cause is not known, intracranial means in the skull, and hypertension means high pressure. IIH happens when too much cerebrospinal fluid, the fluid around the brain and spinal cord, builds up in the skull, putting extra pressure on the brain and on the optic nerve at the back of the eye.\n\nSymptoms can include headaches, blind spots, and loss of peripheral (side) vision, and NEI notes that IIH symptoms are often similar to those of a brain tumor, which is why the condition is sometimes called pseudotumor cerebri, or false tumor. Diagnosis in the source involves a dilated eye exam, vision testing, and other medical tests to look for a cause; when doctors cannot find a reason for the high pressure, the condition is called IIH. The institute lists weight loss, medicine, and surgery among the treatment approaches.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about intracranial hypertension symptoms and vision checks.",
+  "id": "intracranial_hypertension_overview",
+  "sourceHandle": "",
+  "sourceName": "National Eye Institute",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://www.nei.nih.gov/learn-about-eye-health/eye-conditions-and-diseases/idiopathic-intracranial-hypertension",
+  "sourceVideoTitle": "",
+  "summary": "The National Eye Institute explains idiopathic intracranial hypertension as a buildup of cerebrospinal fluid that raises pressure in the skull for no known cause, producing headaches and vision changes that can mimic a brain tumor.",
+  "takeaways": [
+    "pressure rises because cerebrospinal fluid builds up in the skull",
+    "symptoms can include headaches, blind spots, and side vision loss",
+    "eye and vision exams are central to diagnosis, per the source"
+  ],
+  "title": "Intracranial Hypertension: pressure in the skull with no known cause",
+  "videoDurationSeconds": 0
+}

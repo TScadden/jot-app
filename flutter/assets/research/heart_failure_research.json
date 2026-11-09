@@ -1,1 +1,20 @@
-{"conditionTags":["Heart Failure"],"detail":"The National Heart, Lung, and Blood Institute (NHLBI) reports that its Division of Cardiovascular Sciences and its Heart Failure and Arrhythmias Branch oversee much of the heart failure research it funds, with a focus on understanding normal heart function as well as what happens when the heart begins to fail. Research described by the institute includes the HeartShare program, which works to identify subtypes of heart failure so that treatments could in future be personalized, and the AMP Heart Failure study of precision treatments for heart failure with preserved ejection fraction.\n\nTrials described by the institute include a large trial comparing two loop diuretic medicines commonly used for congestion, a trial of a mechanical heart pump designed specifically for young children and infants, and studies of disparities in how heart failure is diagnosed and treated. NHLBI also describes research into causes and prevention, including how changes in the heart muscle and conditions such as atrial fibrillation can lead to heart failure, supported by long-running cohort studies it funds.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about heart failure research and clinical trials.","id":"heart_failure_research","sourceHandle":"","sourceName":"National Heart, Lung, and Blood Institute","sourcePlatform":"Article","sourceUrl":"https://www.nhlbi.nih.gov/research/heart-failure","sourceVideoTitle":"","summary":"NHLBI describes its funded heart failure research, including the HeartShare subtyping program, precision treatment studies in preserved ejection fraction, a trial comparing loop diuretics, and work on causes, prevention, and disparities.","takeaways":["researchers are working to identify heart failure subtypes for personalized treatment","trials compare medicines already in use as well as test new devices","research participation is optional; talk to your doctor about studies"],"title":"Heart failure: where heart failure research is heading","videoDurationSeconds":0}
+{
+  "conditionTags": [
+    "Congestive Heart Failure (CHF)"
+  ],
+  "detail": "The National Heart, Lung, and Blood Institute (NHLBI) reports that its Division of Cardiovascular Sciences and its Heart Failure and Arrhythmias Branch oversee much of the heart failure research it funds, with a focus on understanding normal heart function as well as what happens when the heart begins to fail. Research described by the institute includes the HeartShare program, which works to identify subtypes of heart failure so that treatments could in future be personalized, and the AMP Heart Failure study of precision treatments for heart failure with preserved ejection fraction.\n\nTrials described by the institute include a large trial comparing two loop diuretic medicines commonly used for congestion, a trial of a mechanical heart pump designed specifically for young children and infants, and studies of disparities in how heart failure is diagnosed and treated. NHLBI also describes research into causes and prevention, including how changes in the heart muscle and conditions such as atrial fibrillation can lead to heart failure, supported by long-running cohort studies it funds.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about heart failure research and clinical trials.",
+  "id": "heart_failure_research",
+  "sourceHandle": "",
+  "sourceName": "National Heart, Lung, and Blood Institute",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://www.nhlbi.nih.gov/research/heart-failure",
+  "sourceVideoTitle": "",
+  "summary": "NHLBI describes its funded heart failure research, including the HeartShare subtyping program, precision treatment studies in preserved ejection fraction, a trial comparing loop diuretics, and work on causes, prevention, and disparities.",
+  "takeaways": [
+    "researchers are working to identify heart failure subtypes for personalized treatment",
+    "trials compare medicines already in use as well as test new devices",
+    "research participation is optional; talk to your doctor about studies"
+  ],
+  "title": "Heart failure: where heart failure research is heading",
+  "videoDurationSeconds": 0
+}

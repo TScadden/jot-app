@@ -1,20 +1,20 @@
 {
- "conditionTags": [
-  "PTSD (Post-Traumatic Stress Disorder)"
- ],
- "detail": "The National Institute of Mental Health (NIMH) lists post-traumatic stress disorder among the diagnoses studied in its intramural research program, through its Adults: Post-Traumatic Stress Disorder (PTSD) join-a-study page. NIMH is the lead federal agency for research on mental disorders, and its Division of Intramural Research Programs plans and conducts basic, clinical, and translational research to advance understanding of the diagnosis, causes, treatment, and prevention of psychiatric disorders.\n\nThe intramural studies are conducted at the NIH Clinical Center in Bethesda, Maryland, described by NIMH as the world's largest research hospital. NIMH notes that these clinical studies need participants with mental illnesses as well as people without mental illnesses, and that some studies are inpatient while others are outpatient. The PTSD page sits within the adult studies section, where studies are organized by diagnosis for adults over the age of 18.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about post-traumatic stress disorder research and clinical trials.",
- "id": "ptsd_research",
- "sourceHandle": "",
- "sourceName": "National Institute of Mental Health",
- "sourcePlatform": "Article",
- "sourceUrl": "https://www.nimh.nih.gov/research/research-conducted-at-nimh/join-a-study/adults/adults-post-traumatic-stress-disorder-ptsd",
- "sourceVideoTitle": "",
- "summary": "NIMH's join-a-study pages describe intramural PTSD research conducted at the NIH Clinical Center in Bethesda, Maryland, spanning basic, clinical, and translational studies in adults.",
- "takeaways": [
-  "nimh conducts intramural ptsd research at the nih clinical center",
-  "studies cover diagnosis, causes, treatment, and prevention",
-  "studies enroll adults with and without mental illnesses"
- ],
- "title": "Post-traumatic stress disorder: intramural studies at the NIH Clinical Center",
- "videoDurationSeconds": 0
+  "conditionTags": [
+    "Post-Traumatic Stress Disorder (PTSD)"
+  ],
+  "detail": "The National Institute of Mental Health (NIMH) lists post-traumatic stress disorder among the diagnoses studied in its intramural research program, through its Adults: Post-Traumatic Stress Disorder (PTSD) join-a-study page. NIMH is the lead federal agency for research on mental disorders, and its Division of Intramural Research Programs plans and conducts basic, clinical, and translational research to advance understanding of the diagnosis, causes, treatment, and prevention of psychiatric disorders.\n\nThe intramural studies are conducted at the NIH Clinical Center in Bethesda, Maryland, described by NIMH as the world's largest research hospital. NIMH notes that these clinical studies need participants with mental illnesses as well as people without mental illnesses, and that some studies are inpatient while others are outpatient. The PTSD page sits within the adult studies section, where studies are organized by diagnosis for adults over the age of 18.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about post-traumatic stress disorder research and clinical trials.",
+  "id": "ptsd_research",
+  "sourceHandle": "",
+  "sourceName": "National Institute of Mental Health",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://www.nimh.nih.gov/research/research-conducted-at-nimh/join-a-study/adults/adults-post-traumatic-stress-disorder-ptsd",
+  "sourceVideoTitle": "",
+  "summary": "NIMH's join-a-study pages describe intramural PTSD research conducted at the NIH Clinical Center in Bethesda, Maryland, spanning basic, clinical, and translational studies in adults.",
+  "takeaways": [
+    "nimh conducts intramural ptsd research at the nih clinical center",
+    "studies cover diagnosis, causes, treatment, and prevention",
+    "studies enroll adults with and without mental illnesses"
+  ],
+  "title": "Post-traumatic stress disorder: intramural studies at the NIH Clinical Center",
+  "videoDurationSeconds": 0
 }

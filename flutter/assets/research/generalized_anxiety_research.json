@@ -1,1 +1,20 @@
-{"conditionTags":["Generalized Anxiety Disorder (GAD)"],"detail":"The National Institute of Mental Health (NIMH) lists the anxiety disorder studies conducted by its intramural research program for adults at the NIH Clinical Center. The page highlights the NIMH Family Study of Health and Behavior, which researchers describe as examining how mood disorders, anxiety disorders, and migraine run in families. The study examines both genetic and environmental factors that may contribute to these conditions.\n\nNIMH describes the Family Study as enrolling locally from the Washington, D.C. metro region, including people with conditions such as generalized anxiety, panic, and social phobia, people with mood disorders or migraine, and people without any of these problems for comparison. Family members are also asked to participate, so researchers can study patterns across relatives rather than in individuals alone. NIMH presents the work as part of its intramural research into the causes of anxiety and related disorders.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about anxiety disorder research and clinical trials.","id":"generalized_anxiety_research","sourceHandle":"","sourceName":"National Institute of Mental Health","sourcePlatform":"Article","sourceUrl":"https://www.nimh.nih.gov/research/research-conducted-at-nimh/join-a-study/adults/adults-anxiety-disorders","sourceVideoTitle":"","summary":"NIMH lists its intramural adult anxiety studies, including the Family Study of Health and Behavior, which examines how anxiety disorders, mood disorders, and migraine run in families and studies genetic and environmental factors.","takeaways":["the nimh family study examines how anxiety disorders run in families","researchers study genetic and environmental factors together, nimh describes","research participation is optional; talk to your doctor about studies"],"title":"Generalized anxiety disorder: research into anxiety in families","videoDurationSeconds":0}
+{
+  "conditionTags": [
+    "Anxiety Disorder (Generalized / GAD)"
+  ],
+  "detail": "The National Institute of Mental Health (NIMH) lists the anxiety disorder studies conducted by its intramural research program for adults at the NIH Clinical Center. The page highlights the NIMH Family Study of Health and Behavior, which researchers describe as examining how mood disorders, anxiety disorders, and migraine run in families. The study examines both genetic and environmental factors that may contribute to these conditions.\n\nNIMH describes the Family Study as enrolling locally from the Washington, D.C. metro region, including people with conditions such as generalized anxiety, panic, and social phobia, people with mood disorders or migraine, and people without any of these problems for comparison. Family members are also asked to participate, so researchers can study patterns across relatives rather than in individuals alone. NIMH presents the work as part of its intramural research into the causes of anxiety and related disorders.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about anxiety disorder research and clinical trials.",
+  "id": "generalized_anxiety_research",
+  "sourceHandle": "",
+  "sourceName": "National Institute of Mental Health",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://www.nimh.nih.gov/research/research-conducted-at-nimh/join-a-study/adults/adults-anxiety-disorders",
+  "sourceVideoTitle": "",
+  "summary": "NIMH lists its intramural adult anxiety studies, including the Family Study of Health and Behavior, which examines how anxiety disorders, mood disorders, and migraine run in families and studies genetic and environmental factors.",
+  "takeaways": [
+    "the nimh family study examines how anxiety disorders run in families",
+    "researchers study genetic and environmental factors together, nimh describes",
+    "research participation is optional; talk to your doctor about studies"
+  ],
+  "title": "Generalized anxiety disorder: research into anxiety in families",
+  "videoDurationSeconds": 0
+}

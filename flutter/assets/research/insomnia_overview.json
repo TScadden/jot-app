@@ -1,20 +1,20 @@
 {
- "conditionTags": [
-  "Insomnia"
- ],
- "detail": "The National Heart, Lung, and Blood Institute (NHLBI) describes insomnia as a common sleep disorder in which a person can have trouble falling asleep, staying asleep, or getting good quality sleep, even with the time and the right environment to sleep well. NHLBI notes that insomnia can get in the way of daily activities and can include feeling sleepy during the day.\n\nNHLBI distinguishes short-term insomnia, which can be caused by stress or changes in schedule or environment and can last a few days or weeks, from chronic (long-term) insomnia, which occurs 3 or more nights a week, lasts more than 3 months, and cannot be fully explained by another health problem. Effects can include problems with memory and concentration, and NHLBI notes that chronic insomnia raises the risk of high blood pressure, coronary heart disease, and diabetes. Clinicians may diagnose insomnia from sleep habits and medical history, sometimes including a sleep diary, and a sleep study can look for other sleep problems.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about insomnia symptoms and testing.",
- "id": "insomnia_overview",
- "sourceHandle": "",
- "sourceName": "National Heart, Lung, and Blood Institute",
- "sourcePlatform": "Article",
- "sourceUrl": "https://www.nhlbi.nih.gov/health/insomnia",
- "sourceVideoTitle": "",
- "summary": "NHLBI describes insomnia as a common sleep disorder involving trouble falling asleep, staying asleep, or getting good quality sleep, with chronic insomnia defined as occurring 3 or more nights a week for more than 3 months.",
- "takeaways": [
-  "insomnia can involve trouble falling asleep, staying asleep, or poor-quality sleep",
-  "chronic insomnia occurs 3 or more nights a week for more than 3 months",
-  "short-term insomnia is often linked to stress or schedule changes"
- ],
- "title": "Insomnia: when trouble falling or staying asleep becomes a pattern",
- "videoDurationSeconds": 0
+  "conditionTags": [
+    "Insomnia (Chronic)"
+  ],
+  "detail": "The National Heart, Lung, and Blood Institute (NHLBI) describes insomnia as a common sleep disorder in which a person can have trouble falling asleep, staying asleep, or getting good quality sleep, even with the time and the right environment to sleep well. NHLBI notes that insomnia can get in the way of daily activities and can include feeling sleepy during the day.\n\nNHLBI distinguishes short-term insomnia, which can be caused by stress or changes in schedule or environment and can last a few days or weeks, from chronic (long-term) insomnia, which occurs 3 or more nights a week, lasts more than 3 months, and cannot be fully explained by another health problem. Effects can include problems with memory and concentration, and NHLBI notes that chronic insomnia raises the risk of high blood pressure, coronary heart disease, and diabetes. Clinicians may diagnose insomnia from sleep habits and medical history, sometimes including a sleep diary, and a sleep study can look for other sleep problems.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about insomnia symptoms and testing.",
+  "id": "insomnia_overview",
+  "sourceHandle": "",
+  "sourceName": "National Heart, Lung, and Blood Institute",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://www.nhlbi.nih.gov/health/insomnia",
+  "sourceVideoTitle": "",
+  "summary": "NHLBI describes insomnia as a common sleep disorder involving trouble falling asleep, staying asleep, or getting good quality sleep, with chronic insomnia defined as occurring 3 or more nights a week for more than 3 months.",
+  "takeaways": [
+    "insomnia can involve trouble falling asleep, staying asleep, or poor-quality sleep",
+    "chronic insomnia occurs 3 or more nights a week for more than 3 months",
+    "short-term insomnia is often linked to stress or schedule changes"
+  ],
+  "title": "Insomnia: when trouble falling or staying asleep becomes a pattern",
+  "videoDurationSeconds": 0
 }

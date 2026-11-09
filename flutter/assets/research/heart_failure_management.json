@@ -1,1 +1,20 @@
-{"conditionTags":["Heart Failure"],"detail":"The MedlinePlus encyclopedia describes heart failure care as long-term management of a chronic condition, built around treating the underlying cause, daily monitoring, and medicines chosen by the clinician. The encyclopedia distinguishes systolic heart failure, in which the heart muscle cannot contract well, from diastolic heart failure, in which the muscle is stiff and does not fill easily, and notes that an echocardiogram is often the key test used to tell the types apart and guide treatment.\n\nMedicine classes described in the encyclopedia include diuretics, which help the body remove extra fluid, and classes that reduce the heart's workload and support its function over time, with the specific combination depending on the type of heart failure and other conditions present. The encyclopedia also describes monitoring weight, blood pressure, and symptoms at home as part of follow-up, because fluid buildup can show first as weight gain and worsening breathlessness, and describes surgeries and implanted devices as options clinicians consider in more advanced disease.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about managing heart failure, fluids, and medicines.","id":"heart_failure_management","sourceHandle":"","sourceName":"MedlinePlus","sourcePlatform":"Article","sourceUrl":"https://medlineplus.gov/ency/article/000158.htm","sourceVideoTitle":"","summary":"The MedlinePlus encyclopedia describes heart failure management as long-term care built on treating the underlying cause, medicine classes including diuretics, home monitoring of weight and symptoms, and procedures or devices in advanced disease.","takeaways":["an echocardiogram often guides which type is being treated, sources describe","diuretics are the class described for removing extra fluid","never start, stop, or change medicines without your doctor"],"title":"Managing heart failure day to day","videoDurationSeconds":0}
+{
+  "conditionTags": [
+    "Congestive Heart Failure (CHF)"
+  ],
+  "detail": "The MedlinePlus encyclopedia describes heart failure care as long-term management of a chronic condition, built around treating the underlying cause, daily monitoring, and medicines chosen by the clinician. The encyclopedia distinguishes systolic heart failure, in which the heart muscle cannot contract well, from diastolic heart failure, in which the muscle is stiff and does not fill easily, and notes that an echocardiogram is often the key test used to tell the types apart and guide treatment.\n\nMedicine classes described in the encyclopedia include diuretics, which help the body remove extra fluid, and classes that reduce the heart's workload and support its function over time, with the specific combination depending on the type of heart failure and other conditions present. The encyclopedia also describes monitoring weight, blood pressure, and symptoms at home as part of follow-up, because fluid buildup can show first as weight gain and worsening breathlessness, and describes surgeries and implanted devices as options clinicians consider in more advanced disease.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about managing heart failure, fluids, and medicines.",
+  "id": "heart_failure_management",
+  "sourceHandle": "",
+  "sourceName": "MedlinePlus",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://medlineplus.gov/ency/article/000158.htm",
+  "sourceVideoTitle": "",
+  "summary": "The MedlinePlus encyclopedia describes heart failure management as long-term care built on treating the underlying cause, medicine classes including diuretics, home monitoring of weight and symptoms, and procedures or devices in advanced disease.",
+  "takeaways": [
+    "an echocardiogram often guides which type is being treated, sources describe",
+    "diuretics are the class described for removing extra fluid",
+    "never start, stop, or change medicines without your doctor"
+  ],
+  "title": "Managing heart failure day to day",
+  "videoDurationSeconds": 0
+}

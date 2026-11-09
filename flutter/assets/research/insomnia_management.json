@@ -1,20 +1,20 @@
 {
- "conditionTags": [
-  "Insomnia"
- ],
- "detail": "MedlinePlus describes insomnia treatment as often beginning with a review of medicines, substances, and health problems that may be causing or worsening poor sleep, since addressing an underlying condition can be part of management. The encyclopedia notes that diagnosis usually rests on a physical exam and questions about current medicines, substance use, and medical history. It also describes sleep hygiene, the sleep habits a clinician reviews with a patient, as a foundation, and presents long-term changes in lifestyle and sleep habits as the best treatment for problems with falling and staying asleep.\n\nTalk therapy in the sources includes cognitive behavioral therapy for insomnia (CBT-I), which MedlinePlus describes as a method that may help with control over anxiety or depression and sleep. Medicines play a time-limited role in the sources: prescription sleep medicines called hypnotics can reduce the time it takes to fall asleep but can become habit-forming and work less well over time, most over-the-counter sleep aids contain antihistamines that the body quickly becomes used to, and medicines used to treat anxiety or depression can also help with sleep in some cases.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about managing insomnia.",
- "id": "insomnia_management",
- "sourceHandle": "",
- "sourceName": "MedlinePlus",
- "sourcePlatform": "Article",
- "sourceUrl": "https://medlineplus.gov/ency/article/000805.htm",
- "sourceVideoTitle": "",
- "summary": "MedlinePlus describes insomnia management as starting with a review of medicines and health problems affecting sleep, with sleep-habit changes and cognitive behavioral therapy for insomnia as long-term approaches and sleep medicines framed as time-limited and potentially habit-forming.",
- "takeaways": [
-  "treatment often starts by reviewing medicines and health problems affecting sleep",
-  "cbt-i is the talk therapy the sources describe for insomnia",
-  "never start, stop, or change medicines without your doctor"
- ],
- "title": "Insomnia: reviewing causes first, then sleep habits, therapy, and medicines",
- "videoDurationSeconds": 0
+  "conditionTags": [
+    "Insomnia (Chronic)"
+  ],
+  "detail": "MedlinePlus describes insomnia treatment as often beginning with a review of medicines, substances, and health problems that may be causing or worsening poor sleep, since addressing an underlying condition can be part of management. The encyclopedia notes that diagnosis usually rests on a physical exam and questions about current medicines, substance use, and medical history. It also describes sleep hygiene, the sleep habits a clinician reviews with a patient, as a foundation, and presents long-term changes in lifestyle and sleep habits as the best treatment for problems with falling and staying asleep.\n\nTalk therapy in the sources includes cognitive behavioral therapy for insomnia (CBT-I), which MedlinePlus describes as a method that may help with control over anxiety or depression and sleep. Medicines play a time-limited role in the sources: prescription sleep medicines called hypnotics can reduce the time it takes to fall asleep but can become habit-forming and work less well over time, most over-the-counter sleep aids contain antihistamines that the body quickly becomes used to, and medicines used to treat anxiety or depression can also help with sleep in some cases.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about managing insomnia.",
+  "id": "insomnia_management",
+  "sourceHandle": "",
+  "sourceName": "MedlinePlus",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://medlineplus.gov/ency/article/000805.htm",
+  "sourceVideoTitle": "",
+  "summary": "MedlinePlus describes insomnia management as starting with a review of medicines and health problems affecting sleep, with sleep-habit changes and cognitive behavioral therapy for insomnia as long-term approaches and sleep medicines framed as time-limited and potentially habit-forming.",
+  "takeaways": [
+    "treatment often starts by reviewing medicines and health problems affecting sleep",
+    "cbt-i is the talk therapy the sources describe for insomnia",
+    "never start, stop, or change medicines without your doctor"
+  ],
+  "title": "Insomnia: reviewing causes first, then sleep habits, therapy, and medicines",
+  "videoDurationSeconds": 0
 }

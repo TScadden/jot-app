@@ -1,1 +1,20 @@
-{"conditionTags":["Narcolepsy"],"detail":"NINDS describes narcolepsy as a chronic neurological disorder that affects the brain's ability to control sleep-wake cycles. People with narcolepsy may feel rested after waking but then feel very sleepy through much of the day, and the boundaries between wakefulness and sleep become less distinct: REM sleep, the dreaming stage normally reached after 60 to 90 minutes, can begin within about 15 minutes of falling asleep, and features of REM sleep can appear during waking hours.\n\nSymptoms can include excessive daytime sleepiness in all cases, sometimes arriving as sudden sleep attacks, along with cataplexy, a sudden loss of muscle strength often triggered by strong emotions, sleep paralysis, vivid hallucinations at the edges of sleep, and fragmented nighttime sleep. NINDS distinguishes type 1 narcolepsy, based on low levels of the brain chemical hypocretin or on cataplexy with sleepiness on a nap test, from type 2, which involves daytime sleepiness without cataplexy and usually normal hypocretin levels. Diagnosis generally requires an overnight sleep study and a multiple sleep latency test at a sleep disorders clinic.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about narcolepsy symptoms and diagnosis.","id":"narcolepsy_overview","sourceHandle":"","sourceName":"National Institute of Neurological Disorders and Stroke","sourcePlatform":"Article","sourceUrl":"https://www.ninds.nih.gov/health-information/disorders/narcolepsy","sourceVideoTitle":"","summary":"NINDS explains narcolepsy as a lifelong neurological disorder of sleep-wake control, with excessive daytime sleepiness in all cases and, in type 1, cataplexy linked to low levels of the brain chemical hypocretin.","takeaways":["excessive daytime sleepiness occurs in every case, per the source","symptoms can include cataplexy, sleep paralysis, and fragmented night sleep","type 1 involves low hypocretin; type 2 usually does not"],"title":"Narcolepsy: when the boundaries between sleep and waking blur","videoDurationSeconds":0}
+{
+  "conditionTags": [
+    "Narcolepsy (Type 1 / Type 2)"
+  ],
+  "detail": "NINDS describes narcolepsy as a chronic neurological disorder that affects the brain's ability to control sleep-wake cycles. People with narcolepsy may feel rested after waking but then feel very sleepy through much of the day, and the boundaries between wakefulness and sleep become less distinct: REM sleep, the dreaming stage normally reached after 60 to 90 minutes, can begin within about 15 minutes of falling asleep, and features of REM sleep can appear during waking hours.\n\nSymptoms can include excessive daytime sleepiness in all cases, sometimes arriving as sudden sleep attacks, along with cataplexy, a sudden loss of muscle strength often triggered by strong emotions, sleep paralysis, vivid hallucinations at the edges of sleep, and fragmented nighttime sleep. NINDS distinguishes type 1 narcolepsy, based on low levels of the brain chemical hypocretin or on cataplexy with sleepiness on a nap test, from type 2, which involves daytime sleepiness without cataplexy and usually normal hypocretin levels. Diagnosis generally requires an overnight sleep study and a multiple sleep latency test at a sleep disorders clinic.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about narcolepsy symptoms and diagnosis.",
+  "id": "narcolepsy_overview",
+  "sourceHandle": "",
+  "sourceName": "National Institute of Neurological Disorders and Stroke",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://www.ninds.nih.gov/health-information/disorders/narcolepsy",
+  "sourceVideoTitle": "",
+  "summary": "NINDS explains narcolepsy as a lifelong neurological disorder of sleep-wake control, with excessive daytime sleepiness in all cases and, in type 1, cataplexy linked to low levels of the brain chemical hypocretin.",
+  "takeaways": [
+    "excessive daytime sleepiness occurs in every case, per the source",
+    "symptoms can include cataplexy, sleep paralysis, and fragmented night sleep",
+    "type 1 involves low hypocretin; type 2 usually does not"
+  ],
+  "title": "Narcolepsy: when the boundaries between sleep and waking blur",
+  "videoDurationSeconds": 0
+}

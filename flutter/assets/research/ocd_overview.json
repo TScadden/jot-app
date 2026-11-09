@@ -1,20 +1,20 @@
 {
- "conditionTags": [
-  "OCD (Obsessive-Compulsive Disorder)"
- ],
- "detail": "The National Institute of Mental Health (NIMH) defines obsessive-compulsive disorder (OCD) as an often long-lasting disorder in which a person has uncontrollable, recurring thoughts (obsessions) and behaviors (compulsions) that he or she feels the urge to repeat over and over. Based on diagnostic interview data from the National Comorbidity Survey Replication (NCS-R), NIMH estimates that 1.2% of U.S. adults had OCD in the past year and that lifetime prevalence among U.S. adults was 2.3%.\n\nPast-year prevalence in the NIMH figures was higher for females (1.8%) than for males (0.5%), and varied by age, from 1.5% among adults aged 18 to 29 to 0.5% among adults aged 60 and older. NIMH also reports that approximately one half (50.6%) of adults with OCD had serious impairment in the past year, with 34.8% having moderate impairment and 14.6% mild impairment, as measured on the Sheehan Disability Scale. NIMH notes that the survey used DSM-IV criteria, while the current DSM-5 places OCD in its own category of obsessive-compulsive and related disorders.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about obsessive-compulsive disorder symptoms and diagnosis.",
- "id": "ocd_overview",
- "sourceHandle": "",
- "sourceName": "National Institute of Mental Health",
- "sourcePlatform": "Article",
- "sourceUrl": "https://www.nimh.nih.gov/health/statistics/obsessive-compulsive-disorder-ocd",
- "sourceVideoTitle": "",
- "summary": "NIMH survey data estimate OCD in 1.2% of U.S. adults in the past year and 2.3% over a lifetime, with about half of adults with OCD reporting serious impairment.",
- "takeaways": [
-  "an estimated 1.2% of u.s. adults had ocd in the past year",
-  "lifetime prevalence among u.s. adults was 2.3%",
-  "about half of adults with ocd had serious impairment"
- ],
- "title": "Obsessive-compulsive disorder: how common it is in national survey data",
- "videoDurationSeconds": 0
+  "conditionTags": [
+    "Obsessive-Compulsive Disorder (OCD)"
+  ],
+  "detail": "The National Institute of Mental Health (NIMH) defines obsessive-compulsive disorder (OCD) as an often long-lasting disorder in which a person has uncontrollable, recurring thoughts (obsessions) and behaviors (compulsions) that he or she feels the urge to repeat over and over. Based on diagnostic interview data from the National Comorbidity Survey Replication (NCS-R), NIMH estimates that 1.2% of U.S. adults had OCD in the past year and that lifetime prevalence among U.S. adults was 2.3%.\n\nPast-year prevalence in the NIMH figures was higher for females (1.8%) than for males (0.5%), and varied by age, from 1.5% among adults aged 18 to 29 to 0.5% among adults aged 60 and older. NIMH also reports that approximately one half (50.6%) of adults with OCD had serious impairment in the past year, with 34.8% having moderate impairment and 14.6% mild impairment, as measured on the Sheehan Disability Scale. NIMH notes that the survey used DSM-IV criteria, while the current DSM-5 places OCD in its own category of obsessive-compulsive and related disorders.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about obsessive-compulsive disorder symptoms and diagnosis.",
+  "id": "ocd_overview",
+  "sourceHandle": "",
+  "sourceName": "National Institute of Mental Health",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://www.nimh.nih.gov/health/statistics/obsessive-compulsive-disorder-ocd",
+  "sourceVideoTitle": "",
+  "summary": "NIMH survey data estimate OCD in 1.2% of U.S. adults in the past year and 2.3% over a lifetime, with about half of adults with OCD reporting serious impairment.",
+  "takeaways": [
+    "an estimated 1.2% of u.s. adults had ocd in the past year",
+    "lifetime prevalence among u.s. adults was 2.3%",
+    "about half of adults with ocd had serious impairment"
+  ],
+  "title": "Obsessive-compulsive disorder: how common it is in national survey data",
+  "videoDurationSeconds": 0
 }

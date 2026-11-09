@@ -1,1 +1,20 @@
-{"conditionTags":["Heart Failure"],"detail":"MedlinePlus describes heart failure as a condition in which the heart cannot pump enough oxygen-rich blood to meet the body's needs. The sources stress that heart failure does not mean the heart has stopped or is about to stop beating. It can affect the right side of the heart, which pumps blood to the lungs, the left side, which pumps blood to the body, or both, and left-sided heart failure is described as the more common form.\n\nMedlinePlus notes heart failure usually develops slowly from long-term conditions, although it can also start suddenly after a condition or injury damages the heart muscle. Conditions described as causes can include coronary artery disease and high blood pressure. Symptoms can include shortness of breath, fatigue, and swelling from fluid buildup in the lungs, legs, and other parts of the body, and clinicians diagnose the condition from history, a physical exam, and tests that can include imaging of the heart and blood tests.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about heart failure symptoms and testing.","id":"heart_failure_overview","sourceHandle":"","sourceName":"MedlinePlus","sourcePlatform":"Article","sourceUrl":"https://medlineplus.gov/heartfailure.html","sourceVideoTitle":"","summary":"MedlinePlus describes heart failure as the heart being unable to pump enough oxygen-rich blood for the body's needs, developing usually from long-term conditions and causing symptoms that can include breathlessness, fatigue, and fluid buildup.","takeaways":["heart failure means the heart pumps too little blood, not that it has stopped","left-sided heart failure is the more common form, sources describe","symptoms can include breathlessness, fatigue, and swelling from fluid buildup"],"title":"Heart failure: when the heart pumps too little blood","videoDurationSeconds":0}
+{
+  "conditionTags": [
+    "Congestive Heart Failure (CHF)"
+  ],
+  "detail": "MedlinePlus describes heart failure as a condition in which the heart cannot pump enough oxygen-rich blood to meet the body's needs. The sources stress that heart failure does not mean the heart has stopped or is about to stop beating. It can affect the right side of the heart, which pumps blood to the lungs, the left side, which pumps blood to the body, or both, and left-sided heart failure is described as the more common form.\n\nMedlinePlus notes heart failure usually develops slowly from long-term conditions, although it can also start suddenly after a condition or injury damages the heart muscle. Conditions described as causes can include coronary artery disease and high blood pressure. Symptoms can include shortness of breath, fatigue, and swelling from fluid buildup in the lungs, legs, and other parts of the body, and clinicians diagnose the condition from history, a physical exam, and tests that can include imaging of the heart and blood tests.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about heart failure symptoms and testing.",
+  "id": "heart_failure_overview",
+  "sourceHandle": "",
+  "sourceName": "MedlinePlus",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://medlineplus.gov/heartfailure.html",
+  "sourceVideoTitle": "",
+  "summary": "MedlinePlus describes heart failure as the heart being unable to pump enough oxygen-rich blood for the body's needs, developing usually from long-term conditions and causing symptoms that can include breathlessness, fatigue, and fluid buildup.",
+  "takeaways": [
+    "heart failure means the heart pumps too little blood, not that it has stopped",
+    "left-sided heart failure is the more common form, sources describe",
+    "symptoms can include breathlessness, fatigue, and swelling from fluid buildup"
+  ],
+  "title": "Heart failure: when the heart pumps too little blood",
+  "videoDurationSeconds": 0
+}
