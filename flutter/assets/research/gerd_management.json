@@ -1,0 +1,21 @@
+{
+  "conditionTags": [
+    "Gastroesophageal Reflux Disease (GERD)",
+    "Acid Reflux / GERD"
+  ],
+  "detail": "NIDDK describes GERD treatment as combining lifestyle changes and medicines, with surgery considered in some cases. Lifestyle changes described in the sources include losing weight when a person is overweight or has obesity, eating meals 2 to 3 hours before lying down, elevating the head during sleep, avoiding foods and drinks that worsen that person's symptoms, and quitting smoking. Many GERD medicines are available over the counter, and NIDDK notes that symptoms that do not go away with over-the-counter medicines are a reason clinicians may prescribe stronger treatment.\n\nMedicine classes in the sources include antacids for mild heartburn, H2 blockers, which lower the amount of acid the stomach makes, and proton pump inhibitors (PPIs), which lower stomach acid more strongly and are described as better at treating GERD symptoms and able to heal the esophageal lining in most people with GERD. Surgery is described when symptoms do not improve with lifestyle changes and medicines or when a person wishes to stop long-term medicines, with fundoplication the most common GERD surgery and weight-loss surgery described in some cases involving obesity.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about GERD treatment and long-term medicines.",
+  "id": "gerd_management",
+  "sourceHandle": "",
+  "sourceName": "National Institute of Diabetes and Digestive and Kidney Diseases",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://www.niddk.nih.gov/health-information/digestive-diseases/acid-reflux-ger-gerd-adults/treatment",
+  "sourceVideoTitle": "",
+  "summary": "NIDDK outlines GERD treatment as lifestyle changes plus acid-reducing medicine classes, antacids, H2 blockers, and proton pump inhibitors, with fundoplication and other surgery described when symptoms persist or long-term medicines are not wanted.",
+  "takeaways": [
+    "lifestyle changes and medicines are the foundation described",
+    "ppi and h2 blocker classes lower the acid the stomach makes",
+    "never start, stop, or change medicines without your doctor"
+  ],
+  "title": "GERD: lifestyle changes, acid-reducing medicines, and surgery",
+  "videoDurationSeconds": 0
+}

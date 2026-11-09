@@ -83,12 +83,34 @@ void main() {
     "Meniere's Disease",
     'Idiopathic Intracranial Hypertension (IIH / Pseudotumor Cerebri)',
     'Chiari Malformation',
+    // Expansion batch 3 (respiratory, GI, musculoskeletal, other).
+    'Asthma',
+    'Chronic Obstructive Pulmonary Disease (COPD)',
+    'Sleep Apnea (Obstructive / OSA)',
+    'Sleep Apnea (Central)',
+    'Allergic Rhinitis (Hay Fever)',
+    'Irritable Bowel Syndrome (IBS-C / Constipation)',
+    'Irritable Bowel Syndrome (IBS-D / Diarrhea)',
+    'Irritable Bowel Syndrome (IBS-M / Mixed)',
+    'Gastroesophageal Reflux Disease (GERD)',
+    'Acid Reflux / GERD',
+    'Small Intestinal Bacterial Overgrowth (SIBO)',
+    'Chronic Kidney Disease (CKD)',
+    'Interstitial Cystitis (Painful Bladder Syndrome)',
+    'Chronic Lymes Disease / PTLDS',
+    'Premenstrual Dysphoric Disorder (PMDD)',
+    'Osteoarthritis',
+    'Arthritis (Osteoarthritis)',
+    'Chronic Back Pain',
+    'Osteoporosis',
+    'Gout',
+    'Complex Regional Pain Syndrome (CRPS)',
   ];
 
   test('real rootBundle loads the full library (production path)',
       () async {
     final entries = await loadResearchEntries(rootBundle);
-    expect(entries.length, 163,
+    expect(entries.length, 210,
         reason: 'the bundled library should load every entry file');
     for (final condition in coveredConditions) {
       expect(entriesForCondition(entries, condition), isNotEmpty,
@@ -103,7 +125,7 @@ void main() {
         .whereType<File>()
         .where((f) => f.path.endsWith('.json'))
         .toList();
-    expect(files.length, 163);
+    expect(files.length, 210);
 
     final ids = <String>{};
     final covered = <String>{};

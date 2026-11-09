@@ -1,0 +1,20 @@
+{
+  "conditionTags": [
+    "Small Intestinal Bacterial Overgrowth (SIBO)"
+  ],
+  "detail": "MedlinePlus describes small bowel bacterial overgrowth, also called small intestinal bacterial overgrowth or SIBO, as a condition in which very large numbers of bacteria grow in the small intestine. Unlike the large intestine, the small intestine normally does not have a large number of bacteria, and MedlinePlus notes that excess bacteria in the small intestine may use up nutrients the body needs, which can lead to malnourishment in severe cases.\n\nConditions that can lead to bacterial overgrowth in the sources include complications of diseases or surgery that create pouches or blockages in the small intestine, with Crohn's disease given as one example, and disorders that slow the normal movement of the intestine. Symptoms can include abdominal pain, bloating, diarrhea, gas, and loss of appetite, and severe cases can include weight loss and malnutrition. Clinicians usually evaluate the condition with a physical exam and medical history, together with tests that can include blood tests for nutritional deficiencies and breath tests that measure gases produced by bacteria.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about SIBO symptoms and testing.",
+  "id": "sibo_overview",
+  "sourceHandle": "",
+  "sourceName": "MedlinePlus",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://medlineplus.gov/ency/article/000222.htm",
+  "sourceVideoTitle": "",
+  "summary": "MedlinePlus describes SIBO as very large numbers of bacteria growing in the small intestine, which normally holds few bacteria, often arising from blockages, pouches, or slowed intestinal movement, with symptoms that can include bloating, diarrhea, and abdominal pain.",
+  "takeaways": [
+    "sibo is bacterial overgrowth in the normally low-bacteria small intestine",
+    "blockages, pouches, and slowed movement are causes described",
+    "excess bacteria can use up nutrients and cause malnourishment"
+  ],
+  "title": "SIBO: when bacteria overgrow in the small intestine",
+  "videoDurationSeconds": 0
+}

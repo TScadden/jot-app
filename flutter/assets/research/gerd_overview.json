@@ -1,0 +1,21 @@
+{
+  "conditionTags": [
+    "Gastroesophageal Reflux Disease (GERD)",
+    "Acid Reflux / GERD"
+  ],
+  "detail": "NIDDK describes gastroesophageal reflux (GER), also called acid reflux, as stomach contents coming back up into the esophagus, which many people experience once in a while, often without symptoms. Gastroesophageal reflux disease (GERD) is described as a more severe and long-lasting condition in which reflux causes repeated symptoms that are bothersome or leads to complications over time. Researchers estimate that about 20 percent of people in the United States have GERD.\n\nSymptoms can include heartburn, also called acid indigestion, regurgitation, and chest pain, and NIDDK notes that reflux is also referred to as acid regurgitation. Without treatment, GERD can sometimes cause serious complications over time, which sources list as esophagitis, esophageal stricture, and Barrett's esophagus, as well as complications outside the esophagus. Diagnosis in the sources usually begins with medical history and symptoms, with tests such as upper endoscopy or reflux monitoring used when the picture is unclear or complications are suspected.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about acid reflux and GERD symptoms.",
+  "id": "gerd_overview",
+  "sourceHandle": "",
+  "sourceName": "National Institute of Diabetes and Digestive and Kidney Diseases",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://www.niddk.nih.gov/health-information/digestive-diseases/acid-reflux-ger-gerd-adults/definition-facts",
+  "sourceVideoTitle": "",
+  "summary": "NIDDK distinguishes occasional acid reflux (GER) from GERD, a more severe, long-lasting condition affecting about 20 percent of people in the United States, in which repeated reflux causes bothersome symptoms or complications such as esophagitis and Barrett's esophagus.",
+  "takeaways": [
+    "gerd is reflux that repeatedly causes symptoms or complications",
+    "symptoms can include heartburn and regurgitation",
+    "untreated gerd can lead to esophagitis and barrett's esophagus"
+  ],
+  "title": "Acid reflux and GERD: when stomach contents flow back up",
+  "videoDurationSeconds": 0
+}

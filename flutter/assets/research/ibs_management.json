@@ -1,0 +1,22 @@
+{
+  "conditionTags": [
+    "Irritable Bowel Syndrome (IBS-C / Constipation)",
+    "Irritable Bowel Syndrome (IBS-D / Diarrhea)",
+    "Irritable Bowel Syndrome (IBS-M / Mixed)"
+  ],
+  "detail": "NIDDK describes IBS treatment as individualized, because no single approach works for everyone, and as combining changes in eating and other lifestyle changes, medicines, probiotics, and mental health therapies. Eating changes described in the sources include eating more fiber, avoiding gluten, and following a low FODMAP eating plan, a plan that limits certain hard-to-digest carbohydrates, usually worked out with a clinician or dietitian.\n\nMedicine classes are matched to the IBS type in the sources: antidiarrheal medicines and certain antibiotics and gut-targeted medicines for IBS with diarrhea, and fiber supplements, laxatives, and medicines that increase fluid in the intestine or speed bowel movements for IBS with constipation, with antispasmodics and low-dose antidepressant classes also described for abdominal pain. NIDDK notes that researchers are still studying probiotics for IBS, and that mental health therapies used include cognitive behavioral therapy and gut-directed hypnotherapy, which target the gut-brain interaction behind symptoms.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about irritable bowel syndrome treatment.",
+  "id": "ibs_management",
+  "sourceHandle": "",
+  "sourceName": "National Institute of Diabetes and Digestive and Kidney Diseases",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://www.niddk.nih.gov/health-information/digestive-diseases/irritable-bowel-syndrome/treatment",
+  "sourceVideoTitle": "",
+  "summary": "NIDDK outlines IBS treatment as individualized combinations of eating changes such as fiber and a low FODMAP plan, type-matched medicine classes, probiotics still under study, and gut-brain therapies such as cognitive behavioral therapy and gut-directed hypnotherapy.",
+  "takeaways": [
+    "treatment is individualized and matched to the ibs type",
+    "eating changes include fiber and a low fodmap plan",
+    "never start, stop, or change medicines without your doctor"
+  ],
+  "title": "Irritable bowel syndrome: diet changes, medicines, and gut-brain therapies",
+  "videoDurationSeconds": 0
+}

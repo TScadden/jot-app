@@ -1,0 +1,22 @@
+{
+  "conditionTags": [
+    "Irritable Bowel Syndrome (IBS-C / Constipation)",
+    "Irritable Bowel Syndrome (IBS-D / Diarrhea)",
+    "Irritable Bowel Syndrome (IBS-M / Mixed)"
+  ],
+  "detail": "NIDDK describes irritable bowel syndrome (IBS) as a group of symptoms that occur together, including repeated pain in the abdomen and changes in bowel movements, which may be diarrhea, constipation, or both. With IBS, these symptoms occur without visible signs of damage or disease in the digestive tract. NIDDK classifies IBS as a disorder of gut-brain interaction, related to problems with how the brain and the gut work together, and notes that studies suggest about 12 percent of people in the United States have IBS, with women up to two times more likely than men to develop it.\n\nThree types are defined by bowel movement patterns: IBS with constipation (IBS-C), IBS with diarrhea (IBS-D), and IBS with mixed bowel habits (IBS-M). The most common symptoms described are abdominal pain, often related to bowel movements, and changes in bowel movements, and symptoms can include bloating and gas. NIDDK notes that doctors are not sure what causes IBS, and that diagnosis is usually based on symptoms and medical history, with tests used mainly to rule out other conditions.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about irritable bowel syndrome symptoms and evaluation.",
+  "id": "ibs_overview",
+  "sourceHandle": "",
+  "sourceName": "National Institute of Diabetes and Digestive and Kidney Diseases",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://www.niddk.nih.gov/health-information/digestive-diseases/irritable-bowel-syndrome/definition-facts",
+  "sourceVideoTitle": "",
+  "summary": "NIDDK defines IBS as a gut-brain interaction disorder with repeated abdominal pain and changed bowel movements without visible gut damage, in constipation, diarrhea, and mixed types, affecting about 12 percent of people in the United States.",
+  "takeaways": [
+    "ibs is described as a disorder of gut-brain interaction",
+    "types are constipation, diarrhea, and mixed bowel habits",
+    "symptoms occur without visible damage to the digestive tract"
+  ],
+  "title": "Irritable bowel syndrome: a gut-brain disorder of pain and bowel change",
+  "videoDurationSeconds": 0
+}

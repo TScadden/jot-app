@@ -1,0 +1,20 @@
+{
+  "conditionTags": [
+    "Chronic Lymes Disease / PTLDS"
+  ],
+  "detail": "CDC describes Lyme disease as an illness caused by Borrelia bacteria and spread by blacklegged ticks, and notes that most people diagnosed with Lyme disease recover completely when treated with antibiotics. CDC also describes a smaller group who have prolonged symptoms after treatment, a condition called post-treatment Lyme disease syndrome (PTLDS). The agency notes that the cause of these prolonged symptoms is currently unknown, and that similar symptoms have been reported following other types of infections.\n\nCDC notes that prolonged symptoms can include fatigue, body aches, and difficulty thinking, among other symptoms. In its clinical care information, the agency frames PTLDS within infection-associated chronic conditions and illnesses, describes the science as limited and evolving, and notes that CDC discourages the term chronic Lyme disease because it implies prolonged symptoms are caused by an ongoing bacterial infection when the cause is not currently known.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about prolonged symptoms after Lyme disease treatment.",
+  "id": "lyme_ptlds_overview",
+  "sourceHandle": "",
+  "sourceName": "Centers for Disease Control and Prevention",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://www.cdc.gov/lyme/hcp/clinical-care/index.html",
+  "sourceVideoTitle": "",
+  "summary": "CDC describes post-treatment Lyme disease syndrome as prolonged fatigue, body aches, and difficulty thinking after treated Lyme disease, affecting a minority of patients, with the cause currently unknown.",
+  "takeaways": [
+    "most people recover completely after antibiotic treatment for Lyme disease",
+    "a minority have prolonged symptoms, called PTLDS, of unknown cause",
+    "similar prolonged symptoms are reported after other infections"
+  ],
+  "title": "Lyme Disease (Post-Treatment Lyme Disease Syndrome): symptoms that linger after treatment",
+  "videoDurationSeconds": 0
+}

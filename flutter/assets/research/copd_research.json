@@ -1,0 +1,20 @@
+{
+  "conditionTags": [
+    "Chronic Obstructive Pulmonary Disease (COPD)"
+  ],
+  "detail": "The Centers for Disease Control and Prevention (CDC) describes COPD as one of the nation's most common and costly chronic conditions, and its Environmental Health Tracking Network presents COPD data as a research and surveillance resource. The CDC notes that people with COPD are more vulnerable to the effects of air pollution, at lower levels than people without COPD, and that exposure to air pollution has been linked in the data to increases in COPD-related emergency department visits and hospitalizations.\n\nThe tracking program calculates state and local COPD data from several sources, including the U.S. Census Bureau, hospital and emergency department databases provided by state and local health departments, and death certificates from the CDC's National Center for Health Statistics. Data types described include emergency department visits, hospitalizations, and mortality in which COPD is identified as an underlying cause. The CDC presents standardized tracking over time as a way to support public health planning and comparison across places, rather than as guidance for an individual's care.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about COPD research and population data.",
+  "id": "copd_research",
+  "sourceHandle": "",
+  "sourceName": "Centers for Disease Control and Prevention",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://www.cdc.gov/environmental-health-tracking/php/data-research/COPD.html",
+  "sourceVideoTitle": "",
+  "summary": "The CDC's tracking program presents COPD research and surveillance data drawn from census, hospital, emergency department, and death certificate sources, including links between air pollution exposure and COPD emergency visits and hospitalizations.",
+  "takeaways": [
+    "cdc tracks copd visits, hospitalizations, and mortality",
+    "air pollution exposure is linked to more copd emergencies",
+    "tracking data support public health planning, not individual care"
+  ],
+  "title": "COPD: what national tracking data show about its burden",
+  "videoDurationSeconds": 0
+}

@@ -1,0 +1,20 @@
+{
+  "conditionTags": [
+    "Chronic Lymes Disease / PTLDS"
+  ],
+  "detail": "CDC describes ongoing work on prolonged symptoms after Lyme disease treatment, noting that studies published in the American Journal of Medicine in 2010 and The Lancet Regional Health-Europe in 2021 found that, six months after treatment, prolonged symptoms were modestly more common among people who had Lyme disease than among people who had not. CDC states that the cause of these symptoms is currently unknown, and that research is examining why only some people develop them.\n\nCDC also summarizes the treatment research: studies have shown that more antibiotics are unlikely to help people who have been treated for Lyme disease and have prolonged symptoms. The agency describes its own role as studying prolonged symptoms and infection-associated chronic conditions, and presents biomarker and symptom-mechanism questions as open areas of investigation rather than settled findings.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about research on prolonged symptoms after Lyme disease.",
+  "id": "lyme_ptlds_research",
+  "sourceHandle": "",
+  "sourceName": "Centers for Disease Control and Prevention",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://www.cdc.gov/lyme/signs-symptoms/chronic-symptoms-and-lyme-disease.html",
+  "sourceVideoTitle": "",
+  "summary": "CDC reviews research on prolonged symptoms after Lyme disease, including comparative studies six months after treatment, evidence that additional antibiotics are unlikely to help, and open questions about causes and biomarkers.",
+  "takeaways": [
+    "comparative studies track prolonged symptoms six months after treatment",
+    "studies show additional antibiotics are unlikely to help prolonged symptoms",
+    "causes and biomarkers remain open research questions at CDC"
+  ],
+  "title": "Lyme Disease (Post-Treatment Lyme Disease Syndrome): research into causes and biomarkers",
+  "videoDurationSeconds": 0
+}

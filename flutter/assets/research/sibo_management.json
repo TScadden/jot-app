@@ -1,0 +1,20 @@
+{
+  "conditionTags": [
+    "Small Intestinal Bacterial Overgrowth (SIBO)"
+  ],
+  "detail": "MedlinePlus describes blind loop syndrome as a condition closely related to bacterial overgrowth, in which part of the intestine is bypassed or blocked so that digested food slows or stops moving through it. Bacteria then overgrow in the stagnant section, interfering with the absorption of fats, vitamins, and other nutrients. MedlinePlus presents blind loop syndrome as a complication that can follow operations such as removal of part of the stomach or surgery for extreme obesity, and as a complication of inflammatory bowel disease or scleroderma.\n\nManagement in the sources is aimed at the bacterial overgrowth and its nutritional effects, and at the underlying cause where that is possible. MedlinePlus describes initial treatment with antibiotic medicines for the bacterial overgrowth, together with vitamin B12 supplementation and nutritional support for deficiencies the overgrowth causes, which can include anemia and weight loss. Surgical correction of the blind loop is described in the sources for cases in which the structural problem can be repaired and other treatment is not enough, and follow-up generally tracks nutrition, blood counts, and vitamin levels.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about SIBO treatment and blind loop syndrome.",
+  "id": "sibo_management",
+  "sourceHandle": "",
+  "sourceName": "MedlinePlus",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://medlineplus.gov/ency/article/001146.htm",
+  "sourceVideoTitle": "",
+  "summary": "MedlinePlus describes blind loop syndrome management as antibiotics for the bacterial overgrowth plus vitamin B12 and nutritional support, with surgical correction of the bypassed intestinal loop described when the structural cause can be repaired.",
+  "takeaways": [
+    "treatment targets the overgrowth and the underlying cause",
+    "antibiotics and vitamin b12 support are described first steps",
+    "never start, stop, or change medicines without your doctor"
+  ],
+  "title": "SIBO: treating bacterial overgrowth and the blind loop behind it",
+  "videoDurationSeconds": 0
+}
