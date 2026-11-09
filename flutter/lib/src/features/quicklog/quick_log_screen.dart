@@ -138,6 +138,11 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
   final TextEditingController _manualController = TextEditingController();
   bool _hasTypedText = false;
 
+  /// Last controller text the listener rebuilt for. The listener
+  /// compares against this so selection-only notifications (cursor
+  /// moves with unchanged text) do not schedule pointless rebuilds.
+  String _lastManualText = '';
+
   List<QuickLogEntry> _recentSuggestions = const [];
   int? _medicationCategoryId;
   Set<String> _activeMedicationNamesCache = const {};
@@ -173,8 +178,20 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
     super.initState();
     _outbox.addListener(_onOutboxChanged);
     _manualController.addListener(() {
-      final has = _manualController.text.trim().isNotEmpty;
-      if (has != _hasTypedText) setState(() => _hasTypedText = has);
+      // Rebuild on EVERY text change, not only when the
+      // empty/non-empty boolean flips. The "Your quick note" card
+      // renders _composedText() — a snapshot taken at build time —
+      // so gating this setState on the boolean froze the card at
+      // whatever text had arrived when it first appeared. Voice
+      // dictation streams results in faster than that first build:
+      // the founder's Nov 9, 2026 capture shows the field holding
+      // the full dictated sentence while the card still shows its
+      // first two words. Guarded by _lastManualText so pure
+      // selection changes do not rebuild.
+      final text = _manualController.text;
+      if (text == _lastManualText) return;
+      _lastManualText = text;
+      setState(() => _hasTypedText = text.trim().isNotEmpty);
     });
     // Round 19c — stale-while-revalidate: seed synchronously from the
     // cache so the first frame already carries real last-known values
