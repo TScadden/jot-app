@@ -30,6 +30,7 @@ import 'package:tabs_lab/src/data/migraine_controller.dart';
 import 'package:tabs_lab/src/data/migraine_notification.dart';
 import 'package:tabs_lab/src/data/refresh_keep_alive.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
+import 'package:tabs_lab/src/data/report_generation_service.dart';
 import 'package:tabs_lab/src/data/onboarding_store.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
@@ -39,6 +40,7 @@ import 'package:tabs_lab/src/data/today_summary.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/data/widget_sync.dart';
 import 'package:tabs_lab/src/features/auth/login_screen.dart';
+import 'package:tabs_lab/src/features/settings/report_generation_presenter.dart';
 import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/tools/lean_test_screen.dart'
@@ -177,6 +179,20 @@ class TabsLabApp extends StatelessWidget {
       // menus, snackbars) render dark instead of falling back to the
       // default light theme. Screen colors stay per-widget literals.
       theme: notelDarkTheme(),
+      // The root presenter's presentation channel (see
+      // reportPresentationNavigatorKey): its dialogs must land
+      // on THIS navigator.
+      navigatorKey: reportPresentationNavigatorKey,
+      // Report-generation root presenter (founder bug, Nov 9,
+      // 2026): wraps the whole app above its Navigator so a
+      // Progress Reports generation that completes while the
+      // user is on any other in-app screen presents its share
+      // confirmation there (see ReportGenerationPresenter /
+      // ReportGenerationService). It renders its child unchanged.
+      builder: (context, child) => ReportGenerationPresenter(
+        service: ReportGenerationService.instance,
+        child: child ?? const SizedBox.shrink(),
+      ),
       home: const AppFlow(),
     );
   }

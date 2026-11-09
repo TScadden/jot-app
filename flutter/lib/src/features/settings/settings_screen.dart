@@ -20,6 +20,7 @@ import 'package:tabs_lab/src/data/medication_change_events.dart';
 import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
+import 'package:tabs_lab/src/data/report_generation_service.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/billing/billing_plans_panel.dart';
@@ -1022,6 +1023,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               healthConnectService: _hc,
               notificationService: _notifs,
               knowledgeStore: _kStore,
+              // The app-level generation owner: the run survives
+              // this page's disposal (body swap / tab switch) and
+              // its completion is presented wherever the user is.
+              generationService: ReportGenerationService.instance,
             ),
         ],
       ),
