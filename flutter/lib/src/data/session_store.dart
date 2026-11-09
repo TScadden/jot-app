@@ -47,6 +47,27 @@ class SessionStore {
     await _storage.write(key: _emailKey, value: email);
   }
 
+  /// H1-02 — persist ONLY a rotated token pair, leaving the
+  /// stored email untouched.
+  ///
+  /// Used by the refresh path after the server has already
+  /// rotated the refresh token: the rotated pair must be
+  /// persisted even when the account email cannot be re-read
+  /// (a transient keystore failure, or a null/empty read), and
+  /// the previously stored `user_email` must never be
+  /// overwritten with '' in that situation — email-scoped
+  /// local stores normalize '' to null and would silently
+  /// unbind. Same load-bearing write order as [saveSession]:
+  /// refresh token first, then access token, so a crash
+  /// between the two leaves the self-healing mixed pair.
+  Future<void> saveRotatedTokens({
+    required String token,
+    required String refreshToken,
+  }) async {
+    await _storage.write(key: _refreshTokenKey, value: refreshToken);
+    await _storage.write(key: _tokenKey, value: token);
+  }
+
   Future<String?> readToken() => _storage.read(key: _tokenKey);
 
   /// Round 29 — the stored refresh token, needed by the native-parity

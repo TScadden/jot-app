@@ -306,12 +306,41 @@ class TabsBackend {
       final result = await _authApi.refreshSession(refreshToken);
       if (result is RefreshSuccess) {
         // Both tokens rotate; the stored email stays unchanged.
-        final email = await _sessionStore.readEmail() ?? '';
-        await _sessionStore.saveSession(
-          token: result.token,
-          refreshToken: result.refreshToken,
-          email: email,
-        );
+        //
+        // H1-02: the server has ALREADY rotated the refresh
+        // token and invalidated the old one at this point, so
+        // the rotated pair must ALWAYS be persisted — no
+        // subsequent storage read may be able to discard it.
+        // The pre-fix code read the email here inside the
+        // outer try: a throwing readEmail escaped before
+        // saveSession, the outer catch returned a temporary
+        // failure, and the next refresh presented the old,
+        // already-rotated token — which the server reads as
+        // reuse and kills the session. A null read was just
+        // as bad in the other direction: it persisted
+        // user_email as '', silently unbinding every
+        // email-scoped local store. The email read is now
+        // isolated in its own try: on a throw, null, or empty
+        // read the pair is saved token-only, leaving the
+        // previously stored email untouched.
+        String? email;
+        try {
+          email = await _sessionStore.readEmail();
+        } catch (_) {
+          email = null;
+        }
+        if (email != null && email.isNotEmpty) {
+          await _sessionStore.saveSession(
+            token: result.token,
+            refreshToken: result.refreshToken,
+            email: email,
+          );
+        } else {
+          await _sessionStore.saveRotatedTokens(
+            token: result.token,
+            refreshToken: result.refreshToken,
+          );
+        }
         return _RefreshSucceeded(result.token);
       }
       if (result is RefreshDefinitiveFailure) {
