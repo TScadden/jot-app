@@ -1289,10 +1289,23 @@ class TabsBackend {
   /// Round 19 — the account's real category set from the sync pull.
   /// Empty (never hardcoded) when unreachable — the UI shows an honest
   /// empty/error state instead of a fallback list.
-  Future<List<QuickLogCategory>> fetchLogCategories() async {
+  Future<List<QuickLogCategory>> fetchLogCategories() async =>
+      await fetchLogCategoriesOrNull() ?? const [];
+
+  /// H1-01 — failure-distinguishing variant of [fetchLogCategories],
+  /// mirroring [fetchHabitsOrNull] and the `fetchLogEntryDtosOrNull`
+  /// extension: returns null when the sync pull itself failed (null
+  /// body) or carries no usable `categories` list, and the parsed
+  /// list — possibly genuinely empty — only when the server actually
+  /// answered. Callers that persist state derived from the pull (the
+  /// correlation refresher) use this to tell "the server has no
+  /// categories" apart from "the pull failed", so a failed pull can
+  /// never be recomputed over as an empty account.
+  Future<List<QuickLogCategory>?> fetchLogCategoriesOrNull() async {
     final body = await fetchSyncPull();
-    final categories = body?['categories'];
-    if (categories is! List) return const [];
+    if (body == null) return null;
+    final categories = body['categories'];
+    if (categories is! List) return null;
     final out = <QuickLogCategory>[];
     for (final c in categories) {
       if (c is Map<String, dynamic>) {

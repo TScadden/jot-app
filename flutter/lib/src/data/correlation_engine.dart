@@ -700,16 +700,29 @@ class MedChangeEventInput {
 /// Provider seam for medication change events (item 2a contract).
 /// Production defaults return empty until a med-event read path
 /// lands — see correlation_refresh.dart.
+///
+/// H1-01 contract: a null return means the load FAILED (the
+/// events could not be read) — distinct from an empty list,
+/// which means the load succeeded and there genuinely are no
+/// events. Callers that persist derived state (the refresher)
+/// must treat null as "unknown" and skip the families that
+/// depend on this input rather than recomputing them from zero
+/// data and overwriting what was persisted from real data.
 abstract class MedChangeEventProvider {
-  Future<List<MedChangeEventInput>> loadMedChangeEvents();
+  Future<List<MedChangeEventInput>?> loadMedChangeEvents();
 }
 
 /// Provider seam for the current medication list (the declared
 /// start/stop dates F5's seeded bounding markers derive from).
 /// Production defaults return empty until the refresher wires
 /// the profile read path — see correlation_refresh.dart.
+///
+/// H1-01 contract: as with [MedChangeEventProvider], a null
+/// return means the load FAILED, distinct from a successful
+/// empty list; dependents must skip rather than recompute from
+/// zero data.
 abstract class MedicationListProvider {
-  Future<List<MedicationEntry>> loadMedications();
+  Future<List<MedicationEntry>?> loadMedications();
 }
 
 /// Everything the pure compute consumes. Assembled by
