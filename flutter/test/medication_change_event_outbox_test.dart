@@ -33,7 +33,18 @@ import 'test_helpers.dart';
 class _FakeDisk {
   final Map<String, String> values = {};
 
-  Future<String?> read(String key) async => values[key];
+  /// D-T04 — the pre-fix fake could never fail: reads always
+  /// succeeded and the blob was always well-formed (or absent).
+  /// A throwing read is now injectable, and a corrupt blob is
+  /// seeded by writing garbage into [values] directly.
+  bool throwOnRead = false;
+
+  Future<String?> read(String key) async {
+    if (throwOnRead) {
+      throw StateError('transient storage read failure');
+    }
+    return values[key];
+  }
 
   Future<void> write(String key, String value) async {
     values[key] = value;
@@ -68,6 +79,30 @@ const _event = MedicationChangeEvent(
   ),
   effectiveDate: null,
   recordedAt: 1790000000000,
+  source: 'tools',
+);
+
+const _event2 = MedicationChangeEvent(
+  id: 'evt-outbox-2',
+  medId: 'iva',
+  medName: 'Ivabradine',
+  type: 'dose_change',
+  oldSnapshot: MedicationFieldSnapshot(
+    dose: '5 mg',
+    frequency: 'Twice daily',
+    startDate: 'Sep 1, 2026',
+    endDate: 'Present',
+    isPresent: true,
+  ),
+  newSnapshot: MedicationFieldSnapshot(
+    dose: '2.5 mg',
+    frequency: 'Twice daily',
+    startDate: 'Sep 1, 2026',
+    endDate: 'Present',
+    isPresent: true,
+  ),
+  effectiveDate: null,
+  recordedAt: 1790000060000,
   source: 'tools',
 );
 
@@ -149,7 +184,7 @@ void main() {
         token: 'tok-a-2',
         client: MockClient((request) async {
           bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
-          return http.Response('{}', 200);
+          return http.Response('{"success": true}', 200);
         }),
       );
       expect(
@@ -176,7 +211,7 @@ void main() {
         token: 'tok-a-3',
         client: MockClient((request) async {
           calls++;
-          return http.Response('{}', 200);
+          return http.Response('{"success": true}', 200);
         }),
       );
       await emitMedicationChangeEvents(healthy, [_event], outbox: outbox);
@@ -217,7 +252,7 @@ void main() {
         token: 'tok-b-4',
         client: MockClient((request) async {
           bCalls++;
-          return http.Response('{}', 200);
+          return http.Response('{"success": true}', 200);
         }),
       );
       await flushMedicationChangeEvents(healthyB, outbox: outbox);
@@ -265,6 +300,139 @@ void main() {
       );
       await emitMedicationChangeEvents(throwing, [_event], outbox: outbox);
       expect(await outbox.pendingEvents(), hasLength(1));
+    });
+
+    test('(e) D-T04 regression: a throwing disk read on load does '
+        'NOT overwrite previously staged events, and the load '
+        'retries once the read recovers', () async {
+      final disk = _FakeDisk();
+      final outbox = _outbox(disk);
+      final failing = _backend(
+        email: _ownerA,
+        token: 'tok-a-7',
+        client: MockClient((request) async {
+          return http.Response('nope', 500);
+        }),
+      );
+      // Stage event 1 durably (POST fails, event stays queued).
+      await emitMedicationChangeEvents(failing, [_event], outbox: outbox);
+      expect(await outbox.pendingEvents(), hasLength(1));
+      final blobBefore =
+          disk.values[MedicationChangeEventOutbox.storageKey];
+      expect(blobBefore, isNotNull);
+
+      // Process restart over the same disk, but now the storage
+      // READ throws (transient failure). Pre-fix, _doLoad treated
+      // the throw exactly like an empty disk: it marked the queue
+      // loaded-and-empty, and staging a new event persisted over
+      // the blob — event 1 was permanently destroyed.
+      disk.throwOnRead = true;
+      final restarted = _outbox(disk);
+      final staged = await restarted.stageAndFlush(
+        [_event2],
+        poster: failing.postMedicationChangeEvents,
+        ownerProvider: failing.readEmail,
+      );
+      // The on-disk blob is byte-identical: event 1 was NOT
+      // overwritten by a queue containing only the new event.
+      expect(
+        disk.values[MedicationChangeEventOutbox.storageKey],
+        blobBefore,
+      );
+      // And the stage honestly reports it was not durably staged
+      // (the persist is gated off while the load never succeeded).
+      expect(staged, isFalse);
+
+      // The read recovers: the load RETRIES (it was never marked
+      // loaded) and merges the disk blob around the in-memory
+      // event — both events are now pending.
+      disk.throwOnRead = false;
+      final pending = await restarted.pendingEvents();
+      expect(
+        pending.map((e) => e.id),
+        containsAll(['evt-outbox-1', 'evt-outbox-2']),
+      );
+
+      // A healthy flush then drains both.
+      final healthy = _backend(
+        email: _ownerA,
+        token: 'tok-a-7',
+        client: MockClient((request) async {
+          return http.Response('{"success": true}', 200);
+        }),
+      );
+      expect(
+        await flushMedicationChangeEvents(healthy, outbox: restarted),
+        isTrue,
+      );
+      expect(await restarted.pendingEvents(), isEmpty);
+    });
+
+    test('(f) D-T04: a 200 {"success": false} response does NOT '
+        'clear the queue', () async {
+      final disk = _FakeDisk();
+      final outbox = _outbox(disk);
+      var calls = 0;
+      final refusing = _backend(
+        email: _ownerA,
+        token: 'tok-a-8',
+        client: MockClient((request) async {
+          calls++;
+          return http.Response('{"success": false}', 200);
+        }),
+      );
+      await emitMedicationChangeEvents(refusing, [_event], outbox: outbox);
+      expect(calls, 1);
+      // The server refused in the body despite the 200: the
+      // event must stay queued, in memory and on disk.
+      final pending = await outbox.pendingEvents();
+      expect(pending, hasLength(1));
+      expect(pending.single.id, 'evt-outbox-1');
+      final raw = disk.values[MedicationChangeEventOutbox.storageKey];
+      expect(raw, isNotNull);
+      final blob = jsonDecode(raw!) as Map<String, dynamic>;
+      expect((blob['events'] as List), hasLength(1));
+
+      // A later genuinely-successful flush still drains it.
+      final healthy = _backend(
+        email: _ownerA,
+        token: 'tok-a-8',
+        client: MockClient((request) async {
+          return http.Response('{"success": true}', 200);
+        }),
+      );
+      expect(
+        await flushMedicationChangeEvents(healthy, outbox: outbox),
+        isTrue,
+      );
+      expect(await outbox.pendingEvents(), isEmpty);
+    });
+
+    test('(g) D-T04 semantics pin: a corrupt disk blob is the one '
+        'read failure treated as empty — staging proceeds over it',
+        () async {
+      final disk = _FakeDisk();
+      disk.values[MedicationChangeEventOutbox.storageKey] =
+          'corrupt{{{not json';
+      final outbox = _outbox(disk);
+      final failing = _backend(
+        email: _ownerA,
+        token: 'tok-a-9',
+        client: MockClient((request) async {
+          return http.Response('nope', 500);
+        }),
+      );
+      await emitMedicationChangeEvents(failing, [_event], outbox: outbox);
+      final pending = await outbox.pendingEvents();
+      expect(pending, hasLength(1));
+      expect(pending.single.id, 'evt-outbox-1');
+      // The provably-unusable blob was replaced by a valid one
+      // carrying the newly staged event (PR #44 corrupt==empty
+      // semantics; only a THROWING read is retryable).
+      final blob = jsonDecode(
+        disk.values[MedicationChangeEventOutbox.storageKey]!,
+      ) as Map<String, dynamic>;
+      expect((blob['events'] as List), hasLength(1));
     });
   });
 }
