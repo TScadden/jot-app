@@ -196,6 +196,23 @@ void main() {
     await expectLater(store.readAllOrThrow(), throwsStateError);
   });
 
+  test('writeRecords with real records clears a prior load failure '
+      'so readAllOrThrow recovers in-process', () async {
+    final fake = _FakeStore();
+    fake.values[CorrelationInsightStore.storageKey] = 'not json {{{';
+    final store = _store(fake);
+    expect(await store.readAll(), isEmpty);
+    expect(store.loadFailed, isTrue);
+    await expectLater(store.readAllOrThrow(), throwsStateError);
+
+    await store.writeRecords([_numbersRecord]);
+
+    expect(store.loadFailed, isFalse);
+    final read = await store.readAllOrThrow();
+    expect(read.length, 1);
+    expect(read['F1/F1a'], _numbersRecord);
+  });
+
   test('a records field that is not a list is a load failure',
       () async {
     final fake = _FakeStore();

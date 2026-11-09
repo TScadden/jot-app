@@ -265,5 +265,9 @@ class CorrelationInsightStore {
       _records[record.storeKey] = record;
     }
     await persist();
+    // A successful write of real records repairs memory and disk,
+    // so any earlier load failure no longer describes what the
+    // store holds (same rule as [writeAll]).
+    _loadFailed = false;
   }
 }
