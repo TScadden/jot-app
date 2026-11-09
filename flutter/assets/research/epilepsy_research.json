@@ -1,0 +1,20 @@
+{
+ "conditionTags": [
+  "Epilepsy / Seizure Disorder"
+ ],
+ "detail": "BrainFacts.org, presenting material from the National Institute of Neurological Disorders and Stroke (NINDS), describes epilepsy research as studying the underlying causes of the epilepsies in children, adults, and the elderly, including seizures that follow brain trauma, stroke, and brain tumors. NINDS research programs associated with this work include the Epilepsy Therapy Screening Program, which screens potential new treatments in model systems, and the Epi4K genetics consortium, part of the NINDS Centers Without Walls initiative, which studies genetic contributions to the epilepsies.\n\nOther research directions BrainFacts describes include identifying genes or other genetic information that may influence or cause the epilepsies, with the aim of predicting which treatments will be most beneficial to people with specific types of epilepsy, and studying how neurotransmitters interact with brain cells to control nerve firing and how non-neuronal cells in the brain contribute to seizures. The page also notes the development of new model systems to screen potential treatments more quickly, continued improvement of MRI and other brain scans used to diagnose the epilepsies and identify a seizure focus, and study of seizure prevention and the role of inflammation in epilepsy.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about epilepsy research and clinical trials.",
+ "id": "epilepsy_research",
+ "sourceHandle": "",
+ "sourceName": "BrainFacts.org (Society for Neuroscience)",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.brainfacts.org/Diseases-and-Disorders/Neurological-Disorders-AZ/Diseases-A-to-Z-from-NINDS/Epilepsy",
+ "sourceVideoTitle": "",
+ "summary": "BrainFacts.org presents NINDS epilepsy research spanning causes and genetics, including the Epilepsy Therapy Screening Program and the Epi4K consortium, alongside work on neurotransmitters, brain imaging, and inflammation.",
+ "takeaways": [
+  "ninds programs include a therapy screening program and the epi4k genetics consortium",
+  "research targets causes, genetics, and better brain imaging",
+  "new model systems aim to screen potential treatments faster"
+ ],
+ "title": "Epilepsy: NINDS research programs, from treatment screening to genetics",
+ "videoDurationSeconds": 0
+}

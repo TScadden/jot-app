@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Bipolar I Disorder",
+  "Bipolar II Disorder"
+ ],
+ "detail": "The National Institute of Mental Health (NIMH) statistics page reports that an estimated 2.8% of U.S. adults had bipolar disorder in the past year, based on diagnostic interview data from the National Comorbidity Survey Replication (NCS-R). Past-year prevalence was similar for males (2.9%) and females (2.8%), and an estimated 4.4% of U.S. adults experience bipolar disorder at some time in their lives.\n\nImpairment figures in the NIMH data are high: an estimated 82.9% of adults with bipolar disorder had serious impairment, which NIMH identifies as the highest percent of serious impairment among mood disorders, while 17.1% had moderate impairment. Among adolescents aged 13 to 18, data from the National Comorbidity Survey Adolescent Supplement put lifetime prevalence at 2.9%, with 2.6% having severe impairment. NIMH presents these figures as survey estimates drawn from nationally representative interview studies rather than counts from clinical records.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about bipolar disorder symptoms and diagnosis.",
+ "id": "bipolar_overview",
+ "sourceHandle": "",
+ "sourceName": "National Institute of Mental Health",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.nimh.nih.gov/health/statistics/bipolar-disorder",
+ "sourceVideoTitle": "",
+ "summary": "NIMH survey data estimate that 2.8% of U.S. adults had bipolar disorder in the past year and 4.4% experience it in their lifetimes, with 82.9% of cases involving serious impairment.",
+ "takeaways": [
+  "an estimated 2.8% of u.s. adults had bipolar disorder in the past year",
+  "past-year rates were similar for males (2.9%) and females (2.8%)",
+  "82.9% of adults with bipolar disorder had serious impairment"
+ ],
+ "title": "Bipolar disorder: what national survey numbers show about prevalence and impairment",
+ "videoDurationSeconds": 0
+}

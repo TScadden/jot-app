@@ -1,0 +1,20 @@
+{
+ "conditionTags": [
+  "OCD (Obsessive-Compulsive Disorder)"
+ ],
+ "detail": "The National Institute of Mental Health (NIMH) states that mental health professionals treat obsessive-compulsive disorder (OCD) with medications, psychotherapy, or a combination of treatments, and that although there is no cure for OCD, treatment helps many people, including those with the most severe forms, manage their symptoms and improve their quality of life. NIMH describes research showing that cognitive behavioral therapy (CBT) and other related therapies can be as effective as medication for many people.\n\nWithin CBT, NIMH highlights exposure and response prevention (ERP), a specific type of CBT that research shows effectively reduces compulsive behaviors, including for people who do not respond well to medication. Medication treatment in the sources centers on serotonin reuptake inhibitors, a class of antidepressant medication. For severe OCD that has not responded to other treatments, NIMH describes additional options clinicians may use: repetitive transcranial magnetic stimulation, approved by the FDA as an add-on treatment, and deep brain stimulation, a surgical procedure the FDA allows for severe OCD under a Humanitarian Device Exemption.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about managing obsessive-compulsive disorder.",
+ "id": "ocd_management",
+ "sourceHandle": "",
+ "sourceName": "National Institute of Mental Health",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.nimh.nih.gov/health/publications/obsessive-compulsive-disorder-when-unwanted-thoughts-or-repetitive-behaviors-take-over",
+ "sourceVideoTitle": "",
+ "summary": "NIMH describes OCD treatment as medication, psychotherapy, or a combination, with exposure and response prevention highlighted within cognitive behavioral therapy and brain stimulation options reserved for severe, treatment-resistant cases.",
+ "takeaways": [
+  "treatment combines medication, psychotherapy, or both",
+  "exposure and response prevention is the cbt approach nimh highlights",
+  "never start, stop, or change medicines without your doctor"
+ ],
+ "title": "Obsessive-compulsive disorder: therapy, medication, and options for severe cases",
+ "videoDurationSeconds": 0
+}
