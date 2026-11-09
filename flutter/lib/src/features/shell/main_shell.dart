@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/billing_service.dart';
-import 'package:tabs_lab/src/data/lean_test_session.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/migraine_controller.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
@@ -96,10 +95,6 @@ class MainShell extends StatefulWidget {
   /// main.dart), forwarded to Home.
   final MigraineController? migraineController;
 
-  /// Phase 1 item 6 — the lean-test gateway, forwarded to Tools.
-  /// Null keeps the tile hidden (tests that do not exercise it).
-  final LeanTestGateway? leanGateway;
-
   const MainShell(
       {super.key,
       this.email,
@@ -109,8 +104,7 @@ class MainShell extends StatefulWidget {
       this.onLogout,
       this.settingsStore,
       this.billingService,
-      this.migraineController,
-      this.leanGateway});
+      this.migraineController});
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -295,8 +289,7 @@ class _MainShellState extends State<MainShell>
         ),
       DockTab.tools => ToolsScreen(
           key: const ValueKey('tools_screen'),
-          billingService: widget.billingService,
-          leanGateway: widget.leanGateway),
+          billingService: widget.billingService),
       DockTab.quickLog => QuickLogScreen(
           key: const ValueKey('quicklog_screen'),
           weatherApi: widget.weatherApi,
