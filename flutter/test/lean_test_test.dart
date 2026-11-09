@@ -26,6 +26,11 @@ class FakeLeanGateway implements LeanTestGateway {
   int? categoryId = 7;
   int nextId = 100;
   bool stageSucceeds = true;
+
+  /// C1: makes [allocateEntryId] throw, modelling the production
+  /// gateway surfacing LogEntryOutbox.allocateEntryId's StateError
+  /// when the outbox disk load never succeeded.
+  bool allocateThrows = false;
   final List<QuickLogEntry> staged = [];
   List<QuickLogEntry> entries = const [];
   List<HrSample> samples = const [];
@@ -34,7 +39,12 @@ class FakeLeanGateway implements LeanTestGateway {
   Future<int?> resolveCategoryId() async => categoryId;
 
   @override
-  Future<int> allocateEntryId() async => nextId++;
+  Future<int> allocateEntryId() async {
+    if (allocateThrows) {
+      throw StateError('outbox load never succeeded (C1 fake)');
+    }
+    return nextId++;
+  }
 
   @override
   Future<bool> stageEntry(QuickLogEntry entry) async {
@@ -741,6 +751,46 @@ void main() {
       expect(gateway.staged, isEmpty);
       // The session was not discarded: it remains the live session.
       expect(await store.load(), isNotNull);
+    });
+
+    test('C1: a throwing gateway allocator fails the close safe: '
+        'no throw escapes, result with NO entry, not staged, not '
+        'pending; the session stays live and closable', () async {
+      final backing = <String, String>{};
+      final store = _memoryStore(backing);
+      final gateway = FakeLeanGateway()..allocateThrows = true;
+      final closer = LeanTestCloser(store: store, gateway: gateway);
+      final session = LeanTestSession(
+        startedAtMs: _t0,
+        restStartedAtMs: _t0,
+        standingStartedAtMs: _t0 + _min(11),
+        checkpoints: [_cap(0, _t0 + _min(11), hr: 90)],
+      );
+      await store.save(session);
+      // Pre-fix this await threw the allocator's StateError out of
+      // the closer (uncaught at every screen call site).
+      final close =
+          await closer.closeStandingStop(session, _t0 + _min(12));
+      expect(close.result, isNotNull);
+      expect(close.entry, isNull);
+      expect(close.staged, isFalse);
+      expect(close.isPending, isFalse);
+      expect(gateway.staged, isEmpty);
+      // The session was not discarded and carries no allocated id
+      // or pending entry: it remains the live session, exactly as
+      // last saved by the caller.
+      final live = await store.load();
+      expect(live, isNotNull);
+      expect(live!.allocatedEntryId, isNull);
+      expect(live.pendingEntryJson, isNull);
+      // And once the allocator recovers, the same session closes
+      // and stages normally.
+      gateway.allocateThrows = false;
+      final retry =
+          await closer.closeStandingStop(session, _t0 + _min(12));
+      expect(retry.staged, isTrue);
+      expect(gateway.staged, hasLength(1));
+      expect(await store.load(), isNull);
     });
 
     test('a failed stage is genuinely pending: entry present, '

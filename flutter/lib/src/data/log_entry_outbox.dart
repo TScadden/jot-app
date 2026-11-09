@@ -310,8 +310,11 @@ class LogEntryOutbox extends ChangeNotifier {
   }
 
   /// Loads the disk blob if this process has not done so yet.
-  Future<void> load({String? ownerEmail}) {
-    if (_loaded) return _enforceLoadedOwner(ownerEmail);
+  Future<void> load({String? ownerEmail}) async {
+    if (_loaded) {
+      await _enforceLoadedOwner(ownerEmail);
+      return;
+    }
     final existing = _loadFuture;
     if (existing != null) return existing;
     late final Future<void> future;
@@ -334,15 +337,34 @@ class LogEntryOutbox extends ChangeNotifier {
   Future<void> _doLoad(String? ownerEmail) async {
     for (var attempt = 0; attempt < 3; attempt++) {
       final epochAtRead = _epoch;
-      Map<String, dynamic>? map;
+      String? raw;
       try {
-        final raw = await _read(storageKey);
-        if (raw != null && raw.isNotEmpty) {
+        raw = await _read(storageKey);
+      } catch (_) {
+        // C-01 — a storage READ failure is neither an empty disk
+        // nor a corrupt blob (the conflation PR #44 fixed in
+        // HealthHistoryStore and PR #49 in the medication-event
+        // outbox): the on-disk blob may be perfectly valid. Leave
+        // in-memory state untouched, leave [_loaded] false so the
+        // next [load] retries the read, and keep [_persistLocked]
+        // gated off — treating this like an empty queue would let
+        // the next stage/allocate overwrite the blob from empty
+        // memory, permanently destroying every staged entry and
+        // freeing their ids for reuse.
+        return;
+      }
+      Map<String, dynamic>? map;
+      if (raw != null && raw.isNotEmpty) {
+        try {
           final decoded = jsonDecode(raw);
           if (decoded is Map<String, dynamic>) map = decoded;
+        } catch (_) {
+          // Corrupt blob: provably unusable, so — per PR #44/#49
+          // semantics — it is the one read outcome besides a
+          // genuinely missing/empty blob that may be treated as
+          // empty (map stays null, the load completes).
+          map = null;
         }
-      } catch (_) {
-        map = null;
       }
       var settled = false;
       var needsDelete = false;
@@ -479,17 +501,46 @@ class LogEntryOutbox extends ChangeNotifier {
   Future<void> warmFromDisk({String? currentEmail}) =>
       load(ownerEmail: currentEmail);
 
-  Future<void> _enforceLoadedOwner(String? ownerEmail) async {
+  /// Enforces [ownerEmail] against an already-loaded queue.
+  /// Returns true when a populated FOREIGN queue was dropped.
+  Future<bool> _enforceLoadedOwner(String? ownerEmail) async {
     final expected = normalizeEmail(ownerEmail);
-    if (expected == null) return;
+    if (expected == null) return false;
+    // C-01 — enforcement can DELETE the disk blob, so it must
+    // never run off an unloaded queue: after a failed load the
+    // blob's owner is unknown, and a blind delete could destroy
+    // staged entries the read never saw.
+    if (!_loaded) return false;
+    var dropped = false;
     await _runLocked(() async {
       if (_ownerEmail == expected) return;
       if (_ownerEmail == null && _records.isEmpty) {
         _ownerEmail = expected;
         return;
       }
-      // A known account must never inherit an unowned or differently
-      // owned health-entry queue.
+      if (_ownerEmail == null) {
+        // C-01/F3 — a populated queue whose owner stamp was lost
+        // is the F3 case (see [_applyLoadedBlobLocked]), not a
+        // foreign queue: QUARANTINE the records instead of
+        // clearing them and deleting the blob. Nothing is adopted,
+        // rendered, or pushed under the new account; the raw
+        // records ride the next persist under the now-known owner,
+        // and if no persist happens first, the blob still on disk
+        // re-quarantines on any later owner-bound load.
+        _quarantinedRecords = List.unmodifiable([
+          ..._quarantinedRecords,
+          for (final record in _records.values) record.toJson(),
+        ]);
+        _records.clear();
+        _serverConfirmedIds.clear();
+        _ownerEmail = expected;
+        _loaded = true;
+        notifyListeners();
+        return;
+      }
+      // A known account must never inherit a differently owned
+      // health-entry queue.
+      dropped = true;
       _records.clear();
       _serverConfirmedIds.clear();
       _quarantinedRecords = const [];
@@ -500,9 +551,21 @@ class LogEntryOutbox extends ChangeNotifier {
       // scheduled, not awaited, so this operation stays storage-free.
       _deleteBlobTracked();
     });
+    return dropped;
   }
 
   Future<bool> _persistLocked() async {
+    // C-01 — persist gate, mirroring PR #44's
+    // HealthHistoryStore.persist and PR #49's _persistQueue:
+    // a no-op (reporting failure) until a load has SUCCEEDED in
+    // this process. After a transient read failure the in-memory
+    // queue is an incomplete image of the disk blob, and writing
+    // it would erase the entries the failed read never loaded.
+    // [clear] and the owner-enforcement paths re-arm writes
+    // explicitly: they set [_loaded] themselves over an
+    // authoritative-empty memory and delete the blob rather than
+    // persisting over it.
+    if (!_loaded) return false;
     try {
       // A blob delete sent earlier (account clear / owner drop)
       // must land before this write, or the delete could erase the
@@ -561,6 +624,19 @@ class LogEntryOutbox extends ChangeNotifier {
     String? ownerEmail,
   }) async {
     await load(ownerEmail: ownerEmail);
+    if (!_loaded) {
+      // C-01 — no id may be allocated from an unloaded queue:
+      // the on-disk high-water mark and pending records are
+      // unknown, so any id handed out could collide with a
+      // staged entry the failed read never loaded. Fail loudly
+      // instead; creation call sites surface this as a save
+      // failure and the user can retry once storage recovers
+      // (the next [load] retries the read).
+      throw StateError(
+        'LogEntryOutbox: cannot allocate an entry id before a '
+        'successful disk load',
+      );
+    }
     return _runLocked(() async {
       var candidate = serverMaxId;
       if (maxId > candidate) candidate = maxId;
@@ -601,6 +677,11 @@ class LogEntryOutbox extends ChangeNotifier {
     String? ownerEmail,
   }) async {
     await load(ownerEmail: ownerEmail);
+    // C-01 — a stage that could not load the disk blob must not
+    // persist from empty memory over the staged-on-disk entries
+    // (the gated [_persistLocked] would refuse the write anyway;
+    // fail here before mutating anything or notifying).
+    if (!_loaded) return false;
     final ok = await _runLocked(() async {
       final previous = Map<int, LogEntryOutboxRecord>.from(_records);
       // A staged id joins the F1 high-water mark: ids handed out
@@ -656,8 +737,15 @@ class LogEntryOutbox extends ChangeNotifier {
   /// Removes a pending upsert and persists the removal. Returns the
   /// removed record, or null when it was absent or the local write
   /// failed (in which case the record is restored).
-  Future<LogEntryOutboxRecord?> cancel(int id) async {
-    await load();
+  Future<LogEntryOutboxRecord?> cancel(int id, {String? ownerEmail}) async {
+    // C-01 — the load must be owner-bound so an unowned blob hits
+    // the F3 quarantine instead of being adopted and then
+    // persisted over. With no owner available AND nothing loaded
+    // yet, fail (null) rather than adopt ownerless: callers with
+    // a backend use [cancelForBackend].
+    if (!_loaded && ownerEmail == null) return null;
+    await load(ownerEmail: ownerEmail);
+    if (!_loaded) return null;
     final result = await _runLocked(() async {
       final removed = _records.remove(id);
       if (removed == null) return null;
@@ -670,10 +758,32 @@ class LogEntryOutbox extends ChangeNotifier {
     return result;
   }
 
+  /// Convenience wrapper for screens, mirroring [stageForBackend]:
+  /// resolves the session owner from [backend] first.
+  Future<LogEntryOutboxRecord?> cancelForBackend(
+    int id, {
+    required TabsBackend backend,
+  }) async {
+    String? email;
+    try {
+      email = await backend.readEmail();
+    } catch (_) {
+      email = null;
+    }
+    return cancel(id, ownerEmail: email);
+  }
+
   /// Restores a previously cancelled record exactly (used when a
   /// delete that cancelled a pending edit itself fails).
-  Future<bool> restore(LogEntryOutboxRecord record) async {
-    await load();
+  Future<bool> restore(
+    LogEntryOutboxRecord record, {
+    String? ownerEmail,
+  }) async {
+    // C-01 — same owner-binding rule as [cancel]: no ownerless
+    // first load, and no persist from an unloaded queue.
+    if (!_loaded && ownerEmail == null) return false;
+    await load(ownerEmail: ownerEmail);
+    if (!_loaded) return false;
     final ok = await _runLocked(() async {
       final previous = _records[record.entry.id];
       _records[record.entry.id] = record;
@@ -688,6 +798,21 @@ class LogEntryOutbox extends ChangeNotifier {
     // Notify after the persist resolves (see stage).
     notifyListeners();
     return ok;
+  }
+
+  /// Convenience wrapper for screens, mirroring [stageForBackend]:
+  /// resolves the session owner from [backend] first.
+  Future<bool> restoreForBackend(
+    LogEntryOutboxRecord record, {
+    required TabsBackend backend,
+  }) async {
+    String? email;
+    try {
+      email = await backend.readEmail();
+    } catch (_) {
+      email = null;
+    }
+    return restore(record, ownerEmail: email);
   }
 
   /// Pushes every pending/failed record through the existing entry
@@ -714,6 +839,11 @@ class LogEntryOutbox extends ChangeNotifier {
       email = null;
     }
     await load(ownerEmail: email);
+    // C-01 — an unloaded queue cannot be pronounced flushed: the
+    // disk may still hold staged entries this process never read.
+    // Report false so the entries stay queued for the next sync
+    // trigger, when the load retries.
+    if (!_loaded) return false;
     final attemptedVersions = <String>{};
 
     while (true) {
@@ -856,8 +986,19 @@ class LogEntryOutbox extends ChangeNotifier {
   /// retention pattern. Returns true when entries were retained.
   /// When the queue is empty there is nothing to lose, so this
   /// falls through to the ordinary [clear] and returns false.
-  Future<bool> retainUnconfirmed() async {
-    await load();
+  Future<bool> retainUnconfirmed({String? ownerEmail}) async {
+    // C-01 — the production call sites (logout, session expiry)
+    // genuinely have no email: the session is already gone. With
+    // nothing loaded in this process and no owner to bind, an
+    // ownerless first load here could adopt an unowned blob and
+    // the clear below would then wipe it. Leave memory and disk
+    // exactly as they are and report not-retained: the blob
+    // stays on disk, and the next owner-bound load or login
+    // [clearIfOwnerMismatch] decides its fate under F3/foreign
+    // semantics.
+    if (!_loaded && ownerEmail == null) return false;
+    await load(ownerEmail: ownerEmail);
+    if (!_loaded) return false;
     if (_records.isEmpty) {
       await clear();
       return false;
@@ -890,26 +1031,25 @@ class LogEntryOutbox extends ChangeNotifier {
   Future<bool> clearIfOwnerMismatch(String? email) async {
     final expected = normalizeEmail(email);
     if (expected == null) return false;
-    await load();
-    var dropped = false;
-    await _runLocked(() async {
-      if (_ownerEmail == expected) return;
-      if (_ownerEmail == null && _records.isEmpty) {
-        _ownerEmail = expected;
-        return;
-      }
-      _records.clear();
-      _serverConfirmedIds.clear();
-      _quarantinedRecords = const [];
-      _ownerEmail = expected;
-      _loaded = true;
-      dropped = true;
-      notifyListeners();
-    });
-    if (dropped) {
-      // Result-free blob delete, outside the lock (see clear()).
-      _deleteBlobTracked();
+    if (!_loaded) {
+      // C-01 — load BOUND to the expected owner, so an unowned
+      // blob hits the F3 quarantine in [_applyLoadedBlobLocked]
+      // (records preserved, blob kept) and a foreign blob is
+      // dropped inside the load itself — never adopted ownerless
+      // and then wiped by the enforcement below.
+      await load(ownerEmail: expected);
+      // A failed load (storage read threw) leaves the queue
+      // unloaded: no owner action may be taken from that state.
+      if (!_loaded) return false;
+      // The bound load has already settled ownership (matching
+      // owner, F3-quarantined unowned blob, or foreign blob
+      // dropped and deleted by the load): its outcome stands.
+      if (_ownerEmail == expected) return false;
     }
-    return dropped;
+    // Already loaded (possibly by an earlier UNBOUND warm, e.g.
+    // main.dart's session-read-failure path): enforcement routes
+    // a populated unowned queue into the F3 quarantine and drops
+    // only a genuinely foreign queue (see [_enforceLoadedOwner]).
+    return _enforceLoadedOwner(expected);
   }
 }

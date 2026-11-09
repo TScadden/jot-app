@@ -482,14 +482,28 @@ class _HistoryScreenState extends State<HistoryScreen> {
       return;
     }
     final last = _entries.first; // server orders timestamp DESC
-    final dupe = QuickLogEntry(
-      id: await _nextEntryId(),
-      categoryId: last.categoryId,
-      body: last.body,
-      chips: last.chips,
-      manualText: last.manualText,
-      timestamp: DateTime.now().millisecondsSinceEpoch,
-    );
+    // C-01: the outbox allocator fails loudly when its disk load
+    // never succeeded — surface that as the try-again snackbar
+    // below instead of an uncaught throw.
+    final QuickLogEntry dupe;
+    try {
+      dupe = QuickLogEntry(
+        id: await _nextEntryId(),
+        categoryId: last.categoryId,
+        body: last.body,
+        chips: last.chips,
+        manualText: last.manualText,
+        timestamp: DateTime.now().millisecondsSinceEpoch,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Couldn't repeat that entry — try again."),
+        ),
+      );
+      return;
+    }
     // Local-first: the duplicate is staged durably, appears at the
     // top immediately (its timestamp is now, and the list is
     // timestamp-DESC), and pushes in the background. A failed push
@@ -592,7 +606,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
       final pendingRecord = _outbox.recordFor(entry.id);
       LogEntryOutboxRecord? cancelledRecord;
       if (pendingRecord != null) {
-        cancelledRecord = await _outbox.cancel(entry.id);
+        cancelledRecord =
+            await _outbox.cancelForBackend(entry.id, backend: _backend);
         if (!mounted) return;
         if (cancelledRecord == null) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -626,7 +641,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         unawaited(_revalidate());
       } else {
         if (cancelledRecord != null) {
-          await _outbox.restore(cancelledRecord);
+          await _outbox.restoreForBackend(cancelledRecord, backend: _backend);
           if (!mounted) return;
         }
         setState(() {

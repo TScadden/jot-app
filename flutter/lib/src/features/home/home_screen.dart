@@ -880,7 +880,8 @@ class _HomeScreenState extends State<HomeScreen> {
       final pendingRecord = _outbox.recordFor(entry.id);
       LogEntryOutboxRecord? cancelledRecord;
       if (pendingRecord != null) {
-        cancelledRecord = await _outbox.cancel(entry.id);
+        cancelledRecord =
+            await _outbox.cancelForBackend(entry.id, backend: _backend);
         if (cancelledRecord == null) return;
         if (!pendingRecord.serverKnown) {
           _applyIntakeRemoval(entry.id);
@@ -892,7 +893,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (ok) {
         _applyIntakeRemoval(entry.id);
       } else if (cancelledRecord != null) {
-        await _outbox.restore(cancelledRecord);
+        await _outbox.restoreForBackend(cancelledRecord, backend: _backend);
         if (mounted) _deriveIntakeState(_intakeEntries);
       }
     } finally {
@@ -1567,7 +1568,7 @@ class _HomeScreenState extends State<HomeScreen> {
         final pending = _outbox.recordFor(id);
         LogEntryOutboxRecord? cancelled;
         if (pending != null) {
-          cancelled = await _outbox.cancel(id);
+          cancelled = await _outbox.cancelForBackend(id, backend: _backend);
           if (cancelled == null) return false;
           if (!serverKnown) {
             // A local-only record never reached the server:
@@ -1578,7 +1579,9 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         final ok = await _backend.deleteLogEntry(id);
         if (!ok) {
-          if (cancelled != null) await _outbox.restore(cancelled);
+          if (cancelled != null) {
+            await _outbox.restoreForBackend(cancelled, backend: _backend);
+          }
           return false;
         }
         if (mounted) _applyGoodDeletion(ctx.merged, id);

@@ -1218,7 +1218,20 @@ class LeanTestCloser {
     var working = session;
     var entryId = working.allocatedEntryId;
     if (entryId == null) {
-      entryId = await gateway.allocateEntryId();
+      try {
+        entryId = await gateway.allocateEntryId();
+      } catch (_) {
+        // C-01 condition C1: the production gateway's allocator
+        // (LogEntryOutbox.allocateEntryId) now fails loudly with a
+        // StateError when the outbox's disk load never succeeded.
+        // A close must never escape as an uncaught throw — surface
+        // the same F5 outcome as the category double-miss above:
+        // a result with NO entry, not staged, not pending, so the
+        // screen keeps the session visibly live and the user can
+        // close again once storage recovers. Nothing is persisted
+        // here; the session's last caller-saved state stands.
+        return LeanCloseResult(result: result, staged: false);
+      }
       working = working.copyWith(allocatedEntryId: entryId);
       // Persist the allocated id BEFORE staging (migraine pattern):
       // a kill between allocation and stage can never hand the id

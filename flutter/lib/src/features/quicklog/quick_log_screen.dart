@@ -614,15 +614,19 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
                 ?.id ??
             cat.id
         : cat.id;
-    final entry = QuickLogEntry(
-      id: await _nextEntryId(),
-      categoryId: categoryId,
-      body: body,
-      chips: _selectedChips.isEmpty ? '' : _selectedChips.join(', '),
-      manualText: _manualController.text.trim(),
-      timestamp: DateTime.now().millisecondsSinceEpoch,
-    );
     try {
+      // C-01: the id allocation lives inside the try — the outbox
+      // allocator now fails loudly when its disk load never
+      // succeeded, and that failure must land in the catch below
+      // (and reset _saveInFlight in the finally), not escape.
+      final entry = QuickLogEntry(
+        id: await _nextEntryId(),
+        categoryId: categoryId,
+        body: body,
+        chips: _selectedChips.isEmpty ? '' : _selectedChips.join(', '),
+        manualText: _manualController.text.trim(),
+        timestamp: DateTime.now().millisecondsSinceEpoch,
+      );
       // Local persistence FIRST. The form completes as soon as the
       // entry is durable on device; the server POST follows in the
       // background through the outbox.
@@ -658,14 +662,26 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
   /// Native `logFromRecent()`: taps a recent-suggestion chip to
   /// immediately re-log that entry's content.
   Future<void> _logFromRecent(QuickLogEntry entry) async {
-    final dupe = QuickLogEntry(
-      id: await _nextEntryId(),
-      categoryId: entry.categoryId,
-      body: entry.body,
-      chips: entry.chips,
-      manualText: entry.manualText,
-      timestamp: DateTime.now().millisecondsSinceEpoch,
-    );
+    // C-01: the outbox allocator fails loudly when its disk load
+    // never succeeded — surface that as the try-again snackbar
+    // below instead of an uncaught throw.
+    final QuickLogEntry dupe;
+    try {
+      dupe = QuickLogEntry(
+        id: await _nextEntryId(),
+        categoryId: entry.categoryId,
+        body: entry.body,
+        chips: entry.chips,
+        manualText: entry.manualText,
+        timestamp: DateTime.now().millisecondsSinceEpoch,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Couldn't log that entry — try again.")),
+      );
+      return;
+    }
     final staged = await _outbox.stageForBackend(
       dupe,
       backend: _backend,
