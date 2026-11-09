@@ -35,6 +35,13 @@ import 'package:tabs_lab/src/data/today_summary.dart';
 ///
 /// Never throws: every storage failure degrades to "no local state",
 /// which is the honest native first-run state too.
+///
+/// Pass-2 C-06b: a storage READ throw is NOT "no local state" for
+/// mutation purposes. [load] still degrades to empty for readers,
+/// but [setReminderCompleted] / [setMedAction] skip their save when
+/// the underlying load failed — treating a failed load as an
+/// authoritative empty state and then writing the whole blob would
+/// erase that day's other completions and dose statuses.
 class TodayPlanStore {
   static const String storageKey = 'today_plan_state_v1';
 
@@ -81,8 +88,26 @@ class TodayPlanStore {
     required String? email,
     required String todayStr,
   }) async {
+    return await _tryLoad(email: email, todayStr: todayStr) ??
+        const TodayPlanLocalState();
+  }
+
+  /// Like [load], but returns null when the storage READ itself
+  /// threw — the one case where "empty" is not authoritative.
+  /// Missing, corrupt, other-day, and other-owner blobs still
+  /// resolve to an authoritative empty state, exactly as [load]
+  /// has always treated them.
+  Future<TodayPlanLocalState?> _tryLoad({
+    required String? email,
+    required String todayStr,
+  }) async {
+    final String? raw;
     try {
-      final raw = await _read(storageKey);
+      raw = await _read(storageKey);
+    } catch (_) {
+      return null;
+    }
+    try {
       if (raw == null || raw.isEmpty) return const TodayPlanLocalState();
       final decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic>) {
@@ -141,15 +166,25 @@ class TodayPlanStore {
     required int reminderId,
     required bool completed,
   }) async {
-    final state = await load(email: email, todayStr: todayStr);
+    // C-06b: a failed load is not an authoritative empty state —
+    // skip the save entirely rather than overwriting the unread
+    // blob with only this one completion.
+    final state = await _tryLoad(email: email, todayStr: todayStr);
+    if (state == null) return;
     final ids = {...state.completedReminderIds};
     if (completed) {
       ids.add(reminderId);
     } else {
       ids.remove(reminderId);
     }
-    await _save(email, todayStr,
-        TodayPlanLocalState(completedReminderIds: ids, medActions: state.medActions));
+    await _save(
+      email,
+      todayStr,
+      TodayPlanLocalState(
+        completedReminderIds: ids,
+        medActions: state.medActions,
+      ),
+    );
   }
 
   Future<void> setMedAction({
@@ -159,15 +194,20 @@ class TodayPlanStore {
     required String slot,
     required DoseStatus status,
   }) async {
-    final state = await load(email: email, todayStr: todayStr);
+    // C-06b: same guard as setReminderCompleted — never persist a
+    // state built on a failed load.
+    final state = await _tryLoad(email: email, todayStr: todayStr);
+    if (state == null) return;
     final actions = {...state.medActions};
     actions[medActionKey(medKey, slot)] = status;
     await _save(
-        email,
-        todayStr,
-        TodayPlanLocalState(
-            completedReminderIds: state.completedReminderIds,
-            medActions: actions));
+      email,
+      todayStr,
+      TodayPlanLocalState(
+        completedReminderIds: state.completedReminderIds,
+        medActions: actions,
+      ),
+    );
   }
 
   Future<void> _save(
