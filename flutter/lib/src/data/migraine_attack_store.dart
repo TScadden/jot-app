@@ -167,6 +167,20 @@ class MigraineAttack {
 /// "no attacks" on reads, and writes surface as a thrown
 /// [StateError] only from [save] so the controller can show
 /// Juno's start-failure line (§F).
+///
+/// C-06a (pass-2 audit): a storage READ throw is NOT "no attacks."
+/// [save] loads through the strict loader, which distinguishes a
+/// read throw from an empty / corrupt / owner-mismatched blob, and
+/// aborts with a [StateError] without writing — the store is
+/// local-only, so upserting into a falsely-empty list and writing
+/// the whole blob would erase the entire attack history with no
+/// server copy to recover it from.
+///
+/// C-10: every read-modify-write ([save], [clear],
+/// [clearIfOwnerMismatch]) runs through one future chain, so
+/// concurrent operations execute load→write atomically in call
+/// order and an earlier snapshot can never land after — and
+/// revert — a later one.
 class MigraineAttackStore {
   static const String storageKey = 'migraine_attacks_v1';
 
@@ -191,6 +205,20 @@ class MigraineAttackStore {
   /// carries a different stamp is wiped instead of served. Null
   /// while unbound (no login has bound this instance yet).
   String? _boundOwner;
+
+  /// C-10 serialization chain: each read-modify-write operation is
+  /// appended to this future, so operations run one at a time, in
+  /// call order, each completing its load→write before the next
+  /// operation's load begins. The chain itself never fails — an
+  /// operation's error is delivered to its own caller and the
+  /// chain continues with the next operation.
+  Future<void> _opChain = Future<void>.value();
+
+  Future<T> _serialized<T>(Future<T> Function() op) {
+    final result = _opChain.then((_) => op());
+    _opChain = result.then<void>((_) {}, onError: (_) {});
+    return result;
+  }
 
   /// The shared instance (see [instance]).
   factory MigraineAttackStore() => instance;
@@ -228,16 +256,39 @@ class MigraineAttackStore {
     if (delete != null) _delete = delete;
   }
 
+  /// Read-path loader: never throws (class doc) — any failure,
+  /// including a storage read throw, degrades to "no attacks" for
+  /// READERS. Mutations must NOT use this loader (C-06a): see
+  /// [_loadBlobStrict].
   Future<({List<MigraineAttack> attacks, int? activeId})> _loadBlob() async {
     try {
-      final raw = await _read(storageKey);
-      if (raw == null || raw.isEmpty) {
-        return (attacks: <MigraineAttack>[], activeId: null);
-      }
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map<String, dynamic>) {
-        return (attacks: <MigraineAttack>[], activeId: null);
-      }
+      return await _loadBlobStrict();
+    } catch (_) {
+      return (attacks: <MigraineAttack>[], activeId: null);
+    }
+  }
+
+  /// Strict loader for read-modify-write mutations: a storage READ
+  /// throw propagates to the caller, while an empty blob, a
+  /// corrupt blob, and an owner-mismatch wipe still resolve to the
+  /// empty record exactly as the read path has always treated
+  /// them. Only the throw is distinguished (C-06a).
+  Future<({List<MigraineAttack> attacks, int? activeId})>
+      _loadBlobStrict() async {
+    final raw = await _read(storageKey);
+    if (raw == null || raw.isEmpty) {
+      return (attacks: <MigraineAttack>[], activeId: null);
+    }
+    Object? decoded;
+    try {
+      decoded = jsonDecode(raw);
+    } catch (_) {
+      return (attacks: <MigraineAttack>[], activeId: null);
+    }
+    if (decoded is! Map<String, dynamic>) {
+      return (attacks: <MigraineAttack>[], activeId: null);
+    }
+    {
       // Load enforcement (audit 4e): a stamped blob served to a
       // differently-bound instance is another account's data —
       // wipe the key and serve empty. When unbound, serve: the
@@ -267,8 +318,6 @@ class MigraineAttackStore {
       final activeId =
           activeRaw is num ? activeRaw.toInt() : int.tryParse('$activeRaw');
       return (attacks: attacks, activeId: activeId);
-    } catch (_) {
-      return (attacks: <MigraineAttack>[], activeId: null);
     }
   }
 
@@ -278,15 +327,21 @@ class MigraineAttackStore {
     // erase the stamp that binds the blob to its account.
     var stamp = _boundOwner;
     if (stamp == null) {
-      try {
-        final raw = await _read(storageKey);
-        if (raw != null && raw.isNotEmpty) {
+      // C-06a: a throw from this stamp-preservation re-read must
+      // abort the write (the caller, save, surfaces it as a
+      // StateError) — proceeding would write the blob back with a
+      // null stamp, and the next login would wipe it as unstamped
+      // legacy data. A corrupt existing blob still decodes to a
+      // null stamp and the write proceeds, as before.
+      final raw = await _read(storageKey);
+      if (raw != null && raw.isNotEmpty) {
+        try {
           final decoded = jsonDecode(raw);
           if (decoded is Map<String, dynamic>) {
             stamp = _normalizeEmail(decoded['ownerEmail']?.toString());
           }
-        }
-      } catch (_) {}
+        } catch (_) {}
+      }
     }
     final blob = jsonEncode({
       'ownerEmail': stamp,
@@ -335,29 +390,45 @@ class MigraineAttackStore {
   /// Upserts [attack] and moves the active pointer: a running attack
   /// becomes the active one; an ended attack clears the pointer when
   /// it names this attack.
-  Future<void> save(MigraineAttack attack) async {
-    final blob = await _loadBlob();
-    final attacks = blob.attacks.toList();
-    final idx = attacks.indexWhere((a) => a.id == attack.id);
-    if (idx >= 0) {
-      attacks[idx] = attack;
-    } else {
-      attacks.add(attack);
-    }
-    var activeId = blob.activeId;
-    if (attack.isActive) {
-      activeId = attack.id;
-    } else if (activeId == attack.id) {
-      activeId = null;
-    }
-    await _writeBlob(attacks, activeId);
-  }
+  ///
+  /// C-06a: when the load read THROWS, the save aborts — nothing is
+  /// written — and the failure surfaces as a [StateError] (the
+  /// error path the class doc promises), instead of upserting into
+  /// a falsely-empty list and overwriting the whole local-only
+  /// history. C-10: the whole load→write runs inside the
+  /// serialization chain, atomically with respect to other saves.
+  Future<void> save(MigraineAttack attack) => _serialized(() async {
+        try {
+          final blob = await _loadBlobStrict();
+          final attacks = blob.attacks.toList();
+          final idx = attacks.indexWhere((a) => a.id == attack.id);
+          if (idx >= 0) {
+            attacks[idx] = attack;
+          } else {
+            attacks.add(attack);
+          }
+          var activeId = blob.activeId;
+          if (attack.isActive) {
+            activeId = attack.id;
+          } else if (activeId == attack.id) {
+            activeId = null;
+          }
+          await _writeBlob(attacks, activeId);
+        } on StateError {
+          rethrow;
+        } catch (e) {
+          throw StateError(
+              'MigraineAttackStore.save aborted: storage failure ($e)');
+        }
+      });
 
   /// Drops the whole blob and unbinds the owner. Called on
   /// logout / account deletion (via `AccountActions`) and on
   /// session expiry (via `main.dart`), exactly like the other
   /// account-bound stores. Never throws.
-  Future<void> clear() async {
+  Future<void> clear() => _serialized(_clearInternal);
+
+  Future<void> _clearInternal() async {
     _boundOwner = null;
     try {
       await _delete(storageKey);
@@ -372,31 +443,36 @@ class MigraineAttackStore {
   /// blobs predate audit 4e). Returns true when a wipe happened.
   /// A null/blank [email] binds nothing and wipes nothing.
   /// Never throws.
-  Future<bool> clearIfOwnerMismatch(String? email) async {
+  Future<bool> clearIfOwnerMismatch(String? email) {
     final expected = _normalizeEmail(email);
-    if (expected == null) return false;
-    try {
-      final raw = await _read(storageKey);
-      if (raw == null || raw.isEmpty) {
-        _boundOwner = expected;
-        return false;
-      }
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map<String, dynamic>) {
-        await clear();
+    if (expected == null) return Future.value(false);
+    // Serialized with saves (C-10): a login-time wipe must not
+    // interleave with an in-flight save's load→write. The internal
+    // clear runs directly — it must not re-enter the chain.
+    return _serialized(() async {
+      try {
+        final raw = await _read(storageKey);
+        if (raw == null || raw.isEmpty) {
+          _boundOwner = expected;
+          return false;
+        }
+        final decoded = jsonDecode(raw);
+        if (decoded is! Map<String, dynamic>) {
+          await _clearInternal();
+          _boundOwner = expected;
+          return true;
+        }
+        final owner = _normalizeEmail(decoded['ownerEmail']?.toString());
+        if (owner == expected) {
+          _boundOwner = expected;
+          return false;
+        }
+        await _clearInternal();
         _boundOwner = expected;
         return true;
-      }
-      final owner = _normalizeEmail(decoded['ownerEmail']?.toString());
-      if (owner == expected) {
-        _boundOwner = expected;
+      } catch (_) {
         return false;
       }
-      await clear();
-      _boundOwner = expected;
-      return true;
-    } catch (_) {
-      return false;
-    }
+    });
   }
 }

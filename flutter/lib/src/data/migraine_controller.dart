@@ -203,6 +203,58 @@ class MigraineController extends ChangeNotifier {
   final DateTime Function() _clock;
 
   MigraineAttack? _active;
+
+  /// C-10: the newest whole-state attack snapshot whose store save
+  /// has not landed yet (every attempt failed). Saves carry the
+  /// FULL attack state, so a later save of the same attack
+  /// supersedes an older pending snapshot, and retrying the pending
+  /// snapshot converges disk to the controller's truth. Retried by
+  /// [_persistAttack] itself (one immediate retry per save), at
+  /// [initialize] / [onAppResumed], and at [retryPendingTrends] —
+  /// so a save failure, including the end-of-attack save carrying
+  /// `trendsEntryPending`, is never silently indistinguishable
+  /// from success: it stays pending here and is driven to disk by
+  /// the next retry point instead of being lost on restart.
+  MigraineAttack? _pendingSave;
+
+  /// Whether a whole-state save is still waiting to land on disk
+  /// (C-10). Caller-visible signal only — no UI copy is attached.
+  bool get hasPendingSave => _pendingSave != null;
+
+  /// Saves [attack] through the store with C-10 failure semantics:
+  /// one immediate retry, and on continued failure the snapshot is
+  /// kept as [_pendingSave] for the next retry point rather than
+  /// being swallowed. Returns whether the save landed.
+  Future<bool> _persistAttack(MigraineAttack attack) async {
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        await _store.save(attack);
+        final pending = _pendingSave;
+        if (pending != null &&
+            pending.id == attack.id &&
+            pending.updatedAt <= attack.updatedAt) {
+          _pendingSave = null;
+        }
+        return true;
+      } catch (_) {
+        // Fall through to the retry / pending record below.
+      }
+    }
+    final pending = _pendingSave;
+    if (pending == null ||
+        pending.id != attack.id ||
+        pending.updatedAt <= attack.updatedAt) {
+      _pendingSave = attack;
+    }
+    return false;
+  }
+
+  /// Retries the pending whole-state save, if any (C-10).
+  Future<void> _retryPendingSave() async {
+    final pending = _pendingSave;
+    if (pending != null) await _persistAttack(pending);
+  }
+
   bool _notificationPosted = false;
   String? _startError;
   MigraineAttack? _pendingDetails;
@@ -255,6 +307,7 @@ class MigraineController extends ChangeNotifier {
   /// 7303 remains), and retry any pending Trends entry. Idempotent;
   /// never throws.
   Future<void> initialize() async {
+    await _retryPendingSave();
     try {
       _active = await _store.loadActive();
     } catch (_) {
@@ -282,6 +335,7 @@ class MigraineController extends ChangeNotifier {
       await initialize();
       return;
     }
+    await _retryPendingSave();
     try {
       _active = await _store.loadActive();
     } catch (_) {}
@@ -340,8 +394,12 @@ class MigraineController extends ChangeNotifier {
   }
 
   /// Mid-attack edits persist immediately (Lab `updateActiveAttack`
-  /// semantics). Best-effort: the timer keeps its local state on a
-  /// storage failure.
+  /// semantics). Best-effort in-session: the timer keeps its local
+  /// state on a storage failure — but C-10: the failure is no
+  /// longer swallowed. The save goes through [_persistAttack]
+  /// (immediate retry, then a pending record retried at the next
+  /// retry point), and because every save carries the full current
+  /// state, the next keystroke's save also re-carries this edit.
   Future<void> updateActive({
     String? auraPhase,
     String? medsTaken,
@@ -356,9 +414,7 @@ class MigraineController extends ChangeNotifier {
       updatedAt: nowMs(),
     );
     _active = updated;
-    try {
-      await _store.save(updated);
-    } catch (_) {}
+    await _persistAttack(updated);
     notifyListeners();
   }
 
@@ -462,19 +518,18 @@ class MigraineController extends ChangeNotifier {
       medsTaken: medsTaken,
       updatedAt: nowMs(),
     );
-    try {
-      await _store.save(updated);
-    } catch (_) {
+    if (!await _persistAttack(updated)) {
+      // Caller-visible failure, as before: the caller keeps the
+      // form open with Juno's §F line (C-10: the snapshot is also
+      // held as the pending save, so it is not lost either).
       return false;
     }
     final result = await _writeTrendsEntry(updated);
-    try {
-      // On failure the details stay on the record with the entry
-      // marked pending, so the app-start retry converges the entry
-      // (a form retry re-saves the same details — never the end).
-      await _store.save(
-          result.attack.copyWith(trendsEntryPending: !result.ok));
-    } catch (_) {}
+    // On failure the details stay on the record with the entry
+    // marked pending, so the app-start retry converges the entry
+    // (a form retry re-saves the same details — never the end).
+    await _persistAttack(
+        result.attack.copyWith(trendsEntryPending: !result.ok));
     if (result.ok) {
       // The §C-form update CONFIRMED the entry (Juno §A condition
       // 1 names the form update explicitly): surface/refresh the
@@ -489,16 +544,18 @@ class MigraineController extends ChangeNotifier {
   /// The entry id was persisted at end, so a retry upserts the same
   /// entry — it lands exactly once.
   Future<void> retryPendingTrends() async {
+    // C-10 first: land any whole-state save that never reached
+    // disk (e.g. the end-of-attack save), so the disk scan below
+    // sees the controller's true state, not the stale blob.
+    await _retryPendingSave();
     try {
       final all = await _store.loadAll();
       for (final attack in all) {
         if (!attack.isActive && attack.trendsEntryPending) {
           final result = await _writeTrendsEntry(attack);
           if (result.ok) {
-            try {
-              await _store.save(
-                  result.attack.copyWith(trendsEntryPending: false));
-            } catch (_) {}
+            await _persistAttack(
+                result.attack.copyWith(trendsEntryPending: false));
           }
         }
       }
@@ -591,23 +648,23 @@ class MigraineController extends ChangeNotifier {
         painPeak: finalPainPeak,
         updatedAt: endMs,
       );
-      try {
-        await _store.save(ended);
-      } catch (_) {
-        // The end must not be lost to a storage blip in-session:
-        // keep the ended record as the controller's truth and clear
-        // the active pointer in memory; the Trends write below
-        // still runs.
-      }
+      // The end must not be lost to a storage blip in-session:
+      // keep the ended record as the controller's truth and clear
+      // the active pointer in memory; the Trends write below still
+      // runs. C-10: a failed save is no longer swallowed here —
+      // _persistAttack retries once immediately and otherwise
+      // holds the ended snapshot as the pending save, which
+      // retryPendingTrends / initialize / onAppResumed drive to
+      // disk (the final save below carries the same whole state,
+      // including the trendsEntryPending flag).
+      await _persistAttack(ended);
       _active = null;
       _notificationPosted = false;
       notifyListeners();
       await _notifier.cancel();
       final result = await _writeTrendsEntry(ended);
       ended = result.attack.copyWith(trendsEntryPending: !result.ok);
-      try {
-        await _store.save(ended);
-      } catch (_) {}
+      await _persistAttack(ended);
       // Confirmed save only: a successful write surfaces the
       // completion line; a failed one leaves the most recent
       // CONFIRMED completion (or nothing) standing — no pending
@@ -635,9 +692,7 @@ class MigraineController extends ChangeNotifier {
           trendsEntryId: entryId,
           trendsEntryPending: true,
         );
-        try {
-          await _store.save(attack);
-        } catch (_) {}
+        await _persistAttack(attack);
       }
       final categoryId = await _gateway.resolveMigraineCategoryId();
       final entry = buildMigraineTrendsEntry(
@@ -648,9 +703,7 @@ class MigraineController extends ChangeNotifier {
       final ok = await _gateway.postEntry(entry);
       if (ok && attack.trendsEntryPending) {
         attack = attack.copyWith(trendsEntryPending: false);
-        try {
-          await _store.save(attack);
-        } catch (_) {}
+        await _persistAttack(attack);
       }
       return (ok: ok, attack: attack);
     } catch (_) {
