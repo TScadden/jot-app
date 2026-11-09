@@ -252,15 +252,33 @@ class MedicationChangeEventOutbox {
   }
 
   Future<void> _doLoad(String? currentOwner) async {
-    Map<String, dynamic>? map;
+    String? raw;
     try {
-      final raw = await _ioRead(storageKey);
-      if (raw != null && raw.isNotEmpty) {
+      raw = await _ioRead(storageKey);
+    } catch (_) {
+      // D-T04 — a storage READ failure is neither an empty disk
+      // nor a corrupt blob (the H1-04 conflation PR #44 fixed in
+      // HealthHistoryStore): the on-disk blob may be perfectly
+      // valid. Leave the queue and owner untouched, leave
+      // [_loaded] false so the next [_ensureLoaded] retries the
+      // read, and keep [_persistQueue] gated off — treating this
+      // like an empty queue would let the next stage overwrite
+      // the blob with only the new event, permanently destroying
+      // every previously staged event.
+      return;
+    }
+    Map<String, dynamic>? map;
+    if (raw != null && raw.isNotEmpty) {
+      try {
         final decoded = jsonDecode(raw);
         if (decoded is Map<String, dynamic>) map = decoded;
+      } catch (_) {
+        // Corrupt blob: provably unusable, so — per PR #44's
+        // semantics — it is the one read outcome besides a
+        // genuinely missing/empty blob that may be treated as
+        // empty (map stays null, the load completes).
+        map = null;
       }
-    } catch (_) {
-      map = null;
     }
     final expected = _normalizeEmail(currentOwner);
     String? blobOwner;
@@ -307,6 +325,11 @@ class MedicationChangeEventOutbox {
   /// owner meeting an unstamped non-empty queue) drops the queue
   /// unsent. Never throws.
   Future<void> _enforceLoadedOwner(String? currentOwner) async {
+    // D-T04 — enforcement DELETES the disk blob on a mismatch,
+    // so it must never run off an unloaded queue: after a failed
+    // load the disk blob's owner is unknown, and a blind delete
+    // could destroy staged events the read never saw.
+    if (!_loaded) return;
     final expected = _normalizeEmail(currentOwner);
     if (expected == null) return;
     if (_boundOwner == expected) return;
@@ -323,6 +346,14 @@ class MedicationChangeEventOutbox {
   }
 
   Future<void> _persistQueue() async {
+    // D-T04 — persist gate, mirroring PR #44's
+    // HealthHistoryStore.persist: a no-op until a load has
+    // SUCCEEDED in this isolate. After a transient read failure
+    // the in-memory queue is an incomplete image of the disk
+    // blob, and writing it would erase the events the failed
+    // read never loaded. [clear] re-arms writes explicitly (it
+    // marks the queue loaded over an authoritative-empty memory).
+    if (!_loaded) return;
     try {
       await _ioWrite(
         storageKey,
@@ -346,7 +377,9 @@ class MedicationChangeEventOutbox {
   /// the events are on disk. Re-staging an id that is already
   /// queued is a no-op (the original object stands — the server
   /// dedups on that same id). Never throws; returns true when
-  /// every event is queued after this call.
+  /// every event is durably queued after this call (false when
+  /// the disk load never succeeded — see the D-T04 gate in
+  /// [_persistQueue]).
   Future<bool> stageAndFlush(
     List<MedicationChangeEvent> events, {
     MedicationChangeEventPoster? poster,
@@ -365,9 +398,15 @@ class MedicationChangeEventOutbox {
         }
       }
       if (changed) await _persistQueue();
-      final staged = events.every(
-        (e) => e.id.isEmpty || _queue.containsKey(e.id),
-      );
+      // D-T04 — queued in memory is not staged: when the load
+      // never succeeded (transient read failure) the persist
+      // above was gated off, so report false. The events stay in
+      // the in-memory queue, and a later successful load merges
+      // the disk blob around them (putIfAbsent) instead of the
+      // gated persist having overwritten it.
+      final staged =
+          _loaded &&
+          events.every((e) => e.id.isEmpty || _queue.containsKey(e.id));
       // Flush trigger: immediately after staging — and AFTER
       // the durable persist above, so no network attempt can
       // start (let alone settle) before the events are on disk.
@@ -414,6 +453,11 @@ class MedicationChangeEventOutbox {
     try {
       final owner = await _resolveOwner(ownerProvider);
       await _ensureLoaded(owner);
+      // D-T04 — an unloaded queue cannot be pronounced flushed:
+      // the disk may still hold staged events this isolate never
+      // read. Report false so the events stay queued for the
+      // next trigger, when the load retries.
+      if (!_loaded) return false;
       await _enforceLoadedOwner(owner);
       if (_queue.isEmpty) return true;
       final effectivePoster = poster ?? _defaultPoster;

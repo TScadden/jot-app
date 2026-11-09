@@ -1478,16 +1478,49 @@ class TabsBackend {
   /// `POST /api/sync/medication-events` with `{"events": [...]}`
   /// (spec §2.6). Insert-only server-side (ON CONFLICT DO
   /// NOTHING on the client-supplied event id — replays are
-  /// harmless). True on HTTP 200; callers emit after a
-  /// successful profile push through the durable H1-07 outbox,
-  /// which keeps the events queued whenever this returns false
-  /// (see `medication_change_events.dart` /
+  /// harmless). Callers emit after a successful profile push
+  /// through the durable H1-07 outbox, which keeps the events
+  /// queued whenever this returns false (see
+  /// `medication_change_events.dart` /
   /// `medication_change_event_outbox.dart`).
+  ///
+  /// D-T04 — delivery is NOT keyed on the HTTP status alone: a
+  /// 200 whose body explicitly reports `success: false` is a
+  /// server refusal, not a delivery, and returns false so the
+  /// outbox keeps the events queued (the old `_postJson` path
+  /// dropped them as delivered). The check lives HERE, at the
+  /// backend seam, because the outbox only ever sees this
+  /// method's bool (its poster typedef carries no body) — and it
+  /// matches how the sibling contracts already read the
+  /// `success` field ([postDailyScores] requires it true;
+  /// [fetchMedicationChangeEvents] rejects `success != true`).
+  /// A 200 body with NO `success` field keeps the long-standing
+  /// true-on-200 semantics (pinned by the contract test in
+  /// medication_change_capture_test.dart); non-200 / transport
+  /// failure is false as before.
   Future<bool> postMedicationChangeEvents(
-      List<MedicationChangeEvent> events) {
-    return _postJson('/api/sync/medication-events', {
-      'events': events.map((e) => e.toJson()).toList(),
-    });
+      List<MedicationChangeEvent> events) async {
+    final response = await _sendAuthed((token) => _client.post(
+          Uri.parse('$_baseUrl/api/sync/medication-events'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'events': events.map((e) => e.toJson()).toList(),
+          }),
+        ));
+    if (response == null || response.statusCode != 200) return false;
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic> &&
+          decoded.containsKey('success')) {
+        return decoded['success'] == true;
+      }
+    } catch (_) {
+      // No readable body: fall through to true-on-200.
+    }
+    return true;
   }
 
   /// Phase 1, items 2b + 3 — THE read path for the append-only
