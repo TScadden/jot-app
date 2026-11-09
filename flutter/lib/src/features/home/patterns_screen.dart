@@ -571,6 +571,67 @@ class _InsightCardState extends State<_InsightCard> {
     return _captionText(correlationWindowLine(_record.throughDate));
   }
 
+  /// Session #1 A0 receipt line (Juno's 'Ship the Receipt'):
+  /// renders ONLY what this record truthfully carries —
+  /// - complete days: the sum of the two groups' counted days
+  ///   (numbers and progress states; an unavailable card counted
+  ///   no days, so the clause is omitted there, as it is when
+  ///   the sum is zero);
+  /// - date range: F1–F4 only, the trailing-90-day window that
+  ///   ends on the record's own through date (the window start
+  ///   is the engine's own day-key arithmetic — F5 is
+  ///   event-anchored and its anchor day is not stored on the
+  ///   record, so F5 omits the range rather than inventing one);
+  /// - source: the family registry's grouping/outcome variables
+  ///   for this record's split, named through the copy file.
+  /// The engine exposes no excluded-as-incomplete count, so that
+  /// clause is omitted (see correlation_copy.dart's GAP note).
+  /// No averages are rendered here, so the receipt carries no
+  /// gated content onto progress/unavailable cards, which render
+  /// for every membership state.
+  Widget _receiptLine() {
+    int? completeDays;
+    if (_record.state != InsightState.unavailable) {
+      final total = _record.groups.fold<int>(0, (sum, g) => sum + g.n);
+      if (total > 0) completeDays = total;
+    }
+    String? dateRange;
+    if (!_isF5 && _record.throughDate.isNotEmpty) {
+      final start = addDaysToDayKey(
+        _record.throughDate,
+        -(correlationWindowDays - 1),
+      );
+      dateRange = '$start to ${_record.throughDate}';
+    }
+    CorrelationFamilyDefinition? definition;
+    for (final d in correlationFamilyRegistry) {
+      if (d.familyId != _record.familyId) continue;
+      if (d.splitId == _record.splitId) {
+        definition = d;
+        break;
+      }
+      // Family-only fallback ONLY for F5, whose record splitId is
+      // a medication change event id, never the registry's 'F5':
+      // every F5 definition carries the same two variables. Any
+      // other family with an unmatched split (e.g. the collapsed
+      // F2 placeholder, split '') gets no source segment rather
+      // than a guessed one.
+      if (_isF5) definition ??= d;
+    }
+    return _captionText(
+      correlationReceiptLine(
+        completeDays: completeDays,
+        dateRange: completeDays == null ? null : dateRange,
+        sourceLabel: definition == null
+            ? null
+            : correlationReceiptSourceLabel(
+                groupingVariable: definition.groupingVariable,
+                outcomeVariable: definition.outcomeVariable,
+              ),
+      ),
+    );
+  }
+
   List<Widget> _numbersChildren() {
     if (_isF5) return _f5NumbersChildren();
     final out = <Widget>[];
@@ -648,6 +709,8 @@ class _InsightCardState extends State<_InsightCard> {
     }
     out.add(const SizedBox(height: 8));
     out.add(_captionText(correlationCaption));
+    out.add(const SizedBox(height: 8));
+    out.add(_receiptLine());
     if (!_isIncidence) {
       out.add(_detailExpansion());
     }
@@ -692,6 +755,8 @@ class _InsightCardState extends State<_InsightCard> {
       _captionText(medWindowRuleNote),
       const SizedBox(height: 8),
       _captionText(correlationCaption),
+      const SizedBox(height: 8),
+      _receiptLine(),
       // No S8 on F5: the family is event-anchored, not windowed.
     ];
   }
@@ -768,6 +833,8 @@ class _InsightCardState extends State<_InsightCard> {
     // S3 caption: Juno's ruling is "every card, every time".
     out.add(const SizedBox(height: 8));
     out.add(_captionText(correlationCaption));
+    out.add(const SizedBox(height: 8));
+    out.add(_receiptLine());
     return out;
   }
 
@@ -777,6 +844,8 @@ class _InsightCardState extends State<_InsightCard> {
       const SizedBox(height: 8),
       // S3 caption: Juno's ruling is "every card, every time".
       _captionText(correlationCaption),
+      const SizedBox(height: 8),
+      _receiptLine(),
     ];
   }
 }
