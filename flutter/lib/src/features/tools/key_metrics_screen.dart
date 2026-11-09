@@ -148,8 +148,9 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
 
   /// Concurrent-batch analogue of [_readGuarded], used by
   /// [_loadDate]: the caller clears
-  /// [HealthConnectService.lastReadErrorCode] ONCE before the batch
-  /// starts, and each read CLAIMS the recorded code in its own
+  /// [HealthConnectService.lastReadErrorCode] (and, B-01,
+  /// [HealthConnectService.lastPartialErrorCode]) ONCE before the
+  /// batch starts, and each read CLAIMS the recorded code in its own
   /// completion continuation (reads it, then clears it) instead of
   /// clearing up front — clearing per read would erase a concurrent
   /// read's failure signal before its owner could see it. Platform
@@ -167,7 +168,17 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
       final value = await call().timeout(const Duration(seconds: 10));
       final failed = _hc.lastReadErrorCode != null;
       if (failed) _hc.lastReadErrorCode = null;
-      return (value: value, failed: failed);
+      // B-01: a PARTIAL signal is claimed the same way and counts
+      // as failed FOR CACHE ADMISSION — a partial HR read (some
+      // chunks missing) must not let the assembled result enter
+      // _perDateCache as if it were a clean read (mirrors the
+      // health_repository.dart write-through gate, which requires
+      // BOTH codes null). The value itself is still returned and
+      // displayed exactly as before; only the session caching of
+      // the result changes.
+      final partial = _hc.lastPartialErrorCode != null;
+      if (partial) _hc.lastPartialErrorCode = null;
+      return (value: value, failed: failed || partial);
     } catch (_) {
       return (value: null, failed: true);
     }
@@ -256,6 +267,11 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
       // error isolation via _readGuardedClaim: one failed read
       // still only marks this date load failed (F5b), never throws.
       _hc.lastReadErrorCode = null;
+      // B-01: the partial code is part of the claim protocol too —
+      // clear it once with the error code so a stale partial from an
+      // earlier load can neither be mis-claimed by this batch nor
+      // mask this batch's own signals.
+      _hc.lastPartialErrorCode = null;
       final hrFuture = _readGuardedClaim(() => _hc.readHeartRateSamples(key));
       final restingFuture =
           _readGuardedClaim(() => _hc.readRestingHeartRate(key));

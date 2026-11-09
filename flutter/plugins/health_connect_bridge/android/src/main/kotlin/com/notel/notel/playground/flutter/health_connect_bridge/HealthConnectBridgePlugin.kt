@@ -612,7 +612,14 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
     /// mock records dropped, distinct by time, sorted ascending —
     /// semantics unchanged. Dart shapes:
     /// - all chunks OK: [{t: epochMs, bpm}] (legacy bare list)
-    /// - some chunks failed: {samples: [...], partialError: details}
+    /// - some chunks failed, some samples read:
+    ///   {samples: [...], partialError: details}
+    /// - some chunks failed and NO samples were collected (B-01):
+    ///   HR_SAMPLES_READ_FAILED — a partial success carrying an
+    ///   empty series is indistinguishable on the Dart side from a
+    ///   genuinely empty day and was cached as one, wiping the
+    ///   previously cached series for the date; with nothing read,
+    ///   the honest outcome is the failure shape below.
     /// - every chunk failed: HR_SAMPLES_READ_FAILED with the first
     ///   chunk's exception details, PLUS the outcome of an aggregate
     ///   probe (BPM_AVG over the day, a different HC service path):
@@ -677,6 +684,17 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                 .distinctBy { it.first }
                 .sortedBy { it.first }
                 .map { mapOf("t" to it.first, "bpm" to it.second) }
+            if (chunkErrors.isNotEmpty() && samples.isEmpty()) {
+                // B-01: partial failure with nothing collected is a
+                // failure, not a partial success — see the shape
+                // table in this function's header comment.
+                result.error(
+                    "HR_SAMPLES_READ_FAILED",
+                    "Could not read heart rate samples.",
+                    chunkErrors.first()
+                )
+                return@launch
+            }
             if (chunkErrors.isEmpty()) {
                 result.success(samples)
             } else {

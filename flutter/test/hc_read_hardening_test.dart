@@ -82,6 +82,21 @@ class PartialFakeHc extends HealthConnectService {
   }
 }
 
+/// Fake service for the B-01 widget test: the HR read is PARTIAL
+/// (some chunks failed) and returns NO samples at all — the exact
+/// shape that used to wipe the cached series for the date.
+class PartialEmptyFakeHc extends HealthConnectService {
+  @override
+  Future<bool> isConnected() async => true;
+
+  @override
+  Future<List<HrSample>> readHeartRateSamples(String dateStr) async {
+    lastPartialErrorCode = 'HR_SAMPLES_PARTIAL';
+    lastReadErrorDetails = 'IllegalStateException';
+    return const [];
+  }
+}
+
 /// Fake HC for the queries-level partial test (F2): sleep history
 /// returns rows AND records a partial.
 class PartialQueriesFakeHc extends HealthConnectService {
@@ -503,6 +518,28 @@ void main() {
       expect(HeartDataCache.instance.lastSyncAt, isNull);
     });
 
+    test('B-01: an empty apply does NOT wipe a cached non-empty series '
+        'or re-stamp freshness', () {
+      final t0 = DateTime(2026, 10, 18, 9);
+      HeartDataCache.instance.apply(
+          '2026-10-18', [HrSample(timeMs: todayMs(8), bpm: 80)],
+          now: t0, ownerEmail: 'a@b.c');
+      expect(HeartDataCache.instance.lastSyncAt, t0);
+      expect(HeartDataCache.instance.isFresh('2026-10-18', now: t0),
+          isTrue);
+      // An empty series (e.g. a partial read that collected no
+      // samples, passed on by ANY apply caller) carries no evidence
+      // the day's data is gone: the cached series must survive and
+      // the freshness stamp must stay at the real load's time.
+      final data = HeartDataCache.instance.apply('2026-10-18', const [],
+          now: DateTime(2026, 10, 18, 10), ownerEmail: 'a@b.c');
+      expect(data.samples, hasLength(1));
+      expect(
+          HeartDataCache.instance.snapshot('2026-10-18')?.samples,
+          hasLength(1));
+      expect(HeartDataCache.instance.lastSyncAt, t0);
+    });
+
     test('successful apply stamps lastSyncAt (unchanged behavior)', () {
       final t0 = DateTime(2026, 10, 18, 9);
       HeartDataCache.instance.apply(
@@ -606,6 +643,56 @@ void main() {
       );
       // And the failed load did not re-stamp the sync time.
       expect(HeartDataCache.instance.lastSyncAt, seededAt);
+    });
+
+    testWidgets(
+        'B-01: partial read with EMPTY samples does not overwrite the '
+        'cached series (memory or disk), does not re-stamp freshness, '
+        'and the partial banner still shows', (tester) async {
+      HeartDataCache.instance.debugReset();
+      final store = <String, String>{};
+      HeartDataCache.instance.debugSetStore(
+        read: (k) async => store[k],
+        write: (k, v) async => store[k] = v,
+        delete: (k) async => store.remove(k),
+      );
+      // Pre-seed + persist a real series for today.
+      final seededAt = DateTime.now().subtract(const Duration(hours: 2));
+      HeartDataCache.instance.apply(
+        todayStr(),
+        [HrSample(timeMs: todayMs(8), bpm: 80)],
+        now: seededAt,
+        ownerEmail: 'a@b.c',
+      );
+      await HeartDataCache.instance.persist();
+      final seededBlob = store[HeartDataCache.storageKey];
+      expect(seededBlob, contains('"bpm":80'));
+
+      await tester.pumpWidget(MaterialApp(
+        home: HeartScreen(
+          email: 'a@b.c',
+          healthConnectService: PartialEmptyFakeHc(),
+          cache: HeartDataCache.instance,
+        ),
+      ));
+      await tester.pumpAndSettle();
+      // The partial banner is unchanged (existing copy, existing
+      // behavior — B-01 does not touch it).
+      expect(
+        find.textContaining(
+            '[HR_SAMPLES_PARTIAL] Some heart rate data could not be read and may be missing. (IllegalStateException)'),
+        findsOneWidget,
+      );
+      // Memory: the cached series survives the partial-empty read.
+      expect(
+          HeartDataCache.instance.snapshot(todayStr())?.samples,
+          hasLength(1));
+      // Freshness: no re-stamp — the sync time is still the seeded
+      // load's, not "just now".
+      expect(HeartDataCache.instance.lastSyncAt, seededAt);
+      // Disk: the persisted blob still holds the real series.
+      expect(store[HeartDataCache.storageKey], seededBlob);
+      expect(store[HeartDataCache.storageKey], contains('"bpm":80'));
     });
   });
 

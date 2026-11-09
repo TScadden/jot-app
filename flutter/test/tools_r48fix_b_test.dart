@@ -76,12 +76,21 @@ class _SleepFixHc extends HealthConnectService {
 // ── Key Metrics fakes ───────────────────────────────────────────────
 
 class _KmFixHc extends HealthConnectService {
-  _KmFixHc({this.failExportHistory = false, this.emptyHistory = false});
+  _KmFixHc(
+      {this.failExportHistory = false,
+      this.emptyHistory = false,
+      this.partialHrYesterdayFirst = false});
 
   /// When true, the 30-day (export-range) history reads fail the way
   /// the real service reports a channel failure: empty result plus a
   /// recorded error code.
   final bool failExportHistory;
+
+  /// B-01: when true, yesterday's FIRST HR-sample read is PARTIAL —
+  /// it returns real samples AND records a partial error code (some
+  /// chunks failed). Later reads are clean.
+  final bool partialHrYesterdayFirst;
+  final Set<String> _samplePartialOnce = {};
 
   /// When true, every history read cleanly returns nothing (a
   /// genuinely-empty history — no error code recorded).
@@ -101,9 +110,22 @@ class _KmFixHc extends HealthConnectService {
   @override
   Future<List<HrSample>> readHeartRateSamples(String dateStr) async {
     sampleCalls[dateStr] = (sampleCalls[dateStr] ?? 0) + 1;
+    // B-01: yesterday's first read can instead be partial with real
+    // data — samples arrive, but a partial code is recorded. This
+    // branch runs BEFORE (and consumes) the fail-once branch below,
+    // so the retry after a partial read is a clean read.
+    final partialThisRead = partialHrYesterdayFirst &&
+        dateStr == _yesterday &&
+        _samplePartialOnce.add(dateStr);
+    if (partialThisRead) {
+      _sampleFailedOnce.add(dateStr);
+      lastPartialErrorCode = 'HR_SAMPLES_PARTIAL';
+    }
     // Yesterday's FIRST read fails (recorded error code, empty
     // result); the retry succeeds — the F5(b) cache scenario.
-    if (dateStr == _yesterday && _sampleFailedOnce.add(dateStr)) {
+    if (!partialThisRead &&
+        dateStr == _yesterday &&
+        _sampleFailedOnce.add(dateStr)) {
       lastReadErrorCode = 'READ_FAILED';
       return const [];
     }
@@ -398,6 +420,43 @@ void main() {
 
       // Back to today, then yesterday again: a cached fake-empty
       // would leave the call count at 1 and keep the tile empty.
+      await tester.tap(find.text('${DateTime.now().day}'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('${yesterday.day}'));
+      await tester.pumpAndSettle();
+      expect(hc.sampleCalls[yesterdayKey], 2);
+      expect(find.text('80'), findsOneWidget);
+    });
+
+    testWidgets(
+        'B-01: re-selecting a date after a PARTIAL HR read re-reads '
+        'instead of serving the per-date session cache', (tester) async {
+      _bigSurface(tester);
+      final hc = _KmFixHc(partialHrYesterdayFirst: true);
+      await _pump(
+        tester,
+        KeyMetricsScreen(
+          backend: _backend({
+            'profile': {'todayAvgHr': '78', 'weightKg': '70'},
+          }),
+          healthConnect: hc,
+        ),
+      );
+      final yesterday = DateTime.now().subtract(const Duration(days: 1));
+      final yesterdayKey = _key(yesterday);
+
+      // First selection of yesterday: the HR read is partial (real
+      // samples arrived, chunks missing). The partial data still
+      // displays — but the result must NOT be admitted to the
+      // per-date session cache as if it were a clean read.
+      await tester.tap(find.text('${yesterday.day}'));
+      await tester.pumpAndSettle();
+      expect(hc.sampleCalls[yesterdayKey], 1);
+      expect(find.text('80'), findsOneWidget);
+
+      // Back to today, then yesterday again: a cached partial result
+      // would leave the call count at 1. A re-read proves the
+      // partial result was never admitted.
       await tester.tap(find.text('${DateTime.now().day}'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('${yesterday.day}'));

@@ -198,9 +198,18 @@ class _HeartScreenState extends State<HeartScreen> {
       // and must not be persisted as a fresh blob. A partial read
       // delivered real data and counts as a sync.
       final failed = errCode != null;
+      // B-01: a partial read that collected NOTHING is not a sync
+      // either — passing it as succeeded would let the empty series
+      // overwrite the cached series for the date and stamp it fresh
+      // (HeartDataCache.apply also refuses an empty overwrite, so
+      // the guard holds even if a caller forgets this one). A
+      // partial read WITH samples still counts as a sync, exactly
+      // as before, and the partial banner below still shows.
+      final partialEmpty = partialCode != null && raw.isEmpty;
+      final countsAsSync = !failed && !partialEmpty;
       final data = _cache.apply(_dateStr, raw,
-          ownerEmail: widget.email, succeeded: !failed);
-      if (!failed) unawaited(_cache.persist());
+          ownerEmail: widget.email, succeeded: countsAsSync);
+      if (countsAsSync) unawaited(_cache.persist());
       setState(() {
         _data = data;
         _lastSyncAt = _cache.lastSyncAt;
