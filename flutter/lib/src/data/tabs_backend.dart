@@ -1288,9 +1288,20 @@ class TabsBackend {
   /// `fetchIsUnlimited` (round 18) already reads the pull's
   /// `isUnlimited`, which the server computes as
   /// `isAdmin || users.is_unlimited` — so admins are covered.
-  Future<({bool isUnlimited, bool isAdmin})> fetchMembership() async {
+  Future<({bool isUnlimited, bool isAdmin})> fetchMembership() async =>
+      await fetchMembershipOrNull() ??
+      (isUnlimited: false, isAdmin: false);
+
+  /// Nullable variant of [fetchMembership] (the
+  /// [fetchHabitsOrNull] house idiom): returns null when the
+  /// fetch itself failed (no usable sync pull), and the parsed
+  /// membership only when the server actually answered. Callers
+  /// that must tell "membership unknown" apart from "known
+  /// non-member" — the Patterns tri-state gate (H1-05P) — use
+  /// this so a failed fetch never masquerades as a non-member.
+  Future<({bool isUnlimited, bool isAdmin})?> fetchMembershipOrNull() async {
     final body = await fetchSyncPull();
-    if (body == null) return (isUnlimited: false, isAdmin: false);
+    if (body == null) return null;
     final isAdmin = body['isAdmin'] == true;
     final isUnlimited = body['isUnlimited'] == true || isAdmin;
     return (isUnlimited: isUnlimited, isAdmin: isAdmin);
@@ -1467,9 +1478,11 @@ class TabsBackend {
   /// `POST /api/sync/medication-events` with `{"events": [...]}`
   /// (spec §2.6). Insert-only server-side (ON CONFLICT DO
   /// NOTHING on the client-supplied event id — replays are
-  /// harmless). True on HTTP 200; callers emit best-effort after
-  /// a successful profile push and swallow failures (see
-  /// `medication_change_events.dart`).
+  /// harmless). True on HTTP 200; callers emit after a
+  /// successful profile push through the durable H1-07 outbox,
+  /// which keeps the events queued whenever this returns false
+  /// (see `medication_change_events.dart` /
+  /// `medication_change_event_outbox.dart`).
   Future<bool> postMedicationChangeEvents(
       List<MedicationChangeEvent> events) {
     return _postJson('/api/sync/medication-events', {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -140,6 +141,12 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
   void initState() {
     super.initState();
     _backend = widget.backend ?? TabsBackend();
+    // H1-07 flush trigger: opening the Medications screen is a
+    // standard retry opportunity for medication change events
+    // staged by an earlier failed POST (see
+    // MedicationChangeEventOutbox). Fire-and-forget; the helper
+    // never throws and an empty queue makes no call.
+    unawaited(flushMedicationChangeEvents(_backend));
     _load();
   }
 

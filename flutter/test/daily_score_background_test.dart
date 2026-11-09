@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/daily_score.dart';
 import 'package:tabs_lab/src/data/daily_score_background.dart';
@@ -160,6 +162,7 @@ DailyScoreBackgroundRunner _runner({
   bool grant = true,
   bool channel = true,
   HealthHistorySync? sync,
+  Future<String?> Function()? readSessionEmail,
 }) {
   final effectiveSync =
       sync ?? HealthHistorySync.withDeps(hc: hc, store: store, now: () => _now);
@@ -172,6 +175,7 @@ DailyScoreBackgroundRunner _runner({
         DailyScoreEngine(store: store).computeMissingScores(beforeDate: before),
     notifier: notifier,
     now: () => _now,
+    readSessionEmail: readSessionEmail,
   );
 }
 
@@ -429,6 +433,134 @@ void main() {
       expect(outcome.newlyScoredDates, isEmpty);
       expect(outcome.notifiedDate, isNull);
       expect(notifier.calls, isEmpty);
+    });
+  });
+
+  // H1-04 part A — the background warm used to run WITHOUT the
+  // session email: a populated blob loaded with ownerEmail null,
+  // the run's persists re-stamped that null over the blob, and
+  // the next foreground warm (with the session email) treated
+  // the null-owner populated blob as foreign and CLEARED it —
+  // the user's long history + Daily Scores wiped. The runner now
+  // resolves the stored session email before warming, exactly
+  // like the foreground bootstrap in main().
+  group('background warm owner binding (H1-04)', () {
+    late _FakeStore fake;
+    late _BgFakeHc hc;
+    late _FakeNotifier notifier;
+
+    setUp(() {
+      fake = _FakeStore();
+      hc = _BgFakeHc();
+      notifier = _FakeNotifier();
+    });
+
+    /// Seeds a populated blob on disk: 28 complete baseline days
+    /// plus a sleep-only yesterday, all unscored. When [owner] is
+    /// non-null the blob is stamped with it (the healthy shape);
+    /// when null the blob carries ownerEmail: null (the legacy
+    /// unowned shape).
+    Future<void> seedPopulatedBlob({String? owner}) async {
+      final seed = _fakeStore(fake);
+      await seed.mergeRefresh([
+        for (final d in _priorDates('2026-10-19', 28))
+          DailyBiometrics(
+              date: d, sleepMinutes: 480, restingHrBpm: 60, hrvRmssdMs: 40),
+        const DailyBiometrics(date: '2026-10-19', sleepMinutes: 420),
+      ]);
+      if (owner != null) seed.bindToAccount(owner);
+      await seed.persist();
+      final blob = jsonDecode(fake.values[HealthHistoryStore.storageKey]!)
+          as Map<String, dynamic>;
+      expect(blob['ownerEmail'], owner);
+      expect((blob['days'] as Map).length, 29);
+    }
+
+    test(
+        '(a) session email resolved before the warm: the run '
+        'scores + persists under the owner stamp, and the '
+        'populated blob survives the subsequent foreground warm '
+        'with every record intact', () async {
+      await seedPopulatedBlob(owner: 'bg@example.com');
+
+      // Background isolate: a FRESH store over the same disk.
+      final bgStore = _fakeStore(fake);
+      final outcome = await _runner(
+        store: bgStore,
+        hc: hc,
+        notifier: notifier,
+        channel: false, // store-only fallback: scores past days
+        readSessionEmail: () async => 'bg@example.com',
+      ).run();
+      expect(outcome.skippedReason, isNull);
+      expect(outcome.newlyScoredDates, contains('2026-10-19'));
+      expect((await bgStore.readAll())['2026-10-19']!.dailyScore,
+          isNotNull);
+
+      // The run's persist kept the owner stamp — no null
+      // re-stamp over the populated blob.
+      final blob = jsonDecode(fake.values[HealthHistoryStore.storageKey]!)
+          as Map<String, dynamic>;
+      expect(blob['ownerEmail'], 'bg@example.com');
+      expect((blob['days'] as Map).length, 29);
+
+      // Foreground cold start with the same session email: the
+      // fail-closed warm must NOT drop the blob — all 29 records
+      // survive, including the background-written score.
+      final fg = _fakeStore(fake);
+      await fg.warmFromDisk(currentEmail: 'bg@example.com');
+      expect(fg.ownerEmail, 'bg@example.com');
+      expect(await fg.dayCount(), 29);
+      final all = await fg.readAll();
+      expect(all['2026-10-19']!.dailyScore, isNotNull);
+      expect(all['2026-10-19']!.sleepMinutes, 420);
+      expect(all['2026-09-21']!.restingHrBpm, 60);
+    });
+
+    test(
+        '(d) unreadable session email + unowned populated blob: '
+        'the run is owner-unverified and performs NO writes — '
+        'the disk blob stays byte-identical', () async {
+      await seedPopulatedBlob(owner: null);
+      final blobBefore = fake.values[HealthHistoryStore.storageKey];
+
+      final bgStore = _fakeStore(fake);
+      final outcome = await _runner(
+        store: bgStore,
+        hc: hc,
+        notifier: notifier,
+        channel: false,
+        readSessionEmail: () async =>
+            throw StateError('keystore unavailable'),
+      ).run();
+      expect(outcome.skippedReason, 'owner-unverified');
+      expect(outcome.newlyScoredDates, isEmpty);
+      expect(outcome.captureAttempted, isFalse);
+      expect(notifier.calls, isEmpty);
+      // No owner-null re-stamp, no score persist, nothing: the
+      // exact bytes the run found are the bytes it leaves.
+      expect(fake.values[HealthHistoryStore.storageKey], blobBefore);
+    });
+
+    test(
+        '(d2) NO session email + blob owned by a recorded owner: '
+        'the owner comes from the blob itself, so the run '
+        'proceeds and persists keep that stamp', () async {
+      await seedPopulatedBlob(owner: 'bg@example.com');
+
+      final bgStore = _fakeStore(fake);
+      final outcome = await _runner(
+        store: bgStore,
+        hc: hc,
+        notifier: notifier,
+        channel: false,
+        readSessionEmail: () async => null, // no stored session
+      ).run();
+      expect(outcome.skippedReason, isNull);
+      expect(outcome.newlyScoredDates, contains('2026-10-19'));
+      final blob = jsonDecode(fake.values[HealthHistoryStore.storageKey]!)
+          as Map<String, dynamic>;
+      expect(blob['ownerEmail'], 'bg@example.com');
     });
   });
 
