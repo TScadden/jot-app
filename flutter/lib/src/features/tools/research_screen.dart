@@ -86,22 +86,26 @@ class ResearchEntry {
 
 /// Loads every `assets/research/*.json` entry via [bundle].
 /// Malformed files are skipped; never throws.
+///
+/// The asset list comes from [AssetManifest.loadFromAssetBundle] —
+/// the framework's manifest API. Production bundles ship only
+/// `AssetManifest.bin` (there is no `AssetManifest.json` in a built
+/// app), so reading the JSON manifest by name silently yielded an
+/// empty library on device; widget tests never caught it because
+/// their fake bundles served a synthetic JSON manifest.
 Future<List<ResearchEntry>> loadResearchEntries(AssetBundle bundle) async {
   final out = <ResearchEntry>[];
   try {
-    final manifestRaw = await bundle.loadString('AssetManifest.json');
-    final manifest = jsonDecode(manifestRaw);
-    if (manifest is! Map) return out;
-    final files = manifest.keys
+    final manifest = await AssetManifest.loadFromAssetBundle(bundle);
+    final files = manifest
+        .listAssets()
         .where((k) =>
-            k is String &&
-            k.startsWith('assets/research/') &&
-            k.endsWith('.json'))
+            k.startsWith('assets/research/') && k.endsWith('.json'))
         .toList()
       ..sort();
     for (final path in files) {
       try {
-        final raw = await bundle.loadString(path as String);
+        final raw = await bundle.loadString(path);
         final decoded = jsonDecode(raw);
         if (decoded is Map<String, dynamic>) {
           final entry = ResearchEntry.fromJson(decoded);

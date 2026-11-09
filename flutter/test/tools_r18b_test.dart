@@ -437,11 +437,6 @@ void main() {
   group('loadResearchEntries', () {
     test('loads entries from a fake asset bundle, skips malformed', () async {
       final bundle = _FakeBundle({
-        'AssetManifest.json': jsonEncode({
-          'assets/research/a.json': {},
-          'assets/research/broken.json': {},
-          'assets/images/other.png': {},
-        }),
         'assets/research/a.json': jsonEncode({
           'id': 'a',
           'title': 'Entry A',
@@ -453,6 +448,7 @@ void main() {
           'conditionTags': ['POTS'],
         }),
         'assets/research/broken.json': 'this is not json',
+        'assets/images/other.png': '',
       });
       final entries = await loadResearchEntries(bundle);
       expect(entries.length, 1);
@@ -461,6 +457,11 @@ void main() {
 
     test('unreadable manifest → empty library, never throws', () async {
       final entries = await loadResearchEntries(_FakeBundle({}));
+      expect(entries, isEmpty);
+    });
+
+    test('throwing manifest load → empty library, never throws', () async {
+      final entries = await loadResearchEntries(_ThrowingBundle());
       expect(entries, isEmpty);
     });
   });
@@ -552,14 +553,40 @@ class _FakeHcWithStages extends HealthConnectService {
 }
 
 /// In-memory AssetBundle for research tests.
+/// Bundle whose every load throws — exercises the loader's
+/// manifest-failure catch (the branch the empty-manifest fake
+/// cannot reach).
+class _ThrowingBundle extends AssetBundle {
+  @override
+  Future<ByteData> load(String key) => throw FlutterError('boom');
+
+  @override
+  Future<String> loadString(String key, {bool cache = true}) =>
+      throw FlutterError('boom');
+}
+
 class _FakeBundle extends AssetBundle {
   _FakeBundle(this.strings);
 
   final Map<String, String> strings;
 
   @override
-  Future<ByteData> load(String key) =>
-      throw UnsupportedError('not needed');
+  Future<ByteData> load(String key) async {
+    if (key == 'AssetManifest.bin') {
+      // Serve a real binary manifest — the format production bundles
+      // ship. (AssetManifest.json does not exist in a built app; the
+      // old fake served one, which hid the empty-library bug.)
+      final manifest = <String, Object?>{
+        for (final k in strings.keys)
+          if (k.startsWith('assets/'))
+            k: <Map<String, Object?>>[
+              <String, Object?>{'asset': k},
+            ],
+      };
+      return const StandardMessageCodec().encodeMessage(manifest)!;
+    }
+    throw UnsupportedError('not needed');
+  }
 
   @override
   Future<String> loadString(String key, {bool cache = true}) async {

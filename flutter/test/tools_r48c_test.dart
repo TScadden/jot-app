@@ -1213,9 +1213,7 @@ void main() {
         tester,
         ResearchToolScreen(
           backend: backend,
-          bundle: _FakeBundle({
-            'AssetManifest.json': '{}',
-          }),
+          bundle: _FakeBundle({}),
         ),
       );
       expect(find.text('No conditions saved yet'), findsOneWidget);
@@ -1252,9 +1250,6 @@ void main() {
         ResearchToolScreen(
           backend: backend,
           bundle: _FakeBundle({
-            'AssetManifest.json': jsonEncode({
-              'assets/research/pots_fluids_salt.json': <String>[],
-            }),
             'assets/research/pots_fluids_salt.json': entry,
           }),
         ),
@@ -1278,7 +1273,22 @@ class _FakeBundle extends AssetBundle {
   final Map<String, String> strings;
 
   @override
-  Future<ByteData> load(String key) => throw UnsupportedError('not needed');
+  Future<ByteData> load(String key) async {
+    if (key == 'AssetManifest.bin') {
+      // Serve a real binary manifest — the format production bundles
+      // ship. (AssetManifest.json does not exist in a built app; the
+      // old fake served one, which hid the empty-library bug.)
+      final manifest = <String, Object?>{
+        for (final k in strings.keys)
+          if (k.startsWith('assets/'))
+            k: <Map<String, Object?>>[
+              <String, Object?>{'asset': k},
+            ],
+      };
+      return const StandardMessageCodec().encodeMessage(manifest)!;
+    }
+    throw UnsupportedError('not needed');
+  }
 
   @override
   Future<String> loadString(String key, {bool cache = true}) async {
