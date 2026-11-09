@@ -1,0 +1,20 @@
+{
+  "conditionTags": [
+    "Chronic Obstructive Pulmonary Disease (COPD)"
+  ],
+  "detail": "The National Heart, Lung, and Blood Institute (NHLBI) describes COPD treatment as aimed at relieving symptoms, slowing the progress of the disease, and helping people stay more active, while stating that COPD has no cure. Quitting smoking is presented in the sources as the most important step in treating COPD, alongside avoiding lung irritants, recommended vaccinations, and pulmonary rehabilitation, a broad program that can include exercise training, disease management training, and nutrition and psychological counseling.\n\nMedicine classes clinicians may use include bronchodilators, which relax the muscles around the airways, in short-acting forms used when needed and long-acting forms used daily, and inhaled corticosteroids, sometimes combined with bronchodilators when symptoms are more severe or flare often. NHLBI notes that oxygen therapy is described for severe COPD with low blood oxygen levels, and that surgery, including procedures for emphysema such as bullectomy and lung volume reduction surgery, is usually a last resort for severe symptoms that have not improved with medicines.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about COPD treatment and pulmonary rehabilitation.",
+  "id": "copd_management",
+  "sourceHandle": "",
+  "sourceName": "National Heart, Lung, and Blood Institute",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://www.nhlbi.nih.gov/health/copd/treatment",
+  "sourceVideoTitle": "",
+  "summary": "NHLBI outlines COPD treatment as smoking cessation, bronchodilator and inhaled corticosteroid classes, pulmonary rehabilitation, and vaccinations, with oxygen therapy for severe disease and surgery usually reserved as a last resort.",
+  "takeaways": [
+    "quitting smoking is described as the most important step",
+    "medicine classes include bronchodilators and inhaled steroids",
+    "never start, stop, or change medicines without your doctor"
+  ],
+  "title": "COPD: smoking cessation, inhaled medicines, and pulmonary rehabilitation",
+  "videoDurationSeconds": 0
+}

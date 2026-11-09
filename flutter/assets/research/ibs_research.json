@@ -1,0 +1,22 @@
+{
+  "conditionTags": [
+    "Irritable Bowel Syndrome (IBS-C / Constipation)",
+    "Irritable Bowel Syndrome (IBS-D / Diarrhea)",
+    "Irritable Bowel Syndrome (IBS-M / Mixed)"
+  ],
+  "detail": "NIDDK reports that it and other components of the National Institutes of Health conduct and support research into many diseases and conditions, including IBS, and that clinical trials are part of that research. Research topics listed in the sources include the relationship between the colon microbiome and IBS symptoms, genetic and neurological factors related to IBS, and the development of IBS after an acute gastrointestinal infection.\n\nAmong findings from NIDDK-funded research, the institute highlights a clinical trial in which a home-based version of cognitive behavioral therapy led to significant and lasting improvement in IBS symptoms, an example of research on gut-brain therapies rather than medicines alone. NIDDK describes federally funded studies that are open and recruiting through ClinicalTrials.gov, while noting that studies from industry, universities, and individuals are not reviewed by the NIH, which cannot ensure they are safe. Participation in the sources is presented as a voluntary research decision made with a clinician.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about irritable bowel syndrome research and clinical trials.",
+  "id": "ibs_research",
+  "sourceHandle": "",
+  "sourceName": "National Institute of Diabetes and Digestive and Kidney Diseases",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://www.niddk.nih.gov/health-information/digestive-diseases/irritable-bowel-syndrome/clinical-trials",
+  "sourceVideoTitle": "",
+  "summary": "NIDDK describes IBS research and clinical trials studying the colon microbiome, genetic and neurological factors, and post-infection IBS, highlighting an NIDDK-funded trial in which home-based cognitive behavioral therapy produced lasting symptom improvement.",
+  "takeaways": [
+    "trials study the microbiome, genetics, and gut-brain factors",
+    "home-based cognitive behavioral therapy improved symptoms in a trial",
+    "research participation is optional; talk to your doctor about studies"
+  ],
+  "title": "Irritable bowel syndrome: trials on the microbiome and gut-brain links",
+  "videoDurationSeconds": 0
+}

@@ -1,0 +1,20 @@
+{
+  "conditionTags": [
+    "Chronic Lymes Disease / PTLDS"
+  ],
+  "detail": "NIAID describes post-treatment Lyme disease syndrome (PTLDS) as a condition in which symptoms such as fatigue, pain, and joint and muscle aches persist even after treatment for Lyme disease. The institute notes that the broader term chronic Lyme disease has been used for different illnesses, including symptoms in people with no evidence of current or past Borrelia infection, and that many experts do not support its use because it lacks a clearly defined clinical definition.\n\nOn treatment, NIAID reports that in people with non-specific symptoms after Lyme treatment and no evidence of active infection, studies have shown that more antibiotic therapy is not helpful and can be dangerous. The institute summarizes three placebo-controlled clinical trials it funded on prolonged antibiotic therapy for PTLDS: the trials found no benefit from extended treatment compared with placebo, and a later trial in the Netherlands reached a similar conclusion. NIAID presents care for PTLDS as an area without a proven prolonged-antibiotic approach.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about managing prolonged symptoms after Lyme disease treatment.",
+  "id": "lyme_ptlds_management",
+  "sourceHandle": "",
+  "sourceName": "National Institute of Allergy and Infectious Diseases",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://www.niaid.nih.gov/diseases-conditions/chronic-lyme-disease",
+  "sourceVideoTitle": "",
+  "summary": "NIAID describes PTLDS care in light of placebo-controlled trials finding no benefit from prolonged antibiotic therapy, and notes that additional antibiotics in people without evidence of active infection are not helpful and can be dangerous.",
+  "takeaways": [
+    "PTLDS describes persistent fatigue, pain, and aches after Lyme treatment",
+    "placebo-controlled trials found no benefit from prolonged antibiotics",
+    "never start, stop, or change medicines without your doctor"
+  ],
+  "title": "Lyme Disease (Post-Treatment Lyme Disease Syndrome): what trials show about prolonged antibiotics",
+  "videoDurationSeconds": 0
+}

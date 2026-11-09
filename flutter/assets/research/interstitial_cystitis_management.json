@@ -1,0 +1,20 @@
+{
+  "conditionTags": [
+    "Interstitial Cystitis (Painful Bladder Syndrome)"
+  ],
+  "detail": "NIDDK describes treatment of interstitial cystitis as individualized, with clinicians working with each person to find what reduces or stops symptoms. The care plan the institute outlines can include lifestyle changes, bladder training, physical therapy, medicines, neuromodulation, and bladder procedures, with surgery described as rare and reserved for severe pain that persists after other options. Sources note that a symptom scale may be used to track how symptoms change while a treatment is tried.\n\nNIDDK describes bladder procedures that can include bladder instillation, bladder stretching, and treatment of Hunner lesions, a type of IC finding, and notes that some options discussed in the sources are not FDA-approved specifically for IC. The institute also notes that all medicines, including over-the-counter medicines, can cause side effects, which is part of why treatment choices are presented as clinician-guided.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about managing interstitial cystitis and bladder pain syndrome.",
+  "id": "interstitial_cystitis_management",
+  "sourceHandle": "",
+  "sourceName": "National Institute of Diabetes and Digestive and Kidney Diseases",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://www.niddk.nih.gov/health-information/urologic-diseases/interstitial-cystitis-bladder-pain-syndrome/treatment",
+  "sourceVideoTitle": "",
+  "summary": "NIDDK describes IC treatment as individualized and stepwise, spanning lifestyle changes, bladder training, physical therapy, medicines, neuromodulation, and bladder procedures, with surgery rare and reserved for severe persistent pain.",
+  "takeaways": [
+    "treatment is individualized and built around symptom response",
+    "options range from bladder training and physical therapy to procedures",
+    "never start, stop, or change medicines without your doctor"
+  ],
+  "title": "Interstitial Cystitis / Bladder Pain Syndrome: stepwise treatment for bladder pain",
+  "videoDurationSeconds": 0
+}

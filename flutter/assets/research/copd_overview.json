@@ -1,0 +1,20 @@
+{
+  "conditionTags": [
+    "Chronic Obstructive Pulmonary Disease (COPD)"
+  ],
+  "detail": "The National Heart, Lung, and Blood Institute (NHLBI) describes COPD, or chronic obstructive pulmonary disease, as a condition caused by damage to the airways or other parts of the lung. That damage leads to inflammation and other problems that block airflow and make breathing harder. NHLBI notes that COPD is progressive, that symptoms often develop slowly and worsen over time, and that the condition affects more than 14 million adults in the United States, with many others undiagnosed.\n\nThe term COPD refers to two main conditions, emphysema, in which the walls between the lung's air sacs are damaged, and chronic bronchitis, in which repeated irritation and inflammation of the airway lining produce large amounts of mucus; most people with COPD have a mixture of both. Symptoms can include an ongoing cough that produces mucus, shortness of breath, and chest tightness. NHLBI identifies cigarette smoking as the main cause in the United States, with long-term exposure to air pollution, chemical fumes, dust, and secondhand smoke also described, along with a genetic condition called alpha-1 antitrypsin deficiency. Diagnosis usually centers on history and lung function testing, especially spirometry.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about COPD symptoms and lung function testing.",
+  "id": "copd_overview",
+  "sourceHandle": "",
+  "sourceName": "National Heart, Lung, and Blood Institute",
+  "sourcePlatform": "Article",
+  "sourceUrl": "https://www.nhlbi.nih.gov/health/copd",
+  "sourceVideoTitle": "",
+  "summary": "NHLBI describes COPD as progressive lung damage that blocks airflow, covering emphysema and chronic bronchitis, most often caused by smoking, with symptoms that can include mucus-producing cough and shortness of breath.",
+  "takeaways": [
+    "copd covers emphysema and chronic bronchitis, often together",
+    "smoking is the main cause described in the united states",
+    "diagnosis usually centers on history and spirometry"
+  ],
+  "title": "COPD: damaged airways, emphysema, and chronic bronchitis",
+  "videoDurationSeconds": 0
+}
