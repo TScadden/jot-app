@@ -245,32 +245,64 @@ class KnowledgeExtractionStore {
     _failed = {};
     _empty = {};
     _owner = owner;
-    _loaded = true;
-    if (owner == null) return;
+    // C-05b (PR #44 pattern): _loaded is set ONLY once a disk read
+    // has SUCCEEDED (or there is provably nothing to read). Setting
+    // it before the await conflated a storage throw with an empty
+    // cache — the store then never re-read, and _persist (now gated
+    // on _loaded) overwrote the on-disk blob from the empty maps.
+    _loaded = false;
+    if (owner == null) {
+      _loaded = true;
+      return;
+    }
+    String? raw;
     try {
-      final raw = await _read(storageKey);
-      // An external write landed while the read was in flight
-      // (invalidateMirror bumped the generation): the blob just
-      // read predates it. Drop the mirror back to unloaded so the
-      // next load re-reads the current disk state, and mutate
-      // nothing — in particular, never run the owner-wipe below
-      // against a blob that may be the freshly imported one.
-      if (generationAtStart != _generation) {
-        _texts = {};
-        _failed = {};
-        _empty = {};
-        _owner = null;
-        _loaded = false;
+      raw = await _read(storageKey);
+    } catch (_) {
+      // A storage READ failure is neither missing nor corrupt: the
+      // on-disk blob may be perfectly valid. Leave the store
+      // unloaded and unowned so the next load retries the read and
+      // _persist stays gated off until one succeeds.
+      _texts = {};
+      _failed = {};
+      _empty = {};
+      _owner = null;
+      _loaded = false;
+      return;
+    }
+    // An external write landed while the read was in flight
+    // (invalidateMirror bumped the generation): the blob just
+    // read predates it. Drop the mirror back to unloaded so the
+    // next load re-reads the current disk state, and mutate
+    // nothing — in particular, never run the owner-wipe below
+    // against a blob that may be the freshly imported one.
+    if (generationAtStart != _generation) {
+      _texts = {};
+      _failed = {};
+      _empty = {};
+      _owner = null;
+      _loaded = false;
+      return;
+    }
+    if (raw == null || raw.isEmpty) {
+      _loaded = true;
+      return;
+    }
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) {
+        // Read succeeded; the blob is provably unusable (not a JSON
+        // object) — same as corrupt below: an authoritative empty
+        // cache for this owner.
+        _loaded = true;
         return;
       }
-      if (raw == null || raw.isEmpty) return;
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map<String, dynamic>) return;
       if (_normEmail(decoded['owner'] as String?) != owner) {
         // Another account's extracted text: wipe, never surface.
         try {
           await _delete(storageKey);
         } catch (_) {}
+        _loaded = true;
         return;
       }
       final texts = decoded['texts'];
@@ -303,16 +335,29 @@ class KnowledgeExtractionStore {
           }
         }
       }
+      _loaded = true;
     } catch (_) {
-      // Unreadable blob: behave as an empty cache (extractions will
-      // backfill from the server file data).
+      // Unreadable (corrupt) blob: behave as an empty cache
+      // (extractions will backfill from the server file data). The
+      // read itself SUCCEEDED, so unlike the read-throw path above
+      // this is an authoritative empty state: the store is loaded
+      // for this owner and _persist may replace the unusable blob.
       _texts = {};
       _failed = {};
       _empty = {};
+      _loaded = true;
     }
   }
 
   Future<void> _persist() async {
+    // C-05b (PR #44 persist gate, health_history_store.dart): a
+    // no-op until a disk load has SUCCEEDED in this session. After
+    // a failed load the in-memory maps are an empty-looking image
+    // over a possibly valid on-disk blob, and writing them would
+    // erase every cached extraction and local-only user edit.
+    // Mutations in that window still update memory for the session;
+    // they simply never reach disk until a load succeeds.
+    if (!_loaded) return;
     if (_owner == null) return;
     try {
       await _write(
