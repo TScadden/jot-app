@@ -84,6 +84,7 @@ import 'health_connect_service.dart';
 import 'health_history_store.dart';
 import 'health_history_sync.dart';
 import 'notification_service.dart';
+import 'session_store.dart';
 
 /// yyyy-MM-dd in local time — the store's date format (same shape
 /// as health_history_sync's private formatter).
@@ -224,8 +225,10 @@ class DailyScoreBackgroundOutcome {
   /// The day the single notification named, when one was posted.
   final String? notifiedDate;
 
-  /// Why the run stopped early, when it did: 'grant-absent' or
-  /// 'error'. Null for a full run.
+  /// Why the run stopped early, when it did: 'grant-absent',
+  /// 'owner-unverified' (H1-04: no session email could be
+  /// resolved and the store's owner state is unverified — the
+  /// run wrote nothing), or 'error'. Null for a full run.
   final String? skippedReason;
 
   const DailyScoreBackgroundOutcome({
@@ -403,6 +406,12 @@ class DailyScoreBackgroundRunner {
   final DailyScoreReadyNotifier _notifier;
   final DateTime Function() _now;
 
+  /// Resolves the stored session email for the account-bound
+  /// warm (H1-04 part A — the CorrelationRefresher seam shape).
+  /// Null in tests that do not exercise owner binding; production
+  /// wires [SessionStore.readEmail].
+  final Future<String?> Function() _readSessionEmail;
+
   factory DailyScoreBackgroundRunner({
     required HealthHistoryStore store,
     required Future<bool> Function() hasBackgroundAccess,
@@ -411,6 +420,7 @@ class DailyScoreBackgroundRunner {
     required Future<int> Function(String beforeDate) scorePastDays,
     required DailyScoreReadyNotifier notifier,
     DateTime Function()? now,
+    Future<String?> Function()? readSessionEmail,
   }) =>
       DailyScoreBackgroundRunner._(
         store,
@@ -420,6 +430,7 @@ class DailyScoreBackgroundRunner {
         scorePastDays,
         notifier,
         now ?? DateTime.now,
+        readSessionEmail ?? () async => null,
       );
 
   DailyScoreBackgroundRunner._(
@@ -430,6 +441,7 @@ class DailyScoreBackgroundRunner {
     this._scorePastDays,
     this._notifier,
     this._now,
+    this._readSessionEmail,
   );
 
   factory DailyScoreBackgroundRunner.production() {
@@ -460,6 +472,10 @@ class DailyScoreBackgroundRunner {
           DailyScoreEngine(store: store, scoreSync: DailyScoreSync.instance)
               .computeMissingScores(beforeDate: beforeDate),
       notifier: LocalDailyScoreReadyNotifier(),
+      // H1-04 part A — the background isolate resolves the stored
+      // session email exactly like the foreground bootstrap
+      // (main.dart) so its warm is account-bound.
+      readSessionEmail: () => SessionStore().readEmail(),
     );
   }
 
@@ -476,7 +492,45 @@ class DailyScoreBackgroundRunner {
   ///-facing surfaces stay foreground).
   Future<DailyScoreBackgroundOutcome> run() async {
     try {
-      await _store.warmFromDisk();
+      // H1-04 part A — resolve the stored session email BEFORE
+      // warming, mirroring the foreground bootstrap (main.dart:
+      // SessionStore().readEmail() then warmFromDisk(currentEmail:)).
+      // Warming unbound loaded a populated blob with ownerEmail
+      // null; this run's capture/score persists then re-stamped
+      // that null over the blob, and the next foreground warm
+      // treated the null-owner populated blob as foreign and
+      // CLEARED it (fail-closed) — history + scores wiped. An
+      // unreadable email resolves to null here, never an error.
+      String? sessionEmail;
+      try {
+        sessionEmail = await _readSessionEmail();
+      } catch (_) {
+        sessionEmail = null;
+      }
+      await _store.warmFromDisk(currentEmail: sessionEmail);
+      if (sessionEmail == null &&
+          (!_store.isWarmed || _store.warmLoadedUnownedData)) {
+        // Owner unverified, and this run must not write: either
+        // the warm could not complete (transient read failure —
+        // the blob's owner is unknowable this run; persist() is
+        // gated off store-side, but a mid-run warm retry inside
+        // the capture could still load the blob unbound), or the
+        // warm adopted a populated blob with NO recorded owner,
+        // whose data any persist would re-stamp ownerEmail: null
+        // over — the exact wipe chain above. Abort the run's
+        // writes entirely (no probe, no capture, no scoring):
+        // background wakes are opportunistic and frequent, so
+        // skipping one costs nothing and loses nothing. Design
+        // choice: aborting the run over a store-level persist
+        // block, because the capture/score paths interleave
+        // reads and writes through shared singletons — a single
+        // gate at the run's head is the least invasive shape
+        // that guarantees no null re-stamp, and it leaves every
+        // other warm/persist caller untouched.
+        return const DailyScoreBackgroundOutcome(
+          skippedReason: 'owner-unverified',
+        );
+      }
       // An empty store (fresh install, post-logout) is NOT an
       // early exit: the first-ever capture is exactly what fills
       // it, and every other path over an empty store is a no-op.

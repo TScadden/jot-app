@@ -592,6 +592,7 @@ class HealthHistoryStore {
     _captureDiagnostics.clear();
     _sleepTotalsRuleVersion = 1;
     _warmed = false;
+    _warmLoadedUnownedData = false;
   }
 
   final Map<String, DailyBiometrics> _days = {};
@@ -611,6 +612,30 @@ class HealthHistoryStore {
   /// All score metadata, keyed by date (unmodifiable).
   Map<String, DailyScoreMeta> get scoreMeta => Map.unmodifiable(_scoreMeta);
   bool _warmed = false;
+
+  /// Whether the most recent completed disk warm adopted a
+  /// populated blob whose owner could not be verified (the blob
+  /// recorded no owner and no session account was known at warm
+  /// time). Set at the end of the load path in [warmFromDisk];
+  /// read through [warmLoadedUnownedData].
+  bool _warmLoadedUnownedData = false;
+
+  /// Whether a warm from disk has completed in this isolate. A
+  /// transient storage read failure leaves this false (the warm
+  /// retries on the next [_ensureWarmed]) — see [warmFromDisk].
+  bool get isWarmed => _warmed;
+
+  /// True when the disk warm adopted populated data with no
+  /// verified owner and the store is still unbound with data.
+  /// Any [persist] from this state re-stamps `ownerEmail: null`
+  /// over that blob, and the next account-bound warm would drop
+  /// it as unowned-with-data (fail-closed) — so a caller that
+  /// cannot verify the owner (the background runner with an
+  /// unreadable session) must treat this state as read-only.
+  /// Binding an owner, or the data going away, clears it.
+  bool get warmLoadedUnownedData =>
+      _warmLoadedUnownedData && _ownerEmail == null && _days.isNotEmpty;
+
   int? _lastCaptureMs;
 
   /// Epoch ms of the last successful Health Connect capture
@@ -693,33 +718,50 @@ class HealthHistoryStore {
   /// When there is no usable blob to adopt (missing, corrupt, or
   /// empty), the store instead binds to [currentEmail] — the
   /// session-resume path's only binding opportunity (R70 fix D).
+  ///
+  /// A storage READ failure is neither missing nor corrupt (H1-04
+  /// part B): the warm does not complete — the store stays
+  /// unwarmed, binds nothing, and [persist] stays gated off — so a
+  /// transient failure can never be mistaken for an empty blob and
+  /// overwritten. The next [_ensureWarmed] retries the read.
   Future<void> warmFromDisk({String? currentEmail}) async {
     final expected = _normalizeEmail(currentEmail);
     if (_warmed) {
       if (currentEmail != null) await clearIfOwnerMismatch(currentEmail);
       return;
     }
+    String? raw;
+    try {
+      raw = await _read(storageKey);
+    } catch (_) {
+      // H1-04 part B — transient storage/transport failure. The
+      // on-disk blob may be perfectly valid; treating this like a
+      // corrupt blob (warmed, empty) would let the next capture's
+      // persist overwrite it with only the new window, erasing
+      // older history. Leave everything untouched and unwarmed.
+      return;
+    }
+    if (raw == null || raw.isEmpty) {
+      // R70 fix D — no blob exists to adopt, so there is no
+      // foreign-owned data to guard against: bind to the known
+      // session account (matching the empty-blob branch below).
+      // Without this, the session-resume path (which never calls
+      // the login/register callbacks) persists its first session's
+      // captures with ownerEmail: null, and the next cold start
+      // drops that unowned-but-populated blob in full.
+      if (expected != null) _ownerEmail = expected;
+      _sleepTotalsRuleVersion = 1;
+      _warmed = true;
+      return;
+    }
     Map<String, dynamic>? map;
     try {
-      final raw = await _read(storageKey);
-      if (raw == null || raw.isEmpty) {
-        // R70 fix D — no blob exists to adopt, so there is no
-        // foreign-owned data to guard against: bind to the known
-        // session account (matching the empty-blob branch below).
-        // Without this, the session-resume path (which never calls
-        // the login/register callbacks) persists its first session's
-        // captures with ownerEmail: null, and the next cold start
-        // drops that unowned-but-populated blob in full.
-        if (expected != null) _ownerEmail = expected;
-        _sleepTotalsRuleVersion = 1;
-        _warmed = true;
-        return;
-      }
       map = jsonDecode(raw) as Map<String, dynamic>;
     } catch (_) {
-      // R70 fix D — corrupt/unreadable blob: same as missing. No
-      // usable blob to adopt, so bind to the known session account
-      // instead of leaving the store unowned for its writes.
+      // R70 fix D — corrupt blob (undecodable, or not a JSON
+      // object): same as missing. The blob is provably unusable,
+      // so bind to the known session account instead of leaving
+      // the store unowned for its writes.
       if (expected != null) _ownerEmail = expected;
       _sleepTotalsRuleVersion = 1;
       _warmed = true;
@@ -792,6 +834,12 @@ class HealthHistoryStore {
     // normalized owner would otherwise overwrite the empty-blob
     // stamp above with null.
     if (expected != null) _ownerEmail = expected;
+    // H1-04 part A — record whether this warm adopted populated
+    // data with no verified owner (no session account known at
+    // warm time and the blob itself recorded none), so an
+    // owner-unverified caller can refuse to write over it (see
+    // [warmLoadedUnownedData]).
+    _warmLoadedUnownedData = _days.isNotEmpty && _ownerEmail == null;
     _warmed = true;
   }
 
@@ -800,7 +848,15 @@ class HealthHistoryStore {
   }
 
   /// Persists the current memory state. Never throws.
+  ///
+  /// H1-04 part B — a no-op until a warm has SUCCEEDED in this
+  /// isolate: after a transient storage read failure the store
+  /// holds an empty-looking memory image over a possibly valid
+  /// on-disk blob, and writing it would erase the blob's older
+  /// history. [clear] re-arms writes explicitly (it marks the
+  /// store warmed over an authoritative-empty memory).
   Future<void> persist() async {
+    if (!_warmed) return;
     try {
       final dates = _days.keys.toList()..sort();
       await _write(
