@@ -24,6 +24,7 @@ import 'package:tabs_lab/src/features/tools/sleep_screen.dart';
 import 'package:tabs_lab/src/features/tools/tips_tricks_screen.dart';
 import 'package:tabs_lab/src/features/tools/tool_placeholder_screen.dart';
 import 'package:tabs_lab/src/features/tools/trends_screen.dart';
+import 'package:tabs_lab/src/features/home/patterns_screen.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
@@ -70,7 +71,12 @@ const List<ToolTile> defaultToolTiles = [
   ToolTile('tips_and_tricks', 'Tips and Tricks', Icons.lightbulb, 'Master your data'),
   ToolTile('health_coach', 'Health Coach', Icons.question_mark, 'Personalized Advice'),
   ToolTile('key_metrics', 'Key Metrics', Icons.bar_chart, 'Your Body Data'),
-  ToolTile('trends', 'Trends', Icons.trending_up, 'Patterns over time'),
+  // Session #1 A0 — the Trends tile no longer promises Patterns:
+  // TrendsScreen is log volume / activity by hour / category focus
+  // (its Patterns section was removed in Round 20b). Patterns gets
+  // its own honest tile directly after it, opening PatternsScreen.
+  ToolTile('trends', 'Trends', Icons.trending_up, 'Log activity over time'),
+  ToolTile('patterns', 'Patterns', Icons.insights, 'How your days compare'),
   ToolTile('blood_pressure', 'Blood Pressure', Icons.favorite, 'Systolic & Diastolic'),
   ToolTile('food', 'Food', Icons.restaurant, 'Sensitivity Checker'),
   ToolTile('research', 'Research', Icons.menu_book, 'Health research library'),
@@ -271,6 +277,7 @@ class _ToolsScreenState extends State<ToolsScreen>
       'health_coach' => const HealthCoachScreen(),
       'key_metrics' => const KeyMetricsScreen(),
       'trends' => const TrendsScreen(),
+      'patterns' => const PatternsScreen(),
       'blood_pressure' => const BloodPressureToolScreen(),
       'food' => const FoodToolScreen(),
       'research' => ResearchToolScreen(billingService: widget.billingService),

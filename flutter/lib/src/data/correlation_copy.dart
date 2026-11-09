@@ -121,6 +121,77 @@ const String correlationUnavailableF5 =
 String correlationWindowLine(String throughDate) =>
     'Last 90 days · through $throughDate';
 
+// ── Session #1 A0 — entry copy + receipt (provenance) line ─────────
+//
+// Entry labels are descriptive only: no causal verbs, no outcome
+// promise (Juno's descriptive register for the A0 package).
+
+const String patternsEntryLabel = 'Patterns';
+const String patternsEntrySubtitle = 'How your days compare';
+
+/// The receipt's closing clause, verbatim: Patterns records are
+/// computed and read on-device from the cached insight records.
+const String correlationReceiptLocalOnly =
+    'Nothing left your phone for this pattern.';
+
+/// Plain source nouns for the engine registry's grouping /
+/// outcome variables (correlation_engine.dart's
+/// `correlationFamilyRegistry`). Unknown variables yield null —
+/// the receipt then omits the source segment rather than naming
+/// a source the record does not carry.
+String? correlationReceiptSourceNoun(String variable) => switch (variable) {
+  'sleepMinutes' => 'sleep',
+  'sleepNeedPerNight' => 'sleep need',
+  'fluidIntakeTargetHit' => 'logged fluid intake',
+  'sodiumIntakeTargetHit' => 'logged sodium intake',
+  'flareDay' => 'logged flares',
+  'dailyRanking' => 'Daily Ranking check-ins',
+  'medicationChange' => 'medication changes',
+  'dailyScore' => 'Daily Score',
+  'flareIncidence' => 'logged flares',
+  'migraineIncidence' => 'logged migraines',
+  _ => null,
+};
+
+/// `Sources: {grouping} and {outcome} from your records`, built
+/// from a registry definition's two variables. Null when either
+/// variable has no ruled noun above.
+String? correlationReceiptSourceLabel({
+  required String groupingVariable,
+  required String outcomeVariable,
+}) {
+  final grouping = correlationReceiptSourceNoun(groupingVariable);
+  final outcome = correlationReceiptSourceNoun(outcomeVariable);
+  if (grouping == null || outcome == null) return null;
+  return 'Sources: $grouping and $outcome from your records';
+}
+
+/// Juno's 'Ship the Receipt' provenance line (Session #1 A0):
+/// `Based on [n] complete days, [date range] · [source] ·
+/// Nothing left your phone for this pattern.`
+///
+/// ONLY the fields the caller can truthfully supply are rendered:
+/// a null [completeDays], [dateRange], or [sourceLabel] omits its
+/// clause entirely. GAP (flagged in the A0 PR): the engine exposes
+/// no count of days excluded as incomplete, so this formatter has
+/// NO excluded-days parameter and never renders that clause —
+/// inventing the count would be fabrication.
+String correlationReceiptLine({
+  int? completeDays,
+  String? dateRange,
+  String? sourceLabel,
+}) {
+  final segments = <String>[
+    if (completeDays != null)
+      dateRange != null
+          ? 'Based on $completeDays complete days, $dateRange'
+          : 'Based on $completeDays complete days',
+    ?sourceLabel,
+    correlationReceiptLocalOnly,
+  ];
+  return segments.join(' · ');
+}
+
 // ── Failure states (Juno ruling for H1-08 / H1-05P) ───────────────
 //
 // Slot 1 load error: renders ONLY on a failed/thrown records read
@@ -264,6 +335,9 @@ const List<String> correlationStaticStrings = [
   correlationMembershipPendingLabel,
   correlationFluidHeader,
   correlationSodiumHeader,
+  patternsEntryLabel,
+  patternsEntrySubtitle,
+  correlationReceiptLocalOnly,
   f1aGroupALabel,
   f1aGroupBLabel,
   f1bGroupALabel,

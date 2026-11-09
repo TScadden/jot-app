@@ -23,7 +23,7 @@ Future<void> _pumpTools(WidgetTester tester, ToolOrderStore store) async {
 
 void main() {
   group('default tile list (native DEFAULT_INFO_TILES)', () {
-    test('has all 16 tiles in native order', () {
+    test('has all 17 tiles in native order (A0 adds Patterns)', () {
       final ids = defaultToolTiles.map((t) => t.id).toList();
       expect(ids, [
         'habits',
@@ -38,6 +38,7 @@ void main() {
         'health_coach',
         'key_metrics',
         'trends',
+        'patterns',
         'blood_pressure',
         'food',
         'research',
@@ -63,7 +64,12 @@ void main() {
       expect(byId['tips_and_tricks']!.description, 'Master your data');
       expect(byId['health_coach']!.description, 'Personalized Advice');
       expect(byId['key_metrics']!.description, 'Your Body Data');
-      expect(byId['trends']!.description, 'Patterns over time');
+      // Session #1 A0 decoy fix: Trends no longer promises
+      // Patterns, and Patterns carries its own honest tile.
+      expect(byId['trends']!.description, 'Log activity over time');
+      expect(byId['trends']!.description, isNot(contains('Patterns')));
+      expect(byId['patterns']!.title, 'Patterns');
+      expect(byId['patterns']!.description, 'How your days compare');
     });
   });
 
@@ -72,12 +78,12 @@ void main() {
       final ordered = applyTileOrder(defaultToolTiles, ['medications', 'habits']);
       expect(ordered.first.id, 'medications');
       expect(ordered[1].id, 'habits');
-      expect(ordered.length, 16);
+      expect(ordered.length, 17);
     });
 
     test('unknown ids are dropped', () {
       final ordered = applyTileOrder(defaultToolTiles, ['nope', 'habits']);
-      expect(ordered.length, 16);
+      expect(ordered.length, 17);
       expect(ordered.first.id, 'habits');
       expect(ordered.any((t) => t.id == 'nope'), isFalse);
     });

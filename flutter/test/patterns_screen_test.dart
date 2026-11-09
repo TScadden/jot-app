@@ -205,6 +205,9 @@ void main() {
   testWidgets(
       'Vera condition 2: S3 caption renders on every card — numbers, '
       'progress, and unavailable', (tester) async {
+    tester.view.physicalSize = const Size(800, 6000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
     await pumpPatterns(tester, [
       f1aNumbers(),
       rec(
@@ -600,6 +603,9 @@ void main() {
 
   testWidgets('empty store renders the global new-user progress state',
       (tester) async {
+    tester.view.physicalSize = const Size(800, 6000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
     await pumpPatterns(tester, const []);
     expect(find.text('Patterns in your records'), findsWidgets);
     expect(find.text(correlationIntro), findsOneWidget);
@@ -740,6 +746,9 @@ void main() {
         '(5) recordsLoader returns []: placeholder new-user state '
         'renders; an empty result never routes to the error string',
         (tester) async {
+      tester.view.physicalSize = const Size(800, 6000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
       await pumpPatterns(tester, null, recordsLoader: () async => const []);
       expect(find.textContaining('0 nights under 6 hours of sleep'),
           findsOneWidget);
@@ -791,6 +800,9 @@ void main() {
         'Try again re-runs BOTH load and resolution, the pending '
         'label may reappear for the fresh check, and both succeeding '
         'recovers to the numbers state', (tester) async {
+      tester.view.physicalSize = const Size(800, 6000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
       var loadCalls = 0;
       var resolveCalls = 0;
       Completer<bool?>? secondResolution;

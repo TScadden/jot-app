@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:tabs_lab/src/data/billing_service.dart';
+import 'package:tabs_lab/src/data/correlation_copy.dart';
 import 'package:tabs_lab/src/data/daily_score.dart';
 import 'package:tabs_lab/src/data/daily_score_refresh.dart'
     show ScoreCapture;
@@ -39,6 +40,7 @@ import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 import 'package:tabs_lab/src/features/home/health_connect_banner.dart';
 import 'package:tabs_lab/src/features/home/migraine_block.dart';
+import 'package:tabs_lab/src/features/home/patterns_screen.dart';
 import 'package:tabs_lab/src/features/home/streak_screen.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
@@ -452,6 +454,75 @@ class _HomeScreenState extends State<HomeScreen> {
       // The circle keeps whatever is painted (the stored score,
       // or its building state) — never a fake number.
     }
+  }
+
+  /// Session #1 A0 — the Home Patterns entry's tap: pushes the
+  /// Patterns surface exactly as the existing Daily Score entry
+  /// does (a plain `const PatternsScreen()`), so the surface's
+  /// own premium tri-state gate decides what renders. The entry
+  /// itself carries no pattern content — label and subtitle only
+  /// — so nothing gated can leak through Home.
+  Future<void> _openPatterns() async {
+    await Navigator.of(context).push(
+      SlidePageRoute(
+        reducedMotion: animationsDisabled(context),
+        builder: (_) => const PatternsScreen(),
+      ),
+    );
+  }
+
+  /// Session #1 A0 — the Patterns entry grouped directly under
+  /// the Weekly Snapshot card (standing convention: new Home
+  /// content groups under Weekly Snapshot, never scattered).
+  /// Copy is Juno's descriptive register from correlation_copy
+  /// (no causal verbs): 'Patterns' / 'How your days compare'.
+  Widget _patternsEntry() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+      child: Material(
+        color: NotelColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: () => unawaited(_openPatterns()),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: NotelColors.legacyDarkDivider),
+            ),
+            padding: const EdgeInsets.all(16),
+            child: const Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        patternsEntryLabel,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: NotelColors.textPrimary,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        patternsEntrySubtitle,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: NotelColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right, color: NotelColors.textSecondary),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _openDailyScore() async {
@@ -2192,8 +2263,17 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             StaggeredEntrance(
               index: 3,
-              child: WeeklySnapshotCard(
-                loadData: (metric) => _healthRepo.loadSnapshot(metric),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  WeeklySnapshotCard(
+                    loadData: (metric) => _healthRepo.loadSnapshot(metric),
+                  ),
+                  // Session #1 A0 — Patterns entry, grouped with
+                  // the Weekly Snapshot card above (same stagger
+                  // slot, directly beneath it).
+                  _patternsEntry(),
+                ],
               ),
             ),
             // Clearance so the last content never hides behind the
