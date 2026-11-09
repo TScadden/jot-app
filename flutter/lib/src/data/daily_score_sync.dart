@@ -484,15 +484,41 @@ class DailyScoreSync {
   }
 
   Future<void> _doLoad(String? currentOwner) async {
-    Map<String, dynamic>? map;
+    // Records buffered in memory by an enqueue that ran while a
+    // previous load had failed (see [enqueueRecord]): a load
+    // that now SUCCEEDS merges the disk blob around them and
+    // persists the merged queue, so the buffered records become
+    // durable at recovery instead of waiting for a later write.
+    final hadBuffered = _queue.isNotEmpty;
+    String? raw;
     try {
-      final raw = await _ioRead(storageKey);
-      if (raw != null && raw.isNotEmpty) {
+      raw = await _ioRead(storageKey);
+    } catch (_) {
+      // C-03 — a storage READ failure is neither an empty disk
+      // nor a corrupt blob (the conflation PR #44 fixed in
+      // HealthHistoryStore and PR #49 in
+      // MedicationChangeEventOutbox): the on-disk blob may be
+      // perfectly valid. Leave the queue and owner untouched,
+      // leave [_loaded] false so the next [_ensureLoaded]
+      // retries the read, and keep [_persistQueue] gated off —
+      // treating this like an empty queue would let the next
+      // enqueue overwrite the blob with only the new record,
+      // permanently destroying every previously queued unsent
+      // record (including manual_refresh overrides).
+      return;
+    }
+    Map<String, dynamic>? map;
+    if (raw != null && raw.isNotEmpty) {
+      try {
         final decoded = jsonDecode(raw);
         if (decoded is Map<String, dynamic>) map = decoded;
+      } catch (_) {
+        // Corrupt blob: provably unusable, so — per PR #44's
+        // semantics — it is the one read outcome besides a
+        // genuinely missing/empty blob that may be treated as
+        // empty (map stays null, the load completes).
+        map = null;
       }
-    } catch (_) {
-      map = null;
     }
     final expected = _normalizeEmail(currentOwner);
     String? blobOwner;
@@ -526,6 +552,12 @@ class DailyScoreSync {
     }
     _boundOwner = expected ?? blobOwner;
     _loaded = true;
+    if (hadBuffered) {
+      // Recovery persist: the merged queue (disk records +
+      // records buffered during the failed-load window) is the
+      // first queue image that is safe to write back.
+      await _persistQueue();
+    }
   }
 
   /// Owner enforcement once the blob is already loaded: a newly
@@ -533,6 +565,11 @@ class DailyScoreSync {
   /// owner meeting an unstamped non-empty queue) drops the queue
   /// unsent. Never throws.
   Future<void> _enforceLoadedOwner(String? currentOwner) async {
+    // C-03 — enforcement DELETES the disk blob on a mismatch,
+    // so it must never run off an unloaded queue: after a failed
+    // load the disk blob's owner is unknown, and a blind delete
+    // could destroy queued records the read never saw.
+    if (!_loaded) return;
     final expected = _normalizeEmail(currentOwner);
     if (expected == null) return;
     if (_boundOwner == expected) return;
@@ -549,6 +586,15 @@ class DailyScoreSync {
   }
 
   Future<void> _persistQueue() async {
+    // C-03 — persist gate, mirroring PR #44's
+    // HealthHistoryStore.persist: a no-op until a load has
+    // SUCCEEDED in this isolate. After a transient read failure
+    // the in-memory queue is an incomplete image of the disk
+    // blob, and writing it would erase the records the failed
+    // read never loaded. [clear] re-arms writes explicitly (it
+    // marks the queue loaded over an authoritative-empty
+    // memory).
+    if (!_loaded) return;
     try {
       final records = _queue.values.toList()
         ..sort((a, b) => a.date.compareTo(b.date));
@@ -570,10 +616,14 @@ class DailyScoreSync {
   /// Enqueues [record] durably, then triggers a flush
   /// (fire-and-forget). The dedup rule is
   /// [dailyScoreQueueShouldReplace]. Returns true when the record
-  /// is queued after this call (a stale record that may not
-  /// replace the queued one returns false — it was correctly
+  /// is durably queued after this call (a stale record that may
+  /// not replace the queued one returns false — it was correctly
   /// refused, not lost: the queued newer/manual record is the one
-  /// that will be sent). Never throws.
+  /// that will be sent). C-03: when the disk load never succeeded
+  /// (transient read failure) the record is buffered in memory
+  /// only, the on-disk blob is left untouched, and this returns
+  /// false — the buffered record merges with the disk queue and
+  /// persists once a later load succeeds. Never throws.
   Future<bool> enqueueRecord(
     DailyScoreSyncRecord record, {
     String? ownerEmail,
@@ -590,6 +640,13 @@ class DailyScoreSync {
       }
       _queue[record.date] = record;
       await _persistQueue();
+      // C-03 — buffered in memory is not durably queued: when
+      // the load never succeeded the persist above was gated
+      // off, so report false and do not trigger a flush off an
+      // unloaded queue. The next successful load merges the
+      // disk blob around this record and persists the merge
+      // (see [_doLoad]).
+      if (!_loaded) return false;
       // Flush trigger: after enqueue. Tracked, never awaited
       // here — a slow or dead connection must not delay the
       // score that was just persisted.
@@ -642,6 +699,11 @@ class DailyScoreSync {
     try {
       final owner = await _resolveOwner();
       await _ensureLoaded(owner);
+      // C-03 — an unloaded queue cannot be pronounced flushed:
+      // the disk may still hold queued records this isolate
+      // never read. Report false so the records stay queued for
+      // the next trigger, when the load retries.
+      if (!_loaded) return false;
       await _enforceLoadedOwner(owner);
       if (_queue.isEmpty) return true;
       // After enforcement, a non-empty queue is either stamped to
@@ -691,6 +753,11 @@ class DailyScoreSync {
     try {
       final owner = await _resolveOwner();
       await _ensureLoaded(owner);
+      // C-03 — hydration's owner checks must not run off an
+      // unloaded queue: after a failed load the queue's owner
+      // is unknown, so merging is deferred to the next trigger,
+      // when the load retries.
+      if (!_loaded) return 0;
       await _enforceLoadedOwner(owner);
       final storeOwner = _normalizeEmail(store.ownerEmail);
       if (owner != null && storeOwner != null && owner != storeOwner) {
