@@ -548,7 +548,23 @@ class DailyScoreSync {
       return;
     }
     for (final record in blobRecords) {
-      _queue.putIfAbsent(record.date, () => record);
+      // C-03 revision (Vera, PR #50 §2) — a date collision
+      // between a disk record and a record buffered during the
+      // failed-load window is governed by the queue's own
+      // replacement rule, exactly as enqueue applies it: the
+      // DISK record stands unless the buffered record may
+      // replace it under [dailyScoreQueueShouldReplace].
+      // Unconditional putIfAbsent let a buffered auto erase an
+      // unsent disk manual_refresh for the same date at
+      // recovery (an auto may NEVER replace a manual_refresh);
+      // disk-always-wins would overcorrect and drop a buffered
+      // manual_refresh over a disk auto. Identical records
+      // resolve to the disk copy, which is content-equal.
+      final buffered = _queue[record.date];
+      if (buffered == null ||
+          !dailyScoreQueueShouldReplace(record, buffered)) {
+        _queue[record.date] = record;
+      }
     }
     _boundOwner = expected ?? blobOwner;
     _loaded = true;

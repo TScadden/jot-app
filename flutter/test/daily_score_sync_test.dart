@@ -721,6 +721,102 @@ void main() {
       );
     });
 
+    test('(d)(i) recovery merge: a buffered auto NEVER displaces '
+        'an unsent disk manual_refresh for the same date', () async {
+      final rig = _SyncRig();
+      rig.server.failPosts = true; // the manual stays queued, unsent
+      await rig.sync.enqueueRecord(_record('2026-10-14',
+          score: 91,
+          source: dailyScoreSourceManualRefresh,
+          computedAt: 2000));
+      await rig.sync.drain();
+      expect(await rig.sync.pendingRecords(), hasLength(1));
+
+      // Outage: the read throws, so enqueue-time dedup cannot
+      // see the disk manual_refresh; a NEWER auto for the same
+      // date is buffered. Pre-revision, the recovery merge used
+      // putIfAbsent — the buffered auto won the collision and
+      // the recovery persist erased the manual_refresh unsent.
+      rig.queueDisk.throwOnRead = true;
+      final restarted = rig.restartedSync();
+      expect(
+          await restarted.enqueueRecord(
+              _record('2026-10-14', score: 70, computedAt: 3000)),
+          isFalse);
+      await restarted.drain();
+
+      // Recovery: the manual_refresh survives — in the pending
+      // queue AND in what persists.
+      rig.queueDisk.throwOnRead = false;
+      final pending = await restarted.pendingRecords();
+      expect(pending, hasLength(1));
+      expect(pending.single.source, dailyScoreSourceManualRefresh);
+      expect(pending.single.score, 91);
+      expect(pending.single.computedAt, 2000);
+      final blob = jsonDecode(rig.queueDisk
+          .values[DailyScoreSync.storageKey]!) as Map<String, dynamic>;
+      final blobRecords = (blob['records'] as List)
+          .map((r) => DailyScoreSyncRecord.fromJson(r)!)
+          .toList();
+      expect(blobRecords, hasLength(1));
+      expect(blobRecords.single.source,
+          dailyScoreSourceManualRefresh);
+      expect(blobRecords.single.score, 91);
+      expect(blobRecords.single.computedAt, 2000);
+
+      // And it is the manual_refresh that flushes, not the auto.
+      rig.server.failPosts = false;
+      expect(await restarted.flush(), isTrue);
+      expect(rig.server.rows['2026-10-14']!.source,
+          dailyScoreSourceManualRefresh);
+      expect(rig.server.rows['2026-10-14']!.score, 91);
+    });
+
+    test('(d)(ii) recovery merge mirror: a buffered manual_refresh '
+        'still wins over a disk auto for the same date', () async {
+      final rig = _SyncRig();
+      rig.server.failPosts = true;
+      await rig.sync.enqueueRecord(_record('2026-10-14'));
+      await rig.sync.drain();
+      expect(await rig.sync.pendingRecords(), hasLength(1));
+
+      // Same outage, opposite collision: the fix must not
+      // overcorrect to disk-always-wins — a manual_refresh
+      // replaces a queued auto under the queue rule regardless
+      // of stamp, so the buffered manual wins at recovery.
+      rig.queueDisk.throwOnRead = true;
+      final restarted = rig.restartedSync();
+      expect(
+          await restarted.enqueueRecord(_record('2026-10-14',
+              score: 95,
+              source: dailyScoreSourceManualRefresh,
+              computedAt: 500)),
+          isFalse);
+      await restarted.drain();
+
+      rig.queueDisk.throwOnRead = false;
+      final pending = await restarted.pendingRecords();
+      expect(pending, hasLength(1));
+      expect(pending.single.source, dailyScoreSourceManualRefresh);
+      expect(pending.single.score, 95);
+      expect(pending.single.computedAt, 500);
+      final blob = jsonDecode(rig.queueDisk
+          .values[DailyScoreSync.storageKey]!) as Map<String, dynamic>;
+      final blobRecords = (blob['records'] as List)
+          .map((r) => DailyScoreSyncRecord.fromJson(r)!)
+          .toList();
+      expect(blobRecords, hasLength(1));
+      expect(blobRecords.single.source,
+          dailyScoreSourceManualRefresh);
+      expect(blobRecords.single.score, 95);
+
+      rig.server.failPosts = false;
+      expect(await restarted.flush(), isTrue);
+      expect(rig.server.rows['2026-10-14']!.source,
+          dailyScoreSourceManualRefresh);
+      expect(rig.server.rows['2026-10-14']!.score, 95);
+    });
+
     test('(c) C-03 semantics pin: a corrupt disk blob is the one '
         'read failure treated as empty — enqueue proceeds over it',
         () async {
