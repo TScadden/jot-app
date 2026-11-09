@@ -1,10 +1,8 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:printing/printing.dart';
 
 import 'package:tabs_lab/src/data/clinician_report.dart';
 import 'package:tabs_lab/src/data/clinician_report_pdf.dart';
@@ -16,7 +14,9 @@ import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/progress_report.dart';
 import 'package:tabs_lab/src/data/progress_report_pdf.dart';
+import 'package:tabs_lab/src/data/report_generation_service.dart';
 import 'package:tabs_lab/src/data/report_ready_notification.dart';
+import 'package:tabs_lab/src/features/settings/report_share_flow.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -82,6 +82,14 @@ class ProgressReportsPage extends StatefulWidget {
   /// the held share confirmation.
   final ReportReadyNotifier? reportReadyNotifier;
 
+  /// The app-level generation owner (founder bug, Nov 9, 2026):
+  /// Settings passes [ReportGenerationService.instance] so the
+  /// run survives this page's disposal and completions can be
+  /// presented on whatever screen is current. Null (tests that
+  /// pump the page standalone) gives the page its own service —
+  /// the pre-service isolation those tests were written against.
+  final ReportGenerationService? generationService;
+
   const ProgressReportsPage({
     super.key,
     required this.profileData,
@@ -97,6 +105,7 @@ class ProgressReportsPage extends StatefulWidget {
     this.clinicianPipeline,
     this.clinicianPremiumCheck,
     this.reportReadyNotifier,
+    this.generationService,
   });
 
   @override
@@ -163,10 +172,18 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
   int? _selectedHour;
   bool _showSources = false;
 
-  ReportStage? _stage;
-  bool _cancelRequested = false;
-  String? _failureMessage;
-  bool _failureAllowRaw = false;
+  /// The generation's owner (see [ReportGenerationService]):
+  /// stage, cancellation, and the held outcome are SERVICE state
+  /// now — this page is a view of it, so leaving and returning
+  /// shows the live run instead of a blank page. The two getters
+  /// below keep the build code reading the same names.
+  late final ReportGenerationService _service;
+  late final ReportCompletionPresenter _pagePresenter;
+
+  ReportStage? get _stage => _service.stage;
+  String? get _failureMessage => _service.pendingFailure?.message;
+  bool get _failureAllowRaw =>
+      _service.pendingFailure?.allowRawFallback ?? false;
 
   int _lastExportMs = 0;
   String? _appointmentDateIso;
@@ -174,35 +191,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
   String? _pickedDateIso;
   ReportFocus _appointmentFocus = ReportFocus.health;
 
-  ReportReady? _pendingShare;
-
-  /// The share confirmation is on screen (reveal paths must
-  /// never stack a second one).
-  bool _shareDialogVisible = false;
-
-  /// A generation finished while the user was away: the share
-  /// confirmation is held for presentation the moment they
-  /// return (app resume or report-ready notification tap).
-  bool _shareRevealPending = false;
-
-  ReportReadyNotifier? _reportNotifier;
-
   TabsBackend get _backend => widget.backend;
-
-  ReportReadyNotifier get _readyNotifier =>
-      widget.reportReadyNotifier ??
-      (_reportNotifier ??=
-          LocalReportReadyNotifier(onTap: _onReportReadyNotificationTap));
-
-  /// The user is looking at this page right now: the page is
-  /// alive and the app is in the foreground. Anything else —
-  /// backgrounded, locked, another app in front — counts as
-  /// away, and a finished generation is announced by
-  /// notification instead of a dialog nobody sees.
-  bool get _userIsPresent {
-    final s = WidgetsBinding.instance.lifecycleState;
-    return s == null || s == AppLifecycleState.resumed;
-  }
 
   /// Item 3 Q7 premium gate state: null = check still running;
   /// true = the one-page clinician report is unlocked. Fail-closed:
@@ -213,6 +202,31 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
   @override
   void initState() {
     super.initState();
+    _service = widget.generationService ??
+        ReportGenerationService(notifier: widget.reportReadyNotifier);
+    if (widget.generationService != null &&
+        widget.reportReadyNotifier != null) {
+      _service.useNotifier(widget.reportReadyNotifier!);
+    }
+    _pagePresenter = () {
+      // Synchronous presentation from the completion, as the
+      // page always did (a post-frame deferral can starve when
+      // no frame is scheduled). The service only invokes this
+      // while the page is registered — i.e. mounted — so the
+      // context is live; the mounted check is belt-and-braces.
+      if (!mounted) {
+        _service.presentPendingShare();
+        return;
+      }
+      presentReportShareConfirmation(
+        context: context,
+        service: _service,
+        store: widget.store,
+        sharePdf: widget.sharePdf,
+      );
+    };
+    _service.addListener(_onServiceChanged);
+    _service.registerPagePresenter(_pagePresenter);
     WidgetsBinding.instance.addObserver(this);
     _load();
     _resolveClinicianGate();
@@ -220,41 +234,28 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
 
   @override
   void dispose() {
+    _service.unregisterPagePresenter(_pagePresenter);
+    _service.removeListener(_onServiceChanged);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
+  /// The page is a view of the service: any service change
+  /// (stage, held outcome, a share stamped elsewhere) rebuilds
+  /// it, and a share completed through the root presenter still
+  /// lands its "Last exported" stamp here.
+  void _onServiceChanged() {
+    if (!mounted) return;
+    setState(() {
+      if (_service.lastExportMs > _lastExportMs) {
+        _lastExportMs = _service.lastExportMs;
+      }
+    });
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _revealPendingShare();
-  }
-
-  /// Present the share confirmation held by an away completion.
-  /// Guarded twice over: nothing held, or the dialog is already
-  /// up (the guarded [_showShareConfirmation] also refuses).
-  void _revealPendingShare() {
-    if (!_shareRevealPending || !mounted) return;
-    _shareRevealPending = false;
-    _showShareConfirmation();
-  }
-
-  /// The report-ready notification was tapped: the platform has
-  /// foregrounded the app; if this page is alive and holding a
-  /// share, present it — the user is back at the share flow.
-  void _onReportReadyNotificationTap() {
-    if (!mounted) return;
-    _shareRevealPending = false;
-    _showShareConfirmation();
-  }
-
-  Future<void> _notifyReportReady() async {
-    try {
-      await _readyNotifier.showReportReady();
-    } catch (_) {
-      // The notifier is best-effort by contract (it reports
-      // failure as false); this guard keeps even a seam
-      // implementation's throw off the completion path.
-    }
+    if (state == AppLifecycleState.resumed) _service.handleResumed();
   }
 
   Future<void> _resolveClinicianGate() async {
@@ -347,13 +348,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
       ReportDownloadsSaver.instance.savePdf(bytes: bytes, fileName: fileName);
 
   Future<void> _generate({bool forceRaw = false}) async {
-    if (_stage != null) return;
-    setState(() {
-      _cancelRequested = false;
-      _failureMessage = null;
-      _failureAllowRaw = false;
-      _stage = ReportStage.collecting;
-    });
+    if (_service.isGenerating) return;
     final pipeline = widget.pipeline ??
         ReportGenerationPipeline(
           collector: ReportDataCollector(
@@ -380,25 +375,27 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
           ),
           backend: _backend,
         );
-    final outcome = await pipeline.generate(
-      selectedCategories: _selected,
-      last30Days: _last30Days,
-      profile: _profileInput,
-      forceRawFallback: forceRaw,
-      onStage: (s) {
-        if (mounted) setState(() => _stage = s);
-      },
-      isCancelled: () => _cancelRequested,
-      renderPdf: (snapshot, aiSummary,
-              {required bool isRawFallback, String? aiFailureReason}) =>
-          buildReportPdfBytes(snapshot,
-              aiSummary: aiSummary,
-              isRawFallback: isRawFallback,
-              aiFailureReason: aiFailureReason),
-      savePdf: widget.savePdf ?? _defaultSave,
-      saveToDownloads: widget.saveToDownloads ?? _defaultSaveToDownloads,
+    // The service owns the run from here: it survives this
+    // page's disposal, holds the outcome, and routes its
+    // presentation (see ReportGenerationService).
+    await _service.start(
+      ({required onStage, required isCancelled}) => pipeline.generate(
+        selectedCategories: _selected,
+        last30Days: _last30Days,
+        profile: _profileInput,
+        forceRawFallback: forceRaw,
+        onStage: onStage,
+        isCancelled: isCancelled,
+        renderPdf: (snapshot, aiSummary,
+                {required bool isRawFallback, String? aiFailureReason}) =>
+            buildReportPdfBytes(snapshot,
+                aiSummary: aiSummary,
+                isRawFallback: isRawFallback,
+                aiFailureReason: aiFailureReason),
+        savePdf: widget.savePdf ?? _defaultSave,
+        saveToDownloads: widget.saveToDownloads ?? _defaultSaveToDownloads,
+      ),
     );
-    _finishGeneration(outcome);
   }
 
   /// Phase 1, item 3 — the one-page clinician report: a separate
@@ -410,13 +407,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
     // disabled while locked): the v2 pipeline never runs for a
     // non-premium or unverified entitlement.
     if (_clinicianUnlocked != true) return;
-    if (_stage != null) return;
-    setState(() {
-      _cancelRequested = false;
-      _failureMessage = null;
-      _failureAllowRaw = false;
-      _stage = ReportStage.collecting;
-    });
+    if (_service.isGenerating) return;
     final pipeline = widget.clinicianPipeline ??
         ClinicianReportPipeline(
           collector: ReportDataCollector(
@@ -436,170 +427,31 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
             categoriesLoader: () => _backend.fetchLogCategories(),
           ),
         );
-    final outcome = await pipeline.generate(
-      selectedCategories: _selected,
-      last30Days: _last30Days,
-      profile: _profileInput,
-      onStage: (s) {
-        if (mounted) setState(() => _stage = s);
-      },
-      isCancelled: () => _cancelRequested,
-      renderPdf: (data) async => buildClinicianPdfBytes(data,
-          fonts: await loadClinicianPdfFonts()),
-      savePdf: widget.savePdf ?? _defaultSave,
-      saveToDownloads: widget.saveToDownloads ?? _defaultSaveToDownloads,
-    );
-    _finishGeneration(outcome);
-  }
-
-  /// Shared completion path for both generate actions.
-  ///
-  /// - Watched completion: hold the file for the explicit share
-  ///   confirmation (Vera's feature — never open the share sheet
-  ///   unprompted), presented immediately.
-  /// - Away completion (founder report, Nov 9, 2026): the
-  ///   generation finished while the user was not watching — the
-  ///   app backgrounded, or this page disposed entirely. The old
-  ///   code showed a dialog nobody saw (or, when unmounted,
-  ///   dropped the outcome in silence). Now: post the
-  ///   report-ready notification, and hold the confirmation for
-  ///   presentation the moment the user returns. The PDF itself
-  ///   is already saved either way (app documents + Downloads).
-  /// - Cancelled and failed outcomes notify nothing.
-  void _finishGeneration(ReportOutcome outcome) {
-    if (!mounted) {
-      if (outcome is ReportReady) unawaited(_notifyReportReady());
-      return;
-    }
-    setState(() => _stage = null);
-    if (_cancelRequested) return;
-    switch (outcome) {
-      case ReportReady ready:
-        setState(() => _pendingShare = ready);
-        if (_userIsPresent) {
-          _showShareConfirmation();
-        } else {
-          _shareRevealPending = true;
-          unawaited(_notifyReportReady());
-        }
-      case ReportFailed failed:
-        if (failed.message == 'Cancelled') return;
-        setState(() {
-          _failureMessage = failed.message;
-          _failureAllowRaw = failed.allowRawFallback;
-        });
-    }
-  }
-
-  /// Presents the held share confirmation, at most one at a
-  /// time: the watched completion, the resume reveal, and the
-  /// notification tap can all ask — only the first gets through.
-  Future<void> _showShareConfirmation() async {
-    if (_shareDialogVisible || _pendingShare == null) return;
-    _shareDialogVisible = true;
-    try {
-      await _showShareConfirmationBody();
-    } finally {
-      _shareDialogVisible = false;
-    }
-  }
-
-  Future<void> _showShareConfirmationBody() async {
-    final ready = _pendingShare;
-    if (ready == null) return;
-    final share = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: NotelColors.surface,
-        title: const Text('Share health report',
-            style: TextStyle(
-                color: NotelColors.textPrimary,
-                fontWeight: FontWeight.w600)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-                'This PDF contains your health data. Only share it with people you trust.',
-                style:
-                    TextStyle(color: NotelColors.textSecondary, fontSize: 13)),
-            const SizedBox(height: 8),
-            Text(ready.fileName,
-                style: const TextStyle(
-                    color: NotelColors.textPrimary, fontSize: 12)),
-            const SizedBox(height: 8),
-            Text('For informational purposes only. Not medical advice.',
-                style: TextStyle(
-                    color: NotelColors.textSecondary.withValues(alpha: 0.7),
-                    fontSize: 11)),
-            if (ready.aiFailureReason != null) ...[
-              const SizedBox(height: 8),
-              Text('AI summary unavailable: ${ready.aiFailureReason}',
-                  style: const TextStyle(
-                      color: NotelColors.textSecondary, fontSize: 11)),
-            ],
-            // Juno Ruling 2: the Downloads attempt finished before
-            // this dialog opened and its outcome travels with the
-            // ready outcome — this line is its disclosure.
-            if (ready.downloadsSaved != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                  ready.downloadsSaved!
-                      ? 'A copy was also saved to your Downloads folder.'
-                      : 'This report could not be saved to Downloads. It is saved in the app and you can still share it now.',
-                  style: const TextStyle(
-                      color: NotelColors.textSecondary, fontSize: 11)),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Not now',
-                style: TextStyle(color: NotelColors.textSecondary)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Share',
-                style: TextStyle(
-                    color: NotelColors.primary,
-                    fontWeight: FontWeight.bold)),
-          ),
-        ],
+    await _service.start(
+      ({required onStage, required isCancelled}) => pipeline.generate(
+        selectedCategories: _selected,
+        last30Days: _last30Days,
+        profile: _profileInput,
+        onStage: onStage,
+        isCancelled: isCancelled,
+        renderPdf: (data) async => buildClinicianPdfBytes(data,
+            fonts: await loadClinicianPdfFonts()),
+        savePdf: widget.savePdf ?? _defaultSave,
+        saveToDownloads: widget.saveToDownloads ?? _defaultSaveToDownloads,
       ),
     );
-    if (!mounted) return;
-    setState(() => _pendingShare = null);
-    if (share != true) {
-      // Saved-file transparency (Juno Ruling 2 wording): the PDF
-      // is already saved in the app even when the user declines to
-      // share right now, and in Downloads too when that copy
-      // landed.
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(ready.downloadsSaved == true
-              ? 'Report saved in Downloads and in the app. Export again any time to share it.'
-              : 'Report saved in the app. It could not be saved to Downloads. Export again any time to share it.')));
-      return;
-    }
-    // Native marks the export when the share sheet is launched.
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
-    await widget.store.setReportLastExportMs(nowMs);
-    if (mounted) setState(() => _lastExportMs = nowMs);
-    final shareFn = widget.sharePdf ??
-        (bytes, name) => Printing.sharePdf(
-            bytes: Uint8List.fromList(bytes), filename: name);
-    try {
-      await shareFn(ready.pdfBytes, ready.fileName);
-    } catch (_) {
-      if (mounted) {
-        // Juno Ruling 2: name Downloads only when that copy landed.
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(ready.downloadsSaved == true
-                ? 'Could not open the share sheet. The report is saved in Downloads and in the app.'
-                : 'Could not open the share sheet. The report is saved in the app.')));
-      }
-    }
   }
+
+  // Completion handling lives in ReportGenerationService (the
+  // run's owner) and report_share_flow.dart (the share
+  // confirmation, presented by whichever presenter the service
+  // routes to — this page, or the app-root presenter when the
+  // user is elsewhere in the app). PR #55's semantics carry over
+  // unchanged: watched completion presents directly; a
+  // backgrounded completion posts the report-ready notification
+  // and holds the confirmation for resume / notification tap;
+  // cancelled and failed outcomes notify nothing, and a failure
+  // renders inline below from the service's held outcome.
 
   // ── Appointment ─────────────────────────────────────────────────
 
@@ -960,7 +812,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
         const SizedBox(height: 8),
         Center(
           child: TextButton(
-            onPressed: () => setState(() => _cancelRequested = true),
+            onPressed: () => _service.requestCancel(),
             child: const Text('Cancel Report Generation',
                 style: TextStyle(color: NotelColors.error, fontSize: 11)),
           ),
