@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/correlation_copy.dart';
 import 'package:tabs_lab/src/data/correlation_engine.dart';
+import 'package:tabs_lab/src/data/correlation_insight_store.dart';
+import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/features/home/patterns_screen.dart';
+import 'package:tabs_lab/src/theme/skeleton.dart';
 
 /// Phase 1 item 5 — Patterns surface tests (spec §8).
 ///
@@ -53,20 +58,51 @@ InsightRecord f1aNumbers() => rec(
       ],
     );
 
+/// H2-01 harness: [records] may be omitted (null) in favor of
+/// [recordsLoader]/[insightStore], and [isUnlimited] may be
+/// OMITTED in the tri-state sense — pass `isUnlimited: null`
+/// explicitly to exercise the production unknown-gate path
+/// (cache seed / own resolution). Omitting the argument keeps
+/// the historical explicit-true default the older tests rely on,
+/// hence the Object? sentinel: an explicit null is a real value
+/// here, not a default. QuickLogCache seeding/reset for the
+/// omitted-gate tests goes through its debugReset/applyLoad
+/// seams (see the failure-states group below).
 Future<void> pumpPatterns(
   WidgetTester tester,
-  List<InsightRecord> records, {
-  bool isUnlimited = true,
+  List<InsightRecord>? records, {
+  Object? isUnlimited = true,
   VoidCallback? computeCallback,
+  Future<List<InsightRecord>> Function()? recordsLoader,
+  Object? insightStore,
+  Future<bool?> Function()? membershipLoader,
 }) async {
   await tester.pumpWidget(MaterialApp(
     home: PatternsScreen(
       records: records,
-      isUnlimited: isUnlimited,
+      recordsLoader: recordsLoader,
+      insightStore: insightStore,
+      isUnlimited: isUnlimited as bool?,
+      membershipLoader: membershipLoader,
       computeCallback: computeCallback,
     ),
   ));
   await tester.pump();
+}
+
+/// Duck-typed insight-store fake whose readAll returns a Map
+/// (the store's real shape) — triage test (6), first half.
+class FakeMapInsightStore {
+  Future<Map<String, InsightRecord>> readAll() async =>
+      {'F1/F1a': f1aNumbers()};
+}
+
+/// Duck-typed insight-store fake whose every read throws —
+/// triage test (6), second half.
+class FakeThrowingInsightStore {
+  Future<dynamic> readAll() async => throw StateError('read failed');
+  Future<dynamic> load() async => throw StateError('load failed');
+  Future<dynamic> getAll() async => throw StateError('getAll failed');
 }
 
 List<String> allRenderedTexts(WidgetTester tester) => [
@@ -580,6 +616,256 @@ void main() {
     expect(texts.contains('averaged'), isFalse);
   });
 
+  group('failure states (H1-08 / H1-05P / H2-01 triage)', () {
+    setUp(() => QuickLogCache.instance.debugReset());
+    tearDown(() => QuickLogCache.instance.debugReset());
+
+    InsightRecord f4Progress() => rec(
+          familyId: 'F4',
+          splitId: 'F4',
+          state: InsightState.progress,
+          groups: [
+            grp('days you rated 1 or 2', 2),
+            grp('days you rated 4 or 5', 3),
+          ],
+        );
+
+    testWidgets(
+        '(1) omitted gate + cold cache + numbers via recordsLoader: '
+        'pending state with label once, numbers not presented as final; '
+        'resolution removes the label in the same update',
+        (tester) async {
+      final resolution = Completer<bool?>();
+      await pumpPatterns(
+        tester,
+        null,
+        isUnlimited: null,
+        recordsLoader: () async => [f1aNumbers(), f4Progress()],
+        membershipLoader: () => resolution.future,
+      );
+      // Pending: label exactly once, with a skeleton; numbers
+      // held; progress renders normally.
+      expect(find.text(correlationMembershipPendingLabel), findsOneWidget);
+      expect(find.text('Checking your membership status.'), findsOneWidget);
+      expect(find.byType(SkeletonBox), findsWidgets);
+      expect(find.textContaining('averaged 71'), findsNothing);
+      expect(find.textContaining('Not enough days yet.'), findsOneWidget);
+      // Resolve as member: label gone, numbers render.
+      resolution.complete(true);
+      await tester.pump();
+      expect(find.text(correlationMembershipPendingLabel), findsNothing);
+      expect(
+        find.text(
+            'On nights under 6 hours of sleep (7 days), your Daily Score averaged 71. On nights with 6 or more hours of sleep (9 days), it averaged 80.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+        '(2) omitted gate + cache seeded premium: numbers render, '
+        'no pending label', (tester) async {
+      QuickLogCache.instance.applyLoad(
+        categories: const [],
+        recentSuggestions: const [],
+        todayCount: 0,
+        isUnlimited: true,
+        isAdmin: false,
+      );
+      await pumpPatterns(tester, [f1aNumbers()], isUnlimited: null);
+      expect(
+        find.text(
+            'On nights under 6 hours of sleep (7 days), your Daily Score averaged 71. On nights with 6 or more hours of sleep (9 days), it averaged 80.'),
+        findsOneWidget,
+      );
+      expect(find.text(correlationMembershipPendingLabel), findsNothing);
+    });
+
+    testWidgets(
+        '(3) omitted gate + cache seeded known non-premium: numbers '
+        'omitted, no pending label, no replacement copy', (tester) async {
+      QuickLogCache.instance.applyLoad(
+        categories: const [],
+        recentSuggestions: const [],
+        todayCount: 0,
+        isUnlimited: false,
+        isAdmin: false,
+      );
+      await pumpPatterns(
+        tester,
+        [f1aNumbers(), f4Progress()],
+        isUnlimited: null,
+      );
+      expect(find.textContaining('averaged'), findsNothing);
+      expect(find.text(correlationMembershipPendingLabel), findsNothing);
+      expect(find.textContaining('Not enough days yet.'), findsOneWidget);
+      expect(find.textContaining('Premium'), findsNothing);
+      expect(find.textContaining('Unlock'), findsNothing);
+    });
+
+    testWidgets(
+        '(4) recordsLoader throws: Slot 1 error state; placeholder '
+        'output and the S7 sentence do NOT render; Try again re-runs '
+        'the load and recovers', (tester) async {
+      var loadCalls = 0;
+      await pumpPatterns(
+        tester,
+        null,
+        recordsLoader: () async {
+          loadCalls++;
+          if (loadCalls == 1) throw StateError('disk gone');
+          return [f1aNumbers()];
+        },
+      );
+      expect(find.text(correlationLoadError), findsOneWidget);
+      expect(
+        find.text('Could not load your Patterns. Please try again.'),
+        findsOneWidget,
+      );
+      expect(find.text(correlationLoadRetryLabel), findsOneWidget);
+      expect(find.text('Try again'), findsOneWidget);
+      // No cards at all: every card carries the S3 caption.
+      expect(find.text(correlationCaption), findsNothing);
+      expect(find.text(correlationUnavailableF2), findsNothing);
+      expect(find.textContaining('0 nights under 6 hours of sleep'),
+          findsNothing);
+      // Retry re-runs the load; success renders the records.
+      await tester.tap(find.text(correlationLoadRetryLabel));
+      await tester.pump();
+      expect(loadCalls, 2);
+      expect(find.text(correlationLoadError), findsNothing);
+      expect(find.textContaining('averaged 71'), findsOneWidget);
+    });
+
+    testWidgets(
+        '(5) recordsLoader returns []: placeholder new-user state '
+        'renders; an empty result never routes to the error string',
+        (tester) async {
+      await pumpPatterns(tester, null, recordsLoader: () async => const []);
+      expect(find.textContaining('0 nights under 6 hours of sleep'),
+          findsOneWidget);
+      expect(find.text(correlationUnavailableF2), findsOneWidget);
+      expect(find.text(correlationLoadError), findsNothing);
+    });
+
+    testWidgets(
+        '(6a) insightStore fake readAll returns a Map: records render',
+        (tester) async {
+      await pumpPatterns(tester, null, insightStore: FakeMapInsightStore());
+      expect(find.textContaining('averaged 71'), findsOneWidget);
+      expect(find.text(correlationLoadError), findsNothing);
+    });
+
+    testWidgets(
+        '(6b) insightStore whose readAll/load/getAll all throw: '
+        'Slot 1 error state, not placeholder', (tester) async {
+      await pumpPatterns(tester, null,
+          insightStore: FakeThrowingInsightStore());
+      expect(find.text(correlationLoadError), findsOneWidget);
+      expect(find.text(correlationLoadRetryLabel), findsOneWidget);
+      expect(find.text(correlationCaption), findsNothing);
+      expect(find.text(correlationUnavailableF2), findsNothing);
+    });
+
+    testWidgets(
+        '(7) integration: real CorrelationInsightStore over a corrupt '
+        'blob drives the production-shaped screen to the error state, '
+        'not the new-user state', (tester) async {
+      final store = CorrelationInsightStore.testInstance();
+      store.debugSetStore(
+        read: (key) async => 'this is not json {{{',
+        write: (key, value) async {},
+        delete: (key) async {},
+      );
+      await pumpPatterns(tester, null, insightStore: store);
+      expect(find.text(correlationLoadError), findsOneWidget);
+      expect(find.text(correlationLoadRetryLabel), findsOneWidget);
+      expect(find.text(correlationCaption), findsNothing);
+      expect(find.text(correlationUnavailableF2), findsNothing);
+      expect(find.textContaining('0 nights under 6 hours of sleep'),
+          findsNothing);
+    });
+
+    testWidgets(
+        '(8) membership-resolution failure (Juno signed follow-up): '
+        'Slot 1 error with ZERO cards, NO pending label, NO skeleton; '
+        'Try again re-runs BOTH load and resolution, the pending '
+        'label may reappear for the fresh check, and both succeeding '
+        'recovers to the numbers state', (tester) async {
+      var loadCalls = 0;
+      var resolveCalls = 0;
+      Completer<bool?>? secondResolution;
+      await pumpPatterns(
+        tester,
+        null,
+        isUnlimited: null,
+        recordsLoader: () async {
+          loadCalls++;
+          return [
+            f1aNumbers(),
+            f4Progress(),
+            rec(familyId: 'F2', splitId: '', state: InsightState.unavailable),
+          ];
+        },
+        membershipLoader: () {
+          resolveCalls++;
+          if (resolveCalls == 1) return Future<bool?>.value(null);
+          secondResolution = Completer<bool?>();
+          return secondResolution!.future;
+        },
+      );
+      await tester.pump();
+      // Condition 1+2: Slot 1 verbatim, replacing the card list
+      // ENTIRELY — no numbers, no progress, no unavailable, no
+      // skeleton (zero S3 captions = zero cards).
+      expect(find.text(correlationLoadError), findsOneWidget);
+      expect(find.text(correlationLoadRetryLabel), findsOneWidget);
+      expect(find.text(correlationCaption), findsNothing);
+      expect(find.textContaining('averaged'), findsNothing);
+      expect(find.textContaining('Not enough days yet.'), findsNothing);
+      expect(find.text(correlationUnavailableF2), findsNothing);
+      expect(find.byType(SkeletonBox), findsNothing);
+      // Condition 3: the pending label is NOT in/above/alongside
+      // the error state.
+      expect(find.text(correlationMembershipPendingLabel), findsNothing);
+      // Condition 4: retry re-runs both.
+      await tester.tap(find.text(correlationLoadRetryLabel));
+      await tester.pump();
+      expect(loadCalls, 2);
+      expect(resolveCalls, 2);
+      // The fresh in-flight check is a new pending state: the
+      // label may reappear now, and the error is gone.
+      expect(find.text(correlationLoadError), findsNothing);
+      expect(find.text(correlationMembershipPendingLabel), findsOneWidget);
+      // Both succeed → numbers render, label gone.
+      secondResolution!.complete(true);
+      await tester.pump();
+      expect(find.text(correlationMembershipPendingLabel), findsNothing);
+      expect(find.textContaining('averaged 71'), findsOneWidget);
+      expect(find.textContaining('Not enough days yet.'), findsOneWidget);
+    });
+
+    testWidgets(
+        '(9) membership resolution timeout counts as failure '
+        '(Juno follow-up condition 5): no unbounded pending',
+        (tester) async {
+      await pumpPatterns(
+        tester,
+        null,
+        isUnlimited: null,
+        recordsLoader: () async => [f1aNumbers(), f4Progress()],
+        membershipLoader: () => Completer<bool?>().future,
+      );
+      expect(find.text(correlationMembershipPendingLabel), findsOneWidget);
+      // Advance past the screen's 20s resolve bound.
+      await tester.pump(const Duration(seconds: 21));
+      expect(find.text(correlationMembershipPendingLabel), findsNothing);
+      expect(find.text(correlationLoadError), findsOneWidget);
+      expect(find.text(correlationLoadRetryLabel), findsOneWidget);
+      expect(find.text(correlationCaption), findsNothing);
+      expect(find.byType(SkeletonBox), findsNothing);
+    });
+  });
+
   group('A6 copy-lint', () {
     // Juno U1: the eight banned patterns, as lint stems.
     const bannedStems = <String>[
@@ -641,6 +927,16 @@ void main() {
         correlationUnavailableF5,
         'This pattern needs your medication change history. There are no recorded medication changes in Tabs yet.',
       );
+      expect(correlationLoadError,
+          'Could not load your Patterns. Please try again.');
+      expect(correlationLoadRetryLabel, 'Try again');
+      expect(correlationMembershipPendingLabel,
+          'Checking your membership status.');
+      expect(correlationStaticStrings, contains(correlationLoadError));
+      expect(
+          correlationStaticStrings, contains(correlationLoadRetryLabel));
+      expect(correlationStaticStrings,
+          contains(correlationMembershipPendingLabel));
       expect(medWindowBeforeLabel,
           'Average Daily Score, 14 days before');
       expect(

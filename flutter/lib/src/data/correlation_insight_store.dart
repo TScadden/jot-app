@@ -60,10 +60,22 @@ class CorrelationInsightStore {
     _records.clear();
     _ownerEmail = null;
     _warmed = false;
+    _loadFailed = false;
   }
 
   final Map<String, InsightRecord> _records = {};
   bool _warmed = false;
+
+  /// True when the last disk warm hit a genuine read/decode
+  /// failure (the storage read threw, the blob was not valid
+  /// JSON / not a JSON object, or its `records` field was not a
+  /// list). A missing or empty blob is NOT a failure — that is
+  /// the legitimate empty store. This flag is what lets the
+  /// Patterns surface distinguish load-failed from loaded-empty
+  /// (H1-08): [readAll] keeps its never-throws contract for the
+  /// refresh path, while [readAllOrThrow] surfaces the failure.
+  bool _loadFailed = false;
+  bool get loadFailed => _loadFailed;
 
   // ── Account binding (sibling-cache contract) ───────────────────
 
@@ -134,6 +146,11 @@ class CorrelationInsightStore {
       }
       map = jsonDecode(raw) as Map<String, dynamic>;
     } catch (_) {
+      // A blob exists but could not be read or decoded at all:
+      // a genuine load failure (H1-08), NOT a legitimately empty
+      // store. Memory still starts empty so the never-throws
+      // callers keep working; [loadFailed] carries the signal.
+      _loadFailed = true;
       if (expected != null) _ownerEmail = expected;
       _warmed = true;
       return;
@@ -153,21 +170,27 @@ class CorrelationInsightStore {
       }
       if (blobOwner == null && !hasData) _ownerEmail = expected;
     }
-    try {
-      final recordsRaw = map['records'];
-      if (recordsRaw is List) {
-        for (final raw in recordsRaw) {
+    // Per-record hardening: one malformed record is skipped on
+    // its own — it must never discard the other parsed records.
+    // Only a structurally malformed blob (a present `records`
+    // field that is not a list) counts as a load failure.
+    final recordsRaw = map['records'];
+    if (recordsRaw is List) {
+      for (final raw in recordsRaw) {
+        try {
           final record = InsightRecord.fromJson(raw);
           if (record != null && record.familyId.isNotEmpty) {
             _records[record.storeKey] = record;
           }
+        } catch (_) {
+          // Skip the malformed record; keep everything else.
         }
       }
-      final rawOwner = map['ownerEmail'];
-      if (rawOwner is String) _ownerEmail = _normalizeEmail(rawOwner);
-    } catch (_) {
-      _records.clear();
+    } else if (recordsRaw != null) {
+      _loadFailed = true;
     }
+    final rawOwner = map['ownerEmail'];
+    if (rawOwner is String) _ownerEmail = _normalizeEmail(rawOwner);
     if (expected != null) _ownerEmail = expected;
     _warmed = true;
   }
@@ -202,6 +225,23 @@ class CorrelationInsightStore {
     return {for (final k in keys) k: _records[k]!};
   }
 
+  /// Failure-distinguishing variant of [readAll] (the
+  /// `fetchHabitsOrNull` house idiom, applied to this store):
+  /// throws a [StateError] when the disk warm hit a genuine
+  /// read/decode failure, so a caller can tell load-failed apart
+  /// from loaded-empty. A successful warm — including a missing
+  /// or empty blob — returns the records exactly as [readAll].
+  Future<Map<String, InsightRecord>> readAllOrThrow() async {
+    await _ensureWarmed();
+    if (_loadFailed) {
+      throw StateError(
+        'CorrelationInsightStore: stored insights could not be '
+        'read or decoded.',
+      );
+    }
+    return readAll();
+  }
+
   /// Replaces the whole stored set with [records] (keyed
   /// familyId+splitId) and persists. Never throws.
   Future<void> writeAll(Map<String, InsightRecord> records) async {
@@ -209,6 +249,9 @@ class CorrelationInsightStore {
     _records
       ..clear()
       ..addAll(records);
+    // The new set is authoritative — any earlier load failure no
+    // longer describes what the store holds.
+    _loadFailed = false;
     await persist();
   }
 

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/correlation_engine.dart';
 import 'package:tabs_lab/src/data/correlation_insight_store.dart';
@@ -181,6 +183,63 @@ void main() {
     expect(read.length, 2);
     expect(read['F1/F1a'], _numbersRecord);
     expect(read['F3/F3'], _f3Record);
+  });
+
+  test('corrupt blob: readAll stays empty but the failure is '
+      'distinguishable (loadFailed / readAllOrThrow)', () async {
+    final fake = _FakeStore();
+    fake.values[CorrelationInsightStore.storageKey] = 'not json {{{';
+    final store = _store(fake);
+    // Never-throws contract preserved for the refresh path.
+    expect(await store.readAll(), isEmpty);
+    expect(store.loadFailed, isTrue);
+    await expectLater(store.readAllOrThrow(), throwsStateError);
+  });
+
+  test('a records field that is not a list is a load failure',
+      () async {
+    final fake = _FakeStore();
+    fake.values[CorrelationInsightStore.storageKey] =
+        '{"version":1,"ownerEmail":null,"records":"oops"}';
+    final store = _store(fake);
+    expect(await store.readAll(), isEmpty);
+    expect(store.loadFailed, isTrue);
+    await expectLater(store.readAllOrThrow(), throwsStateError);
+  });
+
+  test('missing blob is legitimately empty, never a failure',
+      () async {
+    final fake = _FakeStore();
+    final store = _store(fake);
+    expect(await store.readAllOrThrow(), isEmpty);
+    expect(store.loadFailed, isFalse);
+  });
+
+  test('one malformed record is skipped; the others survive',
+      () async {
+    final fake = _FakeStore();
+    fake.values[CorrelationInsightStore.storageKey] = jsonEncode({
+      'version': 1,
+      'ownerEmail': null,
+      'records': [
+        _numbersRecord.toJson(),
+        {
+          'familyId': 'F3',
+          'splitId': 'F3',
+          'windowKey': 'last90d',
+          'state': 'numbers',
+          'groups': <dynamic>[],
+          'computedAtMs': 'not-a-number',
+          'throughDate': '2026-09-28',
+          'inputFingerprint': 'bad',
+        },
+      ],
+    });
+    final store = _store(fake);
+    final read = await store.readAllOrThrow();
+    expect(read.length, 1);
+    expect(read['F1/F1a'], _numbersRecord);
+    expect(store.loadFailed, isFalse);
   });
 
   test('a blob owned by a different account is dropped, never served',

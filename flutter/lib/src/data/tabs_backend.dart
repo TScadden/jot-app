@@ -1259,9 +1259,20 @@ class TabsBackend {
   /// `fetchIsUnlimited` (round 18) already reads the pull's
   /// `isUnlimited`, which the server computes as
   /// `isAdmin || users.is_unlimited` — so admins are covered.
-  Future<({bool isUnlimited, bool isAdmin})> fetchMembership() async {
+  Future<({bool isUnlimited, bool isAdmin})> fetchMembership() async =>
+      await fetchMembershipOrNull() ??
+      (isUnlimited: false, isAdmin: false);
+
+  /// Nullable variant of [fetchMembership] (the
+  /// [fetchHabitsOrNull] house idiom): returns null when the
+  /// fetch itself failed (no usable sync pull), and the parsed
+  /// membership only when the server actually answered. Callers
+  /// that must tell "membership unknown" apart from "known
+  /// non-member" — the Patterns tri-state gate (H1-05P) — use
+  /// this so a failed fetch never masquerades as a non-member.
+  Future<({bool isUnlimited, bool isAdmin})?> fetchMembershipOrNull() async {
     final body = await fetchSyncPull();
-    if (body == null) return (isUnlimited: false, isAdmin: false);
+    if (body == null) return null;
     final isAdmin = body['isAdmin'] == true;
     final isUnlimited = body['isUnlimited'] == true || isAdmin;
     return (isUnlimited: isUnlimited, isAdmin: isAdmin);

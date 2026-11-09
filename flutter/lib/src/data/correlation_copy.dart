@@ -121,6 +121,24 @@ const String correlationUnavailableF5 =
 String correlationWindowLine(String throughDate) =>
     'Last 90 days · through $throughDate';
 
+// ── Failure states (Juno ruling for H1-08 / H1-05P) ───────────────
+//
+// Slot 1 load error: renders ONLY on a failed/thrown records read
+// (or a failed membership resolution — Juno's signed follow-up
+// ruling), replacing the card list entirely. A successful read
+// returning zero records is the legitimate new-user state and
+// never routes here.
+
+const String correlationLoadError =
+    'Could not load your Patterns. Please try again.';
+
+const String correlationLoadRetryLabel = 'Try again';
+
+/// Pending label: renders exactly once, with the skeleton, only
+/// while membership is genuinely unknown (H1-05P tri-state gate).
+const String correlationMembershipPendingLabel =
+    'Checking your membership status.';
+
 // ── R5 — surface disclaimer (renders once on the surface) ──────────
 //
 // NOTE: this is Juno's item-5 line. It is NOT the longer
@@ -241,6 +259,9 @@ const List<String> correlationStaticStrings = [
   correlationUnavailableF2,
   correlationUnavailableF5,
   correlationSurfaceDisclaimer,
+  correlationLoadError,
+  correlationLoadRetryLabel,
+  correlationMembershipPendingLabel,
   correlationFluidHeader,
   correlationSodiumHeader,
   f1aGroupALabel,
