@@ -810,10 +810,19 @@ class MainActivity : FlutterFragmentActivity() {
         val accessLevel: Int
     )
 
-    /// Native's inline calendar query (CoachViewModel.kt:789-815):
-    /// query failures are caught and logged natively, leaving an
-    /// empty candidate list (which then aborts as "no writable
-    /// calendar"); mirrored here.
+    /// Native's inline calendar query (CoachViewModel.kt:789-815).
+    ///
+    /// Pass-2 fix (B-05): native caught query failures and continued
+    /// with an empty candidate list, but mirroring that here made a
+    /// provider failure indistinguishable from "genuinely no
+    /// writable calendars": listWritableCalendars reported
+    /// success([]) (its CALENDAR_LIST_FAILED path was unreachable)
+    /// and insertCalendarEvent reported "noWritableCalendar" for a
+    /// provider/permission failure. This now propagates instead: a
+    /// thrown query rethrows and a null cursor throws, so callers
+    /// complete with their failure codes (CALENDAR_LIST_FAILED /
+    /// CALENDAR_INSERT_FAILED). An empty return means the provider
+    /// answered and no calendar has access >= 500.
     private fun queryWritableCalendars(): List<CalInfo> {
         val projection = arrayOf(
             CalendarContract.Calendars._ID,
@@ -822,27 +831,54 @@ class MainActivity : FlutterFragmentActivity() {
             CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL
         )
         val candidates = mutableListOf<CalInfo>()
-        try {
-            contentResolver.query(
-                CalendarContract.Calendars.CONTENT_URI,
-                projection, null, null, null
-            )?.use { cursor ->
-                val idCol = cursor.getColumnIndex(CalendarContract.Calendars._ID)
-                val accNameCol = cursor.getColumnIndex(CalendarContract.Calendars.ACCOUNT_NAME)
-                val accTypeCol = cursor.getColumnIndex(CalendarContract.Calendars.ACCOUNT_TYPE)
-                val accessCol = cursor.getColumnIndex(CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL)
-                while (cursor.moveToNext()) {
-                    val id = if (idCol != -1) cursor.getLong(idCol) else continue
-                    val accName = if (accNameCol != -1) cursor.getString(accNameCol) ?: "" else ""
-                    val accType = if (accTypeCol != -1) cursor.getString(accTypeCol) ?: "" else ""
-                    val access = if (accessCol != -1) cursor.getInt(accessCol) else 0
-                    if (access >= 500) candidates.add(CalInfo(id, accName, accType, access))
-                }
+        val cursor = contentResolver.query(
+            CalendarContract.Calendars.CONTENT_URI,
+            projection, null, null, null
+        ) ?: throw IllegalStateException(
+            "Calendar provider returned no cursor for the calendars query."
+        )
+        cursor.use { cur ->
+            val idCol = cur.getColumnIndex(CalendarContract.Calendars._ID)
+            val accNameCol = cur.getColumnIndex(CalendarContract.Calendars.ACCOUNT_NAME)
+            val accTypeCol = cur.getColumnIndex(CalendarContract.Calendars.ACCOUNT_TYPE)
+            val accessCol = cur.getColumnIndex(CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL)
+            while (cur.moveToNext()) {
+                val id = if (idCol != -1) cur.getLong(idCol) else continue
+                val accName = if (accNameCol != -1) cur.getString(accNameCol) ?: "" else ""
+                val accType = if (accTypeCol != -1) cur.getString(accTypeCol) ?: "" else ""
+                val access = if (accessCol != -1) cur.getInt(accessCol) else 0
+                if (access >= 500) candidates.add(CalInfo(id, accName, accType, access))
             }
-        } catch (_: Exception) {
-            // Native logs and continues with no candidates.
         }
         return candidates
+    }
+
+    /// Parses a coach-proposed date+time ("yyyy-MM-dd" plus
+    /// "hh:mm a", falling back to "HH:mm") with non-lenient
+    /// formatters, requiring the whole combined input to be
+    /// consumed. Returns epoch milliseconds, or null when the pair
+    /// does not parse — callers treat null as INVALID_ARGS
+    /// (pass-2 B-06), never as "use now".
+    private fun parseCalendarDateTime(date: String, timeStr: String): Long? {
+        val combined = "$date $timeStr"
+        for (pattern in listOf("yyyy-MM-dd hh:mm a", "yyyy-MM-dd HH:mm")) {
+            try {
+                val format = java.text.SimpleDateFormat(
+                    pattern, java.util.Locale.US
+                ).apply {
+                    isLenient = false
+                    timeZone = java.util.TimeZone.getDefault()
+                }
+                val pos = java.text.ParsePosition(0)
+                val parsed = format.parse(combined, pos)
+                if (parsed != null && pos.index == combined.length) {
+                    return parsed.time
+                }
+            } catch (_: Exception) {
+                // Try the next format.
+            }
+        }
+        return null
     }
 
     /// Port of native `approveProposedCalendarEvent`
@@ -851,6 +887,11 @@ class MainActivity : FlutterFragmentActivity() {
     /// post native's exact outcome messages; a thrown failure comes
     /// back as CALENDAR_INSERT_FAILED (native's outer catch posts
     /// FriendlyErrors.coachCalendarAddFailure, which Dart mirrors).
+    /// Pass-2 deviations (B-05/B-06): a writable-calendar query
+    /// failure surfaces as CALENDAR_INSERT_FAILED (never
+    /// "noWritableCalendar"), and a supplied-but-unparseable
+    /// date/time aborts with INVALID_ARGS before any insert (never
+    /// an event inserted at "now"); see below.
     private fun insertCalendarEvent(
         title: String?,
         date: String?,
@@ -869,6 +910,36 @@ class MainActivity : FlutterFragmentActivity() {
             )
             return
         }
+        // Pass-2 fix (B-06): native silently kept a "now" start when
+        // a supplied date/time could not be parsed, inserting a
+        // 1-hour event at the current time and reporting "inserted".
+        // A supplied-but-unparseable date/time now aborts with
+        // INVALID_ARGS before any insert (Dart maps it to native's
+        // existing coachCalendarAddFailureMessage). Blank treatment
+        // mirrors deleteCalendarEvents (B-07): when BOTH date and
+        // time are blank/absent, nothing was supplied, so native's
+        // "now" default is kept; when exactly one is supplied, the
+        // pair cannot form the proposed instant, so that counts as
+        // supplied-but-unparseable and aborts too.
+        val dateSupplied = !date.isNullOrBlank()
+        val timeSupplied = !timeStr.isNullOrBlank()
+        var suppliedStartMillis: Long? = null
+        if (dateSupplied || timeSupplied) {
+            suppliedStartMillis =
+                if (dateSupplied && timeSupplied) {
+                    parseCalendarDateTime(date!!, timeStr!!)
+                } else {
+                    null
+                }
+            if (suppliedStartMillis == null) {
+                result.error(
+                    "INVALID_ARGS",
+                    "Calendar event date/time could not be parsed.",
+                    null
+                )
+                return
+            }
+        }
         Thread {
             var failure: Exception? = null
             var outcome = "inserted"
@@ -885,33 +956,13 @@ class MainActivity : FlutterFragmentActivity() {
                 if (best == null) {
                     outcome = "noWritableCalendar"
                 } else {
-                    // 2. Parse date+time to epoch milliseconds
-                    //    (native :830-851).
-                    var startMillis = System.currentTimeMillis()
-                    if (!date.isNullOrBlank() && !timeStr.isNullOrBlank()) {
-                        try {
-                            val parsed = try {
-                                val format12 = java.text.SimpleDateFormat(
-                                    "yyyy-MM-dd hh:mm a", java.util.Locale.US
-                                ).apply {
-                                    timeZone = java.util.TimeZone.getDefault()
-                                }
-                                format12.parse("$date $timeStr")
-                            } catch (_: Exception) {
-                                val format24 = java.text.SimpleDateFormat(
-                                    "yyyy-MM-dd HH:mm", java.util.Locale.US
-                                ).apply {
-                                    timeZone = java.util.TimeZone.getDefault()
-                                }
-                                format24.parse("$date $timeStr")
-                            }
-                            if (parsed != null) {
-                                startMillis = parsed.time
-                            }
-                        } catch (_: Exception) {
-                            // Native logs and keeps the "now" default.
-                        }
-                    }
+                    // 2. Start time (native :830-851): a supplied
+                    //    date+time was already parsed and validated
+                    //    before this thread (B-06); only the
+                    //    both-blank case keeps native's "now"
+                    //    default.
+                    val startMillis = suppliedStartMillis
+                        ?: System.currentTimeMillis()
                     val endMillis = startMillis + 60 * 60 * 1000
 
                     // 3. Insert with native's field mapping and the
@@ -966,7 +1017,12 @@ class MainActivity : FlutterFragmentActivity() {
     /// Port of native `approveProposedCalendarDeleteEvent`
     /// (CoachViewModel.kt:941-1003), minus UI/persistence: TITLE = ?
     /// across ALL calendars, plus the parsed date's day window when
-    /// the date parses. Returns the number of rows deleted.
+    /// a date is supplied. Returns the number of rows deleted.
+    /// Pass-2 deviation (B-07): a non-blank date that cannot be
+    /// parsed aborts with INVALID_ARGS before any delete (native
+    /// swallowed the ParseException and deleted by title alone
+    /// across all dates); a blank/absent date keeps the title-only
+    /// delete — see below.
     private fun deleteCalendarEvents(
         title: String?,
         date: String?,
@@ -982,30 +1038,55 @@ class MainActivity : FlutterFragmentActivity() {
             )
             return
         }
+        // Pass-2 fix (B-07): native swallowed a date ParseException
+        // and deleted by TITLE ALONE across all dates/calendars,
+        // returning success. A non-blank date that cannot be parsed
+        // now aborts with INVALID_ARGS before any delete runs. The
+        // formatter is non-lenient and the whole input must be
+        // consumed, so out-of-range dates (e.g. 2026-02-30) error
+        // instead of rolling into a wrong-day scoped delete, and a
+        // null parse result errors too. A blank/absent date keeps
+        // the title-only delete: the Dart tag parser makes the date
+        // segment optional (health_coach_screen.dart sets the date
+        // only when the tag carries a second |-field), so a
+        // dateless proposal the user approved is a deliberate
+        // caller contract, matching native's title-only path.
+        var dayStartMillis: Long? = null
+        if (!date.isNullOrBlank()) {
+            val format = java.text.SimpleDateFormat(
+                "yyyy-MM-dd", java.util.Locale.US
+            ).apply {
+                isLenient = false
+                timeZone = java.util.TimeZone.getDefault()
+            }
+            val pos = java.text.ParsePosition(0)
+            val parsed = try {
+                format.parse(date, pos)
+            } catch (_: Exception) {
+                null
+            }
+            if (parsed == null || pos.index != date.length) {
+                result.error(
+                    "INVALID_ARGS",
+                    "Calendar event date must be a valid yyyy-MM-dd date.",
+                    null
+                )
+                return
+            }
+            dayStartMillis = parsed.time
+        }
         Thread {
             var failure: Exception? = null
             var rowsDeleted = 0
             try {
                 var selection = "${CalendarContract.Events.TITLE} = ?"
                 val selectionArgs = mutableListOf(title ?: "")
-                if (!date.isNullOrBlank()) {
-                    try {
-                        val format = java.text.SimpleDateFormat(
-                            "yyyy-MM-dd", java.util.Locale.US
-                        ).apply {
-                            timeZone = java.util.TimeZone.getDefault()
-                        }
-                        val parsed = format.parse(date)
-                        if (parsed != null) {
-                            val startOfDay = parsed.time
-                            val endOfDay = startOfDay + 24 * 60 * 60 * 1000
-                            selection += " AND ${CalendarContract.Events.DTSTART} >= ? AND ${CalendarContract.Events.DTSTART} < ?"
-                            selectionArgs.add(startOfDay.toString())
-                            selectionArgs.add(endOfDay.toString())
-                        }
-                    } catch (_: Exception) {
-                        // Native logs and deletes by title alone.
-                    }
+                val dayStart = dayStartMillis
+                if (dayStart != null) {
+                    val endOfDay = dayStart + 24 * 60 * 60 * 1000
+                    selection += " AND ${CalendarContract.Events.DTSTART} >= ? AND ${CalendarContract.Events.DTSTART} < ?"
+                    selectionArgs.add(dayStart.toString())
+                    selectionArgs.add(endOfDay.toString())
                 }
                 rowsDeleted = contentResolver.delete(
                     CalendarContract.Events.CONTENT_URI,
