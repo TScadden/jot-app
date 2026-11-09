@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Graves' Disease"
+ ],
+ "detail": "The MedlinePlus Medical Encyclopedia describes Graves disease as an autoimmune disease that leads to an overactive thyroid gland, or hyperthyroidism, and as the most common cause of hyperthyroidism. An abnormal immune system response causes the thyroid to produce too much thyroid hormone, which speeds up many body functions. MedlinePlus notes it is most common in women over age 20, though it can occur at any age and can affect men as well.\n\nSymptoms can include rapid or irregular heartbeat, tremor, heat intolerance and sweating, weight loss, anxiety, difficulty sleeping, and more frequent bowel movements, and some people develop eye changes called Graves ophthalmopathy. Evaluation usually includes a physical exam and blood tests measuring thyroid-stimulating hormone (TSH) and thyroid hormone levels, and may include antibody testing or a radioactive iodine uptake test to confirm that Graves disease, rather than another condition, is causing the hyperthyroidism.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about evaluation for Graves' disease symptoms.",
+ "id": "graves_overview",
+ "sourceHandle": "",
+ "sourceName": "MedlinePlus",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://medlineplus.gov/ency/article/000358.htm",
+ "sourceVideoTitle": "Graves disease: MedlinePlus Medical Encyclopedia",
+ "summary": "The MedlinePlus Medical Encyclopedia describes Graves disease as an autoimmune disorder and the most common cause of hyperthyroidism, covering its symptoms, the exams and tests used, and treatment goals.",
+ "takeaways": [
+  "graves' disease is the most common cause of hyperthyroidism sources describe",
+  "the immune system drives the thyroid to make too much hormone",
+  "symptoms can include rapid heartbeat, tremor, heat intolerance, and weight loss",
+  "diagnosis uses thyroid blood tests and sometimes uptake testing"
+ ],
+ "title": "Graves' disease: an overactive thyroid from autoimmunity",
+ "videoDurationSeconds": 0
+}

@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Lupus (Systemic Lupus Erythematosus / SLE)"
+ ],
+ "detail": "The MedlinePlus Medical Encyclopedia describes lupus care as built around a treatment plan made with a primary care clinician and usually a rheumatologist, with regular follow-up to watch for flares and organ involvement. Everyday measures sources describe include sun protection, rest during flares, and reporting new symptoms promptly, since kidney, heart, lung, or nervous system involvement needs specialist care.\n\nMedication classes clinicians may use depend on severity. Milder disease may involve nonsteroidal anti-inflammatory drugs, corticosteroid creams or low doses of corticosteroids, and the antimalarial hydroxychloroquine, while more severe disease may involve higher-dose corticosteroids, immunosuppressive medicines, or biologic medicines that target specific parts of the immune system. Follow-up typically includes repeat blood and urine testing to monitor disease activity and medicine effects.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about ongoing lupus management.",
+ "id": "lupus_management",
+ "sourceHandle": "",
+ "sourceName": "MedlinePlus",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://medlineplus.gov/ency/article/000435.htm",
+ "sourceVideoTitle": "Systemic lupus erythematosus",
+ "summary": "The MedlinePlus Medical Encyclopedia describes how lupus care aims to control symptoms and prevent organ damage, with medication classes matched to how mild or severe the disease is.",
+ "takeaways": [
+  "care aims to prevent flares and limit organ damage",
+  "sun protection and regular follow-up are part of everyday care sources describe",
+  "medicine classes range from anti-inflammatory drugs to immune-suppressing medicines",
+  "never start, stop, or change medicines without your doctor"
+ ],
+ "title": "Managing lupus day to day",
+ "videoDurationSeconds": 0
+}

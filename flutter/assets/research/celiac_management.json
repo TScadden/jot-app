@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Celiac Disease"
+ ],
+ "detail": "MedlinePlus describes a lifelong gluten-free diet as the central treatment for celiac disease: avoiding wheat, barley, and rye allows symptoms to settle and, in most cases, lets the intestinal lining heal and prevents further damage. Because gluten hides in some processed foods, supplements, and other products, sources describe careful label reading, attention to cross-contact in the kitchen, and help from a registered dietitian who specializes in celiac disease as foundations of day-to-day management.\n\nMedlinePlus notes that a clinician may prescribe vitamin and mineral supplements when deficiencies are present, and that healing often takes months in children and can take longer in adults. Follow-up usually tracks symptoms, nutrition, and celiac blood markers over time. Medicines play only a small role in the sources: short-term corticosteroids are described only for the uncommon situation where the disease does not respond to the diet, and no medicine is presented as a substitute for gluten avoidance.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about managing celiac disease and the gluten-free diet.",
+ "id": "celiac_management",
+ "sourceHandle": "",
+ "sourceName": "MedlinePlus",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://medlineplus.gov/ency/article/000233.htm",
+ "sourceVideoTitle": "Celiac disease - sprue",
+ "summary": "MedlinePlus describes celiac disease management centered on a lifelong gluten-free diet with dietitian support, label reading, supplements for deficiencies when a clinician prescribes them, and follow-up monitoring.",
+ "takeaways": [
+  "a lifelong gluten-free diet is the foundation sources describe",
+  "dietitian help and label reading guard against hidden gluten",
+  "supplements are used for deficiencies a clinician identifies",
+  "never start, stop, or change medicines without your doctor"
+ ],
+ "title": "Managing celiac disease day to day",
+ "videoDurationSeconds": 0
+}

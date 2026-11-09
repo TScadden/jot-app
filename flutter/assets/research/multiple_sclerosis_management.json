@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Multiple Sclerosis (MS - RRMS / PPMS)"
+ ],
+ "detail": "Mayo Clinic describes MS care as typically focusing on speeding recovery from attacks, reducing relapses, slowing progression, and managing symptoms, coordinated with a neurologist and often a wider care team. Rehabilitation, physical therapy, and symptom-focused care are part of the plans sources describe, alongside monitoring with exams and MRI over time.\n\nFor attacks, Mayo Clinic describes corticosteroid medicines used to reduce nerve inflammation, and plasma exchange in some severe cases. For longer-term control, disease-modifying therapies (DMTs) for relapsing-remitting MS come in injectable, oral, and infusion forms, and one DMT is available for primary-progressive MS; sources describe these medicines as lowering relapse rates and slowing new lesion formation. Separate medicines and therapies target symptoms such as spasticity, pain, bladder problems, and fatigue.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about ongoing multiple sclerosis management.",
+ "id": "multiple_sclerosis_management",
+ "sourceHandle": "",
+ "sourceName": "Mayo Clinic",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.mayoclinic.org/diseases-conditions/multiple-sclerosis/basics/treatment/con-20026689",
+ "sourceVideoTitle": "Multiple sclerosis - Diagnosis and treatment - Mayo Clinic",
+ "summary": "Mayo Clinic describes multiple sclerosis care in three parts: treating attacks, disease-modifying therapies that reduce relapses and slow progression, and treatments aimed at individual symptoms.",
+ "takeaways": [
+  "care separates attack treatment, disease modification, and symptom treatment",
+  "disease-modifying therapies come in injectable, oral, and infusion forms",
+  "corticosteroids are used for attacks, not as long-term disease control",
+  "never start, stop, or change medicines without your doctor"
+ ],
+ "title": "Managing multiple sclerosis day to day",
+ "videoDurationSeconds": 0
+}

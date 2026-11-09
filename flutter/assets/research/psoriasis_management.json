@@ -1,0 +1,22 @@
+{
+ "conditionTags": [
+  "Psoriasis (Plaque / Guttate)"
+ ],
+ "detail": "Mayo Clinic describes psoriasis treatment as aiming to stop skin cells from growing so quickly and to remove scale, with the approach matched to severity and to how the disease responded to earlier treatment. Care usually starts with the mildest options: topical therapies applied to the skin, including corticosteroid creams and ointments, vitamin D-based medicines, and retinoids, together with moisturizers and management of triggers such as stress and skin injury, which sources describe as helping keep symptoms under control.\n\nFor moderate to severe disease, or when topicals are not enough, Mayo Clinic describes light therapy (phototherapy) using controlled ultraviolet light, and systemic medicines taken by mouth or injection. Those include older oral medicines that moderate the immune system and biologic medicines, given by injection, that target specific immune signals driving the disease cycle. Because even successful treatment is usually followed by recurrence over time, follow-up generally reviews skin response, screens for joint symptoms of psoriatic arthritis, and monitors medicine safety.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about psoriasis treatment options.",
+ "id": "psoriasis_management",
+ "sourceHandle": "",
+ "sourceName": "Mayo Clinic",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.mayoclinic.org/diseases-conditions/psoriasis/diagnosis-treatment/drc-20355845",
+ "sourceVideoTitle": "Psoriasis - Diagnosis and treatment - Mayo Clinic",
+ "summary": "Mayo Clinic describes a stepwise approach to psoriasis: topical therapies first for milder disease, then phototherapy and systemic or biologic medicines for moderate to severe disease, chosen by severity and prior response.",
+ "takeaways": [
+  "treatment is matched to severity and prior response",
+  "topicals are the usual starting point for milder disease",
+  "phototherapy and systemics are used for wider involvement",
+  "biologics target specific immune signals",
+  "never start, stop, or change medicines without your doctor"
+ ],
+ "title": "Managing psoriasis day to day",
+ "videoDurationSeconds": 0
+}

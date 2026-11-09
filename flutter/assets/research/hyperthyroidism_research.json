@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Hyperthyroidism"
+ ],
+ "detail": "Research linked to hyperthyroidism often focuses on Graves' disease, a common cause, and its eye complication, thyroid-associated ophthalmopathy. A multicenter randomized, placebo-controlled trial reported in The New England Journal of Medicine tested teprotumumab, a human monoclonal antibody that inhibits the insulin-like growth factor I receptor, a newer targeted strategy aimed at the underlying autoimmune process in the eye tissue.\n\nIn that trial, a larger share of participants receiving teprotumumab had a response at 24 weeks than those receiving placebo, measured by eye protrusion and a clinical activity score. NIDDK also points to another emerging direction, radiofrequency ablation for thyroid nodules that cause hyperthyroidism, described as not yet widely available and used mainly when medicines or surgery will not help. Sources present both as developing areas that require specialist evaluation.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about Graves' disease and thyroid eye research.",
+ "id": "hyperthyroidism_research",
+ "sourceHandle": "",
+ "sourceName": "The New England Journal of Medicine (via PubMed)",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://pubmed.ncbi.nlm.nih.gov:443/28467880/",
+ "sourceVideoTitle": "Teprotumumab for Thyroid-Associated Ophthalmopathy",
+ "summary": "A randomized trial reported in The New England Journal of Medicine tested teprotumumab, an antibody blocking the insulin-like growth factor I receptor, for thyroid-associated eye disease linked to Graves' disease.",
+ "takeaways": [
+  "eye disease linked to graves' disease is an active research area",
+  "newer targeted antibody treatments are being studied in trials",
+  "radiofrequency ablation for thyroid nodules is described as an emerging approach",
+  "research participation is optional; talk to your doctor about studies"
+ ],
+ "title": "Where hyperthyroidism research is heading",
+ "videoDurationSeconds": 0
+}

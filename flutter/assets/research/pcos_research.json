@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "PCOS (Polycystic Ovary Syndrome)"
+ ],
+ "detail": "NICHD reports that PCOS research is increasingly focused on genetics and subtypes. The institute notes research suggesting genetic and environmental factors both contribute, that symptoms tend to run in families, and that studies have identified a set of gene variants that can increase a person's risk of developing PCOS, found in both females and males.\n\nFrom those genetic findings, NICHD-funded researchers have described subtypes of PCOS, including a reproductive subtype with higher reproductive hormone levels and a metabolic subtype with higher body mass index, insulin, and glucose levels, with other work describing four clusters. Animal model research cited by NICHD also examines whether exposure to higher androgen levels in the womb affects later risk. The direction sources describe is toward explaining why PCOS looks different from person to person and matching care to subtype.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about PCOS genetics and subtype research.",
+ "id": "pcos_research",
+ "sourceHandle": "",
+ "sourceName": "Eunice Kennedy Shriver National Institute of Child Health and Human Development",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.nichd.nih.gov/health/topics/factsheets/pcos",
+ "sourceVideoTitle": "Eunice Kennedy Shriver National Institute of Child Health and Human Development - NICHD",
+ "summary": "NICHD's PCOS fact sheet describes research identifying genetic variants and PCOS subtypes, including reproductive and metabolic subtypes, and work on how hormone exposure before birth may affect risk.",
+ "takeaways": [
+  "genetics research has identified variants linked to pcos risk",
+  "researchers describe reproductive and metabolic subtypes",
+  "causes are studied in genes, hormones, and early development",
+  "research participation is optional; talk to your doctor about studies"
+ ],
+ "title": "Where PCOS research is heading",
+ "videoDurationSeconds": 0
+}

@@ -1,0 +1,22 @@
+{
+ "conditionTags": [
+  "Ulcerative Colitis"
+ ],
+ "detail": "MedlinePlus describes the goals of ulcerative colitis treatment as controlling acute attacks, preventing repeated attacks, and helping the colon heal. Day-to-day foundations in the sources include regular follow-up with the care team, nutrition and hydration support during flares, and avoiding nonsteroidal anti-inflammatory drugs such as ibuprofen and naproxen where a clinician advises it, because they can make symptoms worse; acetaminophen is described as the usual option discussed for mild pain.\n\nMedication classes clinicians may use include aminosalicylates (5-ASA medicines such as mesalamine) to control mild to moderate inflammation, corticosteroids during flares, immunomodulators that quiet the immune system, and biologic and other targeted therapies for more severe disease. Surgery to remove the colon is described when medicines cannot control the disease or complications arise. Ongoing monitoring generally includes symptom, blood, and endoscopic checks, and for long-standing colitis, periodic colonoscopy surveillance for dysplasia and colorectal cancer, which long-term inflammation raises the risk of.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about ulcerative colitis treatment and monitoring.",
+ "id": "ulcerative_colitis_management",
+ "sourceHandle": "",
+ "sourceName": "MedlinePlus",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://medlineplus.gov/ency/article/000250.htm",
+ "sourceVideoTitle": "Ulcerative colitis: MedlinePlus Medical Encyclopedia",
+ "summary": "MedlinePlus outlines ulcerative colitis treatment goals of controlling attacks, preventing relapse, and healing the colon, using aminosalicylates, corticosteroids for flares, immune-modifying and biologic medicines, and surgery when needed.",
+ "takeaways": [
+  "goals are to control flares, prevent relapse, and heal the colon",
+  "5-asa medicines are a common first class for milder disease",
+  "steroids are described for flares, not long-term control",
+  "long-standing colitis needs colon cancer surveillance",
+  "never start, stop, or change medicines without your doctor"
+ ],
+ "title": "Managing ulcerative colitis day to day",
+ "videoDurationSeconds": 0
+}

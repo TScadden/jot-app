@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Hashimoto's Thyroiditis"
+ ],
+ "detail": "NIDDK describes Hashimoto's disease, also called Hashimoto's thyroiditis, chronic lymphocytic thyroiditis, or autoimmune thyroiditis, as an autoimmune disorder that can cause hypothyroidism, or underactive thyroid, and rarely hyperthyroidism. The immune system attacks the thyroid gland at the front of the neck, which makes hormones that regulate how the body uses energy. NIDDK identifies it as the most common cause of hypothyroidism.\n\nEarly on there may be no symptoms; as thyroid hormone output falls, symptoms can include fatigue, weight gain, sensitivity to cold, joint pain, constipation, dry skin, and a slowed heart rate, and the gland may enlarge into a goiter. NIDDK describes diagnosis through a medical history, an exam, and blood tests of thyroid function, typically thyroid-stimulating hormone (TSH) and thyroxine (T4), along with thyroid antibody tests that point to an autoimmune cause.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about evaluation for Hashimoto's thyroiditis.",
+ "id": "hashimotos_overview",
+ "sourceHandle": "",
+ "sourceName": "National Institute of Diabetes and Digestive and Kidney Diseases",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.niddk.nih.gov/health-information/endocrine-diseases/hashimotos-disease",
+ "sourceVideoTitle": "Hashimoto's Disease - NIDDK",
+ "summary": "NIDDK gives an overview of Hashimoto's disease, an autoimmune disorder and the most common cause of hypothyroidism, covering its symptoms, how doctors diagnose it, and how it is treated.",
+ "takeaways": [
+  "hashimoto's is an autoimmune attack on the thyroid gland",
+  "it is the most common cause of hypothyroidism sources describe",
+  "symptoms can include fatigue, weight gain, cold sensitivity, and constipation",
+  "diagnosis uses thyroid blood tests and antibody testing"
+ ],
+ "title": "Hashimoto's thyroiditis: an underactive thyroid from autoimmunity",
+ "videoDurationSeconds": 0
+}

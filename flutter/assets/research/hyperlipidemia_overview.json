@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "High Cholesterol (Hyperlipidemia)"
+ ],
+ "detail": "The Centers for Disease Control and Prevention (CDC) describes cholesterol as a waxy, fat-like substance the body needs in small amounts, carried through the blood on lipoproteins. Hyperlipidemia, or high cholesterol, refers to unhealthy levels of these fats, including high low-density lipoprotein (LDL) cholesterol or triglycerides. Excess LDL can build up in artery walls over time, and CDC links high blood cholesterol to higher risk of heart disease and stroke.\n\nCDC emphasizes high cholesterol itself does not cause symptoms, so many people do not know their levels are high. It is found with a blood test, often called a lipid panel or profile, that reports total cholesterol, LDL, high-density lipoprotein (HDL), and triglycerides. CDC materials describe desirable levels in general terms, such as total cholesterol below 200 mg/dL for adults, while noting individual interpretation depends on overall risk, age, family history, and other conditions a clinician considers.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about high cholesterol screening and lipid tests.",
+ "id": "hyperlipidemia_overview",
+ "sourceHandle": "",
+ "sourceName": "Centers for Disease Control and Prevention",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.cdc.gov/cholesterol/docs/consumered_cholesterol.pdf",
+ "sourceVideoTitle": "Know the Facts About High Cholesterol",
+ "summary": "CDC describes cholesterol as a waxy, fat-like substance carried on lipoproteins, notes high cholesterol itself has no signs or symptoms, and describes diagnosis with a simple blood test.",
+ "takeaways": [
+  "high cholesterol usually causes no symptoms",
+  "a lipid blood test is how it is found, sources describe",
+  "ldl and hdl have opposite associations with risk in sources",
+  "family history can raise risk, including inherited forms"
+ ],
+ "title": "High cholesterol: a silent risk found by a blood test",
+ "videoDurationSeconds": 0
+}

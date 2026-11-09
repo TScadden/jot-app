@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Diabetes (Type 1)"
+ ],
+ "detail": "NIDDK describes type 1 diabetes as a disease that occurs when the body makes little or no insulin. Insulin helps blood glucose enter cells to be used as energy. In type 1 diabetes, the immune system attacks and destroys the insulin-producing cells in the pancreas, so glucose builds up in the blood instead. It is usually diagnosed in children and young adults, although NIDDK notes it can appear at any age.\n\nSymptoms can include increased urination, feeling very thirsty or hungry, blurred vision, fatigue, sores that do not heal, frequent infections, and unexplained weight loss, and they often develop over a few days or weeks. Clinicians usually diagnose diabetes with blood tests such as A1C, fasting plasma glucose, or other glucose tests, and may also test for diabetes autoantibodies to help distinguish type 1 from type 2 or other forms. NIDDK notes that the first presentation can sometimes be diabetic ketoacidosis, especially in children.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about type 1 diabetes symptoms and diagnosis.",
+ "id": "diabetes_type1_overview",
+ "sourceHandle": "",
+ "sourceName": "National Institute of Diabetes and Digestive and Kidney Diseases",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.niddk.nih.gov/health-information/diabetes/overview/what-is-diabetes/type-1-diabetes",
+ "sourceVideoTitle": "Type 1 Diabetes",
+ "summary": "NIDDK describes type 1 diabetes as a condition in which the body makes little or no insulin because the immune system destroys insulin-producing cells in the pancreas.",
+ "takeaways": [
+  "type 1 diabetes is an autoimmune condition, not caused by lifestyle",
+  "symptoms can develop quickly, especially in children",
+  "diagnosis uses blood glucose tests and autoantibody testing",
+  "talk to your doctor about new thirst, urination, or weight loss"
+ ],
+ "title": "Type 1 diabetes: when the immune system stops insulin production",
+ "videoDurationSeconds": 0
+}

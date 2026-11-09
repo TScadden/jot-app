@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Lupus (Systemic Lupus Erythematosus / SLE)"
+ ],
+ "detail": "MedlinePlus describes lupus as an autoimmune disease in which the immune system mistakenly attacks healthy tissue. Systemic lupus erythematosus (SLE) is the most common type and can affect the skin, joints, kidneys, brain, and other organs, while other forms mainly involve the skin or follow certain medicines. The condition tends to move between flares and quieter periods.\n\nSymptoms can include fatigue, joint pain or swelling, rashes that may worsen with sun exposure, fever, mouth sores, and hair loss, and they vary widely from person to person. MedlinePlus notes there is no single test for lupus: evaluation usually combines a medical history, a physical exam, and laboratory tests such as antinuclear antibody (ANA) testing, blood counts, and urine studies, and clinicians also work to rule out conditions that can look similar.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about evaluation for lupus symptoms.",
+ "id": "lupus_overview",
+ "sourceHandle": "",
+ "sourceName": "MedlinePlus",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://medlineplus.gov/lupus.html",
+ "sourceVideoTitle": "Lupus | Lupus Symptoms | SLE | MedlinePlus",
+ "summary": "MedlinePlus gives an overview of lupus, its main types including systemic lupus erythematosus (SLE), the body systems it can affect, and how clinicians generally evaluate and treat it.",
+ "takeaways": [
+  "lupus is an autoimmune condition that can affect many body systems",
+  "symptoms can include fatigue, joint pain, rashes, and fever",
+  "there is no single test; diagnosis combines history, exam, and labs",
+  "a rheumatologist often leads lupus care"
+ ],
+ "title": "Lupus: when the immune system targets the body's own tissues",
+ "videoDurationSeconds": 0
+}

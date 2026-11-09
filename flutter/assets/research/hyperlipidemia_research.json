@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "High Cholesterol (Hyperlipidemia)"
+ ],
+ "detail": "The American Heart Association reports that cholesterol research is exploring more convenient ways to block PCSK9, a protein that limits the liver's ability to clear LDL cholesterol. Injectable PCSK9 inhibitors became available over the past decade for people whose LDL remains above goal despite lifestyle changes and maximum statin treatment, and researchers are now studying an oral form of the same approach.\n\nIn a preliminary phase 3 presentation reported by the Association, a daily pill called enlicitide lowered LDL cholesterol by up to 60 percent in adults with a previous heart attack or stroke, or at high risk for one. The Association notes meeting abstracts are preliminary until published in a peer-reviewed journal, and a longer ongoing cardiovascular outcomes study is examining whether the medicine can reduce the risk of heart attack or stroke, which is the outcome that ultimately matters.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about new cholesterol medicines and PCSK9 research.",
+ "id": "hyperlipidemia_research",
+ "sourceHandle": "",
+ "sourceName": "American Heart Association",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://newsroom.heart.org/news/investigational-daily-pill-lowered-bad-cholesterol-as-much-as-injectables",
+ "sourceVideoTitle": "Investigational daily pill lowered bad cholesterol as much as injectables",
+ "summary": "The American Heart Association reports on a phase 3 trial of enlicitide, an investigational oral PCSK9 inhibitor, which lowered LDL cholesterol in adults whose levels remained above goal despite standard treatment.",
+ "takeaways": [
+  "oral pcsk9 inhibition is a new direction under study",
+  "outcomes trials test whether lowering prevents heart attack and stroke",
+  "research medicines are investigational until trials and review complete",
+  "research participation is optional; talk to your doctor about studies"
+ ],
+ "title": "Where cholesterol research is heading",
+ "videoDurationSeconds": 0
+}

@@ -20,8 +20,9 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   /// Every condition name the Research screen can show content for:
-  /// the four the library originally covered plus the eleven added
-  /// in this package (tags are the exact `commonConditions` strings).
+  /// the original 15 plus the expansion batches (tags are the exact
+  /// `commonConditions` strings; dual-tagged conditions list every
+  /// catalog string their entries carry).
   const coveredConditions = <String>[
     'POTS (Postural Orthostatic Tachycardia Syndrome)',
     'Mast Cell Activation Syndrome (MCAS)',
@@ -38,12 +39,34 @@ void main() {
     'Long COVID (Post-Acute Sequelae of SARS-CoV-2)',
     'Neuropathy (Peripheral / Small Fiber)',
     "Raynaud's Phenomenon",
+    // Expansion batch 1 (autoimmune + endocrine/metabolic).
+    'Lupus (Systemic Lupus Erythematosus / SLE)',
+    'Rheumatoid Arthritis (RA)',
+    'Arthritis (Rheumatoid / RA)',
+    'Multiple Sclerosis (MS - RRMS / PPMS)',
+    "Sjögren's Syndrome",
+    "Hashimoto's Thyroiditis",
+    "Graves' Disease",
+    'Celiac Disease',
+    "Crohn's Disease",
+    'Ulcerative Colitis',
+    'Psoriatic Arthritis',
+    'Ankylosing Spondylitis',
+    'Psoriasis (Plaque / Guttate)',
+    'Diabetes (Type 1)',
+    'Diabetes (Type 2)',
+    'Hypothyroidism',
+    'Hyperthyroidism',
+    'PCOS (Polycystic Ovary Syndrome)',
+    'Endometriosis',
+    'Anemia (Iron Deficiency)',
+    'High Cholesterol (Hyperlipidemia)',
   ];
 
   test('real rootBundle loads the full library (production path)',
       () async {
     final entries = await loadResearchEntries(rootBundle);
-    expect(entries.length, 46,
+    expect(entries.length, 106,
         reason: 'the bundled library should load every entry file');
     for (final condition in coveredConditions) {
       expect(entriesForCondition(entries, condition), isNotEmpty,
@@ -58,7 +81,7 @@ void main() {
         .whereType<File>()
         .where((f) => f.path.endsWith('.json'))
         .toList();
-    expect(files.length, 46);
+    expect(files.length, 106);
 
     final ids = <String>{};
     final covered = <String>{};

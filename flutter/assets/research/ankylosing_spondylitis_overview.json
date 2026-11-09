@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Ankylosing Spondylitis"
+ ],
+ "detail": "NIAMS describes ankylosing spondylitis as a type of arthritis that causes inflammation in the joints and ligaments of the spine, most characteristically where the bottom of the spine joins the pelvis, the sacroiliac joints. Over time, ongoing inflammation can reduce flexibility, and in severe cases new bone formation can fuse vertebrae. The condition is part of the spondyloarthritis family and has a strong genetic component.\n\nMany people have mild episodes of back pain and stiffness that come and go, while others have severe, ongoing pain. NIAMS notes the pattern often involves stiffness that is worse after rest, including in the second half of the night and on waking, and eases with movement. Shoulders, hips, ribs, knees, and feet can also be affected, and some people develop eye inflammation (uveitis), psoriasis, or inflammatory bowel disease alongside it. Evaluation usually involves the symptom history, an examination of posture and spinal flexibility, imaging of the sacroiliac joints by X-ray or MRI, and blood tests for inflammation markers; a gene test for HLA-B27 is sometimes supportive but does not by itself confirm or rule out the condition.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about evaluation for inflammatory back pain.",
+ "id": "ankylosing_spondylitis_overview",
+ "sourceHandle": "",
+ "sourceName": "National Institute of Arthritis and Musculoskeletal and Skin Diseases",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.niams.nih.gov/health-topics/ankylosing-spondylitis/basics/symptoms-causes",
+ "sourceVideoTitle": "Ankylosing Spondylitis Symptoms & Risk Factors | NIAMS",
+ "summary": "NIAMS describes ankylosing spondylitis as inflammatory arthritis of the spine and sacroiliac joints causing back pain and stiffness that typically worsens with rest and improves with movement, evaluated with history, imaging, and inflammation markers.",
+ "takeaways": [
+  "inflammation centers on the sacroiliac joints and spine",
+  "stiffness is often worse after rest and eases with movement",
+  "eyes, skin, and gut can be involved alongside the spine",
+  "imaging and history lead; no single blood test confirms it"
+ ],
+ "title": "Ankylosing spondylitis: inflammatory arthritis of the spine",
+ "videoDurationSeconds": 0
+}

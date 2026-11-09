@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "High Cholesterol (Hyperlipidemia)"
+ ],
+ "detail": "MedlinePlus describes high cholesterol care as starting with lifestyle foundations: a heart-healthy diet low in saturated fat, regular exercise, losing weight if a person has overweight or obesity, and quitting smoking, which it calls the single biggest change for reducing heart attack and stroke risk. Cholesterol levels are then rechecked with follow-up lipid testing, sooner when lifestyle, weight, or diet changes occur.\n\nWhen medicines are used, MedlinePlus describes the decision as based on LDL level, existing heart disease or diabetes, and overall risk. Statins are described as one kind of medicine that lowers cholesterol and has been shown to reduce the chance of heart disease, and as the most commonly used class. Other medicines described for people at higher risk or whose cholesterol remains high on statins include ezetimibe, bempedoic acid, and PCSK9 inhibitors, with the choice made by the clinician.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about managing high cholesterol, diet, and medicines.",
+ "id": "hyperlipidemia_management",
+ "sourceHandle": "",
+ "sourceName": "MedlinePlus",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://medlineplus.gov/ency/article/000403.htm",
+ "sourceVideoTitle": "High blood cholesterol levels",
+ "summary": "MedlinePlus describes improving cholesterol with heart-healthy eating, regular exercise, weight management, and not smoking, and medicines including statins, ezetimibe, bempedoic acid, and PCSK9 inhibitors when lifestyle changes are not enough.",
+ "takeaways": [
+  "heart-healthy eating, activity, and not smoking are foundations sources describe",
+  "statins are the medicine class most commonly described first",
+  "never start, stop, or change medicines without your doctor",
+  "repeat lipid testing monitors response over time"
+ ],
+ "title": "Managing high cholesterol day to day",
+ "videoDurationSeconds": 0
+}

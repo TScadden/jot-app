@@ -1,0 +1,21 @@
+{
+ "conditionTags": [
+  "Crohn's Disease"
+ ],
+ "detail": "NIDDK describes Crohn's disease as a chronic disease in which abnormal reactions of the immune system cause inflammation in the digestive tract. It is one of the inflammatory bowel diseases (IBD). Crohn's can affect any part of the digestive tract from mouth to anus, most often the end of the small intestine and the beginning of the large intestine, and it typically develops gradually, with periods of active symptoms called flares and periods of remission.\n\nThe most common symptoms NIDDK lists are diarrhea, cramping and pain in the abdomen, and weight loss. Symptoms can also include fatigue, fever, anemia, nausea or loss of appetite, and inflammation beyond the gut, such as joint pain, red or painful eyes, and tender skin bumps. There is no single diagnostic test: clinicians usually combine medical history and exam with blood and stool tests, endoscopy or colonoscopy with biopsies, and imaging such as CT or MRI to see which parts of the tract are involved and to rule out infections and other IBD.\n\nTabs is not endorsing or verifying this material. Talk to your doctor about evaluation for Crohn's disease symptoms.",
+ "id": "crohns_overview",
+ "sourceHandle": "",
+ "sourceName": "National Institute of Diabetes and Digestive and Kidney Diseases",
+ "sourcePlatform": "Article",
+ "sourceUrl": "https://www.niddk.nih.gov/health-information/digestive-diseases/crohns-disease",
+ "sourceVideoTitle": "Crohn’s Disease - NIDDK",
+ "summary": "NIDDK describes Crohn's disease as a chronic immune-mediated inflammation that can affect any part of the digestive tract, most often causing diarrhea, abdominal cramping and pain, and weight loss, diagnosed through a combination of history, endoscopy with biopsy, labs, and imaging.",
+ "takeaways": [
+  "crohn's can affect any part of the digestive tract",
+  "symptoms can include diarrhea, cramping, and weight loss",
+  "inflammation can also involve joints, skin, and eyes",
+  "diagnosis combines endoscopy, biopsies, labs, and imaging"
+ ],
+ "title": "Crohn's disease: immune inflammation anywhere in the digestive tract",
+ "videoDurationSeconds": 0
+}
