@@ -254,4 +254,171 @@ void main() {
     expect(s.seeded, isFalse);
     expect(streakCurrent(s, at(2026, 11, 4)), 0);
   });
+
+  group('C-04: a failed disk read is not an empty disk', () {
+    late bool readFails;
+    late String trueBlob;
+
+    StreakStore wireFlakyStore() {
+      final s = StreakStore.instance;
+      s.debugReset();
+      s.debugSetStore(
+        read: (key) async {
+          if (readFails) {
+            throw StateError('transient storage failure');
+          }
+          return disk[key];
+        },
+        write: (key, value) async {
+          disk[key] = value;
+        },
+        delete: (key) async {
+          disk.remove(key);
+        },
+      );
+      return s;
+    }
+
+    setUp(() {
+      readFails = false;
+      // The true local record: a 6-day run (Oct 30 – Nov 4) seeded
+      // 6/12, settled Nov 4, stamped with its owner.
+      final settled = streakEvaluate(
+        streakSeed(current: 6, best: 12, now: at(2026, 11, 4)),
+        at(2026, 11, 4),
+      );
+      trueBlob = jsonEncode({
+        'ownerEmail': 'owner@example.test',
+        'state': settled.toJson(),
+      });
+    });
+
+    test('read throws on load → recordOpen(pullSucceeded: true) '
+        'does not persist, does not push, and the on-disk blob '
+        'stays byte-identical', () async {
+      disk[StreakStore.storageKey] = trueBlob;
+      readFails = true;
+      final flaky = wireFlakyStore();
+
+      // The pull carries the server blob (settled Nov 4, 14/68):
+      // adopting it and evaluating Nov 5 changes the state, which
+      // is exactly the settle that persists + pushes on the buggy
+      // path — over the true local 6/12 record.
+      final serverState = streakEvaluate(
+        streakSeed(current: 14, best: 68, now: at(2026, 11, 4)),
+        at(2026, 11, 4),
+      );
+      final s = await flaky.recordOpen(
+        pullSucceeded: true,
+        seedCurrent: 14,
+        seedBest: 68,
+        seedStateJson: jsonEncode(serverState.toJson()),
+        now: at(2026, 11, 5),
+        push: recordingPush,
+      );
+      await pumpEventQueue();
+
+      // The failed load must behave like the pullSucceeded: false
+      // refusal: no adoption, no fabricated state.
+      expect(s.seeded, isFalse);
+      expect(flaky.state, isNull);
+      expect(pushes, isEmpty);
+      expect(disk[StreakStore.storageKey], trueBlob);
+    });
+
+    test('after reads recover, the true local record is intact '
+        'and normal recordOpen behavior resumes', () async {
+      disk[StreakStore.storageKey] = trueBlob;
+      readFails = true;
+      final flaky = wireFlakyStore();
+      await flaky.recordOpen(
+        pullSucceeded: true,
+        seedCurrent: 14,
+        seedBest: 68,
+        seedStateJson: null,
+        now: at(2026, 11, 5),
+        push: recordingPush,
+      );
+      await pumpEventQueue();
+
+      readFails = false;
+      pushes.clear();
+
+      // Same settled day, offline: the intact record surfaces
+      // unchanged — the degraded 14/68 re-seed never landed.
+      final s = await flaky.recordOpen(
+        pullSucceeded: false,
+        seedCurrent: null,
+        seedBest: null,
+        seedStateJson: null,
+        now: at(2026, 11, 4),
+        push: recordingPush,
+      );
+      expect(s.seeded, isTrue);
+      expect(streakCurrent(s, at(2026, 11, 4)), 6);
+      expect(streakBest(s), 12);
+      expect(s.countedDays, hasLength(6));
+      expect(s.countedDays.contains('2026-11-04'), isTrue);
+      expect(disk[StreakStore.storageKey], trueBlob);
+
+      // And the next day counts again, as normal.
+      final next = await flaky.recordOpen(
+        pullSucceeded: false,
+        seedCurrent: null,
+        seedBest: null,
+        seedStateJson: null,
+        now: at(2026, 11, 5),
+        push: recordingPush,
+      );
+      expect(streakCurrent(next, at(2026, 11, 5)), 7);
+    });
+
+    test('a failed load never produces a blob stamped '
+        'ownerEmail: null, and the owner claim survives it',
+        () async {
+      disk[StreakStore.storageKey] = trueBlob;
+      readFails = true;
+      final flaky = wireFlakyStore();
+
+      // The production cold-start ordering: the claim is stamped
+      // first (main.dart), then the load runs — and fails.
+      await flaky.clearIfOwnerMismatch('owner@example.test');
+      // Server-blob pull: adoption + a state-changing evaluation
+      // is the settle that, on the buggy path, persists the
+      // degraded record stamped with the nulled owner.
+      final serverState = streakEvaluate(
+        streakSeed(current: 14, best: 68, now: at(2026, 11, 4)),
+        at(2026, 11, 4),
+      );
+      await flaky.recordOpen(
+        pullSucceeded: true,
+        seedCurrent: 14,
+        seedBest: 68,
+        seedStateJson: jsonEncode(serverState.toJson()),
+        now: at(2026, 11, 5),
+        push: recordingPush,
+      );
+      await pumpEventQueue();
+
+      final raw = disk[StreakStore.storageKey];
+      expect(raw, trueBlob);
+      final decoded = jsonDecode(raw!) as Map<String, dynamic>;
+      expect(decoded['ownerEmail'], 'owner@example.test');
+
+      // Because the claim survived, recovery surfaces the owner's
+      // record instead of deleting it as foreign on the next load.
+      readFails = false;
+      final back = await flaky.recordOpen(
+        pullSucceeded: false,
+        seedCurrent: null,
+        seedBest: null,
+        seedStateJson: null,
+        now: at(2026, 11, 4),
+        push: recordingPush,
+      );
+      expect(back.seeded, isTrue);
+      expect(streakCurrent(back, at(2026, 11, 4)), 6);
+      expect(streakBest(back), 12);
+    });
+  });
 }
