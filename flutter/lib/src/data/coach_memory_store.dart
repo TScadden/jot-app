@@ -33,10 +33,10 @@ class CoachMemoryFact {
   });
 
   Map<String, dynamic> toJson() => {
-        'text': text,
-        'createdAt': createdAt,
-        'source': source,
-      };
+    'text': text,
+    'createdAt': createdAt,
+    'source': source,
+  };
 
   static CoachMemoryFact? fromJson(dynamic raw) {
     if (raw is! Map) return null;
@@ -49,7 +49,9 @@ class CoachMemoryFact {
     final ts = raw['createdAt'];
     return CoachMemoryFact(
       text: text,
-      createdAt: ts is num ? ts.toInt() : (ts is String ? int.tryParse(ts) ?? 0 : 0),
+      createdAt: ts is num
+          ? ts.toInt()
+          : (ts is String ? int.tryParse(ts) ?? 0 : 0),
       source: '${raw['source'] ?? ''}',
     );
   }
@@ -73,13 +75,12 @@ class CoachMemoryStore {
   static final CoachMemoryStore instance = CoachMemoryStore._internal();
   CoachMemoryStore._internal();
 
-  Future<String?> Function(String key) _read =
-      (key) => const FlutterSecureStorage().read(key: key);
-  Future<void> Function(String key, String value) _write =
-      (key, value) =>
-          const FlutterSecureStorage().write(key: key, value: value);
-  Future<void> Function(String key) _delete =
-      (key) => const FlutterSecureStorage().delete(key: key);
+  Future<String?> Function(String key) _read = (key) =>
+      const FlutterSecureStorage().read(key: key);
+  Future<void> Function(String key, String value) _write = (key, value) =>
+      const FlutterSecureStorage().write(key: key, value: value);
+  Future<void> Function(String key) _delete = (key) =>
+      const FlutterSecureStorage().delete(key: key);
 
   CoachMemoryStore._(this._read, this._write, this._delete);
 
@@ -88,8 +89,7 @@ class CoachMemoryStore {
     required Future<String?> Function(String key) read,
     required Future<void> Function(String key, String value) write,
     required Future<void> Function(String key) delete,
-  }) =>
-      CoachMemoryStore._(read, write, delete);
+  }) => CoachMemoryStore._(read, write, delete);
 
   @visibleForTesting
   void debugSetStore({
@@ -159,12 +159,14 @@ class CoachMemoryStore {
     _mirrorLoaded = false;
     _mirrorOwner = null;
     _diskLoaded = false;
+    // The external write supersedes the mirror wholesale, so any
+    // unsaved in-memory facts are intentionally dropped with it.
+    _persistDirty = false;
   }
 
   /// The facts currently mirrored in memory (empty until the first
   /// [load] lands). Synchronous and never throws.
-  List<CoachMemoryFact> get cachedFacts =>
-      _mirrorLoaded ? _mirror : const [];
+  List<CoachMemoryFact> get cachedFacts => _mirrorLoaded ? _mirror : const [];
 
   /// The mirrored facts ONLY when the mirror is verified to
   /// belong to [email] (normalized). Any other owner — or an
@@ -226,24 +228,47 @@ class CoachMemoryStore {
     final epochAtRecord = _epoch;
     final loading = _loading;
     if (loading != null) {
-      unawaited(loading.then((loaded) {
-        if (_epoch != epochAtRecord) return;
-        unawaited(_persist(_dedupeCap([...snapshot, ...loaded]), email,
-            epoch: epochAtRecord));
-      }));
+      unawaited(
+        loading.then((loaded) {
+          if (_epoch != epochAtRecord) return;
+          unawaited(
+            _persist(
+              _dedupeCap([...snapshot, ...loaded]),
+              email,
+              epoch: epochAtRecord,
+            ),
+          );
+        }),
+      );
     } else if (_diskLoaded) {
       unawaited(_persist(snapshot, email, epoch: epochAtRecord));
     } else {
-      unawaited(load(email).then((loaded) {
-        if (_epoch != epochAtRecord) return;
-        unawaited(_persist(_dedupeCap([...snapshot, ...loaded]), email,
-            epoch: epochAtRecord));
-      }));
+      unawaited(
+        load(email).then((loaded) {
+          if (_epoch != epochAtRecord) return;
+          unawaited(
+            _persist(
+              _dedupeCap([...snapshot, ...loaded]),
+              email,
+              epoch: epochAtRecord,
+            ),
+          );
+        }),
+      );
     }
     return _mirror;
   }
 
   bool _diskLoaded = false;
+
+  /// C-09: true while the mirror holds facts (or a deletion) that
+  /// no successful disk write has landed yet — either a write
+  /// threw, or a persist was gated off because disk was never
+  /// successfully read (C-05a). The next [load] or mutation retries
+  /// persisting the full snapshot; persists are whole-blob, so a
+  /// later successful write always includes every fact whose
+  /// original write failed.
+  bool _persistDirty = false;
 
   /// Reads the stored blob. When [email] is known and the blob is
   /// owned by a different account (or by no recorded account), the
@@ -252,7 +277,16 @@ class CoachMemoryStore {
   Future<List<CoachMemoryFact>> load(String? email) {
     final expected = normalizeEmail(email);
     if (_mirrorLoaded && _diskLoaded && _mirrorOwner == expected) {
-      return Future.value(_mirror);
+      // C-09: a load is also the retry point for a snapshot whose
+      // persist previously failed — land it (whole blob) before
+      // serving the mirror, so the facts survive a cold start even
+      // when no further mutation ever happens.
+      if (!_persistDirty) return Future.value(_mirror);
+      return _persist(
+        List<CoachMemoryFact>.of(_mirror),
+        email,
+        epoch: _epoch,
+      ).then((_) => _mirror);
     }
     // Round 55 fix pass (Vera): the in-flight future is keyed by
     // normalized email — it is only ever shared with a caller for
@@ -285,12 +319,37 @@ class CoachMemoryStore {
     // mutate nothing.
     List<CoachMemoryFact> discard() =>
         ownerAtStart == expected ? mirrorAtStart : const [];
+    String? raw;
     try {
-      final raw = await _read(storageKey);
+      raw = await _read(storageKey);
+    } catch (_) {
+      // C-05a (PR #44 split-catch shape): a storage READ throw is
+      // neither an empty blob nor a corrupt one — the on-disk blob
+      // may be perfectly valid. Leave the loaded flags FALSE and do
+      // not adopt the expected owner, so the next load retries the
+      // disk read, and keep _persist gated off (see _persist) so
+      // nothing overwrites the unread blob. Serve only the
+      // best-effort mirror already held for this caller; another
+      // account's mirror is never returned.
       if (epochAtStart != _epoch) return discard();
+      if (_mirrorOwner == expected || _mirrorOwner == null) {
+        return _mirror;
+      }
+      return const [];
+    }
+    if (epochAtStart != _epoch) return discard();
+    {
       List<CoachMemoryFact> disk = const [];
       if (raw != null && raw.isNotEmpty) {
-        final decoded = jsonDecode(raw);
+        // A blob that fails to decode is provably unusable (unlike
+        // a read throw): treat it as an empty disk and let the load
+        // complete, exactly as a missing blob does.
+        Object? decoded;
+        try {
+          decoded = jsonDecode(raw);
+        } catch (_) {
+          decoded = null;
+        }
         if (decoded is Map<String, dynamic>) {
           if (expected != null) {
             final owner = normalizeEmail(decoded['ownerEmail']?.toString());
@@ -301,8 +360,9 @@ class CoachMemoryStore {
               // Only facts recorded for THIS account during the
               // load may survive — a previous account's mirror is
               // dropped with its blob.
-              final pending =
-                  _mirrorOwner == expected ? _mirror : const <CoachMemoryFact>[];
+              final pending = _mirrorOwner == expected
+                  ? _mirror
+                  : const <CoachMemoryFact>[];
               await clear();
               _mirror = _dedupeCap(pending);
               _mirrorLoaded = true;
@@ -324,34 +384,25 @@ class CoachMemoryStore {
       // Facts recorded while the disk read was in flight are the
       // newest and win the merge — unless the mirror still holds a
       // different account's facts, which never merge.
-      final local = (_mirrorOwner == null ||
-              expected == null ||
-              _mirrorOwner == expected)
+      final local =
+          (_mirrorOwner == null || expected == null || _mirrorOwner == expected)
           ? _mirror
           : const <CoachMemoryFact>[];
       _mirror = _dedupeCap([...local, ...disk]);
       _mirrorLoaded = true;
       _mirrorOwner = expected;
       _diskLoaded = true;
-      return _mirror;
-    } catch (_) {
-      if (epochAtStart != _epoch) return discard();
-      // Round 55 fix pass (Vera): on a read failure the mirror is
-      // only trustworthy when it already belongs to this caller
-      // (or to no one). Another account's mirror is never
-      // returned: the result is empty and ownership moves to the
-      // expected account.
-      if (_mirrorOwner == expected || _mirrorOwner == null) {
-        _mirrorLoaded = true;
-        _mirrorOwner = expected;
-        _diskLoaded = true;
-        return _mirror;
+      // C-09 retry: facts recorded while disk reads were failing
+      // (or whose writes threw) sit in the merged mirror unsaved —
+      // now that a disk load has succeeded, land the full snapshot.
+      if (_persistDirty && epochAtStart == _epoch) {
+        await _persist(
+          List<CoachMemoryFact>.of(_mirror),
+          email,
+          epoch: epochAtStart,
+        );
       }
-      _mirror = const [];
-      _mirrorLoaded = true;
-      _mirrorOwner = expected;
-      _diskLoaded = true;
-      return const [];
+      return _mirror;
     }
   }
 
@@ -363,10 +414,29 @@ class CoachMemoryStore {
   /// match disk, and landing them would overwrite newer disk data
   /// with the stale merge. The check and the write call happen in
   /// the same synchronous turn, so no invalidation can slip between
-  /// them. Returns true when the write was issued.
-  Future<bool> _persist(List<CoachMemoryFact> facts, String? email,
-      {int? epoch}) async {
+  /// them.
+  ///
+  /// C-05a gate (mirrors health_history_store's persist gate): a
+  /// store whose disk load never SUCCEEDED must never overwrite
+  /// the blob — its snapshot is built over an unread disk and
+  /// landing it would destroy the facts still only on disk. The
+  /// persist is skipped and the snapshot is marked unsaved
+  /// instead.
+  ///
+  /// C-09: returns true ONLY when the write actually landed. A
+  /// failed write returns false and marks the snapshot unsaved
+  /// ([_persistDirty]) so the next load or mutation retries the
+  /// full snapshot; a failure is never presented as saved.
+  Future<bool> _persist(
+    List<CoachMemoryFact> facts,
+    String? email, {
+    int? epoch,
+  }) async {
     if (epoch != null && epoch != _epoch) return false;
+    if (!_diskLoaded) {
+      _persistDirty = true;
+      return false;
+    }
     try {
       await _write(
         storageKey,
@@ -375,7 +445,15 @@ class CoachMemoryStore {
           'facts': [for (final f in facts) f.toJson()],
         }),
       );
-    } catch (_) {}
+    } catch (_) {
+      _persistDirty = true;
+      return false;
+    }
+    // The write landed. It only clears the unsaved mark when it
+    // carried the mirror's full current snapshot — an older
+    // snapshot landing late leaves newer facts still unsaved
+    // (their own persist, or the next retry, carries them).
+    if (listEquals(facts, _mirror)) _persistDirty = false;
     return true;
   }
 
@@ -396,6 +474,7 @@ class CoachMemoryStore {
       source: source,
     );
     final key = normalizeFactText(cleaned);
+    final expected = normalizeEmail(email);
     // Epoch-guarded persist: if an external write (migration
     // import) or a clear lands between the load and the persist,
     // the merge base is stale — reload from disk and re-apply on
@@ -415,6 +494,27 @@ class CoachMemoryStore {
       final epochBeforeLoad = _epoch;
       final existing = await load(email);
       if (_epoch != epochBeforeLoad) continue;
+      if (!_diskLoaded) {
+        // C-05a: the disk read never succeeded, so the on-disk
+        // blob is unread — persisting any snapshot now would
+        // overwrite facts the store has never seen. Keep the fact
+        // in this account's mirror only and mark it unsaved; the
+        // next successful load merges it with the disk facts and
+        // retries the persist. Another account's mirror is never
+        // used as the merge base.
+        final base = (_mirrorOwner == null || _mirrorOwner == expected)
+            ? _mirror
+            : const <CoachMemoryFact>[];
+        final kept = [
+          for (final f in base)
+            if (normalizeFactText(f.text) != key) f,
+        ];
+        _mirror = _dedupeCap([fact, ...kept]);
+        _mirrorLoaded = true;
+        _mirrorOwner = expected;
+        _persistDirty = true;
+        return _mirror;
+      }
       // Revalidate the merge base: an invalidation that landed
       // while the load was completing replaced the mirror, so the
       // loaded list is no longer the mirror it claims to be —
@@ -427,6 +527,13 @@ class CoachMemoryStore {
       final out = [fact, ...kept].take(maxFacts).toList();
       _mirror = out;
       if (await _persist(out, email, epoch: epochBeforeLoad)) return out;
+      // C-09: the write failed (or was gated). The fact stays in
+      // the mirror, marked unsaved, for the next load/mutation to
+      // retry — it is not presented as saved. Only an epoch move
+      // (clear / external write) makes the merge base stale
+      // enough to reload and re-apply.
+      if (_epoch != epochBeforeLoad) continue;
+      return out;
     }
   }
 
@@ -442,12 +549,33 @@ class CoachMemoryStore {
       final epochBeforeLoad = _epoch;
       final existing = await load(email);
       if (_epoch != epochBeforeLoad) continue;
+      if (!_diskLoaded) {
+        // C-05a: disk was never successfully read — never persist
+        // over the unread blob. Apply the deletion to this
+        // account's mirror only and mark it unsaved for the next
+        // successful load/mutation to land.
+        final expected = normalizeEmail(email);
+        final base = (_mirrorOwner == null || _mirrorOwner == expected)
+            ? _mirror
+            : const <CoachMemoryFact>[];
+        if (index < 0 || index >= base.length) return existing;
+        _mirror = [...base]..removeAt(index);
+        _mirrorLoaded = true;
+        _mirrorOwner = expected;
+        _persistDirty = true;
+        return _mirror;
+      }
       // Same merge-base revalidation as [addFact].
       if (!identical(existing, _mirror)) continue;
       if (index < 0 || index >= existing.length) return existing;
       final out = [...existing]..removeAt(index);
       _mirror = out;
       if (await _persist(out, email, epoch: epochBeforeLoad)) return out;
+      // C-09: same honest-failure handling as [addFact] — the
+      // deletion stays mirror-only, marked unsaved, unless the
+      // epoch moved and the merge base went stale.
+      if (_epoch != epochBeforeLoad) continue;
+      return out;
     }
   }
 
@@ -465,6 +593,9 @@ class CoachMemoryStore {
     _mirrorLoaded = false;
     _mirrorOwner = null;
     _diskLoaded = false;
+    // The wipe below makes the empty mirror authoritative — there
+    // is no unsaved snapshot left to retry.
+    _persistDirty = false;
     try {
       await _delete(storageKey);
     } catch (_) {}
