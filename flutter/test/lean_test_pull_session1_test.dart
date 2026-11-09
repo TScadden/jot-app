@@ -8,7 +8,6 @@ import 'package:http/testing.dart';
 import 'package:tabs_lab/src/data/lean_test_session.dart';
 import 'package:tabs_lab/src/data/lean_test_strings.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
-import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/quicklog/history_screen.dart';
 import 'package:tabs_lab/src/features/tools/lean_test_screen.dart';
