@@ -95,10 +95,27 @@ class StreakStore {
 
   Future<void> ensureLoaded() async {
     if (_loaded) return;
-    _loaded = true;
+    final String? raw;
     try {
-      final raw = await _read(storageKey);
-      if (raw == null || raw.isEmpty) return;
+      raw = await _read(storageKey);
+    } catch (_) {
+      // C-04 — a storage READ failure is neither an empty disk nor
+      // a corrupt blob (the conflation PR #44 fixed in
+      // HealthHistoryStore): the on-disk blob may be perfectly
+      // valid. Leave [_loaded] false so the next call retries the
+      // read, leave [_state] untouched, and do NOT null
+      // [_ownerEmail] — a claim/bind stamped by
+      // [clearIfOwnerMismatch] just before this load must survive
+      // it. Until a load succeeds, [_persist] stays gated off and
+      // [recordOpen] refuses to adopt, so the degraded server-side
+      // record can never overwrite the true local one (nor be
+      // persisted stamped ownerEmail: null, which the next cold
+      // start would delete as foreign).
+      return;
+    }
+    _loaded = true;
+    if (raw == null || raw.isEmpty) return;
+    try {
       final decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic>) return;
       final owner = decoded['ownerEmail'];
@@ -116,10 +133,11 @@ class StreakStore {
         _state = StreakState.fromJson(blob);
       }
     } catch (_) {
-      // A corrupt or unreadable blob must never wedge the streak:
-      // start unseeded and let the next pull re-seed.
+      // A corrupt blob must never wedge the streak: start unseeded
+      // and let the next pull re-seed. The read itself succeeded,
+      // so the load stands — and [_ownerEmail] is left as decoded
+      // (or as claimed), never nulled by the parse failure.
       _state = null;
-      _ownerEmail = null;
     }
   }
 
@@ -179,6 +197,15 @@ class StreakStore {
     StreakSyncPush? push,
   }) async {
     await ensureLoaded();
+    if (!_loaded) {
+      // C-04 — the disk read failed, so there is no trustworthy
+      // local record to evaluate from: refuse exactly like the
+      // pullSucceeded: false path below (no adoption from the
+      // server side, no persist, no push, no fabricated state).
+      // The caller keeps its honest empty display and the next
+      // open retries the read.
+      return StreakState.empty;
+    }
     var s = _state;
 
     if (pullSucceeded) {
@@ -276,6 +303,11 @@ class StreakStore {
   }
 
   Future<void> _persist() async {
+    // C-04 — gated on a successful load, mirroring
+    // HealthHistoryStore's `if (!_warmed) return;`: after a failed
+    // read the in-memory image is not the disk record, and writing
+    // it would overwrite the true blob (stamped ownerEmail: null).
+    if (!_loaded) return;
     final s = _state;
     if (s == null) return;
     try {
