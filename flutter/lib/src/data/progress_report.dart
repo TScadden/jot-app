@@ -632,6 +632,19 @@ class ReportProfileInput {
 
 /// Collects the report snapshot. All sources are injectable for
 /// tests; production wires [TabsBackend] + [HealthConnectService].
+/// Thrown by [ReportDataCollector.collect] when the caller's
+/// cancellation signal is found set at one of the collection's
+/// stage boundaries. The generation pipelines translate it into
+/// the same `ReportFailed('Cancelled')` outcome their
+/// post-collection check produces. (Founder report, Nov 9, 2026:
+/// the Cancel button set the page's flag, but collect() never
+/// received the signal, so a cancel tapped during collection —
+/// above all during the Health Connect sync stage — had no
+/// effect until the entire collection had run to completion.)
+class ReportCollectionCancelled implements Exception {
+  const ReportCollectionCancelled();
+}
+
 class ReportDataCollector {
   final TabsBackend backend;
   final HealthConnectService hc;
@@ -667,8 +680,21 @@ class ReportDataCollector {
     required bool last30Days,
     required ReportProfileInput profile,
     void Function(String stage)? onStage,
+    bool Function()? isCancelled,
     DateTime? now,
   }) async {
+    // Cancellation is honored at the collection's stage
+    // boundaries: on entry, before the documents stage, and
+    // before the Health Connect block (the long 'syncing'
+    // stage). A cancel that lands inside a stage takes effect
+    // at the next boundary — in-flight reads are never torn
+    // down mid-flight.
+    void throwIfCancelled() {
+      if (isCancelled?.call() ?? false) {
+        throw const ReportCollectionCancelled();
+      }
+    }
+
     final n = now ?? DateTime.now();
     final nowMs = n.millisecondsSinceEpoch;
     final daysToFetch = last30Days ? 31 : 180;
@@ -678,6 +704,7 @@ class ReportDataCollector {
         metadata[key] = SectionMetadata(key, status, count);
 
     onStage?.call('collecting');
+    throwIfCancelled();
 
     // Backend sections (native sections 1–6). The Flutter backend's
     // fetch layer folds transport failures into empty results, so a
@@ -723,6 +750,8 @@ class ReportDataCollector {
         pullFailed ? DataSourceStatus.error : DataSourceStatus.success,
         activeMedications.length);
 
+    throwIfCancelled();
+
     // 5. Knowledge documents.
     List<String> docs = const [];
     var docsFailed = false;
@@ -753,6 +782,10 @@ class ReportDataCollector {
 
     // 7. Health Connect sections.
     onStage?.call('syncing');
+    // The boundary that matters most: a cancel requested during
+    // the backend stages above stops the generation BEFORE the
+    // Health Connect union load — the longest stage — starts.
+    throwIfCancelled();
     var connected = false;
     try {
       connected = await hc.isConnected();
@@ -976,14 +1009,20 @@ class ReportGenerationPipeline {
   }) async {
     bool cancelled() => isCancelled?.call() ?? false;
 
-    final snapshot = await collector.collect(
-      selectedCategories: selectedCategories,
-      last30Days: last30Days,
-      profile: profile,
-      now: now,
-      onStage: (s) => onStage?.call(
-          s == 'syncing' ? ReportStage.syncing : ReportStage.collecting),
-    );
+    final ReportSnapshot snapshot;
+    try {
+      snapshot = await collector.collect(
+        selectedCategories: selectedCategories,
+        last30Days: last30Days,
+        profile: profile,
+        now: now,
+        onStage: (s) => onStage?.call(
+            s == 'syncing' ? ReportStage.syncing : ReportStage.collecting),
+        isCancelled: isCancelled,
+      );
+    } on ReportCollectionCancelled {
+      return const ReportFailed('Cancelled');
+    }
     if (cancelled()) return const ReportFailed('Cancelled');
 
     if (!snapshot.hasAnyData) {

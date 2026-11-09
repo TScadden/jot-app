@@ -6,6 +6,7 @@ import 'package:timezone/timezone.dart' as tz;
 
 import 'daily_score_background.dart' show LocalDailyScoreReadyNotifier;
 import 'migraine_notification.dart' show LocalMigraineNotifier;
+import 'report_ready_notification.dart' show LocalReportReadyNotifier;
 
 /// Round 30 — local notification scheduling for the Settings reminder
 /// toggles, mirroring the native app.
@@ -96,6 +97,7 @@ class NotificationBootstrap {
   static Future<void>? _initializing;
   static void Function(String date)? _scoreTapHandler;
   static void Function()? _migraineTapHandler;
+  static void Function()? _reportReadyTapHandler;
 
   /// Whether the foreground plugin.initialize has completed.
   static bool get isInitialized => _initialized;
@@ -121,12 +123,25 @@ class NotificationBootstrap {
     _migraineTapHandler = handler;
   }
 
+  /// Registers the report-ready notification tap handler (the
+  /// report notifier's `onTap`). The payload is the constant
+  /// [LocalReportReadyNotifier.payload] — it carries no data; the
+  /// handler returns the user to the held share confirmation on
+  /// the Progress Reports page.
+  static void registerReportReadyTapHandler(void Function() handler) {
+    _reportReadyTapHandler = handler;
+  }
+
   /// The dispatching response callback handed to the plugin —
   /// also directly callable in tests.
   static void dispatchNotificationResponse(NotificationResponse response) {
     final payload = response.payload;
     if (LocalMigraineNotifier.isMigrainePayload(payload)) {
       _migraineTapHandler?.call();
+      return;
+    }
+    if (LocalReportReadyNotifier.isReportReadyPayload(payload)) {
+      _reportReadyTapHandler?.call();
       return;
     }
     if (LocalDailyScoreReadyNotifier.isScorePayload(payload)) {
@@ -175,6 +190,7 @@ class NotificationBootstrap {
     _initializing = null;
     _scoreTapHandler = null;
     _migraineTapHandler = null;
+    _reportReadyTapHandler = null;
   }
 }
 

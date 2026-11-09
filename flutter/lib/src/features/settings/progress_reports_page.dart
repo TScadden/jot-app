@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -15,6 +16,7 @@ import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/progress_report.dart';
 import 'package:tabs_lab/src/data/progress_report_pdf.dart';
+import 'package:tabs_lab/src/data/report_ready_notification.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -73,6 +75,13 @@ class ProgressReportsPage extends StatefulWidget {
   /// source the Health Coach / timeline gates use), fail-closed.
   final Future<bool> Function()? clinicianPremiumCheck;
 
+  /// Test seam for the report-ready notification (founder
+  /// request, Nov 9, 2026): posted when a generation completes
+  /// while the user is not watching this page. Production builds
+  /// a [LocalReportReadyNotifier] whose tap returns the user to
+  /// the held share confirmation.
+  final ReportReadyNotifier? reportReadyNotifier;
+
   const ProgressReportsPage({
     super.key,
     required this.profileData,
@@ -87,6 +96,7 @@ class ProgressReportsPage extends StatefulWidget {
     this.pipeline,
     this.clinicianPipeline,
     this.clinicianPremiumCheck,
+    this.reportReadyNotifier,
   });
 
   @override
@@ -139,7 +149,8 @@ ReportProfileInput reportProfileInputFromSettings(SettingsProfileData d) {
   );
 }
 
-class _ProgressReportsPageState extends State<ProgressReportsPage> {
+class _ProgressReportsPageState extends State<ProgressReportsPage>
+    with WidgetsBindingObserver {
   ReportFocus _focus = ReportFocus.health;
   bool _last30Days = true;
   Set<int> _customIds = {};
@@ -165,7 +176,33 @@ class _ProgressReportsPageState extends State<ProgressReportsPage> {
 
   ReportReady? _pendingShare;
 
+  /// The share confirmation is on screen (reveal paths must
+  /// never stack a second one).
+  bool _shareDialogVisible = false;
+
+  /// A generation finished while the user was away: the share
+  /// confirmation is held for presentation the moment they
+  /// return (app resume or report-ready notification tap).
+  bool _shareRevealPending = false;
+
+  ReportReadyNotifier? _reportNotifier;
+
   TabsBackend get _backend => widget.backend;
+
+  ReportReadyNotifier get _readyNotifier =>
+      widget.reportReadyNotifier ??
+      (_reportNotifier ??=
+          LocalReportReadyNotifier(onTap: _onReportReadyNotificationTap));
+
+  /// The user is looking at this page right now: the page is
+  /// alive and the app is in the foreground. Anything else —
+  /// backgrounded, locked, another app in front — counts as
+  /// away, and a finished generation is announced by
+  /// notification instead of a dialog nobody sees.
+  bool get _userIsPresent {
+    final s = WidgetsBinding.instance.lifecycleState;
+    return s == null || s == AppLifecycleState.resumed;
+  }
 
   /// Item 3 Q7 premium gate state: null = check still running;
   /// true = the one-page clinician report is unlocked. Fail-closed:
@@ -176,8 +213,48 @@ class _ProgressReportsPageState extends State<ProgressReportsPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
     _resolveClinicianGate();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _revealPendingShare();
+  }
+
+  /// Present the share confirmation held by an away completion.
+  /// Guarded twice over: nothing held, or the dialog is already
+  /// up (the guarded [_showShareConfirmation] also refuses).
+  void _revealPendingShare() {
+    if (!_shareRevealPending || !mounted) return;
+    _shareRevealPending = false;
+    _showShareConfirmation();
+  }
+
+  /// The report-ready notification was tapped: the platform has
+  /// foregrounded the app; if this page is alive and holding a
+  /// share, present it — the user is back at the share flow.
+  void _onReportReadyNotificationTap() {
+    if (!mounted) return;
+    _shareRevealPending = false;
+    _showShareConfirmation();
+  }
+
+  Future<void> _notifyReportReady() async {
+    try {
+      await _readyNotifier.showReportReady();
+    } catch (_) {
+      // The notifier is best-effort by contract (it reports
+      // failure as false); this guard keeps even a seam
+      // implementation's throw off the completion path.
+    }
   }
 
   Future<void> _resolveClinicianGate() async {
@@ -321,23 +398,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage> {
       savePdf: widget.savePdf ?? _defaultSave,
       saveToDownloads: widget.saveToDownloads ?? _defaultSaveToDownloads,
     );
-    if (!mounted) return;
-    setState(() => _stage = null);
-    if (_cancelRequested) return;
-    switch (outcome) {
-      case ReportReady ready:
-        // Vera's feature (native): hold the file for an explicit
-        // share confirmation — never open the share sheet
-        // unprompted.
-        setState(() => _pendingShare = ready);
-        _showShareConfirmation();
-      case ReportFailed failed:
-        if (failed.message == 'Cancelled') return;
-        setState(() {
-          _failureMessage = failed.message;
-          _failureAllowRaw = failed.allowRawFallback;
-        });
-    }
+    _finishGeneration(outcome);
   }
 
   /// Phase 1, item 3 — the one-page clinician report: a separate
@@ -388,13 +449,39 @@ class _ProgressReportsPageState extends State<ProgressReportsPage> {
       savePdf: widget.savePdf ?? _defaultSave,
       saveToDownloads: widget.saveToDownloads ?? _defaultSaveToDownloads,
     );
-    if (!mounted) return;
+    _finishGeneration(outcome);
+  }
+
+  /// Shared completion path for both generate actions.
+  ///
+  /// - Watched completion: hold the file for the explicit share
+  ///   confirmation (Vera's feature — never open the share sheet
+  ///   unprompted), presented immediately.
+  /// - Away completion (founder report, Nov 9, 2026): the
+  ///   generation finished while the user was not watching — the
+  ///   app backgrounded, or this page disposed entirely. The old
+  ///   code showed a dialog nobody saw (or, when unmounted,
+  ///   dropped the outcome in silence). Now: post the
+  ///   report-ready notification, and hold the confirmation for
+  ///   presentation the moment the user returns. The PDF itself
+  ///   is already saved either way (app documents + Downloads).
+  /// - Cancelled and failed outcomes notify nothing.
+  void _finishGeneration(ReportOutcome outcome) {
+    if (!mounted) {
+      if (outcome is ReportReady) unawaited(_notifyReportReady());
+      return;
+    }
     setState(() => _stage = null);
     if (_cancelRequested) return;
     switch (outcome) {
       case ReportReady ready:
         setState(() => _pendingShare = ready);
-        _showShareConfirmation();
+        if (_userIsPresent) {
+          _showShareConfirmation();
+        } else {
+          _shareRevealPending = true;
+          unawaited(_notifyReportReady());
+        }
       case ReportFailed failed:
         if (failed.message == 'Cancelled') return;
         setState(() {
@@ -404,7 +491,20 @@ class _ProgressReportsPageState extends State<ProgressReportsPage> {
     }
   }
 
+  /// Presents the held share confirmation, at most one at a
+  /// time: the watched completion, the resume reveal, and the
+  /// notification tap can all ask — only the first gets through.
   Future<void> _showShareConfirmation() async {
+    if (_shareDialogVisible || _pendingShare == null) return;
+    _shareDialogVisible = true;
+    try {
+      await _showShareConfirmationBody();
+    } finally {
+      _shareDialogVisible = false;
+    }
+  }
+
+  Future<void> _showShareConfirmationBody() async {
     final ready = _pendingShare;
     if (ready == null) return;
     final share = await showDialog<bool>(

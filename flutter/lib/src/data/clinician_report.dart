@@ -779,14 +779,20 @@ class ClinicianReportPipeline {
   }) async {
     bool cancelled() => isCancelled?.call() ?? false;
 
-    final snapshot = await collector.collect(
-      selectedCategories: selectedCategories,
-      last30Days: last30Days,
-      profile: profile,
-      now: now,
-      onStage: (s) => onStage?.call(
-          s == 'syncing' ? ReportStage.syncing : ReportStage.collecting),
-    );
+    final ReportSnapshot snapshot;
+    try {
+      snapshot = await collector.collect(
+        selectedCategories: selectedCategories,
+        last30Days: last30Days,
+        profile: profile,
+        now: now,
+        onStage: (s) => onStage?.call(
+            s == 'syncing' ? ReportStage.syncing : ReportStage.collecting),
+        isCancelled: isCancelled,
+      );
+    } on ReportCollectionCancelled {
+      return const ReportFailed('Cancelled');
+    }
     if (cancelled()) return const ReportFailed('Cancelled');
 
     final data = await clinicianCollector.extend(
