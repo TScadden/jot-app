@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -177,7 +178,7 @@ class MigraineAttack {
 /// server copy to recover it from.
 ///
 /// C-10: every read-modify-write ([save], [clear],
-/// [clearIfOwnerMismatch]) runs through one future chain, so
+/// [clearIfOwnerMismatch]) runs through one serialized queue, so
 /// concurrent operations execute load→write atomically in call
 /// order and an earlier snapshot can never land after — and
 /// revert — a later one.
@@ -206,18 +207,49 @@ class MigraineAttackStore {
   /// while unbound (no login has bound this instance yet).
   String? _boundOwner;
 
-  /// C-10 serialization chain: each read-modify-write operation is
-  /// appended to this future, so operations run one at a time, in
-  /// call order, each completing its load→write before the next
-  /// operation's load begins. The chain itself never fails — an
-  /// operation's error is delivered to its own caller and the
-  /// chain continues with the next operation.
-  Future<void> _opChain = Future<void>.value();
+  /// C-10 serialization: each read-modify-write operation is
+  /// queued, so operations run one at a time, in call order, each
+  /// completing its load→write before the next operation's load
+  /// begins. An operation's error is delivered to its own caller
+  /// and the queue continues with the next operation.
+  ///
+  /// The queue state is plain data (a list + a flag), NOT a stored
+  /// tail future: a future's callbacks are scheduled in the zone
+  /// that created the future, so a chain head created when this
+  /// (singleton) store happened to be constructed inside a
+  /// `testWidgets` FakeAsync zone (TodaySummaryCard's initState
+  /// builds the production controller) could never complete once
+  /// that zone was discarded — every later save/clear then hung
+  /// behind it forever (the R35 logout-wipe timeouts). With no
+  /// long-lived future in the state, an idle queue starts its
+  /// drain in the caller's own zone.
+  final List<Future<void> Function()> _opQueue = [];
+  bool _opDraining = false;
 
   Future<T> _serialized<T>(Future<T> Function() op) {
-    final result = _opChain.then((_) => op());
-    _opChain = result.then<void>((_) {}, onError: (_) {});
-    return result;
+    final completer = Completer<T>();
+    _opQueue.add(() async {
+      try {
+        completer.complete(await op());
+      } catch (e, st) {
+        completer.completeError(e, st);
+      }
+    });
+    _drainOps();
+    return completer.future;
+  }
+
+  Future<void> _drainOps() async {
+    if (_opDraining) return;
+    _opDraining = true;
+    try {
+      while (_opQueue.isNotEmpty) {
+        final job = _opQueue.removeAt(0);
+        await job();
+      }
+    } finally {
+      _opDraining = false;
+    }
   }
 
   /// The shared instance (see [instance]).
@@ -396,7 +428,7 @@ class MigraineAttackStore {
   /// error path the class doc promises), instead of upserting into
   /// a falsely-empty list and overwriting the whole local-only
   /// history. C-10: the whole load→write runs inside the
-  /// serialization chain, atomically with respect to other saves.
+  /// serialization queue, atomically with respect to other saves.
   Future<void> save(MigraineAttack attack) => _serialized(() async {
         try {
           final blob = await _loadBlobStrict();
@@ -448,7 +480,7 @@ class MigraineAttackStore {
     if (expected == null) return Future.value(false);
     // Serialized with saves (C-10): a login-time wipe must not
     // interleave with an in-flight save's load→write. The internal
-    // clear runs directly — it must not re-enter the chain.
+    // clear runs directly — it must not re-enter the queue.
     return _serialized(() async {
       try {
         final raw = await _read(storageKey);
