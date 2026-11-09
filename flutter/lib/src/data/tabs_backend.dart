@@ -306,12 +306,41 @@ class TabsBackend {
       final result = await _authApi.refreshSession(refreshToken);
       if (result is RefreshSuccess) {
         // Both tokens rotate; the stored email stays unchanged.
-        final email = await _sessionStore.readEmail() ?? '';
-        await _sessionStore.saveSession(
-          token: result.token,
-          refreshToken: result.refreshToken,
-          email: email,
-        );
+        //
+        // H1-02: the server has ALREADY rotated the refresh
+        // token and invalidated the old one at this point, so
+        // the rotated pair must ALWAYS be persisted — no
+        // subsequent storage read may be able to discard it.
+        // The pre-fix code read the email here inside the
+        // outer try: a throwing readEmail escaped before
+        // saveSession, the outer catch returned a temporary
+        // failure, and the next refresh presented the old,
+        // already-rotated token — which the server reads as
+        // reuse and kills the session. A null read was just
+        // as bad in the other direction: it persisted
+        // user_email as '', silently unbinding every
+        // email-scoped local store. The email read is now
+        // isolated in its own try: on a throw, null, or empty
+        // read the pair is saved token-only, leaving the
+        // previously stored email untouched.
+        String? email;
+        try {
+          email = await _sessionStore.readEmail();
+        } catch (_) {
+          email = null;
+        }
+        if (email != null && email.isNotEmpty) {
+          await _sessionStore.saveSession(
+            token: result.token,
+            refreshToken: result.refreshToken,
+            email: email,
+          );
+        } else {
+          await _sessionStore.saveRotatedTokens(
+            token: result.token,
+            refreshToken: result.refreshToken,
+          );
+        }
         return _RefreshSucceeded(result.token);
       }
       if (result is RefreshDefinitiveFailure) {
@@ -1289,10 +1318,23 @@ class TabsBackend {
   /// Round 19 — the account's real category set from the sync pull.
   /// Empty (never hardcoded) when unreachable — the UI shows an honest
   /// empty/error state instead of a fallback list.
-  Future<List<QuickLogCategory>> fetchLogCategories() async {
+  Future<List<QuickLogCategory>> fetchLogCategories() async =>
+      await fetchLogCategoriesOrNull() ?? const [];
+
+  /// H1-01 — failure-distinguishing variant of [fetchLogCategories],
+  /// mirroring [fetchHabitsOrNull] and the `fetchLogEntryDtosOrNull`
+  /// extension: returns null when the sync pull itself failed (null
+  /// body) or carries no usable `categories` list, and the parsed
+  /// list — possibly genuinely empty — only when the server actually
+  /// answered. Callers that persist state derived from the pull (the
+  /// correlation refresher) use this to tell "the server has no
+  /// categories" apart from "the pull failed", so a failed pull can
+  /// never be recomputed over as an empty account.
+  Future<List<QuickLogCategory>?> fetchLogCategoriesOrNull() async {
     final body = await fetchSyncPull();
-    final categories = body?['categories'];
-    if (categories is! List) return const [];
+    if (body == null) return null;
+    final categories = body['categories'];
+    if (categories is! List) return null;
     final out = <QuickLogCategory>[];
     for (final c in categories) {
       if (c is Map<String, dynamic>) {

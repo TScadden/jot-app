@@ -45,12 +45,14 @@ class EmptyIntakeTargetHistoryProvider implements IntakeTargetHistoryProvider {
 }
 
 /// Production med-event provider: empty until a med-event GET
-/// read path lands (see the file header).
+/// read path lands (see the file header). The empty result is a
+/// SUCCESSFUL empty (non-null): this provider has no read path
+/// that can fail, so it never reports the H1-01 failure null.
 class EmptyMedChangeEventProvider implements MedChangeEventProvider {
   const EmptyMedChangeEventProvider();
 
   @override
-  Future<List<MedChangeEventInput>> loadMedChangeEvents() async => const [];
+  Future<List<MedChangeEventInput>?> loadMedChangeEvents() async => const [];
 }
 
 /// Production med-list provider: empty until the refresher
@@ -60,7 +62,7 @@ class EmptyMedicationListProvider implements MedicationListProvider {
   const EmptyMedicationListProvider();
 
   @override
-  Future<List<MedicationEntry>> loadMedications() async => const [];
+  Future<List<MedicationEntry>?> loadMedications() async => const [];
 }
 
 /// Production target-history provider (VC 100109 combine): reads
@@ -127,10 +129,15 @@ MedChangeEventInput medChangeEventInputFromEvent(MedicationChangeEvent e) {
 /// Production med-event provider (VC 100109 combine): reads the
 /// unified medication-event read path —
 /// [TabsBackend.fetchMedicationChangeEvents] (the GET item 2b
-/// added, live since VC 100108). A failed fetch (null) degrades
-/// to an empty event list: the refresher's posture is
-/// never-throw, and F5 renders its honest no-changes state until
-/// a successful refresh lands real events.
+/// added, live since VC 100108).
+///
+/// H1-01: a failed fetch stays null (the backend's own contract)
+/// instead of degrading to an empty event list. The refresher
+/// reads null as "unknown" and SKIPS F5 entirely — recomputing
+/// from an empty list overwrote the persisted F5 records with a
+/// zero-data unavailable state on one offline wake. A successful
+/// fetch of zero events still returns an empty list and F5
+/// recomputes its honest no-changes state exactly as before.
 class BackendMedChangeEventProvider implements MedChangeEventProvider {
   final TabsBackend _backend;
 
@@ -138,9 +145,9 @@ class BackendMedChangeEventProvider implements MedChangeEventProvider {
     : _backend = backend ?? TabsBackend();
 
   @override
-  Future<List<MedChangeEventInput>> loadMedChangeEvents() async {
+  Future<List<MedChangeEventInput>?> loadMedChangeEvents() async {
     final events = await _backend.fetchMedicationChangeEvents();
-    if (events == null) return const [];
+    if (events == null) return null;
     return [for (final e in events) medChangeEventInputFromEvent(e)];
   }
 }
@@ -150,10 +157,14 @@ class BackendMedChangeEventProvider implements MedChangeEventProvider {
 /// item 2 panel and the clinician report read —
 /// [TabsBackend.fetchProfile] → [TabsBackend.decodeProfileList]
 /// → [parseMedicationBlob] — so the seeded markers F5 bounds on
-/// derive from the identical rows the panel seeds from. A
-/// failed fetch (null) degrades to an empty list: F5 then
-/// bounds on captured markers only until a successful refresh
-/// lands the real list.
+/// derive from the identical rows the panel seeds from.
+///
+/// H1-01: a failed fetch stays null instead of degrading to an
+/// empty list (see [BackendMedChangeEventProvider]) — bounding
+/// F5 on captured markers only is a DIFFERENT computation from
+/// the seeded one, so silently substituting it overwrote the
+/// persisted F5 records; the refresher now skips F5 until a
+/// successful refresh lands the real list.
 class BackendMedicationListProvider implements MedicationListProvider {
   final TabsBackend _backend;
 
@@ -161,9 +172,9 @@ class BackendMedicationListProvider implements MedicationListProvider {
     : _backend = backend ?? TabsBackend();
 
   @override
-  Future<List<MedicationEntry>> loadMedications() async {
+  Future<List<MedicationEntry>?> loadMedications() async {
     final profile = await _backend.fetchProfile();
-    if (profile == null) return const [];
+    if (profile == null) return null;
     return parseMedicationBlob(
       TabsBackend.decodeProfileList(profile['medications']),
     );
@@ -179,7 +190,9 @@ class CorrelationRefreshOutcome {
   /// Store keys recomputed and written this run.
   final int recomputedCount;
 
-  /// Store keys whose fingerprints already matched.
+  /// Store keys left exactly as they were: their fingerprints
+  /// already matched, or their family was skipped because an
+  /// input it depends on failed to load (H1-01).
   final int unchangedCount;
 
   /// Why the run did not complete, when it didn't: 'error'.
@@ -254,21 +267,52 @@ class CorrelationRefresher {
 
       // The Today Summary pattern: entries + categories from the
       // sync pull, biometrics from the local history store.
+      //
+      // H1-01 — every sync-backed input is loaded through its
+      // failure-distinguishing (OrNull / nullable) form. The
+      // plain fetchers return an empty list on ANY pull failure,
+      // indistinguishable from a genuinely empty account; feeding
+      // that into the fingerprint + recompute below recomputed
+      // the sync-dependent families from zero data and overwrote
+      // the persisted records with zero-data/unavailable states —
+      // one offline background wake silently destroyed unlocked
+      // Patterns insights. A null here means "load failed", and
+      // every family that depends on a failed input is SKIPPED
+      // below: no recompute, no overwrite, its stored fingerprint
+      // untouched, so the next successful refresh behaves
+      // normally. Successful-but-empty loads are non-null and
+      // recompute exactly as before.
       final results = await Future.wait<Object?>([
-        _backend.fetchLogEntryDtos(),
-        _backend.fetchLogCategories(),
+        _backend.fetchLogEntryDtosOrNull(),
+        _backend.fetchLogCategoriesOrNull(),
         _historyStore.readAll(),
         _targetProvider.loadTargetHistory(),
         _medEventProvider.loadMedChangeEvents(),
         _medListProvider.loadMedications(),
       ]);
+      final entries = results[0] as List<QuickLogEntry>?;
+      final categories = results[1] as List<QuickLogCategory>?;
+      final medEvents = results[4] as List<MedChangeEventInput>?;
+      final medications = results[5] as List<MedicationEntry>?;
+      // Family → sync-input dependency map (the engine's
+      // derivations): F2/F3/F4 read the log entries (intake,
+      // flare, migraine, feeling series) and the categories those
+      // derivations resolve against; F5 reads the medication
+      // change events and the medication list (its seeded
+      // bounding markers). F1 reads ONLY the local biometrics —
+      // it is never gated on a sync failure. Target history is
+      // device-local (item 4's store) and is not gated either.
+      final blockedFamilies = <String>{
+        if (entries == null || categories == null) ...['F2', 'F3', 'F4'],
+        if (medEvents == null || medications == null) 'F5',
+      };
       final inputs = CorrelationInputs(
-        entries: results[0] as List<QuickLogEntry>,
-        categories: results[1] as List<QuickLogCategory>,
+        entries: entries ?? const [],
+        categories: categories ?? const [],
         biometrics: results[2] as Map<String, DailyBiometrics>,
         targetHistory: results[3] as List<IntakeTargetHistoryEntry>,
-        medEvents: results[4] as List<MedChangeEventInput>,
-        medications: results[5] as List<MedicationEntry>,
+        medEvents: medEvents ?? const [],
+        medications: medications ?? const [],
         nowDayKey: _dayKeyOf(_now()),
       );
 
@@ -276,7 +320,9 @@ class CorrelationRefresher {
       final stored = await _insightStore.readAll();
       final staleKeys = <String>{
         for (final e in fresh.entries)
-          if (stored[e.key]?.inputFingerprint != e.value) e.key,
+          if (!blockedFamilies.contains(e.key.split('/').first) &&
+              stored[e.key]?.inputFingerprint != e.value)
+            e.key,
       };
       if (staleKeys.isEmpty) {
         return CorrelationRefreshOutcome(

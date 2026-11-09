@@ -159,8 +159,8 @@ void main() {
   group('2. F5 reads the real med-event GET path', () {
     setUp(TabsBackend.debugResetSharedCaches);
 
-    test('contract body adapts to engine inputs; failure → empty',
-        () async {
+    test('contract body adapts to engine inputs; failure → null '
+        '(H1-01: a failed fetch is not an empty history)', () async {
       final backend = TabsBackend(
         client: MockClient((request) async {
           expect(request.url.path, '/api/sync/medication-events');
@@ -183,8 +183,9 @@ void main() {
       );
       final provider = BackendMedChangeEventProvider(backend: backend);
       final events = await provider.loadMedChangeEvents();
+      expect(events, isNotNull);
       expect(events, hasLength(1));
-      expect(events.single.type, 'start');
+      expect(events!.single.type, 'start');
       expect(events.single.medName, 'MedA');
       expect(events.single.newSnapshot?.dose, '5 mg');
       expect(events.single.effectiveDate, 'Oct 1, 2026');
@@ -196,7 +197,7 @@ void main() {
       expect(
         await BackendMedChangeEventProvider(backend: failing)
             .loadMedChangeEvents(),
-        isEmpty,
+        isNull,
       );
     });
   });
