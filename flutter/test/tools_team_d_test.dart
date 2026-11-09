@@ -420,13 +420,9 @@ token: 't',
   group('ResearchToolScreen widget', () {
     _TestBundle bundleWith(List<Map<String, dynamic>> entries) {
       final files = <String, String>{};
-      final manifest = <String, Object?>{};
       for (var i = 0; i < entries.length; i++) {
-        final path = 'assets/research/e$i.json';
-        manifest[path] = {};
-        files[path] = jsonEncode(entries[i]);
+        files['assets/research/e$i.json'] = jsonEncode(entries[i]);
       }
-      files['AssetManifest.json'] = jsonEncode(manifest);
       return _TestBundle(files);
     }
 
@@ -549,8 +545,22 @@ class _TestBundle extends AssetBundle {
   final Map<String, String> strings;
 
   @override
-  Future<ByteData> load(String key) =>
-      throw UnsupportedError('not needed');
+  Future<ByteData> load(String key) async {
+    if (key == 'AssetManifest.bin') {
+      // Serve a real binary manifest — the format production bundles
+      // ship. (AssetManifest.json does not exist in a built app; the
+      // old fake served one, which hid the empty-library bug.)
+      final manifest = <String, Object?>{
+        for (final k in strings.keys)
+          if (k.startsWith('assets/'))
+            k: <Map<String, Object?>>[
+              <String, Object?>{'asset': k},
+            ],
+      };
+      return const StandardMessageCodec().encodeMessage(manifest)!;
+    }
+    throw UnsupportedError('not needed');
+  }
 
   @override
   Future<String> loadString(String key, {bool cache = true}) async {
