@@ -20,6 +20,16 @@ class FakeSessionStore extends SessionStore {
   }
 
   @override
+  Future<void> saveRotatedTokens({
+    required String token,
+    required String refreshToken,
+  }) async {
+    this.token = token;
+    this.refreshToken = refreshToken;
+    // Email deliberately untouched — partial save (H1-02).
+  }
+
+  @override
   Future<String?> readToken() async => token;
 
   @override
