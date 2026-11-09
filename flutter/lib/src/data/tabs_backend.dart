@@ -1425,9 +1425,11 @@ class TabsBackend {
   /// `POST /api/sync/medication-events` with `{"events": [...]}`
   /// (spec §2.6). Insert-only server-side (ON CONFLICT DO
   /// NOTHING on the client-supplied event id — replays are
-  /// harmless). True on HTTP 200; callers emit best-effort after
-  /// a successful profile push and swallow failures (see
-  /// `medication_change_events.dart`).
+  /// harmless). True on HTTP 200; callers emit after a
+  /// successful profile push through the durable H1-07 outbox,
+  /// which keeps the events queued whenever this returns false
+  /// (see `medication_change_events.dart` /
+  /// `medication_change_event_outbox.dart`).
   Future<bool> postMedicationChangeEvents(
       List<MedicationChangeEvent> events) {
     return _postJson('/api/sync/medication-events', {

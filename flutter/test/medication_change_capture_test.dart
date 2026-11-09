@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:tabs_lab/src/data/medication_change_event_outbox.dart';
 import 'package:tabs_lab/src/data/medication_change_events.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/tools/health_coach_screen.dart';
@@ -639,7 +640,27 @@ void main() {
     });
 
     test('emit helper: empty list makes no call; a failing post '
-        'is swallowed', () async {
+        'is swallowed AND the event is staged, not lost (H1-07 '
+        'supersession)', () async {
+      // SUPERSESSION (H1-07): this test previously codified the
+      // OLD lossy contract — a 500 produced exactly 1 call and
+      // the event was gone forever (the helper discarded the
+      // POST's false return, and no later diff could re-derive
+      // the transition). The new contract: the failure is still
+      // swallowed toward the caller, but the event is staged
+      // durably in the MedicationChangeEventOutbox and a later
+      // flush replays the ORIGINAL event (same id) exactly once.
+      // Full outbox coverage: medication_change_event_outbox_test.
+      final disk = <String, String>{};
+      final outbox = MedicationChangeEventOutbox.withDeps(
+        read: (key) async => disk[key],
+        write: (key, value) async {
+          disk[key] = value;
+        },
+        delete: (key) async {
+          disk.remove(key);
+        },
+      );
       var calls = 0;
       final backend = TabsBackend(
         client: MockClient((request) async {
@@ -648,7 +669,7 @@ void main() {
         }),
         sessionStore: FakeSessionStore()..token = 'tok-backend-2',
       );
-      await emitMedicationChangeEvents(backend, const []);
+      await emitMedicationChangeEvents(backend, const [], outbox: outbox);
       expect(calls, 0);
       const event = MedicationChangeEvent(
         id: 'evt-uuid-2',
@@ -662,12 +683,59 @@ void main() {
         source: 'tools',
       );
       // Must complete normally even though the POST fails.
-      await emitMedicationChangeEvents(backend, [event]);
+      await emitMedicationChangeEvents(backend, [event], outbox: outbox);
       expect(calls, 1);
+      // NEW: the failed event is staged durably, not lost.
+      final pending = await outbox.pendingEvents();
+      expect(pending, hasLength(1));
+      expect(pending.single.id, 'evt-uuid-2');
+      expect(
+        disk[MedicationChangeEventOutbox.storageKey],
+        contains('evt-uuid-2'),
+      );
+      // And a later flush on a healthy backend replays the SAME
+      // event id exactly once and drains the queue.
+      var okCalls = 0;
+      final healthy = TabsBackend(
+        client: MockClient((request) async {
+          okCalls++;
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          final events =
+              (body['events'] as List).cast<Map<String, dynamic>>();
+          expect(events.single['id'], 'evt-uuid-2');
+          return http.Response('{}', 200);
+        }),
+        sessionStore: FakeSessionStore()..token = 'tok-backend-2',
+      );
+      expect(await flushMedicationChangeEvents(healthy, outbox: outbox),
+          isTrue);
+      expect(okCalls, 1);
+      expect(await outbox.pendingEvents(), isEmpty);
     });
   });
 
   group('Tools MedicationsScreen capture (widget, fake server)', () {
+    // H1-07: the emit path now stages through the singleton
+    // MedicationChangeEventOutbox before posting; wire its
+    // storage IO to an in-memory disk (the settings_r29
+    // debugSetStore pattern) so the staging futures can complete
+    // in the fake-async zone — the real FlutterSecureStorage
+    // channel has no handler here and its futures never settle.
+    setUp(() {
+      final disk = <String, String>{};
+      MedicationChangeEventOutbox.instance
+        ..debugReset()
+        ..debugSetStore(
+          read: (key) async => disk[key],
+          write: (key, value) async {
+            disk[key] = value;
+          },
+          delete: (key) async {
+            disk.remove(key);
+          },
+        );
+    });
+
     // Unique token per test: the backend's shared pull caches
     // are static and keyed by (baseUrl, token) — the R3 rule.
     var tokenSeq = 0;

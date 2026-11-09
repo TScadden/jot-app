@@ -17,6 +17,8 @@ import 'package:tabs_lab/src/data/streak_store.dart';
 import 'package:tabs_lab/src/data/weekly_snapshot_cache.dart';
 import 'package:tabs_lab/src/data/launch_trace.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
+import 'package:tabs_lab/src/data/medication_change_event_outbox.dart';
+import 'package:tabs_lab/src/data/medication_change_events.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/daily_score_background.dart';
@@ -551,6 +553,19 @@ class _AppFlowState extends State<AppFlow>
     // hydration so wiped scores cannot be resurrected by a merge
     // that was already on the wire.
     unawaited(DailyScoreSync.instance.clear());
+    // H1-07 — the medication change-event outbox is deliberately
+    // NOT cleared here. Unlike Daily Scores (which are wiped
+    // with the history store above, leaving a retained queue as
+    // the only surviving copy), staged medication change events
+    // exist NOWHERE else locally: wiping them on session expiry
+    // would silently lose transitions the server never received
+    // — the exact H1-07 loss. The owner-stamped blob is RETAINED
+    // (the LogEntryOutbox treatment directly above): the same
+    // account's next sign-in flushes its own staged events, and
+    // a different account's sign-in drops them unsent via the
+    // login owner-mismatch wiring below before any flush runs.
+    // Explicit logout / account deletion DOES clear it, via
+    // AccountActions.
     // Refresh-scope fix (Oct 20, 2026): the app-scoped Daily
     // Score refresh owner's pending outcomes are in-memory only,
     // but they are account-bound too — session expiry drops them
@@ -656,6 +671,13 @@ class _AppFlowState extends State<AppFlow>
     // themselves, so this unawaited drop cannot be raced into a
     // cross-account send).
     unawaited(DailyScoreSync.instance.clearIfOwnerMismatch(email));
+    // H1-07: same enforcement for the medication change-event
+    // outbox — a previous account's staged events are dropped
+    // UNSENT before they can flush under this session (the
+    // outbox's flush re-checks the owner itself, so this
+    // unawaited drop cannot be raced into a cross-account send).
+    unawaited(
+        MedicationChangeEventOutbox.instance.clearIfOwnerMismatch(email));
     // Refresh-scope fix (Oct 20, 2026): same enforcement for the
     // refresh owner's in-memory pending outcomes — synchronous,
     // so a previous account's deferred outcome is gone before the
@@ -895,9 +917,22 @@ class _AppFlowState extends State<AppFlow>
     }());
   }
 
+  /// H1-07 flush trigger: every home landing (sign-in
+  /// completion, cold-start session restore, onboarding
+  /// completion — all funnel through [_kickFirstRunResync]) and
+  /// every resume while home is a retry opportunity for
+  /// medication change events staged by an earlier failed POST.
+  /// Fire-and-forget and silent: the outbox never throws, an
+  /// empty queue makes no call, and its owner checks keep a
+  /// stale queue from ever flushing under a different account.
+  void _triggerMedicationChangeEventFlush() {
+    unawaited(flushMedicationChangeEvents(_tabsBackend));
+  }
+
   void _kickFirstRunResync() {
     _retryPendingLogEntries();
     _triggerDailyScoreSync();
+    _triggerMedicationChangeEventFlush();
     _firstRunResyncFuture ??= _runFirstRunResync();
     // Every home landing funnels through here (cold-start restore,
     // sign-in, onboarding completion): a stashed Daily Score
@@ -955,6 +990,13 @@ class _AppFlowState extends State<AppFlow>
     // Daily Score server sync (Oct 28, 2026): same owner-mismatch
     // enforcement for the pending-push queue as login.
     unawaited(DailyScoreSync.instance.clearIfOwnerMismatch(email));
+    // H1-07: same enforcement for the medication change-event
+    // outbox — a previous account's staged events are dropped
+    // UNSENT before they can flush under this session (the
+    // outbox's flush re-checks the owner itself, so this
+    // unawaited drop cannot be raced into a cross-account send).
+    unawaited(
+        MedicationChangeEventOutbox.instance.clearIfOwnerMismatch(email));
     // Refresh-scope fix (Oct 20, 2026): same enforcement for the
     // refresh owner's in-memory pending outcomes.
     DailyScoreRefreshOwner.instance.clearIfOwnerMismatch(email);
@@ -1241,6 +1283,9 @@ class _AppFlowState extends State<AppFlow>
       // Optimistic logging: a resume while home is likewise a retry
       // trigger for any unconfirmed log-entry upserts.
       if (_stage == _FlowStage.home) _retryPendingLogEntries();
+      // H1-07: a resume while home is likewise a flush trigger
+      // for staged medication change events.
+      if (_stage == _FlowStage.home) _triggerMedicationChangeEventFlush();
       // App-open sync (founder directive, Oct 22, 2026): a return
       // from background while home is an app open — trigger the
       // open capture NOW, in the foreground (Juno F1), through
