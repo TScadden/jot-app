@@ -36,12 +36,15 @@ import '../features/home/intake_logging.dart';
 /// clinician PDF.
 
 /// Production target-history provider: empty until item 4's store
-/// lands (see the file header).
+/// lands (see the file header). The empty result is a SUCCESSFUL
+/// empty (non-null): this provider has no read path that can
+/// fail, so it never reports the D-T01 failure null.
 class EmptyIntakeTargetHistoryProvider implements IntakeTargetHistoryProvider {
   const EmptyIntakeTargetHistoryProvider();
 
   @override
-  Future<List<IntakeTargetHistoryEntry>> loadTargetHistory() async => const [];
+  Future<List<IntakeTargetHistoryEntry>?> loadTargetHistory() async =>
+      const [];
 }
 
 /// Production med-event provider: empty until a med-event GET
@@ -72,22 +75,38 @@ class EmptyMedicationListProvider implements MedicationListProvider {
 /// contract shape. A version's stored `effectiveFromDayMs` IS an
 /// energy-day start (04:00 local, the feelingDayStart rule), so
 /// its engine day key is `energyDayLabel` of that instant — the
-/// same label the engine stamps on entry days. Fail-safe: the
-/// store's loader already degrades to an empty history on any
-/// read failure, never a throw, never an invented target.
+/// same label the engine stamps on entry days.
+///
+/// D-T01 failure semantics: the production loader is the
+/// failure-distinguishing [IntakeSettings.loadTargetsOrNull], so
+/// a read failure (store read throws, corrupt stored JSON)
+/// surfaces here as null — NEVER as an empty history and never
+/// as an invented target — and the refresher reads null as
+/// "unknown" and SKIPS F2 (the only family that consumes target
+/// history) instead of recomputing it from an erroneous empty
+/// history and overwriting its persisted records. A successful
+/// read of genuinely-empty storage still returns an empty list
+/// and F2 recomputes its honest no-target state exactly as
+/// before. A loader that throws is likewise reported as null.
 class SettingsIntakeTargetHistoryProvider
     implements IntakeTargetHistoryProvider {
-  final Future<List<IntakeTargetVersion>> Function() _loadVersions;
+  final Future<List<IntakeTargetVersion>?> Function() _loadVersions;
 
   SettingsIntakeTargetHistoryProvider({
-    Future<List<IntakeTargetVersion>> Function()? loadVersions,
+    Future<List<IntakeTargetVersion>?> Function()? loadVersions,
   }) : _loadVersions =
            loadVersions ??
-           (() => IntakeSettings(SettingsStore()).loadTargets());
+           (() => IntakeSettings(SettingsStore()).loadTargetsOrNull());
 
   @override
-  Future<List<IntakeTargetHistoryEntry>> loadTargetHistory() async {
-    final versions = await _loadVersions();
+  Future<List<IntakeTargetHistoryEntry>?> loadTargetHistory() async {
+    final List<IntakeTargetVersion>? versions;
+    try {
+      versions = await _loadVersions();
+    } catch (_) {
+      return null;
+    }
+    if (versions == null) return null;
     return [
       for (final v in versions)
         IntakeTargetHistoryEntry(
@@ -292,25 +311,39 @@ class CorrelationRefresher {
       ]);
       final entries = results[0] as List<QuickLogEntry>?;
       final categories = results[1] as List<QuickLogCategory>?;
+      final targetHistory = results[3] as List<IntakeTargetHistoryEntry>?;
       final medEvents = results[4] as List<MedChangeEventInput>?;
       final medications = results[5] as List<MedicationEntry>?;
-      // Family → sync-input dependency map (the engine's
+      // Family → input dependency map (the engine's
       // derivations): F2/F3/F4 read the log entries (intake,
       // flare, migraine, feeling series) and the categories those
       // derivations resolve against; F5 reads the medication
       // change events and the medication list (its seeded
       // bounding markers). F1 reads ONLY the local biometrics —
-      // it is never gated on a sync failure. Target history is
-      // device-local (item 4's store) and is not gated either.
+      // it is never gated on a sync failure.
+      //
+      // D-T01: target history is device-local (item 4's store),
+      // but its load is failure-distinguishing all the same, and
+      // F2 is its ONLY consumer in the engine — the F2 section of
+      // _buildJobs classifies every intake day against the target
+      // in force (intakeTargetForDay over inputs.targetHistory)
+      // and F2's fingerprint counts the targets
+      // ('targets': inputs.targetHistory.length); no other
+      // family's fingerprint or classification reads it. So a
+      // failed target-history load gates F2 alone: feeding the
+      // erroneous empty history in made every intake day
+      // unclassifiable and overwrote persisted F2 numbers
+      // records with an n=0 progress state on a successful pull.
       final blockedFamilies = <String>{
         if (entries == null || categories == null) ...['F2', 'F3', 'F4'],
+        if (targetHistory == null) 'F2',
         if (medEvents == null || medications == null) 'F5',
       };
       final inputs = CorrelationInputs(
         entries: entries ?? const [],
         categories: categories ?? const [],
         biometrics: results[2] as Map<String, DailyBiometrics>,
-        targetHistory: results[3] as List<IntakeTargetHistoryEntry>,
+        targetHistory: targetHistory ?? const [],
         medEvents: medEvents ?? const [],
         medications: medications ?? const [],
         nowDayKey: _dayKeyOf(_now()),

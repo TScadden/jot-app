@@ -95,11 +95,12 @@ void main() {
       );
 
       final provider = SettingsIntakeTargetHistoryProvider(
-        loadVersions: settings.loadTargets,
+        loadVersions: settings.loadTargetsOrNull,
       );
       final history = await provider.loadTargetHistory();
+      expect(history, isNotNull);
       expect(history, hasLength(1));
-      expect(history.single.fluidTargetMl, 2000);
+      expect(history!.single.fluidTargetMl, 2000);
       expect(history.single.sodiumTargetMg, isNull);
       expect(history.single.effectiveFromDay, '2026-10-01');
 
@@ -150,9 +151,54 @@ void main() {
         delete: (k) async => mem.remove(k),
       );
       final provider = SettingsIntakeTargetHistoryProvider(
-        loadVersions: IntakeSettings(store).loadTargets,
+        loadVersions: IntakeSettings(store).loadTargetsOrNull,
       );
-      expect(await provider.loadTargetHistory(), isEmpty);
+      // Genuinely-empty storage is a SUCCESSFUL empty history:
+      // non-null (not the D-T01 failure signal) and empty.
+      final history = await provider.loadTargetHistory();
+      expect(history, isNotNull);
+      expect(history, isEmpty);
+    });
+
+    test('D-T01: target store read throws → provider reports '
+        'failure (null), never an empty history', () async {
+      final store = SettingsStore.withStorage(
+        read: (k) async => throw StateError('storage unavailable'),
+        write: (k, v) async {},
+        delete: (k) async {},
+      );
+      final settings = IntakeSettings(store);
+      // The failure-distinguishing loader reports the failure…
+      expect(await settings.loadTargetsOrNull(), isNull);
+      // …while loadTargets keeps its degrade-to-empty contract
+      // for its existing fail-safe callers (Home, append/save).
+      expect(await settings.loadTargets(), isEmpty);
+      final provider = SettingsIntakeTargetHistoryProvider(
+        loadVersions: settings.loadTargetsOrNull,
+      );
+      expect(await provider.loadTargetHistory(), isNull);
+    });
+
+    test('D-T01: corrupt stored targets → provider reports '
+        'failure (null), never an empty history', () async {
+      final mem = <String, String>{
+        SettingsStore.intakeTargetsKey: 'not-json{',
+      };
+      final store = SettingsStore.withStorage(
+        read: (k) async => mem[k],
+        write: (k, v) async => mem[k] = v,
+        delete: (k) async => mem.remove(k),
+      );
+      final settings = IntakeSettings(store);
+      final provider = SettingsIntakeTargetHistoryProvider(
+        loadVersions: settings.loadTargetsOrNull,
+      );
+      expect(await provider.loadTargetHistory(), isNull);
+      // Valid JSON whose top level is not a target list is
+      // corrupt storage too — same failure signal.
+      mem[SettingsStore.intakeTargetsKey] = '{"not":"a list"}';
+      expect(await provider.loadTargetHistory(), isNull);
+      expect(await settings.loadTargetsOrNull(), isNull);
     });
   });
 
