@@ -237,15 +237,15 @@ class _HomeScreenState extends State<HomeScreen> {
   /// shows on a guess, and cached vitals render first regardless.
   HealthConnectStatus? _hcStatus;
 
-  /// Internal plumbing for a bridge failure: when `getStatus()`
-  /// itself throws, [_hcStatus] falls back to notConnected (the
-  /// honest user-facing state) and the exception code is kept here
-  /// ONLY to distinguish the stale-grant throw
-  /// ([HealthConnectService.staleGrantCode]) for the banner's
-  /// plain-language stale copy, and for logs. HC connection-honesty
-  /// package (Juno ruling, condition 1): the code is NEVER rendered
-  /// in any UI state — not stale, not a bridge code, not UNKNOWN.
-  String? _hcStatusErrorCode;
+  /// Phase 2 PR-2 — the stale/wedged half of the availability
+  /// snapshot: true when `probeAvailability()` reports
+  /// [HcAvailability.staleWedged] (full grant, real read probe
+  /// blocked). [_hcStatus] then carries the presentation status
+  /// (notConnected — the same fallback the old caught stale throw
+  /// produced) and this flag selects the banner's plain-language
+  /// stale copy. Stale is DATA in the snapshot, never a throw and
+  /// never a rendered code (Juno ruling, condition 1).
+  bool _hcStaleGrant = false;
 
   /// Round 15c — once-per-day count-up gate. False until the gate
   /// resolves; true only on the first home view of the day. On later
@@ -1727,23 +1727,29 @@ class _HomeScreenState extends State<HomeScreen> {
     final streakFuture = _healthRepo.loadStreak();
     final hc = _healthRepo.hc;
     // Round 23 — track the full status enum, not just connected/not.
-    // A bridge failure is handled visibly, never silently wedged
-    // (LESSONS.md): the status falls back to notConnected so the
-    // banner shows, and the exception code is kept internally so
-    // the stale-grant throw can select the banner's ruled stale
-    // copy — the code itself is never rendered (Juno condition 1).
-    HealthConnectStatus status;
-    String? statusErrorCode;
-    try {
-      status = await hc.getStatus();
-    } on HealthConnectException catch (e) {
-      status = HealthConnectStatus.notConnected;
-      statusErrorCode = e.code;
-    } catch (_) {
-      status = HealthConnectStatus.notConnected;
-      statusErrorCode = 'UNKNOWN';
+    // Phase 2 PR-2 — the status now comes from ONE
+    // probeAvailability() snapshot (the snapshot never throws):
+    // stale arrives as DATA ([HcAvailability.staleWedged]), and an
+    // UNKNOWN grant layer (status null, bridge error) presents
+    // exactly as the old generic catch did — the notConnected
+    // fallback, no code anywhere. The bridge code goes to logs
+    // only (Juno condition 1).
+    final snapshot = await hc.probeAvailability();
+    if (snapshot.bridgeErrorCode != null) {
+      debugPrint(
+          'Home HC status check failed [${snapshot.bridgeErrorCode}]');
     }
-    final connected = status == HealthConnectStatus.connected;
+    final staleGrant = snapshot.staleWedged;
+    final HealthConnectStatus status;
+    if (staleGrant || snapshot.status == null) {
+      // Stale and unknown both present through the notConnected
+      // fallback status; the stale flag apart selects the ruled
+      // stale copy for the wedged state.
+      status = HealthConnectStatus.notConnected;
+    } else {
+      status = snapshot.status!;
+    }
+    final connected = snapshot.status == HealthConnectStatus.connected;
     final vitals = await _healthRepo.loadTodayVitals(connected: connected);
     final streak = await streakFuture;
     // Streak engine (Lab package Nov 4, 2026; authoritative
@@ -1782,7 +1788,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // same empty vitals the cache already held, but now we KNOW the
     // connection state) must also rebuild, or the banner never lands.
     final statusChanged =
-        status != _hcStatus || statusErrorCode != _hcStatusErrorCode;
+        status != _hcStatus || staleGrant != _hcStaleGrant;
     if (changed || statusChanged) {
       setState(() {
         _vitals = vitals;
@@ -1792,7 +1798,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _bestStreak = streak.best;
         }
         _hcStatus = status;
-        _hcStatusErrorCode = statusErrorCode;
+        _hcStaleGrant = staleGrant;
       });
     }
     // R70 fix pass (Vera F2) — a completed health-data load re-runs
@@ -2292,8 +2298,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 status: _hcStatus, vitals: _vitals))
               HealthConnectBanner(
                 status: _hcStatus!,
-                staleGrant: _hcStatusErrorCode ==
-                    HealthConnectService.staleGrantCode,
+                staleGrant: _hcStaleGrant,
                 onTap: () => unawaited(_openConnections()),
               ),
             StaggeredEntrance(

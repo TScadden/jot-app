@@ -17,9 +17,9 @@ import 'test_helpers.dart';
 /// state while the connections were live. Root causes pinned per
 /// row (see the round report):
 /// - Health Connect: the Settings card was STATIC — it never read
-///   Health Connect state at all. It now binds
-///   [HealthConnectService.getStatus], the same live bridge check
-///   Home (Round 23) and the Data Connections screen use.
+///   Health Connect state at all. It now binds the live bridge
+///   check Home (Round 23) and the Data Connections screen use —
+///   since Phase 2 PR-2, the probeAvailability() snapshot.
 /// - Google Account: the row reads the SettingsStore flag, which
 ///   only the Settings link flow wrote — Google sign-in (the way
 ///   the founder actually connects, and the call that links the
@@ -44,9 +44,13 @@ class MemorySecureStore implements SecureStore {
   Future<void> delete(String key) async => map.remove(key);
 }
 
-/// Fake bridge: [getStatus] returns a canned status or throws a
-/// canned [HealthConnectException], and counts calls so tests can
-/// prove the Settings screen actually checks (and re-checks).
+/// Fake bridge (Phase 2 PR-2 re-point): the Settings screen now
+/// derives from [probeAvailability], so the fake returns a canned
+/// SNAPSHOT for its canned status — or, when [error] is set, the
+/// UNKNOWN snapshot (grant layer null, the exception recorded
+/// verbatim, its code as the bridge error code). [statusCalls]
+/// counts probe calls so tests can prove the Settings screen
+/// actually checks (and re-checks).
 class FakeHCService extends HealthConnectService {
   FakeHCService(this.status, {this.error}) : super(store: MemorySecureStore());
 
@@ -55,11 +59,51 @@ class FakeHCService extends HealthConnectService {
   int statusCalls = 0;
 
   @override
-  Future<HealthConnectStatus> getStatus() async {
+  Future<HcAvailability> probeAvailability() async {
     statusCalls++;
     final e = error;
-    if (e != null) throw e;
-    return status;
+    if (e != null) {
+      return HcAvailability(
+        serviceAvailable: false,
+        grantedPermissions: null,
+        bridgeErrorCode: e.code,
+        grantError: e,
+        stepsProbe: null,
+        persistedConnected: false,
+      );
+    }
+    return switch (status) {
+      HealthConnectStatus.connected => HcAvailability(
+          serviceAvailable: true,
+          grantedPermissions: HealthConnectService.requiredPermissions,
+          bridgeErrorCode: null,
+          stepsProbe: HcReadProbeOutcome.ok,
+          persistedConnected: true,
+        ),
+      HealthConnectStatus.partiallyConnected => HcAvailability(
+          serviceAvailable: true,
+          grantedPermissions: HealthConnectService.requiredPermissions
+              .difference(
+                  const {'android.permission.health.READ_HEART_RATE_VARIABILITY'}),
+          bridgeErrorCode: null,
+          stepsProbe: null,
+          persistedConnected: false,
+        ),
+      HealthConnectStatus.notConnected => const HcAvailability(
+          serviceAvailable: true,
+          grantedPermissions: {},
+          bridgeErrorCode: null,
+          stepsProbe: null,
+          persistedConnected: false,
+        ),
+      HealthConnectStatus.unavailable => const HcAvailability(
+          serviceAvailable: false,
+          grantedPermissions: null,
+          bridgeErrorCode: null,
+          stepsProbe: null,
+          persistedConnected: false,
+        ),
+    };
   }
 }
 
@@ -146,19 +190,33 @@ void main() {
     });
 
     testWidgets(
-        'unavailable: connect CTA shown (the Data Connections '
-        'screen explains unavailability)', (tester) async {
+        'unavailable: Juno §2 card — status + body, NO button '
+        '(Phase 2 intended delta: the old connect CTA asserted an '
+        'action against a service this device does not have)',
+        (tester) async {
       final backend = r30g.LinkBackend()..pullBody = r29.pull();
       final hc = FakeHCService(HealthConnectStatus.unavailable);
       await pumpSettings(tester, backend: backend, map: {}, hc: hc);
       await openConnectedApps(tester);
-      expect(find.text('Connect Health Data'), findsOneWidget);
+      expect(find.text('Not available on this device'), findsOneWidget);
+      expect(
+          find.text(
+              "Tabs can't read health data through Health Connect on this device."),
+          findsOneWidget);
+      expect(find.text('Connect Health Data'), findsNothing);
+      expect(find.text('Manage Health Connect'), findsNothing);
       expect(find.text('Health Connect Active'), findsNothing);
+      expect(
+          find.text(
+              'Connect to grab data from Garmin, Oura, Fitbit and more.'),
+          findsNothing);
     });
 
     testWidgets(
-        'bridge error: falls back to not-connected WITH the '
-        'visible [CODE] (Home parity)', (tester) async {
+        'bridge error (UNKNOWN): falls back to the not-connected '
+        'card PLUS Juno §3\'s plain failure line — the raw '
+        '[CODE] line is deleted (Phase 2 intended delta)',
+        (tester) async {
       final backend = r30g.LinkBackend()..pullBody = r29.pull();
       final hc = FakeHCService(
         HealthConnectStatus.connected,
@@ -169,9 +227,11 @@ void main() {
       await openConnectedApps(tester);
       expect(find.text('Connect Health Data'), findsOneWidget);
       expect(find.text('Health Connect Active'), findsNothing);
+      expect(find.text('Health Connect status check failed.'),
+          findsOneWidget);
       expect(
           find.text('Health Connect status check failed [NO_CHANNEL].'),
-          findsOneWidget);
+          findsNothing);
     });
 
     testWidgets(

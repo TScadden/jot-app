@@ -32,9 +32,17 @@ class FakeHCService extends HealthConnectService {
   @override
   Future<bool> hasPersistedConnection() async => false;
 
+  // Phase 2 PR-2 re-point: Connections derives from the probe
+  // snapshot — a known empty grant is the notConnected state.
   @override
-  Future<HealthConnectStatus> getStatus() async =>
-      HealthConnectStatus.notConnected;
+  Future<HcAvailability> probeAvailability() async =>
+      const HcAvailability(
+        serviceAvailable: true,
+        grantedPermissions: {},
+        bridgeErrorCode: null,
+        stepsProbe: null,
+        persistedConnected: false,
+      );
 
   @override
   Future<Set<String>> requestPermissions() async {

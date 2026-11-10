@@ -48,8 +48,13 @@ import 'test_helpers.dart';
 
 class _FakeHc extends HealthConnectService {
   @override
-  Future<HealthConnectStatus> getStatus() async =>
-      HealthConnectStatus.connected;
+  Future<HcAvailability> probeAvailability() async => const HcAvailability(
+        serviceAvailable: true,
+        grantedPermissions: HealthConnectService.requiredPermissions,
+        bridgeErrorCode: null,
+        stepsProbe: HcReadProbeOutcome.ok,
+        persistedConnected: true,
+      );
 
   @override
   Future<List<HrSample>> readHeartRateSamples(String dateStr) async {

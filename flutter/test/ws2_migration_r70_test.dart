@@ -54,8 +54,19 @@ class _FakeHc extends HealthConnectService {
   String? exportedContent;
   String? exportedFileName;
 
+  // Phase 2 PR-2 re-point: HealthRepository._connected() derives
+  // from the probe snapshot — connected iff the snapshot's status
+  // is connected.
   @override
-  Future<bool> isConnected() async => connected;
+  Future<HcAvailability> probeAvailability() async => HcAvailability(
+        serviceAvailable: true,
+        grantedPermissions: connected
+            ? HealthConnectService.requiredPermissions
+            : const <String>{},
+        bridgeErrorCode: null,
+        stepsProbe: connected ? HcReadProbeOutcome.ok : null,
+        persistedConnected: connected,
+      );
   @override
   Future<List<({String date, int bpm})>> readRestingHrHistory(
           int days) async =>

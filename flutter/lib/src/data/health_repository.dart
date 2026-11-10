@@ -81,11 +81,13 @@ class HealthRepository {
   }
 
   Future<bool> _connected() async {
-    try {
-      return await hc.isConnected();
-    } catch (_) {
-      return false;
-    }
+    // Phase 2 PR-2 — derives from the unified availability probe
+    // (the snapshot never throws): connected iff the snapshot's
+    // derived status is connected; an unknown grant layer (status
+    // null) and a confirmed-unavailable device both read false,
+    // exactly as the old isConnected() try/catch flattened them.
+    final snapshot = await hc.probeAvailability();
+    return snapshot.status == HealthConnectStatus.connected;
   }
 
   Future<bool> _loggedIn() async {
