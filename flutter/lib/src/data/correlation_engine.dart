@@ -598,8 +598,20 @@ class IntakeTargetHistoryEntry {
 /// Provider seam for the intake target history (item 4 §4.6).
 /// Production defaults return empty until item 4's store lands —
 /// see correlation_refresh.dart.
+///
+/// D-T01 contract (mirrors the H1-01 med providers): a null
+/// return means the load FAILED (the history could not be read)
+/// — distinct from an empty list, which means the load succeeded
+/// and there genuinely are no targets. Callers that persist
+/// derived state (the refresher) must treat null as "unknown"
+/// and skip the families that depend on this input rather than
+/// recomputing them from zero data and overwriting what was
+/// persisted from real data: F2's fingerprint counts the targets
+/// and its classification judges every intake day against the
+/// target in force, so an erroneous empty history makes every
+/// day unclassifiable and destroys persisted F2 numbers records.
 abstract class IntakeTargetHistoryProvider {
-  Future<List<IntakeTargetHistoryEntry>> loadTargetHistory();
+  Future<List<IntakeTargetHistoryEntry>?> loadTargetHistory();
 }
 
 /// One medication field snapshot, in the item 2a event contract's

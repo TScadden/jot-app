@@ -755,12 +755,28 @@ class IntakeSettings {
 
   const IntakeSettings(this.store);
 
-  Future<List<IntakeTargetVersion>> loadTargets() async {
+  Future<List<IntakeTargetVersion>> loadTargets() async =>
+      await loadTargetsOrNull() ?? const [];
+
+  /// The failure-distinguishing form of [loadTargets] (D-T01):
+  /// returns null when the stored targets could NOT be read —
+  /// the store read threw, the stored blob is not valid JSON,
+  /// or its top level is not a list (corrupt storage) — and a
+  /// real list (possibly empty) when the read SUCCEEDED.
+  /// Genuinely-empty storage (nothing stored, or an empty blob)
+  /// is a successful empty list, NOT a failure. [loadTargets]
+  /// keeps its degrade-to-empty contract for its existing
+  /// fail-safe callers (Home, append/save flows); consumers that
+  /// persist state derived from the targets (the correlation
+  /// refresher, via SettingsIntakeTargetHistoryProvider) use
+  /// this form so a failed read can never masquerade as "the
+  /// user has no targets".
+  Future<List<IntakeTargetVersion>?> loadTargetsOrNull() async {
     try {
-      final raw = await store.getIntakeTargetsJson();
+      final raw = await store.getIntakeTargetsJsonOrThrow();
       if (raw == null || raw.isEmpty) return const [];
       final decoded = jsonDecode(raw);
-      if (decoded is! List) return const [];
+      if (decoded is! List) return null;
       final out = <IntakeTargetVersion>[];
       for (final row in decoded) {
         if (row is Map<String, dynamic>) {
@@ -771,7 +787,7 @@ class IntakeSettings {
       out.sort((a, b) => a.effectiveFromDayMs.compareTo(b.effectiveFromDayMs));
       return out;
     } catch (_) {
-      return const [];
+      return null;
     }
   }
 

@@ -30,6 +30,15 @@ import 'test_helpers.dart';
 /// untouched — while genuinely-empty successful pulls still
 /// recompute exactly as before, and purely local families (F1,
 /// biometrics only) still refresh.
+///
+/// D-T01 extends the same contract to the device-local intake
+/// target history (tests (e)/(f)): before it, the production
+/// target provider mapped ANY store read failure to an empty
+/// history and the refresher did not gate on it, so one failed
+/// settings read recomputed F2 — its only consumer — from an
+/// erroneous empty history and overwrote its persisted numbers
+/// records with an n=0 progress state on an otherwise
+/// successful refresh.
 
 class _FakeDisk {
   final Map<String, String> values = {};
@@ -164,6 +173,22 @@ class _FixedTargetProvider implements IntakeTargetHistoryProvider {
       ];
 }
 
+/// D-T01: the target-history load FAILED (null) — the signal
+/// production's SettingsIntakeTargetHistoryProvider now returns
+/// when the device-local target store cannot be read.
+class _FailingTargetProvider implements IntakeTargetHistoryProvider {
+  @override
+  Future<List<IntakeTargetHistoryEntry>?> loadTargetHistory() async => null;
+}
+
+/// D-T01: the target-history load SUCCEEDED and there genuinely
+/// are no targets — a non-null empty history.
+class _EmptyTargetProvider implements IntakeTargetHistoryProvider {
+  @override
+  Future<List<IntakeTargetHistoryEntry>?> loadTargetHistory() async =>
+      const [];
+}
+
 CorrelationInputs _richInputs({
   required Map<String, DailyBiometrics> biometrics,
   List<MedicationEntry> medications = const [],
@@ -218,12 +243,13 @@ CorrelationRefresher _refresher({
   required TabsBackend backend,
   required HealthHistoryStore history,
   required CorrelationInsightStore insights,
+  IntakeTargetHistoryProvider? targetProvider,
 }) =>
     CorrelationRefresher(
       backend: backend,
       historyStore: history,
       insightStore: insights,
-      targetProvider: _FixedTargetProvider(),
+      targetProvider: targetProvider ?? _FixedTargetProvider(),
       medEventProvider: BackendMedChangeEventProvider(backend: backend),
       medListProvider: BackendMedicationListProvider(backend: backend),
       readEmail: () async => null,
@@ -401,6 +427,113 @@ void main() {
       expect(after['F1/F1a']!.inputFingerprint,
           isNot(f1aBefore.inputFingerprint));
       expect(outcome.recomputedCount, greaterThan(0));
+    });
+
+    test('(e) target-history load fails (null) + successful rich '
+        'pull → F2 records and fingerprints untouched', () async {
+      final bio = _bioMap(29);
+      final history = _historyStore(_FakeDisk(), bio);
+      final insightDisk = _FakeDisk();
+      final insights = await _seededInsightStore(
+        insightDisk,
+        _richInputs(biometrics: bio),
+      );
+      final before = await insights.readAll();
+      final f2Before = before['F2/fluid-score']!;
+      // The seeded fingerprint was computed WITH one target in
+      // force ('targets': 1) and the seeded split is a real
+      // numbers record — exactly what a failed settings read
+      // destroyed before D-T01.
+      expect(f2Before.state, InsightState.numbers);
+      final blobBefore =
+          insightDisk.values[CorrelationInsightStore.storageKey];
+
+      // The pull SUCCEEDS with the same rich data the store was
+      // seeded from; only the device-local target-history load
+      // fails (null).
+      final backend = _backend(MockClient((request) async {
+        if (request.url.path == '/api/sync/medication-events') {
+          return http.Response(
+            jsonEncode({
+              'success': true,
+              'events': [_contractEvent().toJson()],
+            }),
+            200,
+          );
+        }
+        return http.Response(jsonEncode(_richPullBody()), 200);
+      }));
+      final outcome = await _refresher(
+        backend: backend,
+        history: history,
+        insights: insights,
+        targetProvider: _FailingTargetProvider(),
+      ).refreshIfStale();
+
+      expect(outcome.ran, isTrue);
+      expect(outcome.recomputedCount, 0);
+      final after = await insights.readAll();
+      expect(after, equals(before));
+      for (final e in before.entries) {
+        if (e.key.startsWith('F2/')) {
+          expect(after[e.key], e.value,
+              reason: '${e.key} must be untouched');
+          expect(after[e.key]!.inputFingerprint, e.value.inputFingerprint,
+              reason: '${e.key} fingerprint must be untouched');
+        }
+      }
+      expect(
+        insightDisk.values[CorrelationInsightStore.storageKey],
+        blobBefore,
+      );
+    });
+
+    test('(f) genuinely empty target history (successful load, no '
+        'failure) → F2 still refreshes normally', () async {
+      final bio = _bioMap(29);
+      final history = _historyStore(_FakeDisk(), bio);
+      final insights = await _seededInsightStore(
+        _FakeDisk(),
+        _richInputs(biometrics: bio),
+      );
+      final before = await insights.readAll();
+      final f2Before = before['F2/fluid-score']!;
+      expect(f2Before.state, InsightState.numbers);
+
+      final backend = _backend(MockClient((request) async {
+        if (request.url.path == '/api/sync/medication-events') {
+          return http.Response(
+            jsonEncode({
+              'success': true,
+              'events': [_contractEvent().toJson()],
+            }),
+            200,
+          );
+        }
+        return http.Response(jsonEncode(_richPullBody()), 200);
+      }));
+      final outcome = await _refresher(
+        backend: backend,
+        history: history,
+        insights: insights,
+        targetProvider: _EmptyTargetProvider(),
+      ).refreshIfStale();
+
+      expect(outcome.ran, isTrue);
+      expect(outcome.recomputedCount, greaterThan(0));
+      final after = await insights.readAll();
+      // A successful empty history is NOT gated: with no target
+      // in force every intake day is unclassifiable, so F2's
+      // fluid-score split honestly recomputes to the n=0
+      // progress state — the exact recompute (e) forbids when
+      // the empty history is really a failed read.
+      final f2After = after['F2/fluid-score']!;
+      expect(f2After, isNot(f2Before));
+      expect(f2After.inputFingerprint,
+          isNot(f2Before.inputFingerprint));
+      expect(f2After.state, InsightState.progress);
+      expect(f2After.groups[0].n, 0);
+      expect(f2After.groups[1].n, 0);
     });
 
     test('(d) med-list pull fails while med-events succeed → F5 '

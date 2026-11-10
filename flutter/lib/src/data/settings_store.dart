@@ -428,6 +428,15 @@ class SettingsStore extends ChangeNotifier {
     }
   }
 
+  /// The intake-targets blob with NO fail-safe degradation
+  /// (D-T01): a read failure THROWS instead of returning null,
+  /// so callers that must distinguish "the read failed" from
+  /// "nothing was ever stored" (a null / empty success) can —
+  /// see [IntakeSettings.loadTargetsOrNull]. [getIntakeTargetsJson]
+  /// keeps its degrade-to-null contract for its existing caller.
+  Future<String?> getIntakeTargetsJsonOrThrow() =>
+      _read(intakeTargetsKey);
+
   Future<void> setIntakeTargetsJson(String v) =>
       _write(intakeTargetsKey, v);
 
