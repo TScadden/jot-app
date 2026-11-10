@@ -558,6 +558,122 @@ void main() {
     });
   });
 
+  group('C1 regression — footer presence at the true maximal '
+      'conjunction (Vera, PR #81 review)', () {
+    // The renderer is a fixed pw.Page whose Column CLIPS overflow
+    // instead of paginating: page count stays 1 precisely when
+    // content is lost. Completeness evidence for the capped
+    // envelope is therefore footer PRESENCE in the rendered
+    // production-font output, never page count alone.
+    //
+    // Extraction uses pdftotext (poppler) on the production
+    // Roboto render: the pdf package embeds a ToUnicode CMap for
+    // the subset font, so standard tooling recovers the text
+    // exactly (Vera §3 — byte-identical to the line model).
+    Future<String> prodText(List<int> bytes) async {
+      final dir = await Directory.systemTemp.createTemp('clinician_c1');
+      final pdf = File('${dir.path}/report.pdf');
+      await pdf.writeAsBytes(bytes);
+      final result = await Process.run('pdftotext', [pdf.path, '-']);
+      expect(result.exitCode, 0, reason: '${result.stderr}');
+      // Collapse whitespace so wrapped visual lines compare as
+      // the model's single logical lines.
+      return (result.stdout as String).replaceAll(RegExp(r'\s+'), ' ');
+    }
+
+    test('meds at cap + overflow, 3 captured changes with window '
+        'lines + overflow, full Z4, six Z3B lines, 11-section Z8: '
+        'the Z8 line AND the disclaimer render on the page', () async {
+      final data = ClinicianReportData(
+        snapshot: _snapshot(
+          medications: [
+            for (var i = 1; i <= 8; i++)
+              _med('Med$i', '$i mg', frequency: 'Twice daily'),
+          ],
+          conditions: const ['POTS', 'MCAS'],
+          sectionMetadata: const {
+            'logs': SectionMetadata('logs', DataSourceStatus.success, 40),
+            'conditions':
+                SectionMetadata('conditions', DataSourceStatus.success, 2),
+            'medications':
+                SectionMetadata('medications', DataSourceStatus.success, 8),
+            'documents':
+                SectionMetadata('documents', DataSourceStatus.success, 1),
+            'bloodPressure': SectionMetadata(
+                'bloodPressure', DataSourceStatus.success, 9),
+            'sleep': SectionMetadata('sleep', DataSourceStatus.success, 24),
+            'deepSleep':
+                SectionMetadata('deepSleep', DataSourceStatus.success, 24),
+            'heartRate':
+                SectionMetadata('heartRate', DataSourceStatus.success, 24),
+            'hrv': SectionMetadata('hrv', DataSourceStatus.storedOnly, 24),
+            'calories':
+                SectionMetadata('calories', DataSourceStatus.noData, 0),
+            'hrSpikes':
+                SectionMetadata('hrSpikes', DataSourceStatus.success, 12),
+          },
+        ),
+        dailyScoreSeries: [
+          for (var d = 1; d <= 20; d++) (_key(10, d), 60),
+        ],
+        medChanges: [
+          for (var i = 1; i <= 5; i++)
+            ClinicianMedChange(
+              day: DateTime(2026, 10, i),
+              dateLabel: 'Oct $i, 2026',
+              label: 'Started Med$i · $i mg',
+              captured: true,
+              beforeWindow: (average: 55, scoredDays: 10),
+              afterWindow: (average: 65, scoredDays: 12),
+            ),
+        ],
+        medChangesCaptured: true,
+        flareDays: 2,
+        flareSeverityMix: const {'Bad': 1, 'Rough': 1},
+        migraineCount: 3,
+        topCategories: const [
+          (name: 'Symptoms', count: 9),
+          (name: 'Food', count: 4),
+          (name: 'Sleep', count: 2),
+        ],
+        sleepSummary: summarizeClinicianIntSeries(_days24(426)),
+        deepSleepSummary: summarizeClinicianIntSeries(_days24(84)),
+        hrvSummary: summarizeClinicianDoubleSeries(
+            [for (var d = 1; d <= 24; d++) (_key(10, d), 42.0)]),
+        restingHeartRateSummary:
+            summarizeClinicianIntSeries(_days24(62)),
+        heartRateSpikeSummary: summarizeClinicianSpikes(_spikeSeries()),
+        bloodPressureSummary:
+            summarizeClinicianBloodPressure(_bpReadings()),
+      );
+      // The conjunction itself: 37 model lines, every zone at or
+      // under its cap.
+      expect(clinicianPageLines(data).length, 37);
+      expect(_lines(data, 'Z2').length, 1 + clinicianMedicationCap + 1);
+      expect(_lines(data, 'Z3B').length, 7);
+
+      final bytes =
+          await buildClinicianPdfBytes(data, fonts: await _diskFonts());
+      expect(_pageCount(bytes), 1);
+      final text = await prodText(bytes);
+      expect(text, contains('Biometrics'));
+      for (final line in _junoZ3bLines) {
+        expect(text, contains(line), reason: 'extracted text: $line');
+      }
+      // THE gate: the footer survives the full capped envelope.
+      expect(text, contains('Data availability:'));
+      expect(
+          text,
+          contains(
+              'BloodPressure: Available (9 records); Sleep: Available (24 records); '
+              'DeepSleep: Available (24 records); HeartRate: Available (24 records); '
+              'Hrv: Available from stored history (24 records); HrSpikes: Available (12 records); '
+              'Calories: No data recorded'));
+      expect(text, contains(clinicianDisclaimer));
+      expect(text, contains('Generated by Tabs · Last 30 days'));
+    });
+  });
+
   group('hasAnyData (Phase 4 definition)', () {
     test('biometrics-ONLY fixture (no logs, no scores, no meds) is data',
         () async {

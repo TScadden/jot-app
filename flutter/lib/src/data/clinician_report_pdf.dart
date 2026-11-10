@@ -313,6 +313,12 @@ Future<ClinicianPdfFonts?> loadClinicianPdfFonts() async {
 final _helveticaFonts =
     ClinicianPdfFonts(pw.Font.helvetica(), pw.Font.helveticaBold());
 
+/// The Z3 score chart height. Part of the page's fixed layout
+/// budget (see buildClinicianPdfBytes): the chart shrank from
+/// 110 to 76 in Phase 4 so the full capped envelope — Z3B
+/// included — fits the one page WITH its footer.
+const double _scoreChartHeight = 76;
+
 /// The Z3 score chart: a calendar-continuous line over the
 /// range's days. Unscored days BREAK the line — no interpolation
 /// across a gap (spec §4.2 Z3). Captured medication-change days
@@ -333,7 +339,7 @@ pw.Widget _scoreChart(ClinicianReportData data, pw.TextStyle metaStyle) {
         children: [
           pw.SizedBox(
             width: 24,
-            height: 110,
+            height: _scoreChartHeight,
             child: pw.Column(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -346,9 +352,9 @@ pw.Widget _scoreChart(ClinicianReportData data, pw.TextStyle metaStyle) {
           ),
           pw.Expanded(
             child: pw.SizedBox(
-              height: 110,
+              height: _scoreChartHeight,
               child: pw.CustomPaint(
-                size: const PdfPoint(481, 110),
+                size: const PdfPoint(481, _scoreChartHeight),
                 painter: (PdfGraphics canvas, PdfPoint size) {
             const left = 2.0;
             const right = 6.0;
@@ -427,6 +433,19 @@ pw.Widget _scoreChart(ClinicianReportData data, pw.TextStyle metaStyle) {
 }
 
 /// Builds the one-page clinician PDF bytes from [data] alone.
+///
+/// Layout budget (Phase 4, Vera C1 on PR #81): this is a fixed
+/// pw.Page whose Column CLIPS overflow instead of paginating —
+/// page count stays 1 precisely when content is lost, so the
+/// page's spacing/chart metrics below are a BUDGET, sized so the
+/// full capped envelope (every zone at its §4.4 cap, Z3B's six
+/// lines, the 11-section Z8) fits WITH the footer: the Z8
+/// availability line and the legal disclaimer must never fall
+/// off the page. The clinician_report_phase4_test.dart C1
+/// fixture pins the envelope by footer PRESENCE in the rendered
+/// production-font output. Any future zone or copy growth must
+/// re-check that fixture — growing content without budget
+/// re-opens the silent-clipping path.
 Future<List<int>> buildClinicianPdfBytes(ClinicianReportData data,
     {ClinicianPdfFonts? fonts}) async {
   final fonts0 = fonts ?? _helveticaFonts;
@@ -439,16 +458,16 @@ Future<List<int>> buildClinicianPdfBytes(ClinicianReportData data,
     final texts = zone(z);
     if (texts.isEmpty) return pw.SizedBox();
     return pw.Padding(
-      padding: const pw.EdgeInsets.only(top: 10),
+      padding: const pw.EdgeInsets.only(top: 6),
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
           pw.Text(texts.first, style: fonts0.heading()),
-          pw.SizedBox(height: 3),
+          pw.SizedBox(height: 2),
           if (chart) _scoreChart(data, fonts0.meta()),
           for (final t in texts.skip(1))
             pw.Padding(
-              padding: const pw.EdgeInsets.only(bottom: 2),
+              padding: const pw.EdgeInsets.only(bottom: 1),
               child: pw.Text(t, style: fonts0.body()),
             ),
         ],
@@ -464,12 +483,12 @@ Future<List<int>> buildClinicianPdfBytes(ClinicianReportData data,
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
           pw.Text(z1[0], style: fonts0.title()),
-          pw.SizedBox(height: 4),
+          pw.SizedBox(height: 3),
           pw.Container(height: 1.2, color: _rgb(0, 102, 204)),
-          pw.SizedBox(height: 4),
+          pw.SizedBox(height: 3),
           pw.Text(z1[1], style: fonts0.meta()),
           if (z1.length > 2) ...[
-            pw.SizedBox(height: 3),
+            pw.SizedBox(height: 2),
             pw.Text(z1[2], style: fonts0.body()),
           ],
           zoneBlock('Z2'),
@@ -479,10 +498,10 @@ Future<List<int>> buildClinicianPdfBytes(ClinicianReportData data,
           zoneBlock('Z5'),
           pw.Spacer(),
           pw.Container(height: 0.7, color: _rgb(200, 200, 200)),
-          pw.SizedBox(height: 4),
+          pw.SizedBox(height: 3),
           for (final t in zone('Z8'))
             pw.Padding(
-              padding: const pw.EdgeInsets.only(bottom: 2),
+              padding: const pw.EdgeInsets.only(bottom: 1),
               child: pw.Text(t, style: fonts0.footer()),
             ),
         ],
