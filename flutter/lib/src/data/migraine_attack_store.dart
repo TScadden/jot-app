@@ -220,36 +220,117 @@ class MigraineAttackStore {
   /// `testWidgets` FakeAsync zone (TodaySummaryCard's initState
   /// builds the production controller) could never complete once
   /// that zone was discarded — every later save/clear then hung
-  /// behind it forever (the R35 logout-wipe timeouts). With no
-  /// long-lived future in the state, an idle queue starts its
-  /// drain in the caller's own zone.
-  final List<Future<void> Function()> _opQueue = [];
+  /// behind it forever (the R35 logout-wipe timeouts).
+  ///
+  /// The drain must not be zone-capturable either (R70). The
+  /// first queue version ran one long-lived async drain loop
+  /// whose continuations belonged to whichever zone happened to
+  /// START it: when that was a `testWidgets` FakeAsync zone (the
+  /// unawaited login / session-expiry wipe calls in `main.dart`),
+  /// the in-flight op's platform-channel storage IO could never
+  /// complete in that zone — channel replies are delivered on the
+  /// real event loop — so the loop parked on its first `await`
+  /// with the draining flag stuck on and every later serialized
+  /// op, including a real-zone account-clear wipe, queued forever
+  /// (the r70 wiring test's 10-minute timeout). There is now NO
+  /// loop at all: the queue advances one link at a time,
+  /// completion-driven, and the queue advances from each link's
+  /// own `finally`, synchronously within the execution's
+  /// microtask chain — never from the completer's completion,
+  /// whose propagation belongs to the completer's creation zone
+  /// and would park in a caller's FakeAsync zone until pumped.
+  ///
+  /// Each link's EXECUTION zone is chosen by the storage it will
+  /// hit, because the two kinds complete on different clocks:
+  ///
+  ///  * the default platform-channel storage (production, and
+  ///    any test that does not inject storage) can only complete
+  ///    on the real event loop, so the link executes in
+  ///    [Zone.root] no matter which zone enqueued it — a
+  ///    FakeAsync-started link then progresses as soon as the
+  ///    real loop turns (e.g. a later `tester.runAsync`), instead
+  ///    of wedging the queue;
+  ///  * test-injected in-memory storage ([withStorage] /
+  ///    [debugSetStore]) completes in whatever zone calls it, and
+  ///    widget tests that await a wipe under pure FakeAsync
+  ///    pumping (`pumpAndSettle`, no `runAsync`) can only observe
+  ///    completion if the link executes in the enqueueing zone —
+  ///    root-zone microtasks never drain while a FakeAsync test
+  ///    pumps (verified empirically) — so injected links execute
+  ///    in the zone that enqueued them, exactly as the original
+  ///    queue did.
+  ///
+  /// In production storage is never injected and every caller
+  /// already shares the root zone, so production links always
+  /// execute in Zone.root — the app's only zone — either way.
+  ///
+  /// Each link's completer is deliberately created in the
+  /// CALLER's zone (and completed from the execution):
+  /// a root-created completer's error is reported as an
+  /// unhandled Zone.root exception even when a caller in a child
+  /// zone handles it (verified empirically against this test
+  /// suite — it kills the flutter_test subprocess and every test
+  /// in the file reports "did not complete"), while a
+  /// caller-created completer delivers its error to the caller's
+  /// own handlers exactly as a direct call would. Callers'
+  /// `await`s and listeners thus run in their own zones with
+  /// identical semantics, and an op's error is delivered only to
+  /// its own caller. In production every caller already shares
+  /// the root zone, so none of this changes production behavior.
+  final List<void Function()> _opQueue = [];
   bool _opDraining = false;
+
+  /// True once storage has been replaced through [withStorage]
+  /// or [debugSetStore] (tests only): the injected functions are
+  /// plain in-memory closures. False while the store runs on its
+  /// default platform-channel storage. Selects each queue link's
+  /// execution zone — see the queue comment above.
+  bool _storageInjected = false;
 
   Future<T> _serialized<T>(Future<T> Function() op) {
     final completer = Completer<T>();
-    _opQueue.add(() async {
-      try {
-        completer.complete(await op());
-      } catch (e, st) {
-        completer.completeError(e, st);
-      }
+    final enqueueZone = Zone.current;
+    // Execution zone (see the queue comment above): device
+    // storage runs in Zone.root; injected storage runs in the
+    // zone that enqueued the op.
+    final execZone = _storageInjected ? enqueueZone : Zone.root;
+    _opQueue.add(() {
+      // One queue link. The returned future is error-guarded:
+      // the body cannot throw (op errors are caught and
+      // re-delivered through [completer]), and the guard makes
+      // sure no error can ever surface as unhandled in the
+      // execution zone.
+      execZone.run<Future<void>>(() async {
+        try {
+          completer.complete(await op());
+        } catch (e, st) {
+          if (!completer.isCompleted) completer.completeError(e, st);
+        } finally {
+          // Advance synchronously within the execution's own
+          // microtask chain: clear the flag and start the next
+          // link, if any. No `await` intervenes, so no enqueue
+          // can slip between "queue seen empty" and "flag
+          // cleared" — and a caller whose `await` resumes and
+          // immediately enqueues the next op (the controller's
+          // sequential saves) always finds the flag already
+          // cleared or the queue already advanced.
+          _opDraining = false;
+          _kickOps();
+        }
+      }).ignore();
     });
-    _drainOps();
+    _kickOps();
     return completer.future;
   }
 
-  Future<void> _drainOps() async {
-    if (_opDraining) return;
+  /// Starts the head link if the queue is idle. The link closure
+  /// itself performs the execution in its chosen zone (see
+  /// [_serialized]).
+  void _kickOps() {
+    if (_opDraining || _opQueue.isEmpty) return;
     _opDraining = true;
-    try {
-      while (_opQueue.isNotEmpty) {
-        final job = _opQueue.removeAt(0);
-        await job();
-      }
-    } finally {
-      _opDraining = false;
-    }
+    final link = _opQueue.removeAt(0);
+    link();
   }
 
   /// The shared instance (see [instance]).
@@ -275,7 +356,7 @@ class MigraineAttackStore {
             (key) async {
               await write(key, '');
             },
-      );
+      ).._storageInjected = true;
 
   @visibleForTesting
   void debugSetStore({
@@ -286,6 +367,7 @@ class MigraineAttackStore {
     _read = read;
     _write = write;
     if (delete != null) _delete = delete;
+    _storageInjected = true;
   }
 
   /// Read-path loader: never throws (class doc) — any failure,
