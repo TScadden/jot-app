@@ -136,11 +136,11 @@ class HealthConnectService {
   /// never revokes access or opens settings on the user's behalf;
   /// removing the app inside Health Connect is the user's tap.
   static const String staleGrantMessage =
-      'Health Connect lists this app as having permission, but a '
-      'test read was blocked. This sometimes happens after an app '
-      'update or reinstall. To fix it, open Health Connect, tap '
-      'App permissions, tap this app, then tap Remove access. '
-      'Return here and connect again.';
+      'Tabs is disconnected from Health Connect. Health Connect lists '
+      'Tabs as having permission, but a test read was blocked. This '
+      'sometimes happens after an app update or reinstall. To fix it, '
+      'open Health Connect, tap App permissions, tap Tabs, then tap '
+      'Remove access. Return here and connect again.';
 
   final MethodChannel _channel;
   final SecureStore _store;
@@ -338,6 +338,16 @@ class HealthConnectService {
 
   /// Dart-side deactivation: clears persisted state. System permissions can
   /// only be revoked in Health Connect settings (same as the native app).
+  ///
+  /// HC connection-honesty package: no in-app control calls this any
+  /// more — the Connections sheet's "Deactivate in Tabs" control was
+  /// removed (Juno ruling #8) because clearing these two keys never
+  /// stopped any read and the status re-verified straight back to
+  /// "Connected". The method is retained as the service's
+  /// persisted-state clear and is exercised directly by a test of
+  /// record (health_connect_test.dart, "disconnect clears persisted
+  /// state"); the keys it clears are still written by [_persist] and
+  /// read by [hasPersistedConnection].
   Future<void> disconnect() async {
     await _store.delete(_kGrantedKey);
     await _store.delete(_kConnectedAtKey);

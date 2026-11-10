@@ -335,8 +335,17 @@ void main() {
         service.requestPermissions(),
         throwsA(isA<HealthConnectException>()
             .having((e) => e.code, 'code', HealthConnectService.staleGrantCode)
-            .having((e) => e.message, 'message',
-                contains('tap Remove access'))),
+            // Juno item 5 (HC connection-honesty): the thrown message
+            // IS the ruled staleGrantMessage, byte-exact.
+            .having(
+                (e) => e.message,
+                'message',
+                'Tabs is disconnected from Health Connect. Health Connect '
+                    'lists Tabs as having permission, but a test read was '
+                    'blocked. This sometimes happens after an app update or '
+                    'reinstall. To fix it, open Health Connect, tap App '
+                    'permissions, tap Tabs, then tap Remove access. Return '
+                    'here and connect again.')),
       );
       // A blocked grant must never be stored as a healthy connection.
       expect(await store.read('hc_granted_permissions'), isNull);

@@ -17,11 +17,16 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///   verbatim (Google retired the Fitbit Web API Oct 30, 2026).
 /// - "How to connect a tracker" help section, native copy verbatim.
 /// - Management bottom sheet for a connected row (status, grant-remaining
-///   when partial, "Deactivate in Tabs", "Manage system permissions").
+///   when partial, "Manage system permissions"). There is NO in-app
+///   deactivate/disconnect control: Tabs cannot revoke its own Health
+///   Connect access — the user removes it in Health Connect (Juno
+///   ruling #8, HC connection-honesty package).
 ///
 /// Health Connect row states: Connected (green) / Partially connected
-/// (warning) / Available (tap → permission flow) / Not available on this
-/// device (disabled). Every channel failure surfaces visibly as [CODE].
+/// (warning) / Connection problem (stale grant — the live probe was
+/// blocked while grants report complete) / Available (tap → permission
+/// flow) / Not available on this device (disabled). Channel failures
+/// surface as their plain-language message — never a bracketed code.
 ///
 /// Nov 2, 2026 fix (founder report): the Connected row is also rendered
 /// from persisted state while the live check is still pending, but the
@@ -46,6 +51,13 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
   bool _persistedConnected = false;
   bool _requesting = false;
   String? _error;
+
+  /// True when the live status check threw the stale-grant code:
+  /// Health Connect lists Tabs as granted, but the real read probe
+  /// was blocked. In this state the row must show "Connection
+  /// problem" (Juno ruling #3) — the persisted-flag fallback must
+  /// NEVER manufacture "Connected" out of this throw.
+  bool _staleGrant = false;
 
   // HRV grant visibility — plain-language names of the data types
   // NOT shared when the grant is partial (e.g. "Heart rate
@@ -89,6 +101,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
         setState(() {
           _status = status;
           _error = null;
+          _staleGrant = false;
           _missingLabels = const [];
         });
       }
@@ -107,24 +120,38 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
     } on HealthConnectException catch (e) {
       if (mounted) {
         setState(() {
-          _status = _persistedConnected
-              ? HealthConnectStatus.connected
-              : HealthConnectStatus.notConnected;
-          _error = '[${e.code}] ${e.message}';
+          if (e.code == HealthConnectService.staleGrantCode) {
+            // Stale grant (Juno ruling #3/#5): the live probe was
+            // blocked, so the row tells the truth — "Connection
+            // problem" — and the error line presents the ruled
+            // recovery text with NO bracketed code prefix. The
+            // persisted flag must not turn this throw into
+            // "Connected": _status lands on notConnected and
+            // _staleGrant drives the row/sheet presentation.
+            _staleGrant = true;
+            _status = HealthConnectStatus.notConnected;
+            _error = e.message;
+          } else {
+            _staleGrant = false;
+            _status = _persistedConnected
+                ? HealthConnectStatus.connected
+                : HealthConnectStatus.notConnected;
+            _error = e.message;
+          }
         });
       }
     } catch (_) {
       // Non-bridge failure (e.g. the persisted-state write inside
       // getStatus): never leave _status pending forever with the
       // row rendered from persisted state — fall back like the
-      // bridge-error path above, with a visible code (Home parity:
-      // UNKNOWN).
+      // bridge-error path above, with a plain visible message.
       if (mounted) {
         setState(() {
+          _staleGrant = false;
           _status = _persistedConnected
               ? HealthConnectStatus.connected
               : HealthConnectStatus.notConnected;
-          _error = '[UNKNOWN] Status check failed.';
+          _error = 'Status check failed.';
         });
       }
     }
@@ -145,6 +172,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
       if (!mounted) return;
       setState(() {
         _requesting = false;
+        _staleGrant = false;
         if (granted.containsAll(HealthConnectService.requiredPermissions)) {
           _status = HealthConnectStatus.connected;
           _missingLabels = const [];
@@ -162,22 +190,13 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
       if (mounted) {
         setState(() {
           _requesting = false;
-          _error = '[${e.code}] ${e.message}';
+          _error = e.message;
+          if (e.code == HealthConnectService.staleGrantCode) {
+            _staleGrant = true;
+            _status = HealthConnectStatus.notConnected;
+          }
         });
       }
-    }
-  }
-
-  Future<void> _onDisconnect() async {
-    try {
-      await _service.disconnect();
-    } catch (_) {}
-    if (mounted) {
-      setState(() {
-        _status = HealthConnectStatus.notConnected;
-        _persistedConnected = false;
-        _missingLabels = const [];
-      });
     }
   }
 
@@ -187,11 +206,17 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
     // while it was still pending, which is exactly the dead tap on
     // the persisted "Connected" row (founder report, Nov 2, 2026).
     var status = _effectiveStatus;
-    if (status != HealthConnectStatus.connected &&
+    // Stale grant: the sheet IS the recovery surface (Juno ruling
+    // #4/#5), so it opens directly on the stale presentation — the
+    // connected/partial guard below must not re-verify-and-return
+    // it away.
+    final isStale = _staleGrant;
+    if (!isStale &&
+        status != HealthConnectStatus.connected &&
         status != HealthConnectStatus.partiallyConnected) {
       // Never a silent no-op (LESSONS: silent channel failures):
-      // re-verify live. A bridge failure surfaces visibly as [CODE]
-      // via _loadStatus, and a changed grant re-renders the row in
+      // re-verify live. A bridge failure surfaces visibly via
+      // _loadStatus, and a changed grant re-renders the row in
       // its true state.
       await _loadStatus();
       if (!mounted) return;
@@ -211,20 +236,17 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
       backgroundColor: NotelColors.surface,
       builder: (sheetContext) => _ManageSheet(
         status: status!,
+        isConnectionProblem: isStale,
         onGrantRemaining: () async {
           Navigator.of(sheetContext).pop();
           await _onConnectTap();
-        },
-        onDeactivate: () async {
-          Navigator.of(sheetContext).pop();
-          await _onDisconnect();
         },
         onManageSystem: () async {
           Navigator.of(sheetContext).pop();
           try {
             await _service.openHealthConnectSettings();
           } on HealthConnectException catch (e) {
-            sheetError = '[${e.code}] ${e.message}';
+            sheetError = e.message;
           }
         },
       ),
@@ -279,6 +301,14 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
             const SizedBox(height: 8),
             if (showLoading)
               const _LoadingRow()
+            else if (_staleGrant)
+              _ConnectionItem(
+                logo: const _HealthConnectLogo(),
+                name: 'Android Health (Google Fit, Samsung)',
+                statusText: 'Connection problem',
+                statusColor: NotelColors.error,
+                onTap: _openManageSheet,
+              )
             else if (effectiveStatus == HealthConnectStatus.connected ||
                 effectiveStatus == HealthConnectStatus.partiallyConnected)
               _ConnectionItem(
@@ -318,8 +348,9 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
                 statusColor: NotelColors.textSecondary,
                 onTap: null,
               )
-            else if (status == HealthConnectStatus.notConnected ||
-                (!_persistedConnected && status == null))
+            else if (!_staleGrant &&
+                (status == HealthConnectStatus.notConnected ||
+                    (!_persistedConnected && status == null)))
               _ConnectionItem(
                 logo: const _HealthConnectLogo(),
                 name: 'Android Health (Google Fit, Samsung)',
@@ -696,20 +727,26 @@ class _FitbitCard extends StatelessWidget {
 
 class _ManageSheet extends StatelessWidget {
   final HealthConnectStatus status;
+
+  /// Stale-grant presentation (Juno ruling #4/#5): the status line
+  /// names the connection problem and its one receipted consequence,
+  /// and the sheet carries the full recovery steps — the single
+  /// source is [HealthConnectService.staleGrantMessage].
+  final bool isConnectionProblem;
   final Future<void> Function() onGrantRemaining;
-  final Future<void> Function() onDeactivate;
   final Future<void> Function() onManageSystem;
 
   const _ManageSheet({
     required this.status,
     required this.onGrantRemaining,
-    required this.onDeactivate,
     required this.onManageSystem,
+    this.isConnectionProblem = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isPartial = status == HealthConnectStatus.partiallyConnected;
+    final isPartial = !isConnectionProblem &&
+        status == HealthConnectStatus.partiallyConnected;
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(32, 16, 32, 64),
       child: Column(
@@ -737,13 +774,35 @@ class _ManageSheet extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
           Text(
-            isPartial ? 'Partially connected' : 'Connected',
+            isConnectionProblem
+                ? "Connection problem: Tabs can't read your health data "
+                    'right now.'
+                : isPartial
+                    ? 'Partially connected'
+                    : 'Connected',
             style: TextStyle(
-              color: isPartial ? NotelColors.warning : NotelColors.success,
+              color: isConnectionProblem
+                  ? NotelColors.error
+                  : isPartial
+                      ? NotelColors.warning
+                      : NotelColors.success,
               fontSize: 14,
               fontWeight: FontWeight.w500,
             ),
+            textAlign: TextAlign.center,
           ),
+          if (isConnectionProblem) ...[
+            const SizedBox(height: 24),
+            const Text(
+              HealthConnectService.staleGrantMessage,
+              style: TextStyle(
+                color: NotelColors.textSecondary,
+                fontSize: 13,
+                height: 18 / 13,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
           if (isPartial) ...[
             const SizedBox(height: 24),
             Container(
@@ -795,31 +854,7 @@ class _ManageSheet extends StatelessWidget {
               ),
             ),
           ],
-          SizedBox(height: isPartial ? 24 : 48),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () => onDeactivate(),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: NotelColors.error.withValues(alpha: 0.1),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                side: BorderSide(
-                  color: NotelColors.error.withValues(alpha: 0.3),
-                ),
-                elevation: 0,
-              ),
-              child: const Text(
-                'Deactivate in Tabs',
-                style: TextStyle(
-                  color: NotelColors.error,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
+          SizedBox(height: isPartial || isConnectionProblem ? 24 : 48),
           SizedBox(
             width: double.infinity,
             child: TextButton(
@@ -833,15 +868,19 @@ class _ManageSheet extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 32),
-          Text(
-            "Deactivating stops Tabs from pulling new data. To completely revoke access, use the 'Manage system permissions' button above.",
-            style: TextStyle(
-              color: NotelColors.textSecondary.withValues(alpha: 0.7),
-              fontSize: 12,
+          if (!isConnectionProblem) ...[
+            const SizedBox(height: 32),
+            Text(
+              'Your connection is managed in Health Connect. To stop '
+              'Tabs from reading your health data, tap Manage system '
+              'permissions and remove access for Tabs there.',
+              style: TextStyle(
+                color: NotelColors.textSecondary.withValues(alpha: 0.7),
+                fontSize: 12,
+              ),
+              textAlign: TextAlign.center,
             ),
-            textAlign: TextAlign.center,
-          ),
+          ],
         ],
       ),
     );
