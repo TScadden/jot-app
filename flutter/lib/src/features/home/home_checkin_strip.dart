@@ -52,9 +52,11 @@ const String kSheetCheckInUnscoredText =
 const String kSheetCheckInUnscoredSemantics =
     "Morning Score. One tap up top, whenever you're ready.";
 
-/// The scored line for a logged check-in (Today Summary card face +
-/// sheet summary row). PLACEHOLDER composition (pending Juno's
-/// verbatim ruling — swap here): delegates to the Item 7 label.
+/// The Item 7.1 composition for a logged check-in (Oct 28, 2026):
+/// the sheet summary card's label verbatim, and — with the
+/// `Morning Score: ` prefix applied at the face only (Juno
+/// reconciliation Q2, Nov 10, 2026) — the Today Summary card
+/// face line. The prefix never enters this composition.
 String homeCheckInScoredLine({
   required int ranking,
   String? flareSeverity,
