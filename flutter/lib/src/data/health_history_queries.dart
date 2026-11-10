@@ -23,17 +23,18 @@ import 'package:tabs_lab/src/data/health_history_store.dart';
 ///   values, never zero-filled placeholders.
 ///
 /// Failure handling: the HC service fails closed (empty / null)
-/// and records the failure in `lastReadErrorCode`; a PARTIAL read
-/// (some chunks missing, real rows returned) records
-/// `lastPartialErrorCode` instead and is reported in
-/// [HistoryUnion.partialMetrics] — never as a failure. The union runs
-/// the per-metric reads SEQUENTIALLY and each read's loader claims
-/// the recorded code before the next read starts (see step 2b in
-/// [HealthHistoryQueries.loadRange] for why serialization is the
-/// attribution mechanism) so a failed metric is reported in
-/// [HistoryUnion.failedMetrics] — callers that must not mistake an
-/// outage for emptiness (the Key Metrics CSV export, Vera F5) check
-/// it; everyone else just gets the honest store-backed remainder.
+/// and each read's outcome object carries that read's OWN failure
+/// or partial signal (Phase 2 §1 — `HcReadOutcome`); a PARTIAL read
+/// (some chunks missing, real rows returned) is reported in
+/// [HistoryUnion.partialMetrics] — never as a failure. Each loader
+/// claims its signals from its own read's outcome object, so a
+/// failed metric is reported in [HistoryUnion.failedMetrics] —
+/// callers that must not mistake an outage for emptiness (the Key
+/// Metrics CSV export, Vera F5) check it; everyone else just gets
+/// the honest store-backed remainder. Attribution no longer rides
+/// on the service's legacy slot fields at all: two concurrent
+/// unions sharing one service instance cannot cross-talk, by
+/// construction.
 ///
 /// HC fetch depth is capped at [maxHealthConnectFetchDays]: HC
 /// retention is a few weeks, so for a deeper request (a report's
@@ -83,14 +84,12 @@ class HistoryUnion {
   final Set<HistoryMetric> partialMetrics;
 
   /// Per-metric failure evidence for the metrics in [failedMetrics]:
-  /// the failing read's error detail as recorded by the HC service
-  /// (`lastReadErrorDetails` — the native exception CLASS only, e.g.
-  /// `SecurityException`, never health values), claimed with the
-  /// failure code by that read's own loader while no other read is
-  /// in flight (see step 2b in [HealthHistoryQueries.loadRange]),
-  /// or the thrown error's string form when a read throws instead
-  /// of recording a code. A metric whose failure carried no detail
-  /// is absent from this map. This is the ONLY stale-grant evidence
+  /// the failing read's error detail from that read's OWN outcome
+  /// object (the native exception CLASS only, e.g.
+  /// `SecurityException`, never health values), or the thrown
+  /// error's string form when a read throws instead of returning
+  /// an outcome. A metric whose failure carried no detail is
+  /// absent from this map. This is the ONLY stale-grant evidence
   /// the report collector uses: it comes from the metric's own
   /// read, never from a status/probe call.
   final Map<HistoryMetric, String> failureDetails;
@@ -287,77 +286,24 @@ class HealthHistoryQueries {
       );
     }
 
-    // 2b. The per-metric HC reads run SEQUENTIALLY — one read in
-    //     flight at a time, each loader claiming the error signal
-    //     after its own read completes and before the next read
-    //     starts. Serialization IS the attribution mechanism:
+    // 2b. Attribution by outcome (Phase 2 §1): each loader reads
+    //     its metric through the outcome-carrying variant and
+    //     claims the failure / partial signals from THAT read's
+    //     own outcome object. The legacy slot protocol (the
+    //     service-global error-slot reset-then-claim drain this
+    //     step used to run) is DELETED from the union path — no
+    //     code here reads the slots any more, so attribution cannot
+    //     cross-talk: two concurrent unions sharing one service
+    //     instance each hold their own reads' outcomes, for every
+    //     record timing, record-then-yield included (the Phase 1
+    //     Vera residual, closed by construction).
     //
-    //     The service reports a read's failure ONLY through the
-    //     single service-global lastReadErrorCode /
-    //     lastReadErrorDetails / lastPartialErrorCode slot — the
-    //     reads fail closed (empty / null) and never throw — and
-    //     its contract is only that the signal is recorded BEFORE
-    //     the read's future completes. With several reads in
-    //     flight, a read that records its signal and then yields
-    //     before returning (record-then-yield: a retry, a logging
-    //     await, a timeout wrapper — all contract-conforming)
-    //     leaves the slot holding ITS signal while OTHER loaders'
-    //     continuations run, and the first of them claims it:
-    //     a healthy metric gets marked failed (and its rows
-    //     discarded) while the actually-blocked metric reports
-    //     clean. Vera's Gate 2 concurrency probe falsified the
-    //     earlier concurrent-claims protocol with exactly that
-    //     trace (PR #72). No claim ordering can recover a signal
-    //     once another read has overwritten or drained the slot,
-    //     so the reads do not overlap: while a read is in flight
-    //     nothing else can write the slot, and while its loader
-    //     claims, the slot can only hold that read's own signal —
-    //     attribution holds BY CONSTRUCTION for every record
-    //     timing the contract allows, record-then-yield included.
-    //     (health_history_sync.dart reads against the same slot
-    //     under the same sequential discipline.)
-    //
-    //     Cost: the union's wall time is the SUM of the requested
-    //     bridge range reads, not the MAX. Correct attribution
-    //     outranks that optimization — a fast union that can pin
-    //     one metric's block on another is a report that lies.
-    //     Per-read error isolation is preserved (the R60 Vera
-    //     pattern): a loader that throws marks only its own
-    //     metric failed and never fails the union.
-    hc.lastReadErrorCode = null;
-    hc.lastPartialErrorCode = null;
-    hc.lastReadErrorDetails = null;
-
-    /// Claims the calling read's failure signal AND its detail.
-    /// Only the calling read has been in flight since the slot
-    /// was last drained (step 2b), so whatever the slot holds is
-    /// that read's own signal — for any record timing that
-    /// conforms to the service contract (recorded before the
-    /// read's future completes), including record-then-yield.
-    /// The detail is drained with the code so it can never be
-    /// seen by a later read's loader.
-    ({bool failed, String? details}) claimReadError() {
-      if (hc.lastReadErrorCode == null) {
-        return (failed: false, details: null);
-      }
-      final details = hc.lastReadErrorDetails;
-      hc.lastReadErrorCode = null;
-      hc.lastReadErrorDetails = null;
-      return (failed: true, details: details);
-    }
-
-    bool claimPartial() {
-      final readPartial = hc.lastPartialErrorCode != null;
-      if (readPartial) {
-        hc.lastPartialErrorCode = null;
-        // The partial signal's detail belongs to this same read
-        // (the only read in flight — step 2b); drain it here so
-        // it can never surface as a later read's failure detail.
-        hc.lastReadErrorDetails = null;
-      }
-      return readPartial;
-    }
-
+    //     The reads still run SEQUENTIALLY within one union —
+    //     that ordering is now a bridge-load choice, not an
+    //     attribution requirement: it preserves the established
+    //     call order and per-read error isolation (the R60 Vera
+    //     pattern: a loader that throws marks only its own metric
+    //     failed and never fails the union).
     void noteFailure(HistoryMetric metric, String? details) {
       failed.add(metric);
       if (details != null && details.isNotEmpty) {
@@ -367,13 +313,12 @@ class HealthHistoryQueries {
 
     Future<void> loadRestingHr() async {
       try {
-        final rows = await hc.readRestingHrHistory(fetchDays);
-        final claim = claimReadError();
-        if (claim.failed) {
-          noteFailure(HistoryMetric.restingHr, claim.details);
+        final outcome = await hc.readRestingHrHistoryWithOutcome(fetchDays);
+        if (outcome.failed) {
+          noteFailure(HistoryMetric.restingHr, outcome.errorDetails);
           return;
         }
-        for (final r in rows) {
+        for (final r in outcome.value) {
           // Zero rule, exactly as the readers it replaces.
           if (r.bpm > 0) putFresh(r.date, hr: r.bpm);
         }
@@ -384,39 +329,32 @@ class HealthHistoryQueries {
 
     Future<void> loadSleep() async {
       try {
-        final rows = await hc.readSleepHistory(fetchDays);
-        final claim = claimReadError();
-        if (claim.failed) {
-          // Same-read hygiene: a failed read's partial signal is
-          // not a warning anyone can act on — drain it so a later
-          // loader's continuation cannot claim it as its own.
-          claimPartial();
-          noteFailure(HistoryMetric.sleep, claim.details);
+        final outcome = await hc.readSleepHistoryWithOutcome(fetchDays);
+        if (outcome.failed) {
+          noteFailure(HistoryMetric.sleep, outcome.errorDetails);
           return;
         }
         // Partial data is data (F2): rows are processed; the
         // partial signal rides along as a warning, never as a
         // failed metric.
-        if (claimPartial()) partial.add(HistoryMetric.sleep);
-        for (final r in rows) {
+        if (outcome.partial) partial.add(HistoryMetric.sleep);
+        for (final r in outcome.value) {
           if (r.mins > 0) putFresh(r.date, sleep: r.mins);
           if (r.deep > 0) putFresh(r.date, deep: r.deep);
         }
       } catch (e) {
-        claimPartial();
         noteFailure(HistoryMetric.sleep, e.toString());
       }
     }
 
     Future<void> loadCalories() async {
       try {
-        final rows = await hc.readCaloriesHistory(fetchDays);
-        final claim = claimReadError();
-        if (claim.failed) {
-          noteFailure(HistoryMetric.calories, claim.details);
+        final outcome = await hc.readCaloriesHistoryWithOutcome(fetchDays);
+        if (outcome.failed) {
+          noteFailure(HistoryMetric.calories, outcome.errorDetails);
           return;
         }
-        for (final r in rows) {
+        for (final r in outcome.value) {
           if (r.kcal > 0) putFresh(r.date, kcal: r.kcal);
         }
       } catch (e) {
@@ -426,13 +364,12 @@ class HealthHistoryQueries {
 
     Future<void> loadSpikes() async {
       try {
-        final rows = await hc.readSpikeCounts(fetchDays);
-        final claim = claimReadError();
-        if (claim.failed) {
-          noteFailure(HistoryMetric.spikes, claim.details);
+        final outcome = await hc.readSpikeCountsWithOutcome(fetchDays);
+        if (outcome.failed) {
+          noteFailure(HistoryMetric.spikes, outcome.errorDetails);
           return;
         }
-        for (final r in rows) {
+        for (final r in outcome.value) {
           // 0 spikes is REAL data (a sampled day, no spikes).
           if (r.count >= 0) putFresh(r.date, spikeCount: r.count);
         }
@@ -445,30 +382,28 @@ class HealthHistoryQueries {
       // R71 — ONE range read of raw HRV samples; day attribution +
       // the daily top-tier rule run in Dart (attributeDailyHrv).
       try {
-        final samples = await hc.readHrvSamples(fetchDays);
-        final claim = claimReadError();
-        if (claim.failed) {
-          claimPartial();
-          noteFailure(HistoryMetric.hrv, claim.details);
+        final outcome = await hc.readHrvSamplesWithOutcome(fetchDays);
+        if (outcome.failed) {
+          noteFailure(HistoryMetric.hrv, outcome.errorDetails);
           return;
         }
         // Partial data is data (Defect 0): the surviving chunks'
         // samples are processed; the partial signal rides along
         // as a warning, exactly like sleep above.
-        if (claimPartial()) partial.add(HistoryMetric.hrv);
+        if (outcome.partial) partial.add(HistoryMetric.hrv);
         final dailyHrv = attributeDailyHrv(
-            samples, _datesInRange(startDate, endDate).toSet());
+            outcome.value, _datesInRange(startDate, endDate).toSet());
         for (final entry in dailyHrv.entries) {
           if (entry.value > 0) putFresh(entry.key, hrvValue: entry.value);
         }
       } catch (e) {
-        claimPartial();
         noteFailure(HistoryMetric.hrv, e.toString());
       }
     }
 
     // Sequential by design (step 2b): each loader fully completes
-    // — read, claim, row processing — before the next read starts.
+    // — read, claim from its outcome, row processing — before the
+    // next read starts.
     if (metrics.contains(HistoryMetric.restingHr)) await loadRestingHr();
     if (metrics.contains(HistoryMetric.sleep)) await loadSleep();
     if (metrics.contains(HistoryMetric.calories)) await loadCalories();

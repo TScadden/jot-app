@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart';
+import 'package:tabs_lab/src/data/hc_availability.dart';
 import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -267,36 +268,57 @@ enum DataSourceStatus {
   storedOnly,
 }
 
-/// The Health Connect permission(s) each report history metric
-/// actually reads — traced from the bridge reads behind
-/// [HealthHistoryQueries] (Kotlin record types per Dart read):
-/// - sleep: `readSleepHistory` → SleepSessionRecord
-/// - restingHr: `readRestingHrHistory` → RestingHeartRateRecord,
-///   with the HeartRateRecord BPM_AVG aggregate as its per-day
-///   fallback (the same call fails if either read is blocked)
-/// - hrv: `readHrvSamples` → HeartRateVariabilityRmssdRecord
-/// - calories: `readCaloriesHistory` → the ActiveCaloriesBurned +
-///   TotalCaloriesBurned aggregate pair (`active ?: total`)
-/// - spikes: `readSpikeCounts` → HeartRateRecord
-///
-/// This is deliberately NOT [HealthConnectService.requiredPermissions]:
-/// a missing permission a metric never reads (e.g. Steps) must not
-/// condemn that metric's section.
-const Map<HistoryMetric, Set<String>> reportMetricPermissions = {
-  HistoryMetric.sleep: {'android.permission.health.READ_SLEEP'},
-  HistoryMetric.restingHr: {
-    'android.permission.health.READ_RESTING_HEART_RATE',
-    'android.permission.health.READ_HEART_RATE',
-  },
-  HistoryMetric.hrv: {
-    'android.permission.health.READ_HEART_RATE_VARIABILITY',
-  },
-  HistoryMetric.calories: {
-    'android.permission.health.READ_ACTIVE_CALORIES_BURNED',
-    'android.permission.health.READ_TOTAL_CALORIES_BURNED',
-  },
-  HistoryMetric.spikes: {'android.permission.health.READ_HEART_RATE'},
-};
+/// Phase 2 (§3) — THE shared per-metric availability derivation:
+/// Phase 1's `hcStatus()` decision order, extracted into one
+/// function consumed by the report collector now and asserted
+/// against by the capture path in PR-3. The decision order is
+/// exactly Phase 1's:
+/// 1. a PARTIAL read → [DataSourceStatus.error] (B-02 preserved:
+///    a partial read never derives its status from emptiness);
+/// 2. a FAILED read with surviving union data →
+///    [DataSourceStatus.storedOnly] (a failed read contributes no
+///    fresh rows, so the data present came from the store);
+/// 3. a FAILED read, no data, grant KNOWN and a permission THIS
+///    metric reads is missing ([grant] is [HcMetricGrantState.partial]
+///    or [HcMetricGrantState.none], derived from the metric's
+///    permissions ∩ the live missing set) →
+///    [DataSourceStatus.permissionDenied];
+/// 4. a FAILED read, no data, grant known, and the metric's own
+///    read failed with a SecurityException →
+///    [DataSourceStatus.stale];
+/// 5. any other FAILED read → [DataSourceStatus.error] —
+///    including the grant-UNKNOWN case, which masks both the
+///    denial and the stale claim exactly as Phase 1 did (an
+///    unobtainable missing set is evidence of nothing);
+/// 6. a CLEAN read → [DataSourceStatus.success] /
+///    [DataSourceStatus.noData] from emptiness.
+DataSourceStatus deriveMetricStatus({
+  required HcMetricGrantState grant,
+  required bool partialRead,
+  required bool readFailed,
+  required bool readSecurityException,
+  required bool unionHasData,
+}) {
+  if (partialRead) return DataSourceStatus.error;
+  if (readFailed) {
+    if (unionHasData) return DataSourceStatus.storedOnly;
+    if (grant == HcMetricGrantState.partial ||
+        grant == HcMetricGrantState.none) {
+      return DataSourceStatus.permissionDenied;
+    }
+    if (grant != HcMetricGrantState.unknown && readSecurityException) {
+      return DataSourceStatus.stale;
+    }
+    return DataSourceStatus.error;
+  }
+  return unionHasData ? DataSourceStatus.success : DataSourceStatus.noData;
+}
+
+/// Phase 2 (§2/§3): the metric→permissions map moved to the
+/// availability home (hc_availability.dart, imported above) as
+/// THE shared `reportMetricPermissions` — contents byte-identical
+/// to Phase 1's map here. The shared per-metric derivation that
+/// consumes it is [deriveMetricStatus] below.
 
 class SectionMetadata {
   final String sectionKey;
@@ -1043,26 +1065,22 @@ class ReportDataCollector {
       metrics: HistoryMetric.values.toSet(),
     );
 
-    // The live missing-permission set, fetched LAZILY and at most
-    // once — only a metric whose fresh read failed with no
-    // surviving data needs it. A failure to obtain it is not
-    // evidence of anything: the affected metrics fall back to
-    // error rather than claiming a denial or a stale grant.
-    Set<String>? missingPermissions;
-    var missingPermissionsTried = false;
-    Future<Set<String>?> loadMissingPermissions() async {
-      if (!missingPermissionsTried) {
-        missingPermissionsTried = true;
-        try {
-          missingPermissions = await hc.getMissingPermissions();
-        } catch (_) {
-          missingPermissions = null;
-        }
-      }
-      return missingPermissions;
-    }
+    // Phase 2 (§2/§3): the per-metric grant evidence comes from
+    // ONE probeAvailability() snapshot per collect — fetched
+    // lazily (only a metric whose fresh read failed with no
+    // surviving data needs it, exactly where Phase 1 fetched its
+    // missing set) and at most once. When the snapshot's grant
+    // layer is UNKNOWN (its bridge read errored), the missing set
+    // is null and the affected metrics fall back to error rather
+    // than claiming a denial or a stale grant — Phase 1's
+    // stale-masking semantics, preserved exactly.
+    Future<HcAvailability>? availabilitySnapshot;
+    Future<HcAvailability> loadAvailability() =>
+        availabilitySnapshot ??= hc.probeAvailability();
 
-    // Per-metric availability from real evidence:
+    // Per-metric availability from real evidence, through the ONE
+    // shared derivation ([deriveMetricStatus] — Phase 1's decision
+    // order, unchanged):
     // - PARTIAL fresh read → error (B-02, preserved exactly: a
     //   partial read never derives its status from emptiness, and
     //   the surviving series is still collected).
@@ -1070,30 +1088,36 @@ class ReportDataCollector {
     //   a failed read contributes no fresh rows, so the data the
     //   union yields came from the history store.
     // - FAILED fresh read, no data → permissionDenied only when
-    //   the live missing set contains a permission THIS metric
-    //   actually reads ([reportMetricPermissions]); stale when
-    //   the metric's grant is present but its own read's failure
-    //   detail names a SecurityException; otherwise error.
+    //   the snapshot's missing set contains a permission THIS
+    //   metric actually reads ([reportMetricPermissions], via
+    //   [hcMetricGrantState]); stale when the metric's grant is
+    //   present but its own read's failure detail names a
+    //   SecurityException; otherwise error.
     // - Clean read → success / noData from emptiness, now truthful
     //   because a read actually happened.
     Future<DataSourceStatus> hcStatus(
         HistoryMetric metric, bool isEmpty) async {
-      if (union.partial(metric)) return DataSourceStatus.error;
-      if (union.failed(metric)) {
-        if (!isEmpty) return DataSourceStatus.storedOnly;
-        final missing = await loadMissingPermissions();
-        final metricPermissions =
-            reportMetricPermissions[metric] ?? const <String>{};
-        if (missing != null &&
-            metricPermissions.intersection(missing).isNotEmpty) {
-          return DataSourceStatus.permissionDenied;
-        }
-        if (missing != null && union.failedWithSecurityException(metric)) {
-          return DataSourceStatus.stale;
-        }
-        return DataSourceStatus.error;
+      if (!union.failed(metric) || !isEmpty) {
+        // The partial / storedOnly / clean outcomes never consult
+        // the grant layer (Phase 1's order): derive directly.
+        return deriveMetricStatus(
+          grant: HcMetricGrantState.unknown,
+          partialRead: union.partial(metric),
+          readFailed: union.failed(metric),
+          readSecurityException: union.failedWithSecurityException(metric),
+          unionHasData: !isEmpty,
+        );
       }
-      return isEmpty ? DataSourceStatus.noData : DataSourceStatus.success;
+      final availability = await loadAvailability();
+      final missing =
+          availability.grantKnown ? availability.missingPermissions : null;
+      return deriveMetricStatus(
+        grant: hcMetricGrantState(metric, missing),
+        partialRead: union.partial(metric),
+        readFailed: union.failed(metric),
+        readSecurityException: union.failedWithSecurityException(metric),
+        unionHasData: !isEmpty,
+      );
     }
 
     sleep = [
