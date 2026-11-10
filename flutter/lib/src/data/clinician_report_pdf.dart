@@ -110,79 +110,35 @@ List<ClinicianLine> clinicianPageLines(ClinicianReportData data) {
     text: clinicianScoreCoverage(data.scoredDays, data.rangeDays),
   ));
 
-  // Z3B — biometrics (Phase 4). Always present: exactly one line
-  // per metric, a summary when the snapshot carried usable data
-  // and the metric's availability statement when it did not — the
-  // zone never leaves a silent gap. Capped by construction at
-  // the heading + six metric lines, so the one-page cap holds.
-  // Per-metric unavailable presentation: the metric's label plus
-  // its Phase 1 availability text (its sectionMetadata entry, or
-  // the no-data text when the snapshot carries no entry for it).
-  // PROVISIONAL presentation pending Juno's Phase 4 ruling — see
-  // clinician_report.dart's Phase 4 string block.
-  lines.add((zone: 'Z3B', text: clinicianHeadingBiometrics));
-  void biometricLine(
-    String label,
-    String? summary,
-    String sectionKey,
-  ) {
-    if (summary != null) {
-      lines.add((zone: 'Z3B', text: summary));
-      return;
+  // Z3B — biometrics (Phase 4, Juno Rulings 1/2/4). One line per
+  // metric whose own series is non-empty, in the ruled order —
+  // including storedOnly metrics, whose series are present and
+  // real (their provenance is disclosed in Z8, not here). A
+  // metric with an empty series produces NO line in this zone:
+  // no status text, no zero line, no placeholder — its complete
+  // availability statement is its Z8 entry. If all six series
+  // are empty the zone is omitted entirely (the Z5 precedent).
+  // Capped by construction at the heading + six metric lines.
+  final biometricLines = <String>[
+    if (data.sleepSummary != null)
+      clinicianSleepSummaryLine(data.sleepSummary!),
+    if (data.deepSleepSummary != null)
+      clinicianDeepSleepSummaryLine(data.deepSleepSummary!),
+    if (data.hrvSummary != null)
+      clinicianHrvSummaryLine(data.hrvSummary!),
+    if (data.restingHeartRateSummary != null)
+      clinicianRestingHeartRateSummaryLine(data.restingHeartRateSummary!),
+    if (data.heartRateSpikeSummary != null)
+      clinicianHeartRateSpikesSummaryLine(data.heartRateSpikeSummary!),
+    if (data.bloodPressureSummary != null)
+      clinicianBloodPressureSummaryLine(data.bloodPressureSummary!),
+  ];
+  if (biometricLines.isNotEmpty) {
+    lines.add((zone: 'Z3B', text: clinicianHeadingBiometrics));
+    for (final text in biometricLines) {
+      lines.add((zone: 'Z3B', text: text));
     }
-    final meta = s.sectionMetadata[sectionKey];
-    lines.add((
-      zone: 'Z3B',
-      text: '$label: ${meta == null ? 'No data recorded' : availabilityStatusText(meta)}',
-    ));
   }
-
-  biometricLine(
-    clinicianBiometricLabelSleep,
-    data.sleepSummary == null
-        ? null
-        : clinicianSleepSummaryLine(
-            clinicianBiometricLabelSleep, data.sleepSummary!),
-    'sleep',
-  );
-  biometricLine(
-    clinicianBiometricLabelDeepSleep,
-    data.deepSleepSummary == null
-        ? null
-        : clinicianSleepSummaryLine(
-            clinicianBiometricLabelDeepSleep, data.deepSleepSummary!),
-    'deepSleep',
-  );
-  biometricLine(
-    clinicianBiometricLabelHrv,
-    data.hrvSummary == null
-        ? null
-        : clinicianHrvSummaryLine(data.hrvSummary!),
-    'hrv',
-  );
-  biometricLine(
-    clinicianBiometricLabelRestingHeartRate,
-    data.restingHeartRateSummary == null
-        ? null
-        : clinicianRestingHeartRateSummaryLine(
-            data.restingHeartRateSummary!),
-    'heartRate',
-  );
-  biometricLine(
-    clinicianBiometricLabelHeartRateSpikes,
-    data.heartRateSpikeSummary == null
-        ? null
-        : clinicianHeartRateSpikesSummaryLine(
-            data.heartRateSpikeSummary!),
-    'hrSpikes',
-  );
-  biometricLine(
-    clinicianBiometricLabelBloodPressure,
-    data.bloodPressureSummary == null
-        ? null
-        : clinicianBloodPressureSummaryLine(data.bloodPressureSummary!),
-    'bloodPressure',
-  );
 
   // Z4 — flare / migraine / symptom summary.
   lines.add((zone: 'Z4', text: clinicianHeadingFlareMigraine));
@@ -248,18 +204,28 @@ List<ClinicianLine> clinicianPageLines(ClinicianReportData data) {
   // Z7 — latest lean test: ABSENT. Item 6 is blocked pending
   // clinician review (Juno Item 6 · R1); no placeholder.
 
-  // Z8 — footer. Phase 4: availability is stated for EVERY
-  // section, positive and negative alike — sections whose status
-  // is success or storedOnly now print their availability line
-  // alongside the honest unavailable lines (whose strings stay
-  // byte-identical to Phase 1). One combined line in the
-  // metadata's own section order, under the existing
-  // 'Data availability:' lead-in. PROVISIONAL framing pending
-  // Juno's Phase 4 ruling — see clinician_report.dart.
-  final availability = [
-    for (final e in s.sectionMetadata.entries)
-      '${availabilityPdfLabel(e.key)}: ${availabilityStatusText(e.value)}',
-  ];
+  // Z8 — footer. Phase 4 (Juno Ruling 3): the existing
+  // 'Data availability:' lead-in carries BOTH groups on one
+  // line — every section in sectionMetadata, available first
+  // (success + storedOnly), then the rest, canonical
+  // sectionMetadata order within each group, '; ' separator, no
+  // trailing period added. A section is never omitted because it
+  // succeeded. The line renders whenever sectionMetadata is
+  // non-empty, including all-success; the unavailable entries'
+  // strings stay byte-identical to Phase 1.
+  final availableEntries = <String>[];
+  final otherEntries = <String>[];
+  for (final e in s.sectionMetadata.entries) {
+    final entry =
+        '${availabilityPdfLabel(e.key)}: ${availabilityStatusText(e.value)}';
+    if (e.value.status == DataSourceStatus.success ||
+        e.value.status == DataSourceStatus.storedOnly) {
+      availableEntries.add(entry);
+    } else {
+      otherEntries.add(entry);
+    }
+  }
+  final availability = [...availableEntries, ...otherEntries];
   if (availability.isNotEmpty) {
     lines.add((zone: 'Z8', text: 'Data availability: ${availability.join('; ')}'));
   }
