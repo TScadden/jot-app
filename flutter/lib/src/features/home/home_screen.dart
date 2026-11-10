@@ -2138,12 +2138,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// Round 4 (Part C) — the scored line for the Today Summary CARD
-  /// FACE: the same composition the sheet's summary row shows (the
-  /// single swap point, [homeCheckInScoredLine]), or null while the
-  /// day is unscored.
+  /// FACE: Juno's reconciled Q2 form (Nov 10, 2026) — the
+  /// `Morning Score: ` name prefix applied HERE, at the face only,
+  /// over the same Item 7.1 composition the sheet's summary card
+  /// shows bare (the single swap point, [homeCheckInScoredLine]).
+  /// The prefix never enters the shared composition: the sheet
+  /// card and every other Item 7 consumer keep the bare label.
+  /// Null while the day is unscored.
   String? get _checkInScoredLine {
     if (_checkInToday == null || _todayRanking == null) return null;
-    return homeCheckInScoredLine(
+    return 'Morning Score: ${homeCheckInScoredLine(
       ranking: _todayRanking!,
       flareSeverity:
           _flareToday == null ? null : flareSeverityOf(_flareToday!),
@@ -2152,7 +2156,7 @@ class _HomeScreenState extends State<HomeScreen> {
           : flareTypesOf(_flareToday!).firstOrNull,
       flareOrigin: _summaryFlareOrigin,
       goodOptions: _goodToday == null ? const [] : goodOptionsOf(_goodToday!),
-    );
+    )}';
   }
 
   /// The face line's Item 7.2 semantics sentence — the same

@@ -387,9 +387,11 @@ void main() {
     // FRAME 5 — sheet_checked_360 (checked fixture).
     await pumpHome(checked: true);
     await openSheet();
-    // Round 4: the scored line renders twice — the Today Summary
-    // card face (behind the sheet) + the sheet's summary row.
-    expect(find.text('3 · Average'), findsNWidgets(2));
+    // Round 4 (Juno reconciliation Q2): the face line is prefixed
+    // ('Morning Score: 3 · Average'); the sheet's summary row keeps
+    // the bare Item 7.1 label ('3 · Average').
+    expect(find.text('Morning Score: 3 · Average'), findsOneWidget);
+    expect(find.text('3 · Average'), findsOneWidget);
     await capture('sheet_checked_360', 1080, 2400);
 
     // Drain the score chain so no bounded-read timer is left

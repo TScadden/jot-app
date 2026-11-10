@@ -635,7 +635,9 @@ void main() {
       expect(
           find.byKey(const ValueKey('todaySummaryCheckInLine')),
           findsOneWidget);
-      expect(find.text('3 · Average'), findsOneWidget);
+      // Juno reconciliation Q2: the face line carries the
+      // 'Morning Score: ' prefix over the Item 7.1 label.
+      expect(find.text('Morning Score: 3 · Average'), findsOneWidget);
 
       // The sheet's check-in section is display-only now: the
       // summary row, and NO 1–5 input anywhere in the sheet.
@@ -643,8 +645,10 @@ void main() {
       expect(find.byType(CheckInSummaryCard), findsOneWidget);
       expect(find.byType(FeelingCheckInCard), findsNothing);
       expect(find.byType(HomeCheckInStrip), findsNothing);
-      // Face line (behind the sheet) + sheet summary row.
-      expect(find.text('3 · Average'), findsNWidgets(2));
+      // Face line (behind the sheet, prefixed per Q2) + the
+      // sheet's bare Item 7.1 summary label.
+      expect(find.text('Morning Score: 3 · Average'), findsOneWidget);
+      expect(find.text('3 · Average'), findsOneWidget);
       // The commit re-ran Home's health load, which starts a
       // fresh history-capture flight — drain it before teardown.
       await _drainScoreChain(tester);

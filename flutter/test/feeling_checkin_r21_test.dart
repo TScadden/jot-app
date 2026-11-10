@@ -413,7 +413,8 @@ void main() {
         // Home polish round 4 (Part C): the check-in INPUT lives
         // in the flat strip in Home's top area (the sheet's former
         // hosted card is display-only now).
-        expect(find.text('How are you feeling?'), findsOneWidget);
+        // Juno SS1: the strip prompt is the lowercase string.
+        expect(find.text('how are you feeling?'), findsOneWidget);
         expect(find.byType(HomeCheckInStrip), findsOneWidget);
 
         await tester.tap(find.descendant(
@@ -442,7 +443,8 @@ void main() {
         await tester.pump();
         expect(find.text('How are you feeling?'), findsNothing);
         expect(find.byType(HomeCheckInStrip), findsNothing);
-        expect(find.text('3 · Average'), findsOneWidget);
+        // Face line (Juno reconciliation Q2): prefixed label.
+        expect(find.text('Morning Score: 3 · Average'), findsOneWidget);
       },
     );
 
@@ -472,13 +474,16 @@ void main() {
       // the sheet's summary row shows the same line.
       expect(find.text('How are you feeling?'), findsNothing);
       expect(find.byType(HomeCheckInStrip), findsNothing);
-      expect(find.text('5 · Really good'), findsOneWidget);
+      // Face line (Juno reconciliation Q2): prefixed Item 7.1 label.
+      expect(find.text('Morning Score: 5 · Really good'), findsOneWidget);
       await tester.tap(find.text('Today Summary'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 350));
       await tester.pump();
       expect(find.text('How are you feeling?'), findsNothing);
-      expect(find.text('5 · Really good'), findsNWidgets(2));
+      // Sheet summary row keeps the bare Item 7.1 label (Q1/Q2).
+      expect(find.text('Morning Score: 5 · Really good'), findsOneWidget);
+      expect(find.text('5 · Really good'), findsOneWidget);
     });
 
     testWidgets('pull failure → honest hidden state, no card, no crash', (

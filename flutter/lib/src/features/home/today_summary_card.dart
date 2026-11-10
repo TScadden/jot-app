@@ -971,19 +971,20 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                       child: Row(
                         key: const ValueKey('todaySummaryCheckInLine'),
                         children: [
-                          const Icon(
-                            Icons.check_circle,
-                            size: 16,
-                            color: NotelColors.primary,
-                          ),
-                          const SizedBox(width: 6),
+                          // Juno reconciliation Q2 (Nov 10, 2026):
+                          // NO icon on the face line — a check glyph
+                          // here would read as a completed plan item
+                          // (Condition 3 presentation). Flat
+                          // secondary text, the subtitle's own
+                          // style; the tap's affordance is carried
+                          // by the Item 7.2 semantics.
                           Flexible(
                             child: Text(
                               widget.checkInScoredLine!,
                               style: const TextStyle(
                                 fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: NotelColors.textPrimary,
+                                fontWeight: FontWeight.w500,
+                                color: NotelColors.textSecondary,
                               ),
                             ),
                           ),
