@@ -9,6 +9,7 @@ import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
+import 'package:tabs_lab/src/features/home/home_checkin_strip.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
@@ -388,8 +389,8 @@ void main() {
     }
 
     testWidgets(
-      'no check-in today → card shows; tap 3 writes the exact entry '
-      'through the outbox and the summary replaces the card',
+      'no check-in today → top strip shows; tap 3 writes the exact entry '
+      'through the outbox and the scored line replaces the strip',
       (tester) async {
         Map<String, dynamic>? posted;
         final backend = backendFor(
@@ -409,20 +410,14 @@ void main() {
         );
         await pumpHome(tester, backend);
 
-        // Home redesign: the check-in no longer renders in the Home
-        // body — it is hosted inside the Today Summary sheet. It is
-        // absent until the summary card is tapped open.
-        expect(find.text('How are you feeling?'), findsNothing);
-        await tester.tap(find.text('Today Summary'));
-        // Fixed pumps, not pumpAndSettle: the loaded weather icon
-        // in the summary header animates indefinitely.
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 350));
-        await tester.pump();
+        // Home polish round 4 (Part C): the check-in INPUT lives
+        // in the flat strip in Home's top area (the sheet's former
+        // hosted card is display-only now).
         expect(find.text('How are you feeling?'), findsOneWidget);
+        expect(find.byType(HomeCheckInStrip), findsOneWidget);
 
         await tester.tap(find.descendant(
-          of: find.byType(FeelingCheckInCard),
+          of: find.byType(HomeCheckInStrip),
           matching: find.text('3'),
         ));
         await tester.pump();
@@ -440,18 +435,20 @@ void main() {
         expect(row['chips'], '["Daily Ranking"]');
         expect(row['manualText'], '');
 
-        // Merged flow: the summary card replaces the number card
-        // for the rest of the energy day (no exit-slide state).
+        // Merged flow: the strip clears for the rest of the
+        // energy day and the scored line replaces it on the Today
+        // Summary card face (no exit-slide state).
         await tester.pump(const Duration(milliseconds: 400));
         await tester.pump();
         expect(find.text('How are you feeling?'), findsNothing);
+        expect(find.byType(HomeCheckInStrip), findsNothing);
         expect(find.text('3 · Average'), findsOneWidget);
       },
     );
 
     testWidgets(
-        'check-in already logged this energy day → card never shows; '
-        'the summary shows instead', (
+        'check-in already logged this energy day → strip never shows; '
+        'the scored line shows instead', (
       tester,
     ) async {
       final backend = backendFor(
@@ -470,16 +467,18 @@ void main() {
         ),
       );
       await pumpHome(tester, backend);
-      // Neither the number card nor the summary renders in the Home
-      // body under the redesign; the summary shows inside the sheet.
+      // Round 4: no strip (already scored), and the scored line
+      // renders on the Today Summary card face in the Home body;
+      // the sheet's summary row shows the same line.
       expect(find.text('How are you feeling?'), findsNothing);
-      expect(find.text('5 · Really good'), findsNothing);
+      expect(find.byType(HomeCheckInStrip), findsNothing);
+      expect(find.text('5 · Really good'), findsOneWidget);
       await tester.tap(find.text('Today Summary'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 350));
       await tester.pump();
       expect(find.text('How are you feeling?'), findsNothing);
-      expect(find.text('5 · Really good'), findsOneWidget);
+      expect(find.text('5 · Really good'), findsNWidgets(2));
     });
 
     testWidgets('pull failure → honest hidden state, no card, no crash', (

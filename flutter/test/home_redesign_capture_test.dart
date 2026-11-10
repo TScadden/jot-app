@@ -371,7 +371,9 @@ void main() {
 
     // FRAME 4 — sheet_unchecked_360.
     await openSheet();
-    expect(find.text('How are you feeling?'), findsOneWidget);
+    // Round 4: the prompt renders twice — the top strip's real
+    // input (behind the sheet) + the sheet's display-only row.
+    expect(find.text('How are you feeling?'), findsNWidgets(2));
     await capture('sheet_unchecked_360', 1080, 2400);
     await tester.tapAt(const Offset(180, 20));
     await tester.pump();
@@ -381,7 +383,9 @@ void main() {
     // FRAME 5 — sheet_checked_360 (checked fixture).
     await pumpHome(checked: true);
     await openSheet();
-    expect(find.text('3 · Average'), findsOneWidget);
+    // Round 4: the scored line renders twice — the Today Summary
+    // card face (behind the sheet) + the sheet's summary row.
+    expect(find.text('3 · Average'), findsNWidgets(2));
     await capture('sheet_checked_360', 1080, 2400);
 
     // Drain the score chain so no bounded-read timer is left

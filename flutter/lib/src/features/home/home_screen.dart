@@ -41,6 +41,7 @@ import 'package:tabs_lab/src/features/home/good_day_logging.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 import 'package:tabs_lab/src/features/home/health_connect_banner.dart';
+import 'package:tabs_lab/src/features/home/home_checkin_strip.dart';
 import 'package:tabs_lab/src/features/home/migraine_block.dart';
 import 'package:tabs_lab/src/features/home/streak_screen.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
@@ -50,6 +51,16 @@ import 'package:tabs_lab/src/features/home/weekly_snapshot_card.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
+
+/// Home polish round 4 (Part B) — how far the Today Summary card's
+/// widget box tucks UP over the Bandit slot's bottom edge in the
+/// overlap stack (see the body build). The card carries a 6dp top
+/// margin, so the card's OPAQUE surface covers the bottom
+/// 24 − 6 = 18dp of the chair — 18 / 336.2 ≈ 5.4% of the enlarged
+/// slot's height, inside the founder's 5–8% tuck band. The stack's
+/// flow height still ends at the card's bottom edge, so nothing
+/// below the card moves.
+const double kBanditSummaryOverlap = 24;
 
 /// Round 4 — home screen, background only (native `today` route).
 ///
@@ -2038,15 +2049,23 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Home redesign — the check-in section the Today Summary sheet
   /// hosts. ALL state and commits stay here in _HomeScreenState; the
   /// builder re-reads them on every outbox change (the commit path's
-  /// notify), so the sheet section swaps between the 1–5 card and
-  /// the summary card after a ranking lands.
+  /// notify), so the sheet section reflects a ranking the moment it
+  /// lands.
+  ///
+  /// Home polish round 4 (Part C) — the sheet no longer hosts the
+  /// 1–5 INPUT (it lives in the Home top strip now, see
+  /// [HomeCheckInStrip]). This section is DISPLAY-ONLY: the summary
+  /// card once a ranking exists (its tap opens the amend sheet, as
+  /// before), or — while unscored — a flat prompt-only row carrying
+  /// no input at all. There is exactly one 1–5 input in the app:
+  /// the top strip.
   Widget _buildCheckInSection(BuildContext context) {
     return AnimatedBuilder(
       animation: _outbox,
       builder: (context, _) {
         if (_checkInToday != null && _todayRanking != null) {
           return CheckInSummaryCard(
-            label: checkInSummaryLabel(
+            label: homeCheckInScoredLine(
               ranking: _todayRanking!,
               flareSeverity: _flareToday == null
                   ? null
@@ -2075,10 +2094,59 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }
         if (_feelingVisible) {
-          return FeelingCheckInCard(onSelect: _onFeelingSelect);
+          // Display-only unscored state: the prompt as flat text,
+          // no numbers, no tap target — the input is the top strip
+          // on Home behind this sheet.
+          return const Padding(
+            key: ValueKey('todaySheetCheckInDisplayOnly'),
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              kHomeCheckInPrompt,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: NotelColors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          );
         }
         return const SizedBox.shrink();
       },
+    );
+  }
+
+  /// Round 4 (Part C) — the scored line for the Today Summary CARD
+  /// FACE: the same composition the sheet's summary row shows (the
+  /// single swap point, [homeCheckInScoredLine]), or null while the
+  /// day is unscored.
+  String? get _checkInScoredLine {
+    if (_checkInToday == null || _todayRanking == null) return null;
+    return homeCheckInScoredLine(
+      ranking: _todayRanking!,
+      flareSeverity:
+          _flareToday == null ? null : flareSeverityOf(_flareToday!),
+      flareKind: _flareToday == null
+          ? null
+          : flareTypesOf(_flareToday!).firstOrNull,
+      flareOrigin: _summaryFlareOrigin,
+      goodOptions: _goodToday == null ? const [] : goodOptionsOf(_goodToday!),
+    );
+  }
+
+  /// The face line's Item 7.2 semantics sentence — the same
+  /// composition the sheet's summary card carries.
+  String? get _checkInScoredSemantics {
+    if (_checkInToday == null || _todayRanking == null) return null;
+    return checkInSummarySemantics(
+      ranking: _todayRanking!,
+      flareSeverity:
+          _flareToday == null ? null : flareSeverityOf(_flareToday!),
+      flareKind: _flareToday == null
+          ? null
+          : flareTypesOf(_flareToday!).firstOrNull,
+      flareOrigin: _summaryFlareOrigin,
+      goodOptions: _goodToday == null ? const [] : goodOptionsOf(_goodToday!),
     );
   }
 
@@ -2303,15 +2371,39 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: _counters.isNotEmpty
-                            ? EventCounterRotator(
+                      // Home polish round 4 (Part C) — the center
+                      // slot hosts the event counters (as before)
+                      // AND, while the day is unscored, the flat
+                      // 1–5 check-in strip in the open space between
+                      // the streak stack and the Daily Score face.
+                      // The strip is 230dp wide (5 × 46dp columns),
+                      // inside this slot's 236dp at 360dp wide, and
+                      // the end slots are untouched — the header
+                      // axes (31dp / width−31dp) hold exactly.
+                      // After scoring the strip leaves and the slot
+                      // returns to counters-only; the band's height
+                      // is anchored by the 76dp streak stack, so
+                      // Bandit below shifts only by the strip's
+                      // excess over that anchor (~16dp), never by
+                      // the strip's full height.
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_counters.isNotEmpty)
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 12),
+                              child: EventCounterRotator(
                                 counters: _counters,
                                 onTap: () =>
                                     unawaited(_openEventCounters()),
-                              )
-                            : const SizedBox.shrink(),
+                              ),
+                            ),
+                          if (_counters.isNotEmpty && _feelingVisible)
+                            const SizedBox(height: 8),
+                          if (_feelingVisible)
+                            HomeCheckInStrip(onSelect: _onFeelingSelect),
+                        ],
                       ),
                     ),
                     SizedBox(
@@ -2354,17 +2446,53 @@ class _HomeScreenState extends State<HomeScreen> {
                 staleGrant: _hcStaleGrant,
                 onTap: () => unawaited(_openConnections()),
               ),
-            StaggeredEntrance(
-              index: 1,
-              child: const BanditReadingSlot(),
-            ),
-            StaggeredEntrance(
-              index: 2,
-              child: TodaySummaryCard(
-                migraineController: widget.migraineController,
-                checkInBuilder: _buildCheckInSection,
-                headerTrailing: _buildWeatherElement(),
-              ),
+            // Home polish round 4 (Part B) — Bandit + Today Summary
+            // OVERLAP STACK: the card layer paints AFTER (over) the
+            // Bandit layer, and its column reserves
+            // slotHeight − kBanditSummaryOverlap before the card,
+            // so the card's box tucks up over the chair's bottom
+            // edge by that overlap while the stack's total height
+            // still ends at the card's bottom — Weekly Snapshot
+            // below moves only by the net geometry change
+            // (+slot growth 50.1dp, −overlap 24dp = +26.1dp vs the
+            // base 240dp slot stack). Both layers keep their own
+            // stagger indices (1 and 2, as before).
+            Stack(
+              children: [
+                StaggeredEntrance(
+                  index: 1,
+                  child: const BanditReadingSlot(),
+                ),
+                // The spacer sits OUTSIDE the card's stagger: the
+                // entrance slide is a fraction (0.12) of its child's
+                // height, and folding the 312dp spacer into that
+                // child would throw the card ~49dp off its layout
+                // position mid-entrance (and off its hit region —
+                // the weather-button tap tests caught exactly that).
+                // The card alone staggers, as it did at base.
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(
+                      height: BanditReadingSlot.slotHeight -
+                          kBanditSummaryOverlap,
+                    ),
+                    StaggeredEntrance(
+                      index: 2,
+                      child: TodaySummaryCard(
+                        migraineController: widget.migraineController,
+                        checkInBuilder: _buildCheckInSection,
+                        headerTrailing: _buildWeatherElement(),
+                        checkInScoredLine: _checkInScoredLine,
+                        onCheckInScoredLineTap: () =>
+                            unawaited(_onSummaryTap()),
+                        checkInScoredSemantics: _checkInScoredSemantics,
+                        checkInAnnouncement: _checkInAnnouncement,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
             // Salt & water card (stagger 3): rendered only once the
             // Hydration category resolves BY NAME, as before.

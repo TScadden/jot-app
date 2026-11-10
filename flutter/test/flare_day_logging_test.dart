@@ -315,20 +315,20 @@ void main() {
     for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
-    // Home redesign: the check-in moved into the Today Summary
-    // sheet — open it so these flows interact with the 1–5 card
-    // (or the checked-in summary) where they now live. Home's
-    // follow-up sheets (kind / good-day / edit) stack over it,
-    // exactly as in production. Fixed pumps: the loaded weather
-    // icon animates forever, so pumpAndSettle never settles.
-    await tester.tap(find.text('Today Summary'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 350));
+    // Home polish round 4 (Part C): the check-in INPUT lives in
+    // the flat strip in Home's top area, and the scored state
+    // shows as the Today Summary card-face line — these flows
+    // interact with both where they now live, in the Home body.
+    // Home's follow-up sheets (kind / good-day / amend) open over
+    // Home directly, exactly as in production.
     await _pumpUntil(
       tester,
       () =>
           find.text('How are you feeling?').evaluate().isNotEmpty ||
-          find.byType(CheckInSummaryCard).evaluate().isNotEmpty ||
+          find
+              .byKey(const ValueKey('todaySummaryCheckInLine'))
+              .evaluate()
+              .isNotEmpty ||
           identical(server.categories, _catsDoubleMiss),
     );
     await tester.pump();
