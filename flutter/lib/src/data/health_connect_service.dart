@@ -203,28 +203,161 @@ class HealthConnectService {
   Future<bool> hasBackgroundAccess() async =>
       (await getGrantedPermissions()).contains(backgroundPermission);
 
+  /// Report Reliability Phase 2 (§2) — the unified availability
+  /// snapshot. NEVER throws and NEVER persists anything: every
+  /// bridge failure is captured in the snapshot ([HcAvailability]
+  /// .bridgeErrorCode, with the grant layer UNKNOWN) instead of
+  /// propagating. A KNOWN state — including the stale/wedged
+  /// state, which arrives as DATA ([HcAvailability.staleWedged]),
+  /// not as an exception or a special case — is authoritative and
+  /// is never overridden by the persisted flag; the persisted flag
+  /// rides along as a first-paint hint only.
+  ///
+  /// The grant layer is read through [getMissingPermissions] (the
+  /// live granted set's complement), so the granted set in the
+  /// snapshot is `required − missing` — the same bridge read the
+  /// legacy status path always made.
+  Future<HcAvailability> probeAvailability() =>
+      _probeAvailability(readPersisted: true);
+
+  /// The probe core. [readPersisted] controls only the
+  /// first-paint hint: [getStatus] runs the same probe WITHOUT
+  /// the storage read, because its legacy contract is exactly the
+  /// bridge-call sequence it has always made (availability,
+  /// grants, steps probe) — an extra awaited storage read on
+  /// that path is an observable behavior change for its
+  /// un-migrated consumers.
+  ///
+  /// [stopOnAvailabilityError] is [getStatus]'s half of the same
+  /// legacy contract (Vera Item 3): base `getStatus()` called
+  /// `isAvailable()` FIRST and propagated its throw, so the grant
+  /// layer was never consulted on an availability failure. The
+  /// public probe passes false and keeps reading the grant layer
+  /// for its snapshot; [getStatus] passes true and rethrows the
+  /// recorded availability failure from the short-circuited
+  /// snapshot before any grant-derived return or persist.
+  Future<HcAvailability> _probeAvailability(
+      {required bool readPersisted,
+      bool stopOnAvailabilityError = false}) async {
+    var persisted = false;
+    if (readPersisted) {
+      try {
+        persisted = await hasPersistedConnection();
+      } catch (_) {
+        // A storage failure is not availability evidence.
+        persisted = false;
+      }
+    }
+    String? bridgeErrorCode;
+    HealthConnectException? availabilityError;
+    HealthConnectException? grantError;
+    bool? available;
+    try {
+      available = await isAvailable();
+    } catch (e) {
+      availabilityError = e is HealthConnectException
+          ? e
+          : HealthConnectException('UNKNOWN', e.toString());
+      bridgeErrorCode = availabilityError.code;
+      available = null;
+    }
+    if (available == false) {
+      return HcAvailability(
+        serviceAvailable: false,
+        grantedPermissions: null,
+        bridgeErrorCode: bridgeErrorCode,
+        availabilityError: availabilityError,
+        grantError: grantError,
+        stepsProbe: null,
+        persistedConnected: persisted,
+      );
+    }
+    if (available == null && stopOnAvailabilityError) {
+      // Availability errored and the caller is getStatus():
+      // short-circuit with the failure recorded — the grant
+      // layer stays unread, exactly as base's throw left it.
+      return HcAvailability(
+        serviceAvailable: false,
+        grantedPermissions: null,
+        bridgeErrorCode: bridgeErrorCode,
+        availabilityError: availabilityError,
+        grantError: grantError,
+        stepsProbe: null,
+        persistedConnected: persisted,
+      );
+    }
+    Set<String>? granted;
+    try {
+      final missing = await getMissingPermissions();
+      granted = requiredPermissions.difference(missing);
+    } catch (e) {
+      grantError = e is HealthConnectException
+          ? e
+          : HealthConnectException('UNKNOWN', e.toString());
+      bridgeErrorCode ??= grantError.code;
+      granted = null;
+    }
+    // The Steps read probe runs ONLY on a full grant (the legacy
+    // getStatus rule): it is the stale/wedged evidence, and on a
+    // partial or absent grant it could prove nothing.
+    HcReadProbeOutcome? stepsProbe;
+    if (granted != null && granted.containsAll(requiredPermissions)) {
+      stepsProbe = await probeReadAccess();
+    }
+    return HcAvailability(
+      serviceAvailable: available ?? false,
+      grantedPermissions: granted,
+      bridgeErrorCode: bridgeErrorCode,
+      availabilityError: availabilityError,
+      grantError: grantError,
+      stepsProbe: stepsProbe,
+      persistedConnected: persisted,
+    );
+  }
+
   /// Live status: availability + granted-set check. Persists the granted
   /// set when everything required is granted.
+  ///
+  /// Phase 2: re-implemented OVER [probeAvailability] with the
+  /// EXACT legacy contract preserved for un-migrated consumers
+  /// (onboarding, background): a bridge failure propagates
+  /// EXACTLY as the legacy direct calls threw it — the recorded
+  /// availability failure first (code AND native message, before
+  /// any grant-derived return or persist; the grant layer is not
+  /// even read, per [stopOnAvailabilityError]), then the recorded
+  /// grant failure (again code AND native message, nothing
+  /// persisted); a stale/wedged full grant throws
+  /// [staleGrantCode] and persists NOTHING (Juno J3); a full
+  /// healthy grant persists the granted set before returning
+  /// [HealthConnectStatus.connected].
   Future<HealthConnectStatus> getStatus() async {
-    final available = await isAvailable();
-    if (!available) return HealthConnectStatus.unavailable;
-    final granted = await getGrantedPermissions();
-    if (granted.containsAll(requiredPermissions)) {
-      // Grant-state probe before persisting (Juno J3): the defect
-      // #3 population never re-requests permissions, so the status
-      // path is where a blocked grant must surface. A SecurityException
-      // probe = stale grant: throw, do not persist. Any other probe
-      // outcome is soft and does not block the connected status.
-      final probe = await probeReadAccess();
-      if (probe == HcReadProbeOutcome.securityFailure) {
-        throw const HealthConnectException(
-            staleGrantCode, staleGrantMessage);
-      }
-      await _persist(granted);
-      return HealthConnectStatus.connected;
+    final snapshot = await _probeAvailability(
+        readPersisted: false, stopOnAvailabilityError: true);
+    // Vera Item 3 parity: base getStatus() threw the isAvailable()
+    // failure before touching the grant layer, and the
+    // getGrantedPermissions() failure in place of any status.
+    // The probe recorded both failures verbatim (the actual
+    // HealthConnectException each bridge call threw); rethrow
+    // them in base's order, before deriving or persisting
+    // anything.
+    final availabilityError = snapshot.availabilityError;
+    if (availabilityError != null) throw availabilityError;
+    final grantError = snapshot.grantError;
+    if (grantError != null) throw grantError;
+    final status = snapshot.status;
+    if (status == null) {
+      throw HealthConnectException(
+          snapshot.bridgeErrorCode ?? 'NO_CHANNEL',
+          'Health Connect status check failed.');
     }
-    if (granted.isEmpty) return HealthConnectStatus.notConnected;
-    return HealthConnectStatus.partiallyConnected;
+    if (snapshot.staleWedged) {
+      throw const HealthConnectException(
+          staleGrantCode, staleGrantMessage);
+    }
+    if (status == HealthConnectStatus.connected) {
+      await _persist(snapshot.grantedPermissions!);
+    }
+    return status;
   }
 
   /// The required permissions not currently granted (live bridge
@@ -400,6 +533,79 @@ class HealthConnectService {
     lastReadErrorDetails = details;
   }
 
+  // ── Phase 2 (§1): outcome-carrying reads ─────────────────────
+  //
+  // Each of the five history reads has ONE implementation (its
+  // `_...Core` method below), which returns an [HcReadOutcome]
+  // carrying the read's OWN failure/partial signals alongside its
+  // fail-closed value — errors travel with their own read's
+  // result, so concurrent readers on one shared instance cannot
+  // cross-talk attribution through the legacy slot fields. The
+  // core still writes the legacy slot fields as a best-effort
+  // diagnostic side channel for the screens that display a read
+  // error immediately after their own read (Heart, Sleep, Key
+  // Metrics, HealthRepository diagnostics) and for the capture
+  // path's legacy protocol (health_history_sync.dart, migrating
+  // in PR-3) — but no availability attribution reads the slots.
+  //
+  // The public legacy method delegates to the outcome variant and
+  // returns `.value`, byte-identical to the pre-Phase-2 returns.
+  //
+  // [_outcomeOf] is the delegation bridge: the legacy method calls
+  // the outcome variant, whose outer frame re-enters the legacy
+  // method inside a Zone carrying a per-call capture box. When
+  // the re-entered call is THIS class's legacy method, it
+  // delegates back into the outcome variant, the Zone marks that
+  // inner frame, and the inner frame runs the core and stashes
+  // its outcome in the box — the outer frame returns the stashed
+  // outcome untouched (never reconstructed from the shared
+  // slots), so concurrent outcome reads attribute EXACTLY. When
+  // a subclass overrides the legacy method instead (the existing
+  // test fakes), the box stays empty and the outer frame
+  // reconstructs the outcome from the slot fields the override
+  // set — sound for the sequential single-union use those fakes
+  // model, and the reason the union's loaders claim ONLY from
+  // outcome objects after this change.
+  static final Object _restingHrOutcomeZoneKey = Object();
+  static final Object _sleepOutcomeZoneKey = Object();
+  static final Object _hrvOutcomeZoneKey = Object();
+  static final Object _caloriesOutcomeZoneKey = Object();
+  static final Object _spikesOutcomeZoneKey = Object();
+
+  Future<HcReadOutcome<T>> _outcomeOf<T>(
+    Object zoneKey,
+    Future<T> Function() virtualRead,
+    Future<HcReadOutcome<T>> Function() coreRead,
+  ) async {
+    final box = Zone.current[zoneKey];
+    if (box is List<HcReadOutcome<T>>) {
+      // Inner frame (reached via this class's legacy delegation):
+      // run the single implementation and hand its outcome to the
+      // outer frame through the per-call box.
+      final outcome = await coreRead();
+      box.add(outcome);
+      return outcome;
+    }
+    final capture = <HcReadOutcome<T>>[];
+    // Slot reconstruction (the subclass-override path) must see
+    // ONLY this read's signals: clear the diagnostic slots before
+    // the read, exactly as the union's deleted entry drain did.
+    lastReadErrorCode = null;
+    lastReadErrorDetails = null;
+    lastPartialErrorCode = null;
+    final value = await runZoned<Future<T>>(
+      () => virtualRead(),
+      zoneValues: {zoneKey: capture},
+    );
+    if (capture.isNotEmpty) return capture.single;
+    return HcReadOutcome<T>(
+      value: value,
+      errorCode: lastReadErrorCode,
+      errorDetails: lastReadErrorDetails,
+      partialCode: lastPartialErrorCode,
+    );
+  }
+
   void _notePlatformError(PlatformException e) =>
       _noteReadError(e.code, _detailsOf(e));
 
@@ -521,7 +727,21 @@ class HealthConnectService {
   /// Per-day resting HR history `[{date: "YYYY-MM-DD", bpm}]` over
   /// `[now - days, tomorrow start)`; per-day aggregate BPM_AVG fallback
   /// when a day has no RestingHeartRateRecord (native rule).
-  Future<List<({String date, int bpm})>> readRestingHrHistory(int days) async {
+  Future<List<({String date, int bpm})>> readRestingHrHistory(int days) async =>
+      (await readRestingHrHistoryWithOutcome(days)).value;
+
+  /// Outcome-carrying variant of [readRestingHrHistory] (Phase 2
+  /// §1): the single implementation is [_readRestingHrHistoryCore];
+  /// this variant returns its outcome object.
+  Future<HcReadOutcome<List<({String date, int bpm})>>>
+      readRestingHrHistoryWithOutcome(int days) => _outcomeOf(
+            _restingHrOutcomeZoneKey,
+            () => readRestingHrHistory(days),
+            () => _readRestingHrHistoryCore(days),
+          );
+
+  Future<HcReadOutcome<List<({String date, int bpm})>>>
+      _readRestingHrHistoryCore(int days) async {
     try {
       final raw = await _channel
           .invokeMethod<List>('readRestingHrHistory', {'days': days});
@@ -533,19 +753,32 @@ class HealthConnectService {
           if (d is String && v is num) out.add((date: d, bpm: v.toInt()));
         }
       }
-      return out;
+      return HcReadOutcome(value: out);
     } on PlatformException catch (e) {
       _notePlatformError(e);
-      return const [];
+      return HcReadOutcome(
+          value: const [], errorCode: e.code, errorDetails: _detailsOf(e));
     } on MissingPluginException {
       _noteReadError('NO_CHANNEL');
-      return const [];
+      return HcReadOutcome(value: const [], errorCode: 'NO_CHANNEL');
     }
   }
 
   /// Per-day active calories `[{date: "YYYY-MM-DD", kcal}]`, `active ?:
   /// total` per day (native rule). Empty when unreadable.
-  Future<List<({String date, int kcal})>> readCaloriesHistory(int days) async {
+  Future<List<({String date, int kcal})>> readCaloriesHistory(int days) async =>
+      (await readCaloriesHistoryWithOutcome(days)).value;
+
+  /// Outcome-carrying variant of [readCaloriesHistory] (Phase 2 §1).
+  Future<HcReadOutcome<List<({String date, int kcal})>>>
+      readCaloriesHistoryWithOutcome(int days) => _outcomeOf(
+            _caloriesOutcomeZoneKey,
+            () => readCaloriesHistory(days),
+            () => _readCaloriesHistoryCore(days),
+          );
+
+  Future<HcReadOutcome<List<({String date, int kcal})>>>
+      _readCaloriesHistoryCore(int days) async {
     try {
       final raw = await _channel
           .invokeMethod<List>('readCaloriesHistory', {'days': days});
@@ -557,13 +790,14 @@ class HealthConnectService {
           if (d is String && v is num) out.add((date: d, kcal: v.toInt()));
         }
       }
-      return out;
+      return HcReadOutcome(value: out);
     } on PlatformException catch (e) {
       _notePlatformError(e);
-      return const [];
+      return HcReadOutcome(
+          value: const [], errorCode: e.code, errorDetails: _detailsOf(e));
     } on MissingPluginException {
       _noteReadError('NO_CHANNEL');
-      return const [];
+      return HcReadOutcome(value: const [], errorCode: 'NO_CHANNEL');
     }
   }
 
@@ -635,11 +869,25 @@ class HealthConnectService {
   /// [lastReadErrorDetails]), exactly as the sleep history read
   /// does. Only a failure of EVERY chunk errors the call.
   Future<List<({int t, double ms, int tier})>> readHrvSamples(
-      int days) async {
+      int days) async =>
+      (await readHrvSamplesWithOutcome(days)).value;
+
+  /// Outcome-carrying variant of [readHrvSamples] (Phase 2 §1).
+  Future<HcReadOutcome<List<({int t, double ms, int tier})>>>
+      readHrvSamplesWithOutcome(int days) => _outcomeOf(
+            _hrvOutcomeZoneKey,
+            () => readHrvSamples(days),
+            () => _readHrvSamplesCore(days),
+          );
+
+  Future<HcReadOutcome<List<({int t, double ms, int tier})>>>
+      _readHrvSamplesCore(int days) async {
     try {
       final raw = await _channel
           .invokeMethod<dynamic>('readHrvSamples', {'days': days});
       List<dynamic> items = const [];
+      String? partialCode;
+      String? partialDetails;
       if (raw is List) {
         items = raw;
       } else if (raw is Map) {
@@ -649,7 +897,9 @@ class HealthConnectService {
         if (partial is String && partial.isNotEmpty) {
           // Partial is NOT a failure: its own field, like
           // HR_SAMPLES_PARTIAL / SLEEP_HISTORY_PARTIAL.
-          lastPartialErrorCode = 'HRV_SAMPLES_PARTIAL';
+          partialCode = 'HRV_SAMPLES_PARTIAL';
+          partialDetails = partial;
+          lastPartialErrorCode = partialCode;
           lastReadErrorDetails = partial;
         }
       }
@@ -664,13 +914,15 @@ class HealthConnectService {
           }
         }
       }
-      return out;
+      return HcReadOutcome(
+          value: out, errorDetails: partialDetails, partialCode: partialCode);
     } on PlatformException catch (e) {
       _notePlatformError(e);
-      return const [];
+      return HcReadOutcome(
+          value: const [], errorCode: e.code, errorDetails: _detailsOf(e));
     } on MissingPluginException {
       _noteReadError('NO_CHANNEL');
-      return const [];
+      return HcReadOutcome(value: const [], errorCode: 'NO_CHANNEL');
     }
   }
 
@@ -723,7 +975,19 @@ class HealthConnectService {
   /// Raw values pass through — callers apply the founder zero rule.
   /// Empty when unreadable.
   Future<List<({String date, int mins, int deep})>> readSleepHistory(
-      int days) async {
+      int days) async =>
+      (await readSleepHistoryWithOutcome(days)).value;
+
+  /// Outcome-carrying variant of [readSleepHistory] (Phase 2 §1).
+  Future<HcReadOutcome<List<({String date, int mins, int deep})>>>
+      readSleepHistoryWithOutcome(int days) => _outcomeOf(
+            _sleepOutcomeZoneKey,
+            () => readSleepHistory(days),
+            () => _readSleepHistoryCore(days),
+          );
+
+  Future<HcReadOutcome<List<({String date, int mins, int deep})>>>
+      _readSleepHistoryCore(int days) async {
     try {
       final raw = await _channel
           .invokeMethod<dynamic>('readSleepHistory', {'days': days})
@@ -732,6 +996,8 @@ class HealthConnectService {
       // returns {items: [...], partialError: "<details>"} — keep the
       // days that read and record the failure (code SLEEP_HISTORY_PARTIAL).
       List<dynamic> items = const [];
+      String? partialCode;
+      String? partialDetails;
       if (raw is List) {
         items = raw;
       } else if (raw is Map) {
@@ -739,7 +1005,9 @@ class HealthConnectService {
         if (s is List) items = s;
         final partial = raw['partialError'];
         if (partial is String && partial.isNotEmpty) {
-          lastPartialErrorCode = 'SLEEP_HISTORY_PARTIAL';
+          partialCode = 'SLEEP_HISTORY_PARTIAL';
+          partialDetails = partial;
+          lastPartialErrorCode = partialCode;
           lastReadErrorDetails = partial;
         }
       }
@@ -748,13 +1016,17 @@ class HealthConnectService {
         final session = _parseSleepSession(item);
         if (session != null) sessions.add(session);
       }
-      return summarizeSleepSessions(sessions);
+      return HcReadOutcome(
+          value: summarizeSleepSessions(sessions),
+          errorDetails: partialDetails,
+          partialCode: partialCode);
     } on PlatformException catch (e) {
       _notePlatformError(e);
-      return const [];
+      return HcReadOutcome(
+          value: const [], errorCode: e.code, errorDetails: _detailsOf(e));
     } on MissingPluginException {
       _noteReadError('NO_CHANNEL');
-      return const [];
+      return HcReadOutcome(value: const [], errorCode: 'NO_CHANNEL');
     }
   }
 
@@ -762,7 +1034,19 @@ class HealthConnectService {
   /// days (bridge range read, native spike rule). A count of 0 is
   /// REAL (a sampled day with no spikes) and is kept. Empty when
   /// unreadable.
-  Future<List<({String date, int count})>> readSpikeCounts(int days) async {
+  Future<List<({String date, int count})>> readSpikeCounts(int days) async =>
+      (await readSpikeCountsWithOutcome(days)).value;
+
+  /// Outcome-carrying variant of [readSpikeCounts] (Phase 2 §1).
+  Future<HcReadOutcome<List<({String date, int count})>>>
+      readSpikeCountsWithOutcome(int days) => _outcomeOf(
+            _spikesOutcomeZoneKey,
+            () => readSpikeCounts(days),
+            () => _readSpikeCountsCore(days),
+          );
+
+  Future<HcReadOutcome<List<({String date, int count})>>>
+      _readSpikeCountsCore(int days) async {
     try {
       final raw =
           await _channel.invokeMethod<List>('readSpikeCounts', {'days': days});
@@ -774,13 +1058,14 @@ class HealthConnectService {
           if (d is String && c is num) out.add((date: d, count: c.toInt()));
         }
       }
-      return out;
+      return HcReadOutcome(value: out);
     } on PlatformException catch (e) {
       _notePlatformError(e);
-      return const [];
+      return HcReadOutcome(
+          value: const [], errorCode: e.code, errorDetails: _detailsOf(e));
     } on MissingPluginException {
       _noteReadError('NO_CHANNEL');
-      return const [];
+      return HcReadOutcome(value: const [], errorCode: 'NO_CHANNEL');
     }
   }
 
@@ -1037,6 +1322,138 @@ enum HealthConnectStatus {
   notConnected,
   partiallyConnected,
   connected,
+}
+
+/// Phase 2 (§1) — one history read's result WITH its own signals:
+/// errors travel with their own read's result, so attribution
+/// never depends on the shared legacy slot fields and concurrent
+/// readers on one service instance cannot cross-talk.
+class HcReadOutcome<T> {
+  /// The fail-closed value — identical to the legacy method's
+  /// return for the same read.
+  final T value;
+
+  /// THIS read's failure code; null on success (and on a partial
+  /// read — a partial is not a failure).
+  final String? errorCode;
+
+  /// THIS read's detail: the native exception CLASS only (Juno
+  /// J1), for a failure the failing exception's class, for a
+  /// partial read the partial failure's class — mirroring exactly
+  /// what the read leaves in `lastReadErrorDetails`.
+  final String? errorDetails;
+
+  /// THIS read's partial code; null unless the read returned real
+  /// data with some chunks missing.
+  final String? partialCode;
+
+  const HcReadOutcome({
+    required this.value,
+    this.errorCode,
+    this.errorDetails,
+    this.partialCode,
+  });
+
+  bool get failed => errorCode != null;
+  bool get partial => partialCode != null;
+  bool get failedWithSecurityException =>
+      errorDetails?.contains('SecurityException') ?? false;
+}
+
+/// Phase 2 (§2) — one availability snapshot from
+/// [HealthConnectService.probeAvailability]. A KNOWN state
+/// (including [staleWedged]) is authoritative and is never
+/// overridden by [persistedConnected]; the persisted flag is a
+/// first-paint hint only, and for the unknown-grant case.
+class HcAvailability {
+  /// `isAvailable()` answered true. False both when it answered
+  /// false and when the bridge errored before answering.
+  final bool serviceAvailable;
+
+  /// The live granted set; null = the bridge errored and the
+  /// grant layer is UNKNOWN.
+  final Set<String>? grantedPermissions;
+
+  /// The bridge failure's code when any probe layer errored —
+  /// for logs only, never rendered.
+  final String? bridgeErrorCode;
+
+  /// The availability layer's actual failure, verbatim (the
+  /// [HealthConnectException] `isAvailable()` threw — code AND
+  /// native message), when that step errored; null when it
+  /// answered. Recorded so [HealthConnectService.getStatus] can
+  /// propagate the failure EXACTLY as base did (Vera Item 3):
+  /// probing stays throw-free, but the legacy status contract
+  /// throws, and it throws THIS, not a synthesized generic.
+  final HealthConnectException? availabilityError;
+
+  /// The grant layer's actual failure, verbatim (the
+  /// [HealthConnectException] the granted-permissions read
+  /// threw — code AND native message), when that step errored;
+  /// null when the grant layer answered (or was never read).
+  /// Rides the same getStatus() rethrow as [availabilityError],
+  /// after it.
+  final HealthConnectException? grantError;
+
+  /// The Steps read probe's outcome; null when not run (the
+  /// grant was not full, so the probe could prove nothing).
+  final HcReadProbeOutcome? stepsProbe;
+
+  /// The persisted-connection flag — first-paint hint ONLY.
+  final bool persistedConnected;
+
+  const HcAvailability({
+    required this.serviceAvailable,
+    required this.grantedPermissions,
+    required this.bridgeErrorCode,
+    this.availabilityError,
+    this.grantError,
+    required this.stepsProbe,
+    required this.persistedConnected,
+  });
+
+  bool get grantKnown => grantedPermissions != null;
+
+  /// Required − granted. Meaningful ONLY when [grantKnown]; when
+  /// the grant layer is unknown this is empty and callers must
+  /// consult [grantKnown] instead of treating it as a full grant.
+  Set<String> get missingPermissions => grantKnown
+      ? HealthConnectService.missingPermissions(grantedPermissions!)
+      : const {};
+
+  bool get fullGrant =>
+      grantKnown &&
+      grantedPermissions!
+          .containsAll(HealthConnectService.requiredPermissions);
+
+  /// Full grant, but the real read probe was blocked with a
+  /// SecurityException — the stale/wedged grant state, as DATA.
+  bool get staleWedged =>
+      fullGrant && stepsProbe == HcReadProbeOutcome.securityFailure;
+
+  /// The derived legacy status; null ONLY when the bridge errored
+  /// and the grant layer is unknown. A confirmed-unavailable
+  /// device (isAvailable answered false, no bridge error, grant
+  /// layer unread) derives [HealthConnectStatus.unavailable];
+  /// every known grant layer derives its status from the grant
+  /// itself (a full grant whose probe is wedged still derives
+  /// [HealthConnectStatus.connected] here — the wedge is carried
+  /// by [staleWedged], and [HealthConnectService.getStatus]
+  /// translates it back into the legacy throw).
+  HealthConnectStatus? get status {
+    final granted = grantedPermissions;
+    if (granted == null) {
+      if (!serviceAvailable && bridgeErrorCode == null) {
+        return HealthConnectStatus.unavailable;
+      }
+      return null;
+    }
+    if (granted.isEmpty) return HealthConnectStatus.notConnected;
+    if (granted.containsAll(HealthConnectService.requiredPermissions)) {
+      return HealthConnectStatus.connected;
+    }
+    return HealthConnectStatus.partiallyConnected;
+  }
 }
 
 /// Outcome of the grant-state read probe ([HealthConnectService.probeReadAccess]).
