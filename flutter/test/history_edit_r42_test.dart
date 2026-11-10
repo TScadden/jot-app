@@ -187,6 +187,51 @@ void main() {
       expect(entryCombinedText(entry.copyWith(manualText: '')), 'Brain fog');
     });
 
+    // Dedupe (Nov 9, 2026 founder report): Quick Log's save stores
+    // body = _composedText() (chips + manual text) AND manualText =
+    // the same typed text, so the naive join rendered a note twice
+    // in the detail dialog and the edit field. entryCombinedText
+    // must collapse those stored duplicates — display only.
+    test('dedupe: note-only entry (body == manualText) shows text once',
+        () {
+      final noteOnly = entry.copyWith(
+        body: 'Felt dizzy after lunch',
+        chips: '',
+        manualText: 'Felt dizzy after lunch',
+      );
+      expect(entryCombinedText(noteOnly), 'Felt dizzy after lunch');
+    });
+
+    test('dedupe: chips+note entry (body ends with manualText) shows '
+        'the composed body once', () {
+      final chipsPlusNote = entry.copyWith(
+        body: 'Nausea · Dizziness · Felt dizzy after lunch',
+        chips: '["Symptoms"]',
+        manualText: 'Felt dizzy after lunch',
+      );
+      expect(entryCombinedText(chipsPlusNote),
+          'Nausea · Dizziness · Felt dizzy after lunch');
+    });
+
+    test('dedupe: whitespace-only manualText shows body only', () {
+      expect(entryCombinedText(entry.copyWith(manualText: '   ')),
+          'Brain fog');
+    });
+
+    test('dedupe: intake entry shows body only, payload never renders',
+        () {
+      const intake = QuickLogEntry(
+        id: 77,
+        categoryId: 3,
+        body: 'Water · 16 fl oz',
+        chips: '["Intake","Water"]',
+        manualText: '{"v":1,"kind":"Water","fluidMl":473}',
+        timestamp: 123456,
+      );
+      expect(entryCombinedText(intake), 'Water · 16 fl oz');
+      expect(entryCombinedText(intake), isNot(contains('fluidMl')));
+    });
+
     test('text edit keeps id/timestamp, clears manualText', () {
       final edited = editedEntryText(entry, 'New text');
       expect(edited.id, 42);
