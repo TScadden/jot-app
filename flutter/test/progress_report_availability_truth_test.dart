@@ -444,12 +444,19 @@ void main() {
       hc.sleepMode = _ReadMode.failGeneric;
       hc.missing = const {};
       final z8 = await z8Lines(await collect());
+      // RE-PIN (Report Reliability Phase 4, Juno Ruling 3): Z8
+      // now states EVERY section, available first — the success
+      // sections (Logs, Conditions, …) precede the stored-only
+      // pair on the line, so the old expectation's
+      // 'Data availability: Sleep:' anchor no longer holds. The
+      // stored-provenance entries themselves are byte-identical
+      // and still adjacent, in canonical order.
       expect(
-        z8,
-        contains(
-            'Data availability: Sleep: Available from stored history (1 records); '
+        z8.join('\n'),
+        contains('Sleep: Available from stored history (1 records); '
             'DeepSleep: Available from stored history (1 records)'),
       );
+      expect(z8.join('\n'), startsWith('Data availability: Logs:'));
     });
   });
 
