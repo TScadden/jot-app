@@ -41,9 +41,16 @@ class VitalsStrip extends StatelessWidget {
   final bool animateCountUps;
 
   /// Home redesign — compact variant for the AppBar title slot: tighter
-  /// padding (h10/v8), tighter divider slots (h1), no outer margin, and
-  /// content width instead of the body column's full width. Icons (16),
-  /// values (14sp bold), cell order, radius and scrim are unchanged.
+  /// padding, tighter divider slots, no outer margin, and
+  /// content width instead of the body column's full width. Cell
+  /// order, radius and scrim are unchanged.
+  ///
+  /// Header alignment package (Nov 10, 2026, founder ruling "pill a
+  /// little bigger"): the compact pill steps back up from the
+  /// redesign's measured 211.3×36.0dp to ≈251×39dp — padding
+  /// h10/v8 → h15/v8, divider slots h1 → h3, icon 16 → 17, values
+  /// 14sp → 15sp bold (icon∶text scale relationship kept), cell
+  /// icon–value gap 4 → 5. The non-compact strip is untouched.
   final bool compact;
 
   const VitalsStrip(
@@ -66,7 +73,7 @@ class VitalsStrip extends StatelessWidget {
         border: Border.all(color: NotelColors.legacyDarkHairline, width: 1),
       ),
       padding: compact
-          ? const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0)
+          ? const EdgeInsets.symmetric(horizontal: 15.0, vertical: 8.0)
           : const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
       child: Row(
         mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
@@ -81,7 +88,7 @@ class VitalsStrip extends StatelessWidget {
             // the real value exists (CountUp never invents numbers).
             value: CountUp(
               value: v?.heartRate,
-              style: _valueStyle,
+              style: _effectiveValueStyle,
               animate: animateCountUps,
             ),
           ),
@@ -92,7 +99,7 @@ class VitalsStrip extends StatelessWidget {
             label: 'Calories',
             value: CountUp(
               value: v?.activeCalories,
-              style: _valueStyle,
+              style: _effectiveValueStyle,
               animate: animateCountUps,
             ),
           ),
@@ -105,7 +112,7 @@ class VitalsStrip extends StatelessWidget {
             // a static render.
             value: CountUp(
               value: v?.logCountToday ?? 0,
-              style: _valueStyle,
+              style: _effectiveValueStyle,
               animate: animateCountUps,
             ),
           ),
@@ -116,7 +123,7 @@ class VitalsStrip extends StatelessWidget {
             label: 'Sleep',
             value: CountUp(
               value: v?.sleepMinutes,
-              style: _valueStyle,
+              style: _effectiveValueStyle,
               animate: animateCountUps,
               // Round 17b — native shows "8h42m", not total minutes.
               format: formatSleepMinutes,
@@ -133,6 +140,18 @@ class VitalsStrip extends StatelessWidget {
     color: NotelColors.legacyDarkOnDark,
   );
 
+  /// Header alignment package (Nov 10, 2026) — the compact pill's
+  /// stepped-up value size (14sp → 15sp), keeping the icon∶text
+  /// relationship with the compact icon at 17.
+  static const _valueStyleCompact = TextStyle(
+    fontSize: 15,
+    fontWeight: FontWeight.bold,
+    color: NotelColors.legacyDarkOnDark,
+  );
+
+  TextStyle get _effectiveValueStyle =>
+      compact ? _valueStyleCompact : _valueStyle;
+
   Widget _cell({
     required IconData icon,
     required Color iconColor,
@@ -143,8 +162,9 @@ class VitalsStrip extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Icon(icon, size: 16, color: iconColor, semanticLabel: label),
-        const SizedBox(width: 4),
+        Icon(icon,
+            size: compact ? 17 : 16, color: iconColor, semanticLabel: label),
+        SizedBox(width: compact ? 5 : 4),
         value,
       ],
     );
@@ -152,7 +172,7 @@ class VitalsStrip extends StatelessWidget {
 
   Widget _divider() {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: compact ? 1.0 : 2.0),
+      padding: EdgeInsets.symmetric(horizontal: compact ? 3.0 : 2.0),
       child: Container(
         width: 1,
         height: 16,
@@ -200,12 +220,20 @@ class HomeStreakStack extends StatelessWidget {
   final bool animateCountUps;
   final VoidCallback? onStreakTap;
 
+  /// Header alignment package (Nov 10, 2026) — the Home corner
+  /// band centers the pills in their 62dp slot so both pills share
+  /// the slot's center axis (the drawer button's axis) whatever
+  /// their content widths. Default keeps the original
+  /// left-aligned construction.
+  final CrossAxisAlignment crossAxisAlignment;
+
   const HomeStreakStack({
     super.key,
     this.currentStreak,
     this.bestStreak,
     this.animateCountUps = true,
     this.onStreakTap,
+    this.crossAxisAlignment = CrossAxisAlignment.start,
   });
 
   @override
@@ -216,7 +244,7 @@ class HomeStreakStack extends StatelessWidget {
       onTap: onStreakTap,
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: crossAxisAlignment,
         children: [
           streakPill(
             glyph: '🏆',

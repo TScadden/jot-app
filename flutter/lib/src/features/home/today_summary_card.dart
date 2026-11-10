@@ -620,10 +620,22 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
   /// primary; the traveling marker is the Tabs logo
   /// (`assets/images/ic_tabs_note.png`, the splash/logo asset) in a
   /// 26dp circle at the fill's leading edge; the finish is the
-  /// checkered flag in a 30dp primary-tinted circle at the right
-  /// end. Changes animate over 220ms easeInOut (the allowed set);
-  /// reduced motion renders the final state instantly. No data or
+  /// checkered flag in a 30dp circle at the right end. Changes
+  /// animate over 220ms easeInOut (the allowed set); reduced
+  /// motion renders the final state instantly. No data or
   /// plannedCount == 0 renders NO bar — never a fake 0.
+  ///
+  /// Flag legibility fix (Nov 10, 2026, founder report — the flag
+  /// rendered see-through on the live build): the badge was
+  /// primary at 18% alpha with the flag glyph in full primary, so
+  /// the glyph's checker holes showed the 18% tint and the badge
+  /// itself measured 1.25:1 against the card (sampled badge fill
+  /// RGB 35,33,61 over the card). The badge is now SOLID primary
+  /// and the glyph is [NotelColors.onPrimary] — the measured
+  /// 5.21:1 ink-on-primary — so the checker reads dark squares on
+  /// solid purple at full opacity in every progress state (the
+  /// badge is state-independent; only the fill/marker move).
+  /// Badge size (30dp) and position are unchanged.
   Widget _progressBar(BuildContext context) {
     final progress = _progress;
     if (progress == null) return const SizedBox.shrink();
@@ -694,15 +706,14 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                         key: const ValueKey('todaySummaryProgressFinish'),
                         width: 30,
                         height: 30,
-                        decoration: BoxDecoration(
-                          color:
-                              NotelColors.primary.withValues(alpha: 0.18),
+                        decoration: const BoxDecoration(
+                          color: NotelColors.primary,
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
                           Icons.sports_score,
                           size: 18,
-                          color: NotelColors.primary,
+                          color: NotelColors.onPrimary,
                         ),
                       ),
                     ),
