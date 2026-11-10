@@ -823,6 +823,49 @@ void main() {
     });
 
     testWidgets(
+        'D-T06 (5d): gate unlocked via billing, pull 500 ALONE '
+        '(events 200) → load-failure state, empty string ABSENT; '
+        'flip pull to 200 and tap Try again → the timeline renders',
+        (tester) async {
+      // Pass-2 verdict D-T06 (PARTIALLY HOLDS — gap real,
+      // production correct by construction): (5b) coupled the
+      // pull failure with an events failure, so the pull-alone
+      // combination was untested. Production trace: _checkGate
+      // unlocks via BillingService without the pull; _load's
+      // any-null guard then fires on the pull-derived reads
+      // alone (profile / entries / categories all null) →
+      // _loadFailed, never a partial timeline and never the
+      // genuinely-empty string.
+      final billing = makeBillingService();
+      billing.backend.syncResult = true;
+      await billing.service.syncSubscriptionStatus();
+      final control = _BackendControl()..pullStatus = 500;
+      await pumpScreen(
+        tester,
+        tabsBackend: backendControlled(control),
+        billingService: billing.service,
+      );
+      expect(find.text(loadErrorMessage), findsOneWidget);
+      expect(find.text(tryAgainLabel), findsOneWidget);
+      expect(find.text(noChanges), findsNothing);
+      expect(find.text(unknownMessage), findsNothing);
+      expect(find.byIcon(Icons.lock_outline), findsNothing);
+      expect(
+          find.text(MedicationTimelineStrings.toggleDailyScore),
+          findsNothing);
+      expect(find.text('Started Med A · 10 mg'), findsNothing);
+
+      // Retry recovery (mirrors (6), pull-only flip): the events
+      // endpoint was healthy all along, so restoring the pull
+      // alone must load the timeline.
+      control.pullStatus = 200;
+      await tester.tap(find.text(tryAgainLabel));
+      await tester.pumpAndSettle();
+      expect(find.text(loadErrorMessage), findsNothing);
+      expect(find.text('Started Med A · 10 mg'), findsOneWidget);
+    });
+
+    testWidgets(
         'H2-02 (5c): gate unlocked, both endpoints 200 empty → '
         'genuinely-empty string PRESENT, no failure state',
         (tester) async {
@@ -857,6 +900,117 @@ void main() {
       await tester.tap(find.text(tryAgainLabel));
       await tester.pumpAndSettle();
       expect(find.text(loadErrorMessage), findsNothing);
+      expect(find.text('Started Med A · 10 mg'), findsOneWidget);
+    });
+
+    // ── D-T07 — cold history store ─────────────────────────────
+    // Pass-2 verdict D-T07 (HOLDS — coverage gap): every test
+    // above pre-warms history via seedScores() over the
+    // infallible _FakeStoreIO, so the screen was never exercised
+    // cold or over a failing HealthHistoryStore read. Production
+    // trace for a cold failing read: HealthHistoryStore's warm
+    // swallows the read failure / corrupt blob and warms empty
+    // (H1-04), so _load's coverage/readRange return empty — the
+    // load itself SUCCEEDS with zero scored days, the timeline
+    // and its markers render, and the degraded state surfaces
+    // in the marker panel as the below-floor "Not enough scored
+    // days" string with the real (zero) counts — no crash, no
+    // hang, no load-failure view, no falsified averages.
+    HealthHistoryStore coldHistoryStore({
+      required Future<String?> Function(String key) read,
+    }) {
+      final store = HealthHistoryStore.testInstance();
+      store.debugSetStore(
+        read: read,
+        write: (_, _) async {},
+        delete: (_) async {},
+      );
+      store.debugReset();
+      return store;
+    }
+
+    Future<void> pumpColdScreen(
+      WidgetTester tester, {
+      required HealthHistoryStore coldStore,
+    }) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final billing = makeBillingService();
+      billing.backend.syncResult = true;
+      await billing.service.syncSubscriptionStatus();
+      // Deliberately NO seedScores(): the history store is cold.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MedicationTimelineScreen(
+            backend: backend(unlimited: true),
+            historyStore: coldStore,
+            seenStore: seenStore(seen: true),
+            billingService: billing.service,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets(
+        'D-T07 (cold, throwing read): history store read throws '
+        'cold → timeline renders with zero scored days; the panel '
+        'shows the below-floor string with 0 / 0 counts',
+        (tester) async {
+      final coldStore = coldHistoryStore(
+        read: (_) async => throw StateError('cold storage read failed'),
+      );
+      await pumpColdScreen(tester, coldStore: coldStore);
+
+      // The screen settles into the loaded timeline — NOT the
+      // load-failure view, NOT the membership-unknown view, NOT
+      // the locked view, and no spinner left hanging.
+      expect(find.text(loadErrorMessage), findsNothing);
+      expect(find.text(unknownMessage), findsNothing);
+      expect(find.byIcon(Icons.lock_outline), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text(MedicationTimelineStrings.intro), findsOneWidget);
+      expect(
+          find.text(MedicationTimelineStrings.toggleDailyScore),
+          findsOneWidget);
+      expect(find.text(noChanges), findsNothing);
+      expect(find.text('Started Med A · 10 mg'), findsOneWidget);
+
+      // The degraded state: opening the marker's panel shows
+      // the below-floor string with the real counts (zero scored
+      // days on either side) and NO averages.
+      await tester.ensureVisible(find.text('Started Med A · 10 mg'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Started Med A · 10 mg'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+            'Not enough scored days for these windows yet. Before: 0 scored days. After: 0 scored days. Averages show when each window has at least 5 scored days and the two windows have 14 scored days in total.'),
+        findsOneWidget,
+      );
+      expect(find.text('Average Daily Score, 14 days before'), findsNothing);
+      expect(find.text('Average Daily Score, 14 days after'), findsNothing);
+      expect(find.textContaining('scored days ·'), findsNothing);
+    });
+
+    testWidgets(
+        'D-T07 (cold, corrupt blob): history store read returns '
+        'corrupt data cold → same zero-score degraded state, no '
+        'crash or hang', (tester) async {
+      final coldStore = coldHistoryStore(
+        read: (_) async => 'this is not json {{{',
+      );
+      await pumpColdScreen(tester, coldStore: coldStore);
+
+      expect(find.text(loadErrorMessage), findsNothing);
+      expect(find.text(unknownMessage), findsNothing);
+      expect(find.byIcon(Icons.lock_outline), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(
+          find.text(MedicationTimelineStrings.toggleDailyScore),
+          findsOneWidget);
+      expect(find.text(noChanges), findsNothing);
       expect(find.text('Started Med A · 10 mg'), findsOneWidget);
     });
 

@@ -233,10 +233,7 @@ class _PatternsScreenState extends State<PatternsScreen> {
   Future<void> _resolveMembership() async {
     bool? result;
     try {
-      final future = widget.membershipLoader != null
-          ? widget.membershipLoader!()
-          : _fetchMembershipFromBackend();
-      result = await future.timeout(
+      result = await _loadMembershipOrNull().timeout(
         _membershipResolveTimeout,
         onTimeout: () => null,
       );
@@ -254,6 +251,33 @@ class _PatternsScreenState extends State<PatternsScreen> {
         _isUnlimitedResolved = result;
         _membershipResolveFailed = false;
       });
+    }
+  }
+
+  /// Loads membership through a future that can never complete
+  /// with an error: any throw from the loader — synchronous, via
+  /// a returned error future, or from an async loader body (the
+  /// production shape: [_fetchMembershipFromBackend] is async) —
+  /// becomes a null result here, inside this wrapper.
+  ///
+  /// This interposition matters: an async loader that throws
+  /// before its first await returns an ALREADY error-completed
+  /// future, and handing that future straight to
+  /// [Future.timeout] let the error escape the try/catch in
+  /// [_resolveMembership] as an uncaught async error (D-T02 pin
+  /// (8b)) — the Slot 1 failure state was never reached. Awaiting
+  /// the loader inside this async wrapper attaches its error
+  /// handler at the moment the loader is invoked and converts
+  /// the error to null before the timeout race ever sees a
+  /// future, so the timeout only ever races a value/null
+  /// completion (or the never-completing case it bounds).
+  Future<bool?> _loadMembershipOrNull() async {
+    try {
+      return await (widget.membershipLoader != null
+          ? widget.membershipLoader!()
+          : _fetchMembershipFromBackend());
+    } catch (_) {
+      return null;
     }
   }
 

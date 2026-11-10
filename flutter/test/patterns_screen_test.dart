@@ -845,6 +845,89 @@ void main() {
     });
 
     testWidgets(
+        '(8b) D-T02: membershipLoader THROWS → the same Juno-ruled '
+        'Slot 1 failure state as the null case (8)', (tester) async {
+      // Pass-2 verdict D-T02 (HOLDS — coverage gap): failure was
+      // simulated only by the loader returning null / pending /
+      // never-completing — never by throwing. Production
+      // _resolveMembership catches throws → null → this same
+      // failure state; pin it directly.
+      await pumpPatterns(
+        tester,
+        null,
+        isUnlimited: null,
+        recordsLoader: () async => [f1aNumbers(), f4Progress()],
+        membershipLoader: () async =>
+            throw StateError('membership backend exploded'),
+      );
+      await tester.pump();
+      expect(find.text(correlationLoadError), findsOneWidget);
+      expect(
+        find.text('Could not load your Patterns. Please try again.'),
+        findsOneWidget,
+      );
+      expect(find.text(correlationLoadRetryLabel), findsOneWidget);
+      expect(find.text('Try again'), findsOneWidget);
+      // The error REPLACES the card list, exactly as in (8): no
+      // cards, no pending label, no skeleton alongside it.
+      expect(find.text(correlationCaption), findsNothing);
+      expect(find.textContaining('averaged'), findsNothing);
+      expect(find.textContaining('Not enough days yet.'), findsNothing);
+      expect(find.text(correlationUnavailableF2), findsNothing);
+      expect(find.text(correlationMembershipPendingLabel), findsNothing);
+      expect(find.byType(SkeletonBox), findsNothing);
+    });
+
+    testWidgets(
+        '(10) D-T02: default resolver path (no membershipLoader '
+        'injected, cold cache, no session) → the same Slot 1 '
+        'failure state', (tester) async {
+      // Pass-2 verdict D-T02 (HOLDS — coverage gap): tests (2)/(3)
+      // pre-seed QuickLogCache, so the production default
+      // resolver — PatternsScreen._fetchMembershipFromBackend →
+      // TabsBackend().fetchMembershipOrNull() — never ran. Here
+      // nothing is injected and the cache is cold (group setUp),
+      // so the screen resolves membership itself. In the test
+      // environment there is no stored session (secure storage
+      // answers null), so the default backend's pull fails and
+      // fetchMembershipOrNull returns null — the failure side of
+      // the default resolver.
+      //
+      // RESIDUAL GAP (documented, no production change): the
+      // default resolver constructs TabsBackend() directly with
+      // no injection seam, so a live-backend 500 / malformed-pull
+      // variant of this path cannot be driven from a test; only
+      // the no-session failure is pinnable through existing
+      // seams. The success side of the default resolver likewise
+      // remains unpinned for the same reason.
+      await pumpPatterns(
+        tester,
+        null,
+        isUnlimited: null,
+        recordsLoader: () async => [f1aNumbers(), f4Progress()],
+      );
+      // The default backend's secure-storage read does not
+      // settle under the test clock in a few pumps, so — exactly
+      // as in (9) — advance past the screen's 20s resolve bound:
+      // whichever way the default read lands (a null result, a
+      // throw now converted to null by _loadMembershipOrNull,
+      // or no answer at all), the resolution counts as failed
+      // and lands in the same Slot 1 failure state.
+      await tester.pump(const Duration(seconds: 21));
+      await tester.pump();
+      expect(find.text(correlationLoadError), findsOneWidget);
+      expect(
+        find.text('Could not load your Patterns. Please try again.'),
+        findsOneWidget,
+      );
+      expect(find.text(correlationLoadRetryLabel), findsOneWidget);
+      expect(find.text(correlationCaption), findsNothing);
+      expect(find.textContaining('averaged'), findsNothing);
+      expect(find.text(correlationMembershipPendingLabel), findsNothing);
+      expect(find.byType(SkeletonBox), findsNothing);
+    });
+
+    testWidgets(
         '(9) membership resolution timeout counts as failure '
         '(Juno follow-up condition 5): no unbounded pending',
         (tester) async {
