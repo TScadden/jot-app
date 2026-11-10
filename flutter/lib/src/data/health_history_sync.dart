@@ -3,8 +3,13 @@ import 'dart:async';
 import 'package:tabs_lab/src/data/crash_reporting.dart';
 import 'package:tabs_lab/src/data/daily_score.dart';
 import 'package:tabs_lab/src/data/daily_score_sync.dart';
+import 'package:tabs_lab/src/data/hc_availability.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/data/health_history_queries.dart'
+    show HistoryMetric;
 import 'package:tabs_lab/src/data/health_history_store.dart';
+import 'package:tabs_lab/src/data/progress_report.dart'
+    show DataSourceStatus, deriveMetricStatus;
 
 /// R70 WS1b — Health Connect → [HealthHistoryStore] capture.
 ///
@@ -26,12 +31,56 @@ import 'package:tabs_lab/src/data/health_history_store.dart';
 /// never break a screen.
 ///
 /// Per-metric read failures are never swallowed either: each
-/// read's `lastReadErrorCode` is snapshotted and persisted to the
-/// store's capture diagnostics (see
+/// read's outcome object (Phase 2 §1 — `HcReadOutcome`) carries
+/// its own failure code, which is persisted to the store's
+/// capture diagnostics (see
 /// [HealthHistoryStore.recordCaptureDiagnostics]) — a failed HRV
 /// read leaves a visible trace instead of looking like no HRV.
 /// The HRV leg also records its outcome numbers there (partial
-/// code, raw sample count, attributed day count).
+/// code, raw sample count, attributed day count). Since PR-3 the
+/// capture path claims NOTHING from the service's legacy
+/// error-slot fields: attribution rides on the outcome objects
+/// alone, exactly as the union's does.
+/// Phase 2 PR-3 — one capture leg's read evidence, claimed from
+/// THAT leg's own `HcReadOutcome` object (never from the service's
+/// legacy slot fields). This is the capture path's input surface
+/// for the ONE shared per-metric derivation
+/// ([deriveMetricStatus]): the booleans below are exactly that
+/// function's `readFailed` / `partialRead` /
+/// `readSecurityException` inputs, recorded per capture metric
+/// (`restingHr`, `sleep`, `hrv`, `calories`, `spikes` — the
+/// capture's own names) so the P2 identity fixtures can derive
+/// the capture path's per-metric availability states from the
+/// capture's OWN recorded evidence and assert them identical to
+/// the report collector's, instead of restaging the reads.
+class CaptureMetricEvidence {
+  /// The leg's outcome carried a non-empty failure code.
+  final bool readFailed;
+
+  /// The leg's outcome carried a non-empty partial code (real
+  /// data, some chunks missing — not a failure).
+  final bool partialRead;
+
+  /// The leg failed AND its outcome's detail names a
+  /// SecurityException — the stale/wedged grant signature for
+  /// that metric (mirrors `HcReadOutcome.failedWithSecurityException`).
+  final bool readSecurityException;
+
+  /// The leg's failure code (null unless [readFailed]).
+  final String? errorCode;
+
+  /// The leg's partial code (null unless [partialRead]).
+  final String? partialCode;
+
+  const CaptureMetricEvidence({
+    required this.readFailed,
+    required this.partialRead,
+    required this.readSecurityException,
+    this.errorCode,
+    this.partialCode,
+  });
+}
+
 class HealthHistorySync {
   static const Duration throttle = Duration(hours: 6);
 
@@ -75,6 +124,68 @@ class HealthHistorySync {
   /// The Daily Score server-sync hook handed to the post-capture
   /// engine run (see the factory doc). Null = sync off.
   final DailyScoreSync? _scoreSync;
+
+  final Map<String, CaptureMetricEvidence> _lastCaptureEvidence = {};
+
+  /// Phase 2 PR-3 — the most recent capture run's per-metric
+  /// read evidence (see [CaptureMetricEvidence]), keyed by the
+  /// capture's metric names. In-memory only: the PERSISTED trace
+  /// of a capture stays the store's capture diagnostics (codes +
+  /// HRV counts); this map additionally carries the
+  /// SecurityException flag the diagnostics deliberately do not
+  /// persist, so the shared derivation can run over the capture's
+  /// own evidence. Replaced leg-by-leg as each capture runs.
+  Map<String, CaptureMetricEvidence> get lastCaptureEvidence =>
+      Map.unmodifiable(_lastCaptureEvidence);
+
+  /// Phase 2 PR-3 — THE capture path's per-metric availability
+  /// state for [metric]: the shared derivation
+  /// ([deriveMetricStatus]) over the capture's recorded
+  /// [evidence] for that leg, the metric's grant state, and
+  /// whether the store holds data for the metric after the
+  /// capture (the capture-side analogue of the report union's
+  /// data presence: capture is merge-only, so a failed leg's
+  /// surviving store data is exactly what a later union would
+  /// surface from the store).
+  ///
+  /// Capture's own bookkeeping (the failures map, the succeeded
+  /// set, partial suppression of the post-capture score compute)
+  /// is NOT an availability derivation and does not go through
+  /// this function: it answers a different question — did THIS
+  /// run's read fail, partially return, or succeed — with no
+  /// grant or data-presence inputs, and its rules (an HRV partial
+  /// is recorded via the diagnostics' partial code, never as a
+  /// failure; any partial leg suppresses scoring) are
+  /// capture-local by design (design §5). What IS shared is the
+  /// availability STATE vocabulary: any per-metric state claimed
+  /// ABOUT a capture is derived here, through the same function
+  /// the report collector uses, from the same-named inputs.
+  static DataSourceStatus deriveCaptureMetricStatus({
+    required HcMetricGrantState grant,
+    required CaptureMetricEvidence evidence,
+    required bool storeHasData,
+  }) =>
+      deriveMetricStatus(
+        grant: grant,
+        partialRead: evidence.partialRead,
+        readFailed: evidence.readFailed,
+        readSecurityException: evidence.readSecurityException,
+        unionHasData: storeHasData,
+      );
+
+  /// The [HistoryMetric] a capture metric name feeds, for grant
+  /// derivation via [hcMetricGrantState] (the capture's names are
+  /// its diagnostics names; `sleep` covers deep sleep exactly as
+  /// the report's deepSleep section mirrors its sleep section).
+  static HistoryMetric? historyMetricForCaptureMetric(String metric) =>
+      switch (metric) {
+        'restingHr' => HistoryMetric.restingHr,
+        'sleep' => HistoryMetric.sleep,
+        'hrv' => HistoryMetric.hrv,
+        'calories' => HistoryMetric.calories,
+        'spikes' => HistoryMetric.spikes,
+        _ => null,
+      };
 
   /// The bound applied to every Health Connect read inside a
   /// capture (V-2): [HealthConnectService.readTimeout] in
@@ -311,14 +422,20 @@ class HealthHistorySync {
       }
 
       // Capture diagnostics (HRV visibility fix): the HC service
-      // fails closed — a failed read returns [] and records its
-      // code in `lastReadErrorCode` — and the capture used to
-      // never look, so e.g. an HRV read blocked by a missing grant
-      // (HRV_SAMPLES_READ_FAILED) vanished without a trace while
-      // markCaptured still stamped success. Mirror the queries
-      // layer: reset the code around each read, snapshot it right
-      // after, and persist the per-metric outcome to the store
-      // (failures recorded, successes clear their metric's entry).
+      // fails closed — a failed read returns [] — and the capture
+      // used to never look, so e.g. an HRV read blocked by a
+      // missing grant (HRV_SAMPLES_READ_FAILED) vanished without
+      // a trace while markCaptured still stamped success. Since
+      // PR-3 each leg is read through its outcome-carrying
+      // variant (Phase 2 §1) and the leg's bookkeeping claims its
+      // signals from THAT read's outcome object alone — the
+      // reset-then-snapshot protocol over the service's legacy
+      // slot fields is DELETED from the capture path, so no code
+      // here reads the slots any more and attribution cannot
+      // cross-talk with any other reader of the shared service
+      // instance. The per-metric outcome is persisted to the
+      // store (failures recorded, successes clear their metric's
+      // entry), exactly as the slot protocol's snapshots were.
       final captureFailures = <String, String>{};
       final captureSucceeded = <String>{};
       // B-02 — set when ANY leg of this capture came back
@@ -329,18 +446,31 @@ class HealthHistorySync {
       // score compute (write-once scores would lock past days
       // without the components the failed chunks held).
       var captureHadPartial = false;
-      void noteRead(String metric) {
-        final code = _hc.lastReadErrorCode;
-        if (code != null && code.isNotEmpty) {
+      void noteRead(String metric, HcReadOutcome<dynamic> outcome) {
+        // PR-3: the leg's evidence for the shared derivation is
+        // recorded from the outcome object, in the derivation's
+        // own input vocabulary (see [CaptureMetricEvidence]).
+        final code = outcome.errorCode;
+        final failed = code != null && code.isNotEmpty;
+        final partialCode = outcome.partialCode;
+        final partial = partialCode != null && partialCode.isNotEmpty;
+        _lastCaptureEvidence[metric] = CaptureMetricEvidence(
+          readFailed: failed,
+          partialRead: !failed && partial,
+          readSecurityException:
+              failed && outcome.failedWithSecurityException,
+          errorCode: failed ? code : null,
+          partialCode: partial ? partialCode : null,
+        );
+        if (failed) {
           captureFailures[metric] = code;
           return;
         }
-        final partialCode = _hc.lastPartialErrorCode;
-        if (partialCode != null && partialCode.isNotEmpty) {
+        if (partial) {
           captureHadPartial = true;
           if (metric == 'hrv') {
             // The HRV partial is already durably recorded via
-            // the hrvPartialCode snapshot passed to
+            // the hrvPartialCode passed to
             // recordCaptureDiagnostics below (its entry is
             // rewritten with the partial code, never cleared) —
             // adding it to captureFailures here would rewrite
@@ -359,52 +489,47 @@ class HealthHistorySync {
         captureSucceeded.add(metric);
       }
 
-      void resetReadCodes() {
-        _hc.lastReadErrorCode = null;
-        _hc.lastPartialErrorCode = null;
-      }
-
       // V-2 — every read is bounded by the HC service's
       // readTimeout, per that service's contract ("callers bound
       // reads with readTimeout"): the sync is a caller and now
       // bounds its own reads. A timeout degrades EXACTLY like a
-      // failed read — empty result, `READ_TIMEOUT` recorded in
-      // the metric's diagnostics via noteRead below, the capture
-      // completes, and the screens score from store truth and
-      // render. Without the bound, one wedged bridge read stalled
-      // the snapshot-first loads (Home face, score history)
-      // indefinitely.
-      Future<List<T>> boundedRead<T>(Future<List<T>> read) async {
+      // failed read — empty result, a `READ_TIMEOUT` outcome
+      // recorded in the metric's diagnostics via noteRead below,
+      // the capture completes, and the screens score from store
+      // truth and render. Without the bound, one wedged bridge
+      // read stalled the snapshot-first loads (Home face, score
+      // history) indefinitely.
+      Future<HcReadOutcome<List<T>>> boundedRead<T>(
+          Future<HcReadOutcome<List<T>>> read) async {
         try {
           return await read.timeout(_readTimeout);
         } on TimeoutException {
-          _hc.lastReadErrorCode = 'READ_TIMEOUT';
-          return <T>[];
+          return HcReadOutcome<List<T>>(
+              value: <T>[], errorCode: 'READ_TIMEOUT');
         }
       }
 
       // Critical-first order: resting HR → sleep → HRV, then
       // the sibling reads (calories, spikes). Each read's block
-      // (reset / bounded read / note / put loop) moves intact.
-      resetReadCodes();
-      final hrHist =
-          await boundedRead(_hc.readRestingHrHistory(restingHrWindowDays));
-      noteRead('restingHr');
-      for (final r in hrHist) {
+      // (bounded outcome read / note / put loop) moves intact.
+      final hrOutcome = await boundedRead(
+          _hc.readRestingHrHistoryWithOutcome(restingHrWindowDays));
+      noteRead('restingHr', hrOutcome);
+      for (final r in hrOutcome.value) {
         put(r.date, hr: r.bpm);
       }
-      resetReadCodes();
-      final sleepHist =
-          await boundedRead(_hc.readSleepHistory(sleepWindowDays));
-      noteRead('sleep');
-      // Snapshot the sleep leg's cleanliness NOW, before the
-      // HRV leg's resetReadCodes() wipes both codes: the partial
-      // code is set by the service during the sleep read, and
-      // noteRead only snapshots the error code. The upgrade
-      // stamp below requires BOTH codes clear.
+      final sleepOutcome = await boundedRead(
+          _hc.readSleepHistoryWithOutcome(sleepWindowDays));
+      noteRead('sleep', sleepOutcome);
+      // Snapshot the sleep leg's cleanliness NOW, from its own
+      // outcome: the upgrade stamp below requires the sleep read
+      // to have completed with NO error and NO partial. (Strict
+      // null checks, exactly as the slot snapshot read them: an
+      // empty-string code counted as not-clean for the stamp
+      // even though noteRead treats it as no failure.)
       final sleepReadClean =
-          _hc.lastReadErrorCode == null && _hc.lastPartialErrorCode == null;
-      for (final r in sleepHist) {
+          sleepOutcome.errorCode == null && sleepOutcome.partialCode == null;
+      for (final r in sleepOutcome.value) {
         put(r.date, sleep: r.mins, deep: r.deep);
       }
 
@@ -424,40 +549,38 @@ class HealthHistorySync {
         for (var i = 0; i < hrvWindowDays; i++)
           _historyDateStr(today.subtract(Duration(days: i))),
       };
-      resetReadCodes();
-      final hrvSamples =
-          await boundedRead(_hc.readHrvSamples(hrvWindowDays));
-      noteRead('hrv');
+      final hrvOutcome =
+          await boundedRead(_hc.readHrvSamplesWithOutcome(hrvWindowDays));
+      noteRead('hrv', hrvOutcome);
+      final hrvSamples = hrvOutcome.value;
       // Defect 1b — HRV outcome numbers: the partial code (the
       // read returned data with chunks missing — Defect 0's new
       // contract), the raw sample count the bridge returned, and
       // the attributed day count are recorded alongside any error
       // code, so a recurrence is diagnosable from the diagnostics
       // record alone. Counts are operational metadata, not values.
-      final hrvPartialCode = _hc.lastPartialErrorCode;
-      // Snapshot the HRV leg's cleanliness NOW, before the
-      // sibling legs' resetReadCodes() wipes both codes: the
-      // backfill flag below may be set only by a clean read
-      // (no error, no partial).
+      final hrvPartialCode = hrvOutcome.partialCode;
+      // Snapshot the HRV leg's cleanliness NOW, from its own
+      // outcome: the backfill flag below may be set only by a
+      // clean read (no error, no partial — strict null checks,
+      // exactly as the slot snapshot read them).
       final hrvReadClean =
-          _hc.lastReadErrorCode == null && hrvPartialCode == null;
+          hrvOutcome.errorCode == null && hrvPartialCode == null;
       final dailyHrv = attributeDailyHrv(hrvSamples, hrvDates);
       for (final entry in dailyHrv.entries) {
         put(entry.key, hrv: entry.value);
       }
 
-      resetReadCodes();
-      final calHist =
-          await boundedRead(_hc.readCaloriesHistory(caloriesWindowDays));
-      noteRead('calories');
-      for (final r in calHist) {
+      final calOutcome = await boundedRead(
+          _hc.readCaloriesHistoryWithOutcome(caloriesWindowDays));
+      noteRead('calories', calOutcome);
+      for (final r in calOutcome.value) {
         put(r.date, kcal: r.kcal);
       }
-      resetReadCodes();
-      final spikeHist =
-          await boundedRead(_hc.readSpikeCounts(isFirst ? 180 : 31));
-      noteRead('spikes');
-      for (final r in spikeHist) {
+      final spikeOutcome = await boundedRead(
+          _hc.readSpikeCountsWithOutcome(isFirst ? 180 : 31));
+      noteRead('spikes', spikeOutcome);
+      for (final r in spikeOutcome.value) {
         put(r.date, spikes: r.count);
       }
 
