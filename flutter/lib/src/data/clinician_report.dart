@@ -8,6 +8,8 @@ import 'package:tabs_lab/src/data/migraine_controller.dart'
 import 'package:tabs_lab/src/data/progress_report.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/today_summary.dart' hide dateStrOf;
+import 'package:tabs_lab/src/features/home/vitals_strip.dart'
+    show formatSleepMinutes;
 
 /// Phase 1, item 3 — Clinician PDF v2 data layer (spec
 /// `phase1-item3-clinician-pdf-spec.md`; copy per Juno's final
@@ -86,6 +88,70 @@ String clinicianTargetsLine({
   required String fluidTarget,
 }) =>
     'Targets recorded in Tabs: $electrolyteTarget and $fluidTarget daily.';
+
+// ── Phase 4 — clinician biometrics zone (Z3B) strings ────────────
+//
+// Juno's Phase 4 ruling (~/workspace/report-reliability-phase4/
+// juno-ruling.md), Rulings 1–2 — byte-exact. The formats reuse
+// buildHealthSummary's average + denominator structure with her
+// two pinned corrections: sleep renders through the shared
+// compact formatter formatSleepMinutes (never decimal hours),
+// and the heart-rate line is labelled RESTING heart rate (the
+// snapshot's per-day resting HR; the server string's 'Avg Heart
+// Rate' label must not be copied). Averages and counts only: no
+// latest/min/max lines, no normative qualifiers, and no
+// heart-rate "zones" wording anywhere — intraday time-in-zone is
+// not derivable from a per-day resting series and is never
+// fabricated.
+
+/// Phase 4 — biometric zone heading (Juno Ruling 1).
+const String clinicianHeadingBiometrics = 'Biometrics';
+
+String _acrossDays(int n) => n == 1 ? 'across 1 day.' : 'across $n days.';
+
+/// Phase 4 — sleep summary line (Juno Ruling 2): the mean of the
+/// series' minutes, rounded to the nearest whole minute, then
+/// formatSleepMinutes.
+String clinicianSleepSummaryLine(ClinicianMetricSummary summary) =>
+    'Average sleep: ${formatSleepMinutes(summary.average.round())} '
+    '${_acrossDays(summary.recordedDays)}';
+
+/// Phase 4 — deep sleep summary line (Juno Ruling 2).
+String clinicianDeepSleepSummaryLine(ClinicianMetricSummary summary) =>
+    'Average deep sleep: ${formatSleepMinutes(summary.average.round())} '
+    '${_acrossDays(summary.recordedDays)}';
+
+/// Phase 4 — HRV summary line (Juno Ruling 2): the mean at
+/// exactly one decimal place, as in buildHealthSummary.
+String clinicianHrvSummaryLine(ClinicianMetricSummary summary) =>
+    'Average HRV (RMSSD): ${summary.average.toStringAsFixed(1)} ms '
+    '${_acrossDays(summary.recordedDays)}';
+
+/// Phase 4 — resting heart rate summary line (Juno Ruling 2):
+/// the mean as a whole number via the same integer conversion
+/// as buildHealthSummary (`toInt()`), so the PDF and the server
+/// summary never disagree on the same snapshot.
+String clinicianRestingHeartRateSummaryLine(
+        ClinicianMetricSummary summary) =>
+    'Average resting heart rate: ${summary.average.toInt()} bpm '
+    '${_acrossDays(summary.recordedDays)}';
+
+/// Phase 4 — HR spike summary line (Juno Ruling 2). A sampled
+/// day with a count of 0 is real data: a non-empty all-zero
+/// series renders with both slots at 0.
+String clinicianHeartRateSpikesSummaryLine(
+        ClinicianSpikeSummary summary) =>
+    'Heart rate spikes: ${summary.totalSpikes} recorded '
+    '${summary.daysWithSpikes == 1 ? 'on 1 day.' : 'on ${summary.daysWithSpikes} days.'}';
+
+/// Phase 4 — blood pressure summary line (Juno Ruling 2): means
+/// converted with the same `toInt()` as buildHealthSummary; the
+/// denominator is readings, never days.
+String clinicianBloodPressureSummaryLine(
+        ClinicianBloodPressureSummary summary) =>
+    'Average blood pressure: '
+    '${summary.averageSystolic}/${summary.averageDiastolic} mmHg '
+    '${summary.readingCount == 1 ? 'across 1 reading.' : 'across ${summary.readingCount} readings.'}';
 
 // ── Caps (spec §4.4: fixed one page, enforced by caps) ──────────
 
@@ -562,6 +628,154 @@ List<({String name, int count})> deriveTopCategories(
   return out.take(3).toList();
 }
 
+// ── Phase 4 — biometric summaries (Z3B) ──────────────────────────
+//
+// Derived ONCE here, in [ClinicianReportCollector.extend], from
+// the [ReportSnapshot] the standard pipeline already collected —
+// the clinician pipeline runs the SAME [ReportDataCollector]
+// collect, so there is no second collection path and no collector
+// change. The renderer renders these summaries and nothing else.
+//
+// Calories are deliberately NOT carried onto the clinician
+// one-pager: Juno's Phase 4 ruling (Ruling 2) rules exactly six
+// metric lines for this zone and no calories line ships — it was
+// not in the ruled set, and unruled lines do not ship. Calories
+// remain fully reported in the standard report, and their
+// availability status is still disclosed in Z8 from the section
+// metadata.
+
+/// One per-day biometric series reduced to its model summary:
+/// recorded-day count, mean, and latest value (by day). The
+/// printed zone lines render the count and the average ONLY
+/// (Juno Ruling 2: averages and counts, no latest lines); the
+/// latest value is carried in the model for completeness of the
+/// derivation and renders nowhere on the page.
+class ClinicianMetricSummary {
+  final int recordedDays;
+  final double average;
+  final double latest;
+  final String latestDayKey;
+
+  const ClinicianMetricSummary({
+    required this.recordedDays,
+    required this.average,
+    required this.latest,
+    required this.latestDayKey,
+  });
+}
+
+/// HR spike days reduced to their printed summary. Unlike the
+/// value series, a 0-count day is a real sampled day and counts
+/// toward [recordedDays] (the snapshot's own rule).
+class ClinicianSpikeSummary {
+  final int recordedDays;
+  final int totalSpikes;
+  final int daysWithSpikes;
+
+  const ClinicianSpikeSummary({
+    required this.recordedDays,
+    required this.totalSpikes,
+    required this.daysWithSpikes,
+  });
+}
+
+/// Blood pressure readings reduced to their model summary:
+/// truncated-mean and latest (by timestamp) systolic/diastolic
+/// pairs. The printed line renders the means and the reading
+/// count only (Juno Ruling 2).
+class ClinicianBloodPressureSummary {
+  final int readingCount;
+  final int averageSystolic;
+  final int averageDiastolic;
+  final int latestSystolic;
+  final int latestDiastolic;
+  final String latestDayKey;
+
+  const ClinicianBloodPressureSummary({
+    required this.readingCount,
+    required this.averageSystolic,
+    required this.averageDiastolic,
+    required this.latestSystolic,
+    required this.latestDiastolic,
+    required this.latestDayKey,
+  });
+}
+
+/// Reduces a per-day integer series (sleep minutes, deep-sleep
+/// minutes, resting HR) to its summary, or null when the series
+/// carries no usable day. Non-positive values are excluded (the
+/// founder zero rule: a 0 biometric is a failed read, never data).
+ClinicianMetricSummary? summarizeClinicianIntSeries(
+    List<(String, int)> series) {
+  final rows = [
+    for (final e in series)
+      if (e.$2 > 0) e,
+  ]..sort((a, b) => a.$1.compareTo(b.$1));
+  if (rows.isEmpty) return null;
+  final total = rows.fold<int>(0, (a, e) => a + e.$2);
+  return ClinicianMetricSummary(
+    recordedDays: rows.length,
+    average: total / rows.length,
+    latest: rows.last.$2.toDouble(),
+    latestDayKey: rows.last.$1,
+  );
+}
+
+/// Reduces a per-day double series (HRV RMSSD, ms) to its
+/// summary, or null when it carries no usable day.
+ClinicianMetricSummary? summarizeClinicianDoubleSeries(
+    List<(String, double)> series) {
+  final rows = [
+    for (final e in series)
+      if (e.$2 > 0) e,
+  ]..sort((a, b) => a.$1.compareTo(b.$1));
+  if (rows.isEmpty) return null;
+  final total = rows.fold<double>(0, (a, e) => a + e.$2);
+  return ClinicianMetricSummary(
+    recordedDays: rows.length,
+    average: total / rows.length,
+    latest: rows.last.$2,
+    latestDayKey: rows.last.$1,
+  );
+}
+
+/// Reduces the per-day HR spike counts to their summary, or null
+/// when no day was sampled. Zero-count days are kept: they are
+/// real sampled days (the snapshot's own rule).
+ClinicianSpikeSummary? summarizeClinicianSpikes(
+    List<(String, int)> series) {
+  if (series.isEmpty) return null;
+  return ClinicianSpikeSummary(
+    recordedDays: series.length,
+    totalSpikes: series.fold<int>(0, (a, e) => a + e.$2),
+    daysWithSpikes: series.where((e) => e.$2 > 0).length,
+  );
+}
+
+/// Reduces the snapshot's BP readings to their summary, or null
+/// when there are no readings. Latest is by timestamp.
+ClinicianBloodPressureSummary? summarizeClinicianBloodPressure(
+    List<ReportBpRecord> records) {
+  if (records.isEmpty) return null;
+  final rows = [...records]
+    ..sort((a, b) => a.timeEpochMs.compareTo(b.timeEpochMs));
+  // Truncated means — the same conversion buildHealthSummary
+  // uses (`toInt()`), per Juno Ruling 2's slot rules.
+  final sys =
+      (rows.fold<int>(0, (a, e) => a + e.systolic) / rows.length).toInt();
+  final dia =
+      (rows.fold<int>(0, (a, e) => a + e.diastolic) / rows.length).toInt();
+  final latest = rows.last;
+  return ClinicianBloodPressureSummary(
+    readingCount: rows.length,
+    averageSystolic: sys,
+    averageDiastolic: dia,
+    latestSystolic: latest.systolic,
+    latestDiastolic: latest.diastolic,
+    latestDayKey: dateStrOf(_dayOf(latest.timeEpochMs)),
+  );
+}
+
 // ── The clinician report data (the renderer's only input) ───────
 
 class ClinicianReportData {
@@ -586,6 +800,19 @@ class ClinicianReportData {
   final int migraineCount;
   final List<({String name, int count})> topCategories;
 
+  /// Phase 4 — biometric summaries for Z3B, derived from the
+  /// snapshot's own series in [ClinicianReportCollector.extend].
+  /// Null means the snapshot carried no usable data for that
+  /// metric; per Juno Ruling 4 the zone then omits the metric and
+  /// its availability is stated in Z8 — never a silent gap and
+  /// never a zero-filled summary.
+  final ClinicianMetricSummary? sleepSummary;
+  final ClinicianMetricSummary? deepSleepSummary;
+  final ClinicianMetricSummary? hrvSummary;
+  final ClinicianMetricSummary? restingHeartRateSummary;
+  final ClinicianSpikeSummary? heartRateSpikeSummary;
+  final ClinicianBloodPressureSummary? bloodPressureSummary;
+
   const ClinicianReportData({
     required this.snapshot,
     required this.dailyScoreSeries,
@@ -595,7 +822,38 @@ class ClinicianReportData {
     required this.flareSeverityMix,
     required this.migraineCount,
     required this.topCategories,
+    this.sleepSummary,
+    this.deepSleepSummary,
+    this.hrvSummary,
+    this.restingHeartRateSummary,
+    this.heartRateSpikeSummary,
+    this.bloodPressureSummary,
   });
+
+  /// Phase 4 — truthful emptiness for the clinician output: true
+  /// when ANY evidence exists on the page — the snapshot's own
+  /// data (logs, biometric series, conditions, medications,
+  /// documents), the stored Daily Score series, the Z4/Z5
+  /// derivations, AND the Phase 4 biometric summaries explicitly
+  /// (a data object carrying only a biometric summary is not
+  /// empty, whatever its snapshot holds). No consumer gates on
+  /// this today — the clinician pipeline intentionally still
+  /// renders the honest empty page (the empty-fixture contract) —
+  /// so the getter is pinned by tests for the consumer that
+  /// adopts it.
+  bool get hasAnyData =>
+      snapshot.hasAnyData ||
+      dailyScoreSeries.isNotEmpty ||
+      medChanges.isNotEmpty ||
+      flareDays > 0 ||
+      migraineCount > 0 ||
+      topCategories.isNotEmpty ||
+      sleepSummary != null ||
+      deepSleepSummary != null ||
+      hrvSummary != null ||
+      restingHeartRateSummary != null ||
+      heartRateSpikeSummary != null ||
+      bloodPressureSummary != null;
 
   /// The range's day span (device-local), from the snapshot's
   /// range machinery.
@@ -745,6 +1003,18 @@ class ClinicianReportCollector {
       flareSeverityMix: flare.severityMix,
       migraineCount: migraines,
       topCategories: top,
+      // Phase 4 — biometric summaries derive from the snapshot
+      // this same collect produced (no second collection path).
+      sleepSummary: summarizeClinicianIntSeries(snapshot.sleepSeries),
+      deepSleepSummary:
+          summarizeClinicianIntSeries(snapshot.deepSleepSeries),
+      hrvSummary: summarizeClinicianDoubleSeries(snapshot.hrvSeries),
+      restingHeartRateSummary:
+          summarizeClinicianIntSeries(snapshot.heartRateSeries),
+      heartRateSpikeSummary:
+          summarizeClinicianSpikes(snapshot.heartRateSpikes),
+      bloodPressureSummary:
+          summarizeClinicianBloodPressure(snapshot.bloodPressureSeries),
     );
   }
 }
