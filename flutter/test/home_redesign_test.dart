@@ -23,6 +23,7 @@ import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
+import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 import 'test_helpers.dart';
 
@@ -319,6 +320,83 @@ void main() {
     });
   });
 
+  group('header corner buttons (Vera F1/F3, Juno C3)', () {
+    Finder circleIn(Finder ancestor) => find.descendant(
+          of: ancestor,
+          matching: find.byWidgetPredicate((widget) =>
+              widget is Container &&
+              widget.decoration is BoxDecoration &&
+              (widget.decoration as BoxDecoration).shape ==
+                  BoxShape.circle),
+        );
+
+    void expectBorderedCircle(WidgetTester tester, Finder circle) {
+      expect(circle, findsOneWidget);
+      final rect = tester.getRect(circle);
+      expect(rect.width, 40);
+      expect(rect.height, 40);
+      final decoration =
+          tester.widget<Container>(circle).decoration as BoxDecoration;
+      expect(decoration.color, NotelColors.surface);
+      final border = decoration.border as Border;
+      expect(border.top.color, NotelColors.legacyDarkHairline);
+      expect(border.top.width, 1);
+    }
+
+    testWidgets(
+        'gear renders inside a 40dp bordered circle; drawer-button '
+        'hit rect is 48x48 with its 40dp circle centered; the drawer '
+        'button carries the Menu tooltip and semantics label',
+        (tester) async {
+      await _pumpHome(
+        tester,
+        physicalSize: const Size(1080, 2400),
+        entries: [_entry(id: 41, categoryId: 1, body: 'headache')],
+      );
+
+      final drawerBtn = find.byKey(const ValueKey('home_drawer_button'));
+      final gear = find.byKey(const ValueKey('home_settings_gear'));
+
+      // F3: the keyed InkWell covers the full 48x48 slot (slot
+      // edges unmoved), CircleBorder retained, and the 40dp
+      // bordered circle is centered inside it.
+      final drawerRect = tester.getRect(drawerBtn);
+      expect(drawerRect.width, 48);
+      expect(drawerRect.height, 48);
+      expect(tester.widget<InkWell>(drawerBtn).customBorder,
+          isA<CircleBorder>());
+      final drawerCircle = circleIn(drawerBtn);
+      expectBorderedCircle(tester, drawerCircle);
+      expect(tester.getRect(drawerCircle).center, drawerRect.center);
+
+      // Juno C3: accessible name 'Menu' — tooltip AND semantics.
+      expect(find.byTooltip('Menu'), findsOneWidget);
+      expect(find.bySemanticsLabel('Menu'), findsWidgets);
+      final semanticsWidget = tester.widgetList<Semantics>(find
+          .ancestor(of: drawerBtn, matching: find.byType(Semantics)));
+      expect(
+        semanticsWidget.any((s) => s.properties.label == 'Menu'),
+        isTrue,
+      );
+
+      // F1: the gear glyph (24dp, textPrimary) renders inside a
+      // 40dp bordered circle with the same construction as the
+      // hamburger, centered in the gear's 48dp slot.
+      final gearRect = tester.getRect(gear);
+      expect(gearRect.width, 48);
+      expect(gearRect.height, 48);
+      final gearCircle = circleIn(gear);
+      expectBorderedCircle(tester, gearCircle);
+      expect(tester.getRect(gearCircle).center, gearRect.center);
+      final glyph = tester.widget<Icon>(find.descendant(
+          of: gear, matching: find.byIcon(Icons.settings)));
+      expect(glyph.size, 24);
+      expect(glyph.color, NotelColors.textPrimary);
+      expect(find.byTooltip('Settings'), findsOneWidget);
+      await _drainScoreChain(tester);
+    });
+  });
+
   group('vitals pill', () {
     for (final (label, size) in [
       ('360', const Size(1080, 2400)),
@@ -346,11 +424,11 @@ void main() {
             'VITALS PILL AFTER @$label: ${pill.width} x ${pill.height}');
         // Centered by construction: the pill's center x is the
         // midpoint between the two buttons' inner edges (±1dp).
-        // The buttons are 48dp hit slots: the gear's IconButton
-        // fills its slot, while the drawer's keyed InkWell is the
-        // 40dp visual circle centered inside its 48dp slot — the
-        // slot's inner edge is the button center + 24.
-        final drawerSlotRight = drawerBtn.center.dx + 24;
+        // Both buttons are 48dp hit slots (Vera F3: the drawer's
+        // keyed InkWell now covers its full 48dp slot, with the
+        // 40dp visual circle centered inside it), so each slot's
+        // inner edge is its keyed rect's edge.
+        final drawerSlotRight = drawerBtn.right;
         final midpoint = (drawerSlotRight + gear.left) / 2;
         expect(pill.center.dx, closeTo(midpoint, 1.0));
         // Compact contract: content-width (BEFORE was 328dp wide

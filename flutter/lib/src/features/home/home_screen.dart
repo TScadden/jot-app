@@ -2129,46 +2129,60 @@ class _HomeScreenState extends State<HomeScreen> {
         leadingWidth: 48,
         centerTitle: true,
         leading: Builder(
-          builder: (drawerContext) => SizedBox(
-            width: 48,
-            height: 48,
-            child: Center(
-              child: InkWell(
-                key: const ValueKey('home_drawer_button'),
-                onTap: () => Scaffold.of(drawerContext).openDrawer(),
-                customBorder: const CircleBorder(),
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: NotelColors.surface,
-                    border: Border.all(
-                        color: NotelColors.legacyDarkHairline, width: 1),
-                  ),
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: 18,
-                          height: 3,
-                          decoration: BoxDecoration(
-                            color: NotelColors.textPrimary,
-                            borderRadius: BorderRadius.circular(2),
+          // The AppBar stretches its leading slot to the full
+          // 56dp toolbar height, so the 48x48 slot is centered
+          // explicitly (Vera F3): the keyed InkWell covers the
+          // full 48x48 slot, with the 40dp circle centered in it.
+          builder: (drawerContext) => Center(
+            child: SizedBox(
+              width: 48,
+              height: 48,
+              child: Semantics(
+                label: 'Menu',
+                button: true,
+                child: Tooltip(
+                  message: 'Menu',
+                  child: InkWell(
+                    key: const ValueKey('home_drawer_button'),
+                    onTap: () => Scaffold.of(drawerContext).openDrawer(),
+                    customBorder: const CircleBorder(),
+                    child: Center(
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: NotelColors.surface,
+                          border: Border.all(
+                              color: NotelColors.legacyDarkHairline,
+                              width: 1),
+                        ),
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 18,
+                                height: 3,
+                                decoration: BoxDecoration(
+                                  color: NotelColors.textPrimary,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              Container(
+                                width: 12,
+                                height: 3,
+                                decoration: BoxDecoration(
+                                  color: NotelColors.textPrimary,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 5),
-                        Container(
-                          width: 12,
-                          height: 3,
-                          decoration: BoxDecoration(
-                            color: NotelColors.textPrimary,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -2185,10 +2199,29 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             key: const ValueKey('home_settings_gear'),
             onPressed: () => unawaited(_openSettings()),
-            icon: const Icon(
-              Icons.settings,
-              size: 24,
-              color: NotelColors.primary,
+            // Vera F1: the glyph sits in the SAME 40dp circular
+            // construction as the leading hamburger (surface fill,
+            // 1dp legacyDarkHairline border), centered in this
+            // 48dp slot; the glyph itself is textPrimary.
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(
+              minWidth: 48,
+              minHeight: 48,
+            ),
+            icon: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: NotelColors.surface,
+                border: Border.all(
+                    color: NotelColors.legacyDarkHairline, width: 1),
+              ),
+              child: const Icon(
+                Icons.settings,
+                size: 24,
+                color: NotelColors.textPrimary,
+              ),
             ),
             tooltip: 'Settings',
           ),

@@ -108,7 +108,8 @@ void main() {
   group('Lab settings gear + full-screen Settings (V8)', () {
     testWidgets('settings button (gear): the ONLY Home header '
         'action under the redesign — Icons.settings, 24dp in '
-        'NotelColors.primary, rightmost at the surface edge; the '
+        'NotelColors.textPrimary inside a 40dp bordered circle, '
+        'rightmost at the surface edge; the '
         'person glyph and the watch button have left the header',
         (tester) async {
       // Standalone Home (not the shell): the header is the unit
@@ -148,14 +149,38 @@ void main() {
 
       expect(gear(), findsOneWidget);
       // Redesign header: the gear glyph is back — Icons.settings
-      // at 24dp in NotelColors.primary, tooltip 'Settings'
-      // unchanged. The person glyph that briefly held this slot
+      // at 24dp in NotelColors.textPrimary (Vera F1: white, as the
+      // approved mock shows), tooltip 'Settings' unchanged. The
+      // person glyph that briefly held this slot
       // and the watch button are both GONE from the Home header
       // (the watch moved into the Settings AppBar).
       final glyph = tester.widget<Icon>(find.descendant(
           of: gear(), matching: find.byIcon(Icons.settings)));
       expect(glyph.size, 24);
-      expect(glyph.color, NotelColors.primary);
+      expect(glyph.color, NotelColors.textPrimary);
+      // Vera F1: the glyph renders inside a 40dp bordered circle
+      // with the SAME construction as the leading hamburger —
+      // surface fill, 1dp legacyDarkHairline border — centered
+      // in the gear's 48dp slot (checked below).
+      final gearCircle = find.descendant(
+        of: gear(),
+        matching: find.byWidgetPredicate((widget) =>
+            widget is Container &&
+            widget.decoration is BoxDecoration &&
+            (widget.decoration as BoxDecoration).shape ==
+                BoxShape.circle),
+      );
+      expect(gearCircle, findsOneWidget);
+      final gearCircleRect = tester.getRect(gearCircle);
+      expect(gearCircleRect.width, 40);
+      expect(gearCircleRect.height, 40);
+      final gearCircleDecoration = tester
+          .widget<Container>(gearCircle)
+          .decoration as BoxDecoration;
+      expect(gearCircleDecoration.color, NotelColors.surface);
+      final gearCircleBorder = gearCircleDecoration.border as Border;
+      expect(gearCircleBorder.top.color, NotelColors.legacyDarkHairline);
+      expect(gearCircleBorder.top.width, 1);
       expect(find.byIcon(Icons.person_outlined), findsNothing);
       expect(find.byIcon(Icons.watch), findsNothing);
       expect(find.byTooltip('Settings'), findsOneWidget);
@@ -167,6 +192,8 @@ void main() {
       final gearRect = tester.getRect(gear());
       expect(gearRect.width, 48);
       expect(gearRect.height, 48);
+      // The 40dp circle is centered in that 48dp slot.
+      expect(gearCircleRect.center, gearRect.center);
       expect(gearRect.right, closeTo(800, 0.5));
       // Let the staggered-entrance delay timers fire (no pending
       // timers at teardown).
