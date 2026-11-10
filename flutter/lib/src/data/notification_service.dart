@@ -408,8 +408,8 @@ class ReminderSync {
     if (checkInEnabled) {
       await service.scheduleDaily(
         id: ReminderIds.checkIn,
-        title: 'How are you feeling?',
-        body: "Tap to log today's check in.",
+        title: 'how are you feeling?',
+        body: 'one tap is enough. whenever you\'re ready.',
         channelId: 'check_in_reminder',
         channelName: 'Check in reminders',
         hour: 4,
