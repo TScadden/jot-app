@@ -176,6 +176,48 @@ class _FakeHc extends HealthConnectService {
 
 enum _GateMode { connected, notConnected, staleProbe }
 
+/// Vera Gate 2 regression fake (PR #72) — the record-then-yield
+/// shape her concurrency probe used to falsify the old
+/// concurrent-claims attribution protocol:
+///
+/// - sleep's read records its SecurityException signal
+///   SYNCHRONOUSLY when the read starts, then yields 10 ms before
+///   returning [] — fully conforming to the service contract
+///   (the signal IS recorded before the read's future completes).
+/// - restingHr's read records a GENERIC failure (IOException)
+///   after 5 ms and returns [].
+/// - calories is healthy and returns its rows immediately.
+///
+/// Under the old concurrent protocol, calories' loader was the
+/// first continuation to run after sleep's signal was set, so
+/// calories claimed sleep's stale signal, discarded its healthy
+/// rows, and sleep's real block vanished. Attribution must land
+/// each signal on the metric that recorded it.
+class _RecordThenYieldHc extends HealthConnectService {
+  @override
+  Future<List<({String date, int mins, int deep})>> readSleepHistory(
+      int days) async {
+    lastReadErrorCode = 'SLEEP_HISTORY_READ_FAILED';
+    lastReadErrorDetails = 'SecurityException';
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    return const [];
+  }
+
+  @override
+  Future<List<({String date, int bpm})>> readRestingHrHistory(
+      int days) async {
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+    lastReadErrorCode = 'RHR_HISTORY_READ_FAILED';
+    lastReadErrorDetails = 'IOException';
+    return const [];
+  }
+
+  @override
+  Future<List<({String date, int kcal})>> readCaloriesHistory(
+          int days) async =>
+      const [(date: '2026-10-20', kcal: 2100)];
+}
+
 QuickLogCategory _cat(int id, String name) => QuickLogCategory(
     id: id,
     name: name,
@@ -408,6 +450,52 @@ void main() {
             'Data availability: Sleep: Available from stored history (1 records); '
             'DeepSleep: Available from stored history (1 records)'),
       );
+    });
+  });
+
+  group('Record-then-yield attribution (Vera Gate 2 regression)', () {
+    test('a signal recorded before a yield lands ONLY on the metric '
+        'that recorded it; the healthy metric keeps its rows; the '
+        'generic failure stays generic', () async {
+      final queries = HealthHistoryQueries(
+          hc: _RecordThenYieldHc(), store: store);
+      final union = await queries.loadRange(
+        startDate: '2026-10-19',
+        endDate: '2026-10-21',
+        metrics: {
+          HistoryMetric.sleep,
+          HistoryMetric.restingHr,
+          HistoryMetric.calories,
+        },
+      );
+      // Sleep's own SecurityException block is sleep's — it must
+      // not vanish (under the old protocol sleep reported clean
+      // and would print 'No data recorded').
+      expect(union.failed(HistoryMetric.sleep), isTrue,
+          reason: 'sleep recorded the SecurityException signal');
+      expect(union.failedWithSecurityException(HistoryMetric.sleep),
+          isTrue);
+      expect(union.failureDetails[HistoryMetric.sleep],
+          contains('SecurityException'));
+      // RestingHr's generic failure stays generic (error, not
+      // stale) — it neither inherits sleep's SecurityException
+      // nor loses its own failure.
+      expect(union.failed(HistoryMetric.restingHr), isTrue);
+      expect(union.failedWithSecurityException(HistoryMetric.restingHr),
+          isFalse);
+      expect(union.failureDetails[HistoryMetric.restingHr],
+          contains('IOException'));
+      // Calories is healthy: not failed, and its rows survive
+      // (under the old protocol calories claimed sleep's signal,
+      // was marked stale, and its rows were discarded).
+      expect(union.failed(HistoryMetric.calories), isFalse);
+      expect(union.failedWithSecurityException(HistoryMetric.calories),
+          isFalse);
+      expect(union.calories['2026-10-20'], 2100,
+          reason: 'healthy rows must not be discarded');
+      // Exactly the two real failures, nothing else.
+      expect(union.failedMetrics,
+          {HistoryMetric.sleep, HistoryMetric.restingHr});
     });
   });
 }
