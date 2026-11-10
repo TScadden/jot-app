@@ -473,6 +473,12 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
   Widget _dayRow(_ScoredDay day) {
     final row = day.row;
     final delta = day.trendDelta;
+    // Home redesign — TODAY's row gains the verdict word (the band
+    // label), styled like the day screen's concept chip. Other rows
+    // are unchanged; a null score never reaches this list.
+    final isToday = row.date == historyDateStr(DateTime.now());
+    final band =
+        isToday && row.dailyScore != null ? bandForScore(row.dailyScore!) : null;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
@@ -512,6 +518,26 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
                       ],
                     ),
                   ),
+                  if (band != null) ...[
+                    Container(
+                      key: const ValueKey('daily_score_today_verdict_chip'),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: band.color.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        band.label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: band.color,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                   if (delta != null)
                     Text(
                       delta == 0

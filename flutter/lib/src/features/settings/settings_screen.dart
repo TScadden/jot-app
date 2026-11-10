@@ -163,6 +163,12 @@ class SettingsScreen extends StatefulWidget {
   /// destination, not reached from the Settings menu).
   final bool openEventCounters;
 
+  /// Home redesign — open directly on the AI & Clinical Advocate page
+  /// instead of the main menu (the Home drawer pushes Settings this
+  /// way). Back from that page pops the route, exactly like
+  /// [openEventCounters].
+  final bool openAiKnowledge;
+
   const SettingsScreen({
     super.key,
     this.email,
@@ -184,6 +190,7 @@ class SettingsScreen extends StatefulWidget {
     this.migrationPicker,
     this.migrationShare,
     this.openEventCounters = false,
+    this.openAiKnowledge = false,
   });
 
   @override
@@ -365,7 +372,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _page = widget.openEventCounters ? _Page.eventCounters : _Page.main;
+    _page = widget.openEventCounters
+        ? _Page.eventCounters
+        : widget.openAiKnowledge
+            ? _Page.aiKnowledge
+            : _Page.main;
     _backend = widget.backend ?? TabsBackend();
     _store = widget.settingsStore ?? SettingsStore();
     _actions = widget.accountActions ??
@@ -974,6 +985,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       Navigator.of(context).pop();
       return;
     }
+    // Home redesign — same rule for a Settings pushed directly at
+    // the AI page (from the Home drawer).
+    if (widget.openAiKnowledge &&
+        _page == _Page.aiKnowledge &&
+        Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+      return;
+    }
     setState(() {
       _page = _page == _Page.progressReports ? _Page.aiKnowledge : _Page.main;
       // Round 64 — entering the AI page fresh always starts with
@@ -998,7 +1017,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // On the menu page itself nothing changes: the route pops (or
     // the app exits from the shell tab) exactly as before.
     final bool interceptBack = _page != _Page.main &&
-        !(widget.openEventCounters && _page == _Page.eventCounters);
+        !(widget.openEventCounters && _page == _Page.eventCounters) &&
+        !(widget.openAiKnowledge && _page == _Page.aiKnowledge);
     return PopScope(
       canPop: !interceptBack,
       onPopInvokedWithResult: (didPop, _) {
@@ -1024,6 +1044,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 // from the M3 default text theme).
                 fontSize: 22,
                 fontWeight: FontWeight.bold)),
+        // Home redesign — the watch/Connections action moved from
+        // the Home header into Settings' top-right corner, on the
+        // main menu page only.
+        actions: [
+          if (_page == _Page.main)
+            IconButton(
+              key: const ValueKey('settings_watch_connections'),
+              onPressed: _openConnections,
+              tooltip: 'Connections',
+              icon: const Icon(
+                Icons.watch,
+                size: 24,
+                color: NotelColors.primary,
+              ),
+            ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 110),
