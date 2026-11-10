@@ -591,6 +591,7 @@ class HealthHistoryStore {
     _lastCaptureMs = null;
     _captureDiagnostics.clear();
     _sleepTotalsRuleVersion = 1;
+    _hrvBackfillComplete = false;
     _warmed = false;
     _warmLoadedUnownedData = false;
   }
@@ -649,6 +650,22 @@ class HealthHistoryStore {
   /// Version 1 is implicit for every blob written before the
   /// version key existed.
   int get sleepTotalsRuleVersion => _sleepTotalsRuleVersion;
+
+  bool _hrvBackfillComplete = false;
+
+  /// Whether the HRV 90-day backfill has completed (B-02): true
+  /// only once a capture's HRV range read over the full window
+  /// has completed CLEANLY (no error, no partial chunks). The
+  /// capture keys its HRV window off this flag (90 days until
+  /// complete, 31 after) instead of the day count: the old
+  /// dayCount-derived `isFirst` collapsed the window to 31 as
+  /// soon as ANY sibling metric merged data, so HRV in chunks
+  /// that failed during the first capture (days 31–90) was never
+  /// re-read. Persisted in the blob; a blob written before this
+  /// key existed carries no flag and warms as NOT complete, so
+  /// an existing install re-reads the 90-day window until its
+  /// first clean HRV read lands.
+  bool get hrvBackfillComplete => _hrvBackfillComplete;
 
   final Map<String, CaptureDiagnostic> _captureDiagnostics = {};
 
@@ -751,6 +768,7 @@ class HealthHistoryStore {
       // drops that unowned-but-populated blob in full.
       if (expected != null) _ownerEmail = expected;
       _sleepTotalsRuleVersion = 1;
+      _hrvBackfillComplete = false;
       _warmed = true;
       return;
     }
@@ -764,6 +782,7 @@ class HealthHistoryStore {
       // the store unowned for its writes.
       if (expected != null) _ownerEmail = expected;
       _sleepTotalsRuleVersion = 1;
+      _hrvBackfillComplete = false;
       _warmed = true;
       return;
     }
@@ -798,6 +817,10 @@ class HealthHistoryStore {
       final srv = map['sleepTotalsRuleVersion'];
       _sleepTotalsRuleVersion =
           (srv is num && srv.toInt() >= 1) ? srv.toInt() : 1;
+      // HRV backfill flag (B-02): only a literal `true` counts;
+      // absent / invalid → NOT complete, the implicit state of
+      // every pre-B-02 blob (see [hrvBackfillComplete]).
+      _hrvBackfillComplete = map['hrvBackfillComplete'] == true;
       final diag = map['lastCaptureDiagnostics'];
       if (diag is Map) {
         for (final entry in diag.entries) {
@@ -865,6 +888,7 @@ class HealthHistoryStore {
           'ownerEmail': _ownerEmail,
           'lastCaptureMs': _lastCaptureMs,
           'sleepTotalsRuleVersion': _sleepTotalsRuleVersion,
+          'hrvBackfillComplete': _hrvBackfillComplete,
           if (_captureDiagnostics.isNotEmpty)
             'lastCaptureDiagnostics': {
               for (final e in _captureDiagnostics.entries)
@@ -899,6 +923,18 @@ class HealthHistoryStore {
     await _ensureWarmed();
     if (version <= _sleepTotalsRuleVersion) return;
     _sleepTotalsRuleVersion = version;
+    await persist();
+  }
+
+  /// Marks the HRV 90-day backfill complete and persists it
+  /// (see [hrvBackfillComplete]). Only ever moves forward: once
+  /// complete it stays complete, so a stale caller can never
+  /// resurrect the full-window re-read after a clean backfill
+  /// has landed.
+  Future<void> markHrvBackfillComplete() async {
+    await _ensureWarmed();
+    if (_hrvBackfillComplete) return;
+    _hrvBackfillComplete = true;
     await persist();
   }
 
