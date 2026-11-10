@@ -533,14 +533,84 @@ Map<String, dynamic> buildAiReportRequest(ReportSnapshot s) {
   };
 }
 
-// ── AI failure reasons (AiFailureReasons.kt port) ────────────────
+// ── AI failure classification (AiFailureReasons.kt port, Phase 3) ──
 
-enum AiRetryClass { connection, serverError, fatal }
+/// The ONE classification of an AI attempt outcome (Report
+/// Generation Reliability Phase 3). Every AI attempt outcome
+/// classifies into exactly one class, and BOTH the retry policy
+/// (retryable? / max attempts / backoff) and the recorded
+/// user-facing reason read from that single classification —
+/// [AiFailure] derives all of them from [AiFailure.failureClass]
+/// and nothing else.
+///
+/// The pre-Phase-3 mapping let the two diverge, with named
+/// consequences: an HTTP 200 whose body lacked a string `result`
+/// was fatal (1 attempt) because only the status was classified;
+/// HTTP 429 was fatal although its own reason text said "try
+/// again later"; a missing session burned 4 futile connection-
+/// class attempts because the retry class never read the
+/// no-session signal; and an unclassified throw retried as a
+/// connection failure while reporting "unknown error". A stale-
+/// token 401 (curable by the shared backend client's refresh —
+/// see tabs_backend.dart) and a client-side timeout were likewise
+/// flattened into other classes. Each class below is one of those
+/// cases, made first-class.
+enum AiFailureClass {
+  /// The server was reached and failed us: an HTTP 5xx, or an
+  /// HTTP 200 whose body lacks a string `result` (a malformed
+  /// success is a server failure, never a request failure).
+  /// Retryable, 2 attempts.
+  server,
 
-/// Port of native `AiFailureReasons`: maps a failure to its retry
-/// class and a FIXED plain-language reason string. Only the HTTP
-/// status is ever read — server/exception text never reaches the
-/// UI or the PDF.
+  /// HTTP 429 — the server explicitly asked us to slow down; its
+  /// own reason text has always said "try again later", and now
+  /// the retry policy agrees. Retryable, 2 attempts.
+  rateLimited,
+
+  /// A request was attempted, no HTTP response arrived, and the
+  /// attempt did not time out (socket/DNS/TLS/client failure).
+  /// This is the ONLY class whose reason may say "no connection"
+  /// (Juno Ruling 3). Retryable, 4 attempts, exponential backoff
+  /// (native parity).
+  connection,
+
+  /// The CLIENT abandoned the attempt: the pipeline's per-attempt
+  /// timeout fired, or the backend transport's own timeout did —
+  /// both classify identically, and neither is a connection
+  /// failure (the Nov 9, 2026 incident: the server generated the
+  /// full narrative while the client had already walked away).
+  /// Retryable, 2 attempts — a full timeout window has already
+  /// been spent per attempt, so the budget is deliberately
+  /// smaller than the connection class's.
+  timeout,
+
+  /// The session cannot authenticate this call: no stored session
+  /// at all, or an HTTP 401 that reached the pipeline — which is
+  /// by construction a POST-refresh 401 (or a failed refresh),
+  /// because [TabsBackend.postAiDetailed] routes through the
+  /// shared `_sendAuthedDetailed`, which refreshes once and
+  /// retries before ever surfacing a 401. Fatal, 1 attempt:
+  /// retrying cannot mint a session.
+  session,
+
+  /// Any other HTTP status actually received (a non-401/429 4xx):
+  /// the request itself was rejected. Fatal, 1 attempt.
+  fatalRequest,
+
+  /// The attempt threw (or returned) something no signal
+  /// classifies. Its own class: it does NOT retry under the
+  /// connection class while reporting "unknown error" (the
+  /// pre-Phase-3 divergence). Fatal, 1 attempt — an unclassified
+  /// failure gets its honest failure surface immediately rather
+  /// than silently burning attempts under a guessed class.
+  unknown,
+}
+
+/// One attempt-outcome classification: the raw signals of a single
+/// AI attempt, classified ONCE into [failureClass], from which the
+/// retry policy and the plain-language reason both derive. Only
+/// the HTTP status and the transport signals are ever read —
+/// server/exception text never reaches the UI or the PDF.
 class AiFailure {
   final int? httpStatus;
 
@@ -551,8 +621,8 @@ class AiFailure {
   final bool noResponse;
 
   /// True when the attempt itself timed out before any response
-  /// (the pipeline's 60s guard, or the backend transport's own
-  /// timeout — both classify identically).
+  /// (the pipeline's per-attempt guard, or the backend transport's
+  /// own timeout — both classify identically).
   final bool timedOut;
 
   /// True when no request was attempted because there is no stored
@@ -560,55 +630,162 @@ class AiFailure {
   /// labelled "no connection").
   final bool noSession;
 
+  /// True when an HTTP response arrived (200) but its body lacks
+  /// a string `result`: a malformed success, classified
+  /// [AiFailureClass.server].
+  final bool missingResult;
+
+  /// True when the attempt's outcome matched no other signal (the
+  /// call threw, or returned a responseless, signalless result).
+  final bool unclassified;
+
   const AiFailure(
       {this.httpStatus,
       this.noResponse = false,
       this.timedOut = false,
-      this.noSession = false});
+      this.noSession = false,
+      this.missingResult = false,
+      this.unclassified = false});
 
-  AiRetryClass get retryClass {
-    if (timedOut) return AiRetryClass.connection;
+  /// THE classification. Precedence is by signal strength: a
+  /// timeout is a timeout even when nothing came back; a missing
+  /// session means no request was attempted at all; a received
+  /// status outranks transport inference; a malformed 200 is a
+  /// server outcome; only a genuinely attempted, unanswered,
+  /// untimed-out request is a connection failure; anything left
+  /// is honestly [AiFailureClass.unknown].
+  AiFailureClass get failureClass {
+    if (timedOut) return AiFailureClass.timeout;
+    if (noSession) return AiFailureClass.session;
     final code = httpStatus;
     if (code != null) {
-      return '$code'.startsWith('5')
-          ? AiRetryClass.serverError
-          : AiRetryClass.fatal;
+      if (code == 401) return AiFailureClass.session;
+      if (code == 429) return AiFailureClass.rateLimited;
+      if ('$code'.startsWith('5')) return AiFailureClass.server;
+      if (code == 200 && missingResult) return AiFailureClass.server;
+      return AiFailureClass.fatalRequest;
     }
-    // No HTTP status: native treats its IOException family as
-    // connection failures.
-    return AiRetryClass.connection;
+    if (missingResult) return AiFailureClass.server;
+    if (noResponse) return AiFailureClass.connection;
+    return AiFailureClass.unknown;
   }
 
-  int get maxAttempts => switch (retryClass) {
-        AiRetryClass.connection => 4,
-        AiRetryClass.serverError => 2,
-        AiRetryClass.fatal => 1,
+  bool get retryable => switch (failureClass) {
+        AiFailureClass.server ||
+        AiFailureClass.rateLimited ||
+        AiFailureClass.connection ||
+        AiFailureClass.timeout =>
+          true,
+        AiFailureClass.session ||
+        AiFailureClass.fatalRequest ||
+        AiFailureClass.unknown =>
+          false,
       };
 
-  Duration backoffAfter(int completedAttempt) => switch (retryClass) {
-        AiRetryClass.connection =>
+  int get maxAttempts => switch (failureClass) {
+        AiFailureClass.connection => 4,
+        AiFailureClass.server ||
+        AiFailureClass.rateLimited ||
+        AiFailureClass.timeout =>
+          2,
+        AiFailureClass.session ||
+        AiFailureClass.fatalRequest ||
+        AiFailureClass.unknown =>
+          1,
+      };
+
+  Duration backoffAfter(int completedAttempt) => switch (failureClass) {
+        AiFailureClass.connection =>
           Duration(milliseconds: 2000 * (1 << (completedAttempt - 1).clamp(0, 10))),
-        AiRetryClass.serverError => const Duration(seconds: 2),
-        AiRetryClass.fatal => Duration.zero,
+        AiFailureClass.server ||
+        AiFailureClass.rateLimited ||
+        AiFailureClass.timeout =>
+          const Duration(seconds: 2),
+        AiFailureClass.session ||
+        AiFailureClass.fatalRequest ||
+        AiFailureClass.unknown =>
+          Duration.zero,
       };
 
-  /// Juno Ruling 3's closed set, derived SOLELY from the timedOut
-  /// flag / a received HTTP status / the no-response / no-session
-  /// signals — never from server error text or exception messages.
-  String get plainReason {
-    if (timedOut) return 'network timeout';
-    final code = httpStatus;
-    if (code == 401) return 'HTTP 401 (signed out?)';
-    if (code == 429) return 'HTTP 429 (try again later)';
-    if (code != null && '$code'.startsWith('5')) {
-      return 'HTTP $code (server error)';
-    }
-    if (code != null) return 'HTTP $code (request failed)';
-    if (noSession) return 'not signed in';
-    if (noResponse) return 'no connection';
-    return 'unknown error';
-  }
+  /// Juno Ruling 3's closed set, derived from the SAME single
+  /// classification as the retry policy above — never from server
+  /// error text or exception messages.
+  String get plainReason => switch (failureClass) {
+        AiFailureClass.timeout => 'network timeout',
+        AiFailureClass.session => httpStatus == 401
+            ? 'HTTP 401 (signed out?)'
+            : 'not signed in',
+        AiFailureClass.rateLimited => 'HTTP 429 (try again later)',
+        AiFailureClass.server => httpStatus == null
+            ? 'unknown error'
+            : '$httpStatus'.startsWith('5')
+                ? 'HTTP $httpStatus (server error)'
+                : 'HTTP $httpStatus (request failed)',
+        AiFailureClass.fatalRequest => 'HTTP $httpStatus (request failed)',
+        AiFailureClass.connection => 'no connection',
+        AiFailureClass.unknown => 'unknown error',
+      };
 }
+
+/// One recorded AI attempt (Phase 3, item 2): every attempt of a
+/// generation — including client-side classes that never reach
+/// the server (timeout, no-route) — is recorded on the outcome
+/// the [ReportGenerationService] holds, so a failed generation is
+/// inspectable after the fact instead of invisible. Generation-
+/// scoped: the record rides the held outcome/failure, it is not
+/// a persistent analytics store.
+class AiAttemptRecord {
+  /// 1-based attempt number, continuous across a held decision's
+  /// retry (the retry's attempts continue the sequence).
+  final int attempt;
+
+  /// The single classification of this attempt; null on success.
+  final AiFailureClass? failureClass;
+
+  /// The HTTP status actually received, when one arrived.
+  final int? httpStatus;
+
+  final bool succeeded;
+
+  /// When the attempt settled (the pipeline's clock).
+  final DateTime at;
+
+  const AiAttemptRecord({
+    required this.attempt,
+    required this.failureClass,
+    required this.httpStatus,
+    required this.succeeded,
+    required this.at,
+  });
+}
+
+/// Which raw-report banner a shipped raw PDF carries (Phase 3,
+/// Juno's Phase 3 ruling strings 5/5b). The two states are
+/// mutually exclusive and are selected by the state recorded at
+/// ship time: a user who explicitly chose the data-only report
+/// gets the choice banner; a raw report that ships WITHOUT that
+/// decision (a fatal-class failure's raw fallback) gets the
+/// failure banner. The rejected
+/// cause-asserting suffix appears in neither.
+enum RawReportBanner {
+  /// "RAW DATA REPORT: DATA ONLY, NO AI ANALYSIS" /
+  /// "You chose to make this report without AI analysis."
+  explicitChoice,
+
+  /// "RAW DATA REPORT: AI ANALYSIS UNAVAILABLE AT GENERATION
+  /// TIME" / "AI analysis could not be completed."
+  noChoiceFailure,
+}
+
+/// Juno's ruled decision-surface strings (Phase 3 ruling,
+/// byte-exact — verified against the ruling by byte comparison,
+/// never retyped from memory; see
+/// report_ai_reliability_phase3_test.dart).
+const aiDecisionTitle = "AI analysis couldn't be completed";
+const aiDecisionBody =
+    'Your data is safe, and the report data is ready. The AI analysis could not be completed. You can try the analysis again, or make the report with the data only and no AI analysis.';
+const aiDecisionRetryLabel = 'Try AI analysis again';
+const aiDecisionRawLabel = 'Make report without AI analysis';
 
 // ── Raw fallback summary (ReportGenerator.kt, byte format) ────────
 
@@ -1017,6 +1194,17 @@ class ReportReady extends ReportOutcome {
   final bool isRawFallback;
   final String? aiFailureReason;
 
+  /// Which banner the raw PDF carries (Phase 3): set exactly when
+  /// [isRawFallback] is true — the user's explicit choice vs. a
+  /// no-choice failure ship, recorded at ship time.
+  final RawReportBanner? rawBanner;
+
+  /// The generation's AI attempt history (Phase 3): every attempt
+  /// made for this report, including the failed attempts a held
+  /// decision's successful retry followed. Empty when no AI leg
+  /// ran (forced raw, clinician report).
+  final List<AiAttemptRecord> aiAttempts;
+
   /// Whether the automatic Downloads copy of these exact bytes
   /// landed (Juno Ruling 2: the attempt finishes before the share
   /// confirmation is shown and its outcome is carried here). Null
@@ -1029,6 +1217,8 @@ class ReportReady extends ReportOutcome {
     required this.savedPath,
     required this.isRawFallback,
     this.aiFailureReason,
+    this.rawBanner,
+    this.aiAttempts = const [],
     this.downloadsSaved,
   });
 }
@@ -1037,16 +1227,138 @@ class ReportFailed extends ReportOutcome {
   final String message;
   final bool allowRawFallback;
   final ReportSnapshot? snapshot;
+
+  /// The generation's AI attempt history (Phase 3), when the
+  /// failure came from the AI leg.
+  final List<AiAttemptRecord> aiAttempts;
+
+  /// The final AI classification's plain reason (Phase 3), when
+  /// the failure came from the AI leg.
+  final String? aiFailureReason;
+
+  /// The banner a raw ship reached from THIS failure carries
+  /// (Phase 3): a fatal AI class's raw fallback is a no-choice
+  /// failure ship; other failures (export/render) leave the raw
+  /// ship to the user's explicit tap, which is a choice.
+  final RawReportBanner rawFallbackBanner;
+
   const ReportFailed(this.message,
-      {this.allowRawFallback = false, this.snapshot});
+      {this.allowRawFallback = false,
+      this.snapshot,
+      this.aiAttempts = const [],
+      this.aiFailureReason,
+      this.rawFallbackBanner = RawReportBanner.explicitChoice});
+}
+
+/// The held AI-failure decision (Phase 3): the AI leg exhausted a
+/// RETRYABLE class, so NO PDF ships and no notification fires —
+/// the generation holds on the service as a failure until the
+/// user decides: retry ONLY the AI analysis on the already-
+/// collected data ([ReportAiDecision.resume] with retryAi true),
+/// or make the data-only report as their explicit choice
+/// (retryAi false). Juno's ruled surface (title/body/buttons) is
+/// [aiDecisionTitle] / [aiDecisionBody] / [aiDecisionRetryLabel] /
+/// [aiDecisionRawLabel]; [message] carries the final
+/// classification's plain reason for the existing failure
+/// plumbing, never as decision-surface copy.
+class ReportAiDecision extends ReportFailed {
+  /// The final attempt's single classification.
+  final AiFailureClass failureClass;
+
+  /// The continuation, built by the pipeline with the generation's
+  /// render/save/Downloads callbacks captured: re-runs ONLY the
+  /// AI leg (retryAi) on the held snapshot, or renders the raw
+  /// report with the explicit-choice banner — never re-collects.
+  /// Driven through [ReportGenerationService.resumeAiDecision],
+  /// so the resumed run keeps the service's stage/cancel/hold
+  /// lifecycle.
+  final Future<ReportOutcome> Function({
+    required bool retryAi,
+    required void Function(ReportStage stage) onStage,
+    required bool Function() isCancelled,
+  }) resume;
+
+  ReportAiDecision({
+    required String failureReason,
+    required this.failureClass,
+    required List<AiAttemptRecord> attempts,
+    required ReportSnapshot snapshot,
+    required this.resume,
+  }) : super(
+          failureReason,
+          allowRawFallback: false,
+          snapshot: snapshot,
+          aiAttempts: attempts,
+          aiFailureReason: failureReason,
+        );
+}
+
+/// The injected render step: builds the PDF bytes for a collected
+/// snapshot. [rawBanner] is set exactly when [isRawFallback] is
+/// true and selects which of Juno's two ruled banners the raw PDF
+/// carries (see [RawReportBanner]).
+typedef ReportRenderPdf = Future<List<int>> Function(
+  ReportSnapshot snapshot,
+  String? aiSummary, {
+  required bool isRawFallback,
+  RawReportBanner? rawBanner,
+});
+
+/// How one run of the AI leg ended (Phase 3): the leg is a unit
+/// the decision's retry can re-run on its own, so its endings are
+/// distinct from the generation's.
+enum _AiLegKind { success, exhausted, fatal, cancelled }
+
+class _AiLegResult {
+  final _AiLegKind kind;
+
+  /// The AI summary (success only).
+  final String? summary;
+
+  /// The full attempt history, prior attempts included.
+  final List<AiAttemptRecord> attempts;
+
+  /// The final attempt's classification (exhausted/fatal only).
+  final AiFailure? failure;
+
+  const _AiLegResult(this.kind,
+      {this.summary, this.attempts = const [], this.failure});
 }
 
 /// Runs the native snapshot pipeline: collect → (unless forced raw)
-/// AI summary with native's retry policy → render. Rendering and
-/// saving are injected so tests never touch the PDF/share layer.
+/// AI summary under the Phase 3 classification → render. Rendering
+/// and saving are injected so tests never touch the PDF/share
+/// layer.
+///
+/// Phase 3 (AI-leg reliability): the AI leg NEVER falls back to a
+/// silent raw ship. Its endings are: success (render the AI
+/// report); a FATAL class (the honest failure surfaces through
+/// the existing failure path, raw only via the user's fallback
+/// tap); exhaustion of a RETRYABLE class (the generation HOLDS as
+/// a [ReportAiDecision] — no PDF, no notification — until the
+/// user retries the AI leg on the collected data or explicitly
+/// chooses the data-only report); or cancellation.
 class ReportGenerationPipeline {
   final ReportDataCollector collector;
   final TabsBackend backend;
+
+  /// The per-attempt client timeout for the AI leg (Phase 3).
+  ///
+  /// Derivation: the largest supported generation (a full
+  /// 180-day payload) was observed server-side completing in up
+  /// to ~31s (Oct 22, 2026 evidence), and the server is being
+  /// capped at ~50s per attempt with its own retries (the Phase
+  /// 3 server PR), so a client attempt must comfortably exceed
+  /// ONE full server attempt: 90s is 1.8× that cap and ~3× the
+  /// largest observed successful generation — long enough that a
+  /// healthy generation is never abandoned (the Nov 9, 2026
+  /// incident: the client walked away from a generation the
+  /// server completed), short enough that a dead attempt surfaces
+  /// while the user is still looking at the spinner. The backend
+  /// transport budget ([TabsBackend.aiRequestTimeout]) carries
+  /// the same value, so whichever bound fires first, the
+  /// classification is the same: [AiFailureClass.timeout].
+  static const Duration aiAttemptTimeout = Duration(seconds: 90);
 
   /// Injected AI call (defaults to the backend's detailed POST).
   /// `transportFailure` carries the backend's classification of a
@@ -1064,22 +1376,85 @@ class ReportGenerationPipeline {
   /// Injected backoff delay (tests pass a no-op).
   final Future<void> Function(Duration d) delay;
 
+  /// The per-attempt timeout actually applied (test seam;
+  /// production uses [aiAttemptTimeout]).
+  final Duration attemptTimeout;
+
+  /// Clock for attempt records (test seam).
+  final DateTime Function() clock;
+
   ReportGenerationPipeline({
     required this.collector,
     required this.backend,
     this.aiCall,
     Future<void> Function(Duration d)? delay,
-  }) : delay = delay ?? ((d) => Future.delayed(d));
+    Duration? attemptTimeout,
+    DateTime Function()? clock,
+  })  : delay = delay ?? ((d) => Future.delayed(d)),
+        attemptTimeout = attemptTimeout ?? aiAttemptTimeout,
+        clock = clock ?? DateTime.now;
+
+  /// SINGLE-FLIGHT gate for AI report requests (Phase 3): at most
+  /// one AI attempt is in flight app-wide, ever. Static for the
+  /// same reason as [TabsBackend]'s shared slots: pipeline
+  /// instances are minted per generation (the page builds one per
+  /// Export tap, a held decision resumes through another), all
+  /// over one account — a per-instance gate would guard nothing.
+  /// A queued attempt fires only after the in-flight attempt has
+  /// FULLY settled; a queued attempt whose generation was
+  /// cancelled while it waited never fires at all.
+  ///
+  /// Incident trace (Nov 9, 2026): the server saw two report
+  /// requests in the same second. That pair was ONE
+  /// [TabsBackend.postAiDetailed] call — its first send raced an
+  /// in-flight token refresh (fired with the stale token, got a
+  /// 401), and its internal refresh-retry followed in the same
+  /// second because the refresh had already landed; only the 401
+  /// kept the first from burning a second Gemini generation. The
+  /// backend now waits out an in-flight refresh before its first
+  /// send (tabs_backend.dart), and this gate makes the pipeline's
+  /// own guarantee independent of any caller: no second AI
+  /// request fires while one is running.
+  /// The in-flight attempt's slot, or null when the gate is
+  /// idle. The slot exists ONLY while an attempt runs and is
+  /// cleared as it settles (the [TabsBackend] slot discipline):
+  /// a queued attempt awaits the CURRENT slot, never a chain of
+  /// settled futures.
+  static Completer<void>? _aiSlot;
+
+  Future<T> _singleFlight<T>(
+    Future<T> Function() task, {
+    required bool Function() isCancelled,
+  }) async {
+    while (true) {
+      final slot = _aiSlot;
+      if (slot == null) break;
+      await slot.future;
+      if (isCancelled()) throw const _AiAttemptCancelled();
+    }
+    final mine = Completer<void>();
+    _aiSlot = mine;
+    try {
+      return await task();
+    } finally {
+      if (identical(_aiSlot, mine)) _aiSlot = null;
+      mine.complete();
+    }
+  }
 
   Future<ReportOutcome> generate({
     required List<QuickLogCategory> selectedCategories,
     required bool last30Days,
     required ReportProfileInput profile,
     bool forceRawFallback = false,
-    required Future<List<int>> Function(
-            ReportSnapshot snapshot, String? aiSummary,
-            {required bool isRawFallback, String? aiFailureReason})
-        renderPdf,
+
+    /// The banner a forced-raw ship carries. The page passes the
+    /// held failure's [ReportFailed.rawFallbackBanner]: a fatal
+    /// AI class's raw fallback is a no-choice failure ship; the
+    /// default (an export/render failure's raw tap) is the user's
+    /// explicit choice.
+    RawReportBanner forceRawBanner = RawReportBanner.explicitChoice,
+    required ReportRenderPdf renderPdf,
     required Future<String> Function(List<int> bytes, String fileName)
         savePdf,
 
@@ -1119,95 +1494,297 @@ class ReportGenerationPipeline {
           'No patient logs or health data found in selected range.');
     }
 
-    String? aiSummary;
-    String? aiFailureReason;
-    if (!forceRawFallback) {
-      onStage?.call(ReportStage.buildingSummary);
-      final call = aiCall ??
-          (body) => backend.postAiDetailed('/api/ai/report', body);
-      var attempt = 0;
-      var maxAttempts = 1;
-      while (attempt < maxAttempts) {
-        attempt++;
-        if (cancelled()) return const ReportFailed('Cancelled');
-        ({
-          int? statusCode,
-          Map<String, dynamic>? body,
-          String? serverError,
-          AiTransportFailure? transportFailure,
-        }) res;
-        var timedOut = false;
-        try {
-          // Native caps each attempt at 60s; this outer guard is
-          // that cap, and the backend's AI transport budget now
-          // matches it (postAiDetailed runs on the dedicated 60s
-          // aiRequestTimeout — the shared 20s timeout no longer
-          // kills legitimate in-flight generations; server
-          // evidence showed a successful generation taking up to
-          // ~31s). Whichever of the two 60s bounds fires first,
-          // the classification is the same: postAiDetailed reports
-          // a transport timeout as AiTransportFailure.timeout (a
-          // timeout, NOT a "no connection"), a genuine no-response
-          // transport failure as .noResponse, and a missing
-          // session as .noSession (Juno Ruling 3). A throw out of
-          // the call itself is unclassified and lands as
-          // `unknown error`, never as a guessed "no connection".
-          res = await call(buildAiReportRequest(snapshot))
-              .timeout(const Duration(seconds: 60));
-        } on TimeoutException {
-          timedOut = true;
-          res = (
-            statusCode: null,
-            body: null,
-            serverError: null,
-            transportFailure: null,
-          );
-        } catch (_) {
-          res = (
-            statusCode: null,
-            body: null,
-            serverError: null,
-            transportFailure: null,
-          );
-        }
-        final result = res.body?['result'];
-        if (res.statusCode == 200 && result is String) {
-          aiSummary = result;
-          break;
-        }
-        final failure = AiFailure(
-          httpStatus: res.statusCode,
-          noResponse:
-              res.transportFailure == AiTransportFailure.noResponse,
-          noSession: res.transportFailure == AiTransportFailure.noSession,
-          timedOut: timedOut ||
-              res.transportFailure == AiTransportFailure.timeout,
-        );
-        aiFailureReason = failure.plainReason;
-        if (failure.retryClass == AiRetryClass.fatal) break;
-        maxAttempts =
-            failure.maxAttempts > maxAttempts ? failure.maxAttempts : maxAttempts;
-        if (attempt < maxAttempts) {
-          await delay(failure.backoffAfter(attempt));
-        }
-      }
+    if (forceRawFallback) {
+      return _renderAndFinish(
+        snapshot,
+        aiSummary: null,
+        rawBanner: forceRawBanner,
+        aiAttempts: const [],
+        renderPdf: renderPdf,
+        savePdf: savePdf,
+        saveToDownloads: saveToDownloads,
+        onStage: onStage,
+        isCancelled: cancelled,
+      );
     }
 
+    onStage?.call(ReportStage.buildingSummary);
+    final leg = await _runAiLeg(
+      snapshot,
+      priorAttempts: const [],
+      isCancelled: cancelled,
+    );
+    return _finishAiLeg(
+      leg,
+      snapshot: snapshot,
+      renderPdf: renderPdf,
+      savePdf: savePdf,
+      saveToDownloads: saveToDownloads,
+      onStage: onStage,
+      isCancelled: cancelled,
+    );
+  }
+
+  /// Maps an AI leg's ending to the generation outcome. Shared by
+  /// [generate] and by a held decision's retry, so both paths
+  /// classify, hold, and fail identically.
+  Future<ReportOutcome> _finishAiLeg(
+    _AiLegResult leg, {
+    required ReportSnapshot snapshot,
+    required ReportRenderPdf renderPdf,
+    required Future<String> Function(List<int> bytes, String fileName)
+        savePdf,
+    required Future<bool> Function(List<int> bytes, String fileName)?
+        saveToDownloads,
+    required void Function(ReportStage stage)? onStage,
+    required bool Function() isCancelled,
+  }) async {
+    switch (leg.kind) {
+      case _AiLegKind.cancelled:
+        return const ReportFailed('Cancelled');
+      case _AiLegKind.success:
+        return _renderAndFinish(
+          snapshot,
+          aiSummary: leg.summary,
+          rawBanner: null,
+          aiAttempts: leg.attempts,
+          renderPdf: renderPdf,
+          savePdf: savePdf,
+          saveToDownloads: saveToDownloads,
+          onStage: onStage,
+          isCancelled: isCancelled,
+        );
+      case _AiLegKind.fatal:
+        // A fatal class surfaces its honest failure state through
+        // the existing failure path — no decision UI (there is
+        // nothing a retry could cure), no silent raw ship. The
+        // raw fallback stays available through the page's existing
+        // affordance, and a raw ship from here is a NO-CHOICE
+        // failure ship (the user was never offered Juno's
+        // decision), so it carries the failure banner.
+        final failure = leg.failure!;
+        return ReportFailed(
+          failure.plainReason,
+          allowRawFallback: true,
+          snapshot: snapshot,
+          aiAttempts: leg.attempts,
+          aiFailureReason: failure.plainReason,
+          rawFallbackBanner: RawReportBanner.noChoiceFailure,
+        );
+      case _AiLegKind.exhausted:
+        return _decisionOutcome(
+          leg,
+          snapshot: snapshot,
+          renderPdf: renderPdf,
+          savePdf: savePdf,
+          saveToDownloads: saveToDownloads,
+        );
+    }
+  }
+
+  /// Builds the held decision outcome for an exhausted retryable
+  /// leg, with its resume continuation captured. A retry that
+  /// exhausts again builds a FRESH decision over the extended
+  /// history (through [_finishAiLeg], like any leg ending).
+  ReportAiDecision _decisionOutcome(
+    _AiLegResult leg, {
+    required ReportSnapshot snapshot,
+    required ReportRenderPdf renderPdf,
+    required Future<String> Function(List<int> bytes, String fileName)
+        savePdf,
+    required Future<bool> Function(List<int> bytes, String fileName)?
+        saveToDownloads,
+  }) {
+    final failure = leg.failure!;
+    return ReportAiDecision(
+      failureReason: failure.plainReason,
+      failureClass: failure.failureClass,
+      attempts: leg.attempts,
+      snapshot: snapshot,
+      resume: ({
+        required bool retryAi,
+        required void Function(ReportStage stage) onStage,
+        required bool Function() isCancelled,
+      }) async {
+        if (!retryAi) {
+          // The user's explicit choice: render the data-only
+          // report over the ALREADY-COLLECTED snapshot, with the
+          // choice banner recorded at ship time.
+          return _renderAndFinish(
+            snapshot,
+            aiSummary: null,
+            rawBanner: RawReportBanner.explicitChoice,
+            aiAttempts: leg.attempts,
+            renderPdf: renderPdf,
+            savePdf: savePdf,
+            saveToDownloads: saveToDownloads,
+            onStage: onStage,
+            isCancelled: isCancelled,
+          );
+        }
+        // Retry ONLY the AI analysis on the already-collected
+        // data — no re-collection (Juno's ruling assumption,
+        // verified against this architecture: the snapshot is
+        // held on the decision outcome itself).
+        onStage(ReportStage.buildingSummary);
+        final retryLeg = await _runAiLeg(
+          snapshot,
+          priorAttempts: leg.attempts,
+          isCancelled: isCancelled,
+        );
+        return _finishAiLeg(
+          retryLeg,
+          snapshot: snapshot,
+          renderPdf: renderPdf,
+          savePdf: savePdf,
+          saveToDownloads: saveToDownloads,
+          onStage: onStage,
+          isCancelled: isCancelled,
+        );
+      },
+    );
+  }
+
+  /// The AI leg: attempts under the single classification, each
+  /// recorded. Attempt numbers continue from [priorAttempts] (a
+  /// held decision's retry extends the same history).
+  Future<_AiLegResult> _runAiLeg(
+    ReportSnapshot snapshot, {
+    required List<AiAttemptRecord> priorAttempts,
+    required bool Function() isCancelled,
+  }) async {
+    final call = aiCall ??
+        (body) => backend.postAiDetailed('/api/ai/report', body);
+    final attempts = List<AiAttemptRecord>.of(priorAttempts);
+    var attempt = priorAttempts.length;
+    while (true) {
+      attempt++;
+      if (isCancelled()) {
+        return _AiLegResult(_AiLegKind.cancelled, attempts: attempts);
+      }
+      ({
+        int? statusCode,
+        Map<String, dynamic>? body,
+        String? serverError,
+        AiTransportFailure? transportFailure,
+      }) res;
+      var timedOut = false;
+      var threw = false;
+      try {
+        // Single-flight + the per-attempt timeout: the guard is
+        // the attempt's bound (see [aiAttemptTimeout] for its
+        // derivation). When it fires, the attempt classifies as
+        // [AiFailureClass.timeout] — the client's own abandonment
+        // is a first-class outcome, never a "no connection". A
+        // generate cancelled while its attempt waited at the gate
+        // (or while the attempt ran) ends as cancelled: the
+        // attempt's late result, if any, is discarded and no
+        // retry fires.
+        res = await _singleFlight(
+          () => call(buildAiReportRequest(snapshot))
+              .timeout(attemptTimeout),
+          isCancelled: isCancelled,
+        );
+      } on _AiAttemptCancelled {
+        return _AiLegResult(_AiLegKind.cancelled, attempts: attempts);
+      } on TimeoutException {
+        timedOut = true;
+        threw = true;
+        res = (
+          statusCode: null,
+          body: null,
+          serverError: null,
+          transportFailure: null,
+        );
+      } catch (_) {
+        threw = true;
+        res = (
+          statusCode: null,
+          body: null,
+          serverError: null,
+          transportFailure: null,
+        );
+      }
+      if (isCancelled()) {
+        return _AiLegResult(_AiLegKind.cancelled, attempts: attempts);
+      }
+      final result = res.body?['result'];
+      if (res.statusCode == 200 && result is String) {
+        attempts.add(AiAttemptRecord(
+          attempt: attempt,
+          failureClass: null,
+          httpStatus: 200,
+          succeeded: true,
+          at: clock(),
+        ));
+        return _AiLegResult(_AiLegKind.success,
+            summary: result, attempts: attempts);
+      }
+      // THE classification: one object, from which the retry
+      // decision below and the recorded reason both read.
+      final failure = AiFailure(
+        httpStatus: res.statusCode,
+        noResponse: res.transportFailure == AiTransportFailure.noResponse,
+        noSession: res.transportFailure == AiTransportFailure.noSession,
+        timedOut: timedOut ||
+            res.transportFailure == AiTransportFailure.timeout,
+        missingResult: res.statusCode == 200,
+        unclassified: threw && !timedOut,
+      );
+      attempts.add(AiAttemptRecord(
+        attempt: attempt,
+        failureClass: failure.failureClass,
+        httpStatus: res.statusCode,
+        succeeded: false,
+        at: clock(),
+      ));
+      if (!failure.retryable) {
+        return _AiLegResult(_AiLegKind.fatal,
+            attempts: attempts, failure: failure);
+      }
+      if (attempt - priorAttempts.length >= failure.maxAttempts) {
+        return _AiLegResult(_AiLegKind.exhausted,
+            attempts: attempts, failure: failure);
+      }
+      await delay(failure.backoffAfter(attempt - priorAttempts.length));
+      if (isCancelled()) {
+        return _AiLegResult(_AiLegKind.cancelled, attempts: attempts);
+      }
+    }
+  }
+
+  /// Render → save → Downloads, shared by every ship path (AI
+  /// success, forced raw, decision ship-raw). Cancellation is
+  /// honored at the stage boundaries exactly as PR #55 built it.
+  Future<ReportOutcome> _renderAndFinish(
+    ReportSnapshot snapshot, {
+    required String? aiSummary,
+    required RawReportBanner? rawBanner,
+    required List<AiAttemptRecord> aiAttempts,
+    required ReportRenderPdf renderPdf,
+    required Future<String> Function(List<int> bytes, String fileName)
+        savePdf,
+    required Future<bool> Function(List<int> bytes, String fileName)?
+        saveToDownloads,
+    required void Function(ReportStage stage)? onStage,
+    required bool Function() isCancelled,
+  }) async {
+    bool cancelled() => isCancelled();
     if (cancelled()) return const ReportFailed('Cancelled');
     final isRaw = aiSummary == null;
     onStage?.call(ReportStage.renderingPdf);
     List<int> bytes;
     try {
       bytes = await renderPdf(snapshot, aiSummary,
-          isRawFallback: isRaw,
-          aiFailureReason: forceRawFallback ? null : aiFailureReason);
+          isRawFallback: isRaw, rawBanner: rawBanner);
     } catch (_) {
       return ReportFailed(
-        forceRawFallback
+        isRaw
             ? 'Failed generating Raw Data report file.'
             : reportExportFailureMessage,
         allowRawFallback: true,
         snapshot: snapshot,
+        aiAttempts: aiAttempts,
       );
     }
     onStage?.call(ReportStage.savingFile);
@@ -1218,7 +1795,7 @@ class ReportGenerationPipeline {
       savedPath = await savePdf(bytes, fileName);
     } catch (_) {
       return ReportFailed(reportExportFailureMessage,
-          allowRawFallback: true, snapshot: snapshot);
+          allowRawFallback: true, snapshot: snapshot, aiAttempts: aiAttempts);
     }
     // Juno Ruling 2: the Downloads attempt finishes BEFORE the
     // ready outcome (and therefore before the share confirmation),
@@ -1239,8 +1816,17 @@ class ReportGenerationPipeline {
       fileName: fileName,
       savedPath: savedPath,
       isRawFallback: isRaw,
-      aiFailureReason: forceRawFallback ? null : aiFailureReason,
+      aiFailureReason: null,
+      rawBanner: rawBanner,
+      aiAttempts: aiAttempts,
       downloadsSaved: downloadsSaved,
     );
   }
+}
+
+/// Thrown inside the single-flight gate when a queued attempt's
+/// generation was cancelled before the attempt could fire: the
+/// request is never sent.
+class _AiAttemptCancelled implements Exception {
+  const _AiAttemptCancelled();
 }

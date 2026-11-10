@@ -467,10 +467,18 @@ void main() {
       expect(res.transportFailure, AiTransportFailure.timeout);
     });
 
-    test('budgets: shared stays 20s, the AI call gets the native 60s',
+    // RE-PIN (Report Reliability Phase 3): the AI budget rises
+    // from the native-parity 60s to 90s — the pipeline's
+    // per-attempt bound, sized to comfortably exceed one full
+    // server generation attempt (server cap ~50s; largest
+    // observed successful generation ~31s). The shared budget is
+    // unchanged.
+    test('budgets: shared stays 20s, the AI call gets 90s (Phase 3)',
         () {
       expect(TabsBackend.requestTimeout, const Duration(seconds: 20));
-      expect(TabsBackend.aiRequestTimeout, const Duration(seconds: 60));
+      expect(TabsBackend.aiRequestTimeout, const Duration(seconds: 90));
+      expect(ReportGenerationPipeline.aiAttemptTimeout,
+          const Duration(seconds: 90));
     });
 
     test(
@@ -566,6 +574,16 @@ void main() {
     });
   });
 
+  // RE-PIN (Report Reliability Phase 3): this group previously
+  // read every failure's reason off a raw-fallback ReportReady —
+  // the silent raw ship Phase 3 removes. Reasons now ride the
+  // HELD outcome (a ReportAiDecision for exhausted retryable
+  // classes, a ReportFailed for fatal ones), and several attempt
+  // counts changed with the single classification: timeout is its
+  // own class (2 attempts, was 4 as connection), 429 retries (2,
+  // was fatal at 1), noSession stops at 1 (was 4 futile
+  // connection-class attempts), and an unclassified outcome is
+  // its own fatal class (1, was 4 as connection).
   group('Item 2: pipeline reason per failure kind', () {
     Future<({ReportOutcome outcome, int calls})> runAi(
       Future<
@@ -595,14 +613,14 @@ void main() {
           snapshot,
           aiSummary, {
           required bool isRawFallback,
-          String? aiFailureReason,
+          RawReportBanner? rawBanner,
         }) async => [1, 2, 3],
         savePdf: (bytes, name) async => '/tmp/$name',
       );
       return (outcome: outcome, calls: -1);
     }
 
-    Future<({String? reason, int calls})> reasonFor(
+    Future<({String? reason, int calls, ReportOutcome outcome})> reasonFor(
       Future<
         ({
           int? statusCode,
@@ -619,7 +637,13 @@ void main() {
         calls++;
         return impl(body);
       });
-      return (reason: (r.outcome as ReportReady).aiFailureReason, calls: calls);
+      final outcome = r.outcome;
+      final reason = switch (outcome) {
+        ReportAiDecision d => d.aiFailureReason,
+        ReportFailed f => f.aiFailureReason,
+        _ => null,
+      };
+      return (reason: reason, calls: calls, outcome: outcome);
     }
 
     test(
@@ -634,7 +658,10 @@ void main() {
           ),
         );
         expect(r.reason, 'network timeout');
-        expect(r.calls, 4); // connection retry class, unchanged
+        // Phase 3 re-pin: timeout is its own retryable class,
+        // 2 attempts (was 4 under the connection class).
+        expect(r.calls, 2);
+        expect(r.outcome, isA<ReportAiDecision>());
       },
     );
 
@@ -648,7 +675,8 @@ void main() {
         ),
       );
       expect(r.reason, 'no connection');
-      expect(r.calls, 4);
+      expect(r.calls, 4); // connection class, unchanged
+      expect(r.outcome, isA<ReportAiDecision>());
     });
 
     test('backend no-session → not signed in', () async {
@@ -661,9 +689,15 @@ void main() {
         ),
       );
       expect(r.reason, 'not signed in');
+      // Phase 3 re-pin: session class is fatal — exactly 1 attempt
+      // (was 4 futile connection-class attempts).
+      expect(r.calls, 1);
+      expect(r.outcome, isA<ReportFailed>());
+      expect(r.outcome, isNot(isA<ReportAiDecision>()));
     });
 
-    test('HTTP 429 → its verbatim reason, fatal class (1 attempt)', () async {
+    test('HTTP 429 → its verbatim reason, now retryable (2 attempts)',
+        () async {
       final r = await reasonFor(
         (_) async => (
           statusCode: 429,
@@ -673,17 +707,25 @@ void main() {
         ),
       );
       expect(r.reason, 'HTTP 429 (try again later)');
-      expect(r.calls, 1);
+      // Phase 3 re-pin: 429 is retryable, as its reason text has
+      // always said (was fatal, 1 attempt).
+      expect(r.calls, 2);
+      expect(r.outcome, isA<ReportAiDecision>());
     });
 
     test('outer Dart TimeoutException → network timeout', () async {
       final r = await reasonFor((_) async => throw TimeoutException('x'));
       expect(r.reason, 'network timeout');
+      expect(r.calls, 2); // timeout class
     });
 
     test('unclassified throw → unknown error, never no connection', () async {
       final r = await reasonFor((_) async => throw StateError('weird'));
       expect(r.reason, 'unknown error');
+      // Phase 3 re-pin: unknown is its own fatal class — it no
+      // longer retries under the connection class (was 4 attempts)
+      // while reporting under another.
+      expect(r.calls, 1);
     });
 
     test('unclassified null result → unknown error', () async {
@@ -696,6 +738,7 @@ void main() {
         ),
       );
       expect(r.reason, 'unknown error');
+      expect(r.calls, 1);
     });
   });
 
@@ -769,7 +812,7 @@ void main() {
           snapshot,
           aiSummary, {
           required bool isRawFallback,
-          String? aiFailureReason,
+          RawReportBanner? rawBanner,
         }) async => [9, 8, 7, 6],
         savePdf: (bytes, name) async {
           onSave?.call(bytes, name);

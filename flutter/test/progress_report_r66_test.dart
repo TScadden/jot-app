@@ -573,7 +573,7 @@ void main() {
     Future<ReportOutcome> run(
       FakeBackend backend, {
       bool forceRaw = false,
-      void Function(String?, bool, String?)? onRender,
+      void Function(String?, bool, RawReportBanner?)? onRender,
     }) {
       final collector = ReportDataCollector(backend: backend, hc: FakeHc());
       final pipeline = ReportGenerationPipeline(
@@ -587,8 +587,8 @@ void main() {
         profile: const ReportProfileInput(),
         forceRawFallback: forceRaw,
         renderPdf: (snapshot, aiSummary,
-            {required bool isRawFallback, String? aiFailureReason}) async {
-          onRender?.call(aiSummary, isRawFallback, aiFailureReason);
+            {required bool isRawFallback, RawReportBanner? rawBanner}) async {
+          onRender?.call(aiSummary, isRawFallback, rawBanner);
           return [1, 2, 3];
         },
         savePdf: (bytes, name) async => '/tmp/$name',
@@ -609,16 +609,26 @@ void main() {
       String? seenSummary;
       bool? seenRaw;
       final outcome = await run(backend,
-          onRender: (s, raw, r) {
+          onRender: (s, raw, b) {
             seenSummary = s;
             seenRaw = raw;
           });
       expect(outcome, isA<ReportReady>());
       expect(seenSummary, '[SECTION] USER SUMMARY\nAll good.');
       expect(seenRaw, isFalse);
+      // Phase 3: the successful attempt is recorded on the outcome.
+      expect((outcome as ReportReady).aiAttempts, hasLength(1));
+      expect(outcome.aiAttempts.single.succeeded, isTrue);
+      expect(outcome.aiAttempts.single.failureClass, isNull);
     });
 
-    test('HTTP 500 retries once (2 attempts) then raw fallback', () async {
+    // RE-PIN (Report Reliability Phase 3): this case previously
+    // expected a silent raw-fallback ReportReady after 2 attempts.
+    // Phase 3 removes the silent raw ship: exhausting a retryable
+    // class HOLDS the generation as a ReportAiDecision — no PDF
+    // renders, nothing ships — until the user decides.
+    test('HTTP 500 retries once (2 attempts) then HOLDS as a decision',
+        () async {
       final backend = FakeBackend()
         ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)]
         ..aiResponse = (
@@ -627,28 +637,27 @@ void main() {
           serverError: 'x',
           transportFailure: null,
         );
-      String? seenReason;
-      bool? seenRaw;
+      var renders = 0;
       final outcome = await run(backend,
-          onRender: (s, raw, r) {
-            seenRaw = raw;
-            seenReason = r;
+          onRender: (s, raw, b) {
+            renders++;
           });
       expect(backend.aiCalls, 2);
-      expect(outcome, isA<ReportReady>());
-      expect((outcome as ReportReady).isRawFallback, isTrue);
-      expect(seenRaw, isTrue);
-      expect(seenReason, 'HTTP 500 (server error)');
-      expect(outcome.aiFailureReason, 'HTTP 500 (server error)');
+      expect(renders, 0);
+      expect(outcome, isA<ReportAiDecision>());
+      final decision = outcome as ReportAiDecision;
+      expect(decision.failureClass, AiFailureClass.server);
+      expect(decision.aiFailureReason, 'HTTP 500 (server error)');
+      expect(decision.aiAttempts, hasLength(2));
     });
 
+    // RE-PIN (Report Reliability Phase 3): a backend-classified
+    // transport timeout is its OWN retryable class now (2
+    // attempts), not the connection class (was 4 attempts + a
+    // raw-fallback ReportReady). It still never reads as
+    // "no connection" (Juno Ruling 3).
     test('transport timeout (backend-classified) is NOT no connection',
         () async {
-      // Report-pdf fix (Juno Ruling 3): the backend's shared 20s
-      // transport timeout used to collapse into a bare null and be
-      // labelled "no connection". Classified as a timeout it must
-      // produce the timeout reason — and keep the connection
-      // retry class (4 attempts).
       final backend = FakeBackend()
         ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)]
         ..aiResponse = (
@@ -658,11 +667,21 @@ void main() {
           transportFailure: AiTransportFailure.timeout,
         );
       final outcome = await run(backend);
-      expect(backend.aiCalls, 4);
-      expect(outcome, isA<ReportReady>());
-      expect((outcome as ReportReady).aiFailureReason, 'network timeout');
+      expect(backend.aiCalls, 2);
+      expect(outcome, isA<ReportAiDecision>());
+      final decision = outcome as ReportAiDecision;
+      expect(decision.failureClass, AiFailureClass.timeout);
+      expect(decision.aiFailureReason, 'network timeout');
+      expect(
+          decision.aiAttempts
+              .every((a) => a.failureClass == AiFailureClass.timeout),
+          isTrue);
     });
 
+    // RE-PIN (Report Reliability Phase 3): a 401 reaching the
+    // pipeline is a post-refresh session failure (fatal class) —
+    // it surfaces through the failure path as a ReportFailed,
+    // never as a raw ReportReady, and never as "no connection".
     test('HTTP 401 fails fast (1 attempt), reason signed out', () async {
       final backend = FakeBackend()
         ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)]
@@ -674,17 +693,32 @@ void main() {
         );
       final outcome = await run(backend);
       expect(backend.aiCalls, 1);
-      expect((outcome as ReportReady).aiFailureReason,
-          'HTTP 401 (signed out?)');
+      expect(outcome, isA<ReportFailed>());
+      expect(outcome, isNot(isA<ReportAiDecision>()));
+      final failed = outcome as ReportFailed;
+      expect(failed.message, 'HTTP 401 (signed out?)');
+      expect(failed.aiFailureReason, 'HTTP 401 (signed out?)');
+      expect(failed.allowRawFallback, isTrue);
+      expect(failed.rawFallbackBanner, RawReportBanner.noChoiceFailure);
+      expect(failed.aiAttempts, hasLength(1));
+      expect(failed.aiAttempts.single.failureClass, AiFailureClass.session);
     });
 
     test('forceRaw skips the AI call and carries no reason', () async {
       final backend = FakeBackend()
         ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)];
-      final outcome = await run(backend, forceRaw: true);
+      RawReportBanner? seenBanner;
+      final outcome = await run(backend, forceRaw: true,
+          onRender: (s, raw, b) {
+            seenBanner = b;
+          });
       expect(backend.aiCalls, 0);
       expect((outcome as ReportReady).isRawFallback, isTrue);
       expect(outcome.aiFailureReason, isNull);
+      // A forced-raw ship is the user's explicit tap: choice banner.
+      expect(seenBanner, RawReportBanner.explicitChoice);
+      expect(outcome.rawBanner, RawReportBanner.explicitChoice);
+      expect(outcome.aiAttempts, isEmpty);
     });
   });
 
@@ -727,7 +761,7 @@ void main() {
       final raw = await buildReportPdfBytes(fixtureSnapshot(),
           aiSummary: null,
           isRawFallback: true,
-          aiFailureReason: 'HTTP 500 (server error)');
+          rawBanner: RawReportBanner.noChoiceFailure);
       await File('${dir.path}/fixture_report_raw.pdf').writeAsBytes(raw);
       expect(raw.length, greaterThan(3000));
     });

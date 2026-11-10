@@ -17,10 +17,12 @@ import 'package:tabs_lab/src/data/progress_report.dart';
 ///
 /// Clean-wording rule (native): the Data Availability section maps
 /// every status to CLEAN clinical wording only. Raw exception or
-/// transport text NEVER reaches the PDF. The one founder-visible
-/// reason line is the raw-fallback banner's "AI unavailable:"
-/// line, whose reason comes from the fixed-string
-/// [AiFailure.plainReason] mapping — never free text.
+/// transport text NEVER reaches the PDF. The raw-fallback banner
+/// (Phase 3) prints one of Juno's two ruled line pairs, selected
+/// by [RawReportBanner] — the explicit-choice pair or the
+/// no-choice failure pair; the rejected
+/// cause-asserting suffix (which asserted a possibly-false
+/// cause) appears in neither.
 
 // ── Markup parsing (native summary renderer) ──────────────────────
 
@@ -411,7 +413,12 @@ Future<List<int>> buildReportPdfBytes(
   ReportSnapshot snapshot, {
   String? aiSummary,
   required bool isRawFallback,
-  String? aiFailureReason,
+
+  /// Which banner a raw PDF carries (Phase 3, Juno's ruling
+  /// strings 5/5b). Read only when [isRawFallback]; defaults to
+  /// the no-choice failure pair — a choice is never claimed that
+  /// was not recorded at ship time.
+  RawReportBanner rawBanner = RawReportBanner.noChoiceFailure,
 }) async {
   final doc = pw.Document();
   final blocks = parseSummaryBlocks(effectiveSummaryText(snapshot,
@@ -498,17 +505,26 @@ Future<List<int>> buildReportPdfBytes(
             left: 17,
             top: 1,
             child: pw.Text(
-                'RAW DATA REPORT: AI ANALYSIS UNAVAILABLE AT GENERATION TIME',
+                rawBanner == RawReportBanner.explicitChoice
+                    ? 'RAW DATA REPORT: DATA ONLY, NO AI ANALYSIS'
+                    : 'RAW DATA REPORT: AI ANALYSIS UNAVAILABLE AT GENERATION TIME',
                 style: _alertStyle),
           ),
         ]),
       ),
     ));
     y += 18;
-    if (aiFailureReason != null && aiFailureReason.isNotEmpty) {
-      place(pw.Text('AI unavailable: $aiFailureReason', style: _reasonStyle),
-          16);
-    }
+    // The banner's second line (Juno's Phase 3 ruling): the
+    // choice pair records that the omission was the user's
+    // decision; the failure pair states the honest, cause-free
+    // fact. Mutually exclusive, selected by [rawBanner].
+    place(
+        pw.Text(
+            rawBanner == RawReportBanner.explicitChoice
+                ? 'You chose to make this report without AI analysis.'
+                : 'AI analysis could not be completed.',
+            style: _reasonStyle),
+        16);
   }
 
   // Summary blocks with native wrapping heights: pdf's text layout

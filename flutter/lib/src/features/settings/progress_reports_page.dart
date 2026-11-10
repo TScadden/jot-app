@@ -384,14 +384,21 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
         last30Days: _last30Days,
         profile: _profileInput,
         forceRawFallback: forceRaw,
+        // A forced-raw ship reached from a held failure carries
+        // THAT failure's recorded banner state (Phase 3): a fatal
+        // AI class's fallback is a no-choice failure ship; any
+        // other held failure leaves the tap itself as the user's
+        // explicit choice.
+        forceRawBanner: _service.pendingFailure?.rawFallbackBanner ??
+            RawReportBanner.explicitChoice,
         onStage: onStage,
         isCancelled: isCancelled,
         renderPdf: (snapshot, aiSummary,
-                {required bool isRawFallback, String? aiFailureReason}) =>
+                {required bool isRawFallback, RawReportBanner? rawBanner}) =>
             buildReportPdfBytes(snapshot,
                 aiSummary: aiSummary,
                 isRawFallback: isRawFallback,
-                aiFailureReason: aiFailureReason),
+                rawBanner: rawBanner ?? RawReportBanner.noChoiceFailure),
         savePdf: widget.savePdf ?? _defaultSave,
         saveToDownloads: widget.saveToDownloads ?? _defaultSaveToDownloads,
       ),
@@ -818,7 +825,41 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
           ),
         ),
       ],
-      if (_failureMessage != null) ...[
+      if (_service.pendingFailure is ReportAiDecision) ...[
+        // Phase 3 — the held AI-failure decision (Juno's ruled
+        // surface, byte-exact): the AI leg exhausted a retryable
+        // class, no PDF shipped, and the generation holds until
+        // the user retries the analysis on the collected data or
+        // explicitly chooses the data-only report.
+        const Text(aiDecisionTitle,
+            style: TextStyle(
+                color: NotelColors.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600)),
+        const SizedBox(height: 6),
+        const Text(aiDecisionBody,
+            style: TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
+        const SizedBox(height: 4),
+        Row(children: [
+          TextButton(
+            onPressed: () => _service.resumeAiDecision(retryAi: true),
+            child: const Text(aiDecisionRetryLabel,
+                style: TextStyle(
+                    color: NotelColors.primary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold)),
+          ),
+          TextButton(
+            onPressed: () => _service.resumeAiDecision(retryAi: false),
+            child: const Text(aiDecisionRawLabel,
+                style: TextStyle(
+                    color: NotelColors.primary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold)),
+          ),
+        ]),
+        const SizedBox(height: 8),
+      ] else if (_failureMessage != null) ...[
         Text(_failureMessage!,
             style: const TextStyle(color: NotelColors.error, fontSize: 12)),
         if (_failureAllowRaw)
