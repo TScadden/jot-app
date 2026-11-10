@@ -564,7 +564,8 @@ void main() {
       // sheet-hosted card is gone from Home entirely.
       expect(find.byType(HomeCheckInStrip), findsOneWidget);
       expect(find.byType(FeelingCheckInCard), findsNothing);
-      expect(find.text('How are you feeling?'), findsOneWidget);
+      // Juno SS1: the strip prompt is the lowercase ruled string.
+      expect(find.text('how are you feeling?'), findsOneWidget);
       // Ruled word captions ride under the numbers.
       expect(find.text('Really bad'), findsOneWidget);
       expect(find.text('Really good'), findsOneWidget);
@@ -630,7 +631,7 @@ void main() {
 
       // Top area cleared; the score is on the card face.
       expect(find.byType(HomeCheckInStrip), findsNothing);
-      expect(find.text('How are you feeling?'), findsNothing);
+      expect(find.text('how are you feeling?'), findsNothing);
       expect(
           find.byKey(const ValueKey('todaySummaryCheckInLine')),
           findsOneWidget);
@@ -665,9 +666,14 @@ void main() {
           find.byKey(const ValueKey('todaySheetCheckInDisplayOnly')),
           findsOneWidget);
       expect(find.byType(FeelingCheckInCard), findsNothing);
-      // Prompt shows twice: the top strip (the real input, behind
-      // the sheet) + the sheet's display-only row.
-      expect(find.text('How are you feeling?'), findsNWidgets(2));
+      // The top strip (the real input, behind the sheet) carries
+      // the prompt once; the sheet's display-only row is Juno SS5
+      // verbatim: label + 'one tap up top' supporting text.
+      expect(find.text('how are you feeling?'), findsOneWidget);
+      expect(find.text('Morning Score'), findsOneWidget);
+      expect(
+          find.text("one tap up top, whenever you're ready"),
+          findsOneWidget);
 
       await tester.tap(
           find.byKey(const ValueKey('todaySheetCheckInDisplayOnly')));

@@ -371,9 +371,13 @@ void main() {
 
     // FRAME 4 — sheet_unchecked_360.
     await openSheet();
-    // Round 4: the prompt renders twice — the top strip's real
-    // input (behind the sheet) + the sheet's display-only row.
-    expect(find.text('How are you feeling?'), findsNWidgets(2));
+    // Round 4: the strip prompt renders once (behind the sheet);
+    // the sheet's display-only row is Juno SS5 ('Morning Score' +
+    // 'one tap up top, whenever you're ready').
+    expect(find.text('how are you feeling?'), findsOneWidget);
+    expect(find.text('Morning Score'), findsOneWidget);
+    expect(find.text("one tap up top, whenever you're ready"),
+        findsOneWidget);
     await capture('sheet_unchecked_360', 1080, 2400);
     await tester.tapAt(const Offset(180, 20));
     await tester.pump();

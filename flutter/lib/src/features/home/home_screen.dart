@@ -2099,12 +2099,12 @@ class _HomeScreenState extends State<HomeScreen> {
           // one input lives. No numerals, no checkbox, no tap
           // target — the input is the top strip on Home behind
           // this sheet.
-          return const Padding(
-            key: ValueKey('todaySheetCheckInDisplayOnly'),
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          return Padding(
+            key: const ValueKey('todaySheetCheckInDisplayOnly'),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Semantics(
               label: kSheetCheckInUnscoredSemantics,
-              child: ExcludeSemantics(
+              child: const ExcludeSemantics(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,

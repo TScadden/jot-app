@@ -100,7 +100,7 @@ class HomeCheckInStrip extends StatelessWidget {
       children: [
         // The prompt is the control's label, not a focusable
         // element (Juno §6): semantics carry the full question.
-        const Semantics(
+        Semantics(
           label: kHomeCheckInPromptSemantics,
           child: ExcludeSemantics(
             child: Text(
