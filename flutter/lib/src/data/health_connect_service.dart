@@ -227,8 +227,18 @@ class HealthConnectService {
   /// grants, steps probe) — an extra awaited storage read on
   /// that path is an observable behavior change for its
   /// un-migrated consumers.
+  ///
+  /// [stopOnAvailabilityError] is [getStatus]'s half of the same
+  /// legacy contract (Vera Item 3): base `getStatus()` called
+  /// `isAvailable()` FIRST and propagated its throw, so the grant
+  /// layer was never consulted on an availability failure. The
+  /// public probe passes false and keeps reading the grant layer
+  /// for its snapshot; [getStatus] passes true and rethrows the
+  /// recorded availability failure from the short-circuited
+  /// snapshot before any grant-derived return or persist.
   Future<HcAvailability> _probeAvailability(
-      {required bool readPersisted}) async {
+      {required bool readPersisted,
+      bool stopOnAvailabilityError = false}) async {
     var persisted = false;
     if (readPersisted) {
       try {
@@ -239,12 +249,16 @@ class HealthConnectService {
       }
     }
     String? bridgeErrorCode;
+    HealthConnectException? availabilityError;
+    HealthConnectException? grantError;
     bool? available;
     try {
       available = await isAvailable();
     } catch (e) {
-      bridgeErrorCode =
-          e is HealthConnectException ? e.code : 'UNKNOWN';
+      availabilityError = e is HealthConnectException
+          ? e
+          : HealthConnectException('UNKNOWN', e.toString());
+      bridgeErrorCode = availabilityError.code;
       available = null;
     }
     if (available == false) {
@@ -252,6 +266,22 @@ class HealthConnectService {
         serviceAvailable: false,
         grantedPermissions: null,
         bridgeErrorCode: bridgeErrorCode,
+        availabilityError: availabilityError,
+        grantError: grantError,
+        stepsProbe: null,
+        persistedConnected: persisted,
+      );
+    }
+    if (available == null && stopOnAvailabilityError) {
+      // Availability errored and the caller is getStatus():
+      // short-circuit with the failure recorded — the grant
+      // layer stays unread, exactly as base's throw left it.
+      return HcAvailability(
+        serviceAvailable: false,
+        grantedPermissions: null,
+        bridgeErrorCode: bridgeErrorCode,
+        availabilityError: availabilityError,
+        grantError: grantError,
         stepsProbe: null,
         persistedConnected: persisted,
       );
@@ -261,8 +291,10 @@ class HealthConnectService {
       final missing = await getMissingPermissions();
       granted = requiredPermissions.difference(missing);
     } catch (e) {
-      bridgeErrorCode ??=
-          e is HealthConnectException ? e.code : 'UNKNOWN';
+      grantError = e is HealthConnectException
+          ? e
+          : HealthConnectException('UNKNOWN', e.toString());
+      bridgeErrorCode ??= grantError.code;
       granted = null;
     }
     // The Steps read probe runs ONLY on a full grant (the legacy
@@ -276,6 +308,8 @@ class HealthConnectService {
       serviceAvailable: available ?? false,
       grantedPermissions: granted,
       bridgeErrorCode: bridgeErrorCode,
+      availabilityError: availabilityError,
+      grantError: grantError,
       stepsProbe: stepsProbe,
       persistedConnected: persisted,
     );
@@ -286,15 +320,30 @@ class HealthConnectService {
   ///
   /// Phase 2: re-implemented OVER [probeAvailability] with the
   /// EXACT legacy contract preserved for un-migrated consumers
-  /// (onboarding, background): a bridge failure whose grant layer
-  /// stays unknown throws [HealthConnectException] with the
-  /// bridge's code (as the legacy isAvailable /
-  /// getGrantedPermissions throws did); a stale/wedged full grant
-  /// throws [staleGrantCode] and persists NOTHING (Juno J3); a
-  /// full healthy grant persists the granted set before returning
+  /// (onboarding, background): a bridge failure propagates
+  /// EXACTLY as the legacy direct calls threw it — the recorded
+  /// availability failure first (code AND native message, before
+  /// any grant-derived return or persist; the grant layer is not
+  /// even read, per [stopOnAvailabilityError]), then the recorded
+  /// grant failure (again code AND native message, nothing
+  /// persisted); a stale/wedged full grant throws
+  /// [staleGrantCode] and persists NOTHING (Juno J3); a full
+  /// healthy grant persists the granted set before returning
   /// [HealthConnectStatus.connected].
   Future<HealthConnectStatus> getStatus() async {
-    final snapshot = await _probeAvailability(readPersisted: false);
+    final snapshot = await _probeAvailability(
+        readPersisted: false, stopOnAvailabilityError: true);
+    // Vera Item 3 parity: base getStatus() threw the isAvailable()
+    // failure before touching the grant layer, and the
+    // getGrantedPermissions() failure in place of any status.
+    // The probe recorded both failures verbatim (the actual
+    // HealthConnectException each bridge call threw); rethrow
+    // them in base's order, before deriving or persisting
+    // anything.
+    final availabilityError = snapshot.availabilityError;
+    if (availabilityError != null) throw availabilityError;
+    final grantError = snapshot.grantError;
+    if (grantError != null) throw grantError;
     final status = snapshot.status;
     if (status == null) {
       throw HealthConnectException(
@@ -1329,6 +1378,23 @@ class HcAvailability {
   /// for logs only, never rendered.
   final String? bridgeErrorCode;
 
+  /// The availability layer's actual failure, verbatim (the
+  /// [HealthConnectException] `isAvailable()` threw — code AND
+  /// native message), when that step errored; null when it
+  /// answered. Recorded so [HealthConnectService.getStatus] can
+  /// propagate the failure EXACTLY as base did (Vera Item 3):
+  /// probing stays throw-free, but the legacy status contract
+  /// throws, and it throws THIS, not a synthesized generic.
+  final HealthConnectException? availabilityError;
+
+  /// The grant layer's actual failure, verbatim (the
+  /// [HealthConnectException] the granted-permissions read
+  /// threw — code AND native message), when that step errored;
+  /// null when the grant layer answered (or was never read).
+  /// Rides the same getStatus() rethrow as [availabilityError],
+  /// after it.
+  final HealthConnectException? grantError;
+
   /// The Steps read probe's outcome; null when not run (the
   /// grant was not full, so the probe could prove nothing).
   final HcReadProbeOutcome? stepsProbe;
@@ -1340,6 +1406,8 @@ class HcAvailability {
     required this.serviceAvailable,
     required this.grantedPermissions,
     required this.bridgeErrorCode,
+    this.availabilityError,
+    this.grantError,
     required this.stepsProbe,
     required this.persistedConnected,
   });
