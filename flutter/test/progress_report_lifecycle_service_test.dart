@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
+import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/progress_report.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/report_generation_service.dart';
@@ -101,6 +102,43 @@ class _FakeBackend extends TabsBackend {
 class _FakeHcDisconnected extends HealthConnectService {
   @override
   Future<bool> isConnected() async => false;
+
+  // Report Reliability Phase 1: the collector no longer consults
+  // isConnected() — it always runs the union load. This fake
+  // therefore answers the range reads in-memory too (empty, no
+  // failure recorded), so generation never touches the platform
+  // channel from a widget test's fake-async zone (the deadlock
+  // this file's harness already guards against). The lifecycle
+  // behavior under test is unchanged: at base the gate produced
+  // empty HC sections; now the union produces the same empty
+  // sections from clean empty reads.
+  @override
+  Future<Set<String>> getMissingPermissions() async =>
+      HealthConnectService.requiredPermissions;
+
+  @override
+  Future<List<({String date, int mins, int deep})>> readSleepHistory(
+          int days) async =>
+      const [];
+
+  @override
+  Future<List<({String date, int bpm})>> readRestingHrHistory(
+          int days) async =>
+      const [];
+
+  @override
+  Future<List<({String date, int kcal})>> readCaloriesHistory(
+          int days) async =>
+      const [];
+
+  @override
+  Future<List<({String date, int count})>> readSpikeCounts(int days) async =>
+      const [];
+
+  @override
+  Future<List<({int t, double ms, int tier})>> readHrvSamples(
+          int days) async =>
+      const [];
 }
 
 class _FakeReportReadyNotifier implements ReportReadyNotifier {
@@ -253,6 +291,19 @@ class _Harness {
 }
 
 void main() {
+  // Phase 1 harness note (see _FakeHcDisconnected): the union
+  // load reads the shared history store, so install the same
+  // in-memory singleton backing the other report suites use.
+  setUp(() {
+    final mem = <String, String>{};
+    HealthHistoryStore.instance.debugSetStore(
+      read: (k) async => mem[k],
+      write: (k, v) async => mem[k] = v,
+      delete: (k) async => mem.remove(k),
+    );
+    HealthHistoryStore.instance.debugReset();
+  });
+
   testWidgets(
       '(a) generation started, page disposed via in-app navigation, '
       'run completes and the PDF file exists', (tester) async {
