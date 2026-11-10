@@ -151,9 +151,23 @@ class HeartDataCache {
   /// "Synced just now" over dead reads (founder defect #3) — and it
   /// must not wipe a previously cached series for the date either.
   /// The cached data (if any) is returned unchanged.
+  ///
+  /// B-01 empty-overwrite refusal: an apply whose valid series is
+  /// EMPTY must never overwrite a previously cached NON-EMPTY series
+  /// for the date, whatever [succeeded] says — an empty result
+  /// carries no evidence the day's data is gone (a partial chunked
+  /// read that collected nothing arrives exactly like this), so the
+  /// cached series is returned unchanged and freshness is not
+  /// re-stamped. This guard lives here, not only in callers, so
+  /// every apply caller is protected. A clean empty apply on a date
+  /// with nothing (or only an empty series) cached is unchanged.
   HeartDayData apply(String dateStr, List<HrSample> raw,
       {DateTime? now, String? ownerEmail, bool succeeded = true}) {
     final valid = validHrSamples(raw);
+    final cachedSeries = _byDate[dateStr];
+    if (valid.isEmpty && cachedSeries != null && cachedSeries.isNotEmpty) {
+      return HeartDayData.fromSamples(cachedSeries);
+    }
     if (!succeeded) {
       final existing = _byDate[dateStr];
       if (existing != null) return HeartDayData.fromSamples(existing);
