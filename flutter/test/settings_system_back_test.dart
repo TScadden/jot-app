@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
+import 'package:tabs_lab/src/features/connections/connections_screen.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 
 import 'settings_r29_test.dart' as r29;
@@ -50,6 +51,7 @@ SettingsStore _store(Map<String, String> map) => SettingsStore.withStorage(
 Future<void> pumpPushedSettings(
   WidgetTester tester, {
   bool openEventCounters = false,
+  bool openAiKnowledge = false,
 }) async {
   tester.view.physicalSize = const Size(1080, 3400);
   tester.view.devicePixelRatio = 1.0;
@@ -70,6 +72,7 @@ Future<void> pumpPushedSettings(
                   healthConnectService: FakeHCService(),
                   urlLauncher: (uri) async => true,
                   openEventCounters: openEventCounters,
+                  openAiKnowledge: openAiKnowledge,
                 ),
               ),
             ),
@@ -195,6 +198,69 @@ void main() {
       await systemBack(tester);
 
       expectPoppedToLauncher(tester);
+    });
+
+    // Home redesign mirror: the drawer's "AI Advocate" row pushes
+    // Settings with openAiKnowledge, modeled exactly on
+    // openEventCounters — it must land on the AI page and system
+    // back must pop straight to the caller (Home), NOT step to
+    // the Settings menu.
+    testWidgets(
+        'pushed straight at AI Knowledge (openAiKnowledge): lands on '
+        'the AI page; system back pops to the caller', (tester) async {
+      await pumpPushedSettings(tester, openAiKnowledge: true);
+      expect(appBarTitle(tester), 'AI & Clinical Advocate');
+
+      await systemBack(tester);
+
+      expectPoppedToLauncher(tester);
+    });
+
+    testWidgets(
+        'openAiKnowledge: the AppBar arrow also pops to the caller',
+        (tester) async {
+      await pumpPushedSettings(tester, openAiKnowledge: true);
+      expect(appBarTitle(tester), 'AI & Clinical Advocate');
+
+      await tester.tap(find.descendant(
+        of: find.byType(AppBar),
+        matching: find.byIcon(Icons.arrow_back),
+      ));
+      await tester.pumpAndSettle();
+
+      expectPoppedToLauncher(tester);
+    });
+
+    // Home redesign: the watch IconButton lives in the Settings
+    // AppBar now, gated to the main menu page.
+    testWidgets(
+        'watch button: present on the main page only, and tapping it '
+        'pushes Connections', (tester) async {
+      const watchKey = ValueKey('settings_watch_connections');
+      await pumpPushedSettings(tester);
+      expect(find.byKey(watchKey), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(watchKey),
+          matching: find.byIcon(Icons.watch),
+        ),
+        findsOneWidget,
+      );
+
+      // Sub-page: the button leaves the AppBar.
+      await tester.tap(find.byKey(const ValueKey('menu_user_profile')));
+      await tester.pumpAndSettle();
+      expect(appBarTitle(tester), 'User Profile');
+      expect(find.byKey(watchKey), findsNothing);
+
+      // Back to the menu; the button returns and pushes
+      // ConnectionsScreen.
+      await systemBack(tester);
+      expectOnMenu(tester);
+      expect(find.byKey(watchKey), findsOneWidget);
+      await tester.tap(find.byKey(watchKey));
+      await tester.pumpAndSettle();
+      expect(find.byType(ConnectionsScreen), findsOneWidget);
     });
   });
 }

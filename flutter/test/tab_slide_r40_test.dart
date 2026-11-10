@@ -188,7 +188,11 @@ void main() {
     await tester.pumpWidget(shell());
     await settleTabs(tester);
     await tester.pump(const Duration(milliseconds: 600));
-    final todayDx = tester.getTopLeft(find.text('Today')).dx;
+    // Redesign: the "Today" title text is gone from Home — the
+    // vitals pill (the AppBar title) is the fixed Home anchor
+    // whose dx proves the page did not move.
+    final pillKey = find.byKey(const ValueKey('vitalsStripCompact'));
+    final todayDx = tester.getTopLeft(pillKey).dx;
 
     await tester.tap(dockIcon(Icons.home)); // already on Home
     await tester.pump();
@@ -198,7 +202,7 @@ void main() {
     expect(mountedSlots(tester), 1);
     expect(slotDx(tester, slot0), 0);
     expect(find.byKey(homeKey), findsOneWidget);
-    expect(tester.getTopLeft(find.text('Today')).dx, todayDx);
+    expect(tester.getTopLeft(pillKey).dx, todayDx);
     expect(tester.takeException(), isNull);
   });
 

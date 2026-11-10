@@ -409,12 +409,22 @@ void main() {
         );
         await pumpHome(tester, backend);
 
+        // Home redesign: the check-in no longer renders in the Home
+        // body — it is hosted inside the Today Summary sheet. It is
+        // absent until the summary card is tapped open.
+        expect(find.text('How are you feeling?'), findsNothing);
+        await tester.tap(find.text('Today Summary'));
+        // Fixed pumps, not pumpAndSettle: the loaded weather icon
+        // in the summary header animates indefinitely.
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+        await tester.pump();
         expect(find.text('How are you feeling?'), findsOneWidget);
-        // Card is the first content on Home: it sits above the vitals strip.
-        final cardY = tester.getTopLeft(find.text('How are you feeling?')).dy;
-        expect(cardY, lessThan(200));
 
-        await tester.tap(find.text('3'));
+        await tester.tap(find.descendant(
+          of: find.byType(FeelingCheckInCard),
+          matching: find.text('3'),
+        ));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
         await tester.pump();
@@ -460,6 +470,14 @@ void main() {
         ),
       );
       await pumpHome(tester, backend);
+      // Neither the number card nor the summary renders in the Home
+      // body under the redesign; the summary shows inside the sheet.
+      expect(find.text('How are you feeling?'), findsNothing);
+      expect(find.text('5 · Really good'), findsNothing);
+      await tester.tap(find.text('Today Summary'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pump();
       expect(find.text('How are you feeling?'), findsNothing);
       expect(find.text('5 · Really good'), findsOneWidget);
     });

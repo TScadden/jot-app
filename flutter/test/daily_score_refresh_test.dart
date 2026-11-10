@@ -706,10 +706,15 @@ void main() {
               true,
         ),
       ));
+      final semantics = tester.ensureSemantics();
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump();
-      expect(find.byType(DailyScoreCircle), findsOneWidget);
+      // Redesign: the header pairing is gone — the corner band
+      // carries the bare face (DailyScoreFace); tapping it opens
+      // the score screen exactly as the pairing did.
+      expect(find.byType(DailyScoreCircle), findsNothing);
+      expect(find.byType(DailyScoreFace), findsOneWidget);
       expect(find.text('62'), findsOneWidget);
 
       // A refresh of today persists a new score (the exact write
@@ -718,7 +723,7 @@ void main() {
       // (_openDailyScore → _loadDailyScore) must surface it.
       await store.replaceScore(todayStr,
           dailyScore: 100, scoreHrv: 100, scoreRestingHr: 100);
-      await tester.tap(find.byType(DailyScoreCircle));
+      await tester.tap(find.byType(DailyScoreFace));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pump();
@@ -727,9 +732,16 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pump();
-      expect(find.byType(DailyScoreCircle), findsOneWidget);
+      expect(find.byType(DailyScoreFace), findsOneWidget);
       expect(find.text('100'), findsOneWidget);
-      expect(find.text('Great'), findsOneWidget);
+      // No verdict text on Home under the redesign; the verdict
+      // rides the face's semantics label.
+      expect(find.text('Great'), findsNothing);
+      expect(
+        find.bySemanticsLabel(RegExp(r'^Daily Score 100, Great')),
+        findsOneWidget,
+      );
+      semantics.dispose();
     });
   });
   // ── Founder amendment (Oct 20, 2026): snapshot-first +
@@ -1063,13 +1075,25 @@ void main() {
               true,
         ),
       ));
+      final semantics = tester.ensureSemantics();
       for (var i = 0; i < 5; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }
-      expect(find.byType(DailyScoreCircle), findsOneWidget);
-      expect(find.text('Waiting'), findsOneWidget);
+      // Redesign: the bare face renders the pending state as its
+      // '--' null number; the pairing's visible 'Waiting' text is
+      // gone, and the pending state reaches assistive tech via
+      // the semantics label instead.
+      expect(find.byType(DailyScoreCircle), findsNothing);
+      expect(find.byType(DailyScoreFace), findsOneWidget);
+      expect(find.text('Waiting'), findsNothing);
       expect(find.text('Building'), findsNothing);
+      expect(
+        find.bySemanticsLabel(
+            RegExp(r"^Daily Score, waiting for today's health data")),
+        findsOneWidget,
+      );
       expect((await store.readAll())[todayStr]!.dailyScore, isNull);
+      semantics.dispose();
     });
 
     testWidgets(

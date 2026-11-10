@@ -40,20 +40,36 @@ class VitalsStrip extends StatelessWidget {
   /// count-up gate already fired): numbers render instantly.
   final bool animateCountUps;
 
-  const VitalsStrip({super.key, this.vitals, this.animateCountUps = true});
+  /// Home redesign — compact variant for the AppBar title slot: tighter
+  /// padding (h10/v8), tighter divider slots (h1), no outer margin, and
+  /// content width instead of the body column's full width. Icons (16),
+  /// values (14sp bold), cell order, radius and scrim are unchanged.
+  final bool compact;
+
+  const VitalsStrip(
+      {super.key,
+      this.vitals,
+      this.animateCountUps = true,
+      this.compact = false});
 
   @override
   Widget build(BuildContext context) {
     final v = vitals;
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
+      key: compact ? const Key('vitalsStripCompact') : null,
+      margin: compact
+          ? EdgeInsets.zero
+          : const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
       decoration: BoxDecoration(
         color: NotelColors.legacyDarkScrim,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: NotelColors.legacyDarkHairline, width: 1),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
+      padding: compact
+          ? const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0)
+          : const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
       child: Row(
+        mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -136,11 +152,98 @@ class VitalsStrip extends StatelessWidget {
 
   Widget _divider() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2.0),
+      padding: EdgeInsets.symmetric(horizontal: compact ? 1.0 : 2.0),
       child: Container(
         width: 1,
         height: 16,
         color: NotelColors.legacyDarkDivider,
+      ),
+    );
+  }
+}
+
+/// One streak pill — the exact construction [HomeStreakRow] has always
+/// used (height 34, radius 8, surfaceHigh @ 15% fill, white @ 8% border,
+/// glyph 12sp + value 12sp bold), shared by the row and the redesign's
+/// vertical stack so the two never drift.
+Widget streakPill({required String glyph, required Widget value}) {
+  return Container(
+    height: 34,
+    decoration: BoxDecoration(
+      color: NotelColors.surfaceHigh.withValues(alpha: 0.15),
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(
+        color: const Color(0xFFFFFFFF).withValues(alpha: 0.08),
+        width: 1,
+      ),
+    ),
+    padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(glyph, style: const TextStyle(fontSize: 12)),
+        const SizedBox(width: 4),
+        value,
+      ],
+    ),
+  );
+}
+
+/// Home redesign — the streak pills as a vertical stack for the corner
+/// band: 🏆 BEST on TOP, 🔥 CURRENT under it (tweak 5), 8dp gap, hug
+/// content width, left aligned. The pair is ONE combined tap target,
+/// exactly as in [HomeStreakRow]; null values render `--` via CountUp.
+class HomeStreakStack extends StatelessWidget {
+  final int? currentStreak;
+  final int? bestStreak;
+  final bool animateCountUps;
+  final VoidCallback? onStreakTap;
+
+  const HomeStreakStack({
+    super.key,
+    this.currentStreak,
+    this.bestStreak,
+    this.animateCountUps = true,
+    this.onStreakTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      key: const Key('homeStreakPills'),
+      behavior: HitTestBehavior.opaque,
+      onTap: onStreakTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          streakPill(
+            glyph: '🏆',
+            value: CountUp(
+              value: bestStreak,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: NotelColors.streakGold,
+              ),
+              animate: animateCountUps,
+            ),
+          ),
+          const SizedBox(height: 8),
+          streakPill(
+            glyph: '🔥',
+            value: CountUp(
+              value: currentStreak,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: NotelColors.warning,
+              ),
+              animate: animateCountUps,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -261,27 +364,6 @@ class HomeStreakRow extends StatelessWidget {
   Widget _streakPill({
     required String glyph,
     required Widget value,
-  }) {
-    return Container(
-      height: 34,
-      decoration: BoxDecoration(
-        color: NotelColors.surfaceHigh.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: const Color(0xFFFFFFFF).withValues(alpha: 0.08),
-          width: 1,
-        ),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Text(glyph, style: const TextStyle(fontSize: 12)),
-          const SizedBox(width: 4),
-          value,
-        ],
-      ),
-    );
-  }
+  }) =>
+      streakPill(glyph: glyph, value: value);
 }

@@ -109,6 +109,21 @@ class TodaySummaryCard extends StatefulWidget {
   /// notification tap handler share ONE state.
   final MigraineController? migraineController;
 
+  /// Home redesign — optional builder for the check-in section hosted
+  /// inside this card's summary SHEET. Home passes a builder returning
+  /// its FeelingCheckInCard / CheckInSummaryCard; ALL check-in state
+  /// and commits stay in Home — the card only hosts the widget. Null
+  /// (standalone card mounts) renders no check-in section.
+  final Widget Function(BuildContext context)? checkInBuilder;
+
+  /// Seventh founder ruling (Nov 9, 2026) — a plain widget rendered
+  /// at the right end of the card's header row, level with the
+  /// 'Today Summary' title (Home passes its weather element). It is
+  /// a SIBLING of the header's tappable region, never inside it, so
+  /// its own tap target keeps its own behavior and never triggers
+  /// the summary sheet.
+  final Widget? headerTrailing;
+
   const TodaySummaryCard({
     super.key,
     this.backend,
@@ -117,6 +132,8 @@ class TodaySummaryCard extends StatefulWidget {
     this.summaryCache,
     this.sessionStore,
     this.migraineController,
+    this.checkInBuilder,
+    this.headerTrailing,
   });
 
   @override
@@ -134,11 +151,41 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
   bool _ownsMigraine = false;
   Timer? _migraineTimer;
 
-  // Founder rule: collapsed at every mount (see class doc).
-  bool _expanded = false;
-
   TodaySummaryData? _data;
   bool _trendsRefreshing = false;
+
+  /// Home redesign — the card no longer expands in place; its tap
+  /// opens a modal sheet (hosted here so the sheet shares [_loader],
+  /// [_actionChain], and the reconciling reload). While the sheet is
+  /// open, card setStates bump [_sheetTick] (see the [setState]
+  /// override) so the sheet re-reads the card's current data.
+  bool _sheetOpen = false;
+  final ValueNotifier<int> _sheetTick = ValueNotifier<int>(0);
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    if (_sheetOpen && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_sheetOpen && mounted) _sheetTick.value++;
+      });
+    }
+  }
+
+  /// Home redesign (coordinator ruling R1) — finish-line progress:
+  /// resolved = taken + skipped + completed, i.e. everything that is
+  /// no longer an OPEN item. `buildTodayPlan` already excludes
+  /// resolved items (skipped doses included) from `items`, so
+  /// progress = (plannedCount − items.length) / plannedCount.
+  /// Null when there is no honest value (no data, or nothing planned).
+  double? get _progress {
+    final data = _data;
+    if (data == null) return null;
+    final planned = data.plan.plannedCount;
+    if (planned == 0) return null;
+    final resolved = planned - data.plan.items.length;
+    return (resolved / planned).clamp(0.0, 1.0);
+  }
 
   /// Background write chain for plan actions (Nov 2, 2026 fix).
   /// Taps NEVER wait on this chain — the slide-away is optimistic
@@ -222,7 +269,6 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
         _exitingItemId = null;
       }
     });
-    _collapseIfLastRemoved(itemId);
   }
 
   /// Slot callback: the slide + gap-close finished.
@@ -235,27 +281,6 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
         _exitingItemId = null;
       }
     });
-    _collapseIfLastRemoved(itemId);
-  }
-
-  /// Founder section rule: auto-collapse ONLY when a check-off has
-  /// removed the last remaining plan item. Any items left — visible
-  /// or still sliding out — keep the section exactly as open as it
-  /// was.
-  /// Round 41: the reloaded plan already EXCLUDES the removed item,
-  /// so an empty list is exactly the collapse case (the R35
-  /// early-return on empty assumed the completed item still sat in
-  /// the data).
-  void _collapseIfLastRemoved(String removedId) {
-    if (!mounted || !_expanded || _data == null) return;
-    final items = _data!.plan.items;
-    final remaining = items
-        .where((i) =>
-            i.id != removedId &&
-            !_goneItemIds.contains(i.id) &&
-            i.id != _exitingItemId)
-        .length;
-    if (remaining == 0) setState(() => _expanded = false);
   }
 
   @override
@@ -283,6 +308,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
 
   @override
   void dispose() {
+    _sheetTick.dispose();
     _migraineTimer?.cancel();
     _migraine.removeListener(_onMigraineChanged);
     if (_ownsMigraine) _migraine.dispose();
@@ -381,7 +407,314 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
     });
   }
 
-  void _toggle() => setState(() => _expanded = !_expanded);
+  /// Home redesign — the card tap opens the summary sheet, hosted
+  /// BY this state so the sheet shares [_loader], the serialized
+  /// [_actionChain], the optimistic exit machinery, and the
+  /// reconciling reload (a second loader would risk the documented
+  /// entry-id collision and would never refresh the card behind).
+  Future<void> _openSheet() async {
+    if (_sheetOpen) return;
+    _sheetOpen = true;
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        backgroundColor: NotelColors.surface,
+        isScrollControlled: true,
+        showDragHandle: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (sheetContext) {
+          // Max height ~80% of the screen, read from the SHEET
+          // route's own context (the overlay's MediaQuery always
+          // carries the real size; the card's context may sit under
+          // a partial MediaQuery override in tests).
+          final maxHeight = MediaQuery.of(sheetContext).size.height * 0.8;
+          return AnimatedBuilder(
+            animation: _sheetTick,
+            builder: (context, _) => ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: maxHeight),
+              child: _sheetContent(context),
+            ),
+          );
+        },
+      );
+    } finally {
+      _sheetOpen = false;
+    }
+  }
+
+  String get _subtitle => _migraine.isActive
+      ? 'Migraine attack · '
+          '${formatElapsedDuration(_migraine.elapsedMinutes())}'
+      : (_data?.plan.summaryText ?? '');
+
+  /// The sheet's content (rebuilt whenever [_sheetTick] bumps, which
+  /// the [setState] override schedules after every card setState
+  /// while the sheet is open — so plan actions and the check-in swap
+  /// are reflected here and the card behind stays current too).
+  Widget _sheetContent(BuildContext context) {
+    final data = _data;
+    final visibleItems = (data?.plan.items ?? const <TodayPlanItem>[])
+        .where((i) => !_goneItemIds.contains(i.id))
+        .toList();
+    final exiting = _exitingItem;
+    final planRows = <Widget>[];
+    if (data != null) {
+      Widget slideSlot() => _SlideAwayRowSlot(
+            key: _exitSlotKey,
+            onGone: () => _onExitGone(_exitingItemId!),
+            child: _PlanItemRow(
+              item: exiting!,
+              busy: true,
+              onToggle: () {},
+              onMedAction: (_) {},
+            ),
+          );
+      for (var idx = 0; idx < visibleItems.length; idx++) {
+        if (exiting != null && idx == _exitingIndex) {
+          planRows.add(slideSlot());
+        }
+        final item = visibleItems[idx];
+        planRows.add(_PlanItemRow(
+          item: item,
+          busy: false,
+          onToggle: () => _onToggleItem(item),
+          onMedAction: (s) => _onMedAction(item, s),
+        ));
+      }
+      if (exiting != null && _exitingIndex >= visibleItems.length) {
+        planRows.add(slideSlot());
+      }
+    }
+    return SafeArea(
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.today, size: 20, color: NotelColors.primary),
+                  SizedBox(width: 8),
+                  Text(
+                    'Today Summary',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: NotelColors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _subtitle,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: NotelColors.textSecondary,
+                ),
+              ),
+              // Check-in section — hosted through Home's builder;
+              // StatefulBuilder so the section re-reads the builder
+              // when this sheet content rebuilds after a commit.
+              if (widget.checkInBuilder != null) ...[
+                const SizedBox(height: 12),
+                StatefulBuilder(
+                  builder: (context, setSheetState) =>
+                      widget.checkInBuilder!(context),
+                ),
+              ],
+              const SizedBox(height: 12),
+              const Divider(color: NotelColors.divider, height: 1),
+              const SizedBox(height: 12),
+              MigraineBlock(
+                controller: _migraine,
+                onOpenLoggedEntry: _openLoggedEntry,
+              ),
+              const SizedBox(height: 14),
+              const Divider(color: NotelColors.divider, height: 1),
+              const SizedBox(height: 12),
+              const Text(
+                "Today's Plan",
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: NotelColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 6),
+              if (data == null || planRows.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Text(
+                    data != null && data.plan.plannedCount > 0
+                        ? 'Everything planned for today is complete'
+                        : 'No plans recorded today',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: NotelColors.textSecondary,
+                    ),
+                  ),
+                )
+              else
+                ...planRows,
+              const SizedBox(height: 14),
+              const Divider(color: NotelColors.divider, height: 1),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Trends',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: NotelColors.textPrimary,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: _trendsRefreshing
+                        ? null
+                        : () => unawaited(_refreshTrends()),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 48,
+                      minHeight: 48,
+                    ),
+                    tooltip: 'Refresh Trends',
+                    icon: const Icon(
+                      Icons.refresh,
+                      size: 16,
+                      color: NotelColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              if (data == null || data.trends.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 4.0),
+                  child: Text(
+                    'Not enough data yet',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: NotelColors.textSecondary,
+                    ),
+                  ),
+                )
+              else
+                for (final trend in data.trends) _TrendRow(trend: trend),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Home redesign — the finish-line progress bar under the card's
+  /// subtitle. Track = the card's divider tint family; fill =
+  /// primary; the traveling marker is the Tabs logo
+  /// (`assets/images/ic_tabs_note.png`, the splash/logo asset) in a
+  /// 26dp circle at the fill's leading edge; the finish is the
+  /// checkered flag in a 30dp primary-tinted circle at the right
+  /// end. Changes animate over 220ms easeInOut (the allowed set);
+  /// reduced motion renders the final state instantly. No data or
+  /// plannedCount == 0 renders NO bar — never a fake 0.
+  Widget _progressBar(BuildContext context) {
+    final progress = _progress;
+    if (progress == null) return const SizedBox.shrink();
+    final disabled = animationsDisabled(context);
+    return Padding(
+      key: const ValueKey('todaySummaryProgressBar'),
+      padding: const EdgeInsets.only(top: 10),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          return SizedBox(
+            height: 30,
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(end: progress),
+              duration:
+                  disabled ? Duration.zero : const Duration(milliseconds: 220),
+              curve: Curves.easeInOut,
+              builder: (context, t, _) {
+                final fillWidth = (width * t).clamp(0.0, width);
+                final markerLeft = (fillWidth - 13).clamp(0.0, width - 26);
+                return Stack(
+                  alignment: Alignment.centerLeft,
+                  clipBehavior: Clip.none,
+                  children: [
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      child: Container(
+                        key: const ValueKey('todaySummaryProgressTrack'),
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: NotelColors.legacyDarkDivider,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 0,
+                      child: Container(
+                        width: fillWidth,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: NotelColors.primary,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: markerLeft,
+                      child: Container(
+                        key: const ValueKey('todaySummaryProgressMarker'),
+                        width: 26,
+                        height: 26,
+                        decoration: const BoxDecoration(
+                          color: NotelColors.surfaceHigh,
+                          shape: BoxShape.circle,
+                        ),
+                        padding: const EdgeInsets.all(3),
+                        child: Image.asset(
+                          'assets/images/ic_tabs_note.png',
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      right: 0,
+                      child: Container(
+                        key: const ValueKey('todaySummaryProgressFinish'),
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          color:
+                              NotelColors.primary.withValues(alpha: 0.18),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.sports_score,
+                          size: 18,
+                          color: NotelColors.primary,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
 
   /// Migraine log trio fix 1 (Juno 2026-10-27 §A condition 3):
   /// the completion line's tap opens THAT attack's entry in
@@ -495,61 +828,25 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
 
   @override
   Widget build(BuildContext context) {
-    final data = _data;
-    // Before the first load lands (and with no cache to seed from)
-    // the header matches native's initial state: empty subtitle,
-    // plan/trends unresolved. It resolves within the first load.
-    //
-    // Juno §D: while a migraine attack is ACTIVE the header
-    // subtitle is REPLACED with `Migraine attack · {elapsed}` (the
-    // plan subtitle is displaced only while the attack runs and
-    // returns unchanged when it ends; an ended attack awaiting
-    // details never appears here).
-    final subtitle = _migraine.isActive
-        ? 'Migraine attack · '
-            '${formatElapsedDuration(_migraine.elapsedMinutes())}'
-        : (data?.plan.summaryText ?? '');
-
-    // Rendered plan rows (Round 41): the plan data already excludes
-    // completed items; _goneItemIds additionally hides an item whose
-    // check-off landed but whose reload served a stale plan. The
-    // slide slot is INSERTED at the checked-off row's captured index
-    // — the item itself is no longer in the data to substitute for.
-    final visibleItems = (data?.plan.items ?? const <TodayPlanItem>[])
-        .where((i) => !_goneItemIds.contains(i.id))
-        .toList();
-    final exiting = _exitingItem;
-    final planRows = <Widget>[];
-    if (data != null) {
-      Widget slideSlot() => _SlideAwayRowSlot(
-            key: _exitSlotKey,
-            onGone: () => _onExitGone(_exitingItemId!),
-            child: _PlanItemRow(
-              item: exiting!,
-              busy: true,
-              onToggle: () {},
-              onMedAction: (_) {},
-            ),
-          );
-      for (var idx = 0; idx < visibleItems.length; idx++) {
-        if (exiting != null && idx == _exitingIndex) {
-          planRows.add(slideSlot());
-        }
-        final item = visibleItems[idx];
-        planRows.add(_PlanItemRow(
-          item: item,
-          // Never busy: taps are optimistic and idempotent per
-          // item (see _onToggleItem), so no row is ever disabled
-          // by another row's in-flight write.
-          busy: false,
-          onToggle: () => _onToggleItem(item),
-          onMedAction: (s) => _onMedAction(item, s),
-        ));
-      }
-      if (exiting != null && _exitingIndex >= visibleItems.length) {
-        planRows.add(slideSlot());
-      }
+    // Home redesign — while the sheet is open, every rebuild of
+    // this card (its own reloads AND Home's rebuilds above it —
+    // Home settling after a check-in commit rebuilds this card
+    // through the column) re-reads the sheet's hosted sections
+    // one frame later. The setState-driven tick alone raced
+    // Home's longer feeling-reload path (an edit-sheet delete
+    // settles in Home AFTER this card's last reload), leaving
+    // the sheet's check-in section stale; keying off build()
+    // covers both orders because the section builder reads
+    // Home's CURRENT state whenever it runs.
+    if (_sheetOpen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_sheetOpen && mounted) _sheetTick.value++;
+      });
     }
+    // The card face is header + subtitle + the
+    // finish-line progress bar ONLY. It never expands in place;
+    // tapping it (or the chevron, a second tap target) opens the
+    // summary sheet (see [_openSheet]).
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
       decoration: BoxDecoration(
@@ -562,16 +859,21 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Header row (tappable, 48dp+ target).
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: InkWell(
-                onTap: _toggle,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: 48),
-                  child: Row(
-                    children: [
-                      Expanded(
+            // Header row: the tappable title region (48dp min
+            // height, opens the sheet) and — as a SIBLING outside
+            // the InkWell, so its gesture wins inside its own
+            // bounds — the trailing widget (Home's weather
+            // element). The header chevron is dropped: the whole
+            // card tap opens the sheet, so it was a duplicate.
+            Row(
+              children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: InkWell(
+                      onTap: () => unawaited(_openSheet()),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 48),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -584,19 +886,22 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                                   color: NotelColors.primary,
                                 ),
                                 SizedBox(width: 8),
-                                Text(
-                                  'Today Summary',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: NotelColors.textPrimary,
+                                Flexible(
+                                  child: Text(
+                                    'Today Summary',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: NotelColors.textPrimary,
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              subtitle,
+                              _subtitle,
                               style: const TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w500,
@@ -606,143 +911,19 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                           ],
                         ),
                       ),
-                      IconButton(
-                        onPressed: _toggle,
-                        tooltip: _expanded
-                            ? 'Collapse Today Summary'
-                            : 'Expand Today Summary',
-                        icon: Icon(
-                          _expanded
-                              ? Icons.keyboard_arrow_up
-                              : Icons.keyboard_arrow_down,
-                          size: 26,
-                          color: NotelColors.primary,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
+                if (widget.headerTrailing != null) widget.headerTrailing!,
+              ],
             ),
-            // Expanded content: Today's Plan & Trends.
-            AnimatedSize(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeInOut,
-              child: _expanded
-                  ? Padding(
-                      padding: const EdgeInsets.only(top: 12.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const Divider(
-                            color: NotelColors.divider,
-                            height: 1,
-                          ),
-                          const SizedBox(height: 12),
-                          MigraineBlock(
-                            controller: _migraine,
-                            onOpenLoggedEntry: _openLoggedEntry,
-                          ),
-                          const SizedBox(height: 14),
-                          const Divider(
-                            color: NotelColors.divider,
-                            height: 1,
-                          ),
-                          const SizedBox(height: 12),
-                          const Text(
-                            "Today's Plan",
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: NotelColors.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          if (data == null || planRows.isEmpty)
-                            // Zero rendered rows, two honest states
-                            // (founder, Round 41): nothing was ever
-                            // planned → the no-plans text; things
-                            // were planned and all are done → the
-                            // completed message, never a blank void.
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 8.0),
-                              child: Text(
-                                data != null && data.plan.plannedCount > 0
-                                    ? 'Everything planned for today is '
-                                        'complete'
-                                    : 'No plans recorded today',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: NotelColors.textSecondary,
-                                ),
-                              ),
-                            )
-                          else
-                            ...planRows,
-                          const SizedBox(height: 14),
-                          const Divider(
-                            color: NotelColors.divider,
-                            height: 1,
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            mainAxisAlignment:
-                                MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text(
-                                'Trends',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  color: NotelColors.textPrimary,
-                                ),
-                              ),
-                              IconButton(
-                                onPressed: _trendsRefreshing
-                                    ? null
-                                    : () => unawaited(_refreshTrends()),
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(
-                                  minWidth: 48,
-                                  minHeight: 48,
-                                ),
-                                tooltip: 'Refresh Trends',
-                                icon: const Icon(
-                                  Icons.refresh,
-                                  size: 16,
-                                  color: NotelColors.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          if (data == null || data.trends.isEmpty)
-                            const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 4.0),
-                              child: Text(
-                                'Not enough data yet',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: NotelColors.textSecondary,
-                                ),
-                              ),
-                            )
-                          else
-                            for (final trend in data.trends)
-                              _TrendRow(trend: trend),
-                        ],
-                      ),
-                    )
-                  : const SizedBox.shrink(),
-            ),
+            _progressBar(context),
           ],
         ),
       ),
     );
   }
 }
-
 /// One plan row — native's per-type layout. Round 41: only OPEN
 /// items ever render (completed/resolved items are excluded from
 /// the plan data), so there is no dimmed/struck-through state and

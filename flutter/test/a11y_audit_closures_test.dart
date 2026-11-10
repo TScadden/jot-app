@@ -360,6 +360,16 @@ void main() {
       await tester.pumpWidget(
           MaterialApp(home: HomeScreen(weatherApi: weather)));
       await tester.pump();
+      // Home redesign (seventh ruling): the weather button lives
+      // in the Today Summary card header now, and the card enters
+      // through StaggeredEntrance — its subtree is semantics-
+      // excluded while the entrance Opacity sits at 0, so run the
+      // entrance (160ms delay + 450ms fade) out before reading
+      // the label back.
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
       expectLabel(tester, 'Weather');
       // Let the staggered-entrance delay timers fire before teardown.
       await tester.pump(const Duration(milliseconds: 500));

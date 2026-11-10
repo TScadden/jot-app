@@ -27,7 +27,10 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/data/widget_sync.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
+import 'package:tabs_lab/src/features/home/bandit_reading_slot.dart';
 import 'package:tabs_lab/src/features/home/daily_score_circle.dart';
+import 'package:tabs_lab/src/features/home/daily_score_vocabulary.dart';
+import 'package:tabs_lab/src/features/home/event_counter_rotator.dart';
 import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
 import 'package:tabs_lab/src/features/home/checkin_sheets.dart';
 import 'package:tabs_lab/src/features/home/checkin_summary_card.dart';
@@ -205,6 +208,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int? _temp;
   bool _weatherLoaded = false;
+
 
   /// The resolved Daily Score server sync (Oct 28, 2026): an
   /// injected one wins; production (no store injected — Home is
@@ -520,9 +524,9 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadCounters();
     _loadDailyScore();
     // Round 60 — non-essentials defer until AFTER the first frame:
-    // the widget publish and the weather fetch never compete with
-    // first paint. Both were already fire-and-forget; they now also
-    // START after the frame. (Round 59 discipline holds: the widget
+    // the widget publish never competes with first paint. It was
+    // already fire-and-forget; it now also STARTS after the frame.
+    // (Round 59 discipline holds: the widget
     // push still goes through WidgetSync's serialized latest-wins
     // drain, and the refresh re-pushes through
     // HomeDataCache.persist() when it lands.)
@@ -1059,7 +1063,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// pull cache is invalidated and the counters re-read — the same
   /// refresh the counter-slot push runs on return — because
   /// Settings can archive / edit counters too.
-  Future<void> _openSettings() async {
+  Future<void> _openSettings({bool openAiKnowledge = false}) async {
     await Navigator.of(context).push(
       SlidePageRoute(
         reducedMotion: animationsDisabled(context),
@@ -1070,6 +1074,7 @@ class _HomeScreenState extends State<HomeScreen> {
           settingsStore: widget.settingsStore,
           healthConnectService: widget.healthConnectService,
           billingService: widget.billingService,
+          openAiKnowledge: openAiKnowledge,
         ),
       ),
     );
@@ -1971,126 +1976,254 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Seventh founder ruling (Nov 9, 2026) — the header weather
+  /// ELEMENT, in its exact production construction, now built here
+  /// and passed into TodaySummaryCard as its header trailing widget
+  /// (the AppBar action is gone; all weather machinery above is
+  /// production-identical). Home rebuilds when weather state lands,
+  /// and the card face lives in this build tree, so the element
+  /// refreshes with it.
+  Widget _buildWeatherElement() {
+    return SizedBox(
+      width: 64,
+      child: IconButton(
+        onPressed: _onWeatherTap,
+        // Audit 6d (Oct 27, 2026) — house label.
+        tooltip: 'Weather',
+        padding: EdgeInsets.zero,
+        icon: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_weatherLoaded)
+                Text(
+                  '${_temp!}°',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: NotelColors.textPrimary.withValues(alpha: 0.8),
+                  ),
+                ),
+              if (_weatherLoaded) const SizedBox(width: 4),
+              // Round 14 — the condition icon is alive: rotating sun
+              // rays, falling rain, drifting clouds, twinkling stars.
+              // Before any condition loads it renders a static cloud
+              // (the "no data yet" glyph).
+              AnimatedWeatherIcon(
+                weatherCode: _weatherCode,
+                isDay: _isDay,
+                size: 20,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Home redesign — pushes Settings opened directly on its AI &
+  /// Clinical Advocate page (the drawer entry's destination).
+  Future<void> _openAiAdvocate() async {
+    Navigator.of(context).pop(); // close the drawer first
+    await _openSettings(openAiKnowledge: true);
+  }
+
+  /// Home redesign — the check-in section the Today Summary sheet
+  /// hosts. ALL state and commits stay here in _HomeScreenState; the
+  /// builder re-reads them on every outbox change (the commit path's
+  /// notify), so the sheet section swaps between the 1–5 card and
+  /// the summary card after a ranking lands.
+  Widget _buildCheckInSection(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _outbox,
+      builder: (context, _) {
+        if (_checkInToday != null && _todayRanking != null) {
+          return CheckInSummaryCard(
+            label: checkInSummaryLabel(
+              ranking: _todayRanking!,
+              flareSeverity: _flareToday == null
+                  ? null
+                  : flareSeverityOf(_flareToday!),
+              flareKind: _flareToday == null
+                  ? null
+                  : flareTypesOf(_flareToday!).firstOrNull,
+              flareOrigin: _summaryFlareOrigin,
+              goodOptions:
+                  _goodToday == null ? const [] : goodOptionsOf(_goodToday!),
+            ),
+            semanticsLabel: checkInSummarySemantics(
+              ranking: _todayRanking!,
+              flareSeverity: _flareToday == null
+                  ? null
+                  : flareSeverityOf(_flareToday!),
+              flareKind: _flareToday == null
+                  ? null
+                  : flareTypesOf(_flareToday!).firstOrNull,
+              flareOrigin: _summaryFlareOrigin,
+              goodOptions:
+                  _goodToday == null ? const [] : goodOptionsOf(_goodToday!),
+            ),
+            announcement: _checkInAnnouncement,
+            onTap: () => unawaited(_onSummaryTap()),
+          );
+        }
+        if (_feelingVisible) {
+          return FeelingCheckInCard(onSelect: _onFeelingSelect);
+        }
+        return const SizedBox.shrink();
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: NotelColors.background,
+      // Home redesign — the drawer: surface panel ~300dp, ONE row
+      // (AI Advocate), modeled on Settings' _menuRow construction.
+      drawer: Drawer(
+        backgroundColor: NotelColors.surface,
+        width: 300,
+        child: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              InkWell(
+                key: const ValueKey('home_drawer_ai_advocate'),
+                onTap: () => unawaited(_openAiAdvocate()),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  child: Row(
+                    children: [
+                      Icon(Icons.auto_awesome,
+                          color: NotelColors.textSecondary, size: 22),
+                      SizedBox(width: 16),
+                      Expanded(
+                        child: Text(
+                          'AI Advocate',
+                          style: TextStyle(
+                            color: NotelColors.textPrimary,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                      Icon(Icons.chevron_right,
+                          size: 20, color: NotelColors.textSecondary),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
       appBar: AppBar(
         backgroundColor: NotelColors.background,
         elevation: 0,
         automaticallyImplyLeading: false,
-        title: const Text(
-          'Today',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w900,
-            color: NotelColors.textPrimary,
-          ),
-        ),
-        actions: [
-          // R70 Daily Score — the score circle sits BESIDE the
-          // weather icon (founder spec). Null score = the
-          // baseline-building state, or the pending state while
-          // today waits for its data to complete. Tap opens the
-          // score history.
-          DailyScoreCircle(
-            score: _todayScore,
-            pending: _todayScorePending,
-            onTap: () => unawaited(_openDailyScore()),
-          ),
-          // Weather: tap asks for device location (system dialog) and
-          // upgrades the IP-based temp to GPS-based weather. Denial
-          // falls back silently to the IP fetch.
-          SizedBox(
-            width: 64,
-            child: IconButton(
-              onPressed: _onWeatherTap,
-              // Audit 6d (Oct 27, 2026) — house label.
-              tooltip: 'Weather',
-              padding: EdgeInsets.zero,
-              icon: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (_weatherLoaded)
-                      Text(
-                        '${_temp!}°',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color:
-                              NotelColors.textPrimary.withValues(alpha: 0.8),
+        // Home redesign (tweak 6) — symmetric 48dp leading/actions
+        // slots, so with centerTitle the vitals pill is centered
+        // between the corner buttons by construction.
+        leadingWidth: 48,
+        centerTitle: true,
+        leading: Builder(
+          // The AppBar stretches its leading slot to the full
+          // 56dp toolbar height, so the 48x48 slot is centered
+          // explicitly (Vera F3): the keyed InkWell covers the
+          // full 48x48 slot, with the 40dp circle centered in it.
+          builder: (drawerContext) => Center(
+            child: SizedBox(
+              width: 48,
+              height: 48,
+              child: Semantics(
+                label: 'Menu',
+                button: true,
+                child: Tooltip(
+                  message: 'Menu',
+                  child: InkWell(
+                    key: const ValueKey('home_drawer_button'),
+                    onTap: () => Scaffold.of(drawerContext).openDrawer(),
+                    customBorder: const CircleBorder(),
+                    child: Center(
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: NotelColors.surface,
+                          border: Border.all(
+                              color: NotelColors.legacyDarkHairline,
+                              width: 1),
+                        ),
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 18,
+                                height: 3,
+                                decoration: BoxDecoration(
+                                  color: NotelColors.textPrimary,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              Container(
+                                width: 12,
+                                height: 3,
+                                decoration: BoxDecoration(
+                                  color: NotelColors.textPrimary,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    if (_weatherLoaded) const SizedBox(width: 4),
-                    // Round 14 — the condition icon is alive: rotating sun
-                    // rays, falling rain, drifting clouds, twinkling stars.
-                    // Before any condition loads it renders a static cloud
-                    // (the old icon's "no data yet" role).
-                    AnimatedWeatherIcon(
-                      weatherCode: _weatherCode,
-                      isDay: _isDay,
-                      size: 20,
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
-          // Settings button (settings-gear round; glyph swapped
-          // in the settings-fullscreen round, founder steer Nov 4,
-          // 2026): sits IMMEDIATELY LEFT of the watch button,
-          // standard 48dp IconButton target, in NotelColors.primary,
-          // the watch button's own color, so the pair carries equal
-          // visual weight. Tap pushes the full-screen
-          // SettingsScreen (the bottom tray it originally opened
-          // is removed), NOT a tab switch. The button's box,
-          // position, hit area, and 'Settings' tooltip are exactly
-          // as the gear round placed them — ONLY THE GLYPH CHANGED:
-          // gear out, person in. The person is the reference
-          // video's settings entry (in @dbzzle's app the profile /
-          // person page IS the settings list — NAVBAR_SPEC §2: a
-          // light OUTLINE head-and-shoulders, hollow head circle +
-          // shoulders arc, ≈24pt symbol box, stroke ≈2.5–3pt).
-          // Icons.person_outlined is that outline person in this
-          // icon set (the M3 outlined variant; preferred over the
-          // filled Icons.person and the heavier legacy
-          // Icons.person_outline), at the same 24dp ink size the
-          // gear glyph used.
+        ),
+        title: VitalsStrip(
+          vitals: _vitals,
+          animateCountUps: _countUpsAnimate,
+          compact: true,
+        ),
+        actions: [
           IconButton(
             key: const ValueKey('home_settings_gear'),
             onPressed: () => unawaited(_openSettings()),
-            icon: const Icon(
-              Icons.person_outlined,
-              size: 24,
-              color: NotelColors.primary,
+            // Vera F1: the glyph sits in the SAME 40dp circular
+            // construction as the leading hamburger (surface fill,
+            // 1dp legacyDarkHairline border), centered in this
+            // 48dp slot; the glyph itself is textPrimary.
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(
+              minWidth: 48,
+              minHeight: 48,
+            ),
+            icon: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: NotelColors.surface,
+                border: Border.all(
+                    color: NotelColors.legacyDarkHairline, width: 1),
+              ),
+              child: const Icon(
+                Icons.settings,
+                size: 24,
+                color: NotelColors.textPrimary,
+              ),
             ),
             tooltip: 'Settings',
-          ),
-          // Watch: opens the data-connections screen (native
-          // onNavigateToConnections). Round 12b: explicit slide-in-from-right —
-          // Material 3's default Android transition is a zoom/fade that reads
-          // as "just spawning in". Round 14: the icon is a shared element —
-          // it flies to the connections screen's back arrow during the push
-          // (skipped under reduced motion, where heroes are omitted).
-          IconButton(
-            onPressed: () => unawaited(_openConnections()),
-            icon: animationsDisabled(context)
-                ? const Icon(
-                    Icons.watch,
-                    size: 24,
-                    color: NotelColors.primary,
-                  )
-                : const Hero(
-                    tag: watchConnectionsHeroTag,
-                    child: Icon(
-                      Icons.watch,
-                      size: 24,
-                      color: NotelColors.primary,
-                    ),
-                  ),
-            tooltip: 'Connections',
           ),
         ],
       ),
@@ -2098,93 +2231,63 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Round 14 — staggered entrance: the cards cascade in with a
-            // fade + slight rise, ~80ms apart. Purely visual; data loads
-            // independently underneath.
-            // Round 21 — the feeling check-in is native's item 0: the
-            // first thing on Home, above the vitals strip. It renders
-            // nothing until the pulled entries prove no check-in
-            // exists for the current energy day. It is NOT wrapped in
-            // StaggeredEntrance: native gives the card its own
-            // slide-in-from-left entrance (400ms), and the existing
-            // cards keep their original stagger indices 0–3.
-            if (_feelingVisible)
-              FeelingCheckInCard(
-                onSelect: _onFeelingSelect,
-              ),
-            // Merged check-in flow — once a ranking is logged, ONE
-            // summary card (Juno Item 7) replaces both the number
-            // card and the removed standalone flare button, in the
-            // same slot. Its composition derives from today's three
-            // records; tapping it opens the amend sheet. It is NOT
-            // premium-gated (logging is free-forever).
-            if (_checkInToday != null && _todayRanking != null)
-              CheckInSummaryCard(
-                label: checkInSummaryLabel(
-                  ranking: _todayRanking!,
-                  flareSeverity: _flareToday == null
-                      ? null
-                      : flareSeverityOf(_flareToday!),
-                  flareKind: _flareToday == null
-                      ? null
-                      : flareTypesOf(_flareToday!).firstOrNull,
-                  flareOrigin: _summaryFlareOrigin,
-                  goodOptions: _goodToday == null
-                      ? const []
-                      : goodOptionsOf(_goodToday!),
-                ),
-                semanticsLabel: checkInSummarySemantics(
-                  ranking: _todayRanking!,
-                  flareSeverity: _flareToday == null
-                      ? null
-                      : flareSeverityOf(_flareToday!),
-                  flareKind: _flareToday == null
-                      ? null
-                      : flareTypesOf(_flareToday!).firstOrNull,
-                  flareOrigin: _summaryFlareOrigin,
-                  goodOptions: _goodToday == null
-                      ? const []
-                      : goodOptionsOf(_goodToday!),
-                ),
-                announcement: _checkInAnnouncement,
-                onTap: () => unawaited(_onSummaryTap()),
-              ),
-            // Phase 1 item 4 — the salt & water card, directly under
-            // the feeling check-in (founder Q5). Rendered only once
-            // the Hydration category resolves BY NAME (a miss hides
-            // the whole surface, spec §4.1/Q4), and NOT
-            // premium-gated (capture + totals are free, Q8). Not
-            // wrapped in StaggeredEntrance, like the check-in card:
-            // it carries its own state changes.
-            if (_intakeCategoryId != null && _intakeTotals != null)
-              IntakeCard(
-                todayEntries: _intakeTodayEntries,
-                totals: _intakeTotals!,
-                targets: _intakeTargetsToday,
-                presets: _intakePresets,
-                showSeedLabel: _intakeSeedLabelVisible,
-                lastLoggedEntryId: _intakeLastEntryId,
-                onQuickAdd: (kind) => unawaited(_onIntakeQuickAdd(kind)),
-                onOpenEditor: () => unawaited(_openIntakeEditor()),
-                onEditEntry: (entry) =>
-                    unawaited(_openIntakeEditor(entry: entry)),
-                onUndo: () => unawaited(_undoLastIntake()),
-                onOpenTargets: () => unawaited(_openIntakeTargets()),
-              ),
+            // Corner band (stagger 0): streak stack left, event
+            // counters center, bare Daily Score face right.
             StaggeredEntrance(
               index: 0,
-              child: VitalsStrip(
-                vitals: _vitals,
-                animateCountUps: _countUpsAnimate,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    HomeStreakStack(
+                      currentStreak: _currentStreak,
+                      bestStreak: _bestStreak,
+                      animateCountUps: _countUpsAnimate,
+                      onStreakTap: () => unawaited(_openStreakScreen()),
+                    ),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: _counters.isNotEmpty
+                            ? EventCounterRotator(
+                                counters: _counters,
+                                onTap: () =>
+                                    unawaited(_openEventCounters()),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                    ),
+                    Semantics(
+                      button: true,
+                      label: _todayScore == null
+                          ? (_todayScorePending
+                              ? 'Daily Score, waiting for today\'s health data'
+                              : 'Daily Score, building baseline')
+                          : 'Daily Score $_todayScore, '
+                              '${bandForScore(_todayScore!).label}',
+                      child: InkWell(
+                        onTap: () => unawaited(_openDailyScore()),
+                        borderRadius: BorderRadius.circular(12),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(
+                              minWidth: 48, minHeight: 48),
+                          child: Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 4),
+                            child: DailyScoreFace(
+                              score: _todayScore,
+                              size: 54,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            // Round 23 — slim Health Connect banner, directly under
-            // the vitals strip: only when the status is known to be
-            // not fully connected AND the biometrics are empty. It is
-            // deliberately NOT wrapped in StaggeredEntrance (no extra
-            // motion, no spinner) — it appears/disappears quietly when
-            // the background refresh lands, and cached values above it
-            // keep rendering first either way.
+            // Health Connect banner directly UNDER the band.
             if (shouldShowHealthConnectBanner(
                 status: _hcStatus, vitals: _vitals))
               HealthConnectBanner(
@@ -2195,23 +2298,38 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             StaggeredEntrance(
               index: 1,
-              child: HomeStreakRow(
-                currentStreak: _currentStreak,
-                bestStreak: _bestStreak,
-                animateCountUps: _countUpsAnimate,
-                counters: _counters,
-                onCountersTap: () => unawaited(_openEventCounters()),
-                onStreakTap: () => unawaited(_openStreakScreen()),
-              ),
+              child: const BanditReadingSlot(),
             ),
             StaggeredEntrance(
               index: 2,
               child: TodaySummaryCard(
                 migraineController: widget.migraineController,
+                checkInBuilder: _buildCheckInSection,
+                headerTrailing: _buildWeatherElement(),
               ),
             ),
+            // Salt & water card (stagger 3): rendered only once the
+            // Hydration category resolves BY NAME, as before.
+            if (_intakeCategoryId != null && _intakeTotals != null)
+              StaggeredEntrance(
+                index: 3,
+                child: IntakeCard(
+                  todayEntries: _intakeTodayEntries,
+                  totals: _intakeTotals!,
+                  targets: _intakeTargetsToday,
+                  presets: _intakePresets,
+                  showSeedLabel: _intakeSeedLabelVisible,
+                  lastLoggedEntryId: _intakeLastEntryId,
+                  onQuickAdd: (kind) => unawaited(_onIntakeQuickAdd(kind)),
+                  onOpenEditor: () => unawaited(_openIntakeEditor()),
+                  onEditEntry: (entry) =>
+                      unawaited(_openIntakeEditor(entry: entry)),
+                  onUndo: () => unawaited(_undoLastIntake()),
+                  onOpenTargets: () => unawaited(_openIntakeTargets()),
+                ),
+              ),
             StaggeredEntrance(
-              index: 3,
+              index: 4,
               child: WeeklySnapshotCard(
                 loadData: (metric) => _healthRepo.loadSnapshot(metric),
               ),

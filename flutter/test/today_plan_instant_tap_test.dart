@@ -331,6 +331,9 @@ void main() {
 
     await tapRowButton(tester, 'Ivabradine', 'Skip Medication');
     await tester.pump();
+    // One extra frame vs the old in-place card: the sheet's
+    // content rebuilds through the card's post-frame sheet tick.
+    await tester.pump(const Duration(milliseconds: 50));
     // Skip is optimistic too: the row exits while the POST stalls.
     expect(find.byKey(const Key('slide-away-slot')), findsOneWidget);
 
