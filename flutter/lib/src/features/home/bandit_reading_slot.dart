@@ -14,8 +14,8 @@ import 'package:video_player/video_player.dart';
 class BanditReadingSlot extends StatefulWidget {
   const BanditReadingSlot({super.key});
 
-  static const String videoAsset = 'assets/videos/bandit_reading_loop_v2.mp4';
-  static const String posterAsset = 'assets/images/bandit_reading_poster_v2.png';
+  static const String videoAsset = 'assets/videos/bandit_reading_loop_v3.mp4';
+  static const String posterAsset = 'assets/images/bandit_reading_poster_v3.png';
 
   @override
   State<BanditReadingSlot> createState() => _BanditReadingSlotState();
