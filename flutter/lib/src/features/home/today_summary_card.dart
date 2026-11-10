@@ -424,13 +424,18 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.8,
-        ),
         builder: (sheetContext) {
+          // Max height ~80% of the screen, read from the SHEET
+          // route's own context (the overlay's MediaQuery always
+          // carries the real size; the card's context may sit under
+          // a partial MediaQuery override in tests).
+          final maxHeight = MediaQuery.of(sheetContext).size.height * 0.8;
           return AnimatedBuilder(
             animation: _sheetTick,
-            builder: (context, _) => _sheetContent(context),
+            builder: (context, _) => ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: maxHeight),
+              child: _sheetContent(context),
+            ),
           );
         },
       );
