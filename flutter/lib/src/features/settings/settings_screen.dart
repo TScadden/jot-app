@@ -280,23 +280,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _gAccountConnected = false;
   String _gAccountEmail = '';
 
-  // Round 51 — Health Connect status for the Connected Apps row,
-  // read from the SAME HealthConnectService.getStatus() Home's
-  // Round 23 status logic uses. Null until the first check lands;
-  // the last-known value stays on screen while a re-check runs
-  // (no stale flash, no empty flash). A bridge failure falls back
-  // to notConnected with the exception code kept for display,
-  // exactly like Home (_hcStatusErrorCode there).
-  HealthConnectStatus? _hcStatus;
-  String? _hcErrorCode;
+  // Round 51 — Health Connect status for the Connected Apps row.
+  // Phase 2 PR-2 — the row now derives from ONE probeAvailability()
+  // snapshot (the snapshot never throws). Null until the first
+  // snapshot lands; the last-known snapshot stays on screen while
+  // a re-check runs (no stale flash, no empty flash). The card's
+  // state precedence and copy are Juno's Phase 2 ruling: Loading →
+  // Stale → Unavailable → Unknown → the existing branches. Bridge
+  // codes go to logs only — never rendered (the old bracketed-code
+  // line is deleted).
+  HcAvailability? _hcSnapshot;
 
   // HRV grant visibility — when Health Connect is only partially
   // granted, the plain-language names of the data types that are
-  // NOT shared (e.g. "Heart rate variability"), read live alongside
-  // _hcStatus so the Connected Apps card can name them instead of
-  // a generic "some permissions are missing". Empty when fully
-  // granted or when the missing-set read failed (the card then
-  // keeps its generic partial copy).
+  // NOT shared (e.g. "Heart rate variability"), derived from the
+  // availability snapshot's granted set so the Connected Apps
+  // card can name them instead of a generic "some permissions
+  // are missing". Empty when fully granted or when the grant
+  // layer is unknown (the card then keeps its generic partial
+  // copy).
   List<String> _hcMissingLabels = const [];
 
   // Defect 1b — the last capture's HRV outcome from the history
@@ -547,14 +549,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// Round 51 — (re)reads every Connected Apps row's state from the
   /// SAME real sources the working surfaces use:
-  /// - Health Connect: [HealthConnectService.getStatus] — the live
-  ///   bridge check Home's Round 23 status logic and the Data
-  ///   Connections screen both use (native parity:
-  ///   SettingsViewModel.checkHealthConnectStatus →
-  ///   hasAllPermissions, re-run when the screen/permission flow
-  ///   returns). Bridge failures fall back to notConnected WITH
-  ///   the visible [CODE], exactly like Home — never silent
-  ///   (LESSONS.md: every channel call gets try/catch + a code).
+  /// - Health Connect: [HealthConnectService.probeAvailability] —
+  ///   the unified availability snapshot Home's Round 23 status
+  ///   logic and the Data Connections screen both derive from
+  ///   (native parity: SettingsViewModel.checkHealthConnectStatus
+  ///   → hasAllPermissions, re-run when the screen/permission flow
+  ///   returns). The snapshot never throws: a bridge failure is
+  ///   the UNKNOWN state (grant layer unread), presented as the
+  ///   not-connected fallback card plus Juno's plain failure line
+  ///   — the bridge code goes to logs only, never rendered.
   /// - Google Calendar / Google Account: the SettingsStore flags —
   ///   native's DataStore-only state (NotelPreferences.kt:155-158),
   ///   written by the Round 30 connect/link/disconnect flows and,
@@ -588,57 +591,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // Keep the last-known flag values — never reset to defaults
       // on a storage surprise.
     }
+    // Phase 2 PR-2 — ONE probe snapshot derives the whole card.
+    // The probe never throws; a defensive catch still maps any
+    // surprise onto the UNKNOWN snapshot shape (grant layer
+    // unread, code recorded for logs) rather than a fabricated
+    // status.
+    HcAvailability snapshot;
     try {
-      final status = await _hc.getStatus();
-      // Defect 1b — the last capture's HRV outcome. Read from
-      // memory ONLY (no warm, no channel call on this path): the
-      // shared store is warmed at startup and by every capture,
-      // so its diagnostics are already in memory whenever a
-      // capture has run; an unwarmed store simply has no line yet.
-      final hs = widget.historyStore ?? HealthHistoryStore.instance;
-      final hrvDiag = hs.lastCaptureDiagnostics['hrv'];
-      if (!mounted) return;
-      // The status lands FIRST, in its own setState: a slow or
-      // failing missing-set read below must never delay or block
-      // the status the founder sees.
-      setState(() {
-        _hcStatus = status;
-        _hcErrorCode = null;
-        _hcMissingLabels = const [];
-        _hrvDiag = hrvDiag;
-      });
-      // Partial grant: also read WHICH types are missing, on its
-      // own guard — a failure here must not flip the row to
-      // not-connected; it just leaves the labels empty and the
-      // card keeps its generic partial copy.
-      if (status == HealthConnectStatus.partiallyConnected) {
-        try {
-          final missingLabels = await _hc.getMissingPermissionLabels();
-          if (!mounted) return;
-          setState(() => _hcMissingLabels = missingLabels);
-        } catch (_) {}
-      }
-      // Background read grant — its own guard, like the missing-set
-      // read above: a failure leaves the last-known state and never
-      // touches the connection status.
-      try {
-        final bg = await _hc.hasBackgroundAccess();
-        if (!mounted) return;
-        setState(() => _bgScoreAccess = bg);
-      } catch (_) {}
-    } on HealthConnectException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _hcStatus = HealthConnectStatus.notConnected;
-        _hcErrorCode = e.code;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _hcStatus = HealthConnectStatus.notConnected;
-        _hcErrorCode = 'UNKNOWN';
-      });
+      snapshot = await _hc.probeAvailability();
+    } catch (e) {
+      debugPrint('Settings HC status check failed [$e]');
+      snapshot = const HcAvailability(
+        serviceAvailable: false,
+        grantedPermissions: null,
+        bridgeErrorCode: 'UNKNOWN',
+        stepsProbe: null,
+        persistedConnected: false,
+      );
     }
+    if (snapshot.bridgeErrorCode != null) {
+      // Codes to logs only — never rendered (Juno condition 3).
+      debugPrint(
+          'Settings HC status check failed [${snapshot.bridgeErrorCode}]');
+    }
+    // Defect 1b — the last capture's HRV outcome. Read from
+    // memory ONLY (no warm, no channel call on this path): the
+    // shared store is warmed at startup and by every capture,
+    // so its diagnostics are already in memory whenever a
+    // capture has run; an unwarmed store simply has no line yet.
+    final hs = widget.historyStore ?? HealthHistoryStore.instance;
+    final hrvDiag = hs.lastCaptureDiagnostics['hrv'];
+    if (!mounted) return;
+    setState(() {
+      _hcSnapshot = snapshot;
+      // The missing types derive from the snapshot's own granted
+      // set — plain-language labels in required order. An unknown
+      // grant layer yields an empty missing set, so the labels
+      // clear rather than naming types nobody measured.
+      _hcMissingLabels = [
+        for (final p in HealthConnectService.requiredPermissions)
+          if (snapshot.missingPermissions.contains(p))
+            HealthConnectService.permissionLabel(p),
+      ];
+      _hrvDiag = hrvDiag;
+    });
+    // Background read grant — a SEPARATE derivation, untouched by
+    // this migration: its own guard, a failure leaves the
+    // last-known state and never touches the connection status.
+    try {
+      final bg = await _hc.hasBackgroundAccess();
+      if (!mounted) return;
+      setState(() => _bgScoreAccess = bg);
+    } catch (_) {}
   }
 
   /// Round 51 — opens the shared Data Connections screen (the one
@@ -3778,22 +3782,86 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // ── CONNECTED APPS (native :2240-2710) ───────────────────────────
 
   List<Widget> _connectedAppsPage() {
+    // Phase 2 PR-2 — Juno's ruling governs this card. State
+    // precedence, evaluated in this order off the ONE snapshot:
+    // Loading (no snapshot yet) → Stale (staleWedged) →
+    // Unavailable (status answered unavailable) → Unknown (status
+    // null: the not-connected fallback card PLUS the plain
+    // failure line in the supplementary slot) → the existing
+    // connected / partially-connected / not-connected branches,
+    // whose copy is byte-untouched.
+    final hcSnapshot = _hcSnapshot;
     return [
       _sectionLabel('LOCAL CONNECTIONS'),
       // Round 51 — this row used to be STATIC: it rendered the
       // not-connected card unconditionally and never read Health
       // Connect state at all, so it showed "Connect Health Data"
-      // while Home (same bridge, real getStatus()) showed live
-      // data. It now binds _hcStatus, native presentation
-      // (SettingsScreen.kt:2251-2281): connected → the Active
-      // card with NO connect CTA; partially connected → the
-      // grant-remaining presentation the Data Connections screen
-      // uses; not connected / unavailable / still loading → the
-      // connect card + CTA, which opens the shared Data
-      // Connections flow. A bridge failure adds the visible
-      // [CODE] line (Home parity).
+      // while Home showed live data. It now binds the live
+      // availability snapshot, native presentation
+      // (SettingsScreen.kt:2251-2281) for the known branches.
       _card([
-        if (_hcStatus == HealthConnectStatus.connected) ...[
+        if (hcSnapshot == null) ...[
+          // Juno §4 Loading — no snapshot has landed and no
+          // last-known status is retained: a neutral checking
+          // line and an EMPTY button slot (the not-connected
+          // card would assert a state nobody has measured).
+          const Text('Google Health Connect',
+              style: TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontWeight: FontWeight.w500)),
+          const Text('Checking Health Connect status…',
+              style:
+                  TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
+        ] else if (hcSnapshot.staleWedged) ...[
+          // Juno §1 Stale — driven ONLY by staleWedged: the
+          // Connections row label in the Status slot (error
+          // colour), staleGrantMessage referenced from the
+          // constant in the Body slot, and the connected
+          // branch's Manage button unchanged. No Active /
+          // Live-sync strings, no connect or grant CTAs here.
+          const Text('Google Health Connect',
+              style: TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontWeight: FontWeight.w500)),
+          const Text('Connection problem',
+              style: TextStyle(color: NotelColors.error, fontSize: 12)),
+          const SizedBox(height: 4),
+          const Text(HealthConnectService.staleGrantMessage,
+              style:
+                  TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              key: const ValueKey('open_connections'),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: NotelColors.surfaceHigh,
+                  foregroundColor: NotelColors.textPrimary),
+              onPressed: _openConnections,
+              child: const Text('Manage Health Connect',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ] else if (hcSnapshot.status ==
+            HealthConnectStatus.unavailable) ...[
+          // Juno §2 Unavailable — isAvailable() ANSWERED false:
+          // informational only, EMPTY button slot, and the
+          // not-connected "Connect to grab data…" body is
+          // forbidden here.
+          const Text('Google Health Connect',
+              style: TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontWeight: FontWeight.w500)),
+          const Text('Not available on this device',
+              style: TextStyle(
+                  color: NotelColors.textSecondary, fontSize: 12)),
+          const SizedBox(height: 4),
+          const Text(
+              "Tabs can't read health data through Health Connect on this device.",
+              style:
+                  TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
+        ] else if (hcSnapshot.status ==
+            HealthConnectStatus.connected) ...[
           const Row(
             children: [
               Icon(Icons.favorite, color: NotelColors.primary, size: 28),
@@ -3832,7 +3900,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ),
-        ] else if (_hcStatus ==
+        ] else if (hcSnapshot.status ==
             HealthConnectStatus.partiallyConnected) ...[
           const Text('Google Health Connect',
               style: TextStyle(
@@ -3872,6 +3940,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ] else ...[
+          // Known not-connected — and the UNKNOWN fallback
+          // (Juno §3): when the snapshot's status is null this
+          // card is a fallback presentation, not a finding, and
+          // the supplementary failure line below it is what
+          // keeps it honest. The connected presentation is never
+          // manufactured from a persisted flag in that state.
           const Text('Google Health Connect',
               style: TextStyle(
                   color: NotelColors.textPrimary,
@@ -3893,18 +3967,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ],
-        if (_hcErrorCode != null) ...[
+        // Juno §3 supplementary line — UNKNOWN only (the
+        // snapshot's status is null): the plain failure line in
+        // the slot the deleted raw-code line occupied, error
+        // colour as that line was. No bracketed code, no bridge
+        // term — the code went to logs in _loadConnectionState.
+        if (hcSnapshot != null && hcSnapshot.status == null) ...[
           const SizedBox(height: 8),
-          Text('Health Connect status check failed [$_hcErrorCode].',
-              style:
-                  const TextStyle(color: NotelColors.error, fontSize: 12)),
+          const Text('Health Connect status check failed.',
+              style: TextStyle(color: NotelColors.error, fontSize: 12)),
         ],
         // Defect 1b — diagnostics line: the last capture's HRV
         // outcome (counts + any code) from the persisted capture
         // diagnostics, so a missing-HRV recurrence is diagnosable
         // from this one screenshot. Counts are operational
-        // metadata, not health values; codes ride in brackets like
-        // the status-check line above.
+        // metadata, not health values; codes ride in brackets in
+        // this diagnostics line by its own ruling.
         if (_hrvDiag != null) ...[
           const SizedBox(height: 8),
           Text(_hrvDiagnosticsLine(_hrvDiag!),

@@ -160,12 +160,40 @@ void main() {
               return null;
             },
           );
+      // Phase 2 PR-2 re-point: the availability probe reads the
+      // persisted-connection flag through secure storage BEFORE
+      // the bridge check (the old getStatus path never touched
+      // that channel); an unhandled storage invoke hangs. Answer
+      // ONLY the probe's read (the granted-permissions key, empty
+      // = no persisted connection); every other storage call
+      // keeps the unhandled hang this file's choreography was
+      // written against.
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            const MethodChannel(
+                'plugins.it_nomads.com/flutter_secure_storage'),
+            (call) {
+              final args = call.arguments;
+              if (call.method == 'read' &&
+                  args is Map &&
+                  args['key'] == 'hc_granted_permissions') {
+                return Future<String?>.value(null);
+              }
+              return Completer<String?>().future;
+            },
+          );
     });
 
     tearDown(() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
             const MethodChannel(HealthConnectService.channelName),
+            null,
+          );
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            const MethodChannel(
+                'plugins.it_nomads.com/flutter_secure_storage'),
             null,
           );
     });

@@ -28,16 +28,20 @@ const _explainer = 'Your connection is managed in Health Connect. '
 const _sheetStatusStale =
     "Connection problem: Tabs can't read your health data right now.";
 
-/// Fake modeled on the REAL service (HC connection-honesty package):
-/// the stale state is a THROW of HealthConnectException with
-/// [HealthConnectService.staleGrantCode] from getStatus() — exactly
-/// what the real service does when grants report complete but the
-/// read probe is blocked — and there is NO disconnect() fake: the
-/// real disconnect never flipped any status (it only deleted two
-/// persisted keys, and getStatus() re-persisted them on a healthy
-/// return), and the Deactivate control that called it is removed.
-/// [statusFuture] overrides the canned status so a test can hold
-/// the live check pending forever (the wedged case).
+/// Fake modeled on the REAL service (Phase 2 PR-2: the screen now
+/// derives from probeAvailability(), so the fake fakes the PROBE):
+/// the stale state arrives as snapshot DATA — a full grant whose
+/// steps probe was a securityFailure ([HcAvailability.staleWedged])
+/// — exactly what the real probe reports when grants report
+/// complete but the read probe is blocked; a canned
+/// [statusException] with any other code becomes the UNKNOWN
+/// snapshot (grant layer null, the exception recorded verbatim,
+/// its code as the bridge error code). There is NO disconnect()
+/// fake: the real disconnect never flipped any status (it only
+/// deleted two persisted keys), and the Deactivate control that
+/// called it is removed. [statusFuture] overrides the canned
+/// status so a test can hold the live check pending forever (the
+/// wedged case).
 class FakeHCService extends HealthConnectService {
   FakeHCService({
     required this.persisted,
@@ -54,18 +58,70 @@ class FakeHCService extends HealthConnectService {
   HealthConnectException? statusException;
   int settingsCalls = 0;
 
+  HcAvailability _snapshotFor(HealthConnectStatus status) {
+    return switch (status) {
+      HealthConnectStatus.connected => HcAvailability(
+          serviceAvailable: true,
+          grantedPermissions: HealthConnectService.requiredPermissions,
+          bridgeErrorCode: null,
+          stepsProbe: HcReadProbeOutcome.ok,
+          persistedConnected: persisted,
+        ),
+      HealthConnectStatus.partiallyConnected => HcAvailability(
+          serviceAvailable: true,
+          grantedPermissions: HealthConnectService.requiredPermissions
+              .difference(
+                  const {'android.permission.health.READ_HEART_RATE_VARIABILITY'}),
+          bridgeErrorCode: null,
+          stepsProbe: null,
+          persistedConnected: persisted,
+        ),
+      HealthConnectStatus.notConnected => HcAvailability(
+          serviceAvailable: true,
+          grantedPermissions: const {},
+          bridgeErrorCode: null,
+          stepsProbe: null,
+          persistedConnected: persisted,
+        ),
+      HealthConnectStatus.unavailable => HcAvailability(
+          serviceAvailable: false,
+          grantedPermissions: null,
+          bridgeErrorCode: null,
+          stepsProbe: null,
+          persistedConnected: persisted,
+        ),
+    };
+  }
+
   @override
   Future<bool> hasPersistedConnection() async => persisted;
 
   @override
-  Future<HealthConnectStatus> getStatus() {
+  Future<HcAvailability> probeAvailability() {
     final e = statusException;
-    if (e != null) return Future.error(e);
-    return statusFuture ?? Future.value(statusResult);
+    if (e != null) {
+      if (e.code == HealthConnectService.staleGrantCode) {
+        return Future.value(HcAvailability(
+          serviceAvailable: true,
+          grantedPermissions: HealthConnectService.requiredPermissions,
+          bridgeErrorCode: null,
+          stepsProbe: HcReadProbeOutcome.securityFailure,
+          persistedConnected: persisted,
+        ));
+      }
+      return Future.value(HcAvailability(
+        serviceAvailable: false,
+        grantedPermissions: null,
+        bridgeErrorCode: e.code,
+        grantError: e,
+        stepsProbe: null,
+        persistedConnected: persisted,
+      ));
+    }
+    final future = statusFuture;
+    if (future != null) return future.then(_snapshotFor);
+    return Future.value(_snapshotFor(statusResult));
   }
-
-  @override
-  Future<List<String>> getMissingPermissionLabels() async => const [];
 
   @override
   Future<void> openHealthConnectSettings() async {
@@ -153,7 +209,7 @@ void main() {
     });
 
     testWidgets(
-        'stale grant (getStatus throws STALE_GRANT, persisted flag set) '
+        'stale grant (snapshot staleWedged, persisted flag set) '
         '→ row shows "Connection problem", never "Connected"; sheet '
         'shows item 4 + recovery steps (item 5) + Manage system '
         'permissions; no [STALE_GRANT] anywhere', (tester) async {

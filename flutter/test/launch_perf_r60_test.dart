@@ -44,8 +44,13 @@ class _DelayedHc extends HealthConnectService {
   });
 
   @override
-  Future<HealthConnectStatus> getStatus() async =>
-      HealthConnectStatus.connected;
+  Future<HcAvailability> probeAvailability() async => const HcAvailability(
+        serviceAvailable: true,
+        grantedPermissions: HealthConnectService.requiredPermissions,
+        bridgeErrorCode: null,
+        stepsProbe: HcReadProbeOutcome.ok,
+        persistedConnected: true,
+      );
 
   @override
   Future<List<HrSample>> readHeartRateSamples(String dateStr) async {
@@ -635,8 +640,13 @@ void main() {
 /// succeed. Pins the per-read error isolation in loadTodayVitals.
 class _ThrowingSleepHc extends HealthConnectService {
   @override
-  Future<HealthConnectStatus> getStatus() async =>
-      HealthConnectStatus.connected;
+  Future<HcAvailability> probeAvailability() async => const HcAvailability(
+        serviceAvailable: true,
+        grantedPermissions: HealthConnectService.requiredPermissions,
+        bridgeErrorCode: null,
+        stepsProbe: HcReadProbeOutcome.ok,
+        persistedConnected: true,
+      );
 
   @override
   Future<List<HrSample>> readHeartRateSamples(String dateStr) async {
@@ -655,14 +665,19 @@ class _ThrowingSleepHc extends HealthConnectService {
 
 class _StalledHc extends HealthConnectService {
   @override
-  Future<HealthConnectStatus> getStatus() =>
-      Completer<HealthConnectStatus>().future;
+  Future<HcAvailability> probeAvailability() =>
+      Completer<HcAvailability>().future;
 }
 
 class _InstantHc extends HealthConnectService {
   @override
-  Future<HealthConnectStatus> getStatus() async =>
-      HealthConnectStatus.connected;
+  Future<HcAvailability> probeAvailability() async => const HcAvailability(
+        serviceAvailable: true,
+        grantedPermissions: HealthConnectService.requiredPermissions,
+        bridgeErrorCode: null,
+        stepsProbe: HcReadProbeOutcome.ok,
+        persistedConnected: true,
+      );
 
   @override
   Future<List<HrSample>> readHeartRateSamples(String dateStr) async {

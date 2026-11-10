@@ -34,9 +34,17 @@ class MemorySecureStore implements SecureStore {
 class FakeHCService extends HealthConnectService {
   FakeHCService() : super(store: MemorySecureStore());
 
+  // Phase 2 PR-2 re-point: Settings derives from the probe
+  // snapshot — a known empty grant is the notConnected state.
   @override
-  Future<HealthConnectStatus> getStatus() async =>
-      HealthConnectStatus.notConnected;
+  Future<HcAvailability> probeAvailability() async =>
+      const HcAvailability(
+        serviceAvailable: true,
+        grantedPermissions: {},
+        bridgeErrorCode: null,
+        stepsProbe: null,
+        persistedConnected: false,
+      );
 }
 
 SettingsStore _store(Map<String, String> map) => SettingsStore.withStorage(

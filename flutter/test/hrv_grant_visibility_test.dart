@@ -120,9 +120,15 @@ class _CaptureFakeHc extends HealthConnectService {
   }
 }
 
-/// Settings Connected Apps fake: canned status + canned missing
-/// labels (extends the Round 51 fake so the shared pump plumbing
-/// accepts it).
+/// Settings Connected Apps fake: canned partial status + canned
+/// missing labels (extends the Round 51 fake so the shared pump
+/// plumbing accepts it). Phase 2 PR-2 re-point: the Settings card
+/// derives its labels from the probe snapshot's granted set, so
+/// the fake shapes the SNAPSHOT — the granted set is required
+/// minus the permissions whose labels are canned as missing. The
+/// empty-labels case (the old separate missing-set read failing)
+/// is a snapshot whose missing set is overridden empty: the card
+/// then keeps its generic partial copy.
 class _SettingsFakeHc extends r51.FakeHCService {
   _SettingsFakeHc(this.missingLabels)
       : super(HealthConnectStatus.partiallyConnected);
@@ -130,7 +136,47 @@ class _SettingsFakeHc extends r51.FakeHCService {
   final List<String> missingLabels;
 
   @override
-  Future<List<String>> getMissingPermissionLabels() async => missingLabels;
+  Future<HcAvailability> probeAvailability() async {
+    final missingPerms = {
+      for (final p in HealthConnectService.requiredPermissions)
+        if (missingLabels
+            .contains(HealthConnectService.permissionLabel(p)))
+          p,
+    };
+    if (missingLabels.isEmpty) {
+      // Still a PARTIAL grant (one permission missing) — only the
+      // missing SET reads empty, so no label can be derived.
+      return _PartialSnapshotNoMissing(
+          granted: HealthConnectService.requiredPermissions.difference(
+              const {'android.permission.health.READ_HEART_RATE_VARIABILITY'}));
+    }
+    final granted =
+        HealthConnectService.requiredPermissions.difference(missingPerms);
+    return HcAvailability(
+      serviceAvailable: true,
+      grantedPermissions: granted,
+      bridgeErrorCode: null,
+      stepsProbe: null,
+      persistedConnected: false,
+    );
+  }
+}
+
+/// A partial-grant snapshot whose missing set reads empty — the
+/// shape that leaves the Settings card's generic partial copy in
+/// place (labels unknown).
+class _PartialSnapshotNoMissing extends HcAvailability {
+  _PartialSnapshotNoMissing({required Set<String> granted})
+      : super(
+          serviceAvailable: true,
+          grantedPermissions: granted,
+          bridgeErrorCode: null,
+          stepsProbe: null,
+          persistedConnected: false,
+        );
+
+  @override
+  Set<String> get missingPermissions => const {};
 }
 
 /// Settings pump with an injectable history store (the Round 51

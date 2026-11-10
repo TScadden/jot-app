@@ -52,11 +52,12 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
   bool _requesting = false;
   String? _error;
 
-  /// True when the live status check threw the stale-grant code:
-  /// Health Connect lists Tabs as granted, but the real read probe
-  /// was blocked. In this state the row must show "Connection
-  /// problem" (Juno ruling #3) — the persisted-flag fallback must
-  /// NEVER manufacture "Connected" out of this throw.
+  /// True when the availability snapshot reports the stale/wedged
+  /// grant ([HcAvailability.staleWedged]): Health Connect lists
+  /// Tabs as granted, but the real read probe was blocked. In this
+  /// state the row must show "Connection problem" (Juno ruling
+  /// #3) — the persisted-flag fallback must NEVER manufacture
+  /// "Connected" out of this known state.
   bool _staleGrant = false;
 
   // HRV grant visibility — plain-language names of the data types
@@ -86,75 +87,77 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
     _loadStatus();
   }
 
+  /// Phase 2 PR-2 — derives every presented state from ONE
+  /// probeAvailability() snapshot (the snapshot never throws, so
+  /// there is no catch path here any more). A KNOWN state —
+  /// including stale, which arrives as DATA ([HcAvailability]
+  /// .staleWedged) — is authoritative and is never overridden by
+  /// the persisted flag; the persisted flag serves first paint
+  /// (via [_effectiveStatus] before the first snapshot) and the
+  /// UNKNOWN fallback only. [errorOverride] keeps a caller-owned
+  /// failure message (the permission-request failure in
+  /// [_onConnectTap]) when the snapshot itself is a known state.
+  void _applySnapshot(HcAvailability snapshot, {String? errorOverride}) {
+    _persistedConnected = snapshot.persistedConnected;
+    if (snapshot.staleWedged) {
+      // Stale grant (Juno ruling #3/#5): the live probe was
+      // blocked, so the row tells the truth — "Connection
+      // problem" — and the error line presents the ruled
+      // recovery text with NO bracketed code prefix. The
+      // persisted flag must not turn this state into
+      // "Connected": _status lands on notConnected and
+      // _staleGrant drives the row/sheet presentation.
+      _staleGrant = true;
+      _status = HealthConnectStatus.notConnected;
+      _error = HealthConnectService.staleGrantMessage;
+      _missingLabels = const [];
+      return;
+    }
+    final status = snapshot.status;
+    if (status == null) {
+      // UNKNOWN — the grant layer itself errored at the bridge.
+      // Present exactly as the old generic exception path did:
+      // the persisted-flag fallback status plus the failure's
+      // plain-language message (the code goes to logs only).
+      if (snapshot.bridgeErrorCode != null) {
+        debugPrint(
+            'Connections HC status check failed [${snapshot.bridgeErrorCode}]');
+      }
+      _staleGrant = false;
+      _status = snapshot.persistedConnected
+          ? HealthConnectStatus.connected
+          : HealthConnectStatus.notConnected;
+      _error = errorOverride ??
+          snapshot.availabilityError?.message ??
+          snapshot.grantError?.message ??
+          'Status check failed.';
+      _missingLabels = const [];
+      return;
+    }
+    _staleGrant = false;
+    _status = status;
+    _error = errorOverride;
+    // Partial grant: the missing types derive from the snapshot's
+    // own granted set — plain-language labels in required order.
+    _missingLabels = status == HealthConnectStatus.partiallyConnected
+        ? [
+            for (final p in HealthConnectService.requiredPermissions)
+              if (snapshot.missingPermissions.contains(p))
+                HealthConnectService.permissionLabel(p),
+          ]
+        : const [];
+  }
+
   Future<void> _loadStatus() async {
     // Fast first paint from persisted state (shared with onboarding),
-    // then confirm with the live check.
+    // then confirm with the live probe snapshot.
     try {
       final persisted = await _service.hasPersistedConnection();
       if (mounted) setState(() => _persistedConnected = persisted);
     } catch (_) {}
-    try {
-      final status = await _service.getStatus();
-      if (mounted) {
-        // The status lands FIRST, in its own setState: a slow or
-        // failing missing-set read below must never delay it.
-        setState(() {
-          _status = status;
-          _error = null;
-          _staleGrant = false;
-          _missingLabels = const [];
-        });
-      }
-      // Partial grant: also read WHICH types are missing, on its
-      // own guard — a failure here leaves the labels empty rather
-      // than disturbing the status just shown.
-      if (status == HealthConnectStatus.partiallyConnected) {
-        try {
-          final missingLabels =
-              await _service.getMissingPermissionLabels();
-          if (mounted) {
-            setState(() => _missingLabels = missingLabels);
-          }
-        } catch (_) {}
-      }
-    } on HealthConnectException catch (e) {
-      if (mounted) {
-        setState(() {
-          if (e.code == HealthConnectService.staleGrantCode) {
-            // Stale grant (Juno ruling #3/#5): the live probe was
-            // blocked, so the row tells the truth — "Connection
-            // problem" — and the error line presents the ruled
-            // recovery text with NO bracketed code prefix. The
-            // persisted flag must not turn this throw into
-            // "Connected": _status lands on notConnected and
-            // _staleGrant drives the row/sheet presentation.
-            _staleGrant = true;
-            _status = HealthConnectStatus.notConnected;
-            _error = e.message;
-          } else {
-            _staleGrant = false;
-            _status = _persistedConnected
-                ? HealthConnectStatus.connected
-                : HealthConnectStatus.notConnected;
-            _error = e.message;
-          }
-        });
-      }
-    } catch (_) {
-      // Non-bridge failure (e.g. the persisted-state write inside
-      // getStatus): never leave _status pending forever with the
-      // row rendered from persisted state — fall back like the
-      // bridge-error path above, with a plain visible message.
-      if (mounted) {
-        setState(() {
-          _staleGrant = false;
-          _status = _persistedConnected
-              ? HealthConnectStatus.connected
-              : HealthConnectStatus.notConnected;
-          _error = 'Status check failed.';
-        });
-      }
-    }
+    final snapshot = await _service.probeAvailability();
+    if (!mounted) return;
+    setState(() => _applySnapshot(snapshot));
   }
 
   Future<void> _onConnectTap() async {
@@ -187,16 +190,18 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
         }
       });
     } on HealthConnectException catch (e) {
-      if (mounted) {
-        setState(() {
-          _requesting = false;
-          _error = e.message;
-          if (e.code == HealthConnectService.staleGrantCode) {
-            _staleGrant = true;
-            _status = HealthConnectStatus.notConnected;
-          }
-        });
-      }
+      // requestPermissions() may still throw — including the
+      // stale-grant code when its internal read probe is blocked.
+      // The code is NOT special-cased: the authoritative state
+      // comes from a fresh probe snapshot (stale arrives there as
+      // data), and the request failure's own plain message stays
+      // as the error line for non-stale failures.
+      if (!mounted) return;
+      setState(() => _requesting = false);
+      final snapshot = await _service.probeAvailability();
+      if (!mounted) return;
+      setState(() => _applySnapshot(snapshot,
+          errorOverride: snapshot.staleWedged ? null : e.message));
     }
   }
 
