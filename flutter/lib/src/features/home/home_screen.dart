@@ -2094,20 +2094,41 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }
         if (_feelingVisible) {
-          // Display-only unscored state: the prompt as flat text,
-          // no numbers, no tap target — the input is the top strip
-          // on Home behind this sheet.
+          // Display-only unscored state (Juno Nov 10, 2026, §5 —
+          // verbatim): label + supporting text saying where the
+          // one input lives. No numerals, no checkbox, no tap
+          // target — the input is the top strip on Home behind
+          // this sheet.
           return const Padding(
             key: ValueKey('todaySheetCheckInDisplayOnly'),
             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text(
-              kHomeCheckInPrompt,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: NotelColors.textSecondary,
+            child: Semantics(
+              label: kSheetCheckInUnscoredSemantics,
+              child: ExcludeSemantics(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      kSheetCheckInLabel,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: NotelColors.textPrimary,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      kSheetCheckInUnscoredText,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: NotelColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              textAlign: TextAlign.center,
             ),
           );
         }

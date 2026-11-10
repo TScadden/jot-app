@@ -9,18 +9,19 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 // HOME CHECK-IN COPY — THE SINGLE SWAP POINT (Home polish round 4)
 //
 // Every NEW user-visible string for the relocated Home check-in
-// lives HERE, as a named constant / single composition function, so
-// Juno's verbatim ruling can be swapped in at integration by
-// editing ONLY this block. The values below are PLACEHOLDERS chosen
-// by the build team, not ruled copy:
+// lives HERE, as a named constant / single composition function.
+// Juno's verbatim ruling (Nov 10, 2026, Home polish round 4, Part
+// C) was swapped in at integration:
 //
 // - [kHomeCheckInPrompt] — the prompt over the 1–5 numbers in the
-//   top strip, and the Today Summary sheet's display-only row.
+//   top strip (Juno §1, lowercase as ruled).
+// - [kSheetCheckInLabel] / [kSheetCheckInUnscoredText] — the Today
+//   Summary sheet's unscored display-only row (Juno §5).
 // - [homeCheckInScoredLine] — the scored line shown on the Today
 //   Summary CARD FACE and (through the same composition) the sheet's
-//   summary row. It currently delegates to the merged flow's ruled
-//   Item 7 label composition; if Juno rules a different scored-line
-//   wording, this function is the only place that changes.
+//   summary row. It delegates to the merged flow's ruled Item 7
+//   label composition (Oct 28, 2026), whose plain form is Juno's
+//   Nov 10 §3 template `{n} · {Word}`.
 //
 // The per-number word captions and button semantics are NOT new
 // copy: they reuse the merged flow's existing ruled vocabulary
@@ -28,8 +29,28 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 // 1–3) so the tap stays an informed declaration on this surface too.
 // ════════════════════════════════════════════════════════════════════
 
-/// PLACEHOLDER prompt (pending Juno's verbatim ruling — swap here).
-const String kHomeCheckInPrompt = 'How are you feeling?';
+/// The top-area prompt (Juno ruling Nov 10, 2026, §1 — verbatim,
+/// lowercase deliberate). The fallback `feeling today?` ships ONLY
+/// if this string cannot fit on one line at 360dp; it fits (the
+/// strip is 230dp wide, the string ~125dp at its 13sp size), so
+/// the primary ships. The screen-reader label is the full
+/// question in its §6 form, [kHomeCheckInPromptSemantics].
+const String kHomeCheckInPrompt = 'how are you feeling?';
+
+/// Screen-reader form of the prompt (Juno §6 — always the full
+/// question, this casing, even if the visual fallback ever ships).
+const String kHomeCheckInPromptSemantics = 'How are you feeling?';
+
+/// The Today Summary sheet's UNSCORED display row (Juno §5 —
+/// verbatim): label + supporting text. The row is display-only —
+/// no numerals, no tap — it says where the one input lives.
+const String kSheetCheckInLabel = 'Morning Score';
+const String kSheetCheckInUnscoredText =
+    "one tap up top, whenever you're ready";
+
+/// Semantics for the sheet's unscored row (Juno §6, verbatim).
+const String kSheetCheckInUnscoredSemantics =
+    "Morning Score. One tap up top, whenever you're ready.";
 
 /// The scored line for a logged check-in (Today Summary card face +
 /// sheet summary row). PLACEHOLDER composition (pending Juno's
@@ -77,14 +98,21 @@ class HomeCheckInStrip extends StatelessWidget {
       key: const ValueKey('home_checkin_strip'),
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text(
-          kHomeCheckInPrompt,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            color: NotelColors.textSecondary,
+        // The prompt is the control's label, not a focusable
+        // element (Juno §6): semantics carry the full question.
+        const Semantics(
+          label: kHomeCheckInPromptSemantics,
+          child: ExcludeSemantics(
+            child: Text(
+              kHomeCheckInPrompt,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: NotelColors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
           ),
-          textAlign: TextAlign.center,
         ),
         const SizedBox(height: 2),
         Row(
