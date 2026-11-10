@@ -124,6 +124,26 @@ class TodaySummaryCard extends StatefulWidget {
   /// the summary sheet.
   final Widget? headerTrailing;
 
+  /// Home polish round 4 (Part C) — the scored check-in line shown
+  /// on the card FACE once today's ranking is logged (Home composes
+  /// it via `homeCheckInScoredLine`, the single copy swap point in
+  /// home_checkin_strip.dart). Null (unscored, or a standalone card
+  /// mount) renders no line. The line is display + its own tap
+  /// target: [onCheckInScoredLineTap] opens the check-in amend flow
+  /// (Home's summary tap), mirroring the sheet summary card's tap —
+  /// it never opens the summary sheet itself.
+  final String? checkInScoredLine;
+  final VoidCallback? onCheckInScoredLineTap;
+
+  /// The scored line's accessibility sentence (the merged flow's
+  /// Item 7.2 semantics composition, supplied by Home alongside
+  /// [checkInScoredLine]) and the latest Item 11 commit
+  /// announcement, carried as a zero-size live region exactly as
+  /// the sheet's CheckInSummaryCard carries it — a flare/good
+  /// commit announces identically on both summary surfaces.
+  final String? checkInScoredSemantics;
+  final String? checkInAnnouncement;
+
   const TodaySummaryCard({
     super.key,
     this.backend,
@@ -134,6 +154,10 @@ class TodaySummaryCard extends StatefulWidget {
     this.migraineController,
     this.checkInBuilder,
     this.headerTrailing,
+    this.checkInScoredLine,
+    this.onCheckInScoredLineTap,
+    this.checkInScoredSemantics,
+    this.checkInAnnouncement,
   });
 
   @override
@@ -928,6 +952,58 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                 if (widget.headerTrailing != null) widget.headerTrailing!,
               ],
             ),
+            // Round 4 scored line (Part C): the day's recorded
+            // check-in, flat on the card face under the header row.
+            // Its tap is the check-in's own (amend), a sibling of
+            // the header's sheet-opening region like the trailing
+            // weather element.
+            if (widget.checkInScoredLine != null) ...[
+              const SizedBox(height: 2),
+              Semantics(
+                button: widget.onCheckInScoredLineTap != null,
+                label: widget.checkInScoredSemantics,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: InkWell(
+                    onTap: widget.onCheckInScoredLineTap,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 40),
+                      child: Row(
+                        key: const ValueKey('todaySummaryCheckInLine'),
+                        children: [
+                          // Juno reconciliation Q2 (Nov 10, 2026):
+                          // NO icon on the face line — a check glyph
+                          // here would read as a completed plan item
+                          // (Condition 3 presentation). Flat
+                          // secondary text, the subtitle's own
+                          // style; the tap's affordance is carried
+                          // by the Item 7.2 semantics.
+                          Flexible(
+                            child: Text(
+                              widget.checkInScoredLine!,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                                color: NotelColors.textSecondary,
+                              ),
+                            ),
+                          ),
+                          // Item 11 announcement live region
+                          // (zero-size, never visible), mirroring
+                          // CheckInSummaryCard.
+                          if (widget.checkInAnnouncement != null)
+                            Semantics(
+                              liveRegion: true,
+                              label: widget.checkInAnnouncement,
+                              child: const SizedBox.shrink(),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
             _progressBar(context),
           ],
         ),

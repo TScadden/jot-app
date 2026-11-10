@@ -16,13 +16,16 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/today_plan_store.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
+import 'package:tabs_lab/src/features/home/bandit_reading_slot.dart';
 import 'package:tabs_lab/src/features/home/checkin_summary_card.dart';
 import 'package:tabs_lab/src/features/home/daily_score_circle.dart';
+import 'package:tabs_lab/src/features/home/home_checkin_strip.dart';
 import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
+import 'package:tabs_lab/src/features/home/weekly_snapshot_card.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
@@ -546,11 +549,62 @@ void main() {
     });
   });
 
-  group('summary sheet hosts the check-in', () {
+  group('check-in relocation + Bandit overlap (round 4)', () {
     testWidgets(
-        'un-checked: the sheet hosts FeelingCheckInCard; tapping 3 '
-        'commits through Home and the section swaps to the summary',
-        (tester) async {
+        'unscored: the flat strip renders in the top area between '
+        'the streak stack and the Daily Score face — no container, '
+        'tap targets 44dp', (tester) async {
+      await _pumpHome(
+        tester,
+        physicalSize: const Size(1080, 2400),
+        entries: [_entry(id: 41, categoryId: 1, body: 'headache')],
+      );
+
+      // The input is on Home now, in the top strip — the old
+      // sheet-hosted card is gone from Home entirely.
+      expect(find.byType(HomeCheckInStrip), findsOneWidget);
+      expect(find.byType(FeelingCheckInCard), findsNothing);
+      // Juno SS1: the strip prompt is the lowercase ruled string.
+      expect(find.text('how are you feeling?'), findsOneWidget);
+      // Ruled word captions ride under the numbers.
+      expect(find.text('Really bad'), findsOneWidget);
+      expect(find.text('Really good'), findsOneWidget);
+
+      // Flat presentation: no Container (hence no box / card /
+      // pill background) anywhere inside the strip.
+      expect(
+        find.descendant(
+            of: find.byType(HomeCheckInStrip),
+            matching: find.byType(Container)),
+        findsNothing,
+      );
+
+      // Position: centered in the corner band's center slot —
+      // right of the streak stack's 62dp slot, left of the Daily
+      // Score face's 62dp slot, centered on the screen axis.
+      final strip = tester.getRect(find.byType(HomeCheckInStrip));
+      final stack = tester.getRect(find.byType(HomeStreakStack));
+      final face = tester.getRect(find.byType(DailyScoreFace));
+      expect(strip.left, greaterThanOrEqualTo(stack.right - 1));
+      expect(strip.right, lessThanOrEqualTo(face.left + 1));
+      expect(strip.center.dx, closeTo(180, 1.5));
+      expect(face.center.dx, closeTo(360 - 31, 1.0));
+
+      // Invisible tap targets: exactly 44×44dp per number.
+      for (var level = 1; level <= 5; level++) {
+        final box = tester
+            .getSize(find.byKey(ValueKey('home_checkin_number_$level')));
+        expect(box.width, 44);
+        expect(box.height, 44);
+      }
+      await _drainScoreChain(tester);
+    });
+
+    testWidgets(
+        'tapping 3 in the strip commits Daily Ranking through Home '
+        '(same write path); the strip clears and the score shows '
+        'on the Today Summary face + sheet summary; the sheet has '
+        'no 1–5 input', (tester) async {
       Map<String, dynamic>? posted;
       await _pumpHome(
         tester,
@@ -559,13 +613,8 @@ void main() {
         onPost: (body) => posted = body,
       );
 
-      // Not in the Home body anymore.
-      expect(find.byType(FeelingCheckInCard), findsNothing);
-      await _openSheet(tester);
-      expect(find.byType(FeelingCheckInCard), findsOneWidget);
-
       await tester.tap(find.descendant(
-        of: find.byType(FeelingCheckInCard),
+        of: find.byType(HomeCheckInStrip),
         matching: find.text('3'),
       ));
       await tester.pump();
@@ -580,14 +629,100 @@ void main() {
       expect(row['body'], 'Feeling: 3/5 Today');
       expect(row['chips'], '["Daily Ranking"]');
 
-      // The sheet's section swapped to the checked summary.
-      expect(find.byType(FeelingCheckInCard), findsNothing);
+      // Top area cleared; the score is on the card face.
+      expect(find.byType(HomeCheckInStrip), findsNothing);
+      expect(find.text('how are you feeling?'), findsNothing);
+      expect(
+          find.byKey(const ValueKey('todaySummaryCheckInLine')),
+          findsOneWidget);
+      // Juno reconciliation Q2: the face line carries the
+      // 'Morning Score: ' prefix over the Item 7.1 label.
+      expect(find.text('Morning Score: 3 · Average'), findsOneWidget);
+
+      // The sheet's check-in section is display-only now: the
+      // summary row, and NO 1–5 input anywhere in the sheet.
+      await _openSheet(tester);
       expect(find.byType(CheckInSummaryCard), findsOneWidget);
+      expect(find.byType(FeelingCheckInCard), findsNothing);
+      expect(find.byType(HomeCheckInStrip), findsNothing);
+      // Face line (behind the sheet, prefixed per Q2) + the
+      // sheet's bare Item 7.1 summary label.
+      expect(find.text('Morning Score: 3 · Average'), findsOneWidget);
       expect(find.text('3 · Average'), findsOneWidget);
       // The commit re-ran Home's health load, which starts a
       // fresh history-capture flight — drain it before teardown.
       await _drainScoreChain(tester);
     });
+
+    testWidgets(
+        'unscored sheet section is display-only: prompt row, no '
+        'input, tapping it writes nothing', (tester) async {
+      Map<String, dynamic>? posted;
+      await _pumpHome(
+        tester,
+        physicalSize: const Size(1080, 2400),
+        entries: [_entry(id: 41, categoryId: 1, body: 'headache')],
+        onPost: (body) => posted = body,
+      );
+
+      await _openSheet(tester);
+      expect(
+          find.byKey(const ValueKey('todaySheetCheckInDisplayOnly')),
+          findsOneWidget);
+      expect(find.byType(FeelingCheckInCard), findsNothing);
+      // The top strip (the real input, behind the sheet) carries
+      // the prompt once; the sheet's display-only row is Juno SS5
+      // verbatim: label + 'one tap up top' supporting text.
+      expect(find.text('how are you feeling?'), findsOneWidget);
+      expect(find.text('Morning Score'), findsOneWidget);
+      expect(
+          find.text("one tap up top, whenever you're ready"),
+          findsOneWidget);
+
+      await tester.tap(
+          find.byKey(const ValueKey('todaySheetCheckInDisplayOnly')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      expect(posted, isNull);
+      await _drainScoreChain(tester);
+    });
+
+    for (final (label, size) in [
+      ('360', const Size(1080, 2400)),
+      ('390', const Size(1170, 2532)),
+    ]) {
+      testWidgets(
+          'Bandit slot is 282 wide and the Today Summary card '
+          'tucks over its bottom edge by 24dp at ${label}dp; '
+          'Weekly Snapshot stays in the first viewport',
+          (tester) async {
+        await _pumpHome(
+          tester,
+          physicalSize: size,
+          entries: [_entry(id: 41, categoryId: 1, body: 'headache')],
+        );
+
+        final bandit = tester.getRect(find.descendant(
+          of: find.byType(BanditReadingSlot),
+          matching: find.byType(Image),
+        ));
+        expect(bandit.width, closeTo(282, 1.0));
+        expect(bandit.height,
+            closeTo(BanditReadingSlot.slotHeight, 1.5));
+
+        final card = tester.getRect(find.byType(TodaySummaryCard));
+        // Widget-level overlap 24dp (the opaque surface covers
+        // 18dp of the chair after the card's 6dp top margin).
+        expect(bandit.bottom - card.top, closeTo(24, 1.5));
+        expect(card.top, greaterThan(bandit.top));
+
+        final weekly = tester.getRect(find.byType(WeeklySnapshotCard));
+        expect(weekly.top, greaterThan(card.bottom - 1));
+        expect(weekly.top, lessThan(size.height / 3.0));
+        await _drainScoreChain(tester);
+      });
+    }
   });
 
   group('summary card header trailing (seventh ruling)', () {

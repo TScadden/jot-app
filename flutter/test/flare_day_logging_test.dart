@@ -315,20 +315,20 @@ void main() {
     for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
-    // Home redesign: the check-in moved into the Today Summary
-    // sheet — open it so these flows interact with the 1–5 card
-    // (or the checked-in summary) where they now live. Home's
-    // follow-up sheets (kind / good-day / edit) stack over it,
-    // exactly as in production. Fixed pumps: the loaded weather
-    // icon animates forever, so pumpAndSettle never settles.
-    await tester.tap(find.text('Today Summary'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 350));
+    // Home polish round 4 (Part C): the check-in INPUT lives in
+    // the flat strip in Home's top area, and the scored state
+    // shows as the Today Summary card-face line — these flows
+    // interact with both where they now live, in the Home body.
+    // Home's follow-up sheets (kind / good-day / amend) open over
+    // Home directly, exactly as in production.
     await _pumpUntil(
       tester,
       () =>
           find.text('How are you feeling?').evaluate().isNotEmpty ||
-          find.byType(CheckInSummaryCard).evaluate().isNotEmpty ||
+          find
+              .byKey(const ValueKey('todaySummaryCheckInLine'))
+              .evaluate()
+              .isNotEmpty ||
           identical(server.categories, _catsDoubleMiss),
     );
     await tester.pump();
@@ -1255,8 +1255,9 @@ void main() {
       await pumpHome(tester, miss);
       expect(find.text('Bad day'), findsNothing);
       expect(find.textContaining('Flare logged'), findsNothing);
-      // The check-in itself still renders (Mood resolves).
-      expect(find.text('How are you feeling?'), findsOneWidget);
+      // The check-in itself still renders (Mood resolves) — the
+      // strip prompt is Juno's lowercase SS1 string.
+      expect(find.text('how are you feeling?'), findsOneWidget);
     });
 
     testWidgets('fallback-hit category: a 1 tap files the flare '
@@ -1309,7 +1310,7 @@ void main() {
       await tester.tap(find.text('Fog'));
       await _pumpUntil(
         tester,
-        () => find.text('1 · Really bad · Fog').evaluate().isNotEmpty,
+        () => find.text('Morning Score: 1 · Really bad · Fog').evaluate().isNotEmpty,
       );
       final afterKind = LogEntryOutbox.instance.records
           .singleWhere((r) => r.entry.chips.contains('Flare Day'))
@@ -1342,7 +1343,7 @@ void main() {
       await tester.tap(find.text('Just log this'));
       await _pumpUntil(
         tester,
-        () => find.text('2 · Rough').evaluate().isNotEmpty,
+        () => find.text('Morning Score: 2 · Rough').evaluate().isNotEmpty,
       );
       await _pumpUntil(
         tester,
@@ -1378,7 +1379,8 @@ void main() {
       expect(flareRows(server), hasLength(1));
       expect(jsonDecode(flareRows(server).single['chips'] as String),
           ['Flare Day', 'Rough']);
-      expect(find.text('2 · Rough'), findsOneWidget);
+      // Face line (Juno reconciliation Q2): prefixed Item 7.1 label.
+      expect(find.text('Morning Score: 2 · Rough'), findsOneWidget);
     });
 
     testWidgets('3 tap: ranking only — no sheet, no flare, no '
@@ -1388,7 +1390,7 @@ void main() {
       await tester.tap(find.text('3'));
       await _pumpUntil(
         tester,
-        () => find.text('3 · Average').evaluate().isNotEmpty,
+        () => find.text('Morning Score: 3 · Average').evaluate().isNotEmpty,
       );
       expect(find.text('Flare day'), findsNothing);
       expect(find.text('Good day'), findsNothing);
@@ -1425,7 +1427,7 @@ void main() {
       await tester.tap(find.text('Done'));
       await _pumpUntil(
         tester,
-        () => find.text('4 · Good · Energy, Clear head')
+        () => find.text('Morning Score: 4 · Good · Energy, Clear head')
             .evaluate()
             .isNotEmpty,
       );
@@ -1460,7 +1462,7 @@ void main() {
       await tester.tap(find.text('Done'));
       await _pumpUntil(
         tester,
-        () => find.text('5 · Really good').evaluate().isNotEmpty,
+        () => find.text('Morning Score: 5 · Really good').evaluate().isNotEmpty,
       );
       await _pumpUntil(
         tester,
@@ -1491,7 +1493,8 @@ void main() {
       );
       expect(server.entries, hasLength(1));
       expect(goodRows(server), isEmpty);
-      expect(find.text('5 · Really good'), findsOneWidget);
+      // Face line (Juno reconciliation Q2): prefixed Item 7.1 label.
+      expect(find.text('Morning Score: 5 · Really good'), findsOneWidget);
     });
 
     testWidgets('amend: a wrong kind is fixed in place — same id, '
@@ -1507,7 +1510,7 @@ void main() {
       await tester.tap(find.text('Fog'));
       await _pumpUntil(
         tester,
-        () => find.text('1 · Really bad · Fog').evaluate().isNotEmpty,
+        () => find.text('Morning Score: 1 · Really bad · Fog').evaluate().isNotEmpty,
       );
       await _pumpUntil(
         tester,
@@ -1515,7 +1518,7 @@ void main() {
       );
       final flareId = flareRows(server).single['id'];
 
-      await tester.tap(find.text('1 · Really bad · Fog'));
+      await tester.tap(find.text('Morning Score: 1 · Really bad · Fog'));
       await _pumpUntil(
         tester,
         () => find.text("Today's check-in").evaluate().isNotEmpty,
@@ -1524,7 +1527,7 @@ void main() {
       await tester.tap(find.text('Pain'));
       await _pumpUntil(
         tester,
-        () => find.text('1 · Really bad · Pain').evaluate().isNotEmpty,
+        () => find.text('Morning Score: 1 · Really bad · Pain').evaluate().isNotEmpty,
       );
       await _pumpUntil(
         tester,
@@ -1551,14 +1554,14 @@ void main() {
       await tester.tap(find.text('Done'));
       await _pumpUntil(
         tester,
-        () => find.text('4 · Good · Energy').evaluate().isNotEmpty,
+        () => find.text('Morning Score: 4 · Good · Energy').evaluate().isNotEmpty,
       );
       await _pumpUntil(
         tester,
         () => LogEntryOutbox.instance.records.isEmpty,
       );
 
-      await tester.tap(find.text('4 · Good · Energy'));
+      await tester.tap(find.text('Morning Score: 4 · Good · Energy'));
       await _pumpUntil(
         tester,
         () => find.text('How bad is it today?').evaluate().isNotEmpty,
@@ -1571,7 +1574,7 @@ void main() {
       await _pumpUntil(
         tester,
         () => find
-            .text('4 · Good · Energy · Flare logged · Rough · Dizzy')
+            .text('Morning Score: 4 · Good · Energy · Flare logged · Rough · Dizzy')
             .evaluate()
             .isNotEmpty,
       );
@@ -1614,7 +1617,7 @@ void main() {
       );
       final goodId = goodRows(server).single['id'];
 
-      await tester.tap(find.text('4 · Good · Energy'));
+      await tester.tap(find.text('Morning Score: 4 · Good · Energy'));
       await _pumpUntil(
         tester,
         () => find.text("Today's check-in").evaluate().isNotEmpty,
@@ -1635,7 +1638,7 @@ void main() {
       await _pumpUntil(
         tester,
         () => find
-            .text('4 · Good · Energy, Good mood')
+            .text('Morning Score: 4 · Good · Energy, Good mood')
             .evaluate()
             .isNotEmpty,
       );
@@ -1675,9 +1678,9 @@ void main() {
       await pumpHome(tester, server);
       await _pumpUntil(
         tester,
-        () => find.text('4 · Good · Energy').evaluate().isNotEmpty,
+        () => find.text('Morning Score: 4 · Good · Energy').evaluate().isNotEmpty,
       );
-      await tester.tap(find.text('4 · Good · Energy'));
+      await tester.tap(find.text('Morning Score: 4 · Good · Energy'));
       await _pumpUntil(
         tester,
         () => find.text("Today's check-in").evaluate().isNotEmpty,
@@ -1696,7 +1699,7 @@ void main() {
         tester,
         () =>
             goodRows(server).isEmpty &&
-            find.text('4 · Good').evaluate().isNotEmpty,
+            find.text('Morning Score: 4 · Good').evaluate().isNotEmpty,
       );
       await _pumpUntil(
         tester,
@@ -1711,8 +1714,8 @@ void main() {
       expect(rankingRows(server).single['body'], 'Feeling: 4/5 Today');
       expect(rankingRows(server).single['chips'], '["Daily Ranking"]');
       expect(LogEntryOutbox.instance.records, isEmpty);
-      expect(find.text('4 · Good'), findsOneWidget);
-      expect(find.text('4 · Good · Energy'), findsNothing);
+      expect(find.text('Morning Score: 4 · Good'), findsOneWidget);
+      expect(find.text('Morning Score: 4 · Good · Energy'), findsNothing);
     });
 
     testWidgets('amend clear-all F1: a good record the server '
@@ -1765,7 +1768,7 @@ void main() {
       await pumpHome(tester, server);
       await _pumpUntil(
         tester,
-        () => find.text('4 · Good · Energy').evaluate().isNotEmpty,
+        () => find.text('Morning Score: 4 · Good · Energy').evaluate().isNotEmpty,
       );
       // Let the derive-triggered retry flush attempt and fail,
       // so the record is settled in its F1 state.
@@ -1783,7 +1786,7 @@ void main() {
       expect(goodRows(server), hasLength(1));
       expect(goodRows(server).single['id'], 41);
 
-      await tester.tap(find.text('4 · Good · Energy'));
+      await tester.tap(find.text('Morning Score: 4 · Good · Energy'));
       await _pumpUntil(
         tester,
         () => find.text("Today's check-in").evaluate().isNotEmpty,
@@ -1812,8 +1815,8 @@ void main() {
       expect(rankingRows(server).single, rankingJson);
       expect(LogEntryOutbox.instance.recordFor(41), isNull);
       expect(LogEntryOutbox.instance.records, isEmpty);
-      expect(find.text('4 · Good'), findsOneWidget);
-      expect(find.text('4 · Good · Energy'), findsNothing);
+      expect(find.text('Morning Score: 4 · Good'), findsOneWidget);
+      expect(find.text('Morning Score: 4 · Good · Energy'), findsNothing);
 
       // No resurrection: a fresh Home load pulls from the
       // server again — the deleted good record stays gone.
@@ -1827,12 +1830,12 @@ void main() {
       await pumpHome(tester, server);
       await _pumpUntil(
         tester,
-        () => find.text('4 · Good').evaluate().isNotEmpty,
+        () => find.text('Morning Score: 4 · Good').evaluate().isNotEmpty,
       );
       expect(goodRows(server), isEmpty);
       expect(server.capturedDeletes, [41]);
-      expect(find.text('4 · Good'), findsOneWidget);
-      expect(find.text('4 · Good · Energy'), findsNothing);
+      expect(find.text('Morning Score: 4 · Good'), findsOneWidget);
+      expect(find.text('Morning Score: 4 · Good · Energy'), findsNothing);
     });
 
     testWidgets('amend partial clear: unticking one of two good '
@@ -1862,11 +1865,11 @@ void main() {
       await _pumpUntil(
         tester,
         () => find
-            .text('5 · Really good · Energy, Good mood')
+            .text('Morning Score: 5 · Really good · Energy, Good mood')
             .evaluate()
             .isNotEmpty,
       );
-      await tester.tap(find.text('5 · Really good · Energy, Good mood'));
+      await tester.tap(find.text('Morning Score: 5 · Really good · Energy, Good mood'));
       await _pumpUntil(
         tester,
         () => find.text("Today's check-in").evaluate().isNotEmpty,
@@ -1893,7 +1896,7 @@ void main() {
       expect(rankingRows(server), hasLength(1));
       expect(rankingRows(server).single['id'], 40);
       expect(rankingRows(server).single['body'], 'Feeling: 5/5 Today');
-      expect(find.text('5 · Really good · Good mood'), findsOneWidget);
+      expect(find.text('Morning Score: 5 · Really good · Good mood'), findsOneWidget);
     });
 
     testWidgets('amend clear-all during a gated push: the delete '
@@ -1925,9 +1928,9 @@ void main() {
           .id;
       await _pumpUntil(
         tester,
-        () => find.text('4 · Good · Energy').evaluate().isNotEmpty,
+        () => find.text('Morning Score: 4 · Good · Energy').evaluate().isNotEmpty,
       );
-      await tester.tap(find.text('4 · Good · Energy'));
+      await tester.tap(find.text('Morning Score: 4 · Good · Energy'));
       await _pumpUntil(
         tester,
         () => find.text("Today's check-in").evaluate().isNotEmpty,
@@ -1974,7 +1977,7 @@ void main() {
       expect(rankingRows(server).single['id'], isNot(stagedGoodId));
       expect(server.capturedDeletes, isEmpty);
       expect(LogEntryOutbox.instance.records, isEmpty);
-      expect(find.text('4 · Good'), findsOneWidget);
+      expect(find.text('Morning Score: 4 · Good'), findsOneWidget);
       await tester.pump(const Duration(seconds: 25));
       await tester.pump();
     });
@@ -2007,9 +2010,9 @@ void main() {
       await pumpHome(tester, server);
       await _pumpUntil(
         tester,
-        () => find.text('4 · Good · Energy').evaluate().isNotEmpty,
+        () => find.text('Morning Score: 4 · Good · Energy').evaluate().isNotEmpty,
       );
-      await tester.tap(find.text('4 · Good · Energy'));
+      await tester.tap(find.text('Morning Score: 4 · Good · Energy'));
       await _pumpUntil(
         tester,
         () => find.text("Today's check-in").evaluate().isNotEmpty,
@@ -2043,7 +2046,7 @@ void main() {
       expect(rankingRows(server), hasLength(1));
       expect(rankingRows(server).single['id'], 40);
       expect(rankingRows(server).single['body'], 'Feeling: 4/5 Today');
-      expect(find.text('4 · Good'), findsOneWidget);
+      expect(find.text('Morning Score: 4 · Good'), findsOneWidget);
     });
 
     testWidgets("legacy 'Bad' flare on a 4 day: the summary "
@@ -2072,7 +2075,7 @@ void main() {
       await _pumpUntil(
         tester,
         () => find
-            .text('4 · Good · Flare logged · Bad · Crash')
+            .text('Morning Score: 4 · Good · Flare logged · Bad · Crash')
             .evaluate()
             .isNotEmpty,
       );
@@ -2122,7 +2125,7 @@ void main() {
       await tester.tap(find.text('Fog'));
       await _pumpUntil(
         tester,
-        () => find.text('1 · Really bad · Fog').evaluate().isNotEmpty,
+        () => find.text('Morning Score: 1 · Really bad · Fog').evaluate().isNotEmpty,
       );
       server.postGate!.complete();
       await _pumpUntil(
@@ -2160,7 +2163,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       diskFailAfter = null;
-      expect(find.text('4 · Good'), findsOneWidget);
+      expect(find.text('Morning Score: 4 · Good'), findsOneWidget);
       expect(
         LogEntryOutbox.instance.records
             .where((r) => r.entry.chips.contains('Good Day')),
@@ -2189,7 +2192,7 @@ void main() {
       await pumpHome(tester, server);
       await _pumpUntil(
         tester,
-        () => find.text('2 · Rough').evaluate().isNotEmpty,
+        () => find.text('Morning Score: 2 · Rough').evaluate().isNotEmpty,
       );
       await _pumpUntil(tester, () => server.capturedPosts.isNotEmpty);
       await _pumpUntil(tester, () => outbox.records.isEmpty);
@@ -2218,14 +2221,14 @@ void main() {
       await tester.tap(find.text('Pain'));
       await _pumpUntil(
         tester,
-        () => find.text('2 · Rough · Pain').evaluate().isNotEmpty,
+        () => find.text('Morning Score: 2 · Rough · Pain').evaluate().isNotEmpty,
       );
       await _pumpUntil(
         tester,
         () => LogEntryOutbox.instance.failedIds.isNotEmpty,
       );
       // Logged state persists despite the failed push.
-      expect(find.text('2 · Rough · Pain'), findsOneWidget);
+      expect(find.text('Morning Score: 2 · Rough · Pain'), findsOneWidget);
       expect(server.entries, isEmpty);
 
       await tester.pumpWidget(MaterialApp(
@@ -2325,7 +2328,7 @@ void main() {
       final announcement =
           tester.widget<Semantics>(_semantics('Flare logged · Rough'));
       expect(announcement.properties.liveRegion, isTrue);
-      expect(find.text('2 · Rough'), findsOneWidget);
+      expect(find.text('Morning Score: 2 · Rough'), findsOneWidget);
 
       server.postGate!.complete();
       await _pumpUntil(
@@ -2373,7 +2376,7 @@ void main() {
       // No announcement fired for a record that does not exist.
       expect(_semantics('Flare logged · Rough'), findsNothing);
       // The honest Item 11 state: the ranking alone.
-      expect(find.text('2 · Rough'), findsOneWidget);
+      expect(find.text('Morning Score: 2 · Rough'), findsOneWidget);
 
       diskFailAfter = null;
       server.postGate!.complete();
@@ -2414,7 +2417,7 @@ void main() {
       await tester.tap(find.text('Dizzy'));
       await _pumpUntil(
         tester,
-        () => find.text('2 · Rough · Dizzy').evaluate().isNotEmpty,
+        () => find.text('Morning Score: 2 · Rough · Dizzy').evaluate().isNotEmpty,
       );
       expect(server.pullCount, pullsBefore + 2);
       final amendedFlare = LogEntryOutbox.instance.records
@@ -2464,9 +2467,9 @@ void main() {
       await pumpHome(tester, server);
       await _pumpUntil(
         tester,
-        () => find.text('4 · Good').evaluate().isNotEmpty,
+        () => find.text('Morning Score: 4 · Good').evaluate().isNotEmpty,
       );
-      await tester.tap(find.text('4 · Good'));
+      await tester.tap(find.text('Morning Score: 4 · Good'));
       await _pumpUntil(
         tester,
         () => find.text("Today's check-in").evaluate().isNotEmpty,
@@ -2505,7 +2508,7 @@ void main() {
       await tester.tap(find.text('Fog'));
       await _pumpUntil(
         tester,
-        () => find.text('1 · Really bad · Fog').evaluate().isNotEmpty,
+        () => find.text('Morning Score: 1 · Really bad · Fog').evaluate().isNotEmpty,
       );
       final announcement = tester.widget<Semantics>(
         _semantics('Flare logged · Really bad · Fog'),
@@ -2528,7 +2531,7 @@ void main() {
       await tester.tap(find.text('3'));
       await _pumpUntil(
         tester,
-        () => find.text('3 · Average').evaluate().isNotEmpty,
+        () => find.text('Morning Score: 3 · Average').evaluate().isNotEmpty,
       );
       await _pumpUntil(
         tester,
@@ -2536,7 +2539,7 @@ void main() {
       );
 
       // First opening: dismiss at the severity step.
-      await tester.tap(find.text('3 · Average'));
+      await tester.tap(find.text('Morning Score: 3 · Average'));
       await _pumpUntil(
         tester,
         () => find.text('How bad is it today?').evaluate().isNotEmpty,
@@ -2554,7 +2557,7 @@ void main() {
 
       // Second opening: choose a severity (sheet-local only), then
       // dismiss at the kind step — still nothing written.
-      await tester.tap(find.text('3 · Average'));
+      await tester.tap(find.text('Morning Score: 3 · Average'));
       await _pumpUntil(
         tester,
         () => find.text('How bad is it today?').evaluate().isNotEmpty,
@@ -2573,7 +2576,7 @@ void main() {
             .where((r) => r.entry.chips.contains('Flare Day')),
         isEmpty,
       );
-      expect(find.text('3 · Average'), findsOneWidget);
+      expect(find.text('Morning Score: 3 · Average'), findsOneWidget);
       expect(server.entries, hasLength(1));
     });
 
@@ -2601,7 +2604,7 @@ void main() {
       await pumpHome(tester, server);
       await _pumpUntil(
         tester,
-        () => find.text('2 · Rough').evaluate().isNotEmpty,
+        () => find.text('Morning Score: 2 · Rough').evaluate().isNotEmpty,
       );
       await _pumpUntil(tester, () => outbox.records.isEmpty);
       // Each record pushed exactly once — the staged flare was

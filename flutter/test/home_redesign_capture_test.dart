@@ -371,7 +371,13 @@ void main() {
 
     // FRAME 4 — sheet_unchecked_360.
     await openSheet();
-    expect(find.text('How are you feeling?'), findsOneWidget);
+    // Round 4: the strip prompt renders once (behind the sheet);
+    // the sheet's display-only row is Juno SS5 ('Morning Score' +
+    // 'one tap up top, whenever you're ready').
+    expect(find.text('how are you feeling?'), findsOneWidget);
+    expect(find.text('Morning Score'), findsOneWidget);
+    expect(find.text("one tap up top, whenever you're ready"),
+        findsOneWidget);
     await capture('sheet_unchecked_360', 1080, 2400);
     await tester.tapAt(const Offset(180, 20));
     await tester.pump();
@@ -381,6 +387,10 @@ void main() {
     // FRAME 5 — sheet_checked_360 (checked fixture).
     await pumpHome(checked: true);
     await openSheet();
+    // Round 4 (Juno reconciliation Q2): the face line is prefixed
+    // ('Morning Score: 3 · Average'); the sheet's summary row keeps
+    // the bare Item 7.1 label ('3 · Average').
+    expect(find.text('Morning Score: 3 · Average'), findsOneWidget);
     expect(find.text('3 · Average'), findsOneWidget);
     await capture('sheet_checked_360', 1080, 2400);
 
