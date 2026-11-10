@@ -391,9 +391,7 @@ void main() {
       expect(
           _lines(data, 'Z8'),
           contains(
-              'Data availability: Sleep: Available (24 records); '
-              'Hrv: Available from stored history (18 records); '
-              'BloodPressure: Unavailable. Permission not granted.'));
+              'Data availability: Sleep: Available (24 records); Hrv: Available from stored history (18 records); BloodPressure: Unavailable. Permission not granted.'));
     });
 
     test('Z8 renders when every section succeeded (no suppression)',
