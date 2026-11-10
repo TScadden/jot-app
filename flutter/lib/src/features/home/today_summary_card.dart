@@ -828,7 +828,22 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
 
   @override
   Widget build(BuildContext context) {
-    // Home redesign — the card face is header + subtitle + the
+    // Home redesign — while the sheet is open, every rebuild of
+    // this card (its own reloads AND Home's rebuilds above it —
+    // Home settling after a check-in commit rebuilds this card
+    // through the column) re-reads the sheet's hosted sections
+    // one frame later. The setState-driven tick alone raced
+    // Home's longer feeling-reload path (an edit-sheet delete
+    // settles in Home AFTER this card's last reload), leaving
+    // the sheet's check-in section stale; keying off build()
+    // covers both orders because the section builder reads
+    // Home's CURRENT state whenever it runs.
+    if (_sheetOpen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_sheetOpen && mounted) _sheetTick.value++;
+      });
+    }
+    // The card face is header + subtitle + the
     // finish-line progress bar ONLY. It never expands in place;
     // tapping it (or the chevron, a second tap target) opens the
     // summary sheet (see [_openSheet]).
