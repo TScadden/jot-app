@@ -252,7 +252,51 @@ enum DataSourceStatus {
   unavailable,
   timedOut,
   error,
+
+  /// The metric's permission IS granted (live granted set) but its
+  /// own fresh read was blocked with a SecurityException — the
+  /// stale/wedged grant state for that metric. Never derived from
+  /// a connection/status probe: only from the read's own failure
+  /// detail (see [HistoryUnion.failedWithSecurityException]).
+  stale,
+
+  /// The section is populated from the on-device history store
+  /// because the fresh Health Connect read failed: the union still
+  /// yielded series data, and a failed fresh read contributes no
+  /// rows, so every row present came from the store.
+  storedOnly,
 }
+
+/// The Health Connect permission(s) each report history metric
+/// actually reads — traced from the bridge reads behind
+/// [HealthHistoryQueries] (Kotlin record types per Dart read):
+/// - sleep: `readSleepHistory` → SleepSessionRecord
+/// - restingHr: `readRestingHrHistory` → RestingHeartRateRecord,
+///   with the HeartRateRecord BPM_AVG aggregate as its per-day
+///   fallback (the same call fails if either read is blocked)
+/// - hrv: `readHrvSamples` → HeartRateVariabilityRmssdRecord
+/// - calories: `readCaloriesHistory` → the ActiveCaloriesBurned +
+///   TotalCaloriesBurned aggregate pair (`active ?: total`)
+/// - spikes: `readSpikeCounts` → HeartRateRecord
+///
+/// This is deliberately NOT [HealthConnectService.requiredPermissions]:
+/// a missing permission a metric never reads (e.g. Steps) must not
+/// condemn that metric's section.
+const Map<HistoryMetric, Set<String>> reportMetricPermissions = {
+  HistoryMetric.sleep: {'android.permission.health.READ_SLEEP'},
+  HistoryMetric.restingHr: {
+    'android.permission.health.READ_RESTING_HEART_RATE',
+    'android.permission.health.READ_HEART_RATE',
+  },
+  HistoryMetric.hrv: {
+    'android.permission.health.READ_HEART_RATE_VARIABILITY',
+  },
+  HistoryMetric.calories: {
+    'android.permission.health.READ_ACTIVE_CALORIES_BURNED',
+    'android.permission.health.READ_TOTAL_CALORIES_BURNED',
+  },
+  HistoryMetric.spikes: {'android.permission.health.READ_HEART_RATE'},
+};
 
 class SectionMetadata {
   final String sectionKey;
@@ -444,7 +488,12 @@ String buildDataAvailability(ReportSnapshot s) {
       'documents' => 'Documents (knowledge base)',
       _ => e.key[0].toUpperCase() + e.key.substring(1),
     };
-    final status = e.value.status == DataSourceStatus.success
+    // Stored-only data IS available (its series is in this very
+    // snapshot) — it carries the success form here, exactly as a
+    // fresh-read success does; its provenance is disclosed in the
+    // PDF availability list (see availabilityStatusText).
+    final status = e.value.status == DataSourceStatus.success ||
+            e.value.status == DataSourceStatus.storedOnly
         ? 'Available (${e.value.recordCount} records)'
         : 'Unavailable';
     return '$label: $status';
@@ -786,12 +835,6 @@ class ReportDataCollector {
     // the backend stages above stops the generation BEFORE the
     // Health Connect union load — the longest stage — starts.
     throwIfCancelled();
-    var connected = false;
-    try {
-      connected = await hc.isConnected();
-    } catch (_) {
-      connected = false;
-    }
 
     List<(String, int)> sleep = const [];
     List<(String, int)> deep = const [];
@@ -800,73 +843,117 @@ class ReportDataCollector {
     List<(String, int)> hr = const [];
     List<(String, double)> hrv = const [];
 
-    if (!connected) {
-      for (final key in ['sleep', 'deepSleep', 'heartRate', 'hrv', 'calories', 'hrSpikes']) {
-        meta(key, DataSourceStatus.permissionDenied, 0);
-      }
-    } else {
-      // R70 WS2 — ONE union load for the whole HC block: store ∪
-      // fresh HC over the requested window, every metric. The
-      // union's maps are already zero-filtered (founder rule; a 0
-      // spike count stays — it is a real sampled day), and the
-      // series + availability counts below are built from them
-      // exactly as they were built from the raw bridge reads, so
-      // the counts are the UNION's honest day counts.
-      final union = await historyQueries.loadDays(
-        daysToFetch,
-        end: n,
-        metrics: HistoryMetric.values.toSet(),
-      );
-      // B-02: a metric whose fresh HC read FAILED or came back
-      // PARTIAL reports the existing error status — never a
-      // status derived from emptiness alone (a partial-empty
-      // read used to report noData and a truncated non-empty
-      // series success, hiding that some of the series could
-      // not be read). The surviving series itself is still
-      // collected below exactly as before; only its status
-      // tells the truth. The error status reuses the existing
-      // availability wording — no new user-visible copy.
-      DataSourceStatus hcStatus(HistoryMetric metric, bool isEmpty) {
-        if (union.failed(metric) || union.partial(metric)) {
-          return DataSourceStatus.error;
+    // Report availability truth (Phase 1): there is NO
+    // isConnected() gate here. That gate flattened every failure
+    // of the 15-permission all-granted check — a partial grant
+    // missing a permission no report reads (e.g. Steps), or a
+    // stale Steps probe — into a blanket permissionDenied for all
+    // six sections without attempting a read or consulting the
+    // history store. The union load ALWAYS runs and the store is
+    // always consulted; each section's status below is derived
+    // from that metric's own evidence.
+    //
+    // R70 WS2 — ONE union load for the whole HC block: store ∪
+    // fresh HC over the requested window, every metric. The
+    // union's maps are already zero-filtered (founder rule; a 0
+    // spike count stays — it is a real sampled day), and the
+    // series + availability counts below are built from them
+    // exactly as they were built from the raw bridge reads, so
+    // the counts are the UNION's honest day counts.
+    final union = await historyQueries.loadDays(
+      daysToFetch,
+      end: n,
+      metrics: HistoryMetric.values.toSet(),
+    );
+
+    // The live missing-permission set, fetched LAZILY and at most
+    // once — only a metric whose fresh read failed with no
+    // surviving data needs it. A failure to obtain it is not
+    // evidence of anything: the affected metrics fall back to
+    // error rather than claiming a denial or a stale grant.
+    Set<String>? missingPermissions;
+    var missingPermissionsTried = false;
+    Future<Set<String>?> loadMissingPermissions() async {
+      if (!missingPermissionsTried) {
+        missingPermissionsTried = true;
+        try {
+          missingPermissions = await hc.getMissingPermissions();
+        } catch (_) {
+          missingPermissions = null;
         }
-        return isEmpty ? DataSourceStatus.noData : DataSourceStatus.success;
       }
-
-      sleep = [
-        for (final e in union.sleepMinutes.entries) (e.key, e.value),
-      ]..sort((a, b) => a.$1.compareTo(b.$1));
-      deep = [
-        for (final e in union.deepSleepMinutes.entries) (e.key, e.value),
-      ]..sort((a, b) => a.$1.compareTo(b.$1));
-      meta('sleep', hcStatus(HistoryMetric.sleep, sleep.isEmpty),
-          sleep.length);
-      meta('deepSleep', hcStatus(HistoryMetric.sleep, deep.isEmpty),
-          deep.length);
-
-      hr = [
-        for (final e in union.restingHr.entries) (e.key, e.value),
-      ]..sort((a, b) => a.$1.compareTo(b.$1));
-      meta('heartRate', hcStatus(HistoryMetric.restingHr, hr.isEmpty),
-          hr.length);
-
-      hrv = [
-        for (final e in union.hrv.entries) (e.key, e.value),
-      ]..sort((a, b) => a.$1.compareTo(b.$1));
-      meta('hrv', hcStatus(HistoryMetric.hrv, hrv.isEmpty), hrv.length);
-
-      calories = [
-        for (final e in union.calories.entries) (e.key, e.value),
-      ]..sort((a, b) => a.$1.compareTo(b.$1));
-      meta('calories', hcStatus(HistoryMetric.calories, calories.isEmpty),
-          calories.length);
-
-      spikes = [
-        for (final e in union.spikes.entries) (e.key, e.value),
-      ]..sort((a, b) => a.$1.compareTo(b.$1));
-      meta('hrSpikes', hcStatus(HistoryMetric.spikes, spikes.isEmpty),
-          spikes.length);
+      return missingPermissions;
     }
+
+    // Per-metric availability from real evidence:
+    // - PARTIAL fresh read → error (B-02, preserved exactly: a
+    //   partial read never derives its status from emptiness, and
+    //   the surviving series is still collected).
+    // - FAILED fresh read with surviving series data → storedOnly:
+    //   a failed read contributes no fresh rows, so the data the
+    //   union yields came from the history store.
+    // - FAILED fresh read, no data → permissionDenied only when
+    //   the live missing set contains a permission THIS metric
+    //   actually reads ([reportMetricPermissions]); stale when
+    //   the metric's grant is present but its own read's failure
+    //   detail names a SecurityException; otherwise error.
+    // - Clean read → success / noData from emptiness, now truthful
+    //   because a read actually happened.
+    Future<DataSourceStatus> hcStatus(
+        HistoryMetric metric, bool isEmpty) async {
+      if (union.partial(metric)) return DataSourceStatus.error;
+      if (union.failed(metric)) {
+        if (!isEmpty) return DataSourceStatus.storedOnly;
+        final missing = await loadMissingPermissions();
+        final metricPermissions =
+            reportMetricPermissions[metric] ?? const <String>{};
+        if (missing != null &&
+            metricPermissions.intersection(missing).isNotEmpty) {
+          return DataSourceStatus.permissionDenied;
+        }
+        if (missing != null && union.failedWithSecurityException(metric)) {
+          return DataSourceStatus.stale;
+        }
+        return DataSourceStatus.error;
+      }
+      return isEmpty ? DataSourceStatus.noData : DataSourceStatus.success;
+    }
+
+    sleep = [
+      for (final e in union.sleepMinutes.entries) (e.key, e.value),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+    deep = [
+      for (final e in union.deepSleepMinutes.entries) (e.key, e.value),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+    meta('sleep', await hcStatus(HistoryMetric.sleep, sleep.isEmpty),
+        sleep.length);
+    // deepSleep mirrors sleep's evidence (one read, one grant —
+    // Juno's Phase 1 ruling §3), with its own emptiness/count.
+    meta('deepSleep', await hcStatus(HistoryMetric.sleep, deep.isEmpty),
+        deep.length);
+
+    hr = [
+      for (final e in union.restingHr.entries) (e.key, e.value),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+    meta('heartRate', await hcStatus(HistoryMetric.restingHr, hr.isEmpty),
+        hr.length);
+
+    hrv = [
+      for (final e in union.hrv.entries) (e.key, e.value),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+    meta('hrv', await hcStatus(HistoryMetric.hrv, hrv.isEmpty), hrv.length);
+
+    calories = [
+      for (final e in union.calories.entries) (e.key, e.value),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+    meta('calories', await hcStatus(HistoryMetric.calories, calories.isEmpty),
+        calories.length);
+
+    spikes = [
+      for (final e in union.spikes.entries) (e.key, e.value),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+    meta('hrSpikes', await hcStatus(HistoryMetric.spikes, spikes.isEmpty),
+        spikes.length);
 
     // Re-key into the collector's canonical section order (the
     // metadata map above is filled in completion order).

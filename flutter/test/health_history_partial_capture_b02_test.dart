@@ -368,14 +368,21 @@ void main() {
       // The partial series still lands in the snapshot…
       expect(snap.sleepSeries, [('2026-10-16', 430)]);
       expect(snap.caloriesSeries, [('2026-10-16', 2100)]);
-      // …but its STATUS tells the truth (existing error status —
-      // no new user-visible copy).
+      // …but its STATUS tells the truth. PARTIAL metrics keep the
+      // B-02 error status exactly (existing wording, unchanged).
       expect(snap.sectionMetadata['sleep']!.status, DataSourceStatus.error);
       expect(
           snap.sectionMetadata['deepSleep']!.status, DataSourceStatus.error);
       expect(snap.sectionMetadata['hrv']!.status, DataSourceStatus.error);
-      expect(
-          snap.sectionMetadata['calories']!.status, DataSourceStatus.error);
+      // RE-PIN (Report Reliability Phase 1): FAILED calories with
+      // surviving union data previously reported error under B-02.
+      // A failed fresh read contributes no rows, so surviving data
+      // is store-carried by construction — Phase 1 names that
+      // provenance storedOnly (Juno's ruled stored-history line)
+      // instead of the generic error. Partial behavior above is
+      // NOT changed by Phase 1.
+      expect(snap.sectionMetadata['calories']!.status,
+          DataSourceStatus.storedOnly);
       // Untouched metrics keep the old emptiness semantics.
       expect(snap.sectionMetadata['heartRate']!.status,
           DataSourceStatus.success);

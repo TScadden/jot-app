@@ -7,6 +7,7 @@ import 'package:tabs_lab/src/data/clinician_report.dart';
 import 'package:tabs_lab/src/data/clinician_report_pdf.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
+import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/medication_change_events.dart';
 import 'package:tabs_lab/src/data/medication_timeline.dart';
 import 'package:tabs_lab/src/data/medications.dart';
@@ -175,6 +176,23 @@ Future<ClinicianPdfFonts> _diskFonts() async =>
     );
 
 void main() {
+  // Report Reliability Phase 1 harness note: with the collector's
+  // isConnected() gate deleted, collect() always runs the union
+  // load — which reads the shared history store. Like
+  // progress_report_r66_test.dart, install an in-memory backing
+  // on the singleton and reset it per test so no case touches the
+  // secure-storage platform channel (whose replies cannot land
+  // inside a widget test's fake-async zone; at base the gate had
+  // kept collect() from ever reaching the store).
+  setUp(() {
+    final mem = <String, String>{};
+    HealthHistoryStore.instance.debugSetStore(
+      read: (k) async => mem[k],
+      write: (k, v) async => mem[k] = v,
+      delete: (k) async => mem.remove(k),
+    );
+    HealthHistoryStore.instance.debugReset();
+  });
 
   group('Golden / render (spec §8 tests 1–4)', () {
     test('1. full-data fixture renders exactly 1 page', () async {
@@ -404,7 +422,29 @@ void main() {
           isEmpty);
     });
 
-    test('13. Health Connect denied: Z8 discloses it', () async {
+    test('13. Health Connect stale: Z8 discloses it truthfully', () async {
+      // RE-PIN (Report Reliability Phase 1): this test previously
+      // pinned Z8 printing 'Unavailable. Permission not granted.'
+      // for a sleep section the collector had blanket-denied via
+      // the isConnected() gate — a false denial (no read was ever
+      // attempted). The gate is deleted; the state that replaces
+      // it for a granted-but-blocked read is `stale`, and Z8 must
+      // print Juno's ruled stale line (SIGN, Phase 1), byte-exact.
+      final snapshot = _snapshot(sectionMetadata: {
+        'sleep': const SectionMetadata('sleep', DataSourceStatus.stale, 0),
+      });
+      final data = await _extend(snapshot);
+      expect(
+          _lines(data, 'Z8'),
+          contains(
+              'Data availability: Sleep: Unavailable. Permission shown as granted, but read blocked.'));
+    });
+
+    test('13b. a TRUE per-metric denial still prints the denial line in Z8',
+        () async {
+      // Phase 1 keeps permissionDenied for the one case where it
+      // is true: the metric's own permission is missing from the
+      // live granted set and its read failed.
       final snapshot = _snapshot(sectionMetadata: {
         'sleep': const SectionMetadata(
             'sleep', DataSourceStatus.permissionDenied, 0),
@@ -1215,4 +1255,39 @@ class _FakeBackend extends TabsBackend {
 class _FakeHcDisconnected extends HealthConnectService {
   @override
   Future<bool> isConnected() async => false;
+
+  // Phase 1: the collector no longer consults isConnected() — it
+  // always runs the union load. This fake therefore answers the
+  // range reads in-memory too (empty, no failure recorded: a
+  // disconnected device's sections are noData, and the platform
+  // channel is never touched from a widget test's fake-async
+  // zone). getMissingPermissions reports the full required set,
+  // which is what "disconnected" means for the live granted set.
+  @override
+  Future<Set<String>> getMissingPermissions() async =>
+      HealthConnectService.requiredPermissions;
+
+  @override
+  Future<List<({String date, int mins, int deep})>> readSleepHistory(
+          int days) async =>
+      const [];
+
+  @override
+  Future<List<({String date, int bpm})>> readRestingHrHistory(
+          int days) async =>
+      const [];
+
+  @override
+  Future<List<({String date, int kcal})>> readCaloriesHistory(
+          int days) async =>
+      const [];
+
+  @override
+  Future<List<({String date, int count})>> readSpikeCounts(int days) async =>
+      const [];
+
+  @override
+  Future<List<({int t, double ms, int tier})>> readHrvSamples(
+          int days) async =>
+      const [];
 }

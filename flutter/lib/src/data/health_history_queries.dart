@@ -82,6 +82,18 @@ class HistoryUnion {
   /// (e.g. the Key Metrics CSV export).
   final Set<HistoryMetric> partialMetrics;
 
+  /// Per-metric failure evidence for the metrics in [failedMetrics]:
+  /// the failing read's error detail as recorded by the HC service
+  /// (`lastReadErrorDetails` — the native exception CLASS only, e.g.
+  /// `SecurityException`, never health values), claimed atomically
+  /// with the failure code in the read's own completion
+  /// continuation, or the thrown error's string form when a read
+  /// throws instead of recording a code. A metric whose failure
+  /// carried no detail is absent from this map. This is the ONLY
+  /// stale-grant evidence the report collector uses: it comes from
+  /// the metric's own read, never from a status/probe call.
+  final Map<HistoryMetric, String> failureDetails;
+
   const HistoryUnion({
     required this.startDate,
     required this.endDate,
@@ -93,11 +105,19 @@ class HistoryUnion {
     this.hrv = const {},
     this.failedMetrics = const {},
     this.partialMetrics = const {},
+    this.failureDetails = const {},
   });
 
   bool failed(HistoryMetric metric) => failedMetrics.contains(metric);
 
   bool partial(HistoryMetric metric) => partialMetrics.contains(metric);
+
+  /// True when [metric]'s own fresh read failed AND its recorded
+  /// failure detail names a SecurityException — the stale/wedged
+  /// grant signature (grant present, read blocked) for THAT metric.
+  bool failedWithSecurityException(HistoryMetric metric) =>
+      failed(metric) &&
+      (failureDetails[metric]?.contains('SecurityException') ?? false);
 
   /// Every date that carries at least one metric in this union,
   /// sorted ascending — the export/report "actual depth" view.
@@ -204,6 +224,7 @@ class HealthHistoryQueries {
 
     final failed = <HistoryMetric>{};
     final partial = <HistoryMetric>{};
+    final failureDetails = <HistoryMetric, String>{};
     if (!fetchFromHealthConnect) {
       return HistoryUnion(
         startDate: startDate,
@@ -293,44 +314,72 @@ class HealthHistoryQueries {
     //     fails the Future.wait or the union.
     hc.lastReadErrorCode = null;
     hc.lastPartialErrorCode = null;
+    hc.lastReadErrorDetails = null;
 
-    bool claimReadError() {
-      final readFailed = hc.lastReadErrorCode != null;
-      if (readFailed) hc.lastReadErrorCode = null;
-      return readFailed;
+    /// Claims the calling read's failure signal AND its detail in
+    /// the same continuation that claims the code (see the
+    /// attribution protocol above): the service records both fields
+    /// BEFORE the read's future completes, so the first continuation
+    /// to run after they are set is the read that set them, and
+    /// capturing both here keeps the detail attributed to its own
+    /// metric. The detail is drained with the code so no later
+    /// loader can claim a previous read's detail as its own.
+    ({bool failed, String? details}) claimReadError() {
+      if (hc.lastReadErrorCode == null) {
+        return (failed: false, details: null);
+      }
+      final details = hc.lastReadErrorDetails;
+      hc.lastReadErrorCode = null;
+      hc.lastReadErrorDetails = null;
+      return (failed: true, details: details);
     }
 
     bool claimPartial() {
       final readPartial = hc.lastPartialErrorCode != null;
-      if (readPartial) hc.lastPartialErrorCode = null;
+      if (readPartial) {
+        hc.lastPartialErrorCode = null;
+        // The partial signal's detail belongs to this same read;
+        // drain it so it can never be mis-claimed as a later
+        // loader's failure detail.
+        hc.lastReadErrorDetails = null;
+      }
       return readPartial;
+    }
+
+    void noteFailure(HistoryMetric metric, String? details) {
+      failed.add(metric);
+      if (details != null && details.isNotEmpty) {
+        failureDetails[metric] = details;
+      }
     }
 
     Future<void> loadRestingHr() async {
       try {
         final rows = await hc.readRestingHrHistory(fetchDays);
-        if (claimReadError()) {
-          failed.add(HistoryMetric.restingHr);
+        final claim = claimReadError();
+        if (claim.failed) {
+          noteFailure(HistoryMetric.restingHr, claim.details);
           return;
         }
         for (final r in rows) {
           // Zero rule, exactly as the readers it replaces.
           if (r.bpm > 0) putFresh(r.date, hr: r.bpm);
         }
-      } catch (_) {
-        failed.add(HistoryMetric.restingHr);
+      } catch (e) {
+        noteFailure(HistoryMetric.restingHr, e.toString());
       }
     }
 
     Future<void> loadSleep() async {
       try {
         final rows = await hc.readSleepHistory(fetchDays);
-        if (claimReadError()) {
+        final claim = claimReadError();
+        if (claim.failed) {
           // Same-read hygiene: a failed read's partial signal is
           // not a warning anyone can act on — drain it so a later
           // loader's continuation cannot claim it as its own.
           claimPartial();
-          failed.add(HistoryMetric.sleep);
+          noteFailure(HistoryMetric.sleep, claim.details);
           return;
         }
         // Partial data is data (F2): rows are processed; the
@@ -341,40 +390,42 @@ class HealthHistoryQueries {
           if (r.mins > 0) putFresh(r.date, sleep: r.mins);
           if (r.deep > 0) putFresh(r.date, deep: r.deep);
         }
-      } catch (_) {
+      } catch (e) {
         claimPartial();
-        failed.add(HistoryMetric.sleep);
+        noteFailure(HistoryMetric.sleep, e.toString());
       }
     }
 
     Future<void> loadCalories() async {
       try {
         final rows = await hc.readCaloriesHistory(fetchDays);
-        if (claimReadError()) {
-          failed.add(HistoryMetric.calories);
+        final claim = claimReadError();
+        if (claim.failed) {
+          noteFailure(HistoryMetric.calories, claim.details);
           return;
         }
         for (final r in rows) {
           if (r.kcal > 0) putFresh(r.date, kcal: r.kcal);
         }
-      } catch (_) {
-        failed.add(HistoryMetric.calories);
+      } catch (e) {
+        noteFailure(HistoryMetric.calories, e.toString());
       }
     }
 
     Future<void> loadSpikes() async {
       try {
         final rows = await hc.readSpikeCounts(fetchDays);
-        if (claimReadError()) {
-          failed.add(HistoryMetric.spikes);
+        final claim = claimReadError();
+        if (claim.failed) {
+          noteFailure(HistoryMetric.spikes, claim.details);
           return;
         }
         for (final r in rows) {
           // 0 spikes is REAL data (a sampled day, no spikes).
           if (r.count >= 0) putFresh(r.date, spikeCount: r.count);
         }
-      } catch (_) {
-        failed.add(HistoryMetric.spikes);
+      } catch (e) {
+        noteFailure(HistoryMetric.spikes, e.toString());
       }
     }
 
@@ -383,9 +434,10 @@ class HealthHistoryQueries {
       // the daily top-tier rule run in Dart (attributeDailyHrv).
       try {
         final samples = await hc.readHrvSamples(fetchDays);
-        if (claimReadError()) {
+        final claim = claimReadError();
+        if (claim.failed) {
           claimPartial();
-          failed.add(HistoryMetric.hrv);
+          noteFailure(HistoryMetric.hrv, claim.details);
           return;
         }
         // Partial data is data (Defect 0): the surviving chunks'
@@ -397,9 +449,9 @@ class HealthHistoryQueries {
         for (final entry in dailyHrv.entries) {
           if (entry.value > 0) putFresh(entry.key, hrvValue: entry.value);
         }
-      } catch (_) {
+      } catch (e) {
         claimPartial();
-        failed.add(HistoryMetric.hrv);
+        noteFailure(HistoryMetric.hrv, e.toString());
       }
     }
 
@@ -445,6 +497,7 @@ class HealthHistoryQueries {
       hrv: hrv,
       failedMetrics: failed,
       partialMetrics: partial,
+      failureDetails: failureDetails,
     );
   }
 

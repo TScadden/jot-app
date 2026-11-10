@@ -396,8 +396,21 @@ void main() {
           'Available (7 records)');
       expect(availabilityStatusText(m(DataSourceStatus.noData)),
           'No data recorded');
+      // RE-PIN (Report Reliability Phase 1): this permissionDenied
+      // expectation previously also covered the collector's blanket
+      // gate denial — every section, whatever the real grant/read
+      // state. Phase 1 makes permissionDenied a TRUE per-metric
+      // status only (the metric's own permission is in the live
+      // missing set and its read failed), so the string is
+      // re-pinned here for that meaning alone. The two states that
+      // replace the gate's false denial carry Juno's ruled strings
+      // (SIGN, Phase 1 ruling), byte-exact:
       expect(availabilityStatusText(m(DataSourceStatus.permissionDenied)),
           'Unavailable. Permission not granted.');
+      expect(availabilityStatusText(m(DataSourceStatus.stale)),
+          'Unavailable. Permission shown as granted, but read blocked.');
+      expect(availabilityStatusText(m(DataSourceStatus.storedOnly, 7)),
+          'Available from stored history (7 records)');
       for (final s in [
         DataSourceStatus.unavailable,
         DataSourceStatus.timedOut,
@@ -454,7 +467,7 @@ void main() {
   });
 
   group('collector', () {
-    test('zero-filtering, BP range filter, permission-denied', () async {
+    test('zero-filtering, BP range filter, gate-collapse re-pin', () async {
       final backend = FakeBackend()
         ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)]
         ..bp = [
@@ -499,6 +512,16 @@ void main() {
         'sleep', 'deepSleep', 'heartRate', 'hrv', 'calories', 'hrSpikes',
       ]);
 
+      // RE-PIN (Report Reliability Phase 1): this case previously
+      // pinned the gate collapse — isConnected() false flattened
+      // sleep to permissionDenied with no read attempted. Phase 1
+      // deletes the gate: the union load runs and the store is
+      // consulted, so this collect truthfully reports the sleep
+      // day the FIRST collect above merged into the shared store
+      // (2026-10-16, the zero-filtered survivor) as a union
+      // success — not a denial. A TRUE per-metric
+      // permissionDenied is pinned by
+      // progress_report_availability_truth_test.dart.
       final denied = await ReportDataCollector(
               backend: backend, hc: FakeHc()..connected = false)
           .collect(
@@ -507,7 +530,9 @@ void main() {
         profile: const ReportProfileInput(),
       );
       expect(denied.sectionMetadata['sleep']!.status,
-          DataSourceStatus.permissionDenied);
+          DataSourceStatus.success);
+      expect(denied.sectionMetadata['sleep']!.recordCount, 1);
+      expect(denied.sleepSeries, [('2026-10-16', 430)]);
     });
 
     test('documents loader feeds snapshot + request knowledgeBase',

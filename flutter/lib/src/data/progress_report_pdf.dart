@@ -128,9 +128,16 @@ String effectiveSummaryText(
 /// Clean clinical wording for one availability status (native map).
 String availabilityStatusText(SectionMetadata meta) => switch (meta.status) {
       DataSourceStatus.success => 'Available (${meta.recordCount} records)',
+      // Juno Phase 1 ruling (SIGN): stored-only line, verbatim —
+      // the count slot mirrors the success line's form.
+      DataSourceStatus.storedOnly =>
+        'Available from stored history (${meta.recordCount} records)',
       DataSourceStatus.noData => 'No data recorded',
       DataSourceStatus.permissionDenied =>
         'Unavailable. Permission not granted.',
+      // Juno Phase 1 ruling (SIGN): stale-grant line, verbatim.
+      DataSourceStatus.stale =>
+        'Unavailable. Permission shown as granted, but read blocked.',
       _ => 'Unavailable. Data could not be retrieved.',
     };
 
