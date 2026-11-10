@@ -233,10 +233,14 @@ class _HomeScreenState extends State<HomeScreen> {
   /// shows on a guess, and cached vitals render first regardless.
   HealthConnectStatus? _hcStatus;
 
-  /// Visible-handling for a bridge failure (LESSONS.md): when
-  /// `getStatus()` itself throws, [_hcStatus] falls back to
-  /// notConnected (the honest user-facing state) and the exception
-  /// code is kept here so the banner can render it as `[CODE]`.
+  /// Internal plumbing for a bridge failure: when `getStatus()`
+  /// itself throws, [_hcStatus] falls back to notConnected (the
+  /// honest user-facing state) and the exception code is kept here
+  /// ONLY to distinguish the stale-grant throw
+  /// ([HealthConnectService.staleGrantCode]) for the banner's
+  /// plain-language stale copy, and for logs. HC connection-honesty
+  /// package (Juno ruling, condition 1): the code is NEVER rendered
+  /// in any UI state — not stale, not a bridge code, not UNKNOWN.
   String? _hcStatusErrorCode;
 
   /// Round 15c — once-per-day count-up gate. False until the gate
@@ -1720,7 +1724,9 @@ class _HomeScreenState extends State<HomeScreen> {
     // Round 23 — track the full status enum, not just connected/not.
     // A bridge failure is handled visibly, never silently wedged
     // (LESSONS.md): the status falls back to notConnected so the
-    // banner shows, and the exception code rides along for it.
+    // banner shows, and the exception code is kept internally so
+    // the stale-grant throw can select the banner's ruled stale
+    // copy — the code itself is never rendered (Juno condition 1).
     HealthConnectStatus status;
     String? statusErrorCode;
     try {
@@ -2183,7 +2189,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 status: _hcStatus, vitals: _vitals))
               HealthConnectBanner(
                 status: _hcStatus!,
-                errorCode: _hcStatusErrorCode,
+                staleGrant: _hcStatusErrorCode ==
+                    HealthConnectService.staleGrantCode,
                 onTap: () => unawaited(_openConnections()),
               ),
             StaggeredEntrance(

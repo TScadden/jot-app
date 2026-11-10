@@ -20,8 +20,15 @@ import 'test_helpers.dart';
 /// were indistinguishable. Now Home tracks the status enum and the
 /// banner shows only for not-fully-connected + empty biometrics.
 
+const _notConnectedTitle = "Health Connect isn't connected";
+const _notConnectedBody = 'Tap to reconnect';
+// Legacy joined form, still used to assert the old single-string
+// rendering is GONE (Juno item 7 splits it at the em dash).
 const _notConnectedCopy = "Health Connect isn't connected — tap to reconnect";
 const _partialCopy = 'Health Connect needs permissions — tap to fix';
+const _staleTitle = 'Health Connect got disconnected';
+const _staleBody =
+    "There's a problem with the connection. Tap to disconnect and connect again.";
 
 class _MemoryStore implements SecureStore {
   final Map<String, String> _map = {};
@@ -47,6 +54,7 @@ HealthConnectService _service({
   bool available = true,
   bool throwOnAvailable = false,
   bool withData = false,
+  bool probeSecurityFailure = false,
 }) {
   final channel = const MethodChannel(_channelName);
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -60,6 +68,15 @@ HealthConnectService _service({
         return available;
       case 'getGrantedPermissions':
         return granted;
+      case 'probeReadAccess':
+        if (probeSecurityFailure) {
+          throw PlatformException(
+            code: 'PROBE_READ_FAILED',
+            message: 'Probe read failed.',
+            details: 'SecurityException',
+          );
+        }
+        return true;
       case 'readHeartRateSamples':
         if (!withData) return <dynamic>[];
         final now = DateTime.now();
@@ -127,31 +144,62 @@ void main() {
         .setMockMethodCallHandler(const MethodChannel(_channelName), null);
   });
 
-  group('banner copy (healthConnectBannerText)', () {
-    test('notConnected → reconnect copy', () {
-      expect(healthConnectBannerText(HealthConnectStatus.notConnected),
-          _notConnectedCopy);
+  group('banner copy (Juno ruling, HC connection-honesty)', () {
+    test('notConnected → ruled title/body (item 7: shipped string split '
+        'at its em dash)', () {
+      expect(healthConnectBannerTitle(HealthConnectStatus.notConnected),
+          _notConnectedTitle);
+      expect(healthConnectBannerBody(HealthConnectStatus.notConnected),
+          _notConnectedBody);
     });
 
-    test('unavailable → reconnect copy (tap leads to the honest '
-        'Connections state)', () {
-      expect(healthConnectBannerText(HealthConnectStatus.unavailable),
-          _notConnectedCopy);
+    test('unavailable → same ruled title/body (item 7 covers it)', () {
+      expect(healthConnectBannerTitle(HealthConnectStatus.unavailable),
+          _notConnectedTitle);
+      expect(healthConnectBannerBody(HealthConnectStatus.unavailable),
+          _notConnectedBody);
     });
 
-    test('partiallyConnected → permissions copy, never "isn\'t connected"',
-        () {
+    test('stale grant → ruled title/body (items 1–2), whatever the '
+        'fallback status', () {
       expect(
-          healthConnectBannerText(HealthConnectStatus.partiallyConnected),
+          healthConnectBannerTitle(HealthConnectStatus.notConnected,
+              staleGrant: true),
+          _staleTitle);
+      expect(
+          healthConnectBannerBody(HealthConnectStatus.notConnected,
+              staleGrant: true),
+          _staleBody);
+    });
+
+    test('partiallyConnected → permissions copy unchanged, no body, '
+        'never "isn\'t connected"', () {
+      expect(
+          healthConnectBannerTitle(HealthConnectStatus.partiallyConnected),
           _partialCopy);
+      expect(healthConnectBannerBody(HealthConnectStatus.partiallyConnected),
+          isNull);
     });
 
     test('connected → no banner', () {
+      expect(healthConnectBannerTitle(HealthConnectStatus.connected), isNull);
       expect(healthConnectBannerText(HealthConnectStatus.connected), isNull);
     });
 
     test('status unknown yet → no banner (never on a guess)', () {
+      expect(healthConnectBannerTitle(null), isNull);
       expect(healthConnectBannerText(null), isNull);
+    });
+
+    test('staleGrantMessage is Juno item 5, byte-exact', () {
+      expect(
+        HealthConnectService.staleGrantMessage,
+        'Tabs is disconnected from Health Connect. Health Connect lists '
+        'Tabs as having permission, but a test read was blocked. This '
+        'sometimes happens after an app update or reinstall. To fix it, '
+        'open Health Connect, tap App permissions, tap Tabs, then tap '
+        'Remove access. Return here and connect again.',
+      );
     });
   });
 
@@ -224,27 +272,61 @@ void main() {
     });
   });
 
+  // Juno condition 1: NO bracketed diagnostic code renders in ANY
+  // banner state. Scans every Text widget in the tree, so re-adding
+  // a '[$errorCode]' render fails here (and in the Home integration
+  // tests below, where real coded throws drive the banner).
+  void expectNoBracketedCode(WidgetTester tester) {
+    for (final element in find.byType(Text).evaluate()) {
+      final widget = element.widget as Text;
+      final data = widget.data ?? '';
+      expect(data, isNot(matches(RegExp(r'\[[A-Z][A-Z0-9_]*\]'))),
+          reason: 'banner rendered a bracketed code: "$data"');
+    }
+    expect(find.text('[BRIDGE_DOWN]'), findsNothing);
+    expect(find.text('[STALE_GRANT]'), findsNothing);
+    expect(find.text('[UNKNOWN]'), findsNothing);
+  }
+
   group('HealthConnectBanner widget', () {
-    testWidgets('renders copy, tap fires, error code is visible',
+    testWidgets('renders ruled title/body, tap fires, NO error code',
         (tester) async {
       var taps = 0;
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
           body: HealthConnectBanner(
             status: HealthConnectStatus.notConnected,
-            errorCode: 'BRIDGE_DOWN',
             onTap: () => taps++,
           ),
         ),
       ));
-      expect(find.text(_notConnectedCopy), findsOneWidget);
-      expect(find.text('[BRIDGE_DOWN]'), findsOneWidget);
+      expect(find.text(_notConnectedTitle), findsOneWidget);
+      expect(find.text(_notConnectedBody), findsOneWidget);
+      expect(find.text(_notConnectedCopy), findsNothing);
+      expectNoBracketedCode(tester);
       expect(find.byType(CircularProgressIndicator), findsNothing);
-      await tester.tap(find.text(_notConnectedCopy));
+      await tester.tap(find.text(_notConnectedTitle));
       expect(taps, 1);
     });
 
-    testWidgets('partial renders the permissions copy', (tester) async {
+    testWidgets('stale grant renders items 1–2 and NO code', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: HealthConnectBanner(
+            status: HealthConnectStatus.notConnected,
+            staleGrant: true,
+            onTap: () {},
+          ),
+        ),
+      ));
+      expect(find.text(_staleTitle), findsOneWidget);
+      expect(find.text(_staleBody), findsOneWidget);
+      expect(find.text(_notConnectedTitle), findsNothing);
+      expectNoBracketedCode(tester);
+    });
+
+    testWidgets('partial renders the permissions copy, NO code',
+        (tester) async {
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
           body: HealthConnectBanner(
@@ -255,6 +337,22 @@ void main() {
       ));
       expect(find.text(_partialCopy), findsOneWidget);
       expect(find.text(_notConnectedCopy), findsNothing);
+      expectNoBracketedCode(tester);
+    });
+
+    testWidgets('unavailable renders the item-7 copy, NO code',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: HealthConnectBanner(
+            status: HealthConnectStatus.unavailable,
+            onTap: () {},
+          ),
+        ),
+      ));
+      expect(find.text(_notConnectedTitle), findsOneWidget);
+      expect(find.text(_notConnectedBody), findsOneWidget);
+      expectNoBracketedCode(tester);
     });
   });
 
@@ -262,11 +360,12 @@ void main() {
     testWidgets('not connected + empty → banner; tap opens Connections',
         (tester) async {
       await _pumpHome(tester, _service(granted: const []));
-      expect(find.text(_notConnectedCopy), findsOneWidget);
+      expect(find.text(_notConnectedTitle), findsOneWidget);
+      expect(find.text(_notConnectedBody), findsOneWidget);
       expect(find.text(_partialCopy), findsNothing);
       expect(find.byType(CircularProgressIndicator), findsNothing);
 
-      await tester.tap(find.text(_notConnectedCopy));
+      await tester.tap(find.text(_notConnectedTitle));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pump();
@@ -303,15 +402,32 @@ void main() {
 
     testWidgets('unavailable device + empty → banner', (tester) async {
       await _pumpHome(tester, _service(granted: const [], available: false));
-      expect(find.text(_notConnectedCopy), findsOneWidget);
+      expect(find.text(_notConnectedTitle), findsOneWidget);
+      expect(find.text(_notConnectedBody), findsOneWidget);
     });
 
-    testWidgets('bridge error → banner with the visible error code',
+    testWidgets('bridge error (BRIDGE_DOWN throw) → banner with the '
+        'item-7 copy and NO rendered code (Juno condition 1)',
         (tester) async {
       await _pumpHome(
           tester, _service(granted: const [], throwOnAvailable: true));
-      expect(find.text(_notConnectedCopy), findsOneWidget);
-      expect(find.text('[BRIDGE_DOWN]'), findsOneWidget);
+      expect(find.text(_notConnectedTitle), findsOneWidget);
+      expect(find.text(_notConnectedBody), findsOneWidget);
+      expect(find.text('[BRIDGE_DOWN]'), findsNothing);
+      expectNoBracketedCode(tester);
+    });
+
+    testWidgets('stale grant (full grants, probe SecurityException) → '
+        'banner items 1–2 and NO [STALE_GRANT] anywhere', (tester) async {
+      final granted = HealthConnectService.requiredPermissions.toList();
+      await _pumpHome(
+          tester,
+          _service(granted: granted, probeSecurityFailure: true));
+      expect(find.text(_staleTitle), findsOneWidget);
+      expect(find.text(_staleBody), findsOneWidget);
+      expect(find.text(_notConnectedTitle), findsNothing);
+      expect(find.text('[STALE_GRANT]'), findsNothing);
+      expectNoBracketedCode(tester);
     });
   });
 }

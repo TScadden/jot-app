@@ -22,40 +22,50 @@ import 'package:tabs_lab/src/features/connections/connections_screen.dart';
 /// opens for the connection the row says it is, and these tests
 /// pin that behavior plus the honest-affordance chevron rule.
 
-/// Stateful fake: [statusFuture] overrides the canned status so a
-/// test can hold the live check pending forever (the wedged case).
+const _explainer = 'Your connection is managed in Health Connect. '
+    'To stop Tabs from reading your health data, tap Manage system '
+    'permissions and remove access for Tabs there.';
+const _sheetStatusStale =
+    "Connection problem: Tabs can't read your health data right now.";
+
+/// Fake modeled on the REAL service (HC connection-honesty package):
+/// the stale state is a THROW of HealthConnectException with
+/// [HealthConnectService.staleGrantCode] from getStatus() — exactly
+/// what the real service does when grants report complete but the
+/// read probe is blocked — and there is NO disconnect() fake: the
+/// real disconnect never flipped any status (it only deleted two
+/// persisted keys, and getStatus() re-persisted them on a healthy
+/// return), and the Deactivate control that called it is removed.
+/// [statusFuture] overrides the canned status so a test can hold
+/// the live check pending forever (the wedged case).
 class FakeHCService extends HealthConnectService {
   FakeHCService({
     required this.persisted,
     this.statusResult = HealthConnectStatus.notConnected,
     this.statusFuture,
     this.settingsError,
+    this.statusException,
   });
 
   bool persisted;
   HealthConnectStatus statusResult;
   Future<HealthConnectStatus>? statusFuture;
   HealthConnectException? settingsError;
-  int disconnectCalls = 0;
+  HealthConnectException? statusException;
   int settingsCalls = 0;
 
   @override
   Future<bool> hasPersistedConnection() async => persisted;
 
   @override
-  Future<HealthConnectStatus> getStatus() =>
-      statusFuture ?? Future.value(statusResult);
+  Future<HealthConnectStatus> getStatus() {
+    final e = statusException;
+    if (e != null) return Future.error(e);
+    return statusFuture ?? Future.value(statusResult);
+  }
 
   @override
   Future<List<String>> getMissingPermissionLabels() async => const [];
-
-  @override
-  Future<void> disconnect() async {
-    disconnectCalls++;
-    persisted = false;
-    statusFuture = null;
-    statusResult = HealthConnectStatus.notConnected;
-  }
 
   @override
   Future<void> openHealthConnectSettings() async {
@@ -63,6 +73,19 @@ class FakeHCService extends HealthConnectService {
     final e = settingsError;
     if (e != null) throw e;
   }
+}
+
+/// No bracketed diagnostic code anywhere in the tree (Juno
+/// condition 1 applied to this screen, D5 item: the stale error
+/// presents the recovery text with NO '[STALE_GRANT]' prefix).
+void expectNoBracketedCode(WidgetTester tester) {
+  for (final element in find.byType(Text).evaluate()) {
+    final widget = element.widget as Text;
+    final data = widget.data ?? '';
+    expect(data, isNot(matches(RegExp(r'\[[A-Z][A-Z0-9_]*\]'))),
+        reason: 'screen rendered a bracketed code: "$data"');
+  }
+  expect(find.textContaining('[STALE_GRANT]'), findsNothing);
 }
 
 Future<void> _pump(WidgetTester tester, FakeHCService service) async {
@@ -98,7 +121,11 @@ void main() {
       await tester.pumpAndSettle();
 
       // Before the fix this found nothing: the tap silently no-oped.
-      expect(find.text('Deactivate in Tabs'), findsOneWidget);
+      // HC honesty: there is NO "Deactivate in Tabs" control —
+      // the healthy sheet carries the ruled explainer (item 6) and
+      // "Manage system permissions" as the only revoke path.
+      expect(find.text('Deactivate in Tabs'), findsNothing);
+      expect(find.text(_explainer), findsOneWidget);
       expect(find.text('Manage system permissions'), findsOneWidget);
 
       completer.complete(HealthConnectStatus.connected);
@@ -106,8 +133,9 @@ void main() {
     });
 
     testWidgets(
-        'settled Connected — tap opens the manage sheet and '
-        'Deactivate really disconnects', (tester) async {
+        'settled Connected — tap opens the manage sheet: no Deactivate '
+        'control, ruled explainer, Manage system permissions',
+        (tester) async {
       final service = FakeHCService(
         persisted: true,
         statusResult: HealthConnectStatus.connected,
@@ -118,22 +146,68 @@ void main() {
 
       await tester.tap(find.text('Android Health (Google Fit, Samsung)'));
       await tester.pumpAndSettle();
-      expect(find.text('Deactivate in Tabs'), findsOneWidget);
-      expect(find.text('Manage system permissions'), findsOneWidget);
-
-      await tester.tap(find.text('Deactivate in Tabs'));
-      await tester.pumpAndSettle();
-      expect(service.disconnectCalls, 1);
       expect(find.text('Deactivate in Tabs'), findsNothing);
-      expect(find.text('No trackers connected yet.'), findsOneWidget);
-      expect(find.text('Available'), findsOneWidget);
-      expect(find.text('Connected'), findsNothing);
+      expect(find.text(_explainer), findsOneWidget);
+      expect(find.text('Manage system permissions'), findsOneWidget);
+      expectNoBracketedCode(tester);
     });
 
     testWidgets(
-        'Manage system permissions failure surfaces visibly as '
-        '[CODE] after the sheet closes (not hidden, not wiped)',
-        (tester) async {
+        'stale grant (getStatus throws STALE_GRANT, persisted flag set) '
+        '→ row shows "Connection problem", never "Connected"; sheet '
+        'shows item 4 + recovery steps (item 5) + Manage system '
+        'permissions; no [STALE_GRANT] anywhere', (tester) async {
+      final service = FakeHCService(
+        persisted: true,
+        statusException: const HealthConnectException(
+          HealthConnectService.staleGrantCode,
+          HealthConnectService.staleGrantMessage,
+        ),
+      );
+      await _pump(tester, service);
+      await tester.pumpAndSettle();
+
+      // The persisted-flag fallback must NOT manufacture "Connected"
+      // out of the stale throw.
+      expect(find.text('Connection problem'), findsOneWidget);
+      expect(find.text('Connected'), findsNothing);
+      // The screen's stale error line presents item 5 with no prefix.
+      expect(
+          find.text(HealthConnectService.staleGrantMessage), findsOneWidget);
+      expectNoBracketedCode(tester);
+
+      await tester.tap(find.text('Android Health (Google Fit, Samsung)'));
+      await tester.pumpAndSettle();
+
+      final sheet = find.byType(BottomSheet);
+      expect(sheet, findsOneWidget);
+      expect(
+        find.descendant(of: sheet, matching: find.text(_sheetStatusStale)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+            of: sheet,
+            matching: find.text(HealthConnectService.staleGrantMessage)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+            of: sheet, matching: find.text('Manage system permissions')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+            of: sheet, matching: find.text('Deactivate in Tabs')),
+        findsNothing,
+      );
+      expectNoBracketedCode(tester);
+    });
+
+    testWidgets(
+        'Manage system permissions failure surfaces visibly as the '
+        'plain message after the sheet closes (not hidden, not wiped, '
+        'no bracketed code)', (tester) async {
       final service = FakeHCService(
         persisted: true,
         statusResult: HealthConnectStatus.connected,
@@ -151,9 +225,14 @@ void main() {
       expect(service.settingsCalls, 1);
       expect(find.text('Deactivate in Tabs'), findsNothing);
       expect(
-        find.text('[NO_SETTINGS] No foreground activity is available.'),
+        find.text('No foreground activity is available.'),
         findsOneWidget,
       );
+      expect(
+        find.text('[NO_SETTINGS] No foreground activity is available.'),
+        findsNothing,
+      );
+      expectNoBracketedCode(tester);
     });
 
     testWidgets(
