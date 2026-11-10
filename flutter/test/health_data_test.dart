@@ -572,6 +572,9 @@ void main() {
       expect(vitals.logCountToday, 0);
 
       final streak = await repo.loadStreak();
+      // C-02a — a failed pull reports the failure, so callers can
+      // tell it apart from a confirmed-empty streak.
+      expect(streak.succeeded, isFalse);
       expect(streak.current, isNull);
       expect(streak.best, isNull);
     });
