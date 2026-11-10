@@ -104,8 +104,18 @@ class HomeDataCache {
     _countersLoaded = false;
     _countersFetchedAt = null;
     _ownerEmail = null;
+    _expectedOwnerEmail = null;
     _warmed = false;
   }
+
+  /// The session account an owner-bound warm has been ATTEMPTED for
+  /// (recorded by [warmFromDisk] before its storage read, so the
+  /// expectation survives a read failure). [persist]'s ensure-warm
+  /// retry reuses it: without it, the retry would be unbound and
+  /// could adopt a FOREIGN account's blob in exactly the failed-warm
+  /// window the C-02b gate exists for (Vera PR #65 D1). Cleared by
+  /// [_resetMemory] alongside the owner binding itself.
+  String? _expectedOwnerEmail;
 
   /// C-02b (PR #44 warm gate, ported from HealthHistoryStore) —
   /// whether a disk warm has SUCCEEDED in this process. A warm whose
@@ -349,11 +359,24 @@ class HomeDataCache {
   /// the cache stays unwarmed and this write is dropped — the
   /// on-disk blob (counters, owner, unwarmed sections) survives
   /// untouched until a later warm succeeds.
+  ///
+  /// The ensured warm is OWNER-AWARE (Vera PR #65 D1): it reuses the
+  /// owner recorded by the last attempted owner-bound warm
+  /// ([_expectedOwnerEmail], falling back to the in-memory
+  /// [_ownerEmail] binding), so a healed read that finds a FOREIGN
+  /// blob takes the reset+delete branch — never adoption. After such
+  /// a reset no section is loaded anymore, so the write below is
+  /// re-gated on a section still being loaded: persist never writes
+  /// an empty (or mixed) blob over the delete.
   Future<void> persist() async {
     if (!_vitalsLoaded && !_streakLoaded && !_countersLoaded) return;
     if (!_warmed) {
-      await warmFromDisk();
+      await warmFromDisk(
+          currentEmail: _expectedOwnerEmail ?? _ownerEmail);
       if (!_warmed) return;
+      // A foreign-blob reset inside the ensured warm wiped every
+      // section (reset+delete): do not resurrect a write over it.
+      if (!_vitalsLoaded && !_streakLoaded && !_countersLoaded) return;
     }
     try {
       await _write(storageKey, jsonEncode(_toJson()));
@@ -388,6 +411,14 @@ class HomeDataCache {
   /// bound in its place.
   Future<void> warmFromDisk({DateTime? now, String? currentEmail}) async {
     final at = now ?? DateTime.now();
+    // Vera PR #65 D1 — record the attempted owner BEFORE the read:
+    // when the read throws (the C-02b window), this expectation is
+    // the only record of which account the session belongs to, and
+    // [persist]'s ensure-warm retry enforces it against the healed
+    // read instead of warming unbound and adopting whatever blob —
+    // including a foreign account's — it finds.
+    final expected = _normalizeEmail(currentEmail);
+    if (expected != null) _expectedOwnerEmail = expected;
     // C-02b — the read is separated from the decode so a storage
     // READ failure is neither missing nor corrupt (the pre-PR-#44
     // conflation): on a throw the warm does not complete — the
@@ -416,7 +447,6 @@ class HomeDataCache {
       _warmed = true;
       return;
     }
-    final expected = _normalizeEmail(currentEmail);
     if (expected != null) {
       final rawOwner = map['ownerEmail'];
       final blobOwner = rawOwner is String ? _normalizeEmail(rawOwner) : null;
@@ -466,6 +496,7 @@ class HomeDataCache {
     if (rawOwner is String) _ownerEmail = _normalizeEmail(rawOwner);
 
     // Vitals are date-bound: only today's cache applies.
+    var vitalsAdopted = false;
     if (fetchedAt != null &&
         !_vitalsLoaded &&
         map['vitalsLoaded'] == true &&
@@ -478,6 +509,7 @@ class HomeDataCache {
         logCountToday: (v?['logCountToday'] as int?) ?? 0,
       );
       _vitalsLoaded = true;
+      vitalsAdopted = true;
     }
     // Streaks: valid up to streakMaxAge, judged on the streak's
     // OWN stamp alone (C-02c).
@@ -520,7 +552,13 @@ class HomeDataCache {
     }
     // _fetchedAt is the VITALS stamp only (C-02c): restoring it is
     // tied to the vitals section, never to the streak's adoption.
-    if (_vitalsLoaded) _fetchedAt = fetchedAt;
+    // Vera PR #65 D2 — restore it ONLY when the vitals section was
+    // actually adopted from disk in THIS call: when this warm runs
+    // after in-memory applies (persist's ensure-warm), vitals
+    // already loaded in memory keep their own fresher stamp —
+    // overwriting it with the older disk stamp would judge today's
+    // vitals stale in the same breath that persists them.
+    if (vitalsAdopted) _fetchedAt = fetchedAt;
   }
 
   Map<String, dynamic> _toJson() => {
