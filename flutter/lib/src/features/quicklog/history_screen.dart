@@ -41,14 +41,29 @@ List<String> parseEntryChips(String chipsJson) {
 /// Native detail body display + edit-field initial value:
 /// `body + "\n\n" + manualText` when manualText is non-blank, else body.
 ///
+/// Dedupe (Nov 9, 2026): Quick Log's save stores body as the composed
+/// text (chips + manual text) AND manualText as the same typed text,
+/// so for entries saved that way the manual text is already inside
+/// the body — a note-only entry has body == manualText, and a
+/// chips+note entry's body ends with manualText. Joining those again
+/// rendered the note twice. When the body already contains the
+/// manual text (equal to it, or ending with it), the body alone is
+/// the display text; only a genuine separate body/manualText pair
+/// (native-style rows) is joined with "\n\n". Display only — stored
+/// data is never rewritten here.
+///
 /// Phase 1 item 4 guard: an Intake-tagged entry's manualText is a
 /// structured JSON payload, never user copy — it displays BODY ONLY,
 /// so the payload can never render on screen.
-String entryCombinedText(QuickLogEntry entry) => isIntakeEntry(entry)
-    ? entry.body
-    : entry.manualText.isNotBlank
-        ? '${entry.body}\n\n${entry.manualText}'
-        : entry.body;
+String entryCombinedText(QuickLogEntry entry) {
+  if (isIntakeEntry(entry)) return entry.body;
+  final manual = entry.manualText;
+  if (!manual.isNotBlank) return entry.body;
+  if (entry.body == manual || entry.body.endsWith(manual)) {
+    return entry.body;
+  }
+  return '${entry.body}\n\n$manual';
+}
 
 /// Native `updateText(body, "")`: the edited combined text becomes the
 /// body and manualText is cleared. Same id/timestamp/chips/category.
