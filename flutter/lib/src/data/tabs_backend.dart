@@ -63,9 +63,20 @@ class TabsBackend {
   /// successful `/api/ai/report` generation taking up to ~31s:
   /// at the shared 20s the transport killed legitimate in-flight
   /// generations and the failure was then mislabelled
-  /// "no connection". 60s matches native's per-attempt cap (and
-  /// the report pipeline's own 60s outer guard).
-  static const Duration aiRequestTimeout = Duration(seconds: 60);
+  /// "no connection".
+  ///
+  /// Phase 3: raised to 90s, the report pipeline's per-attempt
+  /// bound (ReportGenerationPipeline.aiAttemptTimeout): the
+  /// server is being capped at ~50s per generation attempt with
+  /// its own retries, so the client budget must comfortably
+  /// exceed ONE full server attempt (1.8× the cap, ~3× the
+  /// largest observed successful generation) — a healthy
+  /// generation must never be abandoned client-side (Nov 9, 2026:
+  /// the server completed a 13,058-char narrative the client had
+  /// already walked away from). Whichever of the transport budget
+  /// and the pipeline guard fires first, the classification is
+  /// the same timeout class.
+  static const Duration aiRequestTimeout = Duration(seconds: 90);
 
   /// Round 18 — in-memory cache for the (large) sync pull so the 16
   /// tools share one fetch per session window instead of each firing
@@ -227,6 +238,25 @@ class TabsBackend {
     Future<http.Response> Function(String token) send, {
     Duration timeout = requestTimeout,
   }) async {
+    // Phase 3: if a token refresh is ALREADY in flight (started
+    // by any caller — during a report generation, the collection
+    // stage's sync reads), wait for it to settle BEFORE reading
+    // the token and firing. The pre-fix code fired immediately
+    // with the stale token IN PARALLEL with the refresh: the Nov
+    // 9, 2026 report POST took a curable 401 that way, and its
+    // refresh-retry landed in the same second as a twin request
+    // (only the 401 kept the first from reaching Gemini). Waiting
+    // here makes every authed call — the report call included —
+    // order itself after the refresh instead of racing it. The
+    // refresh future never completes with an error
+    // ([_performRefresh] classifies every outcome), so awaiting
+    // it cannot throw; the token read below then sees the rotated
+    // pair the refresh saved (or the unchanged pair after a
+    // temporary failure, whose 401 path below still applies).
+    final refreshInFlight = _refreshInFlight;
+    if (refreshInFlight != null) {
+      await refreshInFlight;
+    }
     final token = await _sessionStore.readToken();
     if (token == null || token.trim().isEmpty) {
       return (response: null, failure: AiTransportFailure.noSession);

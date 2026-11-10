@@ -196,6 +196,28 @@ class ReportGenerationService extends ChangeNotifier {
     _finish(outcome);
   }
 
+  /// Drives a held AI-failure decision (Phase 3): the pending
+  /// failure is a [ReportAiDecision] whose pipeline-built
+  /// continuation either retries ONLY the AI analysis on the
+  /// already-collected data ([retryAi] true) or makes the
+  /// data-only report as the user's explicit choice. The resumed
+  /// run goes through [start], so it keeps every lifecycle
+  /// guarantee (single run at a time, stage/cancel state, outcome
+  /// held until seen, failures never notify). A no-op when no
+  /// decision is held or a run is already in flight.
+  Future<void> resumeAiDecision({required bool retryAi}) async {
+    final failure = _pendingFailure;
+    if (failure is! ReportAiDecision) return;
+    final resume = failure.resume;
+    await start(
+      ({required onStage, required isCancelled}) => resume(
+        retryAi: retryAi,
+        onStage: onStage,
+        isCancelled: isCancelled,
+      ),
+    );
+  }
+
   void _setStage(ReportStage stage) {
     if (_stage == null) return; // finished; a late callback is inert
     _stage = stage;

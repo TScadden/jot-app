@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'package:tabs_lab/src/data/progress_report.dart';
 import 'package:tabs_lab/src/data/report_generation_service.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
+import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 import 'report_share_flow.dart';
 
@@ -30,7 +32,10 @@ final GlobalKey<NavigatorState> reportPresentationNavigatorKey =
 ///   EXISTING failure message (no new copy), and the service
 ///   marks it seen; with the page mounted, the page's inline
 ///   failure rendering is the surface and this presenter stays
-///   out of the way.
+///   out of the way. Phase 3 exception: a held AI-failure
+///   DECISION ([ReportAiDecision]) surfaces as Juno's decision
+///   dialog and is never marked seen — the hold survives until
+///   the user decides.
 /// - A backgrounded completion keeps PR #55's behavior: the
 ///   report-ready notification posts from the service, and this
 ///   presenter's lifecycle observer reveals the held share
@@ -119,6 +124,45 @@ class _ReportGenerationPresenterState
     if (!mounted) return;
     final navContext = _navContext;
     if (navContext == null) return;
+    if (failed is ReportAiDecision) {
+      // Phase 3: a held AI-failure decision is NOT a snackbar —
+      // it is Juno's decision surface, and it is never marked
+      // seen here: the hold survives until the user actually
+      // decides (here, or inline on the Progress Reports page).
+      showDialog<void>(
+        context: navContext,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: NotelColors.surface,
+          title: const Text(aiDecisionTitle,
+              style: TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontWeight: FontWeight.w600)),
+          content: const Text(aiDecisionBody,
+              style: TextStyle(color: NotelColors.textSecondary, fontSize: 13)),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                widget.service.resumeAiDecision(retryAi: false);
+              },
+              child: const Text(aiDecisionRawLabel,
+                  style: TextStyle(color: NotelColors.textSecondary)),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                widget.service.resumeAiDecision(retryAi: true);
+              },
+              child: const Text(aiDecisionRetryLabel,
+                  style: TextStyle(
+                      color: NotelColors.primary,
+                      fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
     // The pipeline's own failure message — the exact string the
     // Progress Reports page renders inline — surfaced on the
     // user's current screen, then marked seen so the held
