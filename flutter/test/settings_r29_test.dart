@@ -1196,6 +1196,65 @@ void main() {
     });
 
     testWidgets(
+        'C-08: disposing Settings inside the Personal Context debounce '
+        'flushes the pending edit', (tester) async {
+      final backend = FakeSettingsBackend()..pullBody = pull();
+      await pumpSettings(tester, host(screen(
+          backend: backend, store: fakeStore(<String, String>{}))));
+      await tester.pumpAndSettle();
+      // Edit, then navigate away (dispose) well inside the 3 s
+      // debounce: pre-fix dispose() only cancelled the timer and
+      // the edit was permanently lost (the next Settings load
+      // repopulates from the server pull).
+      await tester.enterText(
+          find.byKey(const ValueKey('personal_context_field')),
+          'edited on the way out');
+      expect(backend.profilePushes, isEmpty,
+          reason: 'the edit is still inside its debounce window');
+      await tester.pumpWidget(
+          const MaterialApp(home: Scaffold(body: SizedBox.shrink())));
+      await tester.pump();
+      expect(backend.profilePushes,
+          [equals({'userContext': 'edited on the way out'})]);
+    });
+
+    testWidgets(
+        'C-08: disposing Settings after the debounce already fired '
+        'does not push twice', (tester) async {
+      final backend = FakeSettingsBackend()..pullBody = pull();
+      await pumpSettings(tester, host(screen(
+          backend: backend, store: fakeStore(<String, String>{}))));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+          find.byKey(const ValueKey('personal_context_field')),
+          'saved by the timer');
+      // Let the 3 s debounce fire normally.
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
+      expect(backend.profilePushes,
+          [equals({'userContext': 'saved by the timer'})]);
+      await tester.pumpWidget(
+          const MaterialApp(home: Scaffold(body: SizedBox.shrink())));
+      await tester.pump();
+      expect(backend.profilePushes,
+          [equals({'userContext': 'saved by the timer'})],
+          reason: 'dispose must not re-push an already-fired edit');
+    });
+
+    testWidgets(
+        'C-08: disposing Settings with no pending Personal Context '
+        'edit pushes nothing', (tester) async {
+      final backend = FakeSettingsBackend()..pullBody = pull();
+      await pumpSettings(tester, host(screen(
+          backend: backend, store: fakeStore(<String, String>{}))));
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(
+          const MaterialApp(home: Scaffold(body: SizedBox.shrink())));
+      await tester.pump();
+      expect(backend.profilePushes, isEmpty);
+    });
+
+    testWidgets(
         'logout dialog: session clear throws → onLogout still fires, caches cleared',
         (tester) async {
       // R29b: a storage throw during the wipe must not wedge the

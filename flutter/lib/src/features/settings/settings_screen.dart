@@ -401,11 +401,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _reloadFromServer();
   }
 
+  /// Flushes a Personal Context edit still inside its 3 s
+  /// debounce: cancels the pending timer and pushes the
+  /// controller's current text now, via the same [_pushProfile]
+  /// call the debounce timer itself would have made. Returns
+  /// true when a pending edit was flushed.
+  ///
+  /// Two callers depend on this for opposite reasons: logout
+  /// (R29b) must land the edit before the account wipe, and
+  /// dispose (C-08) must not let the edit die with the screen —
+  /// before C-08, dispose only cancelled the timer, so navigating
+  /// away within 3 s of typing permanently lost the edit (the
+  /// next Settings load repopulates the field from the server
+  /// pull, which never saw it).
+  Future<bool> _flushPendingContextEdit() async {
+    if (!(_contextDebounce?.isActive ?? false)) return false;
+    _contextDebounce!.cancel();
+    await _pushProfile({'userContext': _contextController.text});
+    return true;
+  }
+
   @override
   void dispose() {
     // Deliberately does NOT dispose widget.billingService: it is
     // the app-owned single instance (see _billing).
-    _contextDebounce?.cancel();
+    // C-08: flush a pending Personal Context edit instead of
+    // just cancelling its debounce (see _flushPendingContextEdit).
+    // dispose() cannot await, so the push runs fire-and-forget —
+    // its payload is captured synchronously before the controller
+    // is disposed, and _pushProfile's failure surfaces (snack /
+    // reload) already guard on mounted, so a failed flush after
+    // dispose degrades to the pre-fix outcome, never a crash.
+    // With no pending edit, the timer is cancelled as before.
+    if (_contextDebounce?.isActive ?? false) {
+      unawaited(_flushPendingContextEdit());
+    } else {
+      _contextDebounce?.cancel();
+    }
     _contextController.dispose();
     super.dispose();
   }
@@ -6159,11 +6191,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       // Flush a Personal Context edit still inside
                       // its 3 s debounce before the wipe, or the edit
                       // would be lost on an immediate logout (R29b).
-                      if (_contextDebounce?.isActive ?? false) {
-                        _contextDebounce!.cancel();
-                        await _pushProfile(
-                            {'userContext': _contextController.text});
-                      }
+                      await _flushPendingContextEdit();
                       try {
                         await _actions.logout();
                       } catch (_) {
