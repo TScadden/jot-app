@@ -2129,31 +2129,124 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: NotelColors.background,
         elevation: 0,
         automaticallyImplyLeading: false,
-        // Home redesign (tweak 6) — symmetric 48dp leading/actions
-        // slots, so with centerTitle the vitals pill is centered
-        // between the corner buttons by construction.
-        leadingWidth: 48,
-        centerTitle: true,
-        leading: Builder(
-          // The AppBar stretches its leading slot to the full
-          // 56dp toolbar height, so the 48x48 slot is centered
-          // explicitly (Vera F3): the keyed InkWell covers the
-          // full 48x48 slot, with the 40dp circle centered in it.
-          builder: (drawerContext) => Center(
-            child: SizedBox(
-              width: 48,
-              height: 48,
-              child: Semantics(
-                label: 'Menu',
-                button: true,
-                child: Tooltip(
-                  message: 'Menu',
-                  child: InkWell(
-                    key: const ValueKey('home_drawer_button'),
-                    onTap: () => Scaffold.of(drawerContext).openDrawer(),
-                    customBorder: const CircleBorder(),
-                    child: Center(
-                      child: Container(
+        // Header alignment package (Nov 10, 2026, founder
+        // rulings) — the header row is laid out in flexibleSpace
+        // instead of the toolbar's leading/title/actions slots.
+        // Why: the toolbar caps the title at
+        // width − leading − trailing − 2×titleSpacing, so the
+        // stepped-up ≈251dp vitals pill cannot coexist with the
+        // 62dp corner slots the axis ruling needs (measured: the
+        // title slot squeezed the pill to 204dp at 360dp wide).
+        // Here the pill centers on the full header width — the
+        // exact midpoint of the two corner buttons, which sit in
+        // symmetric 62dp slots (center axis 31dp from each edge,
+        // the same axes the corner band below centers the streak
+        // stack and the Daily Score face on). The buttons
+        // themselves are the redesign's exact widgets: 48dp hit
+        // target / 62dp gear slot, 40dp bordered circles, same
+        // keys, tooltips, semantics and behavior.
+        flexibleSpace: SafeArea(
+          bottom: false,
+          child: SizedBox(
+            height: 56,
+            child: Stack(
+              children: [
+                Center(
+                  child: VitalsStrip(
+                    vitals: _vitals,
+                    animateCountUps: _countUpsAnimate,
+                    compact: true,
+                  ),
+                ),
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 62,
+                      child: Center(
+                        child: Builder(
+                          // Vera F3: the keyed InkWell covers the
+                          // full 48x48 hit slot, with the 40dp
+                          // circle centered in it.
+                          builder: (drawerContext) => SizedBox(
+                            width: 48,
+                            height: 48,
+                            child: Semantics(
+                              label: 'Menu',
+                              button: true,
+                              child: Tooltip(
+                                message: 'Menu',
+                                child: InkWell(
+                                  key: const ValueKey('home_drawer_button'),
+                                  onTap: () =>
+                                      Scaffold.of(drawerContext).openDrawer(),
+                                  customBorder: const CircleBorder(),
+                                  child: Center(
+                                    child: Container(
+                                      width: 40,
+                                      height: 40,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: NotelColors.surface,
+                                        border: Border.all(
+                                            color:
+                                                NotelColors.legacyDarkHairline,
+                                            width: 1),
+                                      ),
+                                      child: Center(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Container(
+                                              width: 18,
+                                              height: 3,
+                                              decoration: BoxDecoration(
+                                                color:
+                                                    NotelColors.textPrimary,
+                                                borderRadius:
+                                                    BorderRadius.circular(2),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 5),
+                                            Container(
+                                              width: 12,
+                                              height: 3,
+                                              decoration: BoxDecoration(
+                                                color:
+                                                    NotelColors.textPrimary,
+                                                borderRadius:
+                                                    BorderRadius.circular(2),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      key: const ValueKey('home_settings_gear'),
+                      onPressed: () => unawaited(_openSettings()),
+                      // Vera F1: the glyph sits in the SAME 40dp
+                      // circular construction as the leading
+                      // hamburger (surface fill, 1dp
+                      // legacyDarkHairline border), centered in
+                      // this 62dp slot (minHeight 48); the glyph
+                      // itself is textPrimary.
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 62,
+                        minHeight: 48,
+                      ),
+                      icon: Container(
                         width: 40,
                         height: 40,
                         decoration: BoxDecoration(
@@ -2163,75 +2256,20 @@ class _HomeScreenState extends State<HomeScreen> {
                               color: NotelColors.legacyDarkHairline,
                               width: 1),
                         ),
-                        child: Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                width: 18,
-                                height: 3,
-                                decoration: BoxDecoration(
-                                  color: NotelColors.textPrimary,
-                                  borderRadius: BorderRadius.circular(2),
-                                ),
-                              ),
-                              const SizedBox(height: 5),
-                              Container(
-                                width: 12,
-                                height: 3,
-                                decoration: BoxDecoration(
-                                  color: NotelColors.textPrimary,
-                                  borderRadius: BorderRadius.circular(2),
-                                ),
-                              ),
-                            ],
-                          ),
+                        child: const Icon(
+                          Icons.settings,
+                          size: 24,
+                          color: NotelColors.textPrimary,
                         ),
                       ),
+                      tooltip: 'Settings',
                     ),
-                  ),
+                  ],
                 ),
-              ),
+              ],
             ),
           ),
         ),
-        title: VitalsStrip(
-          vitals: _vitals,
-          animateCountUps: _countUpsAnimate,
-          compact: true,
-        ),
-        actions: [
-          IconButton(
-            key: const ValueKey('home_settings_gear'),
-            onPressed: () => unawaited(_openSettings()),
-            // Vera F1: the glyph sits in the SAME 40dp circular
-            // construction as the leading hamburger (surface fill,
-            // 1dp legacyDarkHairline border), centered in this
-            // 48dp slot; the glyph itself is textPrimary.
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(
-              minWidth: 48,
-              minHeight: 48,
-            ),
-            icon: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: NotelColors.surface,
-                border: Border.all(
-                    color: NotelColors.legacyDarkHairline, width: 1),
-              ),
-              child: const Icon(
-                Icons.settings,
-                size: 24,
-                color: NotelColors.textPrimary,
-              ),
-            ),
-            tooltip: 'Settings',
-          ),
-        ],
       ),
       body: SingleChildScrollView(
         child: Column(
@@ -2239,18 +2277,30 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             // Corner band (stagger 0): streak stack left, event
             // counters center, bare Daily Score face right.
+            // Header alignment package (Nov 10, 2026, founder
+            // ruling): the band's two end slots are 62dp wide and
+            // CENTER their columns, so the streak stack's pill axis
+            // sits at 31dp and the Daily Score face's center at
+            // width−31dp — the exact center axes of the AppBar
+            // corner buttons above them (62dp slots). The band
+            // therefore runs edge-to-edge (no 16dp side padding);
+            // the counters keep their own 12dp horizontal padding.
             StaggeredEntrance(
               index: 0,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                padding: const EdgeInsets.fromLTRB(0, 12, 0, 0),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    HomeStreakStack(
-                      currentStreak: _currentStreak,
-                      bestStreak: _bestStreak,
-                      animateCountUps: _countUpsAnimate,
-                      onStreakTap: () => unawaited(_openStreakScreen()),
+                    SizedBox(
+                      width: 62,
+                      child: HomeStreakStack(
+                        currentStreak: _currentStreak,
+                        bestStreak: _bestStreak,
+                        animateCountUps: _countUpsAnimate,
+                        onStreakTap: () => unawaited(_openStreakScreen()),
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                      ),
                     ),
                     Expanded(
                       child: Padding(
@@ -2264,26 +2314,29 @@ class _HomeScreenState extends State<HomeScreen> {
                             : const SizedBox.shrink(),
                       ),
                     ),
-                    Semantics(
-                      button: true,
-                      label: _todayScore == null
-                          ? (_todayScorePending
-                              ? 'Daily Score, waiting for today\'s health data'
-                              : 'Daily Score, building baseline')
-                          : 'Daily Score $_todayScore, '
-                              '${bandForScore(_todayScore!).label}',
-                      child: InkWell(
-                        onTap: () => unawaited(_openDailyScore()),
-                        borderRadius: BorderRadius.circular(12),
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(
-                              minWidth: 48, minHeight: 48),
-                          child: Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 4),
-                            child: DailyScoreFace(
-                              score: _todayScore,
-                              size: 54,
+                    SizedBox(
+                      width: 62,
+                      child: Semantics(
+                        button: true,
+                        label: _todayScore == null
+                            ? (_todayScorePending
+                                ? 'Daily Score, waiting for today\'s health data'
+                                : 'Daily Score, building baseline')
+                            : 'Daily Score $_todayScore, '
+                                '${bandForScore(_todayScore!).label}',
+                        child: InkWell(
+                          onTap: () => unawaited(_openDailyScore()),
+                          borderRadius: BorderRadius.circular(12),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(
+                                minWidth: 48, minHeight: 48),
+                            child: Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 4),
+                              child: DailyScoreFace(
+                                score: _todayScore,
+                                size: 54,
+                              ),
                             ),
                           ),
                         ),

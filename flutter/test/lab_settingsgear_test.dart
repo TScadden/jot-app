@@ -161,7 +161,10 @@ void main() {
       // Vera F1: the glyph renders inside a 40dp bordered circle
       // with the SAME construction as the leading hamburger —
       // surface fill, 1dp legacyDarkHairline border — centered
-      // in the gear's 48dp slot (checked below).
+      // in the gear's slot (checked below; the slot widened
+      // 48 → 62dp wide in the Nov 10, 2026 header alignment
+      // package so the gear's axis matches the Daily Score
+      // column under it).
       final gearCircle = find.descendant(
         of: gear(),
         matching: find.byWidgetPredicate((widget) =>
@@ -187,12 +190,14 @@ void main() {
       expect(find.byTooltip('Connections'), findsNothing);
 
       // Placement, numerically: the gear is the sole action, so
-      // its 48dp box is the rightmost header box — its right edge
-      // is the surface edge.
+      // its box is the rightmost header box — its right edge
+      // is the surface edge. Nov 10, 2026: the box is 62dp wide
+      // (48dp tall); the wider slot moves the gear's center axis
+      // to 31dp from the edge, the Daily Score axis.
       final gearRect = tester.getRect(gear());
-      expect(gearRect.width, 48);
+      expect(gearRect.width, 62);
       expect(gearRect.height, 48);
-      // The 40dp circle is centered in that 48dp slot.
+      // The 40dp circle is centered in that slot.
       expect(gearCircleRect.center, gearRect.center);
       expect(gearRect.right, closeTo(800, 0.5));
       // Let the staggered-entrance delay timers fire (no pending

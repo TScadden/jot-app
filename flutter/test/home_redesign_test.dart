@@ -17,6 +17,7 @@ import 'package:tabs_lab/src/data/today_plan_store.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/home/checkin_summary_card.dart';
+import 'package:tabs_lab/src/features/home/daily_score_circle.dart';
 import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
@@ -386,9 +387,12 @@ void main() {
 
       // F1: the gear glyph (24dp, textPrimary) renders inside a
       // 40dp bordered circle with the same construction as the
-      // hamburger, centered in the gear's 48dp slot.
+      // hamburger, centered in the gear's slot.
+      // Header alignment package (Nov 10, 2026): the slot widened
+      // 48 → 62dp wide (height stays 48) so the gear's center axis
+      // matches the Daily Score slot in the corner band below.
       final gearRect = tester.getRect(gear);
-      expect(gearRect.width, 48);
+      expect(gearRect.width, 62);
       expect(gearRect.height, 48);
       final gearCircle = circleIn(gear);
       expectBorderedCircle(tester, gearCircle);
@@ -428,13 +432,13 @@ void main() {
         debugPrint(
             'VITALS PILL AFTER @$label: ${pill.width} x ${pill.height}');
         // Centered by construction: the pill's center x is the
-        // midpoint between the two buttons' inner edges (±1dp).
-        // Both buttons are 48dp hit slots (Vera F3: the drawer's
-        // keyed InkWell now covers its full 48dp slot, with the
-        // 40dp visual circle centered inside it), so each slot's
-        // inner edge is its keyed rect's edge.
-        final drawerSlotRight = drawerBtn.right;
-        final midpoint = (drawerSlotRight + gear.left) / 2;
+        // midpoint between the two corner buttons' centers (±1dp).
+        // Header alignment package (Nov 10, 2026): the buttons sit
+        // in symmetric 62dp slots with their 40dp circles (and the
+        // drawer's 48dp keyed InkWell) centered in them, so each
+        // keyed rect's CENTER is its circle's center — the pill
+        // centers on the full header width, the buttons' midpoint.
+        final midpoint = (drawerBtn.center.dx + gear.center.dx) / 2;
         expect(pill.center.dx, closeTo(midpoint, 1.0));
         // Compact contract: content-width (BEFORE was 328dp wide
         // at 360dp) and shorter than the old ≈40–41dp strip.
@@ -445,6 +449,71 @@ void main() {
         expect(find.text('74'), findsWidgets);
         expect(find.text('159'), findsOneWidget);
         expect(find.text('10'), findsWidgets);
+      });
+    }
+  });
+
+  group('header alignment (Nov 10, 2026 founder rulings)', () {
+    for (final (label, size) in [
+      ('360', const Size(1080, 2400)),
+      ('390', const Size(1170, 2532)),
+    ]) {
+      testWidgets(
+          'corner buttons share a center axis with the columns under '
+          'them at ${label}dp; pill stepped up and centered', (tester) async {
+        await _pumpHome(
+          tester,
+          physicalSize: size,
+          entries: [
+            for (var i = 0; i < 10; i++)
+              _entry(id: 100 + i, categoryId: 1, body: 'entry $i'),
+          ],
+        );
+
+        final drawer =
+            tester.getRect(find.byKey(const ValueKey('home_drawer_button')));
+        final gear =
+            tester.getRect(find.byKey(const ValueKey('home_settings_gear')));
+        final pill =
+            tester.getRect(find.byKey(const ValueKey('vitalsStripCompact')));
+        final face = tester.getRect(find.byType(DailyScoreFace));
+
+        // The streak stack's axis: the two pills are equal-width
+        // house pills sharing one center axis (the stack centers
+        // them in its 62dp slot).
+        final stack = find.byType(HomeStreakStack);
+        final pillContainers = find.descendant(
+          of: stack,
+          matching: find.byWidgetPredicate((w) =>
+              w is Container &&
+              w.decoration is BoxDecoration &&
+              (w.decoration as BoxDecoration).borderRadius != null),
+        );
+        final pillRects = <Rect>[
+          for (var i = 0; i < pillContainers.evaluate().length; i++)
+            if ((tester.getRect(pillContainers.at(i)).height - 34).abs() <
+                0.6)
+              tester.getRect(pillContainers.at(i)),
+        ];
+        expect(pillRects, hasLength(2));
+        expect(pillRects[0].center.dx, closeTo(pillRects[1].center.dx, 1.0));
+
+        // Ruling A: shared center axes within ~1dp.
+        expect(pillRects[0].center.dx, closeTo(drawer.center.dx, 1.0),
+            reason: 'streak stack axis vs drawer button axis');
+        expect(face.center.dx, closeTo(gear.center.dx, 1.0),
+            reason: 'Daily Score axis vs gear axis');
+
+        // Ruling B: the pill stepped up to ≈250–270 × 38–40dp and
+        // sits centered between the corner buttons with equal
+        // gaps to the two 40dp circles.
+        expect(pill.width, inInclusiveRange(250, 270));
+        expect(pill.height, inInclusiveRange(38, 40));
+        final gapL = pill.left - (drawer.center.dx + 20);
+        final gapR = (gear.center.dx - 20) - pill.right;
+        expect(gapL, closeTo(gapR, 1.0));
+        expect(gapL, greaterThan(0));
+        await _drainScoreChain(tester);
       });
     }
   });
@@ -664,6 +733,36 @@ void main() {
       expect(find.byKey(const ValueKey('todaySummaryProgressFinish')),
           findsOneWidget);
       expect(find.byIcon(Icons.sports_score), findsOneWidget);
+    });
+
+    testWidgets(
+        'finish flag badge is SOLID primary with an onPrimary flag '
+        '(Nov 10, 2026 see-through fix)', (tester) async {
+      await pumpSeededCard(
+        tester,
+        plan: const TodayPlanData(
+          items: [],
+          plannedCount: 4,
+          remainingCount: 3,
+          overdueCount: 0,
+          summaryText: '3 items remaining',
+        ),
+      );
+      final badgeFinder =
+          find.byKey(const ValueKey('todaySummaryProgressFinish'));
+      expect(badgeFinder, findsOneWidget);
+      final badgeRect = tester.getRect(badgeFinder);
+      expect(badgeRect.width, 30);
+      expect(badgeRect.height, 30);
+      final badge = tester.widget<Container>(badgeFinder);
+      final decoration = badge.decoration as BoxDecoration;
+      // Full opacity — no alpha tint (was primary @ 0.18, which
+      // sampled 1.25:1 against the card on the founder's build).
+      expect(decoration.color, NotelColors.primary);
+      expect(decoration.color!.a, 1.0);
+      final flag = tester.widget<Icon>(find.byIcon(Icons.sports_score));
+      expect(flag.color, NotelColors.onPrimary);
+      expect(flag.size, 18);
     });
 
     testWidgets('plannedCount == 0 renders NO bar (never a fake 0)',
