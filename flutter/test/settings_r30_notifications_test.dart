@@ -61,6 +61,24 @@ void main() {
       expect(fake.daily[ReminderIds.checkIn], '4:0');
     });
 
+    test('check-in reminder uses the Juno restyle strings, '
+        'channel and 4 AM fire time untouched', () async {
+      final fake = FakeReminderNotificationService();
+      await ReminderSync(fake).syncAll(
+        habitEnabled: false,
+        projectEnabled: false,
+        checkInEnabled: true,
+        eventEnabled: false,
+        events: const [],
+        now: DateTime(2026, 10, 12, 12),
+      );
+      final details = fake.dailyDetails[ReminderIds.checkIn];
+      expect(details?.title, 'how are you feeling?');
+      expect(details?.body, 'one tap is enough. whenever you\'re ready.');
+      expect(details?.channelId, 'check_in_reminder');
+      expect(fake.daily[ReminderIds.checkIn], '4:0');
+    });
+
     test('event counters: only future, active, count-down counters arm',
         () async {
       final fake = FakeReminderNotificationService();

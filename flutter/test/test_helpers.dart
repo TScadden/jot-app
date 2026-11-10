@@ -61,6 +61,13 @@ class FakeReminderNotificationService implements ReminderNotificationService {
   /// tests can assert the gate's call order.
   final List<String> calls = [];
   final Map<int, String> daily = {};
+
+  /// Per-id title/body/channelId recorded by [scheduleDaily], so
+  /// tests can assert the exact notification copy and channel
+  /// without changing the existing [daily] ('$hour:$minute')
+  /// behaviour other tests depend on.
+  final Map<int, ({String title, String body, String channelId})>
+      dailyDetails = {};
   final Map<int, DateTime> once = {};
   final Map<int, String> weekly = {};
   final List<int> cancelled = [];
@@ -109,6 +116,7 @@ class FakeReminderNotificationService implements ReminderNotificationService {
     required bool highImportance,
   }) async {
     daily[id] = '$hour:$minute';
+    dailyDetails[id] = (title: title, body: body, channelId: channelId);
   }
 
   @override
@@ -143,6 +151,7 @@ class FakeReminderNotificationService implements ReminderNotificationService {
   Future<void> cancel(int id) async {
     cancelled.add(id);
     daily.remove(id);
+    dailyDetails.remove(id);
     once.remove(id);
     weekly.remove(id);
   }
