@@ -871,12 +871,15 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                                   color: NotelColors.primary,
                                 ),
                                 SizedBox(width: 8),
-                                Text(
-                                  'Today Summary',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: NotelColors.textPrimary,
+                                Flexible(
+                                  child: Text(
+                                    'Today Summary',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: NotelColors.textPrimary,
+                                    ),
                                   ),
                                 ),
                               ],
