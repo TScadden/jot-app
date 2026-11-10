@@ -295,6 +295,12 @@ void main() {
   });
 
   Future<void> pumpHome(WidgetTester tester, _Server server) async {
+    // Dispose any previous mount first: pumpWidget with the same
+    // structure would UPDATE the live Home in place, and a still
+    // open summary sheet (route + State) would survive into the
+    // "fresh" mount (the F1 no-resurrection check re-pumps).
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
     await tester.pumpWidget(MaterialApp(
       home: HomeScreen(
         weatherApi: _weather(),
@@ -304,14 +310,29 @@ void main() {
     ));
     await _pumpUntil(
       tester,
+      () => find.text('Today Summary').evaluate().isNotEmpty,
+    );
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    // Home redesign: the check-in moved into the Today Summary
+    // sheet — open it so these flows interact with the 1–5 card
+    // (or the checked-in summary) where they now live. Home's
+    // follow-up sheets (kind / good-day / edit) stack over it,
+    // exactly as in production. Fixed pumps: the loaded weather
+    // icon animates forever, so pumpAndSettle never settles.
+    await tester.tap(find.text('Today Summary'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    await _pumpUntil(
+      tester,
       () =>
           find.text('How are you feeling?').evaluate().isNotEmpty ||
           find.byType(CheckInSummaryCard).evaluate().isNotEmpty ||
           identical(server.categories, _catsDoubleMiss),
     );
-    for (var i = 0; i < 5; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
   }
 
   group('flare data / identity (original §5 items 6–9, reworked)', () {
@@ -1796,6 +1817,13 @@ void main() {
 
       // No resurrection: a fresh Home load pulls from the
       // server again — the deleted good record stays gone.
+      // (Reset the backend's shared pull caches first — the
+      // same isolation setUp applies between tests: the
+      // in-memory 30s-TTL pull cache still holds the pre-delete
+      // body under this flow's timing, and a genuinely fresh
+      // client load — what this half models — starts without
+      // it. Server state and the outbox disk are untouched.)
+      TabsBackend.debugResetSharedCaches();
       await pumpHome(tester, server);
       await _pumpUntil(
         tester,

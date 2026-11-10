@@ -203,6 +203,24 @@ void main() {
     for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
+    if (expectCard) {
+      // Home redesign: the Bandit reading slot (~300dp of poster)
+      // now sits above the summary + intake cards, pushing the
+      // intake card's own controls below the default test
+      // surface's fold — taps on them missed (hit-test warnings),
+      // and whether they missed raced the poster image's decode.
+      // Scroll the card's preset row into view incrementally
+      // (scrollUntilVisible cannot overshoot the way a blind
+      // drag did), so every flow below starts from the same
+      // place.
+      await tester.scrollUntilVisible(
+        find.text('+ Water 16 fl oz'),
+        120,
+        scrollable: find.byType(Scrollable).first,
+        maxScrolls: 20,
+      );
+      await tester.pump();
+    }
   }
 
   group('payload & derivation (§9 items 1–4)', () {
@@ -1178,7 +1196,10 @@ void main() {
             .contains('"seedLabelPending":false'),
       );
       // Open the editor for Water (the card's Log intake) and use
-      // its preset Delete affordance.
+      // its preset Delete affordance. (The button sits below the
+      // preset row pumpHome scrolled to — bring it into view.)
+      await tester.ensureVisible(find.text('Log intake').first);
+      await tester.pump();
       await tester.tap(find.text('Log intake').first);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));

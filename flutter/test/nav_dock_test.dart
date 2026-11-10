@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
 import 'package:tabs_lab/src/theme/lab_black_colors.dart';
@@ -61,12 +62,16 @@ void main() {
       (tester) async {
     await tester.pumpWidget(shell());
 
-    // Home tab: the real home screen (Today header).
-    expect(find.text('Today'), findsOneWidget);
+    // Home tab: the real home screen. (Redesign: the "Today"
+    // title text is gone from Home — the HomeScreen's presence
+    // is the marker now.)
+    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(find.text('Today'), findsNothing);
 
-    // Tools -> blank: no Today title, navy background only.
+    // Tools -> blank: no Home, navy background only.
     await tester.tap(dockIcon(Icons.assignment));
     await settleDock(tester);
+    expect(find.byType(HomeScreen), findsNothing);
     expect(find.text('Today'), findsNothing);
 
     // Heart -> the real Heart screen. Its AppBar title shows, and
@@ -74,9 +79,8 @@ void main() {
     // pill is no longer gated on the connection verdict
     // (fix/heart-day-picker). This step used to expect no "Today"
     // here and passed only because the gated pill was missing,
-    // which was the very defect that package fixed. Home's own
-    // "Today" header is offstage on this tab, so the single match
-    // is the Heart pill.
+    // which was the very defect that package fixed. Home is
+    // offstage on this tab, so the single match is the Heart pill.
     await tester.tap(dockIcon(Icons.favorite));
     await settleDock(tester);
     expect(
@@ -84,16 +88,19 @@ void main() {
             of: find.byType(AppBar), matching: find.text('Heart')),
         findsOneWidget);
     expect(find.text('Today'), findsOneWidget);
+    expect(find.byType(HomeScreen), findsNothing);
 
     // Quick log (center pencil) -> blank.
     await tester.tap(dockIcon(Icons.edit));
     await settleDock(tester);
+    expect(find.byType(HomeScreen), findsNothing);
     expect(find.text('Today'), findsNothing);
 
     // Home -> back to the real home screen.
     await tester.tap(dockIcon(Icons.home));
     await settleDock(tester);
-    expect(find.text('Today'), findsOneWidget);
+    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(find.text('Today'), findsNothing);
   });
 
   testWidgets('active highlight follows the selected tab', (tester) async {
