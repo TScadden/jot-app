@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -167,6 +168,20 @@ class MigraineAttack {
 /// "no attacks" on reads, and writes surface as a thrown
 /// [StateError] only from [save] so the controller can show
 /// Juno's start-failure line (§F).
+///
+/// C-06a (pass-2 audit): a storage READ throw is NOT "no attacks."
+/// [save] loads through the strict loader, which distinguishes a
+/// read throw from an empty / corrupt / owner-mismatched blob, and
+/// aborts with a [StateError] without writing — the store is
+/// local-only, so upserting into a falsely-empty list and writing
+/// the whole blob would erase the entire attack history with no
+/// server copy to recover it from.
+///
+/// C-10: every read-modify-write ([save], [clear],
+/// [clearIfOwnerMismatch]) runs through one serialized queue, so
+/// concurrent operations execute load→write atomically in call
+/// order and an earlier snapshot can never land after — and
+/// revert — a later one.
 class MigraineAttackStore {
   static const String storageKey = 'migraine_attacks_v1';
 
@@ -192,6 +207,132 @@ class MigraineAttackStore {
   /// while unbound (no login has bound this instance yet).
   String? _boundOwner;
 
+  /// C-10 serialization: each read-modify-write operation is
+  /// queued, so operations run one at a time, in call order, each
+  /// completing its load→write before the next operation's load
+  /// begins. An operation's error is delivered to its own caller
+  /// and the queue continues with the next operation.
+  ///
+  /// The queue state is plain data (a list + a flag), NOT a stored
+  /// tail future: a future's callbacks are scheduled in the zone
+  /// that created the future, so a chain head created when this
+  /// (singleton) store happened to be constructed inside a
+  /// `testWidgets` FakeAsync zone (TodaySummaryCard's initState
+  /// builds the production controller) could never complete once
+  /// that zone was discarded — every later save/clear then hung
+  /// behind it forever (the R35 logout-wipe timeouts).
+  ///
+  /// The drain must not be zone-capturable either (R70). The
+  /// first queue version ran one long-lived async drain loop
+  /// whose continuations belonged to whichever zone happened to
+  /// START it: when that was a `testWidgets` FakeAsync zone (the
+  /// unawaited login / session-expiry wipe calls in `main.dart`),
+  /// the in-flight op's platform-channel storage IO could never
+  /// complete in that zone — channel replies are delivered on the
+  /// real event loop — so the loop parked on its first `await`
+  /// with the draining flag stuck on and every later serialized
+  /// op, including a real-zone account-clear wipe, queued forever
+  /// (the r70 wiring test's 10-minute timeout). There is now NO
+  /// loop at all: the queue advances one link at a time,
+  /// completion-driven, and the queue advances from each link's
+  /// own `finally`, synchronously within the execution's
+  /// microtask chain — never from the completer's completion,
+  /// whose propagation belongs to the completer's creation zone
+  /// and would park in a caller's FakeAsync zone until pumped.
+  ///
+  /// Each link's EXECUTION zone is chosen by the storage it will
+  /// hit, because the two kinds complete on different clocks:
+  ///
+  ///  * the default platform-channel storage (production, and
+  ///    any test that does not inject storage) can only complete
+  ///    on the real event loop, so the link executes in
+  ///    [Zone.root] no matter which zone enqueued it — a
+  ///    FakeAsync-started link then progresses as soon as the
+  ///    real loop turns (e.g. a later `tester.runAsync`), instead
+  ///    of wedging the queue;
+  ///  * test-injected in-memory storage ([withStorage] /
+  ///    [debugSetStore]) completes in whatever zone calls it, and
+  ///    widget tests that await a wipe under pure FakeAsync
+  ///    pumping (`pumpAndSettle`, no `runAsync`) can only observe
+  ///    completion if the link executes in the enqueueing zone —
+  ///    root-zone microtasks never drain while a FakeAsync test
+  ///    pumps (verified empirically) — so injected links execute
+  ///    in the zone that enqueued them, exactly as the original
+  ///    queue did.
+  ///
+  /// In production storage is never injected and every caller
+  /// already shares the root zone, so production links always
+  /// execute in Zone.root — the app's only zone — either way.
+  ///
+  /// Each link's completer is deliberately created in the
+  /// CALLER's zone (and completed from the execution):
+  /// a root-created completer's error is reported as an
+  /// unhandled Zone.root exception even when a caller in a child
+  /// zone handles it (verified empirically against this test
+  /// suite — it kills the flutter_test subprocess and every test
+  /// in the file reports "did not complete"), while a
+  /// caller-created completer delivers its error to the caller's
+  /// own handlers exactly as a direct call would. Callers'
+  /// `await`s and listeners thus run in their own zones with
+  /// identical semantics, and an op's error is delivered only to
+  /// its own caller. In production every caller already shares
+  /// the root zone, so none of this changes production behavior.
+  final List<void Function()> _opQueue = [];
+  bool _opDraining = false;
+
+  /// True once storage has been replaced through [withStorage]
+  /// or [debugSetStore] (tests only): the injected functions are
+  /// plain in-memory closures. False while the store runs on its
+  /// default platform-channel storage. Selects each queue link's
+  /// execution zone — see the queue comment above.
+  bool _storageInjected = false;
+
+  Future<T> _serialized<T>(Future<T> Function() op) {
+    final completer = Completer<T>();
+    final enqueueZone = Zone.current;
+    // Execution zone (see the queue comment above): device
+    // storage runs in Zone.root; injected storage runs in the
+    // zone that enqueued the op.
+    final execZone = _storageInjected ? enqueueZone : Zone.root;
+    _opQueue.add(() {
+      // One queue link. The returned future is error-guarded:
+      // the body cannot throw (op errors are caught and
+      // re-delivered through [completer]), and the guard makes
+      // sure no error can ever surface as unhandled in the
+      // execution zone.
+      execZone.run<Future<void>>(() async {
+        try {
+          completer.complete(await op());
+        } catch (e, st) {
+          if (!completer.isCompleted) completer.completeError(e, st);
+        } finally {
+          // Advance synchronously within the execution's own
+          // microtask chain: clear the flag and start the next
+          // link, if any. No `await` intervenes, so no enqueue
+          // can slip between "queue seen empty" and "flag
+          // cleared" — and a caller whose `await` resumes and
+          // immediately enqueues the next op (the controller's
+          // sequential saves) always finds the flag already
+          // cleared or the queue already advanced.
+          _opDraining = false;
+          _kickOps();
+        }
+      }).ignore();
+    });
+    _kickOps();
+    return completer.future;
+  }
+
+  /// Starts the head link if the queue is idle. The link closure
+  /// itself performs the execution in its chosen zone (see
+  /// [_serialized]).
+  void _kickOps() {
+    if (_opDraining || _opQueue.isEmpty) return;
+    _opDraining = true;
+    final link = _opQueue.removeAt(0);
+    link();
+  }
+
   /// The shared instance (see [instance]).
   factory MigraineAttackStore() => instance;
 
@@ -215,7 +356,7 @@ class MigraineAttackStore {
             (key) async {
               await write(key, '');
             },
-      );
+      ).._storageInjected = true;
 
   @visibleForTesting
   void debugSetStore({
@@ -226,18 +367,42 @@ class MigraineAttackStore {
     _read = read;
     _write = write;
     if (delete != null) _delete = delete;
+    _storageInjected = true;
   }
 
+  /// Read-path loader: never throws (class doc) — any failure,
+  /// including a storage read throw, degrades to "no attacks" for
+  /// READERS. Mutations must NOT use this loader (C-06a): see
+  /// [_loadBlobStrict].
   Future<({List<MigraineAttack> attacks, int? activeId})> _loadBlob() async {
     try {
-      final raw = await _read(storageKey);
-      if (raw == null || raw.isEmpty) {
-        return (attacks: <MigraineAttack>[], activeId: null);
-      }
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map<String, dynamic>) {
-        return (attacks: <MigraineAttack>[], activeId: null);
-      }
+      return await _loadBlobStrict();
+    } catch (_) {
+      return (attacks: <MigraineAttack>[], activeId: null);
+    }
+  }
+
+  /// Strict loader for read-modify-write mutations: a storage READ
+  /// throw propagates to the caller, while an empty blob, a
+  /// corrupt blob, and an owner-mismatch wipe still resolve to the
+  /// empty record exactly as the read path has always treated
+  /// them. Only the throw is distinguished (C-06a).
+  Future<({List<MigraineAttack> attacks, int? activeId})>
+      _loadBlobStrict() async {
+    final raw = await _read(storageKey);
+    if (raw == null || raw.isEmpty) {
+      return (attacks: <MigraineAttack>[], activeId: null);
+    }
+    Object? decoded;
+    try {
+      decoded = jsonDecode(raw);
+    } catch (_) {
+      return (attacks: <MigraineAttack>[], activeId: null);
+    }
+    if (decoded is! Map<String, dynamic>) {
+      return (attacks: <MigraineAttack>[], activeId: null);
+    }
+    {
       // Load enforcement (audit 4e): a stamped blob served to a
       // differently-bound instance is another account's data —
       // wipe the key and serve empty. When unbound, serve: the
@@ -267,8 +432,6 @@ class MigraineAttackStore {
       final activeId =
           activeRaw is num ? activeRaw.toInt() : int.tryParse('$activeRaw');
       return (attacks: attacks, activeId: activeId);
-    } catch (_) {
-      return (attacks: <MigraineAttack>[], activeId: null);
     }
   }
 
@@ -278,15 +441,21 @@ class MigraineAttackStore {
     // erase the stamp that binds the blob to its account.
     var stamp = _boundOwner;
     if (stamp == null) {
-      try {
-        final raw = await _read(storageKey);
-        if (raw != null && raw.isNotEmpty) {
+      // C-06a: a throw from this stamp-preservation re-read must
+      // abort the write (the caller, save, surfaces it as a
+      // StateError) — proceeding would write the blob back with a
+      // null stamp, and the next login would wipe it as unstamped
+      // legacy data. A corrupt existing blob still decodes to a
+      // null stamp and the write proceeds, as before.
+      final raw = await _read(storageKey);
+      if (raw != null && raw.isNotEmpty) {
+        try {
           final decoded = jsonDecode(raw);
           if (decoded is Map<String, dynamic>) {
             stamp = _normalizeEmail(decoded['ownerEmail']?.toString());
           }
-        }
-      } catch (_) {}
+        } catch (_) {}
+      }
     }
     final blob = jsonEncode({
       'ownerEmail': stamp,
@@ -335,29 +504,45 @@ class MigraineAttackStore {
   /// Upserts [attack] and moves the active pointer: a running attack
   /// becomes the active one; an ended attack clears the pointer when
   /// it names this attack.
-  Future<void> save(MigraineAttack attack) async {
-    final blob = await _loadBlob();
-    final attacks = blob.attacks.toList();
-    final idx = attacks.indexWhere((a) => a.id == attack.id);
-    if (idx >= 0) {
-      attacks[idx] = attack;
-    } else {
-      attacks.add(attack);
-    }
-    var activeId = blob.activeId;
-    if (attack.isActive) {
-      activeId = attack.id;
-    } else if (activeId == attack.id) {
-      activeId = null;
-    }
-    await _writeBlob(attacks, activeId);
-  }
+  ///
+  /// C-06a: when the load read THROWS, the save aborts — nothing is
+  /// written — and the failure surfaces as a [StateError] (the
+  /// error path the class doc promises), instead of upserting into
+  /// a falsely-empty list and overwriting the whole local-only
+  /// history. C-10: the whole load→write runs inside the
+  /// serialization queue, atomically with respect to other saves.
+  Future<void> save(MigraineAttack attack) => _serialized(() async {
+        try {
+          final blob = await _loadBlobStrict();
+          final attacks = blob.attacks.toList();
+          final idx = attacks.indexWhere((a) => a.id == attack.id);
+          if (idx >= 0) {
+            attacks[idx] = attack;
+          } else {
+            attacks.add(attack);
+          }
+          var activeId = blob.activeId;
+          if (attack.isActive) {
+            activeId = attack.id;
+          } else if (activeId == attack.id) {
+            activeId = null;
+          }
+          await _writeBlob(attacks, activeId);
+        } on StateError {
+          rethrow;
+        } catch (e) {
+          throw StateError(
+              'MigraineAttackStore.save aborted: storage failure ($e)');
+        }
+      });
 
   /// Drops the whole blob and unbinds the owner. Called on
   /// logout / account deletion (via `AccountActions`) and on
   /// session expiry (via `main.dart`), exactly like the other
   /// account-bound stores. Never throws.
-  Future<void> clear() async {
+  Future<void> clear() => _serialized(_clearInternal);
+
+  Future<void> _clearInternal() async {
     _boundOwner = null;
     try {
       await _delete(storageKey);
@@ -372,31 +557,36 @@ class MigraineAttackStore {
   /// blobs predate audit 4e). Returns true when a wipe happened.
   /// A null/blank [email] binds nothing and wipes nothing.
   /// Never throws.
-  Future<bool> clearIfOwnerMismatch(String? email) async {
+  Future<bool> clearIfOwnerMismatch(String? email) {
     final expected = _normalizeEmail(email);
-    if (expected == null) return false;
-    try {
-      final raw = await _read(storageKey);
-      if (raw == null || raw.isEmpty) {
-        _boundOwner = expected;
-        return false;
-      }
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map<String, dynamic>) {
-        await clear();
+    if (expected == null) return Future.value(false);
+    // Serialized with saves (C-10): a login-time wipe must not
+    // interleave with an in-flight save's load→write. The internal
+    // clear runs directly — it must not re-enter the queue.
+    return _serialized(() async {
+      try {
+        final raw = await _read(storageKey);
+        if (raw == null || raw.isEmpty) {
+          _boundOwner = expected;
+          return false;
+        }
+        final decoded = jsonDecode(raw);
+        if (decoded is! Map<String, dynamic>) {
+          await _clearInternal();
+          _boundOwner = expected;
+          return true;
+        }
+        final owner = _normalizeEmail(decoded['ownerEmail']?.toString());
+        if (owner == expected) {
+          _boundOwner = expected;
+          return false;
+        }
+        await _clearInternal();
         _boundOwner = expected;
         return true;
-      }
-      final owner = _normalizeEmail(decoded['ownerEmail']?.toString());
-      if (owner == expected) {
-        _boundOwner = expected;
+      } catch (_) {
         return false;
       }
-      await clear();
-      _boundOwner = expected;
-      return true;
-    } catch (_) {
-      return false;
-    }
+    });
   }
 }
