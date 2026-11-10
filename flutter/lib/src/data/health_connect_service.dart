@@ -544,9 +544,10 @@ class HealthConnectService {
   // core still writes the legacy slot fields as a best-effort
   // diagnostic side channel for the screens that display a read
   // error immediately after their own read (Heart, Sleep, Key
-  // Metrics, HealthRepository diagnostics) and for the capture
-  // path's legacy protocol (health_history_sync.dart, migrating
-  // in PR-3) — but no availability attribution reads the slots.
+  // Metrics, HealthRepository diagnostics) — but no availability
+  // attribution reads the slots. (The capture path claimed from
+  // the slots under its legacy protocol until PR-3 migrated it
+  // to the outcome objects, health_history_sync.dart.)
   //
   // The public legacy method delegates to the outcome variant and
   // returns `.value`, byte-identical to the pre-Phase-2 returns.

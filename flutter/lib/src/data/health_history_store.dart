@@ -942,8 +942,10 @@ class HealthHistoryStore {
   /// visibility fix): every metric in [failures] gets a
   /// [CaptureDiagnostic] with its bridge error code + [atMs], and
   /// every metric in [succeeded] has any earlier entry cleared.
-  /// Codes only — callers pass `lastReadErrorCode`, never values
-  /// or exception text. Persists only when something changed.
+  /// Codes only — callers pass the read outcome's error code
+  /// (Phase 2 §1; the capture path claimed it from the service's
+  /// error slot until PR-3), never values or exception text.
+  /// Persists only when something changed.
   /// Never throws (goes through [persist]).
   ///
   /// Defect 1b — the HRV outcome: when the capture ran its HRV leg
