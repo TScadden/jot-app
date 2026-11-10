@@ -1636,7 +1636,8 @@ void main() {
     }
 
     testWidgets('collapsed by default with real data; subtitle counts '
-        'remaining; expand/collapse toggles repeatedly', (tester) async {
+        'remaining; the sheet opens/closes repeatedly (home redesign: '
+        'no in-place expansion, no chevron)', (tester) async {
       await pumpCard(tester, client: dataClient());
       expect(find.text('Today Summary'), findsOneWidget);
       // Med + reminder + habit all open: the habit's `logs` entry
@@ -1644,7 +1645,7 @@ void main() {
       // completes summary rows from log ENTRIES, so it still counts.
       expect(find.text('3 items remaining'), findsOneWidget);
       expect(find.text("Today's Plan"), findsNothing);
-      expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
+      expect(find.byIcon(Icons.keyboard_arrow_down), findsNothing);
 
       for (var i = 0; i < 3; i++) {
         await tester.tap(find.text('Today Summary'));
@@ -1653,7 +1654,8 @@ void main() {
         expect(find.text('Ivabradine'), findsOneWidget);
         expect(find.text('Salt pills'), findsOneWidget);
         expect(find.text('Stretch'), findsOneWidget);
-        await tester.tap(find.text('Today Summary'));
+        // Dismiss via the scrim above the sheet.
+        await tester.tapAt(const Offset(400, 10));
         await tester.pumpAndSettle();
         expect(find.text("Today's Plan"), findsNothing);
       }
@@ -1832,6 +1834,8 @@ void main() {
       await tester.tap(find.text('Today Summary'));
       await tester.pumpAndSettle();
       expect(find.text('Stretch'), findsOneWidget);
+      await tester.ensureVisible(find.text('Stretch'));
+      await tester.pumpAndSettle();
       await tester.tap(find.byIcon(Icons.radio_button_unchecked));
       await bridgeRealAsync(tester);
       await tester.pumpAndSettle();
@@ -1841,12 +1845,13 @@ void main() {
       expect(serverEntries.single['body'], 'Completed habit: Stretch');
       expect(serverEntries.single['categoryId'], 4);
       // Founder check-off rule: the checked item leaves the view
-      // (slide-away), and since it was the LAST plan item the
-      // section auto-collapses to its header after the slide.
+      // (slide-away). Home redesign: the sheet stays OPEN (no
+      // in-place section to collapse); its plan area shows the
+      // completed message, as does the card subtitle behind it.
       expect(find.text('Stretch'), findsNothing);
-      expect(find.text("Today's Plan"), findsNothing);
+      expect(find.text("Today's Plan"), findsOneWidget);
       expect(find.text('Everything planned for today is complete'),
-          findsOneWidget);
+          findsWidgets);
     });
 
     testWidgets('freshness: a remounted card reflects a dose logged '
@@ -2015,10 +2020,11 @@ void main() {
       await pumpCard(tester, client: client);
       await tester.tap(find.text('Today Summary'));
       await tester.pumpAndSettle();
-      // Subtitle AND plan-area body both carry the completed
-      // message; no completed item renders anywhere.
+      // Card subtitle, sheet subtitle AND plan-area body all carry
+      // the completed message (home redesign: the sheet carries its
+      // own subtitle copy); no completed item renders anywhere.
       expect(find.text('Everything planned for today is complete'),
-          findsNWidgets(2));
+          findsNWidgets(3));
       expect(find.text('Ivabradine'), findsNothing);
       expect(find.text('Salt pills'), findsNothing);
       expect(find.text('Stretch'), findsNothing);
@@ -2165,6 +2171,21 @@ void main() {
       });
     }
 
+    // Home redesign — the plan rows live in the summary SHEET,
+    // whose own scroll view may place them below the fold of the
+    // 600dp test surface; drag the sheet's scroll view until the
+    // target is inside the sheet's visible band.
+    Future<void> scrollSheetTo(WidgetTester tester, Finder target) async {
+      for (var i = 0; i < 8; i++) {
+        if (target.evaluate().isEmpty) return;
+        final rect = tester.getRect(target);
+        if (rect.center.dy > 150 && rect.center.dy < 560) return;
+        await tester.drag(
+            find.byType(SingleChildScrollView).last, const Offset(0, -180));
+        await tester.pumpAndSettle();
+      }
+    }
+
     // Advances the check-off flow (write → reload → slot mount)
     // in small fake-clock steps and stops the FIRST time the
     // slide-away slot is on screen with its slide part-way through
@@ -2192,6 +2213,8 @@ void main() {
           client: reminderClient(second: true));
       expect(find.text('Salt pills'), findsOneWidget);
       expect(find.text('Water bottle'), findsOneWidget);
+      await tester.ensureVisible(find.text('Salt pills'));
+      await tester.pumpAndSettle();
       await tester.tap(find.byIcon(Icons.radio_button_unchecked).first);
       final midDx = await pumpUntilSlide(tester);
       // The slot is up and the row is part-way out: offset strictly
@@ -2215,35 +2238,41 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('checking the LAST remaining item collapses the '
-        'section after the slide finishes', (tester) async {
+    testWidgets('checking the LAST remaining item: the sheet '
+        'stays open after the slide finishes (home redesign — no '
+        'in-place section, no auto-collapse)', (tester) async {
       await pumpMotionCard(tester, client: reminderClient());
+      await tester.ensureVisible(find.text('Salt pills'));
+      await tester.pumpAndSettle();
       await tester.tap(find.byIcon(Icons.radio_button_unchecked));
       final midDx = await pumpUntilSlide(tester);
-      // Mid-slide the section is still open — collapse waits for
-      // the slide to finish.
       expect(midDx, isNotNull);
       expect(find.byKey(const Key('slide-away-slot')), findsOneWidget);
       expect(find.text("Today's Plan"), findsOneWidget);
       await tester.pumpAndSettle();
       expect(find.text('Salt pills'), findsNothing);
-      expect(find.text("Today's Plan"), findsNothing);
-      // Header (with its complete subtitle) remains.
+      // The sheet remains open on its plan section, which now
+      // shows the completed message.
+      expect(find.text("Today's Plan"), findsOneWidget);
       expect(find.text('Everything planned for today is complete'),
-          findsOneWidget);
+          findsWidgets);
       expect(tester.takeException(), isNull);
     });
 
     testWidgets('reduced motion: instant removal, no slide slot; '
-        'the last-item collapse is immediate', (tester) async {
+        'the sheet stays open (home redesign)', (tester) async {
       await pumpMotionCard(tester,
           client: reminderClient(), disableAnimations: true);
+      await scrollSheetTo(tester, find.text('Salt pills'));
       await tester.tap(find.byIcon(Icons.radio_button_unchecked));
+      // Two frames: the vanish setStates the card, and the sheet
+      // rebuilds on the post-frame tick that setState schedules.
+      await tester.pump();
       await tester.pump();
       expect(find.byKey(const Key('slide-away-slot')), findsNothing);
       expect(find.byKey(const Key('dust-particles')), findsNothing);
       expect(find.text('Salt pills'), findsNothing);
-      expect(find.text("Today's Plan"), findsNothing);
+      expect(find.text("Today's Plan"), findsOneWidget);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     });
@@ -2253,6 +2282,7 @@ void main() {
       await pumpMotionCard(tester,
           client: reminderClient(second: true),
           disableAnimations: true);
+      await scrollSheetTo(tester, find.text('Salt pills'));
       await tester.tap(find.byIcon(Icons.radio_button_unchecked).first);
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('slide-away-slot')), findsNothing);
@@ -2267,6 +2297,8 @@ void main() {
       final animatedMem = MemoryStore();
       await pumpMotionCard(tester,
           client: reminderClient(), planMem: animatedMem);
+      await tester.ensureVisible(find.text('Salt pills'));
+      await tester.pumpAndSettle();
       await tester.tap(find.byIcon(Icons.radio_button_unchecked));
       await tester.pumpAndSettle();
       final animatedBlob = Map<String, String>.of(animatedMem.map);
@@ -2275,6 +2307,14 @@ void main() {
         todayStr: _today,
       );
       expect(animatedState.completedReminderIds, contains(5));
+
+      // Close the sheet before the second scenario re-pumps the
+      // card: pumpWidget updates the same MaterialApp, so the modal
+      // route would otherwise survive into the second tree and the
+      // 'Today Summary' tap would match both headers.
+      await tester.tapAt(const Offset(400, 10));
+      await tester.pumpAndSettle();
+      expect(find.text("Today's Plan"), findsNothing);
 
       // Second scenario, second fake server under the same token:
       // drop the shared pull cache so its pre-check-off body is
@@ -2285,6 +2325,7 @@ void main() {
           client: reminderClient(),
           planMem: reducedMem,
           disableAnimations: true);
+      await scrollSheetTo(tester, find.text('Salt pills'));
       await tester.tap(find.byIcon(Icons.radio_button_unchecked));
       await tester.pumpAndSettle();
       expect(reducedMem.map, animatedBlob);
@@ -2295,6 +2336,8 @@ void main() {
       final planMem = MemoryStore();
       await pumpMotionCard(tester,
           client: reminderClient(second: true), planMem: planMem);
+      await tester.ensureVisible(find.text('Salt pills'));
+      await tester.pumpAndSettle();
       await tester.tap(find.byIcon(Icons.radio_button_unchecked).first);
       final midDx = await pumpUntilSlide(tester);
       expect(midDx, isNotNull);
@@ -2383,19 +2426,23 @@ void main() {
       });
       await pumpMotionCard(tester, client: client);
       expect(find.text('Ivabradine'), findsOneWidget);
+      await tester.ensureVisible(find.text('Ivabradine'));
+      await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Take Medication').first);
       await bridgeRealAsync(tester);
       await tester.pumpAndSettle();
       expect(posted, isNotEmpty);
       expect(find.text('Ivabradine'), findsNothing);
       expect(find.text('Pyridostigmine'), findsOneWidget);
-      // Skip resolves the second dose the same way — and it was
-      // the last remaining item, so the section collapses.
+      // Skip resolves the second dose the same way. Home
+      // redesign: the sheet stays open (no section to collapse).
+      await tester.ensureVisible(find.text('Pyridostigmine'));
+      await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Skip Medication'));
       await bridgeRealAsync(tester);
       await tester.pumpAndSettle();
       expect(find.text('Pyridostigmine'), findsNothing);
-      expect(find.text("Today's Plan"), findsNothing);
+      expect(find.text("Today's Plan"), findsOneWidget);
       // R41: each check-off left exactly one entry — the take in
       // its "Took …" shape, the skip-from-pending directly in the
       // corrected shape.

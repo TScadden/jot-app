@@ -106,9 +106,11 @@ void main() {
   }
 
   group('Lab settings gear + full-screen Settings (V8)', () {
-    testWidgets('settings button (person glyph): present in Home '
-        'header, immediately left of the watch button, 24dp in '
-        'NotelColors.primary', (tester) async {
+    testWidgets('settings button (gear): the ONLY Home header '
+        'action under the redesign — Icons.settings, 24dp in '
+        'NotelColors.primary, rightmost at the surface edge; the '
+        'person glyph and the watch button have left the header',
+        (tester) async {
       // Standalone Home (not the shell): the header is the unit
       // under test, and the injected history store + snapshot
       // stub keep Home's Daily Score chain out of the Health
@@ -145,40 +147,27 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
 
       expect(gear(), findsOneWidget);
-      // The glyph is the reference video's person (founder steer,
-      // settings-fullscreen round): the OUTLINE head-and-shoulders
-      // Icons.person_outlined — not the gear, not the filled
-      // person. Same 24dp ink size and color the gear glyph had;
-      // the 'Settings' tooltip (destination semantics) is
-      // unchanged.
+      // Redesign header: the gear glyph is back — Icons.settings
+      // at 24dp in NotelColors.primary, tooltip 'Settings'
+      // unchanged. The person glyph that briefly held this slot
+      // and the watch button are both GONE from the Home header
+      // (the watch moved into the Settings AppBar).
       final glyph = tester.widget<Icon>(find.descendant(
-          of: gear(), matching: find.byIcon(Icons.person_outlined)));
+          of: gear(), matching: find.byIcon(Icons.settings)));
       expect(glyph.size, 24);
       expect(glyph.color, NotelColors.primary);
-      expect(
-          find.descendant(
-              of: gear(), matching: find.byIcon(Icons.settings)),
-          findsNothing);
+      expect(find.byIcon(Icons.person_outlined), findsNothing);
+      expect(find.byIcon(Icons.watch), findsNothing);
       expect(find.byTooltip('Settings'), findsOneWidget);
+      expect(find.byTooltip('Connections'), findsNothing);
 
-      // Placement, numerically: the gear's 48dp box is CONTIGUOUS
-      // with the watch button's box (gear right edge == watch left
-      // edge) and they share a vertical center band. The watch
-      // button itself did not move: it is still the rightmost
-      // header action (its right edge is the surface edge). The
-      // watch rect is read from its IconButton (the ancestor of
-      // the 'Connections' tooltip — the Tooltip's own render box
-      // is the button's centered 40dp visual box, not its 48dp
-      // target box).
+      // Placement, numerically: the gear is the sole action, so
+      // its 48dp box is the rightmost header box — its right edge
+      // is the surface edge.
       final gearRect = tester.getRect(gear());
-      final watchRect = tester.getRect(find.ancestor(
-          of: find.byTooltip('Connections'),
-          matching: find.byType(IconButton)));
-      expect(gearRect.right, closeTo(watchRect.left, 0.5));
-      expect(gearRect.center.dy, closeTo(watchRect.center.dy, 0.5));
       expect(gearRect.width, 48);
       expect(gearRect.height, 48);
-      expect(watchRect.right, closeTo(800, 0.5));
+      expect(gearRect.right, closeTo(800, 0.5));
       // Let the staggered-entrance delay timers fire (no pending
       // timers at teardown).
       await tester.pump(const Duration(milliseconds: 300));
@@ -305,7 +294,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
       await tester.pump();
       expect(find.byType(SettingsScreen), findsNothing);
-      expect(find.text('Today'), findsOneWidget);
+      // Redesign: the 'Today' title text is gone from Home; the
+      // HomeScreen underneath is the landing proof.
+      expect(find.byType(HomeScreen), findsOneWidget);
       await drainRealWork(tester);
     });
 

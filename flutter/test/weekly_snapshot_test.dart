@@ -30,7 +30,9 @@ void main() {
       );
     });
 
-    testWidgets('renders title, subtitle, and chevron; collapsed by default',
+    testWidgets(
+        'renders title and subtitle; collapsed by default, no chevron '
+        '(home redesign: the card never expands in place)',
         (tester) async {
       await tester.pumpWidget(
         const MaterialApp(home: Scaffold(body: TodaySummaryCard())),
@@ -38,17 +40,19 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Today Summary'), findsOneWidget);
-      // Header subtitle only — expanded content (with its second
+      // Header subtitle only — the sheet content (with its second
       // "No plans recorded today") is hidden while collapsed.
       expect(find.text('No plans recorded today'), findsOneWidget);
       expect(find.text("Today's Plan"), findsNothing);
       expect(find.text('Trends'), findsNothing);
       expect(find.text('Not enough data yet'), findsNothing);
-      // Chevron points down when collapsed.
-      expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
+      // The header chevron is dropped under the redesign.
+      expect(find.byIcon(Icons.keyboard_arrow_down), findsNothing);
+      expect(find.byIcon(Icons.keyboard_arrow_up), findsNothing);
     });
 
-    testWidgets('tapping expands the collapsed card', (tester) async {
+    testWidgets('tapping the card opens the summary sheet',
+        (tester) async {
       await tester.pumpWidget(
         const MaterialApp(home: Scaffold(body: TodaySummaryCard())),
       );
@@ -57,28 +61,25 @@ void main() {
       // Starts collapsed.
       expect(find.text("Today's Plan"), findsNothing);
 
-      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+      await tester.tap(find.text('Today Summary'));
       await tester.pumpAndSettle();
       expect(find.text("Today's Plan"), findsOneWidget);
       expect(find.text('Trends'), findsOneWidget);
       expect(find.text('Not enough data yet'), findsOneWidget);
-      expect(find.byIcon(Icons.keyboard_arrow_up), findsOneWidget);
     });
 
-    testWidgets('chevron toggles expand/collapse', (tester) async {
+    testWidgets('the sheet dismisses via the scrim', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(home: Scaffold(body: TodaySummaryCard())),
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+      await tester.tap(find.text('Today Summary'));
       await tester.pumpAndSettle();
-      expect(find.byIcon(Icons.keyboard_arrow_up), findsOneWidget);
       expect(find.text("Today's Plan"), findsOneWidget);
 
-      await tester.tap(find.byIcon(Icons.keyboard_arrow_up));
+      await tester.tapAt(const Offset(400, 10));
       await tester.pumpAndSettle();
-      expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
       expect(find.text("Today's Plan"), findsNothing);
     });
   });

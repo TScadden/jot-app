@@ -94,17 +94,25 @@ void main() {
     // Native today route: Scaffold containerColor = NotelBackground.
     expect(scaffold.backgroundColor, NotelColors.background);
     expect(NotelColors.background.toARGB32(), 0xFF0A0A0B); // BlackGlass v4 Lab theme token (named delta)
-    // Today header (native topBar): title, weather icon, watch icon.
-    expect(find.text('Today'), findsOneWidget);
-    // Round 14: the header icon is the living AnimatedWeatherIcon (a
-    // static cloud when no condition has loaded yet).
+    // Home redesign header: hamburger button, the compact vitals
+    // pill as the AppBar title, and ONE settings gear. The "Today"
+    // title text and the watch action are gone from the header
+    // (the watch moved into Settings' AppBar).
+    expect(find.text('Today'), findsNothing);
+    expect(find.byKey(const ValueKey('vitalsStripCompact')), findsOneWidget);
+    expect(find.byKey(const ValueKey('home_drawer_button')), findsOneWidget);
+    expect(find.byKey(const ValueKey('home_settings_gear')), findsOneWidget);
+    expect(find.byIcon(Icons.watch), findsNothing);
+    // Seventh ruling: the weather element now lives in the Today
+    // Summary card header — the living AnimatedWeatherIcon (a static
+    // cloud when no condition has loaded yet) renders there instead.
     expect(find.byType(AnimatedWeatherIcon), findsOneWidget);
-    expect(find.byIcon(Icons.watch), findsOneWidget);
+    expect(find.byTooltip('Weather'), findsOneWidget);
     // Weather unavailable (mock 500s): icon only — never a zero.
     expect(find.text('0°'), findsNothing);
     // Let the staggered-entrance delay timers fire (no pending timers
     // at teardown).
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 700));
   });
 
   // Round 38 — direct Home render WITH a signed-in email supplied:
@@ -121,7 +129,7 @@ void main() {
           weatherApi: WeatherApiClient(client: _mockWeatherClient())),
     ));
     await tester.pump();
-    expect(find.text('Today'), findsOneWidget);
+    expect(find.byType(HomeScreen), findsOneWidget);
     expectNoEmailRendered(tester, 'founder@tabs.app');
     // Scroll to the bottom (the label's old slot was the last item
     // above the nav-dock clearance) and re-assert.
@@ -129,10 +137,13 @@ void main() {
         find.byType(SingleChildScrollView), const Offset(0, -2000));
     await tester.pump();
     expectNoEmailRendered(tester, 'founder@tabs.app');
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 700));
   });
 
-  testWidgets('header shows the live temp once loaded', (tester) async {
+  testWidgets(
+      'summary card header shows the live temp once loaded '
+      '(seventh ruling: weather element moved out of the AppBar)',
+      (tester) async {
     await tester.pumpWidget(MaterialApp(
       home: HomeScreen(
           weatherApi: WeatherApiClient(client: _mockWeatherClient(61))),
@@ -141,7 +152,13 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('61°'), findsOneWidget);
     expect(find.byType(AnimatedWeatherIcon), findsOneWidget);
-    await tester.pump(const Duration(milliseconds: 300));
+    // The weather element is NOT in the AppBar anymore.
+    expect(
+        find.descendant(
+            of: find.byType(AppBar),
+            matching: find.byType(AnimatedWeatherIcon)),
+        findsNothing);
+    await tester.pump(const Duration(milliseconds: 700));
   });
 
   testWidgets('successful login navigates home WITHOUT showing the email',
@@ -179,7 +196,7 @@ void main() {
     expect(store.email, 'founder@tabs.app');
     // Let the staggered-entrance delay timers fire (no pending timers
     // at teardown).
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 700));
   });
 
   testWidgets('wrong password shows the error and stays on login',

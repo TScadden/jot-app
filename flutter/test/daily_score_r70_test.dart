@@ -600,8 +600,10 @@ void main() {
   });
 
   group('widgets: Home header', () {
-    testWidgets('score circle appears beside the weather icon with today\'s '
-        'persisted score', (tester) async {
+    testWidgets('score face appears in the corner band with today\'s '
+        'persisted score (redesign: bare face, no verdict text on Home)',
+        (tester) async {
+      final semantics = tester.ensureSemantics();
       final fake = _FakeStore();
       final store = _fakeStore(fake);
       final today = DateTime.now();
@@ -636,9 +638,23 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump();
-      expect(find.byType(DailyScoreCircle), findsOneWidget);
-      expect(find.text('100'), findsOneWidget);
-      expect(find.text('Great'), findsOneWidget);
+      // Redesign body has five staggered children — the last
+      // entrance timer runs 320ms; elapse past it before test end.
+      await tester.pump(const Duration(milliseconds: 100));
+      // Redesign: the header pairing (circle + number + verdict
+      // column) is gone. The corner band carries the bare face;
+      // the score and verdict reach assistive tech through the
+      // pairing's semantics label, and NO verdict text renders.
+      expect(find.byType(DailyScoreCircle), findsNothing);
+      expect(find.byType(DailyScoreFace), findsOneWidget);
+      expect(find.text('Great'), findsNothing);
+      expect(
+        // Start-anchored: the face's own painted number merges
+        // into the same semantics node after the pairing label.
+        find.bySemanticsLabel(RegExp(r'^Daily Score 100, Great')),
+        findsOneWidget,
+      );
+      semantics.dispose();
     });
   });
 }

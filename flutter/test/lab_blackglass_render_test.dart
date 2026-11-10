@@ -374,7 +374,7 @@ void main() {
       add('type:DailyScoreFace', find.byType(DailyScoreFace));
       add('type:FeelingCheckInCard', find.byType(FeelingCheckInCard));
       add('type:VitalsStrip', find.byType(VitalsStrip));
-      add('type:HomeStreakRow', find.byType(HomeStreakRow));
+      add('type:HomeStreakStack', find.byType(HomeStreakStack));
       add('type:TodaySummaryCard', find.byType(TodaySummaryCard));
       add('type:MigraineBlock', find.byType(MigraineBlock));
       add('type:WeeklySnapshotCard', find.byType(WeeklySnapshotCard));
@@ -474,36 +474,37 @@ void main() {
     expect(scrollable.position.pixels, 0);
     await capture('hero', '');
 
-    // Expand Today Summary so the seeded plan rows render, settle,
-    // then scroll the minimum so both rows sit fully clear of the
-    // floating dock (same discipline as the earlier Lab package).
+    // Open the Today Summary SHEET so the seeded plan rows render
+    // (redesign: the card no longer expands in place — the plan
+    // lives in the modal sheet, which overlays the dock, so the
+    // old scroll-clear-of-dock discipline no longer applies; the
+    // rows simply need to sit inside the viewport).
     await tester.tap(find.text('Today Summary'));
     await tester.pump();
     await _bridge(tester);
     await tester.pump(const Duration(seconds: 3));
     expect(find.text('SS-31 Peptide'), findsOneWidget);
     expect(find.text('Ivabradine'), findsOneWidget);
-
-    final dockTop = tester.getTopLeft(find.byType(NavDock)).dy;
-    final doseRect = tester.getRect(find.text('7.5mg · Daily'));
-    final shift = doseRect.bottom + 14 + 8 - dockTop;
-    if (shift > 0) {
-      scrollable.position.jumpTo(scrollable.position.pixels + shift);
-    }
-    await tester.pump();
-    await _bridge(tester);
-    await tester.pump(const Duration(seconds: 3));
     expect(
       tester.getRect(find.text('SS-31 Peptide')).top,
       greaterThanOrEqualTo(0),
     );
     expect(
-      tester.getRect(find.text('7.5mg · Daily')).bottom + 14,
-      lessThan(dockTop),
+      tester.getRect(find.text('7.5mg · Daily')).bottom,
+      lessThan(800),
     );
 
-    // FRAME 2 — plan frame.
+    // FRAME 2 — plan frame (the open sheet).
     await capture('plan', '_plan');
+
+    // Dismiss the sheet before the settings frames: the gear sits
+    // behind the modal scrim, so a tap there would only close
+    // the sheet instead of pushing Settings.
+    await tester.tapAt(const Offset(180, 20));
+    await tester.pump();
+    await _bridge(tester);
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('SS-31 Peptide'), findsNothing);
 
     // ── Settings frames (root boundary — the pushed Settings
     // route is a Navigator-overlay route and lives OUTSIDE the

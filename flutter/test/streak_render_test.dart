@@ -311,10 +311,12 @@ void main() {
     expect(find.byKey(const Key('homeStreakPills')), findsOneWidget);
     await _capture(tester, homeBoundary, outDir, 'tabs_home_streak_vc100115_2026-11-05.png');
 
-    // Rect evidence for the gate: the streak row + pill target box
-    // on Home (logical px @ DPR 3.0, same convention as the other
-    // Lab harnesses).
-    final rowRect = tester.getRect(find.byType(HomeStreakRow));
+    // Rect evidence for the gate: the streak band + pill target
+    // box on Home (logical px @ DPR 3.0, same convention as the
+    // other Lab harnesses). Home redesign: the corner band's
+    // HomeStreakStack replaces the old HomeStreakRow in the body;
+    // the JSON field keeps its historical name for the gate.
+    final rowRect = tester.getRect(find.byType(HomeStreakStack));
     final pillsRect = tester.getRect(find.byKey(const Key('homeStreakPills')));
     // Read-back proof: the settle pushed the adopted record back
     // to the (mock) profile — counters 14/68 plus a streakState

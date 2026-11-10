@@ -190,6 +190,10 @@ void main() {
         'stored today score shows in the circle while the snapshot is '
         'stalled; after it completes an updated score replaces it',
         (tester) async {
+      // Home redesign: the header pairing is gone — the corner
+      // band's bare face paints the number, and the verdict reaches
+      // assistive tech via the pairing semantics label only.
+      final semantics = tester.ensureSemantics();
       final store = _fakeStore(_FakeStore());
       final today = DateTime.now();
       final todayStr = _ds(DateTime(today.year, today.month, today.day));
@@ -234,14 +238,23 @@ void main() {
       // Stored score painted while the snapshot is still stalled.
       expect(gate.isCompleted, isFalse);
       expect(find.text('100'), findsOneWidget);
-      expect(find.text('Great'), findsOneWidget);
+      expect(find.text('Great'), findsNothing);
+      expect(
+        find.bySemanticsLabel(RegExp(r'^Daily Score 100, Great')),
+        findsOneWidget,
+      );
       gate.complete(true);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump();
       expect(find.text('72'), findsOneWidget);
-      expect(find.text('Good'), findsOneWidget);
+      expect(find.text('Good'), findsNothing);
+      expect(
+        find.bySemanticsLabel(RegExp(r'^Daily Score 72, Good')),
+        findsOneWidget,
+      );
       expect(find.text('100'), findsNothing);
+      semantics.dispose();
     });
   });
 }
