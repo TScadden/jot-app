@@ -193,12 +193,11 @@ void main() {
             backend: backend,
             settingsStore: store(),
             notificationService: FakeReminderNotificationService(),
+            openAiKnowledge: true,
             urlLauncher: (uri) async => true,
           ),
         ),
       ));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('AI & Clinical Advocate'));
       await tester.pumpAndSettle();
     }
 

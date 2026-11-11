@@ -37,12 +37,11 @@ Future<void> pumpAi(WidgetTester tester,
         backend: backend,
         settingsStore: store(),
         notificationService: FakeReminderNotificationService(),
+        openAiKnowledge: true,
         urlLauncher: (uri) async => true,
       ),
     ),
   ));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('AI & Clinical Advocate'));
   await tester.pumpAndSettle();
 }
 
@@ -147,11 +146,12 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('past_updates_header')));
       await tester.pumpAndSettle();
       expect(find.text(_u1), findsOneWidget);
-      // Leave the AI page and re-enter it.
-      await tester.tap(find.byIcon(Icons.arrow_back));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('AI & Clinical Advocate'));
-      await tester.pumpAndSettle();
+      // Leave the AI page and re-enter it. (Round 5: the Settings
+      // menu row is gone — re-entry is a fresh mount on the page,
+      // the state reset the drawer deep-link produces.)
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+      await pumpAi(tester, backendWithUpdates());
       expect(find.text('Past Doctor Updates'), findsOneWidget);
       expect(find.text('(3)'), findsOneWidget);
       expect(find.text(_u1), findsNothing);

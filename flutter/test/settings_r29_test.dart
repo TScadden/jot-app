@@ -234,12 +234,14 @@ SettingsScreen screen({
   VoidCallback? onLogout,
   List<Uri>? launched,
   FakeReminderNotificationService? notifs,
+  bool openAiKnowledge = false,
 }) =>
     SettingsScreen(
       backend: backend,
       settingsStore: store,
       accountActions: actions,
       onLogout: onLogout,
+      openAiKnowledge: openAiKnowledge,
       // Round 30: reminder toggles now run the permission gate before
       // persisting; the fake reports notifications already granted so
       // the Round 29 persistence assertions exercise the same path a
@@ -328,7 +330,9 @@ void main() {
       expect(find.text('Personal Context'), findsOneWidget);
       expect(find.text('User Profile'), findsWidgets);
       expect(find.text('Customize'), findsOneWidget);
-      expect(find.text('AI & Clinical Advocate'), findsOneWidget);
+      // Round 5: no AI Advocate row in Settings — the Home
+      // drawer's "AI Advocate" entry is its home now.
+      expect(find.text('AI & Clinical Advocate'), findsNothing);
       expect(find.text('Event Counters'), findsOneWidget);
       expect(find.text('Notifications'), findsOneWidget);
       expect(find.text('Sync Settings'), findsOneWidget);
@@ -627,10 +631,12 @@ void main() {
 
     testWidgets('auto AI toggle pushes the profile field', (tester) async {
       final backend = FakeSettingsBackend()..pullBody = pull();
+      // Round 5: the AI page is entered via the deep link (the
+      // drawer's route), not a Settings menu row.
       await pumpSettings(tester, host(screen(
-          backend: backend, store: fakeStore(<String, String>{}))));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('AI & Clinical Advocate'));
+          backend: backend,
+          store: fakeStore(<String, String>{}),
+          openAiKnowledge: true)));
       await tester.pumpAndSettle();
       await tester.tap(
           find.byKey(const ValueKey('auto_ai_toggle')).findSwitch());

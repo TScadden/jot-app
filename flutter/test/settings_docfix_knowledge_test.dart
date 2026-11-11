@@ -141,12 +141,11 @@ void main() {
           settingsStore: settingsStore(),
           notificationService: FakeReminderNotificationService(),
           knowledgeStore: store,
+          openAiKnowledge: true,
           urlLauncher: (uri) async => true,
         ),
       ),
     ));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('AI & Clinical Advocate'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('documents_toggle')));
     await tester.pumpAndSettle();

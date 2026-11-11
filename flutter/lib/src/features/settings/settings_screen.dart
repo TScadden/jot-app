@@ -1422,9 +1422,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Divider(color: NotelColors.divider, height: 1),
           _menuRow(Icons.tune, 'Customize', _Page.customize),
           const Divider(color: NotelColors.divider, height: 1),
-          _menuRow(Icons.auto_awesome, 'AI & Clinical Advocate',
-              _Page.aiKnowledge),
-          const Divider(color: NotelColors.divider, height: 1),
+          // Home polish round 5 (founder, Nov 10, 2026): the AI &
+          // Clinical Advocate row is REMOVED from Settings — its
+          // home is now the Home drawer's "AI Advocate" entry,
+          // which deep-links here with openAiKnowledge (the
+          // _Page.aiKnowledge plumbing below is unchanged).
           _menuRow(Icons.timer, 'Event Counters', _Page.eventCounters),
           const Divider(color: NotelColors.divider, height: 1),
           _menuRow(Icons.notifications, 'Notifications', _Page.notifications),
