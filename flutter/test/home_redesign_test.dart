@@ -694,7 +694,7 @@ void main() {
     ]) {
       testWidgets(
           'Bandit slot is 282 wide and the Today Summary card '
-          'tucks over its bottom edge by 24dp at ${label}dp; '
+          'tucks over its bottom edge by 32dp at ${label}dp; '
           'Weekly Snapshot stays in the first viewport',
           (tester) async {
         await _pumpHome(
@@ -712,9 +712,11 @@ void main() {
             closeTo(BanditReadingSlot.slotHeight, 1.5));
 
         final card = tester.getRect(find.byType(TodaySummaryCard));
-        // Widget-level overlap 24dp (the opaque surface covers
-        // 18dp of the chair after the card's 6dp top margin).
-        expect(bandit.bottom - card.top, closeTo(24, 1.5));
+        // Widget-level overlap 32dp (round 5; the opaque surface
+        // covers 26dp of the chair after the card's 6dp top
+        // margin, so the border crosses the chair ~8dp above its
+        // bottom rim instead of meeting it).
+        expect(bandit.bottom - card.top, closeTo(32, 1.5));
         expect(card.top, greaterThan(bandit.top));
 
         final weekly = tester.getRect(find.byType(WeeklySnapshotCard));

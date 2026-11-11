@@ -56,11 +56,20 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 /// widget box tucks UP over the Bandit slot's bottom edge in the
 /// overlap stack (see the body build). The card carries a 6dp top
 /// margin, so the card's OPAQUE surface covers the bottom
-/// 24 − 6 = 18dp of the chair — 18 / 336.2 ≈ 5.4% of the enlarged
+/// 32 − 6 = 26dp of the chair — 26 / 336.2 ≈ 7.7% of the enlarged
 /// slot's height, inside the founder's 5–8% tuck band. The stack's
 /// flow height still ends at the card's bottom edge, so nothing
 /// below the card moves.
-const double kBanditSummaryOverlap = 24;
+///
+/// Round 5 (founder, Nov 10, 2026, from his own phone at the round-4
+/// value of 24): the chair's bottom rim still read as sitting ON the
+/// card's top border — at 24 the opaque surface began within ~0.4dp
+/// of the chair's lowest rendered edge (frame y=940 of 992 →
+/// ≈318.6dp in slot coordinates, vs the opaque top at ≈318.2dp).
+/// At 32 the opaque top lands at ≈310.2dp, so the border line
+/// crosses the chair ~8dp above its bottom rim and no chair bottom
+/// edge shows in front of the card.
+const double kBanditSummaryOverlap = 32;
 
 /// Round 4 — home screen, background only (native `today` route).
 ///
@@ -2479,8 +2488,10 @@ class _HomeScreenState extends State<HomeScreen> {
             // edge by that overlap while the stack's total height
             // still ends at the card's bottom — Weekly Snapshot
             // below moves only by the net geometry change
-            // (+slot growth 50.1dp, −overlap 24dp = +26.1dp vs the
-            // base 240dp slot stack). Both layers keep their own
+            // (+slot growth 50.1dp, −overlap 32dp = +18.1dp vs the
+            // base 240dp slot stack; round 5 raised the overlap
+            // from 24 to 32 — see kBanditSummaryOverlap). Both
+            // layers keep their own
             // stagger indices (1 and 2, as before).
             Stack(
               children: [
@@ -2490,7 +2501,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 // The spacer sits OUTSIDE the card's stagger: the
                 // entrance slide is a fraction (0.12) of its child's
-                // height, and folding the 312dp spacer into that
+                // height, and folding the 304dp spacer into that
                 // child would throw the card ~49dp off its layout
                 // position mid-entrance (and off its hit region —
                 // the weather-button tap tests caught exactly that).
