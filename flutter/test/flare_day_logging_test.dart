@@ -692,8 +692,7 @@ void main() {
           flareOrigin: SummaryFlareOrigin.numberOrigin,
           goodOptions: const ['Energy', 'Clear head'],
         ),
-        "Today's check-in: 2 of 5, rough, dizzy, energy, clear head. "
-        "Tap to update today's details.",
+        "Today's check-in: 2 of 5, rough, dizzy, energy, clear head.",
       );
       // Number-origin with good options but no kind: the options
       // still render (they are not suppressed by the origin).
@@ -713,8 +712,7 @@ void main() {
           flareOrigin: SummaryFlareOrigin.numberOrigin,
           goodOptions: const ['Energy'],
         ),
-        "Today's check-in: 2 of 5, rough, energy. "
-        "Tap to update today's details.",
+        "Today's check-in: 2 of 5, rough, energy.",
       );
     });
 
@@ -735,7 +733,7 @@ void main() {
           );
       expect(
         sem(ranking: 3),
-        "Today's check-in: 3 of 5, average. Tap to update today's details.",
+        "Today's check-in: 3 of 5, average.",
       );
       expect(
         sem(
@@ -744,17 +742,15 @@ void main() {
           kind: 'Dizzy',
           origin: SummaryFlareOrigin.numberOrigin,
         ),
-        "Today's check-in: 2 of 5, rough, dizzy. "
-        "Tap to update today's details.",
+        "Today's check-in: 2 of 5, rough, dizzy.",
       );
       expect(
         sem(ranking: 2, severity: 'Rough', origin: SummaryFlareOrigin.numberOrigin),
-        "Today's check-in: 2 of 5, rough. Tap to update today's details.",
+        "Today's check-in: 2 of 5, rough.",
       );
       expect(
         sem(ranking: 4, good: ['Energy', 'Clear head']),
-        "Today's check-in: 4 of 5, good, energy, clear head. "
-        "Tap to update today's details.",
+        "Today's check-in: 4 of 5, good, energy, clear head.",
       );
       expect(
         sem(
@@ -762,8 +758,7 @@ void main() {
           severity: 'Rough',
           origin: SummaryFlareOrigin.lateAdded,
         ),
-        "Today's check-in: 3 of 5, average. Flare logged, rough. "
-        "Tap to update today's details.",
+        "Today's check-in: 3 of 5, average. Flare logged, rough.",
       );
       expect(
         sem(
@@ -774,8 +769,7 @@ void main() {
           good: ['Energy', 'Clear head'],
         ),
         "Today's check-in: 4 of 5, good, energy, clear head. "
-        'Flare logged, really bad, crash. '
-        "Tap to update today's details.",
+        'Flare logged, really bad, crash.',
       );
     });
   });
@@ -1396,8 +1390,7 @@ void main() {
       expect(find.text('Good day'), findsNothing);
       expect(
         _semantics(
-          "Today's check-in: 3 of 5, average. "
-          "Tap to update today's details.",
+          "Today's check-in: 3 of 5, average.",
         ),
         findsOneWidget,
       );
@@ -1497,8 +1490,21 @@ void main() {
       expect(find.text('Morning Score: 5 · Really good'), findsOneWidget);
     });
 
-    testWidgets('amend: a wrong kind is fixed in place — same id, '
-        'one flare record', (tester) async {
+    // ── Round 5 (founder ruling, Nov 10, 2026): the logged
+    // Morning Score is display-only. The amend sheet
+    // ("Today's check-in" / "why it was good") is a one-time,
+    // at-logging surface; after the ranking is logged, neither
+    // scored presentation reopens it. The two tests below replace
+    // the retired amend family (in-place kind/good amends,
+    // clear-all deletes, the F1 and gated-push delete
+    // classifications, gap 2): those flows' only entry point was
+    // this tap, and the founder removed it. Juno's flagged
+    // trade-off stands in the decision record — a mis-tapped
+    // ranking has no in-app correction path via Morning Score /
+    // Today Summary.
+
+    testWidgets('round 5: tapping the scored face line opens '
+        'nothing and writes nothing', (tester) async {
       final server = _Server([], categories: _catsNameHit);
       await pumpHome(tester, server);
       await tester.tap(find.text('1'));
@@ -1510,150 +1516,42 @@ void main() {
       await tester.tap(find.text('Fog'));
       await _pumpUntil(
         tester,
-        () => find.text('Morning Score: 1 · Really bad · Fog').evaluate().isNotEmpty,
+        () => find.text('Morning Score: 1 · Really bad · Fog')
+            .evaluate()
+            .isNotEmpty,
       );
       await _pumpUntil(
         tester,
         () => LogEntryOutbox.instance.records.isEmpty,
       );
-      final flareId = flareRows(server).single['id'];
+      expect(flareRows(server), hasLength(1));
 
       await tester.tap(find.text('Morning Score: 1 · Really bad · Fog'));
-      await _pumpUntil(
-        tester,
-        () => find.text("Today's check-in").evaluate().isNotEmpty,
-      );
-      await settleSheet(tester);
-      await tester.tap(find.text('Pain'));
-      await _pumpUntil(
-        tester,
-        () => find.text('Morning Score: 1 · Really bad · Pain').evaluate().isNotEmpty,
-      );
-      await _pumpUntil(
-        tester,
-        () => LogEntryOutbox.instance.records.isEmpty,
-      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+
+      // No amend sheet, no explanation surface, and the logged
+      // records are untouched.
+      expect(find.text("Today's check-in"), findsNothing);
+      expect(find.text('How bad is it today?'), findsNothing);
+      expect(find.text('Morning Score: 1 · Really bad · Fog'),
+          findsOneWidget);
       expect(flareRows(server), hasLength(1));
-      expect(flareRows(server).single['id'], flareId);
-      expect(flareRows(server).single['body'], 'Flare day · Really bad · Pain');
+      expect(flareRows(server).single['body'],
+          'Flare day · Really bad · Fog');
+      expect(server.capturedDeletes, isEmpty);
+      expect(LogEntryOutbox.instance.records, isEmpty);
+      // The face line's semantics are Juno's descriptive-only
+      // sentence (Nov 10, 2026) and the node is not a button.
+      final faceSemantics = tester.widget<Semantics>(
+        _semantics("Today's check-in: 1 of 5, really bad, fog."),
+      );
+      expect(faceSemantics.properties.button, isNot(true));
     });
 
-    testWidgets('amend: a late flare after a 4 — severity step, '
-        'kind added; the summary gains the late-add segment with '
-        "Juno's exact label and semantics", (tester) async {
-      final server = _Server([], categories: _catsNameHit);
-      await pumpHome(tester, server);
-      await tester.tap(find.text('4'));
-      await _pumpUntil(
-        tester,
-        () => find.text('What is good about today?').evaluate().isNotEmpty,
-      );
-      await settleSheet(tester);
-      await tester.tap(find.text('Energy'));
-      await tester.pump();
-      await tester.tap(find.text('Done'));
-      await _pumpUntil(
-        tester,
-        () => find.text('Morning Score: 4 · Good · Energy').evaluate().isNotEmpty,
-      );
-      await _pumpUntil(
-        tester,
-        () => LogEntryOutbox.instance.records.isEmpty,
-      );
-
-      await tester.tap(find.text('Morning Score: 4 · Good · Energy'));
-      await _pumpUntil(
-        tester,
-        () => find.text('How bad is it today?').evaluate().isNotEmpty,
-      );
-      await settleSheet(tester);
-      await tester.tap(find.text('Rough'));
-      await tester.pump();
-      expect(find.text('What kind of bad?'), findsOneWidget);
-      await tester.tap(find.text('Dizzy'));
-      await _pumpUntil(
-        tester,
-        () => find
-            .text('Morning Score: 4 · Good · Energy · Flare logged · Rough · Dizzy')
-            .evaluate()
-            .isNotEmpty,
-      );
-      expect(
-        _semantics(
-          "Today's check-in: 4 of 5, good, energy. "
-          'Flare logged, rough, dizzy. '
-          "Tap to update today's details.",
-        ),
-        findsOneWidget,
-      );
-      await _pumpUntil(
-        tester,
-        () => LogEntryOutbox.instance.records.isEmpty,
-      );
-      expect(flareRows(server), hasLength(1));
-      expect(jsonDecode(flareRows(server).single['chips'] as String),
-          ['Flare Day', 'Rough', 'Dizzy']);
-      // The ranking segment keeps the number actually tapped.
-      expect(rankingRows(server).single['body'], 'Feeling: 4/5 Today');
-    });
-
-    testWidgets('amend: good options are amended in place — same '
-        'id, one good record', (tester) async {
-      final server = _Server([], categories: _catsNameHit);
-      await pumpHome(tester, server);
-      await tester.tap(find.text('4'));
-      await _pumpUntil(
-        tester,
-        () => find.text('What is good about today?').evaluate().isNotEmpty,
-      );
-      await settleSheet(tester);
-      await tester.tap(find.text('Energy'));
-      await tester.pump();
-      await tester.tap(find.text('Done'));
-      await _pumpUntil(
-        tester,
-        () => LogEntryOutbox.instance.records.isEmpty &&
-            goodRows(server).isNotEmpty,
-      );
-      final goodId = goodRows(server).single['id'];
-
-      await tester.tap(find.text('Morning Score: 4 · Good · Energy'));
-      await _pumpUntil(
-        tester,
-        () => find.text("Today's check-in").evaluate().isNotEmpty,
-      );
-      await settleSheet(tester);
-      // Pre-filled from today's own good record.
-      final energy = tester.widget<Semantics>(_semantics('Energy'));
-      expect(energy.properties.selected, isTrue);
-      // The good section sits below the flare-add section in this
-      // sheet — scroll the last options into view before tapping.
-      await tester.ensureVisible(find.text('Good mood'));
-      await tester.pump();
-      await tester.tap(find.text('Good mood'));
-      await tester.pump();
-      await tester.ensureVisible(find.text('Done'));
-      await tester.pump();
-      await tester.tap(find.text('Done'));
-      await _pumpUntil(
-        tester,
-        () => find
-            .text('Morning Score: 4 · Good · Energy, Good mood')
-            .evaluate()
-            .isNotEmpty,
-      );
-      await _pumpUntil(
-        tester,
-        () => LogEntryOutbox.instance.records.isEmpty,
-      );
-      expect(goodRows(server), hasLength(1));
-      expect(goodRows(server).single['id'], goodId);
-      expect(goodRows(server).single['body'], 'Good day · Energy, Good mood');
-    });
-
-    testWidgets('amend clear-all (founder ruling, Oct 28 2026): '
-        'unticking every good option deletes the good-day record '
-        'with one server DELETE; the ranking record is untouched',
+    testWidgets('round 5: tapping the scored row inside the '
+        'summary sheet opens nothing and writes nothing',
         (tester) async {
       final now = DateTime.now().millisecondsSinceEpoch;
       final server = _Server(
@@ -1678,377 +1576,55 @@ void main() {
       await pumpHome(tester, server);
       await _pumpUntil(
         tester,
-        () => find.text('Morning Score: 4 · Good · Energy').evaluate().isNotEmpty,
-      );
-      await tester.tap(find.text('Morning Score: 4 · Good · Energy'));
-      await _pumpUntil(
-        tester,
-        () => find.text("Today's check-in").evaluate().isNotEmpty,
-      );
-      await settleSheet(tester);
-      // The good section sits below the flare-add section in this
-      // sheet — scroll its options into view before tapping.
-      await tester.ensureVisible(find.text('Energy'));
-      await tester.pump();
-      await tester.tap(find.text('Energy'));
-      await tester.pump();
-      await tester.ensureVisible(find.text('Done'));
-      await tester.pump();
-      await tester.tap(find.text('Done'));
-      await _pumpUntil(
-        tester,
-        () =>
-            goodRows(server).isEmpty &&
-            find.text('Morning Score: 4 · Good').evaluate().isNotEmpty,
-      );
-      await _pumpUntil(
-        tester,
-        () => LogEntryOutbox.instance.records.isEmpty,
-      );
-      expect(goodRows(server), isEmpty);
-      expect(server.capturedDeletes, [41]);
-      // The ranking is a separate uneditable commit: its row is
-      // byte-identical, and nothing lingers in the outbox.
-      expect(rankingRows(server), hasLength(1));
-      expect(rankingRows(server).single['id'], 40);
-      expect(rankingRows(server).single['body'], 'Feeling: 4/5 Today');
-      expect(rankingRows(server).single['chips'], '["Daily Ranking"]');
-      expect(LogEntryOutbox.instance.records, isEmpty);
-      expect(find.text('Morning Score: 4 · Good'), findsOneWidget);
-      expect(find.text('Morning Score: 4 · Good · Energy'), findsNothing);
-    });
-
-    testWidgets('amend clear-all F1: a good record the server '
-        'holds but the outbox marks local-only (lost POST '
-        'response / kill in the confirmation gap) is deleted '
-        'with a server DELETE, not cancel-only — no resurrection',
-        (tester) async {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      final rankingJson = _entryJson(_entry(
-        id: 40,
-        categoryId: 6,
-        body: 'Feeling: 4/5 Today',
-        chips: '["Daily Ranking"]',
-        ts: now,
-      ));
-      final server = _Server(
-        [
-          rankingJson,
-          _entryJson(_entry(
-            id: 41,
-            categoryId: 6,
-            body: 'Good day · Energy',
-            chips: '["Good Day","Energy"]',
-            ts: now,
-          )),
-        ],
-        categories: _catsNameHit,
-        // POSTs fail, so Home's derive-triggered retry flush
-        // cannot confirm (or remove) the staged local-only
-        // record — the F1 state survives until the delete.
-        failPosts: true,
-      );
-      // The SAME good record sits in the outbox as local-only:
-      // its push landed server-side (the server holds row 41
-      // above) but the client never saw the confirmation.
-      final staged = await tester.runAsync(
-        () => LogEntryOutbox.instance.stageForBackend(
-          _entry(
-            id: 41,
-            categoryId: 6,
-            body: 'Good day · Energy',
-            chips: '["Good Day","Energy"]',
-            ts: now,
-          ),
-          backend: server.backend(),
-          serverKnown: false,
-        ),
-      );
-      expect(staged, isTrue);
-      await pumpHome(tester, server);
-      await _pumpUntil(
-        tester,
-        () => find.text('Morning Score: 4 · Good · Energy').evaluate().isNotEmpty,
-      );
-      // Let the derive-triggered retry flush attempt and fail,
-      // so the record is settled in its F1 state.
-      await _pumpUntil(
-        tester,
-        () => LogEntryOutbox.instance.failedIds.contains(41),
-      );
-      // PRECONDITION (the F1 state itself): the outbox holds
-      // record 41 classified local-only, while the server
-      // already holds row 41. Without this, the test proves
-      // nothing.
-      final precondition = LogEntryOutbox.instance.recordFor(41);
-      expect(precondition, isNotNull);
-      expect(precondition!.serverKnown, isFalse);
-      expect(goodRows(server), hasLength(1));
-      expect(goodRows(server).single['id'], 41);
-
-      await tester.tap(find.text('Morning Score: 4 · Good · Energy'));
-      await _pumpUntil(
-        tester,
-        () => find.text("Today's check-in").evaluate().isNotEmpty,
-      );
-      await settleSheet(tester);
-      await tester.ensureVisible(find.text('Energy'));
-      await tester.pump();
-      await tester.tap(find.text('Energy'));
-      await tester.pump();
-      await tester.ensureVisible(find.text('Done'));
-      await tester.pump();
-      await tester.tap(find.text('Done'));
-      await _pumpUntil(
-        tester,
-        () =>
-            server.capturedDeletes.isNotEmpty &&
-            find.text("Today's check-in").evaluate().isEmpty,
-      );
-      // The fresh pull classified the record server-known, so
-      // the pending record was cancelled AND the server DELETE
-      // was issued — exactly one, for id 41 only.
-      expect(server.capturedDeletes, [41]);
-      expect(goodRows(server), isEmpty);
-      // The ranking row is byte-identical.
-      expect(rankingRows(server), hasLength(1));
-      expect(rankingRows(server).single, rankingJson);
-      expect(LogEntryOutbox.instance.recordFor(41), isNull);
-      expect(LogEntryOutbox.instance.records, isEmpty);
-      expect(find.text('Morning Score: 4 · Good'), findsOneWidget);
-      expect(find.text('Morning Score: 4 · Good · Energy'), findsNothing);
-
-      // No resurrection: a fresh Home load pulls from the
-      // server again — the deleted good record stays gone.
-      // (Reset the backend's shared pull caches first — the
-      // same isolation setUp applies between tests: the
-      // in-memory 30s-TTL pull cache still holds the pre-delete
-      // body under this flow's timing, and a genuinely fresh
-      // client load — what this half models — starts without
-      // it. Server state and the outbox disk are untouched.)
-      TabsBackend.debugResetSharedCaches();
-      await pumpHome(tester, server);
-      await _pumpUntil(
-        tester,
-        () => find.text('Morning Score: 4 · Good').evaluate().isNotEmpty,
-      );
-      expect(goodRows(server), isEmpty);
-      expect(server.capturedDeletes, [41]);
-      expect(find.text('Morning Score: 4 · Good'), findsOneWidget);
-      expect(find.text('Morning Score: 4 · Good · Energy'), findsNothing);
-    });
-
-    testWidgets('amend partial clear: unticking one of two good '
-        'options amends the record in place — same id, no DELETE; '
-        'ranking intact', (tester) async {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      final server = _Server(
-        [
-          _entryJson(_entry(
-            id: 40,
-            categoryId: 6,
-            body: 'Feeling: 5/5 Today',
-            chips: '["Daily Ranking"]',
-            ts: now,
-          )),
-          _entryJson(_entry(
-            id: 41,
-            categoryId: 6,
-            body: 'Good day · Energy, Good mood',
-            chips: '["Good Day","Energy","Good mood"]',
-            ts: now,
-          )),
-        ],
-        categories: _catsNameHit,
-      );
-      await pumpHome(tester, server);
-      await _pumpUntil(
-        tester,
-        () => find
-            .text('Morning Score: 5 · Really good · Energy, Good mood')
+        () => find.text('Morning Score: 4 · Good · Energy')
             .evaluate()
             .isNotEmpty,
       );
-      await tester.tap(find.text('Morning Score: 5 · Really good · Energy, Good mood'));
-      await _pumpUntil(
-        tester,
-        () => find.text("Today's check-in").evaluate().isNotEmpty,
-      );
-      await settleSheet(tester);
-      await tester.ensureVisible(find.text('Energy'));
-      await tester.pump();
-      await tester.tap(find.text('Energy'));
-      await tester.pump();
-      await tester.ensureVisible(find.text('Done'));
-      await tester.pump();
-      await tester.tap(find.text('Done'));
-      await _pumpUntil(
-        tester,
-        () =>
-            LogEntryOutbox.instance.records.isEmpty &&
-            goodRows(server).isNotEmpty &&
-            goodRows(server).single['body'] == 'Good day · Good mood',
-      );
-      expect(goodRows(server), hasLength(1));
-      expect(goodRows(server).single['id'], 41);
-      expect(goodRows(server).single['body'], 'Good day · Good mood');
-      expect(server.capturedDeletes, isEmpty);
-      expect(rankingRows(server), hasLength(1));
-      expect(rankingRows(server).single['id'], 40);
-      expect(rankingRows(server).single['body'], 'Feeling: 5/5 Today');
-      expect(find.text('Morning Score: 5 · Really good · Good mood'), findsOneWidget);
-    });
 
-    testWidgets('amend clear-all during a gated push: the delete '
-        'joins the in-flight push before classifying; the good '
-        'record is still local-only at classification, so its '
-        'cancel is the whole delete — the server ends with the '
-        'ranking only and no DELETE is owed', (tester) async {
-      final server = _Server([], categories: _catsNameHit);
-      server.postGate = Completer<void>();
-      await pumpHome(tester, server);
-      await tester.tap(find.text('4'));
-      await _pumpUntil(
-        tester,
-        () => find.text('What is good about today?').evaluate().isNotEmpty,
-      );
-      await settleSheet(tester);
-      await tester.tap(find.text('Energy'));
-      await tester.pump();
-      await tester.tap(find.text('Done'));
-      // Both records are staged locally; their push is parked on
-      // the gate, so nothing has reached the server yet.
-      await _pumpUntil(
-        tester,
-        () => LogEntryOutbox.instance.records.length == 2,
-      );
-      final stagedGoodId = LogEntryOutbox.instance.records
-          .singleWhere((r) => r.entry.chips.contains('Good Day'))
-          .entry
-          .id;
-      await _pumpUntil(
-        tester,
-        () => find.text('Morning Score: 4 · Good · Energy').evaluate().isNotEmpty,
-      );
+      // Face line first (the retired clear-all route started
+      // here): nothing opens, nothing is deleted, and the face
+      // semantics are descriptive-only and not a button.
       await tester.tap(find.text('Morning Score: 4 · Good · Energy'));
-      await _pumpUntil(
-        tester,
-        () => find.text("Today's check-in").evaluate().isNotEmpty,
-      );
-      await settleSheet(tester);
-      await tester.ensureVisible(find.text('Energy'));
       await tester.pump();
-      await tester.tap(find.text('Energy'));
+      await tester.pump(const Duration(milliseconds: 400));
       await tester.pump();
-      await tester.ensureVisible(find.text('Done'));
-      await tester.pump();
-      await tester.tap(find.text('Done'));
-      // The delete must be parked joining the in-flight push:
-      // several frames pass with the sheet still open and no
-      // DELETE issued.
-      for (var i = 0; i < 5; i++) {
-        await tester.pump(const Duration(milliseconds: 100));
-      }
-      expect(find.text("Today's check-in"), findsOneWidget);
+      expect(find.text("Today's check-in"), findsNothing);
       expect(server.capturedDeletes, isEmpty);
-      server.postGate!.complete();
-      await _pumpUntil(
-        tester,
-        () =>
-            LogEntryOutbox.instance.records.isEmpty &&
-            goodRows(server).isEmpty,
+      expect(goodRows(server), hasLength(1));
+      final faceSemantics = tester.widget<Semantics>(
+        _semantics("Today's check-in: 4 of 5, good, energy."),
       );
-      await _pumpUntil(
-        tester,
-        () => find.text("Today's check-in").evaluate().isEmpty,
-      );
+      expect(faceSemantics.properties.button, isNot(true));
+
+      // Open the summary sheet and tap the summary card itself.
+      await tester.tap(find.text('Today Summary'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pump();
+      expect(find.byType(CheckInSummaryCard), findsOneWidget);
+      await tester.tap(find.byType(CheckInSummaryCard));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      expect(find.text("Today's check-in"), findsNothing);
+      // The summary sheet itself is still the open surface, and
+      // every record is byte-identical.
+      expect(find.byType(CheckInSummaryCard), findsOneWidget);
+      expect(goodRows(server), hasLength(1));
+      expect(goodRows(server).single['body'], 'Good day · Energy');
       expect(rankingRows(server), hasLength(1));
-      expect(goodRows(server), isEmpty);
-      // Classification evidence (verified by instrumented run):
-      // the gated in-flight push carried the RANKING (staged
-      // first — the outbox flush attempts records in insertion
-      // order), and the good record, marked deleting before its
-      // turn in that same flush, never reached the server. At
-      // classification it was a local-only pending record, so per
-      // the History precedent its cancel was the whole delete and
-      // NO server DELETE was owed for the staged good id.
-      // The surviving server row is the ranking, not the staged
-      // good record.
-      expect(rankingRows(server).single['id'], isNot(stagedGoodId));
       expect(server.capturedDeletes, isEmpty);
       expect(LogEntryOutbox.instance.records, isEmpty);
-      expect(find.text('Morning Score: 4 · Good'), findsOneWidget);
-      await tester.pump(const Duration(seconds: 25));
-      await tester.pump();
+      // The sheet card's semantics: descriptive only, not a button.
+      final cardSemantics = tester.widget<Semantics>(
+        find.descendant(
+          of: find.byType(CheckInSummaryCard),
+          matching:
+              _semantics("Today's check-in: 4 of 5, good, energy."),
+        ),
+      );
+      expect(cardSemantics.properties.button, isNot(true));
     });
-
-    testWidgets('amend clear-all with a failing DELETE: the sheet '
-        'stays open with the generic failure copy and the record '
-        'survives; the retry deletes it and leaves the ranking '
-        'intact', (tester) async {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      final server = _Server(
-        [
-          _entryJson(_entry(
-            id: 40,
-            categoryId: 6,
-            body: 'Feeling: 4/5 Today',
-            chips: '["Daily Ranking"]',
-            ts: now,
-          )),
-          _entryJson(_entry(
-            id: 41,
-            categoryId: 6,
-            body: 'Good day · Energy',
-            chips: '["Good Day","Energy"]',
-            ts: now,
-          )),
-        ],
-        categories: _catsNameHit,
-      );
-      server.failDeletes = true;
-      await pumpHome(tester, server);
-      await _pumpUntil(
-        tester,
-        () => find.text('Morning Score: 4 · Good · Energy').evaluate().isNotEmpty,
-      );
-      await tester.tap(find.text('Morning Score: 4 · Good · Energy'));
-      await _pumpUntil(
-        tester,
-        () => find.text("Today's check-in").evaluate().isNotEmpty,
-      );
-      await settleSheet(tester);
-      await tester.ensureVisible(find.text('Energy'));
-      await tester.pump();
-      await tester.tap(find.text('Energy'));
-      await tester.pump();
-      await tester.ensureVisible(find.text('Done'));
-      await tester.pump();
-      await tester.tap(find.text('Done'));
-      await _pumpUntil(
-        tester,
-        () => find.text(flareStageFailureCopy).evaluate().isNotEmpty,
-      );
-      // The failed DELETE changed nothing: sheet open, record
-      // still on the server, no delete captured.
-      expect(find.text("Today's check-in"), findsOneWidget);
-      expect(goodRows(server), hasLength(1));
-      expect(server.capturedDeletes, isEmpty);
-      server.failDeletes = false;
-      await tester.tap(find.text('Done'));
-      await _pumpUntil(
-        tester,
-        () =>
-            goodRows(server).isEmpty &&
-            find.text("Today's check-in").evaluate().isEmpty,
-      );
-      expect(server.capturedDeletes, [41]);
-      expect(rankingRows(server), hasLength(1));
-      expect(rankingRows(server).single['id'], 40);
-      expect(rankingRows(server).single['body'], 'Feeling: 4/5 Today');
-      expect(find.text('Morning Score: 4 · Good'), findsOneWidget);
-    });
-
     testWidgets("legacy 'Bad' flare on a 4 day: the summary "
         'displays the recorded severity verbatim', (tester) async {
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -2082,8 +1658,7 @@ void main() {
       expect(find.text('How are you feeling?'), findsNothing);
       expect(
         _semantics(
-          "Today's check-in: 4 of 5, good. Flare logged, bad, crash. "
-          "Tap to update today's details.",
+          "Today's check-in: 4 of 5, good. Flare logged, bad, crash.",
         ),
         findsOneWidget,
       );
@@ -2440,10 +2015,11 @@ void main() {
       await tester.pump();
     });
 
-    testWidgets('F4: a severity-less flare record (chips hold '
-        'only the Flare Day tag) on a ranking-4 day — an amend '
-        'kind tap writes NOTHING and the sheet shows the generic '
-        'failure copy', (tester) async {
+    testWidgets('F4 (round 5 form): a severity-less flare record '
+        '(chips hold only the Flare Day tag) on a ranking-4 day '
+        'renders the plain summary, and the scored line is inert — '
+        'no invented severity is ever written for this shape',
+        (tester) async {
       final now = DateTime.now().millisecondsSinceEpoch;
       final server = _Server(
         [
@@ -2469,29 +2045,24 @@ void main() {
         tester,
         () => find.text('Morning Score: 4 · Good').evaluate().isNotEmpty,
       );
+      // Pre-round-5 this shape routed through the amend sheet,
+      // whose kind tap had to refuse to invent a severity (Vera
+      // F4). The route is gone; the guarantee now reads: the line
+      // opens nothing and nothing writes.
       await tester.tap(find.text('Morning Score: 4 · Good'));
-      await _pumpUntil(
-        tester,
-        () => find.text("Today's check-in").evaluate().isNotEmpty,
-      );
-      await settleSheet(tester);
-      await tester.tap(find.text('Dizzy'));
-      await _pumpUntil(
-        tester,
-        () => find.text(flareStageFailureCopy).evaluate().isNotEmpty,
-      );
-      // The sheet stayed open, nothing was staged, and the server
-      // record is byte-identical: no invented severity was written.
-      expect(find.text("Today's check-in"), findsOneWidget);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      expect(find.text("Today's check-in"), findsNothing);
       expect(LogEntryOutbox.instance.records, isEmpty);
       expect(server.capturedPosts, isEmpty);
+      expect(server.capturedDeletes, isEmpty);
       expect(flareRows(server), hasLength(1));
       expect(flareRows(server).single['chips'], '["Flare Day"]');
       expect(flareRows(server).single['body'], 'Flare day');
-      await tester.tapAt(const Offset(10, 10));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Morning Score: 4 · Good'), findsOneWidget);
     });
+
 
     testWidgets('gap 7: a flare commit from a number tap '
         'announces the with-kind label in a LIVE REGION at Home '
@@ -2520,64 +2091,6 @@ void main() {
         () => LogEntryOutbox.instance.records.isEmpty,
       );
       expect(flareRows(server), hasLength(1));
-    });
-
-    testWidgets('gap 2 (Home level): amend late-add dismissal '
-        'before a kind-step commit writes nothing — dismissed at '
-        'the severity step, and again at the kind step',
-        (tester) async {
-      final server = _Server([], categories: _catsNameHit);
-      await pumpHome(tester, server);
-      await tester.tap(find.text('3'));
-      await _pumpUntil(
-        tester,
-        () => find.text('Morning Score: 3 · Average').evaluate().isNotEmpty,
-      );
-      await _pumpUntil(
-        tester,
-        () => LogEntryOutbox.instance.records.isEmpty,
-      );
-
-      // First opening: dismiss at the severity step.
-      await tester.tap(find.text('Morning Score: 3 · Average'));
-      await _pumpUntil(
-        tester,
-        () => find.text('How bad is it today?').evaluate().isNotEmpty,
-      );
-      await settleSheet(tester);
-      await tester.tapAt(const Offset(10, 10));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(flareRows(server), isEmpty);
-      expect(
-        LogEntryOutbox.instance.records
-            .where((r) => r.entry.chips.contains('Flare Day')),
-        isEmpty,
-      );
-
-      // Second opening: choose a severity (sheet-local only), then
-      // dismiss at the kind step — still nothing written.
-      await tester.tap(find.text('Morning Score: 3 · Average'));
-      await _pumpUntil(
-        tester,
-        () => find.text('How bad is it today?').evaluate().isNotEmpty,
-      );
-      await settleSheet(tester);
-      await tester.tap(find.text('Rough'));
-      await tester.pump();
-      expect(find.text('What kind of bad?'), findsOneWidget);
-      await tester.tapAt(const Offset(10, 10));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(find.text("Today's check-in"), findsNothing);
-      expect(flareRows(server), isEmpty);
-      expect(
-        LogEntryOutbox.instance.records
-            .where((r) => r.entry.chips.contains('Flare Day')),
-        isEmpty,
-      );
-      expect(find.text('Morning Score: 3 · Average'), findsOneWidget);
-      expect(server.entries, hasLength(1));
     });
 
     testWidgets('kill-before-push (flare, gap 3): ranking + '
