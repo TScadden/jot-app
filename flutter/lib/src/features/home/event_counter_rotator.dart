@@ -30,6 +30,11 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///   be swiped manually; page dots underneath (current: 4dp
 ///   `NotelPrimary`; others: 3dp `NotelSurfaceHigh` at 30% alpha,
 ///   3dp apart, 2dp below the count).
+/// - Round 5 (workstream f): the Home check-in band passes
+///   [advanceInterval] = 3s (the founder's "every couple seconds"
+///   for the band); other surfaces keep the native 10s default.
+///   Auto-advance also suspends while the app is not in the
+///   foreground (lifecycle observer in the state).
 /// - One counter: static, no pager motion, no dots, no timer.
 /// - Zero counters never reach this widget — the caller renders no
 ///   slot at all (native's fallback there is the upcoming-reminders
@@ -58,6 +63,11 @@ class EventCounterRotator extends StatefulWidget {
   /// device clock at build time.
   final DateTime? now;
 
+  /// Auto-advance interval override. Null keeps the native
+  /// [rotationInterval] (10s). The Home check-in band passes 3s
+  /// (round 5, founder-tunable — see home_screen.dart).
+  final Duration? advanceInterval;
+
   /// Native auto-advance interval (TodayScreen.kt: `delay(10000)`
   /// after each settled page).
   static const Duration rotationInterval = Duration(seconds: 10);
@@ -75,13 +85,15 @@ class EventCounterRotator extends StatefulWidget {
     required this.counters,
     this.onTap,
     this.now,
+    this.advanceInterval,
   }) : assert(counters.length > 0, 'zero counters must not render a slot');
 
   @override
   State<EventCounterRotator> createState() => _EventCounterRotatorState();
 }
 
-class _EventCounterRotatorState extends State<EventCounterRotator> {
+class _EventCounterRotatorState extends State<EventCounterRotator>
+    with WidgetsBindingObserver {
   PageController? _controller;
   Timer? _timer;
   int _currentIndex = 0;
@@ -100,8 +112,23 @@ class _EventCounterRotatorState extends State<EventCounterRotator> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     if (_rotates) {
       _controller = PageController(initialPage: _initialPage);
+    }
+  }
+
+  /// Round 5 (workstream f addendum): auto-advance runs only
+  /// while the app is in the foreground. Leaving the foreground
+  /// cancels the timer; returning restarts it with a fresh
+  /// interval (the same fresh-interval rule as pointer-up).
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _restartTimer();
+    } else {
+      _timer?.cancel();
+      _timer = null;
     }
   }
 
@@ -140,6 +167,7 @@ class _EventCounterRotatorState extends State<EventCounterRotator> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     _controller?.dispose();
     super.dispose();
@@ -157,7 +185,9 @@ class _EventCounterRotatorState extends State<EventCounterRotator> {
     _timer?.cancel();
     _timer = null;
     if (!_rotates || _reducedMotion || _interacting || !mounted) return;
-    _timer = Timer.periodic(EventCounterRotator.rotationInterval, (_) {
+    _timer = Timer.periodic(
+        widget.advanceInterval ?? EventCounterRotator.rotationInterval,
+        (_) {
       if (!mounted || _interacting || _reducedMotion) return;
       final controller = _controller;
       if (controller == null || !controller.hasClients) return;

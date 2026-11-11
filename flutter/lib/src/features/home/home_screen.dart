@@ -56,11 +56,28 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 /// widget box tucks UP over the Bandit slot's bottom edge in the
 /// overlap stack (see the body build). The card carries a 6dp top
 /// margin, so the card's OPAQUE surface covers the bottom
-/// 24 − 6 = 18dp of the chair — 18 / 336.2 ≈ 5.4% of the enlarged
+/// 32 − 6 = 26dp of the chair — 26 / 336.2 ≈ 7.7% of the enlarged
 /// slot's height, inside the founder's 5–8% tuck band. The stack's
 /// flow height still ends at the card's bottom edge, so nothing
 /// below the card moves.
-const double kBanditSummaryOverlap = 24;
+///
+/// Round 5 (founder, Nov 10, 2026, from his own phone at the round-4
+/// value of 24): the chair's bottom rim still read as sitting ON the
+/// card's top border — at 24 the opaque surface began within ~0.4dp
+/// of the chair's lowest rendered edge (frame y=940 of 992 →
+/// ≈318.6dp in slot coordinates, vs the opaque top at ≈318.2dp).
+/// At 32 the opaque top lands at ≈310.2dp, so the border line
+/// crosses the chair ~8dp above its bottom rim and no chair bottom
+/// edge shows in front of the card.
+const double kBanditSummaryOverlap = 32;
+
+/// Home polish round 5 (workstream f) — the check-in band's
+/// event-counter auto-advance interval. The founder asked for
+/// the band's events to cycle "every couple seconds" (Nov 10,
+/// 2026): 3 seconds, founder-tunable. The rotator's native
+/// default stays 10s on its other surface (the legacy streak
+/// row); only the band overrides it.
+const Duration kHomeBandCounterRotationInterval = Duration(seconds: 3);
 
 /// Round 4 — home screen, background only (native `today` route).
 ///
@@ -271,6 +288,14 @@ class _HomeScreenState extends State<HomeScreen> {
   /// keeps the card hidden — the honest state, never a guess.
   bool _feelingVisible = false;
 
+  /// Round 5 (workstream f) — the band counters' fade-in
+  /// generation. 0 means "no in-session log transition has
+  /// happened" (a cold open, scored or not): the band counters
+  /// render plainly. Each in-session visible→logged transition
+  /// bumps it, and the band wraps the counters in a fresh
+  /// fade-in keyed by it (see _bandCounters).
+  int _bandRevealGen = 0;
+
   /// Double-tap guard (native `tapInFlight`): one tap, one entry.
   bool _feelingTapInFlight = false;
   int? _feelingCategoryId;
@@ -307,11 +332,6 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Commit guards: a double-tap or retry amends, never duplicates.
   bool _flareCommitInFlight = false;
   bool _goodCommitInFlight = false;
-
-  /// Re-entrancy guard for the summary tap (Vera M1): while the
-  /// amend sheet is open, further summary taps do nothing. Set
-  /// before the sheet is shown and cleared in a finally.
-  bool _summarySheetOpen = false;
 
   // ── Phase 1 item 4: salt & fluid tracking ───────────────────────
   /// Null until the sync pull resolves the Hydration category BY
@@ -1038,6 +1058,35 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {}
   }
 
+  /// Round 5 (workstream f) — the band's post-log content: the
+  /// active event counters in the slot the check-in strip
+  /// occupied while unscored. The presentation is the old Home's
+  /// own (EventCounterRotator: "Since/Until {name}" + days +
+  /// page dots, swipeable, tap opens the Event Counters page);
+  /// the band's auto-advance is the founder's ~3s, not the
+  /// native 10s. On the in-session log transition the counters
+  /// FADE in over 280ms — the reveal generation keys a fresh
+  /// TweenAnimationBuilder, so the fade runs exactly once per
+  /// transition; on a cold open the generation is 0 and the
+  /// counters render plainly, no fade.
+  Widget _bandCounters() {
+    final rotator = EventCounterRotator(
+      counters: _counters,
+      advanceInterval: kHomeBandCounterRotationInterval,
+      onTap: () => unawaited(_openEventCounters()),
+    );
+    if (_bandRevealGen == 0) return rotator;
+    return TweenAnimationBuilder<double>(
+      key: ValueKey('home_band_counters_reveal_$_bandRevealGen'),
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOut,
+      builder: (context, opacity, child) =>
+          Opacity(opacity: opacity, child: child),
+      child: rotator,
+    );
+  }
+
   /// Round 34 — the counter slot's tap: pushes Settings opened
   /// directly on its Event Counters page, via the round-22 app-wide
   /// slide transition. On return the pull cache is invalidated and
@@ -1169,6 +1218,12 @@ class _HomeScreenState extends State<HomeScreen> {
         changed(good, _goodToday) ||
         visible != _feelingVisible) {
       setState(() {
+        // Round 5 (workstream f): the in-session log transition —
+        // the strip was up and a ranking just landed — arms the
+        // band counters' fade-in. A cold open that derives
+        // scored on its first pass never passes through here with
+        // _feelingVisible true, so those counters render plainly.
+        if (_feelingVisible && !visible) _bandRevealGen++;
         _checkInToday = checkIn;
         _flareToday = flare;
         _goodToday = good;
@@ -1410,9 +1465,10 @@ class _HomeScreenState extends State<HomeScreen> {
   /// is identical: the announcement and the on-screen state change
   /// only on a successful local stage, the id comes from the
   /// outbox's post-load allocation, and the stage is a creation
-  /// (serverKnown false). Every other commit — the kind amend /
-  /// upsert that follows, late adds, amend-sheet kinds — keeps the
-  /// pull-based re-check below.
+  /// (serverKnown false). Every other commit — the kind upsert
+  /// that follows the pre-stage — keeps the pull-based re-check
+  /// below. (Round 5 removed the amend sheet's commits entirely;
+  /// the only flare writes left are the at-logging follow-ups.)
   Future<bool> _commitFlare({
     required String severity,
     String? type,
@@ -1524,116 +1580,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// The amend sheet's good commit. A non-empty selection amends
-  /// in place through [_commitGood], unchanged. An EMPTY selection
-  /// is the founder ruling (Oct 28, 2026, discharging Vera
-  /// condition M4): clearing all deletes the day's good-day
-  /// record. Amend mode only — the create sheet keeps [_commitGood]
-  /// directly, whose empty guard stands.
-  Future<bool> _commitGoodAmend(List<String> options) async {
-    if (options.isNotEmpty) return _commitGood(options);
-    return _deleteGoodRecord();
-  }
 
-  /// Deletes today's good-day record: the amend sheet's clear-all
-  /// (founder ruling, Oct 28, 2026). Mirrors History's _deleteEntry
-  /// classification: mark the row deleting (pushes starting now
-  /// skip it), join any in-flight push, cancel a pending upsert
-  /// first — a local-only record's cancel IS the whole delete —
-  /// then issue the server DELETE for a server-known row,
-  /// restoring the cancelled record when the DELETE fails. The
-  /// day's 1–5 ranking is a separate record and is never touched.
-  ///
-  /// Stricter than the upsert commits, deliberately: a delete
-  /// never splices a stale view, so when the fresh pull fails the
-  /// delete does not run at all and the sheet shows the existing
-  /// generic failure copy.
-  Future<bool> _deleteGoodRecord() async {
-    if (_goodCommitInFlight) return false;
-    final categoryId = _feelingCategoryId;
-    if (categoryId == null) return false;
-    _goodCommitInFlight = true;
-    try {
-      final ctx = await _freshCommitContext();
-      if (!ctx.pullOk) return false;
-      final resolvedId = _feelingCategoryId ?? categoryId;
-      final existing =
-          findGoodRecord(ctx.merged, moodCategoryId: resolvedId);
-      if (existing == null) {
-        // Already gone: the clear-all intent is satisfied. Adopt
-        // the fresh merged view so no stale summary can linger,
-        // and drop a stale announcement with the stale record.
-        if (!mounted) return true;
-        setState(() {
-          _mergedEntries = ctx.merged;
-          if (_goodToday != null) _checkInAnnouncement = null;
-        });
-        _deriveFromMerged();
-        return true;
-      }
-      final id = existing.id;
-      _outbox.markDeleting(id);
-      try {
-        await _outbox.settleInFlightPush();
-        if (!mounted) return false;
-        // Vera F1: classify on the SAME evidence the upsert
-        // commits use — the queue flag OR the fresh pull this
-        // delete already holds — never on the queue flag alone.
-        // A lost POST response or a kill in the confirmation gap
-        // can leave the queued record marked local-only while
-        // the server already holds the row; in that state the
-        // fresh pull is the truth, and a cancel-only delete
-        // would silently resurrect on the next pull.
-        final serverKnown = _serverKnownFor(existing, ctx);
-        final pending = _outbox.recordFor(id);
-        LogEntryOutboxRecord? cancelled;
-        if (pending != null) {
-          cancelled = await _outbox.cancelForBackend(id, backend: _backend);
-          if (cancelled == null) return false;
-          if (!serverKnown) {
-            // A local-only record never reached the server:
-            // cancelling its pending upsert IS the whole delete.
-            if (mounted) _applyGoodDeletion(ctx.merged, id);
-            return true;
-          }
-        }
-        final ok = await _backend.deleteLogEntry(id);
-        if (!ok) {
-          if (cancelled != null) {
-            await _outbox.restoreForBackend(cancelled, backend: _backend);
-          }
-          return false;
-        }
-        if (mounted) _applyGoodDeletion(ctx.merged, id);
-        return true;
-      } finally {
-        _outbox.unmarkDeleting(id);
-      }
-    } catch (_) {
-      return false;
-    } finally {
-      _goodCommitInFlight = false;
-    }
-  }
-
-  /// Applies a completed good-record deletion to the local view:
-  /// the merged entries minus the deleted id, the announcement
-  /// cleared (a deletion has no ruled announcement copy — announce
-  /// nothing), state re-derived, and health data reloaded,
-  /// mirroring [_stageAndApply]'s post-steps.
-  void _applyGoodDeletion(List<QuickLogEntry> merged, int deletedId) {
-    setState(() {
-      _mergedEntries = [
-        for (final e in merged)
-          if (e.id != deletedId) e,
-      ];
-      _checkInAnnouncement = null;
-    });
-    _deriveFromMerged();
-    unawaited(_loadHealthData());
-  }
-
-  // ── Summary + amend ─────────────────────────────────────────────
+  // ── Summary ─────────────────────────────────────────────
 
   int? get _todayRanking =>
       _checkInToday == null ? null : feelingRankingOf(_checkInToday!);
@@ -1650,54 +1598,6 @@ class _HomeScreenState extends State<HomeScreen> {
         : SummaryFlareOrigin.lateAdded;
   }
 
-  /// Tapping the summary card opens the amend sheet, with its
-  /// sections derived from today's state (Item 9).
-  Future<void> _onSummaryTap() async {
-    // Vera M1: re-entrancy guard, matching every other entry point
-    // in this flow — a second tap while the sheet is open does
-    // nothing.
-    if (_summarySheetOpen) return;
-    final ranking = _todayRanking;
-    if (ranking == null) return;
-    final flare = _flareToday;
-    final flareSeverity = flare == null ? null : flareSeverityOf(flare);
-    final flareKind =
-        flare == null ? null : flareTypesOf(flare).firstOrNull;
-    final showKind = flare != null || ranking <= 2;
-    final showFlareAdd = flare == null && ranking >= 3;
-    final showGood = ranking >= 4 || _goodToday != null;
-    _summarySheetOpen = true;
-    try {
-      await showCheckInAmendSheet(
-        context: context,
-        showKindSection: showKind,
-        currentKind: flareKind,
-        onKind: (kind) async {
-          // Vera F4: the severity must be SOURCEABLE — from the
-          // record itself (preserved verbatim, legacy `Bad`
-          // included) or from the number the user tapped. There is
-          // no invented fallback: when neither sources a severity,
-          // the commit does not write and returns false, so the
-          // sheet shows the existing generic failure copy.
-          final severity = flareSeverity ?? severityForRanking(ranking);
-          if (severity == null) return false;
-          return _commitFlare(severity: severity, type: kind);
-        },
-        showFlareAddSection: showFlareAdd,
-        onFlareAdd: _commitFlare,
-        showGoodSection: showGood,
-        initialGood:
-            _goodToday == null ? const [] : goodOptionsOf(_goodToday!),
-        // Amend mode: an empty commit is the founder-ruled
-        // clear-all delete (Oct 28, 2026), not _commitGood.
-        onGood: _commitGoodAmend,
-      );
-    } finally {
-      _summarySheetOpen = false;
-    }
-    if (!mounted) return;
-    _deriveCheckInState(_mergedEntries);
-  }
 
   /// Round 15c — resolves the once-per-day count-up gate from secure
   /// storage. The gate persists today's date BEFORE reporting true, so
@@ -2046,6 +1946,14 @@ class _HomeScreenState extends State<HomeScreen> {
     await _openSettings(openAiKnowledge: true);
   }
 
+  /// Home polish round 5 — pushes Settings opened directly on
+  /// its Event Counters page (the drawer's second entry; the
+  /// counters' entry point moved here from the Settings menu).
+  Future<void> _openEventCountersFromDrawer() async {
+    Navigator.of(context).pop(); // close the drawer first
+    await _openEventCounters();
+  }
+
   /// Home redesign — the check-in section the Today Summary sheet
   /// hosts. ALL state and commits stay here in _HomeScreenState; the
   /// builder re-reads them on every outbox change (the commit path's
@@ -2055,10 +1963,13 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Home polish round 4 (Part C) — the sheet no longer hosts the
   /// 1–5 INPUT (it lives in the Home top strip now, see
   /// [HomeCheckInStrip]). This section is DISPLAY-ONLY: the summary
-  /// card once a ranking exists (its tap opens the amend sheet, as
-  /// before), or — while unscored — a flat prompt-only row carrying
-  /// no input at all. There is exactly one 1–5 input in the app:
-  /// the top strip.
+  /// card once a ranking exists, or — while unscored — a flat
+  /// prompt-only row carrying no input at all. There is exactly
+  /// one 1–5 input in the app: the top strip.
+  ///
+  /// Round 5 (founder ruling, Nov 10, 2026): the summary card's
+  /// former tap (the amend sheet) is removed — once the ranking
+  /// is logged, the score is just shown on both scored surfaces.
   Widget _buildCheckInSection(BuildContext context) {
     return AnimatedBuilder(
       animation: _outbox,
@@ -2090,7 +2001,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   _goodToday == null ? const [] : goodOptionsOf(_goodToday!),
             ),
             announcement: _checkInAnnouncement,
-            onTap: () => unawaited(_onSummaryTap()),
+            // Round 5: no onTap — the summary card is display-only
+            // (founder ruling, Nov 10, 2026; see
+            // checkin_summary_card.dart).
           );
         }
         if (_feelingVisible) {
@@ -2179,8 +2092,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: NotelColors.background,
-      // Home redesign — the drawer: surface panel ~300dp, ONE row
-      // (AI Advocate), modeled on Settings' _menuRow construction.
+      // Home redesign — the drawer: surface panel ~300dp, modeled
+      // on Settings' _menuRow construction. Round 5 (founder,
+      // Nov 10, 2026) supersedes the redesign's one-entry rule:
+      // the drawer now holds TWO rows — AI Advocate and Event
+      // Counters — stacked in the identical row style, no divider.
       drawer: Drawer(
         backgroundColor: NotelColors.surface,
         width: 300,
@@ -2201,6 +2117,32 @@ class _HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: Text(
                           'AI Advocate',
+                          style: TextStyle(
+                            color: NotelColors.textPrimary,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                      Icon(Icons.chevron_right,
+                          size: 20, color: NotelColors.textSecondary),
+                    ],
+                  ),
+                ),
+              ),
+              InkWell(
+                key: const ValueKey('home_drawer_event_counters'),
+                onTap: () => unawaited(_openEventCountersFromDrawer()),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  child: Row(
+                    children: [
+                      Icon(Icons.timer,
+                          color: NotelColors.textSecondary, size: 22),
+                      SizedBox(width: 16),
+                      Expanded(
+                        child: Text(
+                          'Event Counters',
                           style: TextStyle(
                             color: NotelColors.textPrimary,
                             fontWeight: FontWeight.w500,
@@ -2396,38 +2338,38 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     Expanded(
-                      // Home polish round 4 (Part C) — the center
-                      // slot hosts the event counters (as before)
-                      // AND, while the day is unscored, the flat
-                      // 1–5 check-in strip in the open space between
-                      // the streak stack and the Daily Score face.
+                      // The center slot is the check-in BAND
+                      // (round 4 Part C, round 5 workstream f).
+                      // One tenant at a time, founder's state
+                      // machine (Nov 10, 2026):
+                      // - UNSCORED: the flat 1–5 check-in strip
+                      //   owns the band; the event counters are
+                      //   NOT in the tree at all.
+                      // - LOGGED: the strip leaves (round 4) and
+                      //   the active event counters take the same
+                      //   slot — fading in on the in-session log
+                      //   transition, simply present on a cold
+                      //   open (see _bandCounters). No active
+                      //   counters: the band is simply empty.
                       // The strip is 230dp wide (5 × 46dp columns),
                       // inside this slot's 236dp at 360dp wide, and
                       // the end slots are untouched — the header
-                      // axes (31dp / width−31dp) hold exactly.
-                      // After scoring the strip leaves and the slot
-                      // returns to counters-only; the band's height
-                      // is anchored by the 76dp streak stack, so
-                      // Bandit below shifts only by the strip's
-                      // excess over that anchor (~16dp), never by
-                      // the strip's full height.
+                      // axes (31dp / width−31dp) hold exactly. The
+                      // band's height is anchored by the 76dp
+                      // streak stack, so Bandit below shifts only
+                      // by the strip's excess over that anchor
+                      // (~16dp), never by the strip's full height.
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (_counters.isNotEmpty)
+                          if (_feelingVisible)
+                            HomeCheckInStrip(onSelect: _onFeelingSelect)
+                          else if (_counters.isNotEmpty)
                             Padding(
                               padding:
                                   const EdgeInsets.symmetric(horizontal: 12),
-                              child: EventCounterRotator(
-                                counters: _counters,
-                                onTap: () =>
-                                    unawaited(_openEventCounters()),
-                              ),
+                              child: _bandCounters(),
                             ),
-                          if (_counters.isNotEmpty && _feelingVisible)
-                            const SizedBox(height: 8),
-                          if (_feelingVisible)
-                            HomeCheckInStrip(onSelect: _onFeelingSelect),
                         ],
                       ),
                     ),
@@ -2479,8 +2421,10 @@ class _HomeScreenState extends State<HomeScreen> {
             // edge by that overlap while the stack's total height
             // still ends at the card's bottom — Weekly Snapshot
             // below moves only by the net geometry change
-            // (+slot growth 50.1dp, −overlap 24dp = +26.1dp vs the
-            // base 240dp slot stack). Both layers keep their own
+            // (+slot growth 50.1dp, −overlap 32dp = +18.1dp vs the
+            // base 240dp slot stack; round 5 raised the overlap
+            // from 24 to 32 — see kBanditSummaryOverlap). Both
+            // layers keep their own
             // stagger indices (1 and 2, as before).
             Stack(
               children: [
@@ -2490,7 +2434,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 // The spacer sits OUTSIDE the card's stagger: the
                 // entrance slide is a fraction (0.12) of its child's
-                // height, and folding the 312dp spacer into that
+                // height, and folding the 304dp spacer into that
                 // child would throw the card ~49dp off its layout
                 // position mid-entrance (and off its hit region —
                 // the weather-button tap tests caught exactly that).
@@ -2509,8 +2453,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         checkInBuilder: _buildCheckInSection,
                         headerTrailing: _buildWeatherElement(),
                         checkInScoredLine: _checkInScoredLine,
-                        onCheckInScoredLineTap: () =>
-                            unawaited(_onSummaryTap()),
+                        // Round 5: the face line takes no tap —
+                        // display-only (founder ruling, Nov 10,
+                        // 2026; see today_summary_card.dart).
                         checkInScoredSemantics: _checkInScoredSemantics,
                         checkInAnnouncement: _checkInAnnouncement,
                       ),

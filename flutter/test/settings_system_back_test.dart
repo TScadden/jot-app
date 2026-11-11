@@ -139,16 +139,14 @@ void main() {
       expectOnMenu(tester);
     });
 
-    testWidgets('Event Counters: system back returns to the Settings menu',
-        (tester) async {
+    testWidgets(
+        'Event Counters: no Settings menu entry remains (round 5 — '
+        'the Home drawer entry is its home)', (tester) async {
       await pumpPushedSettings(tester);
-      await tester.tap(find.text('Event Counters'));
-      await tester.pumpAndSettle();
-      expect(appBarTitle(tester), 'Event Counters');
-
-      await systemBack(tester);
-
       expectOnMenu(tester);
+      expect(find.text('Event Counters'), findsNothing);
+      // The surviving route's back behavior is covered by
+      // 'pushed straight at Event Counters' below.
     });
 
     testWidgets('Membership segment: system back returns to the menu page',
@@ -164,11 +162,14 @@ void main() {
     });
 
     testWidgets(
-        'Progress Reports: system back returns to the AI page, then the menu',
+        'Progress Reports: system back returns to the AI page, '
+        'then pops to the caller',
         (tester) async {
-      await pumpPushedSettings(tester);
-      await tester.tap(find.text('AI & Clinical Advocate'));
-      await tester.pumpAndSettle();
+      // Round 5: the AI page is entered by deep link (the Home
+      // drawer's route) — there is no Settings menu row anymore,
+      // so the second back pops to the caller instead of stepping
+      // to the menu.
+      await pumpPushedSettings(tester, openAiKnowledge: true);
       expect(appBarTitle(tester), 'AI & Clinical Advocate');
 
       await tester.ensureVisible(find.text('Progress Reports'));
@@ -184,7 +185,7 @@ void main() {
       expect(appBarTitle(tester), 'AI & Clinical Advocate');
 
       await systemBack(tester);
-      expectOnMenu(tester);
+      expectPoppedToLauncher(tester);
     });
 
     testWidgets('menu page: system back keeps the default pop behavior',

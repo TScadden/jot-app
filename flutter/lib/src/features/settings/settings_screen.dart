@@ -395,6 +395,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _load();
   }
 
+  @override
+  void didUpdateWidget(SettingsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Deep-link reconfiguration: if a live Settings element is
+    // reconfigured with the Event Counters deep link set while
+    // another page is showing, honor the link exactly as
+    // initState would have. Production pushes are always fresh
+    // mounts (the Home drawer and counter slot push a new route,
+    // and a deep-linked session's back pops the route rather
+    // than landing on another page), so this never fires in the
+    // app; it keeps the flag's meaning consistent for any
+    // in-place reconfiguration and lets widget tests re-enter
+    // the counters page inside one session (the Juno C1
+    // residual pin).
+    if (widget.openEventCounters && _page != _Page.eventCounters) {
+      setState(() => _page = _Page.eventCounters);
+    }
+  }
+
   // Takeover Phase 2 (single-instance fix): this screen does NOT
   // construct, initialize-own, or dispose a billing service. The
   // app-owned instance arrives via widget.billingService (see the
@@ -1422,11 +1441,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Divider(color: NotelColors.divider, height: 1),
           _menuRow(Icons.tune, 'Customize', _Page.customize),
           const Divider(color: NotelColors.divider, height: 1),
-          _menuRow(Icons.auto_awesome, 'AI & Clinical Advocate',
-              _Page.aiKnowledge),
-          const Divider(color: NotelColors.divider, height: 1),
-          _menuRow(Icons.timer, 'Event Counters', _Page.eventCounters),
-          const Divider(color: NotelColors.divider, height: 1),
+          // Home polish round 5 (founder, Nov 10, 2026): TWO rows
+          // are removed from this menu. The AI & Clinical Advocate
+          // row is gone — its home is the Home drawer's "AI
+          // Advocate" entry, which deep-links here with
+          // openAiKnowledge (the _Page.aiKnowledge plumbing below
+          // is unchanged). The Event Counters row MOVED to the
+          // drawer as its second entry, deep-linking here with
+          // openEventCounters (the _Page.eventCounters plumbing
+          // below is likewise unchanged).
           _menuRow(Icons.notifications, 'Notifications', _Page.notifications),
           const Divider(color: NotelColors.divider, height: 1),
           _menuRow(Icons.sync, 'Sync Settings', _Page.syncSettings),

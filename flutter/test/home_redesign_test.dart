@@ -279,31 +279,50 @@ void main() {
     );
   });
 
-  group('drawer + AI Advocate deep-link', () {
+  group('drawer deep-links (AI Advocate + Event Counters)', () {
+    // Round 5 (founder, Nov 10, 2026) supersedes the Nov 9
+    // redesign's "drawer holds exactly one entry" rule: the
+    // drawer now holds AI Advocate AND Event Counters, and
+    // neither has a Settings menu row anymore.
+    Future<void> openDrawer(WidgetTester tester) async {
+      await tester.tap(find.byKey(const ValueKey('home_drawer_button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      expect(find.byType(Drawer), findsOneWidget);
+      expect(find.text('AI Advocate'), findsOneWidget);
+      expect(find.byIcon(Icons.auto_awesome), findsOneWidget);
+      expect(find.text('Event Counters'), findsOneWidget);
+      expect(find.byIcon(Icons.timer), findsOneWidget);
+      // Exactly two rows: two tappables inside the drawer, AI
+      // Advocate above Event Counters.
+      expect(
+        find.descendant(
+            of: find.byType(Drawer), matching: find.byType(InkWell)),
+        findsNWidgets(2),
+      );
+      expect(
+        tester
+            .getTopLeft(
+                find.byKey(const ValueKey('home_drawer_ai_advocate')))
+            .dy,
+        lessThan(tester
+            .getTopLeft(
+                find.byKey(const ValueKey('home_drawer_event_counters')))
+            .dy),
+      );
+    }
+
     testWidgets(
-        'hamburger opens a drawer whose ONLY row is "AI Advocate"; '
-        'tapping it pushes Settings at the AI page, and back exits '
-        'to Home', (tester) async {
+        'tapping "AI Advocate" pushes Settings at the AI page, and '
+        'back exits to Home', (tester) async {
       await _pumpHome(
         tester,
         physicalSize: const Size(1080, 2400),
         entries: [_entry(id: 41, categoryId: 1, body: 'headache')],
       );
 
-      await tester.tap(find.byKey(const ValueKey('home_drawer_button')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
-      await tester.pump();
-
-      expect(find.byType(Drawer), findsOneWidget);
-      expect(find.text('AI Advocate'), findsOneWidget);
-      expect(find.byIcon(Icons.auto_awesome), findsOneWidget);
-      // One row only: a single tappable inside the drawer.
-      expect(
-        find.descendant(
-            of: find.byType(Drawer), matching: find.byType(InkWell)),
-        findsOneWidget,
-      );
+      await openDrawer(tester);
 
       await tester
           .tap(find.byKey(const ValueKey('home_drawer_ai_advocate')));
@@ -319,6 +338,41 @@ void main() {
 
       // Back from the deep-linked AI page exits to Home (the
       // openAiKnowledge special case), not to the Settings menu.
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+      expect(find.byType(SettingsScreen), findsNothing);
+      expect(find.byType(HomeScreen), findsOneWidget);
+      await _drainScoreChain(tester);
+    });
+
+    testWidgets(
+        'tapping "Event Counters" pushes Settings at the Event '
+        'Counters page, and back exits to Home', (tester) async {
+      await _pumpHome(
+        tester,
+        physicalSize: const Size(1080, 2400),
+        entries: [_entry(id: 41, categoryId: 1, body: 'headache')],
+      );
+
+      await openDrawer(tester);
+
+      await tester
+          .tap(find.byKey(const ValueKey('home_drawer_event_counters')));
+      await _bridge(tester);
+
+      expect(find.byType(SettingsScreen), findsOneWidget);
+      expect(
+        find.descendant(
+            of: find.byType(AppBar),
+            matching: find.text('Event Counters')),
+        findsOneWidget,
+      );
+
+      // Back from the deep-linked counters page exits to Home
+      // (the openEventCounters special case), not to the
+      // Settings menu — the menu no longer lists counters.
       await tester.binding.handlePopRoute();
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
@@ -694,7 +748,7 @@ void main() {
     ]) {
       testWidgets(
           'Bandit slot is 282 wide and the Today Summary card '
-          'tucks over its bottom edge by 24dp at ${label}dp; '
+          'tucks over its bottom edge by 32dp at ${label}dp; '
           'Weekly Snapshot stays in the first viewport',
           (tester) async {
         await _pumpHome(
@@ -712,9 +766,11 @@ void main() {
             closeTo(BanditReadingSlot.slotHeight, 1.5));
 
         final card = tester.getRect(find.byType(TodaySummaryCard));
-        // Widget-level overlap 24dp (the opaque surface covers
-        // 18dp of the chair after the card's 6dp top margin).
-        expect(bandit.bottom - card.top, closeTo(24, 1.5));
+        // Widget-level overlap 32dp (round 5; the opaque surface
+        // covers 26dp of the chair after the card's 6dp top
+        // margin, so the border crosses the chair ~8dp above its
+        // bottom rim instead of meeting it).
+        expect(bandit.bottom - card.top, closeTo(32, 1.5));
         expect(card.top, greaterThan(bandit.top));
 
         final weekly = tester.getRect(find.byType(WeeklySnapshotCard));
