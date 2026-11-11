@@ -71,6 +71,14 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 /// edge shows in front of the card.
 const double kBanditSummaryOverlap = 32;
 
+/// Home polish round 5 (workstream f) — the check-in band's
+/// event-counter auto-advance interval. The founder asked for
+/// the band's events to cycle "every couple seconds" (Nov 10,
+/// 2026): 3 seconds, founder-tunable. The rotator's native
+/// default stays 10s on its other surface (the legacy streak
+/// row); only the band overrides it.
+const Duration kHomeBandCounterRotationInterval = Duration(seconds: 3);
+
 /// Round 4 — home screen, background only (native `today` route).
 ///
 /// Round 5: after a real login, shows a small centered
@@ -279,6 +287,14 @@ class _HomeScreenState extends State<HomeScreen> {
   /// only shows the card once the entry flow says so). A failed pull
   /// keeps the card hidden — the honest state, never a guess.
   bool _feelingVisible = false;
+
+  /// Round 5 (workstream f) — the band counters' fade-in
+  /// generation. 0 means "no in-session log transition has
+  /// happened" (a cold open, scored or not): the band counters
+  /// render plainly. Each in-session visible→logged transition
+  /// bumps it, and the band wraps the counters in a fresh
+  /// fade-in keyed by it (see _bandCounters).
+  int _bandRevealGen = 0;
 
   /// Double-tap guard (native `tapInFlight`): one tap, one entry.
   bool _feelingTapInFlight = false;
@@ -1042,6 +1058,35 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {}
   }
 
+  /// Round 5 (workstream f) — the band's post-log content: the
+  /// active event counters in the slot the check-in strip
+  /// occupied while unscored. The presentation is the old Home's
+  /// own (EventCounterRotator: "Since/Until {name}" + days +
+  /// page dots, swipeable, tap opens the Event Counters page);
+  /// the band's auto-advance is the founder's ~3s, not the
+  /// native 10s. On the in-session log transition the counters
+  /// FADE in over 280ms — the reveal generation keys a fresh
+  /// TweenAnimationBuilder, so the fade runs exactly once per
+  /// transition; on a cold open the generation is 0 and the
+  /// counters render plainly, no fade.
+  Widget _bandCounters() {
+    final rotator = EventCounterRotator(
+      counters: _counters,
+      advanceInterval: kHomeBandCounterRotationInterval,
+      onTap: () => unawaited(_openEventCounters()),
+    );
+    if (_bandRevealGen == 0) return rotator;
+    return TweenAnimationBuilder<double>(
+      key: ValueKey('home_band_counters_reveal_$_bandRevealGen'),
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOut,
+      builder: (context, opacity, child) =>
+          Opacity(opacity: opacity, child: child),
+      child: rotator,
+    );
+  }
+
   /// Round 34 — the counter slot's tap: pushes Settings opened
   /// directly on its Event Counters page, via the round-22 app-wide
   /// slide transition. On return the pull cache is invalidated and
@@ -1173,6 +1218,12 @@ class _HomeScreenState extends State<HomeScreen> {
         changed(good, _goodToday) ||
         visible != _feelingVisible) {
       setState(() {
+        // Round 5 (workstream f): the in-session log transition —
+        // the strip was up and a ranking just landed — arms the
+        // band counters' fade-in. A cold open that derives
+        // scored on its first pass never passes through here with
+        // _feelingVisible true, so those counters render plainly.
+        if (_feelingVisible && !visible) _bandRevealGen++;
         _checkInToday = checkIn;
         _flareToday = flare;
         _goodToday = good;
@@ -2287,38 +2338,38 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     Expanded(
-                      // Home polish round 4 (Part C) — the center
-                      // slot hosts the event counters (as before)
-                      // AND, while the day is unscored, the flat
-                      // 1–5 check-in strip in the open space between
-                      // the streak stack and the Daily Score face.
+                      // The center slot is the check-in BAND
+                      // (round 4 Part C, round 5 workstream f).
+                      // One tenant at a time, founder's state
+                      // machine (Nov 10, 2026):
+                      // - UNSCORED: the flat 1–5 check-in strip
+                      //   owns the band; the event counters are
+                      //   NOT in the tree at all.
+                      // - LOGGED: the strip leaves (round 4) and
+                      //   the active event counters take the same
+                      //   slot — fading in on the in-session log
+                      //   transition, simply present on a cold
+                      //   open (see _bandCounters). No active
+                      //   counters: the band is simply empty.
                       // The strip is 230dp wide (5 × 46dp columns),
                       // inside this slot's 236dp at 360dp wide, and
                       // the end slots are untouched — the header
-                      // axes (31dp / width−31dp) hold exactly.
-                      // After scoring the strip leaves and the slot
-                      // returns to counters-only; the band's height
-                      // is anchored by the 76dp streak stack, so
-                      // Bandit below shifts only by the strip's
-                      // excess over that anchor (~16dp), never by
-                      // the strip's full height.
+                      // axes (31dp / width−31dp) hold exactly. The
+                      // band's height is anchored by the 76dp
+                      // streak stack, so Bandit below shifts only
+                      // by the strip's excess over that anchor
+                      // (~16dp), never by the strip's full height.
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (_counters.isNotEmpty)
+                          if (_feelingVisible)
+                            HomeCheckInStrip(onSelect: _onFeelingSelect)
+                          else if (_counters.isNotEmpty)
                             Padding(
                               padding:
                                   const EdgeInsets.symmetric(horizontal: 12),
-                              child: EventCounterRotator(
-                                counters: _counters,
-                                onTap: () =>
-                                    unawaited(_openEventCounters()),
-                              ),
+                              child: _bandCounters(),
                             ),
-                          if (_counters.isNotEmpty && _feelingVisible)
-                            const SizedBox(height: 8),
-                          if (_feelingVisible)
-                            HomeCheckInStrip(onSelect: _onFeelingSelect),
                         ],
                       ),
                     ),
