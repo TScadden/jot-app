@@ -1241,20 +1241,33 @@ void main() {
           reason: 'the counter list was never pulled in this '
               'session');
 
-      // Step 3: open Event Counters. Pre-fix, _pushProfile set
+      // Step 3: re-enter Event Counters IN THE SAME SESSION and
+      // read the chip. Pre-fix, _pushProfile set
       // _syncConfirmed = true unconditionally, so the chip showed
       // cloud_done + 'Synced' over the never-pulled default list.
-      // Round 5 route change: there is no Settings menu row to
-      // re-enter with — the user leaves Settings and returns via
-      // the Home drawer's entry (a fresh push), so the in-session
-      // chip state cannot be observed across the navigation
-      // anymore. With pulls failing again, the freshly pushed
-      // counters page must still sit on never-loaded defaults —
-      // and the durable evidence above (the push carried no
-      // eventCounters; no pull has ever succeeded) carries the
-      // proof that the field-partial push confirmed nothing.
-      server.failAllPulls = true;
-      await _pumpSettings(tester, a, storeMap);
+      // Round 5 removed the Settings menu row the original step 3
+      // tapped, so the re-entry goes through the deep link
+      // itself: re-pumping the same tree with openEventCounters
+      // set reconfigures the LIVE element (no unmount, no fresh
+      // initState — contrast _pumpSettings, which unmounts
+      // first), and SettingsScreen.didUpdateWidget honors the
+      // link by moving this very State to the counters page. The
+      // pull count proves the session never reloaded: the chip
+      // below is read from the same State the partial push just
+      // landed in.
+      await tester.pumpWidget(MaterialApp(
+        home: SettingsScreen(
+          email: _email,
+          backend: a,
+          settingsStore: fakeStore(storeMap),
+          notificationService: FakeReminderNotificationService(),
+          openEventCounters: true,
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(server.pullCount, pullsAfterFailedLoad,
+          reason: 'the re-entry reconfigured the live session; '
+              'no fresh load ever pulled the counters');
       final chip = find.byKey(const ValueKey('counters_sync_chip'));
       expect(chip, findsOneWidget);
       expect(

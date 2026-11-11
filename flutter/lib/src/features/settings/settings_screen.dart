@@ -395,6 +395,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _load();
   }
 
+  @override
+  void didUpdateWidget(SettingsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Deep-link reconfiguration: if a live Settings element is
+    // reconfigured with the Event Counters deep link set while
+    // another page is showing, honor the link exactly as
+    // initState would have. Production pushes are always fresh
+    // mounts (the Home drawer and counter slot push a new route,
+    // and a deep-linked session's back pops the route rather
+    // than landing on another page), so this never fires in the
+    // app; it keeps the flag's meaning consistent for any
+    // in-place reconfiguration and lets widget tests re-enter
+    // the counters page inside one session (the Juno C1
+    // residual pin).
+    if (widget.openEventCounters && _page != _Page.eventCounters) {
+      setState(() => _page = _Page.eventCounters);
+    }
+  }
+
   // Takeover Phase 2 (single-instance fix): this screen does NOT
   // construct, initialize-own, or dispose a billing service. The
   // app-owned instance arrives via widget.billingService (see the
