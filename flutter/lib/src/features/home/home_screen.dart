@@ -1073,6 +1073,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final rotator = EventCounterRotator(
       counters: _counters,
       advanceInterval: kHomeBandCounterRotationInterval,
+      // Round 6 (founder defect, live VC 100124): the band's
+      // counters center as one group in the center slot — the
+      // rotator's legacy end alignment (kept for the streak
+      // row in vitals_strip.dart) pushed the group against the
+      // Daily Score. Only the band opts in.
+      centerContent: true,
       onTap: () => unawaited(_openEventCounters()),
     );
     if (_bandRevealGen == 0) return rotator;

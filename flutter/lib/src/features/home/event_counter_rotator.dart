@@ -68,6 +68,18 @@ class EventCounterRotator extends StatefulWidget {
   /// (round 5, founder-tunable — see home_screen.dart).
   final Duration? advanceInterval;
 
+  /// Round 6 (founder defect, live VC 100124): opt-in CENTERED
+  /// presentation. The default (false) is the legacy
+  /// right-aligned presentation the old Home's streak row
+  /// (vitals_strip.dart) was built with and still uses. The
+  /// Home check-in BAND passes true: there the counter group
+  /// (label + 6dp gap + count column, dots underneath) must sit
+  /// centered as one group in the band's center slot — with the
+  /// legacy end alignment it hugged the slot's right edge
+  /// (measured ink-extent offset +14.5dp at 360dp wide, +29.5dp
+  /// at 390dp wide; see home_band_centering_r6_test.dart).
+  final bool centerContent;
+
   /// Native auto-advance interval (TodayScreen.kt: `delay(10000)`
   /// after each settled page).
   static const Duration rotationInterval = Duration(seconds: 10);
@@ -86,6 +98,7 @@ class EventCounterRotator extends StatefulWidget {
     this.onTap,
     this.now,
     this.advanceInterval,
+    this.centerContent = false,
   }) : assert(counters.length > 0, 'zero counters must not render a slot');
 
   @override
@@ -272,12 +285,21 @@ class _EventCounterRotatorState extends State<EventCounterRotator>
   /// "{days} Days" pair, with the page dots centered underneath it
   /// when [showDots] (native renders the dots inside each page,
   /// under the count column — never for a single counter).
+  ///
+  /// Round 6: with [EventCounterRotator.centerContent] the whole
+  /// group (label + count column) centers in the slot instead —
+  /// row alignment and label text alignment switch together, so
+  /// an ellipsized label still reads as part of the centered
+  /// group. Both call paths (single counter and each PageView
+  /// page) build through here, so both center.
   Widget _counterPage(EventCounterItem counter, DateTime now,
       {bool showDots = false}) {
     final display = counter.todayDisplay(now: now);
     final counters = widget.counters;
+    final centered = widget.centerContent;
     return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
+      mainAxisAlignment:
+          centered ? MainAxisAlignment.center : MainAxisAlignment.end,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Flexible(
@@ -285,7 +307,7 @@ class _EventCounterRotatorState extends State<EventCounterRotator>
             display.up ? 'Since ${counter.name}' : 'Until ${counter.name}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.end,
+            textAlign: centered ? TextAlign.center : TextAlign.end,
             style: TextStyle(
               fontSize: 9,
               fontWeight: FontWeight.w900,
