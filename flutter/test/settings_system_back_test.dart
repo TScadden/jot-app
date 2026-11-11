@@ -139,16 +139,14 @@ void main() {
       expectOnMenu(tester);
     });
 
-    testWidgets('Event Counters: system back returns to the Settings menu',
-        (tester) async {
+    testWidgets(
+        'Event Counters: no Settings menu entry remains (round 5 — '
+        'the Home drawer entry is its home)', (tester) async {
       await pumpPushedSettings(tester);
-      await tester.tap(find.text('Event Counters'));
-      await tester.pumpAndSettle();
-      expect(appBarTitle(tester), 'Event Counters');
-
-      await systemBack(tester);
-
       expectOnMenu(tester);
+      expect(find.text('Event Counters'), findsNothing);
+      // The surviving route's back behavior is covered by
+      // 'pushed straight at Event Counters' below.
     });
 
     testWidgets('Membership segment: system back returns to the menu page',

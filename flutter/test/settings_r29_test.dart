@@ -235,6 +235,7 @@ SettingsScreen screen({
   List<Uri>? launched,
   FakeReminderNotificationService? notifs,
   bool openAiKnowledge = false,
+  bool openEventCounters = false,
 }) =>
     SettingsScreen(
       backend: backend,
@@ -242,6 +243,7 @@ SettingsScreen screen({
       accountActions: actions,
       onLogout: onLogout,
       openAiKnowledge: openAiKnowledge,
+      openEventCounters: openEventCounters,
       // Round 30: reminder toggles now run the permission gate before
       // persisting; the fake reports notifications already granted so
       // the Round 29 persistence assertions exercise the same path a
@@ -333,7 +335,9 @@ void main() {
       // Round 5: no AI Advocate row in Settings — the Home
       // drawer's "AI Advocate" entry is its home now.
       expect(find.text('AI & Clinical Advocate'), findsNothing);
-      expect(find.text('Event Counters'), findsOneWidget);
+      // Round 5: Event Counters moved to the Home drawer — no
+      // Settings menu row remains.
+      expect(find.text('Event Counters'), findsNothing);
       expect(find.text('Notifications'), findsOneWidget);
       expect(find.text('Sync Settings'), findsOneWidget);
       expect(find.text('Connected Apps'), findsOneWidget);
@@ -683,10 +687,12 @@ void main() {
     testWidgets('event counter add pushes eventCounters JSON',
         (tester) async {
       final backend = FakeSettingsBackend()..pullBody = pull();
+      // Round 5: the counters page is entered via the deep link
+      // (the drawer's route), not a Settings menu row.
       await pumpSettings(tester, host(screen(
-          backend: backend, store: fakeStore(<String, String>{}))));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Event Counters'));
+          backend: backend,
+          store: fakeStore(<String, String>{}),
+          openEventCounters: true)));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('add_counter')));
       await tester.pumpAndSettle();

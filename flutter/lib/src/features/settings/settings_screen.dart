@@ -1422,13 +1422,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Divider(color: NotelColors.divider, height: 1),
           _menuRow(Icons.tune, 'Customize', _Page.customize),
           const Divider(color: NotelColors.divider, height: 1),
-          // Home polish round 5 (founder, Nov 10, 2026): the AI &
-          // Clinical Advocate row is REMOVED from Settings — its
-          // home is now the Home drawer's "AI Advocate" entry,
-          // which deep-links here with openAiKnowledge (the
-          // _Page.aiKnowledge plumbing below is unchanged).
-          _menuRow(Icons.timer, 'Event Counters', _Page.eventCounters),
-          const Divider(color: NotelColors.divider, height: 1),
+          // Home polish round 5 (founder, Nov 10, 2026): TWO rows
+          // are removed from this menu. The AI & Clinical Advocate
+          // row is gone — its home is the Home drawer's "AI
+          // Advocate" entry, which deep-links here with
+          // openAiKnowledge (the _Page.aiKnowledge plumbing below
+          // is unchanged). The Event Counters row MOVED to the
+          // drawer as its second entry, deep-linking here with
+          // openEventCounters (the _Page.eventCounters plumbing
+          // below is likewise unchanged).
           _menuRow(Icons.notifications, 'Notifications', _Page.notifications),
           const Divider(color: NotelColors.divider, height: 1),
           _menuRow(Icons.sync, 'Sync Settings', _Page.syncSettings),

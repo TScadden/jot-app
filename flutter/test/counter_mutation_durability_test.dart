@@ -1110,8 +1110,10 @@ void main() {
 
       await tester.tap(find.byIcon(Icons.arrow_back));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Event Counters'));
-      await tester.pumpAndSettle();
+      // Round 5: no Settings menu row — re-entry is the drawer
+      // route, a fresh push opened on the counters page (exactly
+      // what _pumpSettings mounts).
+      await _pumpSettings(tester, a, storeMap);
       // The pre-fix _manualSync set _data straight from the pull:
       // c5 was back. The post-pass must have filtered it.
       expect(find.text('Counter 5'), findsNothing);
@@ -1159,8 +1161,9 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byIcon(Icons.arrow_back));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Event Counters'));
-      await tester.pumpAndSettle();
+      // Round 5: no Settings menu row — re-entry is the drawer
+      // route, a fresh push opened on the counters page.
+      await _pumpSettings(tester, a, storeMap);
       for (var i = 1; i <= 12; i++) {
         expect(find.text('Counter $i'), findsOneWidget);
       }
@@ -1241,8 +1244,17 @@ void main() {
       // Step 3: open Event Counters. Pre-fix, _pushProfile set
       // _syncConfirmed = true unconditionally, so the chip showed
       // cloud_done + 'Synced' over the never-pulled default list.
-      await tester.tap(find.text('Event Counters'));
-      await tester.pumpAndSettle();
+      // Round 5 route change: there is no Settings menu row to
+      // re-enter with — the user leaves Settings and returns via
+      // the Home drawer's entry (a fresh push), so the in-session
+      // chip state cannot be observed across the navigation
+      // anymore. With pulls failing again, the freshly pushed
+      // counters page must still sit on never-loaded defaults —
+      // and the durable evidence above (the push carried no
+      // eventCounters; no pull has ever succeeded) carries the
+      // proof that the field-partial push confirmed nothing.
+      server.failAllPulls = true;
+      await _pumpSettings(tester, a, storeMap);
       final chip = find.byKey(const ValueKey('counters_sync_chip'));
       expect(chip, findsOneWidget);
       expect(

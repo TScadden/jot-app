@@ -1895,6 +1895,14 @@ class _HomeScreenState extends State<HomeScreen> {
     await _openSettings(openAiKnowledge: true);
   }
 
+  /// Home polish round 5 — pushes Settings opened directly on
+  /// its Event Counters page (the drawer's second entry; the
+  /// counters' entry point moved here from the Settings menu).
+  Future<void> _openEventCountersFromDrawer() async {
+    Navigator.of(context).pop(); // close the drawer first
+    await _openEventCounters();
+  }
+
   /// Home redesign — the check-in section the Today Summary sheet
   /// hosts. ALL state and commits stay here in _HomeScreenState; the
   /// builder re-reads them on every outbox change (the commit path's
@@ -2033,8 +2041,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: NotelColors.background,
-      // Home redesign — the drawer: surface panel ~300dp, ONE row
-      // (AI Advocate), modeled on Settings' _menuRow construction.
+      // Home redesign — the drawer: surface panel ~300dp, modeled
+      // on Settings' _menuRow construction. Round 5 (founder,
+      // Nov 10, 2026) supersedes the redesign's one-entry rule:
+      // the drawer now holds TWO rows — AI Advocate and Event
+      // Counters — stacked in the identical row style, no divider.
       drawer: Drawer(
         backgroundColor: NotelColors.surface,
         width: 300,
@@ -2055,6 +2066,32 @@ class _HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: Text(
                           'AI Advocate',
+                          style: TextStyle(
+                            color: NotelColors.textPrimary,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                      Icon(Icons.chevron_right,
+                          size: 20, color: NotelColors.textSecondary),
+                    ],
+                  ),
+                ),
+              ),
+              InkWell(
+                key: const ValueKey('home_drawer_event_counters'),
+                onTap: () => unawaited(_openEventCountersFromDrawer()),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  child: Row(
+                    children: [
+                      Icon(Icons.timer,
+                          color: NotelColors.textSecondary, size: 22),
+                      SizedBox(width: 16),
+                      Expanded(
+                        child: Text(
+                          'Event Counters',
                           style: TextStyle(
                             color: NotelColors.textPrimary,
                             fontWeight: FontWeight.w500,
