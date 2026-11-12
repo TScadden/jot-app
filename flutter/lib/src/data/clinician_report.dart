@@ -622,10 +622,9 @@ class ClinicianReportData {
 
 // ── Collector extension ──────────────────────────────────────────
 
-/// Extends a base [ReportSnapshot] with the clinician fields.
-/// All sources are injectable; every loader failure degrades
-/// honestly (scores → empty series; events → declared form;
-/// categories → the snapshot's map) and never throws.
+/// Extends a base [ReportSnapshot] with clinician fields. A score load
+/// failure is recorded as an error status in the snapshot sectionMetadata
+/// under dailyScore. All sources are injectable and never throw.
 class ClinicianReportCollector {
   /// Stored Daily Scores by `yyyy-MM-dd` day key (from
   /// HealthHistoryStore in production — stored, write-once
@@ -663,16 +662,25 @@ class ClinicianReportCollector {
     ).range;
     final rangeKeys = range.dayKeys.toSet();
 
+    var scoreLoadFailed = false;
     Map<String, int> scores = const {};
     try {
       scores = await scoreLoader();
     } catch (_) {
+      scoreLoadFailed = true;
       scores = const {};
     }
     final series = [
       for (final key in range.dayKeys)
         if ((scores[key] ?? 0) > 0) (key, scores[key]!),
     ];
+    final effectiveSnapshot = scoreLoadFailed
+        ? snapshot.withSectionStatus('dailyScore', DataSourceStatus.error, 0)
+        : snapshot.withSectionStatus(
+            'dailyScore',
+            series.isEmpty ? DataSourceStatus.noData : DataSourceStatus.success,
+            series.length,
+          );
 
     List<QuickLogCategory> categories = const [];
     try {
@@ -737,7 +745,7 @@ class ClinicianReportCollector {
     }
 
     return ClinicianReportData(
-      snapshot: snapshot,
+      snapshot: effectiveSnapshot,
       dailyScoreSeries: series,
       medChanges: changes,
       medChangesCaptured: captured,
