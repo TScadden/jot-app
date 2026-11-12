@@ -414,6 +414,53 @@ class ReportSnapshot {
       conditions.isNotEmpty ||
       medications.isNotEmpty ||
       knowledgeDocuments.isNotEmpty;
+
+  /// Returns a new [ReportSnapshot] with updated section status.
+  ///
+  /// Exists so a later pipeline stage that learns a section outcome after
+  /// collection (for example the clinician Daily Score read) can record that
+  /// outcome in the snapshot metadata without rebuilding the snapshot by hand.
+  ReportSnapshot withSectionStatus(
+    String key,
+    DataSourceStatus status,
+    int recordCount,
+  ) {
+    final updatedMetadata = <String, SectionMetadata>{};
+    var matched = false;
+    for (final entry in sectionMetadata.entries) {
+      if (entry.key == key) {
+        updatedMetadata[key] = SectionMetadata(key, status, recordCount);
+        matched = true;
+      } else {
+        updatedMetadata[entry.key] = entry.value;
+      }
+    }
+    if (!matched) {
+      updatedMetadata[key] = SectionMetadata(key, status, recordCount);
+    }
+    return ReportSnapshot(
+      last30Days: last30Days,
+      generationTimestampMs: generationTimestampMs,
+      logEntries: logEntries,
+      categoriesMap: categoriesMap,
+      userContext: userContext,
+      userAge: userAge,
+      userHeightIn: userHeightIn,
+      userWeightLbs: userWeightLbs,
+      userGender: userGender,
+      conditions: conditions,
+      medications: medications,
+      knowledgeDocuments: knowledgeDocuments,
+      heartRateSeries: heartRateSeries,
+      sleepSeries: sleepSeries,
+      deepSleepSeries: deepSleepSeries,
+      caloriesSeries: caloriesSeries,
+      hrvSeries: hrvSeries,
+      heartRateSpikes: heartRateSpikes,
+      bloodPressureSeries: bloodPressureSeries,
+      sectionMetadata: updatedMetadata,
+    );
+  }
 }
 
 // ── AI request assembly (GeminiService snapshot path, byte formats) ─
