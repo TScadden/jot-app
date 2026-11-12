@@ -117,7 +117,7 @@ void main() {
         home: HistoryScreen(backend: serverBackend(), focusEntryId: 42),
       ));
       await tester.pumpAndSettle();
-      final dialog = find.byType(AlertDialog);
+      final dialog = find.byType(Dialog);
       expect(dialog, findsOneWidget,
           reason: 'the tap target lands on THAT entry (Juno §A.3)');
       // The dialog is the focused entry's: its body and its real
@@ -141,7 +141,7 @@ void main() {
         home: HistoryScreen(backend: serverBackend()),
       ));
       await tester.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(Dialog), findsNothing);
       expect(find.text('Unrelated older entry'), findsOneWidget);
     });
 
@@ -151,7 +151,7 @@ void main() {
         home: HistoryScreen(backend: serverBackend(), focusEntryId: 999),
       ));
       await tester.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(Dialog), findsNothing);
       expect(find.text('Unrelated older entry'), findsOneWidget);
     });
   });
@@ -560,7 +560,7 @@ void main() {
       // History opened on THAT entry: its detail dialog is up with
       // the §E body.
       expect(find.byType(HistoryScreen), findsOneWidget);
-      final dialog = find.byType(AlertDialog);
+      final dialog = find.byType(Dialog);
       expect(dialog, findsOneWidget);
       expect(
         find.descendant(

@@ -526,7 +526,7 @@ void main() {
       await tester.tap(find.text('Brain fog all morning'));
       await _pumpUntil(
         tester,
-        () => find.byType(AlertDialog).evaluate().isNotEmpty,
+        () => find.byType(Dialog).evaluate().isNotEmpty,
       );
       await tester.tap(find.text('GENERAL'));
       for (var i = 0; i < 5; i++) {
@@ -539,7 +539,7 @@ void main() {
       // category, which is exactly the adoption being proven).
       expect(
         find.descendant(
-          of: find.byType(AlertDialog),
+          of: find.byType(Dialog),
           matching: find.text('General'),
         ),
         findsWidgets,
@@ -562,7 +562,7 @@ void main() {
       await tester.tap(find.text('Close'));
       await _pumpUntil(
         tester,
-        () => find.byType(AlertDialog).evaluate().isEmpty,
+        () => find.byType(Dialog).evaluate().isEmpty,
       );
       expect(find.text('Synced'), findsOneWidget);
       expect(find.text('Syncing'), findsNothing);
@@ -637,7 +637,7 @@ void main() {
       await tester.tap(find.text('Brain fog all morning'));
       await _pumpUntil(
         tester,
-        () => find.byType(AlertDialog).evaluate().isNotEmpty,
+        () => find.byType(Dialog).evaluate().isNotEmpty,
       );
       await tester.tap(find.text('GENERAL'));
       await _pumpUntil(
@@ -648,7 +648,7 @@ void main() {
       // The edit stands (no revert, no inline save error)…
       expect(
         find.descendant(
-          of: find.byType(AlertDialog),
+          of: find.byType(Dialog),
           matching: find.text('General'),
         ),
         findsWidgets,
@@ -657,7 +657,7 @@ void main() {
       await tester.tap(find.text('Close'));
       await _pumpUntil(
         tester,
-        () => find.byType(AlertDialog).evaluate().isEmpty,
+        () => find.byType(Dialog).evaluate().isEmpty,
       );
       // …the card honestly reads Not synced…
       expect(find.text('Not synced'), findsOneWidget);
