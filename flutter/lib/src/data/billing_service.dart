@@ -249,6 +249,17 @@ class BillingState {
   }
 }
 
+const String TODO_JUNO_BILLING_PLAY_PROBLEM =
+    'Google Play reported a problem. Please try again.';
+
+const String TODO_JUNO_BILLING_VERIFY_UNREACHABLE =
+    'Verification could not reach the Tabs server. Your purchase is safe '
+    'with Google Play — reopen Tabs to finish activating Premium.';
+
+const String TODO_JUNO_BILLING_ACK_FAILED =
+    'Your membership is active, but Google Play acknowledgement failed. '
+    'Reopen Tabs to retry it.';
+
 /// The billing module itself.
 ///
 /// SINGLE APP-OWNED INSTANCE (Vera takeover review): exactly one
@@ -353,10 +364,10 @@ class BillingService {
       await _updatesSub?.cancel();
       _updatesSub = _store.purchaseUpdates.listen(
         _onPurchaseUpdates,
-        onError: (Object e) {
+        onError: (Object _) {
           _emit(_state.copyWith(
             phase: BillingPhase.error,
-            errorMessage: 'Google Play reported a problem: $e',
+            errorMessage: TODO_JUNO_BILLING_PLAY_PROBLEM,
           ));
         },
       );
@@ -371,11 +382,11 @@ class BillingService {
         ));
         return;
       }
-    } catch (e) {
+    } catch (_) {
       _emit(_state.copyWith(
         phase: BillingPhase.error,
-        errorMessage: 'Could not load Tabs Premium plans from '
-            'Google Play: $e',
+        errorMessage: 'Tabs Premium plans could not be loaded '
+            'from Google Play. Please try again later.',
       ));
       return;
     }
@@ -418,11 +429,11 @@ class BillingService {
         // Native trigger: sync after a failed purchase flow.
         await syncSubscriptionStatus();
       }
-    } catch (e) {
+    } catch (_) {
       _emit(_state.copyWith(
         phase: BillingPhase.error,
         errorMessage: 'Google Play could not open the purchase '
-            'screen: $e',
+            'screen. Please try again.',
       ));
       await syncSubscriptionStatus();
     }
@@ -491,12 +502,10 @@ class BillingService {
         purchaseToken: purchase.purchaseToken,
         quantity: 1,
       );
-    } catch (e) {
+    } catch (_) {
       _emit(_state.copyWith(
         phase: BillingPhase.error,
-        errorMessage: 'Verification could not reach the Tabs '
-            'server: $e. Your purchase is safe with Google Play — '
-            'reopen Tabs to finish activating Premium.',
+        errorMessage: TODO_JUNO_BILLING_VERIFY_UNREACHABLE,
       ));
       // In-session retry (Vera takeover review): the attempt is
       // over and its error is surfaced, so un-guard the token —
@@ -524,11 +533,10 @@ class BillingService {
     // NOW acknowledge, and only now.
     try {
       await _store.completePurchase(purchase);
-    } catch (e) {
+    } catch (_) {
       _emit(_state.copyWith(
         phase: BillingPhase.error,
-        errorMessage: 'Your membership is active, but Google Play '
-            'acknowledgement failed: $e. Reopen Tabs to retry it.',
+        errorMessage: TODO_JUNO_BILLING_ACK_FAILED,
       ));
       // In-session retry: the retry re-verifies (the server will
       // answer already-processed, which still acknowledges) and

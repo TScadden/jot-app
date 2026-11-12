@@ -434,30 +434,35 @@ Classifications:
     - **Code**: `errorMessage: 'Google Play reported a problem: $e'`
     - **Context**: Rendered in `billing_plans_panel.dart:295` error banner.
     - **Remedy**: Use approved generic wording: `'Google Play reported a problem. Please try again.'`.
+    - **Status**: FIXED. Replaced with `TODO_JUNO_BILLING_PLAY_PROBLEM` constant (`'Google Play reported a problem. Please try again.'`).
 
 58. **`flutter/lib/src/data/billing_service.dart:378`**
     - **Classification**: (a) raw exception to UI
     - **Code**: `'Could not load Tabs Premium plans from Google Play: $e'`
     - **Context**: Rendered in `billing_plans_panel.dart:295` error banner.
     - **Remedy**: Use existing approved fallback line 369-370: `'Tabs Premium plans could not be loaded from Google Play. Please try again later.'`.
+    - **Status**: FIXED. Replaced with clean approved wording `'Tabs Premium plans could not be loaded from Google Play. Please try again later.'` (reused verbatim from base ref `billing_service.dart:369-370`) and synchronized test expectation in `billing_takeover_test.dart`.
 
 59. **`flutter/lib/src/data/billing_service.dart:425`**
     - **Classification**: (a) raw exception to UI
     - **Code**: `'Google Play could not open the purchase screen: $e'`
     - **Context**: Rendered in `billing_plans_panel.dart:295` error banner.
     - **Remedy**: Use approved wording: `'Google Play could not open the purchase screen. Please try again.'`.
+    - **Status**: FIXED. Replaced with clean approved wording `'Google Play could not open the purchase screen. Please try again.'` (reused verbatim from base ref `billing_service.dart:415-417`).
 
 60. **`flutter/lib/src/data/billing_service.dart:498`**
     - **Classification**: (a) raw exception to UI
     - **Code**: `'Verification could not reach the Tabs server: $e. Your purchase is safe with Google Play — reopen Tabs once connected to restore.'`
     - **Context**: Rendered in `billing_plans_panel.dart:295` error banner.
-    - **Remedy**: Remove `$e`: `'Verification could not reach the Tabs server. Your purchase is safe with Google Play — reopen Tabs once connected to restore.'`.
+    - **Remedy**: Remove `$e`: `'Verification could not reach the Tabs server. Your purchase is safe with Google Play — reopen Tabs to finish activating Premium.'`.
+    - **Status**: FIXED. Replaced with `TODO_JUNO_BILLING_VERIFY_UNREACHABLE` constant (`'Verification could not reach the Tabs server. Your purchase is safe with Google Play — reopen Tabs to finish activating Premium.'`) and synchronized test expectation in `billing_takeover_test.dart`.
 
 61. **`flutter/lib/src/data/billing_service.dart:531`**
     - **Classification**: (a) raw exception to UI
     - **Code**: `'Your membership is active, but Google Play acknowledgement failed: $e. Reopen Tabs to retry it.'`
     - **Context**: Rendered in `billing_plans_panel.dart:295` error banner.
     - **Remedy**: Remove `$e`: `'Your membership is active, but Google Play acknowledgement failed. Reopen Tabs to retry it.'`.
+    - **Status**: FIXED. Replaced with `TODO_JUNO_BILLING_ACK_FAILED` constant (`'Your membership is active, but Google Play acknowledgement failed. Reopen Tabs to retry it.'`).
 
 ---
 
