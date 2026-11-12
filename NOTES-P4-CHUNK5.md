@@ -11,3 +11,10 @@
 - Ruled strings: clinicianNoPatternsDetected and clinicianPatternsUnavailable added.
 - TODO_JUNO items: none.
 - What was not verified: host tests (Flutter SDK not installed on host; crew runs tests).
+
+## Completion: Clinician Patterns Zone Rendering
+- Files changed: flutter/lib/src/data/clinician_report_pdf.dart.
+- Three body outcomes: data.patternsLoadFailed emits clinicianPatternsUnavailable; empty insights emit clinicianNoPatternsDetected; non-empty insights emit correlationInsightPrintLines in order.
+- Cumulative geometry: all four new zones (Z9, Z10, Z11, Z12) consume Spacer slack within 752pt usable height; page-count verification deferred to crew because host has no Flutter SDK.
+- TODO_JUNO items: none.
+- What was not verified: host tests and rendered PDF page count (Flutter SDK not installed on host; crew runs tests).
