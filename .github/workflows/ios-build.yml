@@ -1,0 +1,102 @@
+# iOS build — unsigned compile proof (App Store prep, Workstream 4).
+#
+# What it does, end to end:
+#   1. Checks out the PR / dispatched ref on a macOS runner.
+#   2. Installs the pinned Flutter SDK (same pin as the Android
+#      pipelines: tmp-flutter-apk.yml / flutter-prod-aab.yml).
+#   3. flutter pub get + flutter analyze.
+#   4. flutter build ios --no-codesign — a full Release compile of the
+#      iOS target with code signing disabled. There is no Apple
+#      Developer account yet, so signing, provisioning, TestFlight and
+#      App Store upload are deliberately NOT part of this workflow;
+#      they land after enrollment.
+#
+# Cost discipline: macOS minutes cost ~10x Linux, so this workflow
+# does NOT run on push. It runs on manual dispatch and on pull
+# requests that touch the iOS target or this workflow only. The full
+# Dart test suite is not repeated here — it runs on Linux (local /
+# tmp-flutter-apk) and gates the same PR head.
+
+name: iOS build (unsigned)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'flutter/ios/**'
+      - '.github/workflows/ios-build.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: "3.47.7"
+
+jobs:
+  build-ios:
+    name: Build iOS target (unsigned, compile proof)
+    runs-on: macos-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: flutter
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: flutter
+        run: flutter analyze
+
+      - name: Build iOS (no codesign)
+        working-directory: flutter
+        run: flutter build ios --no-codesign --release
+
+      - name: Verify bundle identity from the built app
+        working-directory: flutter
+        run: |
+          set -eu
+          PLIST="build/ios/iphoneos/Runner.app/Info.plist"
+          if [ ! -f "$PLIST" ]; then
+            echo "::error::Built Runner.app Info.plist not found at $PLIST"
+            exit 1
+          fi
+          # PlistBuddy is the macOS-native plist reader (no pip / no
+          # third-party parser): reads the BUILT product, so a wrong
+          # bundle ID or display name in the source plist fails here.
+          BUDDY=/usr/libexec/PlistBuddy
+          BID="$("$BUDDY" -c 'Print :CFBundleIdentifier' "$PLIST")"
+          NAME="$("$BUDDY" -c 'Print :CFBundleDisplayName' "$PLIST")"
+          ENC="$("$BUDDY" -c 'Print :ITSAppUsesNonExemptEncryption' "$PLIST")"
+          HEALTH="$("$BUDDY" -c 'Print :NSHealthShareUsageDescription' "$PLIST")"
+          echo "CFBundleIdentifier: $BID"
+          echo "CFBundleDisplayName: $NAME"
+          echo "ITSAppUsesNonExemptEncryption: $ENC"
+          echo "NSHealthShareUsageDescription present: $([ -n "$HEALTH" ] && echo yes || echo no)"
+          [ "$BID" = "com.notel.notel" ] || { echo "::error::Bundle ID mismatch: $BID"; exit 1; }
+          [ "$NAME" = "Tabs" ] || { echo "::error::Display name mismatch: $NAME"; exit 1; }
+          [ "$ENC" = "false" ] || { echo "::error::ITSAppUsesNonExemptEncryption must be false, got: $ENC"; exit 1; }
+          [ -n "$HEALTH" ] || { echo "::error::NSHealthShareUsageDescription missing from built plist"; exit 1; }
+          if "$BUDDY" -c 'Print :NSHealthUpdateUsageDescription' "$PLIST" >/dev/null 2>&1; then
+            echo "::error::NSHealthUpdateUsageDescription must NOT ship (Tabs is read-only on HealthKit)"
+            exit 1
+          fi
+          {
+            echo "### iOS unsigned build verification"
+            echo "- bundle ID: \`$BID\`"
+            echo "- display name: \`$NAME\`"
+            echo "- ITSAppUsesNonExemptEncryption: \`$ENC\`"
+            echo "- NSHealthShareUsageDescription: present"
+            echo "- NSHealthUpdateUsageDescription: absent (read-only, by design)"
+          } >> "$GITHUB_STEP_SUMMARY"
