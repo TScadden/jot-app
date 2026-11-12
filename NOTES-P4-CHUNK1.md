@@ -38,3 +38,10 @@ Command: `flutter test test/clinician_report_test.dart test/progress_report_avai
 - Blocker: Daily Score load outcome is genuinely not available in collect (scores load in ClinicianReportCollector.extend).
 - TODO_JUNO items: none.
 - Not verified: targeted and full test suite (Flutter SDK not installed on host); live PDF rendering.
+
+## 7. Completion (ReportSnapshot.withSectionStatus)
+- Files changed: flutter/lib/src/data/progress_report.dart
+- Map ordering: preserved by iterating existing sectionMetadata entries into a new LinkedHashMap, replacing in-place on match or appending at the end if absent.
+- TODO_JUNO items: none.
+- Not verified: flutter test and dart analyze (Flutter SDK not installed on host).
+
