@@ -143,6 +143,35 @@ const String clinicianLabelSleepDuration = 'Sleep Duration';
 /// clinician Sleep zone label, reusing approved wording
 const String clinicianLabelDeepSleep = 'Deep Sleep';
 
+/// clinician HRV zone heading
+const String clinicianHeadingHrv = 'HRV (RMSSD)';
+
+/// clinician Resting Heart Rate zone heading
+const String clinicianHeadingRestingHeartRate = 'Resting Heart Rate';
+
+/// clinician HRV zone, failure statuses (permissionDenied, stale, error)
+const String clinicianHrvUnavailable =
+    'HRV (RMSSD) data could not be retrieved for this period.';
+
+/// clinician HRV zone, clean read returning no data
+const String clinicianHrvNoData = 'No HRV (RMSSD) recorded in this range.';
+
+/// clinician Resting Heart Rate zone, failure statuses (permissionDenied, stale, error)
+const String clinicianRestingHrUnavailable =
+    'Resting heart rate data could not be retrieved for this period.';
+
+/// clinician Resting Heart Rate zone, clean read returning no data
+const String clinicianRestingHrNoData =
+    'No resting heart rate recorded in this range.';
+
+/// clinician HR spikes zone, failure statuses (permissionDenied, stale, error)
+const String clinicianHrSpikesUnavailable =
+    'HR spike data could not be retrieved for this period.';
+
+/// clinician HR spikes zone, clean read returning no data
+const String clinicianHrSpikesNoData =
+    'No heart rate spike data recorded in this range.';
+
 // ── Caps (spec §4.4: fixed one page, enforced by caps) ──────────
 
 /// Max medication lines printed in Z2 before the S9 overflow
@@ -669,6 +698,67 @@ ClinicianMetricSummary? deriveClinicianMetricSummary(
   );
 }
 
+/// Derives summary statistics from a date-keyed biometric double series
+/// (e.g. HRV RMSSD values). Keeps only values greater than 0 (a zero
+/// in biometric data is a failed read, never a measurement). Returns null
+/// when nothing remains, and otherwise computes count, minimum, maximum,
+/// and the arithmetic mean as a double.
+ClinicianMetricSummary? deriveClinicianMetricSummaryD(
+  List<(String, double)> series,
+) {
+  final positiveValues = <double>[];
+  for (final record in series) {
+    if (record.$2 > 0) {
+      positiveValues.add(record.$2);
+    }
+  }
+  if (positiveValues.isEmpty) return null;
+
+  var minVal = positiveValues.first;
+  var maxVal = positiveValues.first;
+  var sum = 0.0;
+  for (final v in positiveValues) {
+    if (v < minVal) minVal = v;
+    if (v > maxVal) maxVal = v;
+    sum += v;
+  }
+  return ClinicianMetricSummary(
+    count: positiveValues.length,
+    min: minVal,
+    max: maxVal,
+    average: sum / positiveValues.length,
+  );
+}
+
+/// Summary statistics for heart rate spikes.
+class ClinicianSpikeSummary {
+  final int total;
+  final int sampledDays;
+
+  const ClinicianSpikeSummary({
+    required this.total,
+    required this.sampledDays,
+  });
+}
+
+/// Derives summary statistics from a date-keyed spike count series. Returns null
+/// when the list is empty and otherwise the sum of all values as total and the
+/// list length as sampledDays. Days with 0 spikes are real sampled days and must
+/// not be filtered.
+ClinicianSpikeSummary? deriveClinicianSpikeSummary(
+  List<(String, int)> series,
+) {
+  if (series.isEmpty) return null;
+  var sum = 0;
+  for (final record in series) {
+    sum += record.$2;
+  }
+  return ClinicianSpikeSummary(
+    total: sum,
+    sampledDays: series.length,
+  );
+}
+
 // TODO_JUNO: assembled from existing ruled labels and the existing Z3 and
 // health-summary line patterns, to be confirmed by Juno before merge; do not
 // present the template as already ruled anywhere.
@@ -693,6 +783,46 @@ String clinicianDeepSleepLine(ClinicianMetricSummary summary) {
     return '$line \u00B7 range ${formatSleepMinutes(summary.min.round())} to ${formatSleepMinutes(summary.max.round())}';
   }
   return line;
+}
+
+// TODO_JUNO: assembled from existing ruled labels and patterns, to be
+// confirmed by Juno before merge; do not present the template as already
+// ruled anywhere.
+
+/// HRV summary line:
+/// HRV (RMSSD): average <avg> ms across <count> days [ · range <min> ms to <max> ms]
+String clinicianHrvLine(ClinicianMetricSummary summary) {
+  final line =
+      '$clinicianHeadingHrv: average ${summary.average.toStringAsFixed(1)} ms across ${summary.count} days';
+  if (summary.count > 1) {
+    return '$line \u00B7 range ${summary.min.toStringAsFixed(1)} ms to ${summary.max.toStringAsFixed(1)} ms';
+  }
+  return line;
+}
+
+// TODO_JUNO: assembled from existing ruled labels and patterns, to be
+// confirmed by Juno before merge; do not present the template as already
+// ruled anywhere.
+
+/// Resting heart rate summary line:
+/// Resting Heart Rate: average <avg> bpm across <count> days [ · range <min> bpm to <max> bpm]
+String clinicianRestingHrLine(ClinicianMetricSummary summary) {
+  final line =
+      '$clinicianHeadingRestingHeartRate: average ${clinicianAverageText(summary.average)} bpm across ${summary.count} days';
+  if (summary.count > 1) {
+    return '$line \u00B7 range ${clinicianAverageText(summary.min)} bpm to ${clinicianAverageText(summary.max)} bpm';
+  }
+  return line;
+}
+
+// TODO_JUNO: assembled from existing ruled labels and patterns, to be
+// confirmed by Juno before merge; do not present the template as already
+// ruled anywhere.
+
+/// Heart rate spikes summary line:
+/// HR Spikes (>=100 BPM): <total> recorded across <sampledDays> days
+String clinicianHrSpikesLine(ClinicianSpikeSummary summary) {
+  return 'HR Spikes (>=100 BPM): ${summary.total} recorded across ${summary.sampledDays} days';
 }
 
 // ── The clinician report data (the renderer's only input) ───────
