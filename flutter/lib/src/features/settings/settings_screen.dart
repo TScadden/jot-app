@@ -688,10 +688,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _openHcSettingsForBackground() async {
     try {
       await _hc.openHealthConnectSettings();
-    } on HealthConnectException catch (e) {
-      _snack('Could not open Health Connect settings [${e.code}]');
+    } on HealthConnectException {
+      _snack('Could not open Health Connect settings');
     } catch (_) {
-      _snack('Could not open Health Connect settings [UNKNOWN]');
+      _snack('Could not open Health Connect settings');
     }
   }
 
@@ -708,12 +708,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final counts = '$samples ${samples == 1 ? 'sample' : 'samples'} read, '
         '$days ${days == 1 ? 'day' : 'days'}.';
     if (d.errorCode != null) {
-      return 'Last HRV sync check: the read failed '
-          '[${d.errorCode}]. $counts';
+      return 'Last HRV sync check: the read failed. $counts';
     }
     if (d.partialCode != null) {
-      return 'Last HRV sync check: some data could not be read '
-          '[${d.partialCode}]. $counts';
+      return 'Last HRV sync check: some data could not be read. $counts';
     }
     return 'Last HRV sync check: $counts';
   }
@@ -747,13 +745,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       setState(() => _notifError = e.code);
       if (report) {
-        _snack('Could not update notification schedules [${e.code}]');
+        _snack('Could not update notification schedules');
       }
     } catch (_) {
       if (!mounted) return;
       setState(() => _notifError = 'SCHEDULE_FAILED');
       if (report) {
-        _snack('Could not update notification schedules [SCHEDULE_FAILED]');
+        _snack('Could not update notification schedules');
       }
     }
   }
@@ -770,8 +768,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     bool enabled;
     try {
       enabled = await _notifs.areNotificationsEnabled();
-    } on NotificationServiceException catch (e) {
-      _snack('Notifications are unavailable on this device [${e.code}]');
+    } on NotificationServiceException {
+      _snack('Notifications are unavailable on this device');
       return false;
     }
     if (enabled) return true;
@@ -808,8 +806,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (proceed != true) return false;
     try {
       enabled = await _notifs.requestNotificationsPermission();
-    } on NotificationServiceException catch (e) {
-      _snack('Could not request notification permission [${e.code}]');
+    } on NotificationServiceException {
+      _snack('Could not request notification permission');
       return false;
     }
     if (!enabled) {
@@ -828,8 +826,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!await _notifs.canScheduleExact()) {
         await _notifs.requestExactAlarmsPermission();
       }
-    } on NotificationServiceException catch (e) {
-      _snack('Exact alarm check failed [${e.code}]');
+    } on NotificationServiceException {
+      _snack('Exact alarm check failed');
     }
     return true;
   }
@@ -2930,7 +2928,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         (heightCm == null || heightCm <= 0)) {
       final code = hc.lastReadErrorCode;
       _snack(code != null
-          ? 'Could not read Health Connect data [$code]'
+          ? 'Could not read Health Connect data.'
           : 'No weight or height found in Health Connect yet.');
       return;
     }
@@ -3060,11 +3058,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } on KnowledgePickException catch (e) {
       if (!mounted) return;
       setState(() => _kError =
-          '${e.message ?? "Couldn't open the file picker."} [${e.code}]');
+          e.message ?? "Couldn't open the file picker.");
       return;
     } catch (_) {
       if (!mounted) return;
-      setState(() => _kError = "Couldn't open the file picker. [UNKNOWN]");
+      setState(() => _kError = "Couldn't open the file picker.");
       return;
     }
     if (picked == null || !mounted) return; // user cancelled
@@ -3090,17 +3088,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               'Saved, but Gemini could not extract text from ${doc.name}. You can retry from the document list.';
         }
       });
-    } on KnowledgeSyncException catch (e) {
+    } on KnowledgeSyncException {
       if (!mounted) return;
       setState(() {
         _kProcessing = false;
-        _kError = 'Could not save the document. [${e.code}]';
+        _kError = 'Could not save the document.';
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _kProcessing = false;
-        _kError = 'Could not save the document. [UNKNOWN]';
+        _kError = 'Could not save the document.';
       });
     }
   }
@@ -3194,17 +3192,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               'Saved, but Gemini could not extract text from $title. You can retry from the document list.';
         }
       });
-    } on KnowledgeSyncException catch (e) {
+    } on KnowledgeSyncException {
       if (!mounted) return;
       setState(() {
         _kProcessing = false;
-        _kError = 'Could not save the note. [${e.code}]';
+        _kError = 'Could not save the note.';
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _kProcessing = false;
-        _kError = 'Could not save the note. [UNKNOWN]';
+        _kError = 'Could not save the note.';
       });
     }
   }
@@ -3224,13 +3222,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(() {
         if (state == KnowledgeExtractionState.failed) {
           _kError =
-              'Gemini could not extract text from ${doc.name}. [EXTRACTION_FAILED]';
+              'Gemini could not extract text from ${doc.name}.';
         }
       });
     } catch (_) {
       if (!mounted) return;
       setState(() => _kError =
-          'Gemini could not extract text from ${doc.name}. [EXTRACTION_FAILED]');
+          'Gemini could not extract text from ${doc.name}.');
     } finally {
       _kBusyDocs.remove(doc.id);
       if (mounted) setState(() {});
@@ -3272,14 +3270,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await _refreshDocumentsFromPull();
       if (!mounted) return;
       setState(() => _kError = null);
-    } on KnowledgeSyncException catch (e) {
+    } on KnowledgeSyncException {
       if (!mounted) return;
       setState(
-          () => _kError = 'Could not delete ${doc.name}. [${e.code}]');
+          () => _kError = 'Could not delete ${doc.name}.');
     } catch (_) {
       if (!mounted) return;
       setState(
-          () => _kError = 'Could not delete ${doc.name}. [UNKNOWN]');
+          () => _kError = 'Could not delete ${doc.name}.');
     }
   }
 
@@ -3319,12 +3317,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await _refreshDocumentsFromPull();
       if (!mounted) return;
       setState(() => _kError = null);
-    } on KnowledgeSyncException catch (e) {
+    } on KnowledgeSyncException {
       if (!mounted) return;
-      setState(() => _kError = 'Could not clear all files. [${e.code}]');
+      setState(() => _kError = 'Could not clear all files.');
     } catch (_) {
       if (!mounted) return;
-      setState(() => _kError = 'Could not clear all files. [UNKNOWN]');
+      setState(() => _kError = 'Could not clear all files.');
     }
   }
 
@@ -5914,9 +5912,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
         if (_notifError != null) ...[
           const SizedBox(height: 8),
-          Text('Notification scheduling hit a problem [$_notifError].',
+          const Text('Notification scheduling hit a problem.',
               style:
-                  const TextStyle(color: NotelColors.error, fontSize: 11)),
+                  TextStyle(color: NotelColors.error, fontSize: 11)),
         ],
       ]),
     ];
@@ -6124,19 +6122,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ? 'Your export is ready. Send the file to yourself, then '
               'open the Tabs app, sign in with the same account, and '
               'choose Import from Tabs Lab on this screen.'
-          : 'Could not open the share sheet. Try again. '
-              '[SHARE_FAILED]');
+          : 'Could not open the share sheet. Try again.');
     } on MigrationException catch (e) {
       if (!mounted) return;
       setState(() => _migrationStatus = e.message);
-    } on MigrationFileException catch (e) {
+    } on MigrationFileException {
       if (!mounted) return;
       setState(() => _migrationStatus =
-          'Could not share the export file. [${e.code}]');
+          'Could not share the export file.');
     } catch (_) {
       if (!mounted) return;
       setState(() => _migrationStatus =
-          'Export failed unexpectedly. Try again. [EXPORT_FAILED]');
+          'Export failed unexpectedly. Try again.');
     } finally {
       if (mounted) setState(() => _migrationBusy = false);
     }
@@ -6161,10 +6158,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     String? text;
     try {
       text = await _migrationPicker.pickMigrationText();
-    } on MigrationFileException catch (e) {
+    } on MigrationFileException {
       if (!mounted) return;
       setState(() => _migrationStatus =
-          'Could not read that file. [${e.code}]');
+          'Could not read that file.');
       return;
     }
     if (text == null) return; // user cancelled the picker
@@ -6201,8 +6198,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _migrationStatus =
-          'Import failed unexpectedly. Nothing was changed. '
-          '[IMPORT_FAILED]');
+          'Import failed unexpectedly. Nothing was changed.');
     } finally {
       if (mounted) setState(() => _migrationBusy = false);
     }

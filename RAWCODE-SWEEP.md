@@ -114,168 +114,196 @@ Classifications:
     - **Code**: `_snack('Could not open Health Connect settings [${e.code}]');`
     - **Context**: SnackBar on HealthConnectException in background settings launcher.
     - **Remedy**: Strip ` [${e.code}]`.
+    - **Status**: FIXED. Removed ` [${e.code}]` suffix.
 
 14. **`flutter/lib/src/features/settings/settings_screen.dart:694`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `_snack('Could not open Health Connect settings [UNKNOWN]');`
     - **Context**: SnackBar on unexpected error in background settings launcher.
     - **Remedy**: Strip ` [UNKNOWN]`.
+    - **Status**: FIXED. Removed ` [UNKNOWN]` suffix.
 
 15. **`flutter/lib/src/features/settings/settings_screen.dart:711-712`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `'Last HRV sync check: the read failed [${d.errorCode}]. $counts'`
     - **Context**: Diagnostics line on Connected Apps card.
     - **Remedy**: Strip bracketed code; render `'Last HRV sync check: the read failed. $counts'`.
+    - **Status**: FIXED. Removed ` [${d.errorCode}]` code prefix, keeping clean diagnostic text and updated test expectation in `hrv_grant_visibility_test.dart`.
 
 16. **`flutter/lib/src/features/settings/settings_screen.dart:715-716`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `'Last HRV sync check: some data could not be read [${d.partialCode}]. $counts'`
     - **Context**: Diagnostics line on Connected Apps card.
     - **Remedy**: Strip bracketed code; render `'Last HRV sync check: some data could not be read. $counts'`.
+    - **Status**: FIXED. Removed ` [${d.partialCode}]` code prefix, keeping clean diagnostic text and updated test expectation in `hrv_grant_visibility_test.dart`.
 
 17. **`flutter/lib/src/features/settings/settings_screen.dart:750`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `_snack('Could not update notification schedules [${e.code}]');`
     - **Context**: SnackBar on NotificationServiceException during reminder sync.
     - **Remedy**: Strip ` [${e.code}]`.
+    - **Status**: FIXED. Removed ` [${e.code}]` suffix.
 
 18. **`flutter/lib/src/features/settings/settings_screen.dart:756`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `_snack('Could not update notification schedules [SCHEDULE_FAILED]');`
     - **Context**: SnackBar on generic catch during reminder sync.
     - **Remedy**: Strip ` [SCHEDULE_FAILED]`.
+    - **Status**: FIXED. Removed ` [SCHEDULE_FAILED]` suffix.
 
 19. **`flutter/lib/src/features/settings/settings_screen.dart:774`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `_snack('Notifications are unavailable on this device [${e.code}]');`
     - **Context**: SnackBar on NotificationServiceException checking notifications.
     - **Remedy**: Strip ` [${e.code}]`.
+    - **Status**: FIXED. Removed ` [${e.code}]` suffix.
 
 20. **`flutter/lib/src/features/settings/settings_screen.dart:812`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `_snack('Could not request notification permission [${e.code}]');`
     - **Context**: SnackBar on NotificationServiceException requesting permissions.
     - **Remedy**: Strip ` [${e.code}]`.
+    - **Status**: FIXED. Removed ` [${e.code}]` suffix.
 
 21. **`flutter/lib/src/features/settings/settings_screen.dart:832`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `_snack('Exact alarm check failed [${e.code}]');`
     - **Context**: SnackBar on NotificationServiceException checking exact alarms.
     - **Remedy**: Strip ` [${e.code}]` or use friendly fallback.
+    - **Status**: FIXED. Removed ` [${e.code}]` suffix.
 
 22. **`flutter/lib/src/features/settings/settings_screen.dart:2933`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `_snack(code != null ? 'Could not read Health Connect data [$code]' : 'No weight or height found in Health Connect yet.');`
     - **Context**: SnackBar in profile auto-fill.
     - **Remedy**: Strip ` [$code]`; use `'Could not read Health Connect data.'`.
+    - **Status**: FIXED. Removed ` [$code]` suffix, rendering `'Could not read Health Connect data.'`.
 
 23. **`flutter/lib/src/features/settings/settings_screen.dart:3063`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `setState(() => _kError = '${e.message ?? "Couldn't open the file picker."} [${e.code}]');`
     - **Context**: Document picker error displayed in Knowledge section.
     - **Remedy**: Strip ` [${e.code}]`.
+    - **Status**: FIXED. Removed ` [${e.code}]` suffix and synchronized test expectation in `settings_r65_knowledge_test.dart`.
 
 24. **`flutter/lib/src/features/settings/settings_screen.dart:3067`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `setState(() => _kError = "Couldn't open the file picker. [UNKNOWN]");`
     - **Context**: Document picker generic error in Knowledge section.
     - **Remedy**: Strip ` [UNKNOWN]`.
+    - **Status**: FIXED. Removed ` [UNKNOWN]` suffix.
 
 25. **`flutter/lib/src/features/settings/settings_screen.dart:3097`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `_kError = 'Could not save the document. [${e.code}]';`
     - **Context**: Document save KnowledgeSyncException.
     - **Remedy**: Strip ` [${e.code}]`.
+    - **Status**: FIXED. Removed ` [${e.code}]` suffix.
 
 26. **`flutter/lib/src/features/settings/settings_screen.dart:3103`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `_kError = 'Could not save the document. [UNKNOWN]';`
     - **Context**: Document save generic exception.
     - **Remedy**: Strip ` [UNKNOWN]`.
+    - **Status**: FIXED. Removed ` [UNKNOWN]` suffix.
 
 27. **`flutter/lib/src/features/settings/settings_screen.dart:3201`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `_kError = 'Could not save the note. [${e.code}]';`
     - **Context**: Note save KnowledgeSyncException.
     - **Remedy**: Strip ` [${e.code}]`.
+    - **Status**: FIXED. Removed ` [${e.code}]` suffix.
 
 28. **`flutter/lib/src/features/settings/settings_screen.dart:3207`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `_kError = 'Could not save the note. [UNKNOWN]';`
     - **Context**: Note save generic exception.
     - **Remedy**: Strip ` [UNKNOWN]`.
+    - **Status**: FIXED. Removed ` [UNKNOWN]` suffix.
 
 29. **`flutter/lib/src/features/settings/settings_screen.dart:3227`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `_kError = 'Gemini could not extract text from ${doc.name}. [EXTRACTION_FAILED]';`
     - **Context**: Text extraction failure notice.
     - **Remedy**: Strip ` [EXTRACTION_FAILED]`.
+    - **Status**: FIXED. Removed ` [EXTRACTION_FAILED]` suffix.
 
 30. **`flutter/lib/src/features/settings/settings_screen.dart:3233`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `setState(() => _kError = 'Gemini could not extract text from ${doc.name}. [EXTRACTION_FAILED]');`
     - **Context**: Text extraction generic catch notice.
     - **Remedy**: Strip ` [EXTRACTION_FAILED]`.
+    - **Status**: FIXED. Removed ` [EXTRACTION_FAILED]` suffix.
 
 31. **`flutter/lib/src/features/settings/settings_screen.dart:3278`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `() => _kError = 'Could not delete ${doc.name}. [${e.code}]');`
     - **Context**: Document delete KnowledgeSyncException.
     - **Remedy**: Strip ` [${e.code}]`.
+    - **Status**: FIXED. Removed ` [${e.code}]` suffix.
 
 32. **`flutter/lib/src/features/settings/settings_screen.dart:3282`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `() => _kError = 'Could not delete ${doc.name}. [UNKNOWN]');`
     - **Context**: Document delete generic catch.
     - **Remedy**: Strip ` [UNKNOWN]`.
+    - **Status**: FIXED. Removed ` [UNKNOWN]` suffix.
 
 33. **`flutter/lib/src/features/settings/settings_screen.dart:3324`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `setState(() => _kError = 'Could not clear all files. [${e.code}]');`
     - **Context**: Clear all documents KnowledgeSyncException.
     - **Remedy**: Strip ` [${e.code}]`.
+    - **Status**: FIXED. Removed ` [${e.code}]` suffix.
 
 34. **`flutter/lib/src/features/settings/settings_screen.dart:3327`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `setState(() => _kError = 'Could not clear all files. [UNKNOWN]');`
     - **Context**: Clear all documents generic catch.
     - **Remedy**: Strip ` [UNKNOWN]`.
+    - **Status**: FIXED. Removed ` [UNKNOWN]` suffix.
 
 35. **`flutter/lib/src/features/settings/settings_screen.dart:5917`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `Text('Notification scheduling hit a problem [$_notifError].',`
     - **Context**: Inline notifications error warning in settings.
     - **Remedy**: Strip ` [$_notifError]`; use `'Notification scheduling hit a problem.'`.
+    - **Status**: FIXED. Removed ` [$_notifError]` suffix, rendering clean `'Notification scheduling hit a problem.'`.
 
 36. **`flutter/lib/src/features/settings/settings_screen.dart:6128`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `'Could not open the share sheet. Try again. [SHARE_FAILED]'`
     - **Context**: Export share failure status.
     - **Remedy**: Strip ` [SHARE_FAILED]`.
+    - **Status**: FIXED. Removed ` [SHARE_FAILED]` suffix.
 
 37. **`flutter/lib/src/features/settings/settings_screen.dart:6135`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `'Could not share the export file. [${e.code}]'`
     - **Context**: MigrationFileException during export share.
     - **Remedy**: Strip ` [${e.code}]`.
+    - **Status**: FIXED. Removed ` [${e.code}]` suffix.
 
 38. **`flutter/lib/src/features/settings/settings_screen.dart:6139`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `'Export failed unexpectedly. Try again. [EXPORT_FAILED]'`
     - **Context**: Generic catch during export.
     - **Remedy**: Strip ` [EXPORT_FAILED]`.
+    - **Status**: FIXED. Removed ` [EXPORT_FAILED]` suffix.
 
 39. **`flutter/lib/src/features/settings/settings_screen.dart:6167`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `'Could not read that file. [${e.code}]'`
     - **Context**: MigrationFileException during import.
     - **Remedy**: Strip ` [${e.code}]`.
+    - **Status**: FIXED. Removed ` [${e.code}]` suffix.
 
 40. **`flutter/lib/src/features/settings/settings_screen.dart:6205`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `'Import failed unexpectedly. Nothing was changed. [IMPORT_FAILED]'`
     - **Context**: Generic catch during import.
     - **Remedy**: Strip ` [IMPORT_FAILED]`.
+    - **Status**: FIXED. Removed ` [IMPORT_FAILED]` suffix.
 
 41. **`flutter/lib/src/features/settings/progress_reports_page.dart:527`**
     - **Classification**: (b) bracketed code to UI
