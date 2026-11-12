@@ -106,6 +106,30 @@ List<QuickLogCategory> sortedCategoriesForPicker(
   return sorted;
 }
 
+/// Candidate copy for the category-picker search field in the entry
+/// detail dialog (founder-approved mock, Nov 12, 2026). Juno rules
+/// the final string — this constant is the ONLY place the candidate
+/// lives, so her ruling is a one-line change.
+// ignore: constant_identifier_names
+const String TODO_JUNO_HISTORY_CATEGORY_SEARCH_HINT = 'Search categories';
+
+/// Pure filter for the detail dialog's category picker: a trimmed,
+/// case-insensitive substring match on the category name. An empty
+/// (or whitespace-only) query returns every category, in the input
+/// order (the dialog passes the sortOrder-sorted picker list).
+/// Display only — filtering never mutates the category list, the
+/// entry, or any save path.
+List<QuickLogCategory> filterCategoriesForPicker(
+  List<QuickLogCategory> categories,
+  String query,
+) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return categories.toList();
+  return categories
+      .where((c) => c.name.toLowerCase().contains(q))
+      .toList();
+}
+
 /// Locked check-in detection (Round 21 identity — the sync DTO has no
 /// `source` field): the entry sits in the resolved Mood & Energy
 /// category AND carries the reserved "Daily Ranking" chip. Native
@@ -1351,6 +1375,19 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
   bool _saving = false;
   String? _error;
 
+  /// Category-picker search (approved mock, Nov 12, 2026): filters
+  /// the picker chips as the user types via [filterCategoriesForPicker].
+  /// Purely a view filter — it never touches the save path.
+  final TextEditingController _categorySearchController =
+      TextEditingController();
+  String _categoryQuery = '';
+
+  @override
+  void dispose() {
+    _categorySearchController.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1449,22 +1486,83 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
     final chips = parseEntryChips(_entry.chips)
         .where((chip) => chip != flareTag && chip != goodDayTag)
         .toList();
-    final pickerCats = sortedCategoriesForPicker(widget.categories);
-    return AlertDialog(
+    final pickerCats = filterCategoriesForPicker(
+      sortedCategoriesForPicker(widget.categories),
+      _categoryQuery,
+    );
+    // Approved mock (founder, Nov 12, 2026): a sheet-style dialog —
+    // drag handle, 28dp corners, category colour dot beside the
+    // title, wrapping picker chips under a search field, a divider
+    // before the entry body, and filled Edit / ghost Close actions
+    // side by side. Layout only: sections, labels, the category
+    // save-on-tap path and Edit behaviour are unchanged.
+    const sectionLabelStyle = TextStyle(
+      color: NotelColors.primaryText,
+      fontSize: 12,
+      fontWeight: FontWeight.w800,
+      letterSpacing: 2.2,
+    );
+    return Dialog(
       backgroundColor: NotelColors.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      title: Text(
-        _category?.name ?? 'Entry',
-        style: const TextStyle(
-          color: NotelColors.textPrimary,
-          fontWeight: FontWeight.bold,
-        ),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(28),
+        side: const BorderSide(color: NotelColors.legacyDarkHairline),
       ),
-      content: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 14, 24, 22),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Drag handle (mock: 38x4, white @ 18%, fully rounded).
+              Center(
+                child: Container(
+                  key: const ValueKey('history_detail_drag_handle'),
+                  width: 38,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(99),
+                    color: Colors.white.withValues(alpha: 0.18),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              // Title row: the category's colour dot + its name.
+              Row(
+                children: [
+                  if (_category != null) ...[
+                    Container(
+                      width: 11,
+                      height: 11,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _category!.color,
+                        boxShadow: [
+                          BoxShadow(
+                            color: _category!.color.withValues(alpha: 0.14),
+                            spreadRadius: 4,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 11),
+                  ],
+                  Expanded(
+                    child: Text(
+                      _category?.name ?? 'Entry',
+                      style: const TextStyle(
+                        color: NotelColors.textPrimary,
+                        fontSize: 27,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 26),
             if (_isCheckIn)
               // Native locked note in place of every edit affordance.
               const Row(
@@ -1495,53 +1593,126 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
                 ),
               )
             else ...[
-              const Text(
-                'CHANGE CATEGORY',
-                style: TextStyle(
-                  color: NotelColors.primary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.8,
+              const Text('CHANGE CATEGORY', style: sectionLabelStyle),
+              const SizedBox(height: 12),
+              // Search field (approved mock): directly under the
+              // label, styled after History's own 'Search entries…'
+              // field (filled surface, search prefix icon, 14dp
+              // radius, primary border). Filters the chips below as
+              // the user types; the hint is Juno-pending candidate
+              // copy (see TODO_JUNO_HISTORY_CATEGORY_SEARCH_HINT).
+              TextField(
+                key: const ValueKey('history_category_search_field'),
+                controller: _categorySearchController,
+                onChanged: (v) => setState(() => _categoryQuery = v),
+                style: const TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontSize: 14,
+                ),
+                decoration: InputDecoration(
+                  hintText: TODO_JUNO_HISTORY_CATEGORY_SEARCH_HINT,
+                  hintStyle: const TextStyle(
+                    color: NotelColors.textSecondary,
+                    fontSize: 15,
+                  ),
+                  prefixIcon: const Icon(
+                    Icons.search,
+                    size: 20,
+                    color: NotelColors.textSecondary,
+                  ),
+                  suffixIcon: _categoryQuery.isNotEmpty
+                      ? IconButton(
+                          onPressed: () {
+                            _categorySearchController.clear();
+                            setState(() => _categoryQuery = '');
+                          },
+                          tooltip: 'Clear search',
+                          icon: const Icon(
+                            Icons.clear,
+                            color: NotelColors.textSecondary,
+                          ),
+                        )
+                      : null,
+                  filled: true,
+                  fillColor: NotelColors.surfaceHigh,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(
+                      color: NotelColors.primary.withValues(alpha: 0.35),
+                      width: 1.5,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(
+                      color: NotelColors.primary,
+                      width: 1.5,
+                    ),
+                  ),
                 ),
               ),
-              const SizedBox(height: 8),
-              // Native LazyRow. A SingleChildScrollView+Row is used
-              // instead of a horizontal ListView: a viewport inside an
-              // AlertDialog breaks the dialog's intrinsic sizing.
-              SizedBox(
-                height: 40,
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      for (var i = 0; i < pickerCats.length; i++) ...[
-                        if (i > 0) const SizedBox(width: 10),
-                        Builder(
-                          builder: (context) {
-                            final cat = pickerCats[i];
-                            final selected = cat.id == _entry.categoryId;
-                            final color = cat.color;
-                            return GestureDetector(
-                              onTap:
-                                  _saving ? null : () => _changeCategory(cat),
-                              child: Container(
-                                height: 40,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                ),
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(10),
-                                  color: selected
-                                      ? color
-                                      : NotelColors.surfaceHigh,
-                                  border: Border.all(
-                                    color: selected
-                                        ? color
-                                        : color.withValues(alpha: 0.35),
+              const SizedBox(height: 14),
+              // Approved mock: chips WRAP to new rows inside the
+              // dialog — the old horizontal scroll row clipped the
+              // third chip at the dialog's right edge (founder
+              // screenshot, Nov 12, 2026). The current category is
+              // filled Tabs purple with a check mark; the rest keep
+              // their subtle per-category tinted borders. A tap still
+              // saves immediately via _changeCategory — unchanged.
+              Wrap(
+                spacing: 9,
+                runSpacing: 9,
+                children: [
+                  for (final cat in pickerCats)
+                    Builder(
+                      builder: (context) {
+                        final selected = cat.id == _entry.categoryId;
+                        final color = cat.color;
+                        return GestureDetector(
+                          onTap: _saving ? null : () => _changeCategory(cat),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 13,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              color: selected
+                                  ? NotelColors.primary
+                                  : NotelColors.surfaceHigh,
+                              border: Border.all(
+                                color: selected
+                                    ? NotelColors.primary
+                                    : color.withValues(alpha: 0.35),
+                                width: 1.5,
+                              ),
+                              boxShadow: selected
+                                  ? [
+                                      BoxShadow(
+                                        color: NotelColors.primary
+                                            .withValues(alpha: 0.35),
+                                        blurRadius: 18,
+                                        offset: const Offset(0, 6),
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (selected) ...[
+                                  const Icon(
+                                    Icons.check,
+                                    size: 14,
+                                    color: Colors.white,
                                   ),
-                                ),
-                                child: Text(
+                                  const SizedBox(width: 6),
+                                ],
+                                Text(
                                   cat.name.toUpperCase(),
                                   style: TextStyle(
                                     color: selected
@@ -1552,61 +1723,71 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
                                     letterSpacing: 0.6,
                                   ),
                                 ),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                ],
               ),
             ],
-            const SizedBox(height: 16),
+            // Divider between the picker and the entry body (mock).
+            const SizedBox(height: 24),
+            Divider(
+              height: 1,
+              thickness: 1,
+              color: Colors.white.withValues(alpha: 0.07),
+            ),
+            const SizedBox(height: 20),
             Text(
               entryCombinedText(_entry),
               style: const TextStyle(
                 color: NotelColors.textPrimary,
-                fontSize: 17,
-                height: 24 / 17,
-                fontWeight: FontWeight.w500,
+                fontSize: 21,
+                height: 1.35,
+                fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(height: 12),
-            Text(
-              'Logged on ${widget.formatDateTime(_entry.timestamp)}',
-              style: const TextStyle(
-                color: NotelColors.textSecondary,
-                fontSize: 12,
-              ),
+            const SizedBox(height: 9),
+            Row(
+              children: [
+                const Icon(
+                  Icons.access_time,
+                  size: 16,
+                  color: NotelColors.textSecondary,
+                ),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    'Logged on ${widget.formatDateTime(_entry.timestamp)}',
+                    style: const TextStyle(
+                      color: NotelColors.textSecondary,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ],
             ),
             if (chips.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              const Text(
-                'ASSOCIATED TILES',
-                style: TextStyle(
-                  color: NotelColors.primary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.8,
-                ),
-              ),
+              const SizedBox(height: 22),
+              const Text('ASSOCIATED TILES', style: sectionLabelStyle),
               const SizedBox(height: 12),
               Wrap(
-                spacing: 8,
-                runSpacing: 8,
+                spacing: 9,
+                runSpacing: 9,
                 children: [
                   for (final chip in chips)
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
+                        horizontal: 14,
+                        vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(20),
-                        color: NotelColors.surfaceHigh,
+                        borderRadius: BorderRadius.circular(999),
                         border: Border.all(
-                          color: NotelColors.primary.withValues(alpha: 0.25),
+                          color: NotelColors.primary.withValues(alpha: 0.55),
+                          width: 1.5,
                         ),
                       ),
                       child: Row(
@@ -1623,8 +1804,9 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
                           Text(
                             chip,
                             style: const TextStyle(
-                              color: NotelColors.textPrimary,
-                              fontSize: 13,
+                              color: NotelColors.primaryText,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ],
@@ -1651,39 +1833,75 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
                 style: const TextStyle(color: NotelColors.error, fontSize: 13),
               ),
             ],
-          ],
-        ),
-      ),
-      actions: [
-        if (!_isCheckIn)
-          TextButton(
-            onPressed: _saving ? null : _editText,
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
+            // Actions (approved mock): filled purple Edit + quiet
+            // ghost Close, side by side, equal width. Same handlers
+            // as before — Edit opens the text editor (or the intake
+            // sheet), Close pops the dialog.
+            const SizedBox(height: 28),
+            Row(
               children: [
-                Icon(Icons.edit, size: 16, color: NotelColors.primary),
-                SizedBox(width: 6),
-                Text(
-                  'Edit',
-                  style: TextStyle(
-                    color: NotelColors.primary,
-                    fontWeight: FontWeight.bold,
+                if (!_isCheckIn) ...[
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _saving ? null : _editText,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: NotelColors.primary,
+                        disabledBackgroundColor:
+                            NotelColors.primary.withValues(alpha: 0.5),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.edit, size: 16, color: Colors.white),
+                          SizedBox(width: 6),
+                          Text(
+                            'Edit',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 11),
+                ],
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: TextButton.styleFrom(
+                      backgroundColor: Colors.white.withValues(alpha: 0.05),
+                      foregroundColor: NotelColors.textPrimary,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        side: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.10),
+                        ),
+                      ),
+                    ),
+                    child: const Text(
+                      'Close',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ),
               ],
             ),
-          ),
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text(
-            'Close',
-            style: TextStyle(
-              color: NotelColors.primary,
-              fontWeight: FontWeight.bold,
-            ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 }
