@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/clinician_report.dart';
 import 'package:tabs_lab/src/data/clinician_report_pdf.dart';
+import 'package:tabs_lab/src/data/correlation_copy.dart';
+import 'package:tabs_lab/src/data/correlation_engine.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
@@ -90,6 +92,11 @@ ReportSnapshot _snapshot({
   double userHeightIn = 0,
   double userWeightLbs = 0,
   List<String> conditions = const ['POTS'],
+  List<(String, int)> sleepSeries = const [],
+  List<(String, int)> deepSleepSeries = const [],
+  List<(String, int)> heartRateSeries = const [],
+  List<(String, double)> hrvSeries = const [],
+  List<(String, int)> heartRateSpikes = const [],
 }) =>
     ReportSnapshot(
       last30Days: true,
@@ -103,6 +110,11 @@ ReportSnapshot _snapshot({
       conditions: conditions,
       medications: medications,
       sectionMetadata: sectionMetadata,
+      sleepSeries: sleepSeries,
+      deepSleepSeries: deepSleepSeries,
+      heartRateSeries: heartRateSeries,
+      hrvSeries: hrvSeries,
+      heartRateSpikes: heartRateSpikes,
     );
 
 ClinicianReportCollector _collector({
@@ -1447,6 +1459,444 @@ void main() {
       final z5Declared = _lines(declaredNullWindowsData, 'Z5');
       expect(z5Declared,
           isNot(contains('Insufficient score data for 14-day comparison')));
+    });
+  });
+
+  group('Phase 4 truth matrix, part 2', () {
+    test('(1) Sleep zone status matrix for total sleep', () {
+      final sampleSleep = [(_key(10, 20), 480), (_key(10, 21), 420)];
+
+      final successData = ClinicianReportData(
+        snapshot: _snapshot(
+          sleepSeries: sampleSleep,
+          sectionMetadata: const {
+            'sleep': SectionMetadata('sleep', DataSourceStatus.success, 2),
+          },
+        ),
+        dailyScoreSeries: const [],
+        medChanges: const [],
+        medChangesCaptured: false,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+      );
+      final z9Success = _lines(successData, 'Z9');
+      expect(
+          z9Success.any((l) => l.startsWith('Sleep Duration: average')), isTrue);
+
+      final storedData = ClinicianReportData(
+        snapshot: _snapshot(
+          sleepSeries: sampleSleep,
+          sectionMetadata: const {
+            'sleep': SectionMetadata('sleep', DataSourceStatus.storedOnly, 2),
+          },
+        ),
+        dailyScoreSeries: const [],
+        medChanges: const [],
+        medChangesCaptured: false,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+      );
+      final z9Stored = _lines(storedData, 'Z9');
+      expect(
+          z9Stored.any((l) => l.startsWith('Sleep Duration: average')), isTrue);
+
+      final noData = ClinicianReportData(
+        snapshot: _snapshot(
+          sleepSeries: const [],
+          sectionMetadata: const {
+            'sleep': SectionMetadata('sleep', DataSourceStatus.noData, 0),
+          },
+        ),
+        dailyScoreSeries: const [],
+        medChanges: const [],
+        medChangesCaptured: false,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+      );
+      expect(_lines(noData, 'Z9'), contains('No sleep recorded in this range.'));
+
+      for (final status in [
+        DataSourceStatus.permissionDenied,
+        DataSourceStatus.stale,
+        DataSourceStatus.error,
+      ]) {
+        final failureData = ClinicianReportData(
+          snapshot: _snapshot(
+            sleepSeries: sampleSleep,
+            sectionMetadata: {
+              'sleep': SectionMetadata('sleep', status, 0),
+            },
+          ),
+          dailyScoreSeries: const [],
+          medChanges: const [],
+          medChangesCaptured: false,
+          flareDays: 0,
+          flareSeverityMix: const {},
+          migraineCount: 0,
+          topCategories: const [],
+        );
+        expect(
+          _lines(failureData, 'Z9'),
+          contains('Sleep data could not be retrieved for this period.'),
+        );
+      }
+
+      final emptySuccessData = ClinicianReportData(
+        snapshot: _snapshot(
+          sleepSeries: const [],
+          sectionMetadata: const {
+            'sleep': SectionMetadata('sleep', DataSourceStatus.success, 0),
+          },
+        ),
+        dailyScoreSeries: const [],
+        medChanges: const [],
+        medChangesCaptured: false,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+      );
+      final z9EmptySuccess = _lines(emptySuccessData, 'Z9');
+      expect(z9EmptySuccess, contains('No sleep recorded in this range.'));
+      expect(z9EmptySuccess.any((l) => l.startsWith('Sleep Duration:')), isFalse);
+    });
+
+    test(
+        '(2) Deep sleep independence: sleep success with data plus deepSleep status error gives sleep summary and deep sleep unavailable',
+        () {
+      final data = ClinicianReportData(
+        snapshot: _snapshot(
+          sleepSeries: [(_key(10, 20), 480)],
+          deepSleepSeries: const [],
+          sectionMetadata: const {
+            'sleep': SectionMetadata('sleep', DataSourceStatus.success, 1),
+            'deepSleep':
+                SectionMetadata('deepSleep', DataSourceStatus.error, 0),
+          },
+        ),
+        dailyScoreSeries: const [],
+        medChanges: const [],
+        medChangesCaptured: false,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+      );
+      final z9 = _lines(data, 'Z9');
+      expect(z9.any((l) => l.startsWith('Sleep Duration: average')), isTrue);
+      expect(z9,
+          contains('Deep sleep data could not be retrieved for this period.'));
+    });
+
+    test('(3) HRV zone: success with data, noData, and error', () {
+      final successData = ClinicianReportData(
+        snapshot: _snapshot(
+          hrvSeries: [(_key(10, 20), 45.0)],
+          sectionMetadata: const {
+            'hrv': SectionMetadata('hrv', DataSourceStatus.success, 1),
+          },
+        ),
+        dailyScoreSeries: const [],
+        medChanges: const [],
+        medChangesCaptured: false,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+      );
+      final z10Success = _lines(successData, 'Z10');
+      expect(
+          z10Success.any((l) => l.startsWith('HRV (RMSSD): average')), isTrue);
+
+      final noDataReport = ClinicianReportData(
+        snapshot: _snapshot(
+          hrvSeries: const [],
+          sectionMetadata: const {
+            'hrv': SectionMetadata('hrv', DataSourceStatus.noData, 0),
+          },
+        ),
+        dailyScoreSeries: const [],
+        medChanges: const [],
+        medChangesCaptured: false,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+      );
+      expect(_lines(noDataReport, 'Z10'),
+          contains('No HRV (RMSSD) recorded in this range.'));
+
+      final errorData = ClinicianReportData(
+        snapshot: _snapshot(
+          hrvSeries: const [],
+          sectionMetadata: const {
+            'hrv': SectionMetadata('hrv', DataSourceStatus.error, 0),
+          },
+        ),
+        dailyScoreSeries: const [],
+        medChanges: const [],
+        medChangesCaptured: false,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+      );
+      expect(_lines(errorData, 'Z10'),
+          contains('HRV (RMSSD) data could not be retrieved for this period.'));
+    });
+
+    test('(4) Heart Rate zone: resting HR and spike status matrix', () {
+      final hrData = ClinicianReportData(
+        snapshot: _snapshot(
+          heartRateSeries: [(_key(10, 20), 72), (_key(10, 21), 74)],
+          heartRateSpikes: [
+            (_key(10, 20), 0),
+            (_key(10, 21), 0),
+            (_key(10, 22), 0),
+          ],
+          sectionMetadata: const {
+            'heartRate':
+                SectionMetadata('heartRate', DataSourceStatus.success, 2),
+            'hrSpikes':
+                SectionMetadata('hrSpikes', DataSourceStatus.success, 3),
+          },
+        ),
+        dailyScoreSeries: const [],
+        medChanges: const [],
+        medChangesCaptured: false,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+      );
+      final z11 = _lines(hrData, 'Z11');
+      expect(z11.any((l) => l.startsWith('Resting Heart Rate: average')), isTrue);
+      expect(z11, contains('Resting Heart Rate'));
+      expect(_lines(hrData).any((l) => l.contains('Avg Heart Rate')), isFalse);
+
+      expect(z11, contains('HR Spikes (>=100 BPM): 0 recorded across 3 days'));
+      expect(z11,
+          isNot(contains('No heart rate spike data recorded in this range.')));
+
+      final spikesNoData = ClinicianReportData(
+        snapshot: _snapshot(
+          heartRateSpikes: const [],
+          sectionMetadata: const {
+            'hrSpikes':
+                SectionMetadata('hrSpikes', DataSourceStatus.noData, 0),
+          },
+        ),
+        dailyScoreSeries: const [],
+        medChanges: const [],
+        medChangesCaptured: false,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+      );
+      expect(_lines(spikesNoData, 'Z11'),
+          contains('No heart rate spike data recorded in this range.'));
+
+      final spikesError = ClinicianReportData(
+        snapshot: _snapshot(
+          heartRateSpikes: const [],
+          sectionMetadata: const {
+            'hrSpikes':
+                SectionMetadata('hrSpikes', DataSourceStatus.error, 0),
+          },
+        ),
+        dailyScoreSeries: const [],
+        medChanges: const [],
+        medChangesCaptured: false,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+      );
+      expect(_lines(spikesError, 'Z11'),
+          contains('HR spike data could not be retrieved for this period.'));
+    });
+
+    test(
+        '(5) Patterns zone: comparison sentence, empty patterns, and patternsLoadFailed',
+        () {
+      const groupA = InsightGroup(label: '8+ hrs sleep', n: 12, mean: 78.5);
+      const groupB = InsightGroup(label: '<7 hrs sleep', n: 10, mean: 55.0);
+      final record = InsightRecord(
+        familyId: 'F1',
+        splitId: 'F1a',
+        windowKey: 'last90d',
+        state: InsightState.numbers,
+        groups: const [groupA, groupB],
+        computedAtMs: _nowMs,
+        throughDate: _key(10, 28),
+        inputFingerprint: 'fp',
+      );
+
+      final dataWithPatterns = ClinicianReportData(
+        snapshot: _snapshot(),
+        dailyScoreSeries: const [],
+        medChanges: const [],
+        medChangesCaptured: false,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+        patternInsights: [record],
+        patternsLoadFailed: false,
+      );
+
+      final expectedSentence = correlationComparisonSentence(
+        groupALabel: groupA.label,
+        groupAN: groupA.n,
+        groupAMean: groupA.mean!,
+        groupBLabel: groupB.label,
+        groupBN: groupB.n,
+        groupBMean: groupB.mean!,
+      );
+
+      expect(_lines(dataWithPatterns, 'Z12'), contains(expectedSentence));
+
+      final emptyPatternsData = ClinicianReportData(
+        snapshot: _snapshot(),
+        dailyScoreSeries: const [],
+        medChanges: const [],
+        medChangesCaptured: false,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+        patternInsights: const [],
+        patternsLoadFailed: false,
+      );
+      expect(_lines(emptyPatternsData, 'Z12'),
+          contains('No patterns detected for this period'));
+
+      final failedPatternsData = ClinicianReportData(
+        snapshot: _snapshot(),
+        dailyScoreSeries: const [],
+        medChanges: const [],
+        medChangesCaptured: false,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+        patternInsights: const [],
+        patternsLoadFailed: true,
+      );
+      expect(_lines(failedPatternsData, 'Z12'),
+          contains('Patterns data could not be retrieved.'));
+    });
+
+    test(
+        '(6) Geometry pins: maximally populated fixture and all-unavailable fixture both render to 1 page',
+        () async {
+      final baseData = await _fullData();
+      final populatedData = ClinicianReportData(
+        snapshot: _snapshot(
+          medications: [
+            _med('Ivabradine', '7.5 mg', frequency: 'Twice daily'),
+            _med('BPC-157', '0.5'),
+            _med('Propranolol', '20 mg'),
+            _med('Midodrine', '5 mg'),
+            _med('Fludrocortisone', '0.1 mg'),
+          ],
+          logEntries: baseData.snapshot.logEntries,
+          sleepSeries: [for (var d = 1; d <= 20; d++) (_key(10, d), 480)],
+          deepSleepSeries: [for (var d = 1; d <= 20; d++) (_key(10, d), 90)],
+          heartRateSeries: [for (var d = 1; d <= 20; d++) (_key(10, d), 72)],
+          hrvSeries: [for (var d = 1; d <= 20; d++) (_key(10, d), 45.0)],
+          heartRateSpikes: [for (var d = 1; d <= 20; d++) (_key(10, d), 1)],
+          sectionMetadata: const {
+            'medications':
+                SectionMetadata('medications', DataSourceStatus.success, 5),
+            'dailyScore':
+                SectionMetadata('dailyScore', DataSourceStatus.success, 22),
+            'logs': SectionMetadata('logs', DataSourceStatus.success, 6),
+            'sleep': SectionMetadata('sleep', DataSourceStatus.success, 20),
+            'deepSleep':
+                SectionMetadata('deepSleep', DataSourceStatus.success, 20),
+            'heartRate':
+                SectionMetadata('heartRate', DataSourceStatus.success, 20),
+            'hrv': SectionMetadata('hrv', DataSourceStatus.success, 20),
+            'hrSpikes':
+                SectionMetadata('hrSpikes', DataSourceStatus.success, 20),
+          },
+        ),
+        dailyScoreSeries: baseData.dailyScoreSeries,
+        medChanges: baseData.medChanges,
+        medChangesCaptured: baseData.medChangesCaptured,
+        flareDays: baseData.flareDays,
+        flareSeverityMix: baseData.flareSeverityMix,
+        migraineCount: baseData.migraineCount,
+        topCategories: baseData.topCategories,
+        patternInsights: [
+          InsightRecord(
+            familyId: 'F1',
+            splitId: 'F1a',
+            windowKey: 'last90d',
+            state: InsightState.numbers,
+            groups: const [
+              InsightGroup(label: '8+ hrs sleep', n: 12, mean: 78.5),
+              InsightGroup(label: '<7 hrs sleep', n: 10, mean: 55.0),
+            ],
+            computedAtMs: _nowMs,
+            throughDate: _key(10, 28),
+            inputFingerprint: 'fp',
+          ),
+        ],
+      );
+      final maxBytes = await buildClinicianPdfBytes(populatedData);
+      expect(_pageCount(maxBytes), 1);
+
+      const allSections = [
+        'medications',
+        'dailyScore',
+        'logs',
+        'sleep',
+        'deepSleep',
+        'heartRate',
+        'hrv',
+        'hrSpikes',
+        'bloodPressure',
+        'documents',
+        'conditions',
+        'calories',
+      ];
+      final errorMetadata = {
+        for (final k in allSections)
+          k: SectionMetadata(k, DataSourceStatus.error, 0),
+      };
+
+      final allUnavailableData = ClinicianReportData(
+        snapshot: _snapshot(
+          medications: const [],
+          logEntries: const [],
+          sectionMetadata: errorMetadata,
+          sleepSeries: const [],
+          deepSleepSeries: const [],
+          heartRateSeries: const [],
+          hrvSeries: const [],
+          heartRateSpikes: const [],
+        ),
+        dailyScoreSeries: const [],
+        medChanges: const [],
+        medChangesCaptured: false,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+        patternInsights: const [],
+        patternsLoadFailed: true,
+      );
+      final unavailBytes = await buildClinicianPdfBytes(allUnavailableData);
+      expect(_pageCount(unavailBytes), 1);
     });
   });
 }
