@@ -8,6 +8,8 @@ import 'package:tabs_lab/src/data/migraine_controller.dart'
 import 'package:tabs_lab/src/data/progress_report.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/today_summary.dart' hide dateStrOf;
+import 'package:tabs_lab/src/features/home/vitals_strip.dart'
+    show formatSleepMinutes;
 
 /// Phase 1, item 3 — Clinician PDF v2 data layer (spec
 /// `phase1-item3-clinician-pdf-spec.md`; copy per Juno's final
@@ -116,6 +118,30 @@ const String clinicianCategoriesUnavailable =
 /// clinician Z4, successful loads and an empty top categories list
 const String clinicianTopCategoriesEmpty =
     'No category entries recorded in this range.';
+
+/// clinician Sleep zone heading (ruled)
+const String clinicianHeadingSleep = 'Sleep';
+
+/// clinician Sleep zone, sleep duration data failure statuses (permissionDenied, stale, error)
+const String clinicianSleepUnavailable =
+    'Sleep data could not be retrieved for this period.';
+
+/// clinician Sleep zone, clean read returning no sleep duration data
+const String clinicianSleepNoData = 'No sleep recorded in this range.';
+
+/// clinician Sleep zone, deep sleep data failure statuses (permissionDenied, stale, error)
+const String clinicianDeepSleepUnavailable =
+    'Deep sleep data could not be retrieved for this period.';
+
+/// clinician Sleep zone, clean read returning no deep sleep data
+const String clinicianDeepSleepNoData =
+    'No deep sleep recorded in this range.';
+
+/// clinician Sleep zone label, reusing approved wording
+const String clinicianLabelSleepDuration = 'Sleep Duration';
+
+/// clinician Sleep zone label, reusing approved wording
+const String clinicianLabelDeepSleep = 'Deep Sleep';
 
 // ── Caps (spec §4.4: fixed one page, enforced by caps) ──────────
 
@@ -590,6 +616,83 @@ List<({String name, int count})> deriveTopCategories(
       return byCount != 0 ? byCount : a.name.compareTo(b.name);
     });
   return out.take(3).toList();
+}
+
+// ── Clinician metric summaries (sleep & biometrics) ──────────────
+
+/// Summary statistics for a biometric integer series (e.g. sleep duration,
+/// deep sleep).
+class ClinicianMetricSummary {
+  final int count;
+  final double min;
+  final double max;
+  final double average;
+
+  const ClinicianMetricSummary({
+    required this.count,
+    required this.min,
+    required this.max,
+    required this.average,
+  });
+}
+
+/// Derives summary statistics from a date-keyed biometric integer series
+/// (e.g. sleep minutes per day). Keeps only values greater than 0 (a zero
+/// in biometric data is a failed read, never a measurement). Returns null
+/// when nothing remains, and otherwise computes count, minimum, maximum,
+/// and the arithmetic mean as a double.
+ClinicianMetricSummary? deriveClinicianMetricSummary(
+  List<(String, int)> series,
+) {
+  final positiveValues = <int>[];
+  for (final record in series) {
+    if (record.$2 > 0) {
+      positiveValues.add(record.$2);
+    }
+  }
+  if (positiveValues.isEmpty) return null;
+
+  var minVal = positiveValues.first.toDouble();
+  var maxVal = positiveValues.first.toDouble();
+  var sum = 0.0;
+  for (final v in positiveValues) {
+    final d = v.toDouble();
+    if (d < minVal) minVal = d;
+    if (d > maxVal) maxVal = d;
+    sum += d;
+  }
+  return ClinicianMetricSummary(
+    count: positiveValues.length,
+    min: minVal,
+    max: maxVal,
+    average: sum / positiveValues.length,
+  );
+}
+
+// TODO_JUNO: assembled from existing ruled labels and the existing Z3 and
+// health-summary line patterns, to be confirmed by Juno before merge; do not
+// present the template as already ruled anywhere.
+
+/// Sleep duration summary line:
+/// Sleep Duration: average <avg> across <count> days [ · range <min> to <max>]
+String clinicianSleepDurationLine(ClinicianMetricSummary summary) {
+  final line =
+      '$clinicianLabelSleepDuration: average ${formatSleepMinutes(summary.average.round())} across ${summary.count} days';
+  if (summary.count > 1) {
+    return '$line \u00B7 range ${formatSleepMinutes(summary.min.round())} to ${formatSleepMinutes(summary.max.round())}';
+  }
+  return line;
+}
+
+/// Deep sleep summary line:
+/// Deep Sleep: average <avg> across <count> days [ · range <min> to <max>]
+String clinicianDeepSleepLine(ClinicianMetricSummary summary) {
+  final line =
+      '$clinicianLabelDeepSleep: average ${formatSleepMinutes(summary.average.round())} across ${summary.count} days';
+  if (summary.count > 1) {
+    return '$line \u00B7 range ${formatSleepMinutes(summary.min.round())} to ${formatSleepMinutes(summary.max.round())}';
+  }
+  return line;
 }
 
 // ── The clinician report data (the renderer's only input) ───────
