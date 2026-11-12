@@ -45,3 +45,10 @@ Command: `flutter test test/clinician_report_test.dart test/progress_report_avai
 - TODO_JUNO items: none.
 - Not verified: flutter test and dart analyze (Flutter SDK not installed on host).
 
+## 8. Completion (availabilityPdfLabel Daily Score)
+- Files changed: flutter/lib/src/data/progress_report_pdf.dart
+- Exact new behavior: availabilityPdfLabel maps 'dailyScore' to 'Daily Score' (ruled label matching clinicianHeadingDailyScore); all other keys keep existing mechanical first-letter uppercase.
+- TODO_JUNO items: none.
+- Not verified: flutter test and live PDF visual rendering (Flutter SDK not installed on host).
+
+
