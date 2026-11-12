@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:tabs_lab/src/data/correlation_engine.dart';
 import 'package:tabs_lab/src/data/medication_change_events.dart';
 import 'package:tabs_lab/src/data/medication_timeline.dart';
 import 'package:tabs_lab/src/data/medications.dart';
@@ -171,6 +172,14 @@ const String clinicianHrSpikesUnavailable =
 /// clinician HR spikes zone, clean read returning no data
 const String clinicianHrSpikesNoData =
     'No heart rate spike data recorded in this range.';
+
+/// clinician Patterns zone, clean read returning no printable patterns
+const String clinicianNoPatternsDetected =
+    'No patterns detected for this period';
+
+/// clinician Patterns zone, insight store load failure
+const String clinicianPatternsUnavailable =
+    'Patterns data could not be retrieved.';
 
 // ── Caps (spec §4.4: fixed one page, enforced by caps) ──────────
 
@@ -849,6 +858,8 @@ class ClinicianReportData {
   final int migraineCount;
   final List<({String name, int count})> topCategories;
   final bool categoriesLoadFailed;
+  final List<InsightRecord> patternInsights;
+  final bool patternsLoadFailed;
 
   const ClinicianReportData({
     required this.snapshot,
@@ -860,6 +871,8 @@ class ClinicianReportData {
     required this.migraineCount,
     required this.topCategories,
     this.categoriesLoadFailed = false,
+    this.patternInsights = const [],
+    this.patternsLoadFailed = false,
   });
 
   /// The range's day span (device-local), from the snapshot's
@@ -1031,6 +1044,8 @@ class ClinicianReportCollector {
       migraineCount: migraines,
       topCategories: top,
       categoriesLoadFailed: categoriesLoadFailed,
+      patternInsights: effectiveSnapshot.correlationInsights,
+      patternsLoadFailed: effectiveSnapshot.correlationInsightsLoadFailed,
     );
   }
 }
