@@ -291,30 +291,35 @@ Classifications:
     - **Code**: `_error = '[${e.code}] Notification permission request failed.';`
     - **Context**: NotificationServiceException rendered in onboarding error Text widget.
     - **Remedy**: Strip `[${e.code}] `; use `'Notification permission request failed.'`.
+    - **Status**: FIXED. Set `_error = 'Notification permission request failed.';`.
 
 43. **`flutter/lib/src/features/onboarding/notification_onboarding_screen.dart:80-81`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `_error = '[PERMISSION_REQUEST_FAILED] Notification permission request failed.';`
     - **Context**: Generic catch rendered in onboarding error Text widget.
     - **Remedy**: Strip `[PERMISSION_REQUEST_FAILED] `; use `'Notification permission request failed.'`.
+    - **Status**: FIXED. Set `_error = 'Notification permission request failed.';`.
 
 44. **`flutter/lib/src/features/onboarding/onboarding_connections_screen.dart:82`**
     - **Classification**: (a) raw exception to UI, (b) bracketed code to UI
     - **Code**: `_error = '[${e.code}] ${e.message}';`
     - **Context**: HealthConnectException during status probe.
     - **Remedy**: Strip `[${e.code}]`; use friendly status message.
+    - **Status**: FIXED. Set `_error = e.message;` (stripping bracketed code).
 
 45. **`flutter/lib/src/features/onboarding/onboarding_connections_screen.dart:115`**
     - **Classification**: (a) raw exception to UI, (b) bracketed code to UI
     - **Code**: `_error = '[${e.code}] ${e.message}';`
     - **Context**: HealthConnectException during permission request.
     - **Remedy**: Strip `[${e.code}]`; use friendly error message.
+    - **Status**: FIXED. Set `_error = e.message;` (stripping bracketed code).
 
 46. **`flutter/lib/src/features/onboarding/onboarding_connections_screen.dart:125`**
     - **Classification**: (a) raw exception to UI, (b) bracketed code to UI
     - **Code**: `setState(() => _error = '[${e.code}] ${e.message}');`
     - **Context**: HealthConnectException during sheet return.
     - **Remedy**: Strip `[${e.code}]`; use friendly error message.
+    - **Status**: FIXED. Set `_error = e.message;` (stripping bracketed code).
 
 ---
 
@@ -324,18 +329,21 @@ Classifications:
     - **Code**: `_snack('$coachCalendarPermissionDeniedMessage [${e.code}]');`
     - **Context**: CalendarException during permission gate.
     - **Remedy**: Strip ` [${e.code}]`; display `coachCalendarPermissionDeniedMessage` cleanly.
+    - **Status**: FIXED. Removed bracketed code; displays clean `coachCalendarPermissionDeniedMessage`.
 
 48. **`flutter/lib/src/features/tools/health_coach_screen.dart:3272`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `return CoachApprovalOutcome.failureAsMessage('$coachCalendarAddFailureMessage [${e.code}]');`
     - **Context**: CalendarException during calendar event add proposal approval.
     - **Remedy**: Strip ` [${e.code}]`; return `coachCalendarAddFailureMessage` cleanly.
+    - **Status**: FIXED. Returns clean `coachCalendarAddFailureMessage`.
 
 49. **`flutter/lib/src/features/tools/health_coach_screen.dart:3301`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `return CoachApprovalOutcome.failureAsMessage('$coachCalendarDeleteFailureMessage [${e.code}]');`
     - **Context**: CalendarException during calendar event delete proposal approval.
     - **Remedy**: Strip ` [${e.code}]`; return `coachCalendarDeleteFailureMessage` cleanly.
+    - **Status**: FIXED. Returns clean `coachCalendarDeleteFailureMessage`.
 
 ---
 

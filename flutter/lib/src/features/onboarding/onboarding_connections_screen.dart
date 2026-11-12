@@ -79,7 +79,7 @@ class _OnboardingConnectionsScreenState
       if (mounted) {
         setState(() {
           _status ??= HealthConnectStatus.notConnected;
-          _error = '[${e.code}] ${e.message}';
+          _error = e.message;
         });
       }
     }
@@ -112,7 +112,7 @@ class _OnboardingConnectionsScreenState
       if (mounted) {
         setState(() {
           _requesting = false;
-          _error = '[${e.code}] ${e.message}';
+          _error = e.message;
         });
       }
     }
@@ -122,7 +122,7 @@ class _OnboardingConnectionsScreenState
     try {
       await _service.openHealthConnectSettings();
     } on HealthConnectException catch (e) {
-      if (mounted) setState(() => _error = '[${e.code}] ${e.message}');
+      if (mounted) setState(() => _error = e.message);
     }
   }
 

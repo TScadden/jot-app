@@ -3033,10 +3033,6 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
           bool granted;
           try {
             granted = await _runCalendarPermissionGate();
-          } on CalendarException catch (e) {
-            _snack('$coachCalendarPermissionDeniedMessage '
-                '[${e.code}]');
-            return;
           } catch (_) {
             _snack(coachCalendarPermissionDeniedMessage);
             return;
@@ -3264,12 +3260,6 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
           const CoachApprovalOutcome.failureAsMessage(
               coachCalendarNullUriMessage),
       };
-    } on CalendarException catch (e) {
-      // Native's outer catch posts FriendlyErrors
-      // .coachCalendarAddFailure; the visible code is appended so
-      // a screenshot still diagnoses the bridge failure (LESSONS).
-      return CoachApprovalOutcome.failureAsMessage(
-          '$coachCalendarAddFailureMessage [${e.code}]');
     } catch (_) {
       return const CoachApprovalOutcome.failureAsMessage(
           coachCalendarAddFailureMessage);
@@ -3296,9 +3286,6 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
       return CoachApprovalOutcome.failureAsMessage(
           coachCalendarDeleteNotFoundMessage(
               parsed.calendarDeleteTitle!));
-    } on CalendarException catch (e) {
-      return CoachApprovalOutcome.failureAsMessage(
-          '$coachCalendarDeleteFailureMessage [${e.code}]');
     } catch (_) {
       return const CoachApprovalOutcome.failureAsMessage(
           coachCalendarDeleteFailureMessage);

@@ -754,7 +754,7 @@ void main() {
       expect(bridge.callsTo('insertEvent'), hasLength(1));
       expect(
           find.text('I could not add that to your calendar. Want me '
-              'to try again? [INVALID_ARGS]'),
+              'to try again?'),
           findsOneWidget);
       expect(find.text('Approve & Add'), findsOneWidget); // pending
       expect(find.text('✓ Event Scheduled & Added to Calendar'),
@@ -774,7 +774,7 @@ void main() {
       expect(bridge.callsTo('deleteEvents'), hasLength(1));
       expect(
           find.text('I could not remove that from your calendar. '
-              'Want me to try again? [INVALID_ARGS]'),
+              'Want me to try again?'),
           findsOneWidget);
       expect(find.text('Approve & Delete'), findsOneWidget); // pending
       expect(find.text('✓ Event Deleted from Calendar'), findsNothing);
@@ -814,7 +814,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(
           find.text('I could not add that to your calendar. Want me '
-              'to try again? [CALENDAR_INSERT_FAILED]'),
+              'to try again?'),
           findsOneWidget);
       expect(find.text('Approve & Add'), findsOneWidget);
     });
