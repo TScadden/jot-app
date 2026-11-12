@@ -51,4 +51,11 @@ Command: `flutter test test/clinician_report_test.dart test/progress_report_avai
 - TODO_JUNO items: none.
 - Not verified: flutter test and live PDF visual rendering (Flutter SDK not installed on host).
 
+## 9. Completion (ClinicianReportCollector Daily Score Outcome)
+- Files changed: flutter/lib/src/data/clinician_report.dart
+- Status mapping: scoreLoader throw -> DataSourceStatus.error (count 0); success -> series.isEmpty ? DataSourceStatus.noData : DataSourceStatus.success (count series.length).
+- Snapshot: effective snapshot carrying updated dailyScore sectionMetadata returned in ClinicianReportData.
+- TODO_JUNO items: none.
+- Not verified: flutter test and dart analyze (Flutter SDK not installed on host).
+
 
