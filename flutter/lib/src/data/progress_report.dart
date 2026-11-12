@@ -976,6 +976,12 @@ class ReportDataCollector {
     meta('logs', pullFailed ? DataSourceStatus.error : DataSourceStatus.success,
         entries.length);
 
+    // 2. Daily score.
+    meta(
+        'dailyScore',
+        pullFailed ? DataSourceStatus.error : DataSourceStatus.success,
+        0);
+
     // 3. Conditions (profile list).
     meta(
         'conditions',
@@ -1160,7 +1166,7 @@ class ReportDataCollector {
     // metadata map above is filled in completion order).
     final ordered = <String, SectionMetadata>{};
     for (final key in const [
-      'logs', 'conditions', 'medications', 'documents', 'bloodPressure',
+      'logs', 'dailyScore', 'conditions', 'medications', 'documents', 'bloodPressure',
       'sleep', 'deepSleep', 'heartRate', 'hrv', 'calories', 'hrSpikes',
     ]) {
       final m = metadata[key];
