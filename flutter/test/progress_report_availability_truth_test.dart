@@ -453,7 +453,7 @@ void main() {
       expect(
         z8,
         contains(
-            'Data availability: Sleep: Available from stored history (1 records); '
+            'Sleep: Available from stored history (1 records); '
             'DeepSleep: Available from stored history (1 records)'),
       );
     });
