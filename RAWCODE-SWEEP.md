@@ -382,24 +382,28 @@ Classifications:
     - **Code**: `_loadError = 'Something went wrong loading history: $e';`
     - **Context**: Catch block during history load, rendered in full-screen error Text widget.
     - **Remedy**: Replace with `'Something went wrong loading history. Please try again.'`.
+    - **Status**: FIXED. Replaced with `TODO_JUNO_HISTORY_LOAD_ERROR` constant (`'Something went wrong loading history. Please try again.'`).
 
 51. **`flutter/lib/src/features/quicklog/quick_log_screen.dart:375`**
     - **Classification**: (a) raw exception to UI
     - **Code**: `_loadError = 'Something went wrong loading Quick Log: $e';`
     - **Context**: Catch block during initial Quick Log load, rendered in full-screen error Text widget.
     - **Remedy**: Replace with `'Something went wrong loading Quick Log. Please try again.'`.
+    - **Status**: FIXED. Replaced with `TODO_JUNO_QUICKLOG_LOAD_ERROR` constant (`'Something went wrong loading Quick Log. Please try again.'`).
 
 52. **`flutter/lib/src/features/quicklog/quick_log_screen.dart:455`**
     - **Classification**: (a) raw exception to UI
     - **Code**: `_chipsError = 'Suggestions failed: $e';`
     - **Context**: Catch block during chip suggestion generation, rendered in suggestions section error Text widget.
     - **Remedy**: Replace with `'Suggestions unavailable right now.'`.
+    - **Status**: FIXED. Replaced with clean approved wording `"Couldn't load suggestions. Check your connection and retry."` (reused verbatim from base ref `quick_log_screen.dart:441`).
 
 53. **`flutter/lib/src/features/quicklog/quick_log_screen.dart:656`**
     - **Classification**: (a) raw exception to UI
     - **Code**: `setState(() => _saveError = 'Save failed: $e');`
     - **Context**: Catch block during manual entry save, rendered in entry error Text widget.
     - **Remedy**: Replace with `"Couldn't save that entry. Please try again."`.
+    - **Status**: FIXED. Replaced with clean approved wording `"Couldn't save that entry on this device. Try again."` (reused verbatim from base ref `quick_log_screen.dart:641-642`).
 
 54. **`flutter/lib/src/data/voice_input.dart:27`**
     - **Classification**: (b) bracketed code to UI

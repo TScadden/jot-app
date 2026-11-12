@@ -90,6 +90,9 @@ Set<String> activeMedicationNamesFromProfile(Map<String, dynamic>? profile) {
   return out;
 }
 
+const String TODO_JUNO_QUICKLOG_LOAD_ERROR =
+    'Something went wrong loading Quick Log. Please try again.';
+
 class QuickLogScreen extends StatefulWidget {
   final TabsBackend? backend;
   final WeatherApiClient? weatherApi;
@@ -365,14 +368,14 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
           _chipsError == null) {
         _fetchSuggestions();
       }
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       setState(() {
         _firstRefreshDone = true;
         // Keep cached/on-screen values on failure (Home pattern);
         // surface the error only when nothing has ever been shown.
         if (!_everHadCategories) {
-          _loadError = 'Something went wrong loading Quick Log: $e';
+          _loadError = TODO_JUNO_QUICKLOG_LOAD_ERROR;
         }
       });
     }
@@ -449,10 +452,11 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         _chipsLoading = false;
         _chipsError = null;
       });
-    } catch (e) {
+    } catch (_) {
       setState(() {
         _chipsLoading = false;
-        _chipsError = 'Suggestions failed: $e';
+        _chipsError =
+            "Couldn't load suggestions. Check your connection and retry.";
       });
     }
   }
@@ -651,9 +655,10 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Entry logged · $_todayCount today')),
       );
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
-      setState(() => _saveError = 'Save failed: $e');
+      setState(() => _saveError =
+          "Couldn't save that entry on this device. Try again.");
     } finally {
       _saveInFlight = false;
     }
