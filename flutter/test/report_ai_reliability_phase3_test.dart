@@ -480,6 +480,68 @@ void main() {
     });
   });
 
+  group('Phase 4 empty AI response', () {
+    test('HTTP 200 with empty string result retries as server class '
+        '(2 attempts), then holds', () async {
+      var calls = 0;
+      final outcome = await generate(pipelineFor(
+        backendWithData(),
+        script: (n) {
+          calls = n;
+          return (
+            statusCode: 200,
+            body: {'result': ''},
+            serverError: null,
+            transportFailure: null,
+          );
+        },
+      ));
+      expect(calls, 2);
+      expect(outcome, isNot(isA<ReportReady>()));
+      expect(outcome, isA<ReportAiDecision>());
+      final d = outcome as ReportAiDecision;
+      expect(d.failureClass, AiFailureClass.server);
+      expect(d.aiAttempts, hasLength(2));
+      expect(
+          d.aiAttempts.every((a) =>
+              a.failureClass == AiFailureClass.server &&
+              a.httpStatus == 200 &&
+              !a.succeeded),
+          isTrue);
+      expect(d.snapshot, isNotNull);
+    });
+
+    test('HTTP 200 with whitespace-only string result retries as server '
+        'class (2 attempts), then holds', () async {
+      var calls = 0;
+      final outcome = await generate(pipelineFor(
+        backendWithData(),
+        script: (n) {
+          calls = n;
+          return (
+            statusCode: 200,
+            body: {'result': '   '},
+            serverError: null,
+            transportFailure: null,
+          );
+        },
+      ));
+      expect(calls, 2);
+      expect(outcome, isNot(isA<ReportReady>()));
+      expect(outcome, isA<ReportAiDecision>());
+      final d = outcome as ReportAiDecision;
+      expect(d.failureClass, AiFailureClass.server);
+      expect(d.aiAttempts, hasLength(2));
+      expect(
+          d.aiAttempts.every((a) =>
+              a.failureClass == AiFailureClass.server &&
+              a.httpStatus == 200 &&
+              !a.succeeded),
+          isTrue);
+      expect(d.snapshot, isNotNull);
+    });
+  });
+
   group('backend 401 fixtures (d)', () {
     TabsBackend backendWith(MockClient client, FakeSessionStore store) =>
         TabsBackend(client: client, sessionStore: store);
