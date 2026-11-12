@@ -46,3 +46,11 @@ This chunk adds the Sleep zone only (HRV and HR zones are Chunk 4):
 - Pair discipline: unavailable form for failure statuses (permissionDenied, stale, error); no-data form for clean empty reads; never merged.
 - TODO_JUNO items: summary line template flagged for Juno confirmation before merge.
 - Not verified: host tests (no Flutter SDK on host; crew runs tests); PDF rendering/layout deferred to rendering chunk.
+
+
+## Completion: Clinician Sleep Zone Rendering
+- Files changed: flutter/lib/src/data/clinician_report_pdf.dart.
+- Decision rule: line builder if summary != null and status is success/storedOnly; no-data constant if status is noData or summary is null with success/storedOnly; unavailable constant for all other statuses or missing metadata.
+- Geometry: 752pt usable height (595x842, marginAll 45), zone cost ~58pt absorbed by Spacer slack; page-count verification deferred to the crew because this host has no Flutter SDK.
+- TODO_JUNO items: none.
+- Not verified: PDF page count and test execution (deferred to the crew because this host has no Flutter SDK).
