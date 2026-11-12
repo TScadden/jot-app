@@ -45,6 +45,113 @@ if (!hasTabsUploadSigning) {
 // pubspec value (1) and the guard below fails the build closed.
 val minProdVersionCode = 10092
 
+// ---- Tabs Lab Play upload signing + version code (Lab Play prep) ----
+// The `labplay` flavor is the SAME Lab identity as `lab`
+// (applicationId com.notel.notel.playground.flutter, label "Tabs Lab")
+// signed for Play with a DEDICATED Lab upload key — never the
+// production tabsUpload key and never the committed debug keystore.
+// Credentials come from a properties file OUTSIDE source control:
+//   ~/workspace/tabs-lab-signing/lab-signing.properties
+// (override the location with the Gradle property
+// labPlay.signingPropertiesFile). Expected keys in that file:
+//   storeFile      path to tabs-lab-upload.jks (absolute, or relative
+//                  to the properties file's own directory)
+//   storePassword  keystore password
+//   keyAlias       key alias (default: tabs-lab-upload)
+//   keyPassword    key password (default: the store password)
+// Nothing secret is stored in this repo. When the file is absent the
+// labplay signing config stays empty and every labplay bundle/APK
+// task FAILS LOUDLY (see the fail-closed guard at the bottom of this
+// file) — it never falls back to debug or any other signing. Lab and
+// prod builds are unaffected by the file's absence.
+// Default location: ~/workspace/tabs-lab-signing/lab-signing.properties,
+// resolved from the HOME environment variable first — on machines
+// where the build runs as a different user than the workspace owner,
+// java's user.home does NOT point at the workspace home, so it is
+// only a fallback candidate. The first existing candidate wins; if
+// none exists, the HOME-based candidate is the path named in the
+// fail-closed guard's error.
+val labPlaySigningCandidates: List<java.io.File> =
+    listOfNotNull(
+        System.getenv("HOME"),
+        System.getProperty("user.home")
+    ).distinct().map {
+        java.io.File(it, "workspace/tabs-lab-signing/lab-signing.properties")
+    }
+val labPlaySigningPropertiesFile: java.io.File =
+    (findProperty("labPlay.signingPropertiesFile") as String?)
+        ?.takeIf { it.isNotBlank() }
+        ?.let { java.io.File(it) }
+        ?: labPlaySigningCandidates.firstOrNull { it.isFile }
+        ?: labPlaySigningCandidates.first()
+val labPlaySigningProperties = java.util.Properties()
+var labPlaySigningPropertiesLoaded = false
+if (labPlaySigningPropertiesFile.isFile) {
+    java.io.FileInputStream(labPlaySigningPropertiesFile).use {
+        labPlaySigningProperties.load(it)
+    }
+    labPlaySigningPropertiesLoaded = true
+}
+val labPlayStoreFileRaw: String? =
+    labPlaySigningProperties.getProperty("storeFile")?.takeIf { it.isNotBlank() }
+val labPlayStoreFile: java.io.File? = labPlayStoreFileRaw?.let { raw ->
+    val candidate = java.io.File(raw)
+    if (candidate.isAbsolute) candidate
+    else java.io.File(labPlaySigningPropertiesFile.parentFile, raw)
+}
+val labPlayStorePassword: String? =
+    labPlaySigningProperties.getProperty("storePassword")?.takeIf { it.isNotBlank() }
+val labPlayKeyAlias: String =
+    labPlaySigningProperties.getProperty("keyAlias")?.takeIf { it.isNotBlank() }
+        ?: "tabs-lab-upload"
+val labPlayKeyPassword: String? =
+    labPlaySigningProperties.getProperty("keyPassword")?.takeIf { it.isNotBlank() }
+        ?: labPlayStorePassword
+val hasLabPlaySigning = labPlaySigningPropertiesLoaded
+    && labPlayStoreFile != null
+    && !labPlayStorePassword.isNullOrBlank()
+    && !labPlayKeyPassword.isNullOrBlank()
+
+if (!hasLabPlaySigning) {
+    logger.warn(
+        "Lab Play signing properties not loaded from " +
+            "${labPlaySigningPropertiesFile.absolutePath} — the labplay " +
+            "flavor cannot be signed for Play. Lab and prod builds are " +
+            "unaffected; labplay bundle/APK tasks will FAIL (see the " +
+            "fail-closed guard below)."
+    )
+}
+
+// ---- Lab Play version-code channel (Lab Play prep) ----
+// The Lab package identity has version-code history separate from
+// production's 100xxx sequence and from the pubspec code (1) that
+// ordinary local Lab APKs carry. The highest Lab code verified on a
+// built artifact for com.notel.notel.playground.flutter is 2001
+// (aapt2 badging on the Oct 28, 2026 Phase 3 evidence APK,
+// 1.0.0 / VC 2001, built with an ad hoc --build-number; Bram's
+// architecture review confirmed this as the primary VC evidence).
+// Play Lab starts in its own 3001+ band so a Play code can never be
+// confused at a glance with a sideload Lab code (<= 2001) or with a
+// production code (100xxx). The first Play Lab code is therefore
+// 3001, and 3001 is the floor. Every Play Lab build supplies its
+// code explicitly with `flutter build appbundle --flavor labplay
+// --build-number=<code>`; an explicit in-band --build-number is
+// honored here. The Gradle property labPlay.versionCode (for CI:
+// ORG_GRADLE_PROJECT_labPlay.versionCode) or the
+// LABPLAY_VERSION_CODE environment variable may override the
+// build-number channel. Only the labplay flavor reads these values;
+// with no labPlay build in flight, lab and prod keep exactly their
+// current version behavior.
+val minLabPlayVersionCode = 3001
+val defaultLabPlayVersionCode = 3001
+val labPlayVersionCodeRaw: String? =
+    (findProperty("labPlay.versionCode") as String?)
+        ?: System.getenv("LABPLAY_VERSION_CODE")
+val labPlayVersionCode: Int =
+    labPlayVersionCodeRaw?.toIntOrNull()
+        ?: if (flutter.versionCode == 1) defaultLabPlayVersionCode
+        else flutter.versionCode
+
 android {
     namespace = "com.notel.notel.playground.flutter"
     compileSdk = flutter.compileSdkVersion
@@ -102,6 +209,17 @@ android {
             keyAlias = tabsUploadKeyAlias
             keyPassword = tabsUploadKeyPassword
         }
+        // Always created so the labplay flavor can reference it. When
+        // the Lab Play properties file is absent its fields stay empty
+        // and any attempt to sign a labplay variant with it fails —
+        // the labplay flavor NEVER falls back to the debug (local
+        // Lab) signing config or to the production tabsUpload config.
+        create("tabsLabUpload") {
+            storeFile = labPlayStoreFile
+            storePassword = labPlayStorePassword
+            keyAlias = labPlayKeyAlias
+            keyPassword = labPlayKeyPassword
+        }
     }
 
     flavorDimensions += "identity"
@@ -116,6 +234,21 @@ android {
             applicationId = "com.notel.notel.playground.flutter"
             manifestPlaceholders["appLabel"] = "Tabs Lab"
             signingConfig = signingConfigs.getByName("debug")
+        }
+        // Lab Play: the Lab identity packaged for Play. SAME
+        // applicationId and label as `lab`; the only differences are
+        // the signing config (the dedicated Lab upload key above,
+        // never the debug keystore) and the versionCode, which comes
+        // from the Lab Play channel (an explicit --build-number, or
+        // labPlay.versionCode / LABPLAY_VERSION_CODE, default 3001)
+        // instead of the pubspec code. versionName still inherits
+        // flutter.versionName from defaultConfig, exactly as `lab` does.
+        create("labplay") {
+            dimension = "identity"
+            applicationId = "com.notel.notel.playground.flutter"
+            manifestPlaceholders["appLabel"] = "Tabs Lab"
+            signingConfig = signingConfigs.getByName("tabsLabUpload")
+            versionCode = labPlayVersionCode
         }
         // Production: the native app's package and label, signed with
         // the Play upload key. See the fail-closed guard at the bottom
@@ -225,6 +358,100 @@ val verifyProdReleaseConfig by tasks.registering {
 tasks.configureEach {
     if (name.startsWith("bundleProd") || name.startsWith("assembleProd")) {
         dependsOn(verifyProdReleaseConfig)
+    }
+}
+
+// ---- Lab Play fail-closed guard (Lab Play prep) ----
+// Mirrors the production guard above for the labplay flavor: a
+// labplay bundle/APK must be impossible to produce without the
+// dedicated Lab upload signing, with a versionCode below the
+// dedicated Play Lab band (3001+), or with a production-sequence
+// code (100xxx). No silent fallback to the debug keystore, the
+// production key, or the pubspec code.
+//   1. Configuration time: any Gradle invocation whose requested
+//      tasks include a labplay bundle or assemble task (e.g.
+//      bundleLabplayRelease / assembleLabplayRelease) fails
+//      immediately on any problem below.
+//   2. A verifyLabPlayReleaseConfig task wired as a dependency of
+//      every bundleLabplay*/assembleLabplay* task, re-checking at
+//      execution time.
+fun labPlayConfigProblems(): List<String> {
+    val problems = mutableListOf<String>()
+    if (!labPlaySigningPropertiesLoaded) {
+        problems += "Lab Play signing properties file not found: " +
+            labPlaySigningPropertiesFile.absolutePath + " (expected " +
+            "keys storeFile, storePassword, keyAlias, keyPassword). " +
+            "Refusing to build Lab Play output that could not be " +
+            "signed with the dedicated Lab upload key."
+    } else if (!hasLabPlaySigning) {
+        problems += "Lab Play signing properties are incomplete in " +
+            labPlaySigningPropertiesFile.absolutePath + " (need " +
+            "storeFile and storePassword; keyPassword defaults to " +
+            "the store password). Refusing to build Lab Play output."
+    } else {
+        val keystore = labPlayStoreFile
+        if (keystore == null || !keystore.exists()) {
+            problems += "Lab Play storeFile does not exist: " +
+                (labPlayStoreFileRaw ?: "<unset>")
+        }
+    }
+    if (labPlayVersionCodeRaw != null && labPlayVersionCodeRaw.toIntOrNull() == null) {
+        problems += "Lab Play versionCode override is not an " +
+            "integer: $labPlayVersionCodeRaw (set it via " +
+            "--build-number, the labPlay.versionCode Gradle " +
+            "property, or the LABPLAY_VERSION_CODE environment " +
+            "variable)."
+    }
+    if (labPlayVersionCode < minLabPlayVersionCode) {
+        problems += "Lab Play versionCode is $labPlayVersionCode " +
+            "but a Play Lab build needs >= $minLabPlayVersionCode " +
+            "(the Play Lab band starts at 3001; the highest " +
+            "sideload Lab code already used is 2001). Pass it " +
+            "explicitly: flutter build appbundle --flavor " +
+            "labplay --build-number=<code>."
+    }
+    if (labPlayVersionCode >= 100000) {
+        problems += "Lab Play versionCode is $labPlayVersionCode, " +
+            "which is in the production 100xxx sequence. Play Lab " +
+            "codes stay in their own band below 100000."
+    }
+    return problems
+}
+
+if ("bundlelabplay" in requestedTaskNames || "assemblelabplay" in requestedTaskNames) {
+    val problems = labPlayConfigProblems()
+    if (problems.isNotEmpty()) {
+        throw GradleException(
+            "Refusing to build Lab Play (bundle/APK):\n - " +
+                problems.joinToString("\n - ")
+        )
+    }
+}
+
+val verifyLabPlayReleaseConfig by tasks.registering {
+    group = "verification"
+    description = "Fails closed if a Lab Play build (bundle or APK) " +
+        "would be built without the Lab upload signing or a " +
+        "Play-valid Lab versionCode."
+    doLast {
+        val problems = labPlayConfigProblems()
+        if (problems.isNotEmpty()) {
+            throw GradleException(
+                "Lab Play build configuration check failed:\n - " +
+                    problems.joinToString("\n - ")
+            )
+        }
+        logger.lifecycle(
+            "Lab Play build config OK: tabsLabUpload signing " +
+                "present, versionCode $labPlayVersionCode >= " +
+                "$minLabPlayVersionCode."
+        )
+    }
+}
+
+tasks.configureEach {
+    if (name.startsWith("bundleLabplay") || name.startsWith("assembleLabplay")) {
+        dependsOn(verifyLabPlayReleaseConfig)
     }
 }
 
