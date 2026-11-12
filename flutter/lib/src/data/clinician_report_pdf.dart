@@ -197,6 +197,49 @@ List<ClinicianLine> clinicianPageLines(ClinicianReportData data) {
   // Z7 — latest lean test: ABSENT. Item 6 is blocked pending
   // clinician review (Juno Item 6 · R1); no placeholder.
 
+  // Z9 — sleep.
+  lines.add((zone: 'Z9', text: clinicianHeadingSleep));
+  String resolveMetricLine({
+    required DataSourceStatus? status,
+    required ClinicianMetricSummary? summary,
+    required String Function(ClinicianMetricSummary) lineBuilder,
+    required String noDataText,
+    required String unavailableText,
+  }) {
+    final isSuccessOrStored =
+        status == DataSourceStatus.success ||
+            status == DataSourceStatus.storedOnly;
+    if (summary != null && isSuccessOrStored) {
+      return lineBuilder(summary);
+    }
+    if (status == DataSourceStatus.noData ||
+        (summary == null && isSuccessOrStored)) {
+      return noDataText;
+    }
+    return unavailableText;
+  }
+
+  lines.add((
+    zone: 'Z9',
+    text: resolveMetricLine(
+      status: s.sectionMetadata['sleep']?.status,
+      summary: deriveClinicianMetricSummary(s.sleepSeries),
+      lineBuilder: clinicianSleepDurationLine,
+      noDataText: clinicianSleepNoData,
+      unavailableText: clinicianSleepUnavailable,
+    ),
+  ));
+  lines.add((
+    zone: 'Z9',
+    text: resolveMetricLine(
+      status: s.sectionMetadata['deepSleep']?.status,
+      summary: deriveClinicianMetricSummary(s.deepSleepSeries),
+      lineBuilder: clinicianDeepSleepLine,
+      noDataText: clinicianDeepSleepNoData,
+      unavailableText: clinicianDeepSleepUnavailable,
+    ),
+  ));
+
   // Z8 — footer.
   final unavailable = [
     for (final e in s.sectionMetadata.entries)
@@ -453,6 +496,7 @@ Future<List<int>> buildClinicianPdfBytes(ClinicianReportData data,
           zoneBlock('Z3', chart: data.scoredDays >= 2),
           zoneBlock('Z4'),
           zoneBlock('Z5'),
+          zoneBlock('Z9'),
           pw.Spacer(),
           pw.Container(height: 0.7, color: _rgb(200, 200, 200)),
           pw.SizedBox(height: 4),
