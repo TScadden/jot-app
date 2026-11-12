@@ -199,10 +199,10 @@ List<ClinicianLine> clinicianPageLines(ClinicianReportData data) {
 
   // Z9 — sleep.
   lines.add((zone: 'Z9', text: clinicianHeadingSleep));
-  String resolveMetricLine({
+  String resolveMetricLine<T>({
     required DataSourceStatus? status,
-    required ClinicianMetricSummary? summary,
-    required String Function(ClinicianMetricSummary) lineBuilder,
+    required T? summary,
+    required String Function(T) lineBuilder,
     required String noDataText,
     required String unavailableText,
   }) {
@@ -237,6 +237,42 @@ List<ClinicianLine> clinicianPageLines(ClinicianReportData data) {
       lineBuilder: clinicianDeepSleepLine,
       noDataText: clinicianDeepSleepNoData,
       unavailableText: clinicianDeepSleepUnavailable,
+    ),
+  ));
+
+  // Z10 — HRV.
+  lines.add((zone: 'Z10', text: clinicianHeadingHrv));
+  lines.add((
+    zone: 'Z10',
+    text: resolveMetricLine(
+      status: s.sectionMetadata['hrv']?.status,
+      summary: deriveClinicianMetricSummaryD(s.hrvSeries),
+      lineBuilder: clinicianHrvLine,
+      noDataText: clinicianHrvNoData,
+      unavailableText: clinicianHrvUnavailable,
+    ),
+  ));
+
+  // Z11 — Heart Rate.
+  lines.add((zone: 'Z11', text: clinicianHeadingRestingHeartRate));
+  lines.add((
+    zone: 'Z11',
+    text: resolveMetricLine(
+      status: s.sectionMetadata['heartRate']?.status,
+      summary: deriveClinicianMetricSummary(s.heartRateSeries),
+      lineBuilder: clinicianRestingHrLine,
+      noDataText: clinicianRestingHrNoData,
+      unavailableText: clinicianRestingHrUnavailable,
+    ),
+  ));
+  lines.add((
+    zone: 'Z11',
+    text: resolveMetricLine(
+      status: s.sectionMetadata['hrSpikes']?.status,
+      summary: deriveClinicianSpikeSummary(s.heartRateSpikes),
+      lineBuilder: clinicianHrSpikesLine,
+      noDataText: clinicianHrSpikesNoData,
+      unavailableText: clinicianHrSpikesUnavailable,
     ),
   ));
 
@@ -497,6 +533,8 @@ Future<List<int>> buildClinicianPdfBytes(ClinicianReportData data,
           zoneBlock('Z4'),
           zoneBlock('Z5'),
           zoneBlock('Z9'),
+          zoneBlock('Z10'),
+          zoneBlock('Z11'),
           pw.Spacer(),
           pw.Container(height: 0.7, color: _rgb(200, 200, 200)),
           pw.SizedBox(height: 4),
