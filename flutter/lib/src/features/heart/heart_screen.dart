@@ -192,7 +192,6 @@ class _HeartScreenState extends State<HeartScreen> {
       // data still arrived).
       final errCode = _service.lastReadErrorCode;
       final partialCode = _service.lastPartialErrorCode;
-      final errDetails = _service.lastReadErrorDetails;
       // A hard failure must NOT stamp the cache's lastSyncAt —
       // "Synced just now" over a failed load is founder defect #3 —
       // and must not be persisted as a fresh blob. A partial read
@@ -215,18 +214,10 @@ class _HeartScreenState extends State<HeartScreen> {
         _lastSyncAt = _cache.lastSyncAt;
         _loading = false;
         if (failed) {
-          // Bracketed code + the exception class only (never health
-          // values) so a screenshot diagnoses the failure. This
-          // surfaces even when cached data is on screen — including
-          // when _connected came from the persisted fallback above.
-          _error = errDetails != null
-              ? '[$errCode] Could not read heart rate data. ($errDetails)'
-              : '[$errCode] Could not read heart rate data.';
+          _error = 'Could not read heart rate data.';
         } else if (partialCode != null) {
           // Juno J4: partial copy must not claim total failure.
-          _error = errDetails != null
-              ? '[$partialCode] Some heart rate data could not be read and may be missing. ($errDetails)'
-              : '[$partialCode] Some heart rate data could not be read and may be missing.';
+          _error = 'Some heart rate data could not be read and may be missing.';
         } else {
           _error = null;
         }
@@ -293,7 +284,7 @@ class _HeartScreenState extends State<HeartScreen> {
       if (mounted) {
         setState(() {
           _requesting = false;
-          _error = '[${e.code}] ${e.message}';
+          _error = e.message;
         });
       }
     }

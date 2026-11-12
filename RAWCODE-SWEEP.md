@@ -25,24 +25,28 @@ Classifications:
    - **Code**: `SnackBar(content: Text('Export failed [$e]'))`
    - **Context**: Catch block during PDF spike report export.
    - **Remedy**: Replace with approved export failure copy without raw exception interpolation.
+   - **Status**: FIXED. Replaced with `const SnackBar(content: Text('Export failed unexpectedly. Try again.'))` (commit `2e0459d53`).
 
 2. **`flutter/lib/src/features/heart/heart_screen.dart:223-224`**
    - **Classification**: (b) bracketed code to UI
    - **Code**: `_error = errDetails != null ? '[$errCode] Could not read heart rate data. ($errDetails)' : '[$errCode] Could not read heart rate data.';`
    - **Context**: State variable rendered in error banner.
    - **Remedy**: Strip bracketed code prefix and technical details; use approved human wording `'Could not read heart rate data.'`.
+   - **Status**: FIXED. Replaced with clean approved wording `_error = 'Could not read heart rate data.';`.
 
 3. **`flutter/lib/src/features/heart/heart_screen.dart:228-229`**
    - **Classification**: (b) bracketed code to UI
    - **Code**: `_error = errDetails != null ? '[$partialCode] Some heart rate data could not be read and may be missing. ($errDetails)' : '[$partialCode] Some heart rate data could not be read and may be missing.';`
    - **Context**: State variable rendered in warning banner.
    - **Remedy**: Strip bracketed code and technical details; use approved human wording `'Some heart rate data could not be read and may be missing.'`.
+   - **Status**: FIXED. Replaced with clean approved wording `_error = 'Some heart rate data could not be read and may be missing.';`.
 
 4. **`flutter/lib/src/features/heart/heart_screen.dart:296`**
    - **Classification**: (a) raw exception to UI, (b) bracketed code to UI
    - **Code**: `_error = '[${e.code}] ${e.message}';`
    - **Context**: HealthConnectException during permission request rendered in UI.
    - **Remedy**: Replace with clean user-friendly permission error copy.
+   - **Status**: FIXED. Replaced with clean copy `_error = e.message;` (stripping bracketed code prefix).
 
 5. **`flutter/lib/src/features/heart/heart_screen.dart:238`**
    - **Classification**: (c) already human wording, checked clean
