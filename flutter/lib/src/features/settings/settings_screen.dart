@@ -728,6 +728,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         projectEnabled: _data.projectReminderEnabled,
         checkInEnabled: _checkInEnabled,
         eventEnabled: _data.eventReminderEnabled,
+        focusTests: _data.focusTests,
         events: _counters
             .map((c) => EventReminderRequest(
                   counterId: c.id,

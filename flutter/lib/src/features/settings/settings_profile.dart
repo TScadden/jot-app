@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:tabs_lab/src/data/focus_test.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -42,6 +43,13 @@ class SettingsProfileData {
   final String counterHistoryRaw;
   final String medicationsRaw;
   final String conditionsRaw;
+
+  /// The profile's `focusState` blob, raw — the Project Focus
+  /// tests behind the Project Focus reminder gate. Carried in the
+  /// same style as [eventCountersRaw]; decoded through the ONE
+  /// shared parse path ([focusTests]) so Settings and the
+  /// first-run resync can never drift on how a test is read.
+  final String focusStateRaw;
   final List<QuickLogInsight> insights;
 
   /// Round 65 — knowledge documents from the pull's top-level
@@ -75,6 +83,7 @@ class SettingsProfileData {
     this.counterHistoryRaw = '',
     this.medicationsRaw = '',
     this.conditionsRaw = '',
+    this.focusStateRaw = '',
     this.insights = const [],
     this.documents = const [],
   });
@@ -100,6 +109,14 @@ class SettingsProfileData {
   List<Map<String, dynamic>> get conditions =>
       TabsBackend.decodeProfileList(conditionsRaw);
 
+  /// The decoded Project Focus tests — THE shared parse path for
+  /// the pull's `focusState` blob (decode via
+  /// [TabsBackend.decodeProfileList], collect via
+  /// [collectFocusTests]). Both production reminder callers feed
+  /// the reminder projection from this getter.
+  List<FocusTest> get focusTests =>
+      collectFocusTests(TabsBackend.decodeProfileList(focusStateRaw));
+
   SettingsProfileData copyWith({
     String? nickname,
     String? tag,
@@ -123,6 +140,7 @@ class SettingsProfileData {
     String? counterHistoryRaw,
     String? medicationsRaw,
     String? conditionsRaw,
+    String? focusStateRaw,
     List<KnowledgeDocumentMeta>? documents,
   }) {
     return SettingsProfileData(
@@ -151,6 +169,7 @@ class SettingsProfileData {
       counterHistoryRaw: counterHistoryRaw ?? this.counterHistoryRaw,
       medicationsRaw: medicationsRaw ?? this.medicationsRaw,
       conditionsRaw: conditionsRaw ?? this.conditionsRaw,
+      focusStateRaw: focusStateRaw ?? this.focusStateRaw,
       documents: documents ?? this.documents,
       insights: insights,
     );
@@ -199,6 +218,7 @@ class SettingsProfileData {
       counterHistoryRaw: _asRaw(p['counterHistory']),
       medicationsRaw: _asRaw(p['medications']),
       conditionsRaw: _asRaw(p['conditions']),
+      focusStateRaw: _asRaw(p['focusState']),
       documents: KnowledgeDocumentMeta.listFromPull(body),
       insights: insights,
     );
