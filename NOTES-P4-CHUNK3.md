@@ -40,3 +40,9 @@ This chunk adds the Sleep zone only (HRV and HR zones are Chunk 4):
 - Standard report / AI narrative (Chunks 5+).
 - Host flutter runtime execution if Dart/Flutter SDK is not on host PATH.
 - Backend server routes or database migrations (`jot-server` untouched).
+
+## Completion: Sleep Zone Data Prep
+- Files changed: flutter/lib/src/data/clinician_report.dart.
+- Pair discipline: unavailable form for failure statuses (permissionDenied, stale, error); no-data form for clean empty reads; never merged.
+- TODO_JUNO items: summary line template flagged for Juno confirmation before merge.
+- Not verified: host tests (no Flutter SDK on host; crew runs tests); PDF rendering/layout deferred to rendering chunk.
