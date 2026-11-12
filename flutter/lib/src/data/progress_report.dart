@@ -1173,18 +1173,16 @@ class ReportDataCollector {
       correlationInsightsLoadFailed = true;
     }
 
-    // 6. Blood pressure — manual logs filtered to range. (Server BP
-    // storage is dropped on push/pull as of R62, so an empty result
-    // is the honest reachable state; native reports SUCCESS with
-    // the filtered count, including 0.)
+    // 6. Blood pressure — manual logs filtered to range. Server BP
+    // storage was dropped on push/pull as of R62; per Juno Phase 4
+    // ruling B19, status is error since deprecated storage cannot
+    // establish that the patient recorded nothing.
     final allBp = await backend.fetchManualBpLogs();
     final bp = allBp
         .where((r) => !last30Days || r.timeEpochMs >= cutoff)
         .map((r) => ReportBpRecord(r.systolic, r.diastolic, r.timeEpochMs))
         .toList();
-    meta('bloodPressure',
-        pullFailed ? DataSourceStatus.error : DataSourceStatus.success,
-        bp.length);
+    meta('bloodPressure', DataSourceStatus.error, bp.length);
 
     // 7. Health Connect sections.
     onStage?.call('syncing');
