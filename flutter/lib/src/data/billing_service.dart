@@ -253,8 +253,8 @@ const String TODO_JUNO_BILLING_PLAY_PROBLEM =
     'Google Play reported a problem. Please try again.';
 
 const String TODO_JUNO_BILLING_VERIFY_UNREACHABLE =
-    'Verification could not reach the Tabs server. Your purchase is safe '
-    'with Google Play — reopen Tabs to finish activating Premium.';
+    'Verification could not reach the Tabs server. Reopen Tabs once you '
+    'are connected to try again.';
 
 const String TODO_JUNO_BILLING_ACK_FAILED =
     'Your membership is active, but Google Play acknowledgement failed. '
