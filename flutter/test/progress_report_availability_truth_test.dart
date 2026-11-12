@@ -451,7 +451,7 @@ void main() {
       hc.missing = const {};
       final z8 = await z8Lines(await collect());
       expect(
-        z8,
+        z8.join('\n'),
         contains(
             'Sleep: Available from stored history (1 records); '
             'DeepSleep: Available from stored history (1 records)'),
