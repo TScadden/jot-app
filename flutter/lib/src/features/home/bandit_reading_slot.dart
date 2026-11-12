@@ -38,22 +38,31 @@ import 'package:video_player/video_player.dart';
 /// warp on the belly crescent — v5's warp field moved the
 /// whole body (legs sliding on the chair); v6's field is
 /// exactly zero at legs/head/book/paws/chair.
+///
+/// Bandit v8 — the loop asset is v8: same frame, gaze, and
+/// geometry as v6, with the page turn removed entirely per
+/// the founder's decision after the v5/v6 turns. The loop is
+/// breathing and blinks only: the chest-only warp on the
+/// belly crescent (field exactly zero at legs/head/book/
+/// paws/chair), and drawn lids that close fully at each
+/// blink. Paw, forearm, book, and pages hold the rest pose
+/// for all 336 frames.
 class BanditReadingSlot extends StatefulWidget {
   const BanditReadingSlot({super.key});
 
   // Asset swap pattern (PR #82 precedent): code + pubspec move to
   // the new versioned filenames together; the previous version's
   // files are removed in the same change.
-  static const String videoAsset = 'assets/videos/bandit_reading_loop_v6.mp4';
+  static const String videoAsset = 'assets/videos/bandit_reading_loop_v8.mp4';
   static const String posterAsset =
-      'assets/images/bandit_reading_poster_v6.png';
+      'assets/images/bandit_reading_poster_v8.png';
 
   /// Round 4 slot width: 240 × 1.175 = 282dp. At 360dp wide this
   /// still leaves 39dp of page margin on each side.
   static const double slotWidth = 282;
 
   /// The reading frame's aspect (width / height): the v3 frame —
-  /// poster PNG and loop MP4 alike — is 832×992, and v4–v6 are
+  /// poster PNG and loop MP4 alike — is 832×992, and v4–v8 are
   /// built to the same frame.
   static const double frameAspect = 832 / 992;
 
