@@ -47,3 +47,9 @@ Existing clinician PDF zones Z1, Z2, Z4, and Z5 currently conflate load failure 
 - Fallback behavior: When `categoriesLoader` throws, `categoriesLoadFailed` is true and category resolution falls back to `snapshot.categoriesMap` mapped to `QuickLogCategory` entries.
 - TODO_JUNO items: None (all 7 strings ruled by Juno on Nov 12 2026 codified as ruled constants).
 - Not verified: Flutter test execution (Flutter SDK not installed on host; crew runs tests).
+
+## 8. Completion Summary — PDF Zone N/A States
+- Files changed: `flutter/lib/src/data/clinician_report_pdf.dart`
+- Precedence order in Z4: `logsFailed` short-circuits body; else flare/migraine lines, then `categoriesLoadFailed` line, then `topCategories` if non-empty, else `topCategoriesEmpty` if `!categoriesLoadFailed`.
+- TODO_JUNO items: None (all ruled constants used).
+- Not verified: Flutter test execution / PDF rendering (Flutter SDK not installed on host; crew runs tests).
