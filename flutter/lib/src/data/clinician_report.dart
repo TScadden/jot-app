@@ -87,6 +87,36 @@ String clinicianTargetsLine({
 }) =>
     'Targets recorded in Tabs: $electrolyteTarget and $fluidTarget daily.';
 
+// ── Phase 4 strings ruled by Juno on Nov 12 2026 (rulings 1 and 2) ────────
+
+/// clinician Z1, all demographic fields absent
+const String clinicianPatientProfileNotRecorded =
+    'Patient profile details not recorded';
+
+/// clinician Z2, sync pull failure
+const String clinicianMedicationRecordsUnavailable =
+    'Medication records unavailable';
+
+/// clinician Z4, logs pull failure
+const String clinicianLogEntriesUnavailable =
+    'Log entries unavailable';
+
+/// clinician Z5, no change lines
+const String clinicianNoMedChangesRecorded =
+    'No medication changes recorded in audit period';
+
+/// clinician Z5, a captured change below the score window floor
+const String clinicianInsufficientScoreData =
+    'Insufficient score data for 14-day comparison';
+
+/// clinician Z4, categories load failure
+const String clinicianCategoriesUnavailable =
+    'Categories could not be retrieved.';
+
+/// clinician Z4, successful loads and an empty top categories list
+const String clinicianTopCategoriesEmpty =
+    'No category entries recorded in this range.';
+
 // ── Caps (spec §4.4: fixed one page, enforced by caps) ──────────
 
 /// Max medication lines printed in Z2 before the S9 overflow
@@ -585,6 +615,7 @@ class ClinicianReportData {
   final Map<String, int> flareSeverityMix;
   final int migraineCount;
   final List<({String name, int count})> topCategories;
+  final bool categoriesLoadFailed;
 
   const ClinicianReportData({
     required this.snapshot,
@@ -595,6 +626,7 @@ class ClinicianReportData {
     required this.flareSeverityMix,
     required this.migraineCount,
     required this.topCategories,
+    this.categoriesLoadFailed = false,
   });
 
   /// The range's day span (device-local), from the snapshot's
@@ -682,11 +714,23 @@ class ClinicianReportCollector {
             series.length,
           );
 
+    var categoriesLoadFailed = false;
     List<QuickLogCategory> categories = const [];
     try {
       categories = await categoriesLoader();
     } catch (_) {
-      categories = const [];
+      categoriesLoadFailed = true;
+      categories = [
+        for (final entry in snapshot.categoriesMap.entries)
+          QuickLogCategory(
+            id: entry.key,
+            name: entry.value,
+            icon: '',
+            colorHex: '',
+            isDefault: false,
+            sortOrder: 0,
+          ),
+      ];
     }
     final names = <int, String>{
       for (final c in categories) c.id: c.name,
@@ -753,6 +797,7 @@ class ClinicianReportCollector {
       flareSeverityMix: flare.severityMix,
       migraineCount: migraines,
       topCategories: top,
+      categoriesLoadFailed: categoriesLoadFailed,
     );
   }
 }
