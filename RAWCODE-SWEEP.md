@@ -310,6 +310,7 @@ Classifications:
     - **Code**: `content: Text('Could not schedule the appointment reminder [${e.code}]')`
     - **Context**: SnackBar during appointment reminder schedule.
     - **Remedy**: Strip ` [${e.code}]`.
+    - **Status**: FIXED. Removed ` [${e.code}]` suffix.
 
 ---
 

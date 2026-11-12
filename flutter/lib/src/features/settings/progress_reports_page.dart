@@ -521,10 +521,10 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
       } else {
         await notifs.cancel(appointmentReminderId);
       }
-    } on NotificationServiceException catch (e) {
+    } on NotificationServiceException {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Could not schedule the appointment reminder [${e.code}]')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Could not schedule the appointment reminder')));
       }
     }
   }
