@@ -785,7 +785,8 @@ class AiFailure {
   final bool noSession;
 
   /// True when an HTTP response arrived (200) but its body lacks
-  /// a string `result`: a malformed success, classified
+  /// a string `result` or its result is an empty or whitespace-only
+  /// string: a malformed success, classified
   /// [AiFailureClass.server].
   final bool missingResult;
 
@@ -1892,7 +1893,9 @@ class ReportGenerationPipeline {
         return _AiLegResult(_AiLegKind.cancelled, attempts: attempts);
       }
       final result = res.body?['result'];
-      if (res.statusCode == 200 && result is String) {
+      if (res.statusCode == 200 &&
+          result is String &&
+          result.trim().isNotEmpty) {
         attempts.add(AiAttemptRecord(
           attempt: attempt,
           failureClass: null,
