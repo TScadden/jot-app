@@ -31,3 +31,10 @@ Command: `flutter test test/clinician_report_test.dart test/progress_report_avai
 - Full test suite outside the two targeted test files.
 - Live PDF rendering on physical devices or real display drivers.
 - Backend server routes or database migrations (untouched in this chunk).
+
+## 6. Completion (Pkg 1)
+- Files changed: flutter/lib/src/data/progress_report.dart
+- Status derivation: derives from backend sync pull outcome (pullFailed ? error : success) with 0 records.
+- Blocker: Daily Score load outcome is genuinely not available in collect (scores load in ClinicianReportCollector.extend).
+- TODO_JUNO items: none.
+- Not verified: targeted and full test suite (Flutter SDK not installed on host); live PDF rendering.
