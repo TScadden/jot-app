@@ -147,8 +147,8 @@ class TabsBillingBackend implements BillingBackend {
         success: false,
         isUnlimited: false,
         errorMessage: 'Could not reach the Tabs server to verify '
-            'your purchase. Check your connection and reopen Tabs — '
-            'your purchase is safe with Google Play.',
+            'your purchase. Check your connection and reopen Tabs '
+            'to try again.',
       );
     }
     return BillingVerifyOutcome(
@@ -460,8 +460,7 @@ class BillingService {
               phase: BillingPhase.error,
               errorMessage: 'Google Play delivered a purchase '
                   'without a verification token, so it could not '
-                  'be verified. Your purchase is safe with Google '
-                  'Play — reopen Tabs to try again.',
+                  'be verified. Reopen Tabs to try again.',
             ));
             break;
           }
@@ -522,8 +521,7 @@ class BillingService {
         phase: BillingPhase.error,
         errorMessage: outcome.errorMessage ??
             'The Tabs server could not verify your purchase. '
-                'Your purchase is safe with Google Play — reopen '
-                'Tabs to finish activating Premium.',
+                'Reopen Tabs to try again.',
       ));
       // In-session retry: see the catch branch above.
       _verifyAttemptedTokens.remove(purchase.purchaseToken);
