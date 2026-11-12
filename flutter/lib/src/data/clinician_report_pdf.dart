@@ -4,6 +4,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:tabs_lab/src/data/clinician_report.dart';
+import 'package:tabs_lab/src/data/correlation_copy.dart';
 import 'package:tabs_lab/src/data/progress_report.dart';
 import 'package:tabs_lab/src/data/progress_report_pdf.dart'
     show availabilityPdfLabel, availabilityStatusText;
@@ -276,6 +277,21 @@ List<ClinicianLine> clinicianPageLines(ClinicianReportData data) {
     ),
   ));
 
+  // Z12 — Patterns.
+  lines.add((zone: 'Z12', text: correlationTitle));
+  if (data.patternsLoadFailed) {
+    lines.add((zone: 'Z12', text: clinicianPatternsUnavailable));
+  } else {
+    final patternLines = correlationInsightPrintLines(data.patternInsights);
+    if (patternLines.isEmpty) {
+      lines.add((zone: 'Z12', text: clinicianNoPatternsDetected));
+    } else {
+      for (final line in patternLines) {
+        lines.add((zone: 'Z12', text: line));
+      }
+    }
+  }
+
   // Z8 — footer.
   final unavailable = [
     for (final e in s.sectionMetadata.entries)
@@ -535,6 +551,7 @@ Future<List<int>> buildClinicianPdfBytes(ClinicianReportData data,
           zoneBlock('Z9'),
           zoneBlock('Z10'),
           zoneBlock('Z11'),
+          zoneBlock('Z12'),
           pw.Spacer(),
           pw.Container(height: 0.7, color: _rgb(200, 200, 200)),
           pw.SizedBox(height: 4),
