@@ -5,6 +5,7 @@ import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 import 'daily_score_background.dart' show LocalDailyScoreReadyNotifier;
+import 'focus_test.dart';
 import 'migraine_notification.dart' show LocalMigraineNotifier;
 import 'report_ready_notification.dart' show LocalReportReadyNotifier;
 
@@ -40,12 +41,23 @@ import 'report_ready_notification.dart' show LocalReportReadyNotifier;
 /// boot receiver restores schedules after a reboot.
 ///
 /// Known deviation (flagged in the round report): the plugin cannot
-/// run Dart code at fire time, so the habit/project "only if still
+/// run Dart code at fire time, so the habit "only if still
 /// unchecked" gate and the check-in "only if not checked in yet" gate
 /// (both evaluated at fire time in native) cannot be re-evaluated when
-/// the notification fires. The schedules fire daily while the toggle
+/// the notification fires. Those schedules fire daily while the toggle
 /// is on; the subtitle copy on the Notifications page says exactly
 /// what each reminder does.
+///
+/// Project Focus gate fix: the project reminder no longer fires
+/// daily unconditionally. Native `ProjectReminderWorker` evaluates
+/// its gate at fire time (an active, not-yet-completed test with no
+/// check-in for today); the Flutter equivalent is a bounded one-shot
+/// projection — [projectReminderFireTimes] precomputes, at sync
+/// time, the 20:00 dates inside the next
+/// [projectReminderHorizonDays] days on which the native gate WOULD
+/// pass, and [ReminderSync] arms one one-shot per such date. A test
+/// that completes, or a day that gets checked in, drops out at the
+/// next sync; with no qualifying test nothing is armed at all.
 ///
 /// HR spike / delta alerts are NOT scheduled here: native runs them
 /// from `HrSpikeMonitorService` (service/HrSpikeMonitorService.kt), a
@@ -347,6 +359,131 @@ abstract class ReminderIds {
   static const checkIn = 770001;
 }
 
+/// Project Focus one-shot projection horizon: [ReminderSync] looks
+/// this many local days ahead (today included) when projecting
+/// project one-shots, and cancels this many days either side of
+/// today when sweeping stale ones (see [projectReminderCancelIds]).
+const int projectReminderHorizonDays = 35;
+
+/// Base of the projected Project Focus one-shot id block:
+/// `800000 + (epochDay % 10000)` → 800000–809999.
+///
+/// Disjointness (verified against every other id owner in the app):
+/// - Fixed ids 1003 / 1004 / 770001 / 7301 / 7303 / 7304: all lie
+///   outside 800000–809999 (770001 is the largest of them and is
+///   still below the block).
+/// - Event-counter ids ([eventNotificationId]): 700000–799998 —
+///   the block starts at 800000, strictly above that range's top.
+/// - User-reminder blocks (`reminder_alarm_sync.dart`):
+///   101500–699999 — strictly below the block.
+/// Inside the block, distinct dates can share an id only when their
+/// epoch days differ by a multiple of 10000 (~27 years); the
+/// projection horizon and the cancellable window are both 71 days
+/// wide at most, so two dates that could ever be pending at once
+/// never collide.
+const int projectReminderIdBase = 800000;
+
+/// Span of the projected Project Focus one-shot id block (see
+/// [projectReminderIdBase]).
+const int projectReminderIdSpan = 10000;
+
+/// Plugin notification id for the Project Focus one-shot on the
+/// local calendar date of [date] (see [projectReminderIdBase] for
+/// the disjointness proof).
+int projectReminderIdForDate(DateTime date) {
+  final epochDay = DateTime.utc(date.year, date.month, date.day)
+          .millisecondsSinceEpoch ~/
+      Duration.millisecondsPerDay;
+  return projectReminderIdBase + (epochDay % projectReminderIdSpan);
+}
+
+/// Every projected Project Focus id a previous sync could have left
+/// pending around [now]: the ids for local dates from
+/// `today - [projectReminderHorizonDays]` through
+/// `today + [projectReminderHorizonDays]`. A sync never projects
+/// beyond today + horizon, and a one-shot projected for a past date
+/// has already fired (or was projected at most horizon days before
+/// that date), so sweeping this window reaches every stale
+/// projected id.
+Iterable<int> projectReminderCancelIds(DateTime now) sync* {
+  for (var offset = -projectReminderHorizonDays;
+      offset <= projectReminderHorizonDays;
+      offset++) {
+    yield projectReminderIdForDate(
+        DateTime(now.year, now.month, now.day + offset));
+  }
+}
+
+/// The `yyyy-MM-dd` log key for [d] — the key shape of
+/// [FocusTest.logs] and native's `LocalDate.now().toString()`
+/// in `ProjectReminderWorker`.
+String focusLogDateKey(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-'
+    '${d.month.toString().padLeft(2, '0')}-'
+    '${d.day.toString().padLeft(2, '0')}';
+
+/// [d] formatted `EEE MMM dd yyyy` (US locale) — native
+/// `ProjectReminderWorker`'s lock-day comparison format
+/// (`DateTimeFormatter.ofPattern("EEE MMM dd yyyy", Locale.US)`),
+/// the same string the Project Focus screen's lock-in writes as
+/// [FocusTest.lockDayStr].
+String focusLockDayString(DateTime d) {
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+  ];
+  return '${days[d.weekday - 1]} ${months[d.month - 1]} '
+      '${d.day.toString().padLeft(2, '0')} ${d.year}';
+}
+
+/// Whether [test] counts as checked in for the local date of [d] —
+/// native `ProjectReminderWorker`'s rule: the day's log key is
+/// PRESENT in [FocusTest.logs] (any value, true or false) OR the
+/// date's lock-day string equals [FocusTest.lockDayStr] (the lock-in
+/// day itself counts as checked in).
+bool focusTestCheckedInOn(FocusTest test, DateTime d) =>
+    test.logs.containsKey(focusLogDateKey(d)) ||
+    test.lockDayStr == focusLockDayString(d);
+
+/// Whether native `ProjectReminderWorker` would post for [test] if
+/// it ran at [fireTime]: the test has started by then
+/// ([FocusTest.startTimestamp] ≤ fire time), is not completed at
+/// fire time (the worker's `elapsedMs >= durationMs` rule, via
+/// [FocusTest.isCompletedAt]), and is not checked in for the fire
+/// date ([focusTestCheckedInOn]).
+bool focusTestNeedsReminderAt(FocusTest test, DateTime fireTime) {
+  final fireMs = fireTime.millisecondsSinceEpoch;
+  return test.startTimestamp <= fireMs &&
+      !test.isCompletedAt(fireMs) &&
+      !focusTestCheckedInOn(test, fireTime);
+}
+
+/// The bounded Project Focus projection: the 20:00-local fire times
+/// [ReminderSync] arms as one-shots, mirroring native
+/// `ProjectReminderWorker`'s fire-time gate as evaluated at sync
+/// time. For each local date D from today through
+/// today + [projectReminderHorizonDays] days, D's 20:00 fire time
+/// qualifies iff it is strictly after [now] AND at least one test in
+/// [tests] satisfies [focusTestNeedsReminderAt] at that fire time.
+/// Dates are built by calendar-day arithmetic (never 24-hour
+/// durations), so DST transitions cannot skip or repeat a date.
+List<DateTime> projectReminderFireTimes({
+  required DateTime now,
+  required List<FocusTest> tests,
+}) {
+  if (tests.isEmpty) return const [];
+  final out = <DateTime>[];
+  for (var offset = 0; offset <= projectReminderHorizonDays; offset++) {
+    final fire = DateTime(now.year, now.month, now.day + offset, 20);
+    if (!fire.isAfter(now)) continue;
+    if (tests.any((t) => focusTestNeedsReminderAt(t, fire))) {
+      out.add(fire);
+    }
+  }
+  return out;
+}
+
 /// Keeps the device's schedules in step with the persisted reminder
 /// preferences. Called after Settings loads, after any reminder
 /// toggle flips, and after event counters change.
@@ -354,12 +491,27 @@ class ReminderSync {
   final ReminderNotificationService service;
   ReminderSync(this.service);
 
+  /// Cancels EVERY Project Focus schedule a previous sync could
+  /// have left pending: the legacy daily id ([ReminderIds.project])
+  /// and every projected one-shot id in the cancellable window
+  /// ([projectReminderCancelIds]). Runs on every [syncAll] — before
+  /// any re-arm, and on the paths that arm nothing (toggle off,
+  /// OS permission off, empty projection) — so a stale daily or
+  /// one-shot can never survive a sync.
+  Future<void> _cancelProjectSchedules(DateTime n) async {
+    await service.cancel(ReminderIds.project);
+    for (final id in projectReminderCancelIds(n)) {
+      await service.cancel(id);
+    }
+  }
+
   Future<void> syncAll({
     required bool habitEnabled,
     required bool projectEnabled,
     required bool checkInEnabled,
     required bool eventEnabled,
     required List<EventReminderRequest> events,
+    List<FocusTest> focusTests = const [],
     DateTime? now,
   }) async {
     final n = now ?? DateTime.now();
@@ -369,7 +521,7 @@ class ReminderSync {
       // Nothing can fire without the system permission; make sure no
       // stale schedule survives from an earlier grant.
       await service.cancel(ReminderIds.habit);
-      await service.cancel(ReminderIds.project);
+      await _cancelProjectSchedules(n);
       await service.cancel(ReminderIds.checkIn);
       for (final e in events) {
         await service.cancel(eventNotificationId(e.counterId));
@@ -391,19 +543,27 @@ class ReminderSync {
     } else {
       await service.cancel(ReminderIds.habit);
     }
+    // Project Focus: the legacy daily schedule is ALWAYS cancelled
+    // first (with the whole projected window), then — only when the
+    // toggle is on — the bounded one-shot projection is armed: one
+    // one-shot per date on which native's fire-time gate would pass
+    // (see [projectReminderFireTimes]). No active test, or no
+    // qualifying date, arms nothing. Copy and channel are
+    // byte-identical to the retired daily schedule.
+    await _cancelProjectSchedules(n);
     if (projectEnabled) {
-      await service.scheduleDaily(
-        id: ReminderIds.project,
-        title: 'Project Focus Nudge ⏳',
-        body: "Don't forget to complete your project task for the day.",
-        channelId: 'project_reminders',
-        channelName: 'Project Reminders',
-        hour: 20,
-        minute: 0,
-        highImportance: false,
-      );
-    } else {
-      await service.cancel(ReminderIds.project);
+      for (final fire
+          in projectReminderFireTimes(now: n, tests: focusTests)) {
+        await service.scheduleOnce(
+          id: projectReminderIdForDate(fire),
+          title: 'Project Focus Nudge ⏳',
+          body: "Don't forget to complete your project task for the day.",
+          channelId: 'project_reminders',
+          channelName: 'Project Reminders',
+          when: fire,
+          highImportance: false,
+        );
+      }
     }
     if (checkInEnabled) {
       await service.scheduleDaily(
