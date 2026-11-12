@@ -1,3 +1,6 @@
+import java.io.File
+import java.io.FileInputStream
+import java.util.Properties
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -76,18 +79,18 @@ val labPlaySigningCandidates: List<java.io.File> =
         System.getenv("HOME"),
         System.getProperty("user.home")
     ).distinct().map {
-        java.io.File(it, "workspace/tabs-lab-signing/lab-signing.properties")
+        File(it, "workspace/tabs-lab-signing/lab-signing.properties")
     }
 val labPlaySigningPropertiesFile: java.io.File =
     (findProperty("labPlay.signingPropertiesFile") as String?)
         ?.takeIf { it.isNotBlank() }
-        ?.let { java.io.File(it) }
+        ?.let { File(it) }
         ?: labPlaySigningCandidates.firstOrNull { it.isFile }
         ?: labPlaySigningCandidates.first()
-val labPlaySigningProperties = java.util.Properties()
+val labPlaySigningProperties = Properties()
 var labPlaySigningPropertiesLoaded = false
 if (labPlaySigningPropertiesFile.isFile) {
-    java.io.FileInputStream(labPlaySigningPropertiesFile).use {
+    FileInputStream(labPlaySigningPropertiesFile).use {
         labPlaySigningProperties.load(it)
     }
     labPlaySigningPropertiesLoaded = true
@@ -95,9 +98,9 @@ if (labPlaySigningPropertiesFile.isFile) {
 val labPlayStoreFileRaw: String? =
     labPlaySigningProperties.getProperty("storeFile")?.takeIf { it.isNotBlank() }
 val labPlayStoreFile: java.io.File? = labPlayStoreFileRaw?.let { raw ->
-    val candidate = java.io.File(raw)
+    val candidate = File(raw)
     if (candidate.isAbsolute) candidate
-    else java.io.File(labPlaySigningPropertiesFile.parentFile, raw)
+    else File(labPlaySigningPropertiesFile.parentFile, raw)
 }
 val labPlayStorePassword: String? =
     labPlaySigningProperties.getProperty("storePassword")?.takeIf { it.isNotBlank() }
