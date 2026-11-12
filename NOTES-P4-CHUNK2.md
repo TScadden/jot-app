@@ -41,3 +41,9 @@ Existing clinician PDF zones Z1, Z2, Z4, and Z5 currently conflate load failure 
 - Host flutter runtime execution (Flutter binary not installed in Tyson PC host environment).
 - Backend server routes or database migrations (`jot-server` untouched).
 - Biometric zones (Z-Sleep, Z-HRV, Z-HR) or new zones (deferred to Chunks 3 and 4).
+
+## 7. Completion Summary
+- Files changed: `flutter/lib/src/data/clinician_report.dart`
+- Fallback behavior: When `categoriesLoader` throws, `categoriesLoadFailed` is true and category resolution falls back to `snapshot.categoriesMap` mapped to `QuickLogCategory` entries.
+- TODO_JUNO items: None (all 7 strings ruled by Juno on Nov 12 2026 codified as ruled constants).
+- Not verified: Flutter test execution (Flutter SDK not installed on host; crew runs tests).
