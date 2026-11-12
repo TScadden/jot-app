@@ -12,3 +12,10 @@
 - Fixture expressibility: all fixtures cleanly expressible with existing helpers and direct ClinicianReportData constructors; no blocker lines.
 - TODO_JUNO items: none.
 - Host execution: tests were NOT run on this host (Flutter SDK not installed; crew runs them).
+
+## Completion: Standard Report Truth Tests
+- Group added: 'Phase 4 standard report truth' (Daily Score metadata, Blood pressure B19, Correlation bridge, Request payload).
+- Helper extension: collect extended with optional insightsLoader preserving existing calls.
+- Harness limitation: none (no blocker lines).
+- TODO_JUNO items: none.
+- Host execution: tests were NOT run on this host (Flutter SDK not installed; crew runs them).
