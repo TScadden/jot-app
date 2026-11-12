@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/clinician_report.dart';
 import 'package:tabs_lab/src/data/clinician_report_pdf.dart';
+import 'package:tabs_lab/src/data/correlation_copy.dart';
+import 'package:tabs_lab/src/data/correlation_engine.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
@@ -243,10 +245,14 @@ void main() {
     hc = _FakeHc();
   });
 
-  Future<ReportSnapshot> collect() => ReportDataCollector(
+  Future<ReportSnapshot> collect({
+    Future<List<InsightRecord>> Function()? insightsLoader,
+  }) =>
+      ReportDataCollector(
         backend: _Backend(),
         hc: hc,
         historyQueries: HealthHistoryQueries(hc: hc, store: store),
+        insightsLoader: insightsLoader,
       ).collect(
         selectedCategories: [_cat(1, 'Symptoms')],
         last30Days: true,
@@ -496,6 +502,100 @@ void main() {
       // Exactly the two real failures, nothing else.
       expect(union.failedMetrics,
           {HistoryMetric.sleep, HistoryMetric.restingHr});
+    });
+  });
+
+  group('Phase 4 standard report truth', () {
+    const record = InsightRecord(
+      familyId: 'F1',
+      splitId: 'F1a',
+      windowKey: 'last90d',
+      state: InsightState.numbers,
+      groups: [
+        InsightGroup(label: '8+ hrs sleep', n: 12, mean: 78.5),
+        InsightGroup(label: '<7 hrs sleep', n: 10, mean: 55.0),
+      ],
+      computedAtMs: 1700000000000,
+      throughDate: '2026-10-20',
+      inputFingerprint: 'fp-test',
+    );
+
+    test('Daily Score metadata', () async {
+      final snap = await collect();
+      expect(snap.sectionMetadata.containsKey('dailyScore'), isTrue);
+      expect(availabilityPdfLabel('dailyScore'), 'Daily Score');
+    });
+
+    test('Blood pressure B19', () async {
+      final snap = await collect();
+      final bpMeta = snap.sectionMetadata['bloodPressure'];
+      expect(bpMeta, isNotNull);
+      expect(bpMeta!.status, DataSourceStatus.error);
+      expect(bpMeta.status, isNot(DataSourceStatus.success));
+      expect(bpMeta.status, isNot(DataSourceStatus.noData));
+      expect(
+        availabilityStatusText(bpMeta),
+        'Unavailable. Data could not be retrieved.',
+      );
+    });
+
+    test('Correlation bridge', () async {
+      final snap = await collect(
+        insightsLoader: () async => [record],
+      );
+      expect(snap.correlationInsights, contains(record));
+      expect(snap.correlationInsightsLoadFailed, isFalse);
+
+      final failedSnap = await collect(
+        insightsLoader: () async => throw Exception('storage error'),
+      );
+      expect(failedSnap.correlationInsightsLoadFailed, isTrue);
+      expect(failedSnap.correlationInsights, isEmpty);
+    });
+
+    test('Request payload', () {
+      final expectedSentence = correlationComparisonSentence(
+        groupALabel: record.groups[0].label,
+        groupAN: record.groups[0].n,
+        groupAMean: record.groups[0].mean!,
+        groupBLabel: record.groups[1].label,
+        groupBN: record.groups[1].n,
+        groupBMean: record.groups[1].mean!,
+      );
+
+      final snapWithRecord = ReportSnapshot(
+        last30Days: true,
+        generationTimestampMs: _now.millisecondsSinceEpoch,
+        logEntries: const [],
+        categoriesMap: const {},
+        correlationInsights: [record],
+        correlationInsightsLoadFailed: false,
+      );
+      final reqWithRecord = buildAiReportRequest(snapWithRecord);
+      expect(reqWithRecord['correlation_insights'], isA<String>());
+      expect(reqWithRecord['correlation_insights'], contains(expectedSentence));
+
+      final snapFailed = ReportSnapshot(
+        last30Days: true,
+        generationTimestampMs: _now.millisecondsSinceEpoch,
+        logEntries: const [],
+        categoriesMap: const {},
+        correlationInsights: [record],
+        correlationInsightsLoadFailed: true,
+      );
+      final reqFailed = buildAiReportRequest(snapFailed);
+      expect(reqFailed['correlation_insights'], isNull);
+
+      final snapEmpty = ReportSnapshot(
+        last30Days: true,
+        generationTimestampMs: _now.millisecondsSinceEpoch,
+        logEntries: const [],
+        categoriesMap: const {},
+        correlationInsights: const [],
+        correlationInsightsLoadFailed: false,
+      );
+      final reqEmpty = buildAiReportRequest(snapEmpty);
+      expect(reqEmpty['correlation_insights'], isNull);
     });
   });
 }
