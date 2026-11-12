@@ -19,3 +19,10 @@
 - Harness limitation: none (no blocker lines).
 - TODO_JUNO items: none.
 - Host execution: tests were NOT run on this host (Flutter SDK not installed; crew runs them).
+
+## Completion: Empty AI Response Rejection Tests
+- Tests added: 'Phase 4 empty AI response' (empty string 200 rejection, whitespace-only 200 rejection).
+- Fixture mechanism: scripted aiCall in pipelineFor returning 200 with empty / whitespace string result.
+- Rejection behavior: 2-attempt budget exhausted, classified server failure, held ReportAiDecision.
+- TODO_JUNO items: none.
+- Host execution: tests were NOT run on this host (Flutter SDK not installed; crew runs them).
