@@ -410,18 +410,21 @@ Classifications:
     - **Code**: `throw const VoiceInputException('[VOICE_EMPTY] No speech was recognized — try again.');`
     - **Context**: Rendered directly in `quick_log_screen.dart:717` via `SnackBar(content: Text(e.message))`.
     - **Remedy**: Strip `[VOICE_EMPTY] `; use `'No speech was recognized — try again.'`.
+    - **Status**: FIXED. Removed `[VOICE_EMPTY] ` prefix.
 
 55. **`flutter/lib/src/data/voice_input.dart:31-32`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `throw VoiceInputException('[${e.code}] ${e.message ?? 'Voice input failed.'}');`
     - **Context**: Rendered directly in `quick_log_screen.dart:717` via `SnackBar(content: Text(e.message))`.
     - **Remedy**: Strip `[${e.code}] `; use `e.message ?? 'Voice input failed.'`.
+    - **Status**: FIXED. Removed `[${e.code}] ` prefix.
 
 56. **`flutter/lib/src/data/voice_input.dart:34-35`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `throw const VoiceInputException('[NO_PLUGIN] Voice input is not available in this build.');`
     - **Context**: Rendered directly in `quick_log_screen.dart:717` via `SnackBar(content: Text(e.message))`.
     - **Remedy**: Strip `[NO_PLUGIN] `; use `'Voice input is not available in this build.'`.
+    - **Status**: FIXED. Removed `[NO_PLUGIN] ` prefix.
 
 ---
 
