@@ -64,12 +64,18 @@ List<ClinicianLine> clinicianPageLines(ClinicianReportData data) {
   ];
   if (patient.isNotEmpty) {
     lines.add((zone: 'Z1', text: patient.join(' · ')));
+  } else {
+    lines.add((zone: 'Z1', text: clinicianPatientProfileNotRecorded));
   }
 
   // Z2 — medications (the verified active list, R5).
   lines.add((zone: 'Z2', text: clinicianHeadingMedications));
   if (s.medications.isEmpty) {
-    lines.add((zone: 'Z2', text: clinicianNoMedications));
+    if (s.sectionMetadata['medications']?.status == DataSourceStatus.error) {
+      lines.add((zone: 'Z2', text: clinicianMedicationRecordsUnavailable));
+    } else {
+      lines.add((zone: 'Z2', text: clinicianNoMedications));
+    }
   } else {
     final shown = s.medications.take(clinicianMedicationCap).toList();
     for (final m in shown) {
@@ -111,37 +117,50 @@ List<ClinicianLine> clinicianPageLines(ClinicianReportData data) {
   ));
 
   // Z4 — flare / migraine / symptom summary.
+  final logsFailed =
+      s.sectionMetadata['logs']?.status == DataSourceStatus.error;
   lines.add((zone: 'Z4', text: clinicianHeadingFlareMigraine));
-  if (data.flareDays == 0) {
-    lines.add((zone: 'Z4', text: clinicianNoFlareDays));
+  if (logsFailed) {
+    lines.add((zone: 'Z4', text: clinicianLogEntriesUnavailable));
   } else {
-    lines.add((zone: 'Z4', text: 'Flare days: ${data.flareDays}'));
-    final mix = [
-      for (final sev in clinicianFlareSeverities)
-        if ((data.flareSeverityMix[sev] ?? 0) > 0)
-          '$sev ${data.flareSeverityMix[sev]}',
-    ];
-    if (mix.isNotEmpty) {
-      lines.add((zone: 'Z4', text: mix.join(' · ')));
+    if (data.flareDays == 0) {
+      lines.add((zone: 'Z4', text: clinicianNoFlareDays));
+    } else {
+      lines.add((zone: 'Z4', text: 'Flare days: ${data.flareDays}'));
+      final mix = [
+        for (final sev in clinicianFlareSeverities)
+          if ((data.flareSeverityMix[sev] ?? 0) > 0)
+            '$sev ${data.flareSeverityMix[sev]}',
+      ];
+      if (mix.isNotEmpty) {
+        lines.add((zone: 'Z4', text: mix.join(' · ')));
+      }
+    }
+    if (data.migraineCount == 0) {
+      lines.add((zone: 'Z4', text: clinicianNoMigraineEntries));
+    } else {
+      lines.add((zone: 'Z4', text: 'Migraine entries: ${data.migraineCount}'));
+    }
+    if (data.categoriesLoadFailed) {
+      lines.add((zone: 'Z4', text: clinicianCategoriesUnavailable));
+    }
+    if (data.topCategories.isNotEmpty) {
+      lines.add((
+        zone: 'Z4',
+        text:
+            'Most logged categories: ${data.topCategories.map((c) => '${c.name} (${c.count})').join(', ')}',
+      ));
+    } else if (!data.categoriesLoadFailed) {
+      lines.add((zone: 'Z4', text: clinicianTopCategoriesEmpty));
     }
   }
-  if (data.migraineCount == 0) {
-    lines.add((zone: 'Z4', text: clinicianNoMigraineEntries));
-  } else {
-    lines.add((zone: 'Z4', text: 'Migraine entries: ${data.migraineCount}'));
-  }
-  if (data.topCategories.isNotEmpty) {
-    lines.add((
-      zone: 'Z4',
-      text:
-          'Most logged categories: ${data.topCategories.map((c) => '${c.name} (${c.count})').join(', ')}',
-    ));
-  }
 
-  // Z5 — medication changes (absent entirely when there are no
-  // change lines: no heading, no placeholder — spec §4.3).
-  if (data.medChanges.isNotEmpty) {
-    lines.add((zone: 'Z5', text: clinicianHeadingMedChanges));
+  // Z5 — medication changes (heading always renders, with
+  // empty placeholder or change entries and score availability).
+  lines.add((zone: 'Z5', text: clinicianHeadingMedChanges));
+  if (data.medChanges.isEmpty) {
+    lines.add((zone: 'Z5', text: clinicianNoMedChangesRecorded));
+  } else {
     final shown = data.medChanges.take(clinicianChangeCap).toList();
     for (final change in shown) {
       lines.add((
@@ -164,6 +183,10 @@ List<ClinicianLine> clinicianPageLines(ClinicianReportData data) {
         zone: 'Z5',
         text: clinicianOverflowLine(data.medChanges.length - shown.length),
       ));
+    }
+    if (data.medChangesCaptured &&
+        shown.any((c) => c.beforeWindow == null || c.afterWindow == null)) {
+      lines.add((zone: 'Z5', text: clinicianInsufficientScoreData));
     }
   }
 
