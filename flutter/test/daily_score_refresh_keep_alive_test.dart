@@ -404,7 +404,7 @@ void main() {
       // The exact Juno string, verbatim.
       expect(
           find.text("Keep-alive couldn't start: this refresh wasn't "
-              'protected if you swiped Tabs away. [FGS_START_FAILED]'),
+              'protected if you swiped Tabs away.'),
           findsOneWidget);
       expect(find.text(dailyScoreRefreshKeepAliveFailedLine),
           findsOneWidget);
@@ -430,8 +430,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump();
-      final failureLine = find.text('Refresh failed. Nothing was changed. '
-          '[CAPTURE_FAILED]');
+      final failureLine = find.text('Refresh failed. Nothing was changed.');
       final junoLine = find.text(dailyScoreRefreshKeepAliveFailedLine);
       expect(failureLine, findsOneWidget);
       expect(junoLine, findsOneWidget);
@@ -541,12 +540,12 @@ void main() {
     });
 
     test(
-        'exact Juno line constant: single bracketed code, no '
+        'exact Juno line constant: clean approved string, no '
         'other failure vocabulary', () {
       expect(
           dailyScoreRefreshKeepAliveFailedLine,
           "Keep-alive couldn't start: this refresh wasn't protected "
-          'if you swiped Tabs away. [FGS_START_FAILED]');
+          'if you swiped Tabs away.');
     });
   });
 }

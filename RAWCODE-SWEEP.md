@@ -66,12 +66,14 @@ Classifications:
    - **Code**: `_readError = details != null ? '[$code] Could not read sleep data. ($details)' : '[$code] Could not read sleep data.';`
    - **Context**: State variable rendered in error card.
    - **Remedy**: Strip `[$code]` and details; use approved wording `'Could not read sleep data.'`.
+   - **Status**: FIXED. Set `_readError = 'Could not read sleep data.';`.
 
 8. **`flutter/lib/src/features/tools/sleep_screen.dart:219-220`**
    - **Classification**: (b) bracketed code to UI
    - **Code**: `_readError = details != null ? '[$code] Some sleep data could not be read and may be missing. ($details)' : '[$code] Some sleep data could not be read and may be missing.';`
    - **Context**: State variable rendered in warning card.
    - **Remedy**: Strip `[$code]` and details; use approved wording `'Some sleep data could not be read and may be missing.'`.
+   - **Status**: FIXED. Set `_readError = 'Some sleep data could not be read and may be missing.';`.
 
 ---
 
@@ -81,24 +83,28 @@ Classifications:
    - **Code**: `content: Text('Could not refresh. Please try again. [$code]')`
    - **Context**: Refresh failure SnackBar.
    - **Remedy**: Remove bracketed code suffix; use `'Could not refresh. Please try again.'`.
+   - **Status**: FIXED. Removed ` [$code]` suffix.
 
 10. **`flutter/lib/src/features/home/daily_score_screen.dart:1012-1013`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `Text('Refresh failed. Nothing was changed. [$_refreshErrorCode]')`
     - **Context**: Inline banner on day screen.
     - **Remedy**: Remove bracketed code suffix; use `'Refresh failed. Nothing was changed.'`.
+    - **Status**: FIXED. Removed ` [$_refreshErrorCode]` suffix.
 
 11. **`flutter/lib/src/features/home/daily_score_screen.dart:1020-1022`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `Text('Some data could not be read: ${_refreshFailureCodes.entries.map((e) => '${_captureMetricLabels[e.key] ?? e.key} [${e.value}]').join(', ')}. Using last known values.')`
     - **Context**: Inline banner on day screen listing metrics with bracketed failure codes.
     - **Remedy**: Strip bracketed `[${e.value}]`; show metric names cleanly: `'Some data could not be read: ${_refreshFailureCodes.entries.map((e) => _captureMetricLabels[e.key] ?? e.key).join(', ')}. Using last known values.'`.
+    - **Status**: FIXED. Removed ` [${e.value}]`, rendering metric labels cleanly.
 
 12. **`flutter/lib/src/data/refresh_keep_alive.dart:48-49`**
     - **Classification**: (b) bracketed code to UI
     - **Code**: `const String dailyScoreRefreshKeepAliveFailedLine = "Keep-alive couldn't start: this refresh wasn't protected if you swiped Tabs away. [FGS_START_FAILED]";`
     - **Context**: Rendered at `daily_score_screen.dart:1041` as an inline notice.
     - **Remedy**: Strip bracketed ` [FGS_START_FAILED]`.
+    - **Status**: FIXED. Removed ` [FGS_START_FAILED]` suffix and synchronized corresponding test expectations.
 
 ---
 
