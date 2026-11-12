@@ -1,6 +1,6 @@
 # RAWCODE-SWEEP: Flutter UI Raw Error Codes and Exception Sweep
 
-Status: Inventory Complete (Stage 1)
+Status: sweep complete
 Branch: `agy/raw-code-sweep`
 Repository: `tabs-app` (`flutter/lib`)
 
@@ -52,11 +52,13 @@ Classifications:
    - **Classification**: (c) already human wording, checked clean
    - **Code**: `_error = 'Could not read heart rate data.';`
    - **Notes**: Clean approved string.
+   - **Status**: FIXED. Verified clean approved wording in commit `d6f27cfe8`.
 
 6. **`flutter/lib/src/features/heart/heart_screen.dart:288`**
    - **Classification**: (c) already human wording, checked clean
    - **Code**: `_error = 'No permissions were granted.';`
    - **Notes**: Clean approved string.
+   - **Status**: FIXED. Verified clean approved wording in commit `d6f27cfe8`.
 
 ---
 
@@ -492,3 +494,32 @@ Groups for Stage 2 commits:
 4. **Group 4**: Quick Log & Voice Input (`history_screen.dart`, `quick_log_screen.dart`, `voice_input.dart`)
 5. **Group 5**: Settings & Progress Reports (`settings_screen.dart`, `progress_reports_page.dart`)
 6. **Group 6**: Billing Service (`billing_service.dart`)
+
+---
+
+## 5. TODO_JUNO
+
+The following placeholder constants were introduced where no exact approved string existed verbatim at base ref:
+
+1. **`TODO_JUNO_HISTORY_LOAD_ERROR`** (`flutter/lib/src/features/quicklog/history_screen.dart:219`, site 50)
+   - Value: `'Something went wrong loading history. Please try again.'`
+2. **`TODO_JUNO_QUICKLOG_LOAD_ERROR`** (`flutter/lib/src/features/quicklog/quick_log_screen.dart:93`, site 51)
+   - Value: `'Something went wrong loading Quick Log. Please try again.'`
+3. **`TODO_JUNO_BILLING_PLAY_PROBLEM`** (`flutter/lib/src/data/billing_service.dart:252`, site 57)
+   - Value: `'Google Play reported a problem. Please try again.'`
+4. **`TODO_JUNO_BILLING_VERIFY_UNREACHABLE`** (`flutter/lib/src/data/billing_service.dart:255`, site 60)
+   - Value: `'Verification could not reach the Tabs server. Your purchase is safe with Google Play — reopen Tabs to finish activating Premium.'`
+5. **`TODO_JUNO_BILLING_ACK_FAILED`** (`flutter/lib/src/data/billing_service.dart:259`, site 61)
+   - Value: `'Your membership is active, but Google Play acknowledgement failed. Reopen Tabs to retry it.'`
+
+---
+
+## 6. Strings To Verify
+
+Strings requiring review/verification by product/copy owner (Juno):
+
+- **Site 50** (`history_screen.dart`): `'Something went wrong loading history. Please try again.'` (`TODO_JUNO_HISTORY_LOAD_ERROR`)
+- **Site 51** (`quick_log_screen.dart`): `'Something went wrong loading Quick Log. Please try again.'` (`TODO_JUNO_QUICKLOG_LOAD_ERROR`)
+- **Site 57** (`billing_service.dart`): `'Google Play reported a problem. Please try again.'` (`TODO_JUNO_BILLING_PLAY_PROBLEM`)
+- **Site 60** (`billing_service.dart`): `'Verification could not reach the Tabs server. Your purchase is safe with Google Play — reopen Tabs to finish activating Premium.'` (`TODO_JUNO_BILLING_VERIFY_UNREACHABLE`)
+- **Site 61** (`billing_service.dart`): `'Your membership is active, but Google Play acknowledgement failed. Reopen Tabs to retry it.'` (`TODO_JUNO_BILLING_ACK_FAILED`)
