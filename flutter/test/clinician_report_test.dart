@@ -84,15 +84,23 @@ ReportSnapshot _snapshot({
   List<MedicationEntry> medications = const [],
   List<QuickLogEntry> logEntries = const [],
   Map<String, SectionMetadata> sectionMetadata = const {},
+  Map<int, String>? categoriesMap,
+  int userAge = 22,
+  String userGender = 'Male',
+  double userHeightIn = 0,
+  double userWeightLbs = 0,
+  List<String> conditions = const ['POTS'],
 }) =>
     ReportSnapshot(
       last30Days: true,
       generationTimestampMs: _nowMs,
       logEntries: logEntries,
-      categoriesMap: {for (final c in _cats) c.id: c.name},
-      userAge: 22,
-      userGender: 'Male',
-      conditions: const ['POTS'],
+      categoriesMap: categoriesMap ?? {for (final c in _cats) c.id: c.name},
+      userAge: userAge,
+      userGender: userGender,
+      userHeightIn: userHeightIn,
+      userWeightLbs: userWeightLbs,
+      conditions: conditions,
       medications: medications,
       sectionMetadata: sectionMetadata,
     );
@@ -101,11 +109,19 @@ ClinicianReportCollector _collector({
   Map<String, int>? scores,
   List<MedicationChangeEvent>? events,
   bool eventsFail = false,
+  bool scoreFail = false,
+  bool categoriesFail = false,
 }) =>
     ClinicianReportCollector(
-      scoreLoader: () async => scores ?? _scores60(),
+      scoreLoader: () async {
+        if (scoreFail) throw StateError('scoreLoader failed');
+        return scores ?? _scores60();
+      },
       eventsLoader: () async => eventsFail ? null : (events ?? []),
-      categoriesLoader: () async => _cats,
+      categoriesLoader: () async {
+        if (categoriesFail) throw StateError('categoriesLoader failed');
+        return _cats;
+      },
     );
 
 Future<ClinicianReportData> _extend(
@@ -113,10 +129,17 @@ Future<ClinicianReportData> _extend(
   Map<String, int>? scores,
   List<MedicationChangeEvent>? events,
   bool eventsFail = false,
+  bool scoreFail = false,
+  bool categoriesFail = false,
   List<MedicationEntry> allMedications = const [],
 }) =>
-    _collector(scores: scores, events: events, eventsFail: eventsFail)
-        .extend(snapshot, allMedications: allMedications);
+    _collector(
+      scores: scores,
+      events: events,
+      eventsFail: eventsFail,
+      scoreFail: scoreFail,
+      categoriesFail: categoriesFail,
+    ).extend(snapshot, allMedications: allMedications);
 
 int _pageCount(List<int> bytes) {
   final text = latin1.decode(bytes);
@@ -269,7 +292,9 @@ void main() {
       expect(lines, contains('Not enough data to display chart'));
       expect(lines,
           contains('Daily Score recorded on 0 of 30 days in this range.'));
-      expect(lines, isNot(contains('Medication changes')));
+      expect(lines, contains('Medication changes'));
+      expect(lines,
+          contains('No medication changes recorded in audit period'));
       expect(lines, isNot(contains('Salt and fluids')));
       final bytes = await buildClinicianPdfBytes(data);
       expect(_pageCount(bytes), 1);
@@ -656,7 +681,9 @@ void main() {
         ],
       );
       expect(data.medChanges, isEmpty);
-      expect(_lines(data), isNot(contains('Medication changes')));
+      expect(_lines(data), contains('Medication changes'));
+      expect(_lines(data),
+          contains('No medication changes recorded in audit period'));
     });
 
     test('17b. deleted tombstones produce no declared change lines',
@@ -676,7 +703,9 @@ void main() {
         ],
       );
       expect(data.medChanges, isEmpty);
-      expect(_lines(data, 'Z5'), isEmpty);
+      expect(_lines(data, 'Z5'), contains('Medication changes'));
+      expect(_lines(data, 'Z5'),
+          contains('No medication changes recorded in audit period'));
     });
 
     test('18. month-precision startDate renders at month precision', () async {
@@ -1199,6 +1228,225 @@ void main() {
           medications: medications,
           rangeStart: DateTime(2026, 9, 1),
           rangeEnd: DateTime(2026, 10, 31));
+    });
+  });
+
+  group('Phase 4 truth matrix, part 1', () {
+    test(
+        '(1) extend with scoreFail: dailyScore has status error and Z8 discloses it',
+        () async {
+      final data = await _extend(_snapshot(), scoreFail: true);
+      expect(data.snapshot.sectionMetadata['dailyScore']?.status,
+          DataSourceStatus.error);
+      final z8 = _lines(data, 'Z8');
+      expect(
+          z8.any((l) => l.contains(
+              'Daily Score: Unavailable. Data could not be retrieved.')),
+          isTrue);
+      expect(
+          z8,
+          contains(
+              'Data availability: Daily Score: Unavailable. Data could not be retrieved.'));
+    });
+
+    test(
+        '(2) extend score status: empty scores give noData, default scores give success with recordCount',
+        () async {
+      final noData = await _extend(_snapshot(), scores: const {});
+      expect(noData.snapshot.sectionMetadata['dailyScore']?.status,
+          DataSourceStatus.noData);
+
+      final success = await _extend(_snapshot());
+      expect(success.snapshot.sectionMetadata['dailyScore']?.status,
+          DataSourceStatus.success);
+      expect(success.snapshot.sectionMetadata['dailyScore']?.recordCount,
+          success.scoredDays);
+    });
+
+    test(
+        '(3) extend with categoriesFail: resolution falls back to snapshot categoriesMap',
+        () async {
+      final snapshot = _snapshot(
+        categoriesMap: const {99: 'Migraine Symptoms & Triggers'},
+        logEntries: [
+          _entry(1, 99, _ts(10, 10)),
+          _entry(2, 99, _ts(10, 12)),
+        ],
+      );
+      final data = await _extend(snapshot, categoriesFail: true);
+      expect(data.categoriesLoadFailed, isTrue);
+      expect(data.migraineCount, 2);
+    });
+
+    test(
+        '(4) Z1: all demographic fields absent gives Patient profile details not recorded',
+        () {
+      final data = ClinicianReportData(
+        snapshot: _snapshot(
+          userAge: 0,
+          userGender: '',
+          userHeightIn: 0,
+          userWeightLbs: 0,
+          conditions: const [],
+        ),
+        dailyScoreSeries: const [],
+        medChanges: const [],
+        medChangesCaptured: false,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+      );
+      expect(_lines(data, 'Z1'),
+          contains('Patient profile details not recorded'));
+    });
+
+    test(
+        '(5) Z2: medications status error gives Medication records unavailable, success gives No active medications recorded.',
+        () {
+      final errorData = ClinicianReportData(
+        snapshot: _snapshot(
+          medications: const [],
+          sectionMetadata: const {
+            'medications':
+                SectionMetadata('medications', DataSourceStatus.error, 0),
+          },
+        ),
+        dailyScoreSeries: const [],
+        medChanges: const [],
+        medChangesCaptured: false,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+      );
+      expect(_lines(errorData, 'Z2'),
+          contains('Medication records unavailable'));
+
+      final successData = ClinicianReportData(
+        snapshot: _snapshot(
+          medications: const [],
+          sectionMetadata: const {
+            'medications':
+                SectionMetadata('medications', DataSourceStatus.success, 0),
+          },
+        ),
+        dailyScoreSeries: const [],
+        medChanges: const [],
+        medChangesCaptured: false,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+      );
+      expect(_lines(successData, 'Z2'),
+          contains('No active medications recorded.'));
+    });
+
+    test(
+        '(6) Z4: logs error gives only Log entries unavailable; categoriesLoadFailed gives Categories could not be retrieved.; empty top gives No category entries recorded in this range.',
+        () {
+      final logsErrorData = ClinicianReportData(
+        snapshot: _snapshot(
+          sectionMetadata: const {
+            'logs': SectionMetadata('logs', DataSourceStatus.error, 0),
+          },
+        ),
+        dailyScoreSeries: const [],
+        medChanges: const [],
+        medChangesCaptured: false,
+        flareDays: 3,
+        flareSeverityMix: const {'Rough': 3},
+        migraineCount: 2,
+        topCategories: const [(name: 'Symptoms', count: 3)],
+      );
+      expect(_lines(logsErrorData, 'Z4'), [
+        'Flare days and migraines',
+        'Log entries unavailable',
+      ]);
+
+      final catFailData = ClinicianReportData(
+        snapshot: _snapshot(),
+        dailyScoreSeries: const [],
+        medChanges: const [],
+        medChangesCaptured: false,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+        categoriesLoadFailed: true,
+      );
+      expect(_lines(catFailData, 'Z4'),
+          contains('Categories could not be retrieved.'));
+
+      final emptyTopData = ClinicianReportData(
+        snapshot: _snapshot(),
+        dailyScoreSeries: const [],
+        medChanges: const [],
+        medChangesCaptured: false,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+        categoriesLoadFailed: false,
+      );
+      expect(_lines(emptyTopData, 'Z4'),
+          contains('No category entries recorded in this range.'));
+    });
+
+    test(
+        '(7) Z5: empty medChanges has heading and A4; medChangesCaptured true with null windows has Insufficient score data; false does not',
+        () {
+      final emptyChangesData = ClinicianReportData(
+        snapshot: _snapshot(),
+        dailyScoreSeries: const [],
+        medChanges: const [],
+        medChangesCaptured: false,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+      );
+      final z5Empty = _lines(emptyChangesData, 'Z5');
+      expect(z5Empty, contains('Medication changes'));
+      expect(z5Empty,
+          contains('No medication changes recorded in audit period'));
+
+      final change = ClinicianMedChange(
+        day: DateTime(2026, 10, 10),
+        dateLabel: 'Oct 10, 2026',
+        label: 'Started Ivabradine',
+        captured: true,
+        beforeWindow: null,
+        afterWindow: null,
+      );
+      final capturedNullWindowsData = ClinicianReportData(
+        snapshot: _snapshot(),
+        dailyScoreSeries: const [],
+        medChanges: [change],
+        medChangesCaptured: true,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+      );
+      final z5Captured = _lines(capturedNullWindowsData, 'Z5');
+      expect(z5Captured,
+          contains('Insufficient score data for 14-day comparison'));
+
+      final declaredNullWindowsData = ClinicianReportData(
+        snapshot: _snapshot(),
+        dailyScoreSeries: const [],
+        medChanges: [change],
+        medChangesCaptured: false,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+      );
+      final z5Declared = _lines(declaredNullWindowsData, 'Z5');
+      expect(z5Declared,
+          isNot(contains('Insufficient score data for 14-day comparison')));
     });
   });
 }
