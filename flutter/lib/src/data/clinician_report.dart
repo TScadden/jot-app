@@ -768,15 +768,16 @@ ClinicianSpikeSummary? deriveClinicianSpikeSummary(
   );
 }
 
-// TODO_JUNO: assembled from existing ruled labels and the existing Z3 and
-// health-summary line patterns, to be confirmed by Juno before merge; do not
-// present the template as already ruled anywhere.
+// Ruled by Juno in juno-rulings-4-p4-templates.md, Task 1 Items 1a/1b:
+// APPROVED WITH EDIT — the day-word is 'day' at a count of exactly 1 and
+// 'days' otherwise; every other character is verbatim as templated.
 
 /// Sleep duration summary line:
-/// Sleep Duration: average <avg> across <count> days [ · range <min> to <max>]
+/// Sleep Duration: average <avg> across 1 day (count 1)
+/// Sleep Duration: average <avg> across <count> days [ · range <min> to <max>] (count > 1)
 String clinicianSleepDurationLine(ClinicianMetricSummary summary) {
   final line =
-      '$clinicianLabelSleepDuration: average ${formatSleepMinutes(summary.average.round())} across ${summary.count} days';
+      '$clinicianLabelSleepDuration: average ${formatSleepMinutes(summary.average.round())} across ${summary.count} ${summary.count == 1 ? 'day' : 'days'}';
   if (summary.count > 1) {
     return '$line \u00B7 range ${formatSleepMinutes(summary.min.round())} to ${formatSleepMinutes(summary.max.round())}';
   }
@@ -784,54 +785,58 @@ String clinicianSleepDurationLine(ClinicianMetricSummary summary) {
 }
 
 /// Deep sleep summary line:
-/// Deep Sleep: average <avg> across <count> days [ · range <min> to <max>]
+/// Deep Sleep: average <avg> across 1 day (count 1)
+/// Deep Sleep: average <avg> across <count> days [ · range <min> to <max>] (count > 1)
 String clinicianDeepSleepLine(ClinicianMetricSummary summary) {
   final line =
-      '$clinicianLabelDeepSleep: average ${formatSleepMinutes(summary.average.round())} across ${summary.count} days';
+      '$clinicianLabelDeepSleep: average ${formatSleepMinutes(summary.average.round())} across ${summary.count} ${summary.count == 1 ? 'day' : 'days'}';
   if (summary.count > 1) {
     return '$line \u00B7 range ${formatSleepMinutes(summary.min.round())} to ${formatSleepMinutes(summary.max.round())}';
   }
   return line;
 }
 
-// TODO_JUNO: assembled from existing ruled labels and patterns, to be
-// confirmed by Juno before merge; do not present the template as already
-// ruled anywhere.
+// Ruled by Juno in juno-rulings-4-p4-templates.md, Task 1 Item 2:
+// APPROVED WITH EDIT — the day-word is 'day' at a count of exactly 1 and
+// 'days' otherwise; every other character is verbatim as templated.
 
 /// HRV summary line:
-/// HRV (RMSSD): average <avg> ms across <count> days [ · range <min> ms to <max> ms]
+/// HRV (RMSSD): average <avg> ms across 1 day (count 1)
+/// HRV (RMSSD): average <avg> ms across <count> days [ · range <min> ms to <max> ms] (count > 1)
 String clinicianHrvLine(ClinicianMetricSummary summary) {
   final line =
-      '$clinicianHeadingHrv: average ${summary.average.toStringAsFixed(1)} ms across ${summary.count} days';
+      '$clinicianHeadingHrv: average ${summary.average.toStringAsFixed(1)} ms across ${summary.count} ${summary.count == 1 ? 'day' : 'days'}';
   if (summary.count > 1) {
     return '$line \u00B7 range ${summary.min.toStringAsFixed(1)} ms to ${summary.max.toStringAsFixed(1)} ms';
   }
   return line;
 }
 
-// TODO_JUNO: assembled from existing ruled labels and patterns, to be
-// confirmed by Juno before merge; do not present the template as already
-// ruled anywhere.
+// Ruled by Juno in juno-rulings-4-p4-templates.md, Task 1 Item 3:
+// APPROVED WITH EDIT — the day-word is 'day' at a count of exactly 1 and
+// 'days' otherwise; every other character is verbatim as templated.
 
 /// Resting heart rate summary line:
-/// Resting Heart Rate: average <avg> bpm across <count> days [ · range <min> bpm to <max> bpm]
+/// Resting Heart Rate: average <avg> bpm across 1 day (count 1)
+/// Resting Heart Rate: average <avg> bpm across <count> days [ · range <min> bpm to <max> bpm] (count > 1)
 String clinicianRestingHrLine(ClinicianMetricSummary summary) {
   final line =
-      '$clinicianHeadingRestingHeartRate: average ${clinicianAverageText(summary.average)} bpm across ${summary.count} days';
+      '$clinicianHeadingRestingHeartRate: average ${clinicianAverageText(summary.average)} bpm across ${summary.count} ${summary.count == 1 ? 'day' : 'days'}';
   if (summary.count > 1) {
     return '$line \u00B7 range ${clinicianAverageText(summary.min)} bpm to ${clinicianAverageText(summary.max)} bpm';
   }
   return line;
 }
 
-// TODO_JUNO: assembled from existing ruled labels and patterns, to be
-// confirmed by Juno before merge; do not present the template as already
-// ruled anywhere.
+// Ruled by Juno in juno-rulings-4-p4-templates.md, Task 1 Item 4:
+// APPROVED WITH EDIT — the day-word is 'day' at sampledDays exactly 1
+// and 'days' otherwise; every other character is verbatim as templated.
 
 /// Heart rate spikes summary line:
-/// HR Spikes (>=100 BPM): <total> recorded across <sampledDays> days
+/// HR Spikes (>=100 BPM): <total> recorded across 1 day (sampledDays 1)
+/// HR Spikes (>=100 BPM): <total> recorded across <sampledDays> days (sampledDays > 1)
 String clinicianHrSpikesLine(ClinicianSpikeSummary summary) {
-  return 'HR Spikes (>=100 BPM): ${summary.total} recorded across ${summary.sampledDays} days';
+  return 'HR Spikes (>=100 BPM): ${summary.total} recorded across ${summary.sampledDays} ${summary.sampledDays == 1 ? 'day' : 'days'}';
 }
 
 // ── The clinician report data (the renderer's only input) ───────

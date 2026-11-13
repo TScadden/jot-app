@@ -1734,6 +1734,76 @@ void main() {
     });
 
     test(
+        '(4b) Juno singular day-word pins (juno-rulings-4-p4-templates.md): '
+        'full-string lines at count 1 / sampledDays 1 render across 1 day',
+        () {
+      // Juno merge condition 3: the singular forms are pinned by
+      // FULL-STRING assertions (the prefix-only startsWith checks in
+      // tests (1)-(4) do not pin the day-word). Values are Juno's own
+      // example renderings from the ruling.
+      final singularData = ClinicianReportData(
+        snapshot: _snapshot(
+          sleepSeries: [(_key(10, 20), 450)],
+          deepSleepSeries: [(_key(10, 20), 85)],
+          hrvSeries: [(_key(10, 20), 42.0)],
+          heartRateSeries: [(_key(10, 20), 68)],
+          heartRateSpikes: [(_key(10, 20), 2)],
+          sectionMetadata: const {
+            'sleep': SectionMetadata('sleep', DataSourceStatus.success, 1),
+            'deepSleep':
+                SectionMetadata('deepSleep', DataSourceStatus.success, 1),
+            'hrv': SectionMetadata('hrv', DataSourceStatus.success, 1),
+            'heartRate':
+                SectionMetadata('heartRate', DataSourceStatus.success, 1),
+            'hrSpikes':
+                SectionMetadata('hrSpikes', DataSourceStatus.success, 1),
+          },
+        ),
+        dailyScoreSeries: const [],
+        medChanges: const [],
+        medChangesCaptured: false,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+      );
+      expect(_lines(singularData, 'Z9'),
+          contains('Sleep Duration: average 7h30m across 1 day'));
+      expect(_lines(singularData, 'Z9'),
+          contains('Deep Sleep: average 1h25m across 1 day'));
+      expect(_lines(singularData, 'Z10'),
+          contains('HRV (RMSSD): average 42.0 ms across 1 day'));
+      expect(
+          _lines(singularData, 'Z11'),
+          contains(
+              'Resting Heart Rate: average 68 bpm across 1 day'));
+      expect(_lines(singularData, 'Z11'),
+          contains('HR Spikes (>=100 BPM): 2 recorded across 1 day'));
+
+      // Plural forms stay byte-for-byte as templated (count > 1 keeps
+      // 'days' and the range clause).
+      final pluralData = ClinicianReportData(
+        snapshot: _snapshot(
+          sleepSeries: [(_key(10, 20), 450), (_key(10, 21), 420)],
+          sectionMetadata: const {
+            'sleep': SectionMetadata('sleep', DataSourceStatus.success, 2),
+          },
+        ),
+        dailyScoreSeries: const [],
+        medChanges: const [],
+        medChangesCaptured: false,
+        flareDays: 0,
+        flareSeverityMix: const {},
+        migraineCount: 0,
+        topCategories: const [],
+      );
+      expect(
+          _lines(pluralData, 'Z9'),
+          contains(
+              'Sleep Duration: average 7h15m across 2 days \u00B7 range 7h0m to 7h30m'));
+    });
+
+    test(
         '(5) Patterns zone: comparison sentence, empty patterns, and patternsLoadFailed',
         () {
       const groupA = InsightGroup(label: '8+ hrs sleep', n: 12, mean: 78.5);
