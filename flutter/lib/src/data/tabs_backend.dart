@@ -1493,24 +1493,54 @@ class TabsBackend {
   /// of `[{systolic, diastolic, timeEpochMs, ...}]`. Tolerates null, blank,
   /// and malformed content (→ empty); never throws.
   Future<List<BpRecord>> fetchManualBpLogs() async {
+    final parsed = await _manualBpSource();
+    return parsed.records;
+  }
+
+  /// VC 100132 (Problem 3) — Juno Round 4 Ruling 2's approved
+  /// clean-empty signal for manual BP: true ONLY when the sync
+  /// pull succeeded AND its profile carried a
+  /// `manualBloodPressureLogs` field that parsed successfully
+  /// (a JSON string decoding to a list, or a list directly).
+  /// [fetchManualBpLogs] folds every other outcome — failed pull,
+  /// missing profile, absent/blank field, malformed JSON — into
+  /// the same empty list, so without this signal a clean empty
+  /// is indistinguishable from an unreadable source and the
+  /// report collector must keep calling empty a retrieval
+  /// failure (Ruling 2, R2-2). Never throws.
+  Future<bool> manualBpSourceParsed() async =>
+      (await _manualBpSource()).sourceParsed;
+
+  /// The one manual-BP pull parse: the records plus whether the
+  /// source field was present in a successful pull and parsed.
+  /// (The pull itself is the shared TTL-cached fetch, so calling
+  /// both public methods costs no extra network fetch.)
+  Future<({List<BpRecord> records, bool sourceParsed})>
+      _manualBpSource() async {
     // Shared TTL pull cache; see fetchStreak.
     final body = await fetchSyncPull();
     final profile = body?['profile'];
-    if (profile is! Map<String, dynamic>) return const [];
+    if (profile is! Map<String, dynamic>) {
+      return (records: const <BpRecord>[], sourceParsed: false);
+    }
     final raw = profile['manualBloodPressureLogs'];
     List<dynamic>? list;
     if (raw is String) {
-      if (raw.trim().isEmpty) return const [];
+      if (raw.trim().isEmpty) {
+        return (records: const <BpRecord>[], sourceParsed: false);
+      }
       try {
         final decoded = jsonDecode(raw);
         if (decoded is List) list = decoded;
       } catch (_) {
-        return const [];
+        return (records: const <BpRecord>[], sourceParsed: false);
       }
     } else if (raw is List) {
       list = raw;
     }
-    if (list == null) return const [];
+    if (list == null) {
+      return (records: const <BpRecord>[], sourceParsed: false);
+    }
     final out = <BpRecord>[];
     for (final item in list) {
       if (item is Map<String, dynamic>) {
@@ -1521,7 +1551,7 @@ class TabsBackend {
         }
       }
     }
-    return out;
+    return (records: out, sourceParsed: true);
   }
 
   void close() => _client.close();

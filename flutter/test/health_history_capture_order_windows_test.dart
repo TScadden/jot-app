@@ -24,7 +24,11 @@ import 'package:tabs_lab/src/data/health_history_sync.dart';
 ///   last-capture stamp, otherwise
 ///   clamp(ceil(gapDays) + 2, 31, fullCap) with fullCap 180 for
 ///   RHR / calories and 90 for sleep;
-/// - spikes windows are UNCHANGED (180 first, 31 routine);
+/// - spikes windows were 180 first / 31 routine when written;
+///   VC 100132 keys the spike window off the store's persisted
+///   spikeBackfillComplete flag the same way (180 until a clean
+///   full-window read, 31 after — the seeded routine stores
+///   below pre-stamp it too);
 ///   the HRV window is 90 until the backfill completes and 31
 ///   after (B-02: keyed off the store's persisted
 ///   backfill-complete flag, set only by a clean HRV read — the
@@ -134,6 +138,12 @@ Future<({_RecordingHc hc, HealthHistoryStore store})> _runCapture({
     // keep reading 90 — pinned in
     // health_history_partial_capture_b02_test.dart.)
     await store.markHrvBackfillComplete();
+    // Same modelling for VC 100132 (spikes): a seeded store
+    // stands for one whose 180-day spike backfill already
+    // completed on a clean read, so its routine spike window
+    // is 31. Backfill-incomplete stores keep reading 180 —
+    // pinned in report_accuracy_vc100132_test.dart.
+    await store.markSpikeBackfillComplete();
   }
   final recording = hc ?? _RecordingHc();
   final sync = HealthHistorySync.withDeps(

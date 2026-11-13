@@ -234,6 +234,69 @@ void main() {
     });
   });
 
+  // VC 100132 (Problem 3) — Bram verification addendum: the
+  // production manualBpSourceParsed signal (Juno Ruling 2's R2-2
+  // clean-empty exit) had no direct test; the report accuracy
+  // suite only exercises it through an overridden fake. These pin
+  // the real _manualBpSource parse: parsed ⟺ the pull succeeded
+  // AND its profile carried a manualBloodPressureLogs field that
+  // decoded to a list.
+  group('manualBpSourceParsed', () {
+    TabsBackend backendFor(Object? profileField,
+        {bool includeField = true, int status = 200}) {
+      return backendWith(
+        MockClient((_) async => http.Response(
+              status == 200
+                  ? jsonEncode({
+                      'profile': {
+                        if (includeField)
+                          'manualBloodPressureLogs': profileField,
+                      },
+                    })
+                  : '{"error":"bad token"}',
+              status,
+            )),
+        token: 'tok',
+      );
+    }
+
+    test('a field decoding to a list parses — readings, "[]", '
+        'and a direct list all count', () async {
+      for (final raw in [
+        jsonEncode([
+          {'systolic': 120, 'diastolic': 80, 'timeEpochMs': 1},
+        ]),
+        '[]',
+        <dynamic>[],
+      ]) {
+        TabsBackend.debugResetSharedCaches();
+        expect(await backendFor(raw).manualBpSourceParsed(), isTrue,
+            reason: 'raw=$raw');
+      }
+    });
+
+    test('absent / blank / malformed field does not parse',
+        () async {
+      TabsBackend.debugResetSharedCaches();
+      expect(
+          await backendFor(null, includeField: false)
+              .manualBpSourceParsed(),
+          isFalse,
+          reason: 'field absent');
+      for (final raw in ['', '   ', 'not-json', '[1,2']) {
+        TabsBackend.debugResetSharedCaches();
+        expect(await backendFor(raw).manualBpSourceParsed(), isFalse,
+            reason: 'raw=$raw');
+      }
+    });
+
+    test('a failed pull does not parse', () async {
+      expect(
+          await backendFor('[]', status: 401).manualBpSourceParsed(),
+          isFalse);
+    });
+  });
+
   group('security', () {
     test('HTTPS base URL, no http fallback', () {
       expect(TabsBackend.defaultBaseUrl, startsWith('https://'));

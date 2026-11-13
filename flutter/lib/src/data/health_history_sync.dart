@@ -334,9 +334,16 @@ class HealthHistorySync {
   ///   holds from other metrics (merge-only: stored values are
   ///   never erased, only refreshed/filled).
   /// - calories: full window 180 days (`readCaloriesHistory`)
-  /// - spikes: 180 days on the first-ever backfill only,
-  ///   31 days on routine captures (`readSpikeCounts` is the
-  ///   expensive raw-sample compute)
+  /// - spikes: 180 days until the spike backfill completes,
+  ///   31 days on routine captures after that (`readSpikeCounts`
+  ///   is the expensive raw-sample compute). VC 100132: the
+  ///   window is keyed off the store's persisted
+  ///   spikeBackfillComplete flag — set only by a CLEAN full-
+  ///   window spike read — not off the dayCount-derived
+  ///   first-capture test, which collapsed the window to 31
+  ///   days as soon as any sibling metric merged data or the
+  ///   first spike read failed, so older spike days were never
+  ///   persisted (the B-02 defect shape, spikes edition).
   ///
   /// Resting HR / calories / sleep windows are GAP-AWARE on
   /// routine captures: the full window above applies on the
@@ -577,9 +584,17 @@ class HealthHistorySync {
       for (final r in calOutcome.value) {
         put(r.date, kcal: r.kcal);
       }
+      // VC 100132: spike window keyed off the persisted
+      // backfill flag (see the method doc), and the flag is set
+      // below only by a CLEAN full-window read (no error, no
+      // partial — strict null checks, exactly as the HRV
+      // backfill stamp reads its leg's cleanliness).
+      final spikeWindowDays = _store.spikeBackfillComplete ? 31 : 180;
       final spikeOutcome = await boundedRead(
-          _hc.readSpikeCountsWithOutcome(isFirst ? 180 : 31));
+          _hc.readSpikeCountsWithOutcome(spikeWindowDays));
       noteRead('spikes', spikeOutcome);
+      final spikeReadClean =
+          spikeOutcome.errorCode == null && spikeOutcome.partialCode == null;
       for (final r in spikeOutcome.value) {
         put(r.date, spikes: r.count);
       }
@@ -611,6 +626,14 @@ class HealthHistorySync {
       // and the chunks that failed get re-read.
       if (hrvReadClean) {
         await _store.markHrvBackfillComplete();
+      }
+      // Spike backfill (VC 100132): the persisted flag is set
+      // ONLY by a clean full-window spike read — a partial,
+      // failed, or timed-out read leaves it unset, so the next
+      // capture still spans the full 180 days and the days that
+      // failed get re-read.
+      if (spikeReadClean && spikeWindowDays == 180) {
+        await _store.markSpikeBackfillComplete();
       }
       await _store.markCaptured(now.millisecondsSinceEpoch);
       // R70 Daily Score — after-capture compute trigger: any day

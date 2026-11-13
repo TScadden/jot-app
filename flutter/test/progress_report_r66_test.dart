@@ -280,7 +280,8 @@ void main() {
         buildHealthSummary(fixtureSnapshot()),
         'Avg Heart Rate: 65 bpm across 2 days. '
         'Avg Sleep: 7.5 hrs/night across 2 days. '
-        'Total HR Spikes: 5 recorded. '
+        'Total HR Spikes: 5 recorded across 2 days '
+        '(2026-10-01 to 2026-10-02). '
         'Blood Pressure Avg: 125/85 mmHg across 2 readings. '
         'Avg Calories: 2100 kcal/day across 2 days. '
         'Avg HRV (RMSSD): 55.0 ms across 2 days. '

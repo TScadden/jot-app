@@ -126,6 +126,12 @@ class _RecordingQueries extends HealthHistoryQueries {
     // reply never lands in a fake-async widget test, so collect()
     // would pend forever after the documents gate opens.
     insightsLoader: () async => const [],
+    // VC 100132: collect() also reads stored Daily Scores.
+    // Staged for the same reason as the insights loader above —
+    // the production default reads the history store
+    // (FlutterSecureStorage-backed) and would pend forever in
+    // this fake-async widget test, before the documents gate.
+    scoreLoader: () async => const {},
   );
   return (collector: collector, queries: queries);
 }

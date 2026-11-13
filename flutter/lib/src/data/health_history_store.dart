@@ -592,6 +592,7 @@ class HealthHistoryStore {
     _captureDiagnostics.clear();
     _sleepTotalsRuleVersion = 1;
     _hrvBackfillComplete = false;
+    _spikeBackfillComplete = false;
     _warmed = false;
     _warmLoadedUnownedData = false;
   }
@@ -666,6 +667,28 @@ class HealthHistoryStore {
   /// an existing install re-reads the 90-day window until its
   /// first clean HRV read lands.
   bool get hrvBackfillComplete => _hrvBackfillComplete;
+
+  bool _spikeBackfillComplete = false;
+
+  /// Whether the HR spike 180-day backfill has completed
+  /// (VC 100132, Problem 4): true only once a capture's spike
+  /// read over the full 180-day window has completed CLEANLY
+  /// (no error, no partial). The capture keys its spike window
+  /// off this flag (180 days until complete, 31 after) instead
+  /// of the day count, for exactly the B-02 reason documented on
+  /// [hrvBackfillComplete]: the old dayCount-derived `isFirst`
+  /// collapsed the spike window to 31 days as soon as ANY
+  /// sibling metric merged data (or the first spike read failed
+  /// / timed out — the round-2 report bounds made a >30 s spike
+  /// read a routine outcome on founder-scale data), so spike
+  /// days older than the routine window were never re-read and
+  /// never persisted, and the report's spike series shrank to
+  /// whatever the fresh scan alone covered. Persisted in the
+  /// blob; a blob written before this key existed carries no
+  /// flag and warms as NOT complete, so an existing install
+  /// re-reads the 180-day window until its first clean spike
+  /// read lands.
+  bool get spikeBackfillComplete => _spikeBackfillComplete;
 
   final Map<String, CaptureDiagnostic> _captureDiagnostics = {};
 
@@ -769,6 +792,7 @@ class HealthHistoryStore {
       if (expected != null) _ownerEmail = expected;
       _sleepTotalsRuleVersion = 1;
       _hrvBackfillComplete = false;
+      _spikeBackfillComplete = false;
       _warmed = true;
       return;
     }
@@ -783,6 +807,7 @@ class HealthHistoryStore {
       if (expected != null) _ownerEmail = expected;
       _sleepTotalsRuleVersion = 1;
       _hrvBackfillComplete = false;
+      _spikeBackfillComplete = false;
       _warmed = true;
       return;
     }
@@ -821,6 +846,10 @@ class HealthHistoryStore {
       // absent / invalid → NOT complete, the implicit state of
       // every pre-B-02 blob (see [hrvBackfillComplete]).
       _hrvBackfillComplete = map['hrvBackfillComplete'] == true;
+      // Spike backfill flag (VC 100132): only a literal `true`
+      // counts; absent / invalid → NOT complete, the implicit
+      // state of every pre-flag blob (see [spikeBackfillComplete]).
+      _spikeBackfillComplete = map['spikeBackfillComplete'] == true;
       final diag = map['lastCaptureDiagnostics'];
       if (diag is Map) {
         for (final entry in diag.entries) {
@@ -889,6 +918,7 @@ class HealthHistoryStore {
           'lastCaptureMs': _lastCaptureMs,
           'sleepTotalsRuleVersion': _sleepTotalsRuleVersion,
           'hrvBackfillComplete': _hrvBackfillComplete,
+          'spikeBackfillComplete': _spikeBackfillComplete,
           if (_captureDiagnostics.isNotEmpty)
             'lastCaptureDiagnostics': {
               for (final e in _captureDiagnostics.entries)
@@ -935,6 +965,16 @@ class HealthHistoryStore {
     await _ensureWarmed();
     if (_hrvBackfillComplete) return;
     _hrvBackfillComplete = true;
+    await persist();
+  }
+
+  /// Marks the spike 180-day backfill complete and persists it
+  /// (see [spikeBackfillComplete]). Only ever moves forward,
+  /// exactly like [markHrvBackfillComplete].
+  Future<void> markSpikeBackfillComplete() async {
+    await _ensureWarmed();
+    if (_spikeBackfillComplete) return;
+    _spikeBackfillComplete = true;
     await persist();
   }
 

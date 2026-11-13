@@ -372,7 +372,24 @@ class ReportSnapshot {
   final String userGender;
   final List<String> conditions;
   final List<MedicationEntry> medications;
+
+  /// VC 100132 (Round 4, Problem 1) — the FULL parsed profile
+  /// medication list (active + archived, deleted excluded) for the
+  /// structured `medications` channel of the /api/ai/report payload
+  /// (see [buildAiReportRequest]). [medications] stays the ACTIVE
+  /// list every local render uses; this list is what the server's
+  /// structured-medications guard expects: current AND discontinued
+  /// entries, each with name/dose/frequency/start/end + archived
+  /// flag. Empty when the caller built the snapshot without it —
+  /// the request builder then falls back to [medications].
+  final List<MedicationEntry> profileMedications;
   final List<String> knowledgeDocuments;
+
+  /// VC 100132 (Round 4, Problem 2) — stored Daily Scores in range,
+  /// date keys `yyyy-MM-dd`, values > 0 (the clinician reader's
+  /// filter, reused). Empty until the collector wires the store
+  /// read in; the section metadata count is THIS list's length.
+  final List<(String, int)> dailyScoreSeries;
 
   /// Per-day series, date keys `yyyy-MM-dd`, values > 0 only
   /// (the founder zero rule, applied at collection).
@@ -407,6 +424,8 @@ class ReportSnapshot {
     this.userGender = '',
     this.conditions = const [],
     this.medications = const [],
+    this.profileMedications = const [],
+    this.dailyScoreSeries = const [],
     this.knowledgeDocuments = const [],
     this.heartRateSeries = const [],
     this.sleepSeries = const [],
@@ -431,6 +450,7 @@ class ReportSnapshot {
       bloodPressureSeries.isNotEmpty ||
       conditions.isNotEmpty ||
       medications.isNotEmpty ||
+      dailyScoreSeries.isNotEmpty ||
       knowledgeDocuments.isNotEmpty;
 
   /// Returns a new [ReportSnapshot] with updated section status.
@@ -468,6 +488,8 @@ class ReportSnapshot {
       userGender: userGender,
       conditions: conditions,
       medications: medications,
+      profileMedications: profileMedications,
+      dailyScoreSeries: dailyScoreSeries,
       knowledgeDocuments: knowledgeDocuments,
       heartRateSeries: heartRateSeries,
       sleepSeries: sleepSeries,
@@ -490,9 +512,41 @@ class ReportSnapshot {
 /// (e.g. 165.4, 161.0).
 String _floatText(double v) => v.toString();
 
+/// The report-path label for one medication: `Name dose
+/// (frequency)` when the entry carries a STORED frequency, and
+/// `Name dose` — no frequency phrase at all — when it does not.
+///
+/// VC 100132 correction delta (founder correction, Nov 13): this
+/// helper reads [MedicationEntry.rawFrequency], NEVER the display
+/// getter [MedicationEntry.frequency]. The getter synthesizes
+/// `'Once daily'` from a blank stored frequency
+/// (medications.dart:93-94) — correct for the Tools card, where
+/// it is the app's pinned view, but a fabrication in a report:
+/// ivabradine's stored frequency is blank (`""`), and the
+/// founder's VC 100131 narrative printed "Ivabradine 7.5mg once
+/// daily" by copying this prose line (and the structured payload
+/// carried the same synthesized value). A report states only
+/// what the entry stores. The display getter itself is NOT
+/// changed — its UI behavior is out of this package's scope.
+/// Precedent: [MedicationFieldSnapshot.fromEntry] already
+/// snapshots `rawFrequency` for the change-event channel
+/// (medication_change_events.dart).
+String reportMedicationLabel(MedicationEntry m) {
+  if (m.rawFrequency.trim().isEmpty) return '${m.name} ${m.dose}';
+  return '${m.name} ${m.dose} (${m.rawFrequency})';
+}
+
 /// The enriched `userContext` body field, byte-for-byte native:
 /// `<userContext>\n\nREPORT RANGE: <TYPE> (<days> days)\n` +
 /// profile text.
+///
+/// VC 100132 correction delta: the `Active Medications:` line
+/// renders each entry through [reportMedicationLabel], so a
+/// blank stored frequency emits NO frequency phrase for that
+/// medication (pre-fix it emitted the display getter's
+/// synthesized `(Once daily)`). For every entry WITH a stored
+/// frequency the line is byte-identical to before — the getter
+/// and the raw value agree whenever the raw value is non-blank.
 String buildReportUserContext(ReportSnapshot s) {
   final heightCm = (s.userHeightIn * 2.54).toStringAsFixed(1);
   final b = StringBuffer()
@@ -503,7 +557,7 @@ String buildReportUserContext(ReportSnapshot s) {
   }
   if (s.medications.isNotEmpty) {
     b.write(
-        'Active Medications: ${s.medications.map((m) => '${m.name} ${m.dose} (${m.frequency})').join(', ')}\n');
+        'Active Medications: ${s.medications.map(reportMedicationLabel).join(', ')}\n');
   }
   return '${s.userContext}\n\nREPORT RANGE: ${s.rangeTypeName} '
       '(${s.durationDays} days)\n$b';
@@ -534,7 +588,17 @@ String buildHealthSummary(ReportSnapshot s) {
   }
   if (s.heartRateSpikes.isNotEmpty) {
     final total = s.heartRateSpikes.fold<int>(0, (a, e) => a + e.$2);
-    b.write('Total HR Spikes: $total recorded. ');
+    // VC 100132 (Problem 4): the total is scoped to the days the
+    // spike series actually covers, in the same across-N-days
+    // form every sibling clause uses. The bare form let the
+    // narrative frame a partial-window total (the founder's
+    // 42-day series) as a full-window one ("Over the 180-day
+    // period... A total of 1000 heart rate spikes"). The dates
+    // are the series' own first/last sampled days.
+    final sorted = [...s.heartRateSpikes]
+      ..sort((a, b) => a.$1.compareTo(b.$1));
+    b.write('Total HR Spikes: $total recorded across '
+        '${sorted.length} days (${sorted.first.$1} to ${sorted.last.$1}). ');
   }
   if (s.bloodPressureSeries.isNotEmpty) {
     final sys = s.bloodPressureSeries.map((e) => e.systolic).reduce((a, c) => a + c) /
@@ -563,7 +627,89 @@ String buildHealthSummary(ReportSnapshot s) {
     b.write(
         'Avg Deep Sleep: ${avgHrs.toStringAsFixed(1)} hrs/night across ${s.deepSleepSeries.length} days. ');
   }
+  // VC 100132 (Problem 2): the Daily Score context the AI prompt
+  // and correlations section speak from, in Juno's Round 4
+  // Ruling 1 deterministic template verbatim (the defensible set:
+  // day count, period average, latest score with its date, and
+  // the observed range — range suppressed at count 1). Only when
+  // scores exist; with none, the availability block's noData
+  // status is the whole truth and no clause is invented.
+  if (s.dailyScoreSeries.isNotEmpty) {
+    final series = [...s.dailyScoreSeries]
+      ..sort((a, b) => a.$1.compareTo(b.$1));
+    final avg =
+        series.fold<int>(0, (a, e) => a + e.$2) / series.length;
+    final latest = series.last;
+    final values = series.map((e) => e.$2);
+    final min = values.reduce((a, c) => a < c ? a : c);
+    final max = values.reduce((a, c) => a > c ? a : c);
+    b.write('Daily Score: average ${avg.toStringAsFixed(1)} across '
+        '${series.length} ${series.length == 1 ? 'day' : 'days'} '
+        '· latest ${latest.$2} on ${latest.$1}'
+        '${series.length > 1 ? ' · range $min to $max' : ''}. ');
+  }
   return b.toString();
+}
+
+/// Juno R9-1 §2 genuine-zero sentence (Daily Score, clean empty):
+/// the fetch succeeded and the store held no scores in window.
+const String dailyScoreNoDataSentence =
+    'No Daily Scores were recorded for this period.';
+
+/// Juno R9-2 §3 genuine-zero sentence (Blood Pressure, clean
+/// empty): the local fetch succeeded and returned no readings in
+/// window. "Could not be retrieved" is banned for this case.
+const String bloodPressureNoDataSentence =
+    'No manual Blood Pressure readings were recorded for this period.';
+
+/// The count phrase for an availability line: Juno R9-1 §1 /
+/// R9-2 §1 rule the singular form `(1 record)` at N = 1, at every
+/// site that prints a count (this payload block and the PDF list's
+/// availabilityStatusText alike).
+String availabilityCountPhrase(int recordCount) =>
+    recordCount == 1 ? '(1 record)' : '($recordCount records)';
+
+/// The ruled genuine-zero sentence for a section key, or null when
+/// Juno ruled no section-specific line (the generic form governs).
+String? ruledNoDataSentence(String sectionKey) => switch (sectionKey) {
+      'dailyScore' => dailyScoreNoDataSentence,
+      'bloodPressure' => bloodPressureNoDataSentence,
+      _ => null,
+    };
+
+/// One section's status text in the payload availability block.
+///
+/// VC 100132 Wave 2.5 (Vera A-C3, client half): Daily Score and
+/// Blood Pressure distinguish a clean empty (noData) from a fetch
+/// failure (error) in what the client SENDS, so neither the server
+/// nor the narrative can render a clean empty as a retrieval
+/// failure. The BP segment the client sends is exactly:
+///   success/storedOnly → `Available (N records)` / `(1 record)`
+///   noData (clean empty) →
+///     `Unavailable. No manual Blood Pressure readings were recorded for this period.`
+///   error (fetch failure) → `Unavailable. Data could not be retrieved.`
+/// Daily Score sends the same three shapes with its own R9-1 §2
+/// sentence. Every other section keeps the historic bare
+/// `Unavailable` for any non-available status.
+String _payloadAvailabilityStatus(String key, SectionMetadata meta) {
+  if (meta.status == DataSourceStatus.success ||
+      meta.status == DataSourceStatus.storedOnly) {
+    // Stored-only data IS available (its series is in this very
+    // snapshot) — it carries the success form here, exactly as a
+    // fresh-read success does; its provenance is disclosed in the
+    // PDF availability list (see availabilityStatusText).
+    return 'Available ${availabilityCountPhrase(meta.recordCount)}';
+  }
+  final noDataSentence = ruledNoDataSentence(key);
+  if (noDataSentence == null) return 'Unavailable';
+  return switch (meta.status) {
+    DataSourceStatus.noData => 'Unavailable. $noDataSentence',
+    DataSourceStatus.error ||
+    DataSourceStatus.unavailable ||
+    DataSourceStatus.timedOut =>
+      'Unavailable. Data could not be retrieved.',
+    _ => 'Unavailable',
+  };
 }
 
 /// The anti-hallucination `dataAvailability` block: per-section
@@ -577,15 +723,7 @@ String buildDataAvailability(ReportSnapshot s) {
       'documents' => 'Documents (knowledge base)',
       _ => e.key[0].toUpperCase() + e.key.substring(1),
     };
-    // Stored-only data IS available (its series is in this very
-    // snapshot) — it carries the success form here, exactly as a
-    // fresh-read success does; its provenance is disclosed in the
-    // PDF availability list (see availabilityStatusText).
-    final status = e.value.status == DataSourceStatus.success ||
-            e.value.status == DataSourceStatus.storedOnly
-        ? 'Available (${e.value.recordCount} records)'
-        : 'Unavailable';
-    return '$label: $status';
+    return '$label: ${_payloadAvailabilityStatus(e.key, e.value)}';
   }).join('; ');
 }
 
@@ -699,6 +837,45 @@ List<String> correlationInsightPrintLines(List<InsightRecord> records) {
 /// clinician_report_test fixtures assert aiCalls == 0), so the
 /// clinician generation path carries the identity through the
 /// generation journal instead (service-level, kind 'clinician').
+/// VC 100132 (Round 4, Problem 1) — the structured profile
+/// medications channel the server guard expects (jot-server
+/// `src/routes/ai.js` `normalizeProfileMedications` + its
+/// report_medications tests): an array of
+/// `{name, dose, frequency, startDate, endDate, archived}` carrying
+/// current AND discontinued entries. The source is the snapshot's
+/// full profile list ([ReportSnapshot.profileMedications]); a
+/// snapshot built without it falls back to its active list.
+/// Deleted rows never travel.
+///
+/// CORRECTION DELTA (founder correction, Nov 13 — supersedes this
+/// function's original R4 doc): `frequency` is the entry's RAW
+/// stored value ([MedicationEntry.rawFrequency]) — `""` for
+/// ivabradine, whose entry carries no frequency. The original R4
+/// code sent the DISPLAY getter's value, which synthesizes
+/// `'Once daily'` from a blank (medications.dart:93-94): the
+/// payload itself was stating a frequency the entry does not
+/// carry, and the narrative copied it ("Ivabradine 7.5mg once
+/// daily" in the founder's VC 100131 PDF). An honest `""` is the
+/// contract: the server renders a blank-frequency entry without
+/// a frequency and its guard has no fabricated cadence to diff —
+/// the narrative must state no frequency for such an entry.
+List<Map<String, dynamic>> structuredProfileMedications(ReportSnapshot s) {
+  final source =
+      s.profileMedications.isNotEmpty ? s.profileMedications : s.medications;
+  return [
+    for (final m in source)
+      if (!m.isDeleted)
+        {
+          'name': m.name,
+          'dose': m.dose,
+          'frequency': m.rawFrequency,
+          'startDate': m.startDate,
+          'endDate': m.endDate,
+          'archived': m.isArchived,
+        },
+  ];
+}
+
 Map<String, dynamic> buildAiReportRequest(ReportSnapshot s,
     {String? reportGenerationId}) {
   final kb = s.knowledgeDocuments.join('\n\n');
@@ -719,6 +896,14 @@ Map<String, dynamic> buildAiReportRequest(ReportSnapshot s,
     'knowledgeBase': kb.trim().isEmpty ? null : kb,
     'fitbitData': buildHealthSummary(s),
     'dataAvailability': availability.isEmpty ? null : availability,
+    // VC 100132: the structured medications channel (own field,
+    // per the server contract — before this, the payload carried
+    // medications ONLY as prose inside userContext, so the
+    // server's structured guard never engaged:
+    // medicationsStructured=false, medCurrentCount=0 on the
+    // founder's VC 100131 report, and the narrative took doses /
+    // frequencies from logs instead).
+    'medications': structuredProfileMedications(s),
     'correlation_insights': correlationInsights,
     if (reportGenerationId != null && reportGenerationId.isNotEmpty)
       'reportGenerationId': reportGenerationId,
@@ -1106,6 +1291,16 @@ class ReportDataCollector {
   /// [CorrelationInsightStore.instance.readAllOrThrow].
   final Future<List<InsightRecord>> Function() insightsLoader;
 
+  /// VC 100132 (Problem 2) — stored Daily Scores by `yyyy-MM-dd`
+  /// day key. When null (the default), scores are read from the
+  /// SAME store this collector's history queries consult —
+  /// [HealthHistoryQueries.store], whose rows' `dailyScore` is
+  /// exactly the source the clinician path reads
+  /// (progress_reports_page's clinician scoreLoader). Before
+  /// this, the standard collector never read scores at all and
+  /// hardcoded the dailyScore section to success / 0 records.
+  final Future<Map<String, int>> Function()? scoreLoader;
+
   /// R-1 F4 — the overall collection deadline. Derivation: a
   /// legitimate collection is a sync pull (20s transport bound),
   /// entry/BP fetches on the same bound, document/insight loads,
@@ -1125,6 +1320,7 @@ class ReportDataCollector {
     HealthHistoryQueries? historyQueries,
     Future<List<String>> Function()? documentsLoader,
     Future<List<InsightRecord>> Function()? insightsLoader,
+    Future<Map<String, int>> Function()? scoreLoader,
     Duration? collectTimeout,
   }) : this._internal(
           backend ?? TabsBackend(),
@@ -1132,6 +1328,7 @@ class ReportDataCollector {
           historyQueries,
           documentsLoader ?? (() async => const []),
           insightsLoader ?? _defaultInsightsLoader,
+          scoreLoader,
           collectTimeout ?? defaultCollectTimeout,
         );
 
@@ -1141,11 +1338,23 @@ class ReportDataCollector {
     HealthHistoryQueries? queries,
     this.documentsLoader,
     this.insightsLoader,
+    this.scoreLoader,
     this.collectTimeout,
   ) : historyQueries = queries ?? HealthHistoryQueries(hc: hc);
 
   static Future<List<InsightRecord>> _defaultInsightsLoader() async =>
       (await CorrelationInsightStore.instance.readAllOrThrow()).values.toList();
+
+  /// The default score read: every stored day's `dailyScore`
+  /// from this collector's own history store (the clinician
+  /// path's score source, verbatim).
+  Future<Map<String, int>> _readStoredScores() async {
+    final days = await historyQueries.store.readAll();
+    return {
+      for (final e in days.entries)
+        if (e.value.dailyScore != null) e.key: e.value.dailyScore!,
+    };
+  }
 
   Future<ReportSnapshot> collect({
     required List<QuickLogCategory> selectedCategories,
@@ -1222,11 +1431,43 @@ class ReportDataCollector {
     meta('logs', pullFailed ? DataSourceStatus.error : DataSourceStatus.success,
         entries.length);
 
-    // 2. Daily score.
+    // 2. Daily score — VC 100132 (Problem 2): REAL stored scores,
+    // read from the same history-store source the clinician path
+    // uses, filtered to the report range exactly as the clinician
+    // collector filters (range day keys ending on the generation
+    // day, values > 0). Before this the section was hardcoded
+    // success / 0 — the founder's VC 100131 PDF printed
+    // "Daily Score: Available (0 records)" over a store holding
+    // real scores, and the AI correlations section, seeing no
+    // score data anywhere in the payload, reported Daily Score
+    // as not retrieved. Status now derives from the load itself:
+    // load failure → error; no stored scores in range → noData
+    // (never success-with-0); otherwise success with the real
+    // count.
+    var scoreLoadFailed = false;
+    Map<String, int> storedScores = const {};
+    try {
+      storedScores = await (scoreLoader ?? _readStoredScores)();
+    } catch (_) {
+      scoreLoadFailed = true;
+      storedScores = const {};
+    }
+    final scoreRangeDays = last30Days ? 30 : 180;
+    final scoreEndDay = DateTime(n.year, n.month, n.day);
+    final dailyScoreSeries = <(String, int)>[];
+    for (var i = scoreRangeDays - 1; i >= 0; i--) {
+      final key = dateStrOf(scoreEndDay.subtract(Duration(days: i)));
+      final value = storedScores[key];
+      if (value != null && value > 0) dailyScoreSeries.add((key, value));
+    }
     meta(
         'dailyScore',
-        pullFailed ? DataSourceStatus.error : DataSourceStatus.success,
-        0);
+        scoreLoadFailed
+            ? DataSourceStatus.error
+            : (dailyScoreSeries.isEmpty
+                ? DataSourceStatus.noData
+                : DataSourceStatus.success),
+        dailyScoreSeries.length);
 
     // 3. Conditions (profile list).
     meta(
@@ -1249,6 +1490,19 @@ class ReportDataCollector {
         'medications',
         pullFailed ? DataSourceStatus.error : DataSourceStatus.success,
         activeMedications.length);
+
+    // VC 100132 (Problem 1): the full profile list for the
+    // structured payload channel — active + archived, deleted
+    // excluded. Source is the profile input's full parsed list;
+    // a caller that supplied only the active list degrades to
+    // exactly that list (never an invented discontinued set).
+    final profileMedications = [
+      for (final m
+          in (profile.allMedications.isNotEmpty
+              ? profile.allMedications
+              : profile.activeMedications))
+        if (!m.isDeleted) m,
+    ];
 
     throwIfCancelled();
 
@@ -1276,16 +1530,41 @@ class ReportDataCollector {
       correlationInsightsLoadFailed = true;
     }
 
-    // 6. Blood pressure — manual logs filtered to range. Server BP
-    // storage was dropped on push/pull as of R62; per Juno Phase 4
-    // ruling B19, status is error since deprecated storage cannot
-    // establish that the patient recorded nothing.
+    // 6. Blood pressure — manual logs filtered to range, read
+    // from the sync pull's profile field (fetchManualBpLogs).
+    // VC 100132 (Problem 3): the status was hardcoded `error`
+    // under Juno's Phase 4 ruling B19 while the SAME collect
+    // placed the real in-range readings in the snapshot and the
+    // PDF charted them — the founder's VC 100131 report printed
+    // "BloodPressure: Unavailable" beside its own Systolic BP
+    // chart (Jul 28–Nov 12). Juno's Round 4 Ruling 2 supersedes
+    // B19 in part: status now derives from the pull outcome and
+    // the in-range series itself, the same objects the chart and
+    // health summary consume —
+    //   readings in range → success with the readings count;
+    //   pull failed → error;
+    //   empty in range → error, UNLESS the source field was
+    //   present in the successful pull and parsed (the R2-2
+    //   approved clean-empty exit, backend.manualBpSourceParsed)
+    //   → noData. fetchManualBpLogs alone folds a clean empty
+    //   and an unreadable source into the same [], so without
+    //   that signal empty stays a retrieval statement.
     final allBp = await backend.fetchManualBpLogs();
     final bp = allBp
         .where((r) => !last30Days || r.timeEpochMs >= cutoff)
         .map((r) => ReportBpRecord(r.systolic, r.diastolic, r.timeEpochMs))
         .toList();
-    meta('bloodPressure', DataSourceStatus.error, bp.length);
+    final DataSourceStatus bpStatus;
+    if (bp.isNotEmpty) {
+      bpStatus = DataSourceStatus.success;
+    } else if (pullFailed) {
+      bpStatus = DataSourceStatus.error;
+    } else {
+      bpStatus = await backend.manualBpSourceParsed()
+          ? DataSourceStatus.noData
+          : DataSourceStatus.error;
+    }
+    meta('bloodPressure', bpStatus, bp.length);
 
     // 7. Health Connect sections.
     onStage?.call('syncing');
@@ -1463,6 +1742,8 @@ class ReportDataCollector {
       userGender: profile.gender,
       conditions: profile.conditions,
       medications: activeMedications,
+      profileMedications: profileMedications,
+      dailyScoreSeries: dailyScoreSeries,
       knowledgeDocuments: docs,
       heartRateSeries: hr,
       sleepSeries: sleep,
