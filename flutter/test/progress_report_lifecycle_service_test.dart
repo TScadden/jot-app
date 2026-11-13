@@ -192,6 +192,14 @@ class _Harness {
             await gate.future;
             return const [];
           },
+          // Phase 4 Pkg4: collect() also reads the correlation
+          // insight store through this loader. Left unstaged, the
+          // production default reads FlutterSecureStorage, whose
+          // platform-channel reply never lands in a fake-async
+          // widget test, so collect() pends forever after the
+          // documents gate opens (same staging gap fixed in the
+          // cancel harness, commit 1c48b999).
+          insightsLoader: () async => const [],
         ),
         backend: backendOverride ?? backend,
       );
