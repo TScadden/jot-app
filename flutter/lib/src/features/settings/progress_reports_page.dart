@@ -210,6 +210,9 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
         widget.reportReadyNotifier != null) {
       _service.useNotifier(widget.reportReadyNotifier!);
     }
+    // VC 100131: bind the page's backend for the service's
+    // cancel-invalidation DELETE (fire-and-forget).
+    _service.useBackend(widget.backend);
     _pagePresenter = () {
       // Synchronous presentation from the completion, as the
       // page always did (a post-frame deferral can starve when
@@ -384,6 +387,18 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
         // T1-2 save hook: the journal records the exact artifact
         // path the moment the save lands inside the pipeline.
         onArtifactSaved: _service.noteArtifactSaved,
+        // VC 100131: the pipeline reads the generation's wire
+        // identity + pickup controls from the service, which
+        // owns the mint/reuse rule and rotates them per start()
+        // (the clinician pipeline makes no /report call — its
+        // generations carry the identity through the journal
+        // record the shared service writes for both kinds).
+        reportGenerationIdProvider: () =>
+            _service.currentReportGenerationId,
+        checkPickupFirstProvider: () => _service.currentCheckPickupFirst,
+        pickupCheckIdProvider: () => _service.currentPickupCheckId,
+        generationInvalidatedProvider: () =>
+            _service.currentGenerationInvalidated,
       );
 
   ClinicianReportPipeline _clinicianPipeline() =>
@@ -907,7 +922,39 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
           ),
         ),
       ],
-      if (!generating && _service.restoredDecisionEntry != null) ...[
+      if (!generating && _service.expiredEntry != null) ...[
+        // VC 100131, Juno R8-1 — the EXPIRED terminal state: the
+        // report finished server-side but its held copy passed
+        // the 24 h ceiling and was deleted. It REPLACES the
+        // decision surface (restored or in-session alike — same
+        // copy, no variant), and its ONE action starts a NEW
+        // logical generation (new identity, full collect +
+        // generate). Copy is Juno's signed R8-1 set, defined in
+        // report_generation_journal.dart.
+        const Text(expiredHoldTitle,
+            style: TextStyle(
+                color: NotelColors.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600)),
+        const SizedBox(height: 6),
+        const Text(expiredHoldBody,
+            style: TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
+        const SizedBox(height: 4),
+        TextButton(
+          onPressed: () {
+            final entry = _service.expiredEntry!;
+            _service.clearExpired();
+            unawaited(_service.start(_buildRun(entry.request),
+                request: entry.request));
+          },
+          child: const Text(expiredHoldActionLabel,
+              style: TextStyle(
+                  color: NotelColors.primary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold)),
+        ),
+        const SizedBox(height: 8),
+      ] else if (!generating && _service.restoredDecisionEntry != null) ...[
         // VC 100129, R5-5 Case 2 — a decision restored after
         // relaunch: framing line + unchanged title, Case 2 body,
         // ONE action (no snapshot survives death, so the
@@ -931,8 +978,16 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
           onPressed: () {
             final entry = _service.restoredDecisionEntry!;
             _service.clearRestoredDecision();
+            // VC 100131: this starts a NEW logical generation
+            // (fresh identity minted in start()), PAIRED with the
+            // restored generation for pickup: the leg checks
+            // pickup for the RESTORED identity before its first
+            // dispatch — a held narrative is collected instead of
+            // re-burned, and a 410 replaces this decision surface
+            // with the expired state (Juno R8-1).
             unawaited(_service.start(_buildRun(entry.request),
-                request: entry.request));
+                request: entry.request,
+                pickupCheckGenerationId: entry.reportGenerationId));
           },
           child: const Text(restoredDecisionAction,
               style: TextStyle(

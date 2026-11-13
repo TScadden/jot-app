@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'progress_report.dart';
 import 'report_generation_journal.dart';
 import 'report_ready_notification.dart';
+import 'tabs_backend.dart';
 
 /// One generation run, handed to [ReportGenerationService.start]:
 /// the caller (the Progress Reports page) builds its pipeline and
@@ -74,12 +75,19 @@ class ReportGenerationService extends ChangeNotifier {
     DateTime Function()? clock,
     Future<bool> Function(String path)? artifactExists,
     Future<List<int>> Function(String path)? artifactReader,
+
+    /// VC 100131 test seam: the wire-identity mint (defaults to
+    /// [mintReportGenerationId] — secure random, null on
+    /// failure, never a weak fallback).
+    String? Function()? reportGenerationIdMint,
   })  : _journal = journal ?? ReportGenerationJournal(),
         _clock = clock ?? DateTime.now,
         _artifactExists =
             artifactExists ?? ((p) => File(p).exists()),
         _artifactReader =
-            artifactReader ?? ((p) => File(p).readAsBytes()) {
+            artifactReader ?? ((p) => File(p).readAsBytes()),
+        _reportGenerationIdMint =
+            reportGenerationIdMint ?? mintReportGenerationId {
     _restoreFuture = _restore();
   }
 
@@ -99,6 +107,22 @@ class ReportGenerationService extends ChangeNotifier {
   final DateTime Function() _clock;
   final Future<bool> Function(String path) _artifactExists;
   final Future<List<int>> Function(String path) _artifactReader;
+
+  /// The backend used ONLY for the cancel-invalidation DELETE
+  /// (fire-and-forget): production binds the app backend via
+  /// [useBackend] from the page (the singleton is constructed
+  /// backend-less); unbound, a fresh default backend is built
+  /// per invalidation — the DELETE is best-effort and the
+  /// journal tombstone is the guarantee.
+  TabsBackend? _backend;
+  final String? Function() _reportGenerationIdMint;
+
+  /// Binds the app backend for the cancel-invalidation DELETE
+  /// (the page calls this with its own backend, mirroring
+  /// [useNotifier]).
+  void useBackend(TabsBackend backend) {
+    _backend = backend;
+  }
 
   ReportStage? _stage;
   bool _cancelRequested = false;
@@ -153,6 +177,29 @@ class ReportGenerationService extends ChangeNotifier {
   /// resume closure.
   ReportJournalEntry? _restoredDecisionEntry;
 
+  // ── VC 100131 (Round 3) — wire identity + expired state ─────
+
+  /// The current run's stable wire identity (mint/reuse rule in
+  /// [start]). The page wires the pipeline's providers to these
+  /// getters, so the identity the leg sends is always the one
+  /// the journal record for this run carries.
+  String? _currentReportGenerationId;
+
+  /// Whether the current run must check pickup before the leg's
+  /// first dispatch (a resume or a restore; fresh starts never).
+  bool _currentCheckPickupFirst = false;
+
+  /// The decision-restore pairing identity for the current run
+  /// (see the pipeline's pickupCheckIdProvider), or null.
+  String? _currentPickupCheckId;
+
+  /// The EXPIRED terminal state (Juno R8-1): set in-session when
+  /// a pickup answers 410 (the generation ends), and on restore
+  /// from a journal record with outcomeKind expired. The page
+  /// presents Juno's signed expired copy from this entry; its
+  /// action starts a NEW logical generation.
+  ReportJournalEntry? _expiredEntry;
+
   /// True while an auto re-run of an interrupted generation
   /// (started by the page on restore) is in flight — the page
   /// shows Juno's "Starting your report again" framing above
@@ -186,6 +233,22 @@ class ReportGenerationService extends ChangeNotifier {
   ReportJournalEntry? get restoredDecisionEntry => _restoredDecisionEntry;
   bool get outcomeRestored => _outcomeRestored;
   bool get autoRunInFlight => _autoRunInFlight;
+
+  /// VC 100131: the expired terminal entry (in-session discovery
+  /// or journal restore), or null. See [_expiredEntry].
+  ReportJournalEntry? get expiredEntry => _expiredEntry;
+
+  /// VC 100131: pipeline-provider getters (the page wires the
+  /// standard pipeline's providers to these).
+  String? get currentReportGenerationId => _currentReportGenerationId;
+  bool get currentCheckPickupFirst => _currentCheckPickupFirst;
+  String? get currentPickupCheckId => _currentPickupCheckId;
+
+  /// The current journal record's cancel tombstone, read by the
+  /// pipeline at every pickup call site: NO pickup is ever
+  /// attempted for a tombstoned identity.
+  bool get currentGenerationInvalidated =>
+      _currentEntry?.generationInvalidated ?? false;
 
   /// Completes when the construction-time journal restore has
   /// settled (applied or found nothing). Tests await this to
@@ -309,10 +372,27 @@ class ReportGenerationService extends ChangeNotifier {
         _currentEntry != null) {
       return;
     }
+    // VC 100131 (Juno R8-2): a tombstoned RUNNING record is a
+    // generation the user cancelled before the process died. It
+    // never resurrects: no interrupted surface, no auto-rerun,
+    // and above all NO pickup for its identity. Drop the record
+    // exactly as an in-session cancelled finish drops it.
+    if (entry.generationInvalidated &&
+        entry.outcomeKind == JournalOutcomeKind.running) {
+      _currentEntry = null;
+      unawaited(_journal.clear());
+      return;
+    }
     _currentEntry = entry;
     switch (entry.outcomeKind) {
       case JournalOutcomeKind.ready:
         await _restoreReady(entry, epoch);
+      case JournalOutcomeKind.expired:
+        // VC 100131 (Juno R8-1): the expired presentation is
+        // restored from the journal exactly as it presented
+        // in-session.
+        _expiredEntry = entry;
+        notifyListeners();
       case JournalOutcomeKind.failed:
         _pendingFailure = ReportFailed(
           entry.message ?? reportExportFailureMessage,
@@ -410,7 +490,15 @@ class ReportGenerationService extends ChangeNotifier {
     _interruptedEntry = null;
     notifyListeners();
     try {
-      await start(run, request: entry.request);
+      // VC 100131 minting rule: the auto-rerun REUSES the
+      // interrupted generation's persisted wire identity (same
+      // logical generation), and its leg checks pickup before
+      // its first dispatch — the original may have completed
+      // server-side before the process died.
+      await start(run,
+          request: entry.request,
+          carriedReportGenerationId: entry.reportGenerationId,
+          checkPickupFirst: true);
     } finally {
       _autoRunInFlight = false;
       notifyListeners();
@@ -430,7 +518,24 @@ class ReportGenerationService extends ChangeNotifier {
     final entry = _interruptedEntry;
     if (entry == null) return;
     _interruptedEntry = null;
-    await start(run, request: entry.request);
+    // VC 100131 minting rule: an interrupted retry REUSES the
+    // persisted wire identity (it is the same logical
+    // generation resumed, not a new one), with a pickup check
+    // before the leg's first dispatch.
+    await start(run,
+        request: entry.request,
+        carriedReportGenerationId: entry.reportGenerationId,
+        checkPickupFirst: true);
+  }
+
+  /// Dismisses the expired state once the user has acted on it
+  /// (its "Make a new report" action starts a fresh generation
+  /// through the page, which supersedes the journal; this clears
+  /// the in-memory surface).
+  void clearExpired() {
+    if (_expiredEntry == null) return;
+    _expiredEntry = null;
+    notifyListeners();
   }
 
   /// Dismisses a restored decision (Case 2) once the user has
@@ -499,6 +604,34 @@ class ReportGenerationService extends ChangeNotifier {
   Future<void> start(
     ReportGenerationRun run, {
     ReportRequestIdentity? request,
+
+    /// VC 100131 minting rule (governs over the Stage 1 design
+    /// aside): a NEW wire identity is minted ONLY for a genuinely
+    /// new user-initiated logical generation — a fresh Export
+    /// tap, Case-2's "Start a new report", a new report after a
+    /// terminal outcome, the expired state's "Make a new report".
+    /// [carriedReportGenerationId] is how the SAME logical
+    /// generation's continuations reuse the persisted identity
+    /// instead: [resumeAiDecision], the interrupted auto-rerun,
+    /// and [retryInterrupted] pass the prior record's identity
+    /// here (they already carry prior?.request through this
+    /// method — the identity rides the same channel). The
+    /// per-start() journal generationId rotation above is
+    /// untouched. A mint failure yields NO identity (legacy
+    /// behaviour) — never a weak ID (Vera D1).
+    String? carriedReportGenerationId,
+
+    /// VC 100131: this run is a resume/restore continuation —
+    /// its leg checks pickup before its first dispatch. Fresh
+    /// starts never check (no server row can exist for a new
+    /// identity).
+    bool checkPickupFirst = false,
+
+    /// VC 100131: the decision-restore pairing identity — the
+    /// leg checks pickup for THIS (restored) identity before its
+    /// first dispatch, while the run's own identity is freshly
+    /// minted. Implies a pickup check.
+    String? pickupCheckGenerationId,
   }) async {
     if (_stage != null) return;
     _stateEpoch++;
@@ -507,9 +640,16 @@ class ReportGenerationService extends ChangeNotifier {
     _failureRevealPending = false;
     _outcomeRestored = false;
     _restoredDecisionEntry = null;
+    _expiredEntry = null;
     _heldDecisionAt = null;
     _heldDecisionIsEarlier = false;
     _stage = ReportStage.collecting;
+    final reportGenerationId =
+        carriedReportGenerationId ?? _reportGenerationIdMint();
+    _currentReportGenerationId = reportGenerationId;
+    _currentCheckPickupFirst =
+        checkPickupFirst || pickupCheckGenerationId != null;
+    _currentPickupCheckId = pickupCheckGenerationId;
     final now = _clock();
     _journalWrite(ReportJournalEntry(
       generationId: '${now.millisecondsSinceEpoch}-${++_generationSeq}',
@@ -524,6 +664,7 @@ class ReportGenerationService extends ChangeNotifier {
           ),
       stage: ReportStage.collecting.name,
       outcomeKind: JournalOutcomeKind.running,
+      reportGenerationId: reportGenerationId,
     ));
     notifyListeners();
     ReportOutcome outcome;
@@ -587,6 +728,14 @@ class ReportGenerationService extends ChangeNotifier {
         isCancelled: isCancelled,
       ),
       request: prior?.request,
+      // VC 100131 minting rule: a decision resume is the SAME
+      // logical generation — it REUSES the persisted wire
+      // identity, and its leg checks pickup before re-entering
+      // the AI leg (the resume closure also forces the check;
+      // the flag here keeps the service's record of the run
+      // truthful).
+      carriedReportGenerationId: prior?.reportGenerationId,
+      checkPickupFirst: true,
     );
     // Re-attach the prior generation's attempts are NOT merged
     // here: the resumed pipeline outcome already carries the
@@ -611,10 +760,45 @@ class ReportGenerationService extends ChangeNotifier {
   /// stage-boundary checks read (PR #55). The run ends as a
   /// Cancelled failure, which [_finish] drops silently — exactly
   /// the pre-service page behavior.
+  ///
+  /// VC 100131 (Juno R8-2): Cancel ALSO invalidates the wire
+  /// generation, on the tap itself: (1) the journal tombstone
+  /// generationInvalidated is set + persisted on the current
+  /// record — while it stands, no pickup is ever attempted for
+  /// the identity and the identity is never re-POSTed, across
+  /// process death/restore too; (2) the backend invalidate
+  /// (DELETE) is fired best-effort — every error swallowed, and
+  /// the tombstone above is the guarantee when the DELETE cannot
+  /// land. Existing cancel semantics are otherwise untouched.
   void requestCancel() {
     if (_stage == null || _cancelRequested) return;
     _cancelRequested = true;
+    final entry = _currentEntry;
+    if (entry != null && !entry.isTerminal) {
+      _journalWrite(entry.copyWith(
+        updatedAtMs: _clock().millisecondsSinceEpoch,
+        generationInvalidated: true,
+      ));
+    }
+    final id = entry?.reportGenerationId ?? _currentReportGenerationId;
+    if (id != null && id.isNotEmpty) {
+      unawaited(_invalidateGeneration(id));
+    }
     notifyListeners();
+  }
+
+  /// Fire-and-forget server invalidation for a cancelled
+  /// generation. All errors swallowed by contract (the backend
+  /// method itself never throws; this guard covers the fallback
+  /// backend construction too).
+  Future<void> _invalidateGeneration(String generationId) async {
+    try {
+      await (_backend ?? TabsBackend())
+          .invalidateReportGeneration(generationId);
+    } catch (_) {
+      // Best-effort by contract (Juno R8-2 residue is ruled
+      // acceptable; the journal tombstone is the guarantee).
+    }
   }
 
   void _finish(ReportOutcome outcome) {
@@ -634,6 +818,19 @@ class ReportGenerationService extends ChangeNotifier {
       return;
     }
     switch (outcome) {
+      case ReportGenerationExpired expired:
+        // VC 100131 (Juno R8-1): the expired terminal state. No
+        // notification (it is not a ready report), no pending
+        // failure (it did not fail), and it REPLACES any held or
+        // restored decision surface for this generation. Held
+        // until the user acts on it; its only action starts a
+        // new logical generation.
+        _journalFinishExpired(expired);
+        _expiredEntry = _currentEntry;
+        _restoredDecisionEntry = null;
+        _heldDecisionAt = null;
+        _heldDecisionIsEarlier = false;
+        notifyListeners();
       case ReportReady ready:
         _pendingShare = ready;
         _journalFinishReady(ready);
@@ -685,6 +882,23 @@ class ReportGenerationService extends ChangeNotifier {
       downloadsSaved: ready.downloadsSaved,
       isRawFallback: ready.isRawFallback,
       attempts: ready.aiAttempts,
+      // VC 100131 (Vera Item 4 condition): a pickup-collected
+      // completion records the server's completedAt on the
+      // terminal record. Recorded, never displayed.
+      heldCompletedAtMs: ready.heldCompletedAtMs,
+    ));
+  }
+
+  void _journalFinishExpired(ReportGenerationExpired expired) {
+    final entry = _currentEntry;
+    if (entry == null) return;
+    final now = _clock();
+    _journalWrite(entry.copyWith(
+      updatedAtMs: now.millisecondsSinceEpoch,
+      finishedAtMs: now.millisecondsSinceEpoch,
+      clearStage: true,
+      outcomeKind: JournalOutcomeKind.expired,
+      attempts: expired.aiAttempts,
     ));
   }
 
@@ -873,6 +1087,10 @@ class ReportGenerationService extends ChangeNotifier {
     _outcomeRestored = false;
     _interruptedEntry = null;
     _restoredDecisionEntry = null;
+    _expiredEntry = null;
+    _currentReportGenerationId = null;
+    _currentCheckPickupFirst = false;
+    _currentPickupCheckId = null;
     _autoRunInFlight = false;
     _autoRestoreAttempted = false;
     _heldDecisionAt = null;

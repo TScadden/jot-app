@@ -685,7 +685,22 @@ List<String> correlationInsightPrintLines(List<InsightRecord> records) {
 /// The full `POST /api/ai/report` body (native `AiRequest` shape on
 /// the snapshot path: entries, categories, userContext,
 /// knowledgeBase, fitbitData, dataAvailability).
-Map<String, dynamic> buildAiReportRequest(ReportSnapshot s) {
+///
+/// VC 100131 (Round 3): [reportGenerationId] — the generation's
+/// stable wire identity (see report_generation_journal.dart) —
+/// rides as one additional body field when present, on EVERY
+/// attempt of the logical generation (in-leg retries and the
+/// decision resume included: the pipeline builds each attempt's
+/// body through this one function). Absent (null/empty), the
+/// body is byte-for-byte the legacy shape and the server runs
+/// the legacy path. NOTE (verified at the VC 100130 head): this
+/// is the ONLY request-construction site in the Flutter tree —
+/// the clinician pipeline makes no /report call at all (its
+/// clinician_report_test fixtures assert aiCalls == 0), so the
+/// clinician generation path carries the identity through the
+/// generation journal instead (service-level, kind 'clinician').
+Map<String, dynamic> buildAiReportRequest(ReportSnapshot s,
+    {String? reportGenerationId}) {
   final kb = s.knowledgeDocuments.join('\n\n');
   final availability = buildDataAvailability(s);
   final insightLines = s.correlationInsightsLoadFailed
@@ -705,6 +720,8 @@ Map<String, dynamic> buildAiReportRequest(ReportSnapshot s) {
     'fitbitData': buildHealthSummary(s),
     'dataAvailability': availability.isEmpty ? null : availability,
     'correlation_insights': correlationInsights,
+    if (reportGenerationId != null && reportGenerationId.isNotEmpty)
+      'reportGenerationId': reportGenerationId,
   };
 }
 
@@ -1517,6 +1534,12 @@ class ReportReady extends ReportOutcome {
   /// confirmation is shown and its outcome is carried here). Null
   /// when no Downloads attempt was wired for this generation.
   final bool? downloadsSaved;
+
+  /// VC 100131: the server's `completedAt` (epoch ms) when this
+  /// report's narrative was collected by PICKUP — carried to the
+  /// journal's terminal record (heldCompletedAtMs) by the
+  /// service. Never displayed (Juno silent pickup).
+  final int? heldCompletedAtMs;
   const ReportReady({
     required this.snapshot,
     required this.pdfBytes,
@@ -1527,6 +1550,7 @@ class ReportReady extends ReportOutcome {
     this.rawBanner,
     this.aiAttempts = const [],
     this.downloadsSaved,
+    this.heldCompletedAtMs,
   });
 }
 
@@ -1610,6 +1634,35 @@ class ReportAiDecision extends ReportFailed {
         );
 }
 
+/// VC 100131 (Round 3) — the EXPIRED terminal outcome: a pickup
+/// answered 410 (Juno R8-1). The generation FINISHED server-side
+/// but its held narrative passed the 24 h ceiling and was
+/// deleted, so there is nothing to render, nothing to resume,
+/// and — R7-7 / R8-1 condition 4 — NO regeneration under this
+/// identity: no POST, no retry, no decision surface. The
+/// service journals it as outcomeKind `expired` and the page
+/// presents Juno's signed expired copy; its only action starts
+/// a NEW logical generation (new identity). Deliberately NOT a
+/// [ReportFailed]: a failure presentation ("didn't finish")
+/// would be false, and the failed path's raw-fallback affordance
+/// must not attach to it.
+class ReportGenerationExpired extends ReportOutcome {
+  /// The generation's AI attempt history up to the pickup that
+  /// discovered the expiry (the 410 itself records no attempt —
+  /// it is not an attempt outcome).
+  final List<AiAttemptRecord> aiAttempts;
+
+  /// The collected snapshot, when the leg ran in-session (a
+  /// restored generation's re-collect); informational only —
+  /// the expired presentation never renders from it.
+  final ReportSnapshot? snapshot;
+
+  const ReportGenerationExpired({
+    this.aiAttempts = const [],
+    this.snapshot,
+  });
+}
+
 /// The injected render step: builds the PDF bytes for a collected
 /// snapshot. [rawBanner] is set exactly when [isRawFallback] is
 /// true and selects which of Juno's two ruled banners the raw PDF
@@ -1624,7 +1677,7 @@ typedef ReportRenderPdf = Future<List<int>> Function(
 /// How one run of the AI leg ended (Phase 3): the leg is a unit
 /// the decision's retry can re-run on its own, so its endings are
 /// distinct from the generation's.
-enum _AiLegKind { success, exhausted, fatal, cancelled }
+enum _AiLegKind { success, exhausted, fatal, cancelled, expired }
 
 class _AiLegResult {
   final _AiLegKind kind;
@@ -1638,8 +1691,17 @@ class _AiLegResult {
   /// The final attempt's classification (exhausted/fatal only).
   final AiFailure? failure;
 
+  /// VC 100131: the server's completion time when the success
+  /// was collected by PICKUP (Vera Item 4 condition — journaled
+  /// as heldCompletedAtMs, never displayed). Null for a
+  /// POST-delivered success.
+  final DateTime? heldCompletedAt;
+
   const _AiLegResult(this.kind,
-      {this.summary, this.attempts = const [], this.failure});
+      {this.summary,
+      this.attempts = const [],
+      this.failure,
+      this.heldCompletedAt});
 }
 
 /// Runs the native snapshot pipeline: collect → (unless forced raw)
@@ -1708,6 +1770,59 @@ class ReportGenerationPipeline {
   /// instead of orphaning the file.
   final void Function(String fileName, String savedPath)? onArtifactSaved;
 
+  // ── VC 100131 (Round 3) — server-completion pickup ──────────
+
+  /// Injected pickup call (defaults to the backend's pickup GET).
+  /// Test seam, mirroring [aiCall].
+  final Future<ReportPickupOutcome> Function(String generationId)?
+      pickupCall;
+
+  /// Where the leg reads the generation's stable wire identity
+  /// (see buildAiReportRequest's note). The page wires this to
+  /// the generation service, which owns the mint/reuse rule and
+  /// rotates the value per start(); a generate() argument of the
+  /// same name overrides it (unit tests drive it directly).
+  final String? Function()? reportGenerationIdProvider;
+
+  /// Where the leg reads whether THIS run must check pickup
+  /// before its first dispatch (a resume or a restore — the
+  /// service decides; a fresh start never checks, because no
+  /// server row can exist for a new identity). A generate()
+  /// argument overrides it. The decision-resume closure always
+  /// checks, by construction.
+  final bool Function()? checkPickupFirstProvider;
+
+  /// The decision-restore pairing identity: when a restored
+  /// decision's "Start a new report" starts its re-collect
+  /// generation, the leg checks pickup for the RESTORED
+  /// generation's identity before its first dispatch (the new
+  /// generation's own identity is fresh — nothing can be held
+  /// under it). A 410 on that check replaces the decision
+  /// surface with the expired state (Juno R8-1).
+  final String? Function()? pickupCheckIdProvider;
+
+  /// The cancel tombstone, read at every pickup call site: while
+  /// the journal entry for the current generation carries
+  /// generationInvalidated, NO pickup is ever attempted for its
+  /// identity (Juno R8-2 — the app never picks up and never
+  /// re-POSTs a cancelled identity).
+  final bool Function()? generationInvalidatedProvider;
+
+  /// Pickup poll cadence while the server answers `running`
+  /// (wire contract: every 5 s).
+  final Duration pickupPollInterval;
+
+  /// Pickup poll cap (~7 min ≈ the server generation's worst-case
+  /// ceiling + slack): still running at the cap falls through to
+  /// a POST dispatch, which the server's duplicate-POST matrix
+  /// makes safe (waiter/serve — never a double generation).
+  final Duration pickupPollCap;
+
+  /// Poll cadence/cap defaults (production values; tests inject
+  /// smaller via the constructor).
+  static const Duration defaultPickupPollInterval = Duration(seconds: 5);
+  static const Duration defaultPickupPollCap = Duration(minutes: 7);
+
   ReportGenerationPipeline({
     required this.collector,
     required this.backend,
@@ -1716,9 +1831,19 @@ class ReportGenerationPipeline {
     Duration? attemptTimeout,
     DateTime Function()? clock,
     this.onArtifactSaved,
+    this.pickupCall,
+    this.reportGenerationIdProvider,
+    this.checkPickupFirstProvider,
+    this.pickupCheckIdProvider,
+    this.generationInvalidatedProvider,
+    Duration? pickupPollInterval,
+    Duration? pickupPollCap,
   })  : delay = delay ?? ((d) => Future.delayed(d)),
         attemptTimeout = attemptTimeout ?? aiAttemptTimeout,
-        clock = clock ?? DateTime.now;
+        clock = clock ?? DateTime.now,
+        pickupPollInterval =
+            pickupPollInterval ?? defaultPickupPollInterval,
+        pickupPollCap = pickupPollCap ?? defaultPickupPollCap;
 
   /// SINGLE-FLIGHT gate for AI report requests (Phase 3): at most
   /// one AI attempt is in flight app-wide, ever. Static for the
@@ -1796,6 +1921,14 @@ class ReportGenerationPipeline {
     void Function(ReportStage stage)? onStage,
     bool Function()? isCancelled,
     DateTime? now,
+
+    /// VC 100131 (Round 3): the generation's wire identity /
+    /// pickup controls. Each overrides its constructor provider
+    /// when non-null (unit tests drive these directly; the page
+    /// relies on the providers wired to the generation service).
+    String? reportGenerationId,
+    bool? checkPickupFirst,
+    String? pickupCheckGenerationId,
   }) async {
     bool cancelled() => isCancelled?.call() ?? false;
 
@@ -1855,6 +1988,10 @@ class ReportGenerationPipeline {
       snapshot,
       priorAttempts: const [],
       isCancelled: cancelled,
+      generationId: reportGenerationId ?? reportGenerationIdProvider?.call(),
+      checkPickupFirst:
+          checkPickupFirst ?? checkPickupFirstProvider?.call() ?? false,
+      pickupCheckId: pickupCheckGenerationId ?? pickupCheckIdProvider?.call(),
     );
     return _finishAiLeg(
       leg,
@@ -1884,6 +2021,14 @@ class ReportGenerationPipeline {
     switch (leg.kind) {
       case _AiLegKind.cancelled:
         return const ReportFailed('Cancelled');
+      case _AiLegKind.expired:
+        // VC 100131 (Juno R8-1): the held narrative expired —
+        // terminal expired state, never a failure/decision
+        // surface, no render, no raw fallback.
+        return ReportGenerationExpired(
+          aiAttempts: leg.attempts,
+          snapshot: snapshot,
+        );
       case _AiLegKind.success:
         return _renderAndFinish(
           snapshot,
@@ -1895,6 +2040,7 @@ class ReportGenerationPipeline {
           saveToDownloads: saveToDownloads,
           onStage: onStage,
           isCancelled: isCancelled,
+          heldCompletedAtMs: leg.heldCompletedAt?.millisecondsSinceEpoch,
         );
       case _AiLegKind.fatal:
         // A fatal class surfaces its honest failure state through
@@ -1968,11 +2114,20 @@ class ReportGenerationPipeline {
         // data — no re-collection (Juno's ruling assumption,
         // verified against this architecture: the snapshot is
         // held on the decision outcome itself).
+        // VC 100131: a resumed leg ALWAYS checks pickup before
+        // its first dispatch (check point (ii)) — the original
+        // generation may have completed server-side after the
+        // client's socket died. The identity is the service's
+        // current one: resumeAiDecision reuses the held
+        // generation's persisted identity, and the provider the
+        // page wired reads exactly that value during this run.
         onStage(ReportStage.buildingSummary);
         final retryLeg = await _runAiLeg(
           snapshot,
           priorAttempts: leg.attempts,
           isCancelled: isCancelled,
+          generationId: reportGenerationIdProvider?.call(),
+          checkPickupFirst: true,
         );
         return _finishAiLeg(
           retryLeg,
@@ -1987,23 +2142,196 @@ class ReportGenerationPipeline {
     );
   }
 
+  /// One pickup resolution: a single pickup fetch, plus — while
+  /// the server answers `running` — a poll every
+  /// [pickupPollInterval] up to [pickupPollCap]. Returns the
+  /// terminal pickup outcome ([PickupRunning] itself when the
+  /// cap is reached still-running), or null when the generation
+  /// was cancelled mid-poll. A throwing pickup call is a pickup
+  /// TRANSPORT failure ([PickupUnreachable]) — never a
+  /// generation failure.
+  Future<ReportPickupOutcome?> _resolvePickup(
+    Future<ReportPickupOutcome> Function(String generationId) pickup,
+    String generationId,
+    bool Function() isCancelled,
+  ) async {
+    Future<ReportPickupOutcome> safe() async {
+      try {
+        return await pickup(generationId);
+      } catch (_) {
+        return const PickupUnreachable();
+      }
+    }
+
+    var outcome = await safe();
+    var waited = Duration.zero;
+    while (outcome is PickupRunning && waited < pickupPollCap) {
+      await delay(pickupPollInterval);
+      waited += pickupPollInterval;
+      if (isCancelled()) return null;
+      outcome = await safe();
+    }
+    return outcome;
+  }
+
+  /// The retry/exhaustion policy after a recorded failure
+  /// (shared by POST outcomes and pickup-Failed outcomes — both
+  /// are attempt outcomes under the ONE classification): returns
+  /// the leg's terminal result (fatal / exhausted / cancelled
+  /// during the backoff), or null when the policy says retry —
+  /// the backoff has then already been applied.
+  Future<_AiLegResult?> _policyAfterFailure(
+    AiFailure failure, {
+    required int attemptNo,
+    required int priorCount,
+    required List<AiAttemptRecord> attempts,
+    required bool Function() isCancelled,
+  }) async {
+    if (!failure.retryable) {
+      return _AiLegResult(_AiLegKind.fatal,
+          attempts: attempts, failure: failure);
+    }
+    if (attemptNo - priorCount >= failure.maxAttempts) {
+      return _AiLegResult(_AiLegKind.exhausted,
+          attempts: attempts, failure: failure);
+    }
+    await delay(failure.backoffAfter(attemptNo - priorCount));
+    if (isCancelled()) {
+      return _AiLegResult(_AiLegKind.cancelled, attempts: attempts);
+    }
+    return null;
+  }
+
   /// The AI leg: attempts under the single classification, each
   /// recorded. Attempt numbers continue from [priorAttempts] (a
   /// held decision's retry extends the same history).
+  ///
+  /// VC 100131 (Round 3) — server-completion pickup integration.
+  /// Pickup check points: (i) before dispatching any retry
+  /// attempt (attempt ≥ 2); (ii) at the head of a resumed leg
+  /// (the decision-resume closure passes checkPickupFirst); (iii)
+  /// at the head of a RESTORE generation (decision-restore
+  /// re-collect pairing via [pickupCheckId], and the interrupted
+  /// auto-rerun / interrupted retry via checkPickupFirst). A
+  /// fresh start never checks (no row can exist for a new
+  /// identity). Outcomes: Ready → the leg SUCCEEDS with the held
+  /// narrative (a succeeded attempt is recorded; the render/save
+  /// finish path is the normal one); Failed → recorded as the
+  /// attempt outcome through the existing AiFailure mapping and
+  /// the existing policy proceeds (a subsequent dispatch is a
+  /// POST); Running → polled (see [_resolvePickup]); still
+  /// running at the cap → fall through to a POST dispatch;
+  /// NotFound → POST dispatch (normal); Expired → the leg STOPS
+  /// — no POST, no retry — in the expired terminal state
+  /// (Juno R8-1); Unreachable → POST dispatch (pickup is
+  /// best-effort recovery, never a gate). NO pickup is ever
+  /// attempted while the generation's cancel tombstone is set.
+  ///
+  /// Vera Stage 2 addenda: a duplicate/waiter POST can answer
+  /// 202 {status:'running'} (the server caps its waiter at 55 s)
+  /// — a 202 is NEVER an attempt failure and is never recorded;
+  /// it enters the same pickup-poll path as [PickupRunning]. A
+  /// 409 {status:'generation_in_progress'} (a DIFFERENT identity
+  /// is running; this identity has NO row, so there is nothing
+  /// to poll for) and a 429 {status:'generation_start_limit'}
+  /// need no special casing: both flow through the existing
+  /// AiFailure mapping with their true httpStatus (409 →
+  /// fatalRequest, fatal, exactly 1 recorded attempt; 429 →
+  /// rateLimited as always), existing copy unchanged.
   Future<_AiLegResult> _runAiLeg(
     ReportSnapshot snapshot, {
     required List<AiAttemptRecord> priorAttempts,
     required bool Function() isCancelled,
+    String? generationId,
+    bool checkPickupFirst = false,
+    String? pickupCheckId,
   }) async {
     final call = aiCall ??
         (body) => backend.postAiDetailed('/api/ai/report', body);
+    final pickup = pickupCall ?? backend.fetchReportPickup;
     final attempts = List<AiAttemptRecord>.of(priorAttempts);
     var attempt = priorAttempts.length;
+    final String? effectivePickupId =
+        (pickupCheckId != null && pickupCheckId.isNotEmpty)
+            ? pickupCheckId
+            : (generationId != null && generationId.isNotEmpty)
+                ? generationId
+                : null;
+    bool tombstoned() => generationInvalidatedProvider?.call() ?? false;
+
+    /// Handles a resolved (terminal or cap-reached) pickup
+    /// outcome. Returns the leg result when the outcome ends the
+    /// leg (Ready / Expired / a Failed whose policy is terminal),
+    /// or null when the leg should proceed to a POST dispatch —
+    /// NotFound, Unreachable, still-Running at the cap, or a
+    /// Failed whose policy says retry (its backoff has been
+    /// applied; the subsequent dispatch is a POST, per the
+    /// brief — the pickup is not re-checked in between).
+    Future<_AiLegResult?> handlePickup(ReportPickupOutcome outcome) async {
+      switch (outcome) {
+        case PickupReady(:final result, :final completedAt):
+          attempt++;
+          attempts.add(AiAttemptRecord(
+            attempt: attempt,
+            failureClass: null,
+            httpStatus: 200,
+            succeeded: true,
+            at: clock(),
+          ));
+          return _AiLegResult(_AiLegKind.success,
+              summary: result,
+              attempts: attempts,
+              heldCompletedAt: completedAt);
+        case PickupExpired():
+          // Juno R8-1: no POST, no retry, no decision surface —
+          // the generation ends in the expired state.
+          return _AiLegResult(_AiLegKind.expired, attempts: attempts);
+        case PickupFailed(:final httpStatus):
+          attempt++;
+          final failure = AiFailure(httpStatus: httpStatus);
+          attempts.add(AiAttemptRecord(
+            attempt: attempt,
+            failureClass: failure.failureClass,
+            httpStatus: httpStatus,
+            succeeded: false,
+            at: clock(),
+          ));
+          return _policyAfterFailure(
+            failure,
+            attemptNo: attempt,
+            priorCount: priorAttempts.length,
+            attempts: attempts,
+            isCancelled: isCancelled,
+          );
+        case PickupNotFound() || PickupUnreachable() || PickupRunning():
+          return null;
+      }
+    }
+
+    var pickupBeforeDispatch = checkPickupFirst;
     while (true) {
-      attempt++;
       if (isCancelled()) {
         return _AiLegResult(_AiLegKind.cancelled, attempts: attempts);
       }
+      // ── Pickup phase (check points (i)/(ii)/(iii)) ──────────
+      if (pickupBeforeDispatch) {
+        pickupBeforeDispatch = false;
+        if (effectivePickupId != null && !tombstoned()) {
+          final outcome =
+              await _resolvePickup(pickup, effectivePickupId, isCancelled);
+          if (outcome == null) {
+            return _AiLegResult(_AiLegKind.cancelled, attempts: attempts);
+          }
+          final handled = await handlePickup(outcome);
+          if (handled != null) return handled;
+          if (isCancelled()) {
+            return _AiLegResult(_AiLegKind.cancelled, attempts: attempts);
+          }
+          // Fall through: this slot's dispatch is a POST.
+        }
+      }
+      // ── POST dispatch phase ─────────────────────────────────
+      attempt++;
       ({
         int? statusCode,
         Map<String, dynamic>? body,
@@ -2023,7 +2351,8 @@ class ReportGenerationPipeline {
         // attempt's late result, if any, is discarded and no
         // retry fires.
         res = await _singleFlight(
-          () => call(buildAiReportRequest(snapshot))
+          () => call(buildAiReportRequest(snapshot,
+                  reportGenerationId: generationId))
               .timeout(attemptTimeout),
           isCancelled: isCancelled,
         );
@@ -2049,6 +2378,35 @@ class ReportGenerationPipeline {
       }
       if (isCancelled()) {
         return _AiLegResult(_AiLegKind.cancelled, attempts: attempts);
+      }
+      // Vera Stage 2 addendum 1 — a duplicate/waiter POST may
+      // answer 202 {status:'running'} (the server caps its
+      // waiter at 55 s). A 202 is NEVER an attempt failure and
+      // is never recorded as one: this dispatch consumed no
+      // attempt outcome, so the attempt number is handed back
+      // and the leg enters the SAME pickup-poll path as a
+      // PickupRunning answer. Still running at the poll cap →
+      // fall back to a fresh POST dispatch (the duplicate-POST
+      // matrix makes that safe). With no identity there is
+      // nothing to poll — wait one poll interval and re-dispatch.
+      if (res.statusCode == 202 && res.body?['status'] == 'running') {
+        attempt--;
+        if (effectivePickupId != null && !tombstoned()) {
+          final outcome =
+              await _resolvePickup(pickup, effectivePickupId, isCancelled);
+          if (outcome == null) {
+            return _AiLegResult(_AiLegKind.cancelled, attempts: attempts);
+          }
+          final handled = await handlePickup(outcome);
+          if (handled != null) return handled;
+        } else {
+          await delay(pickupPollInterval);
+        }
+        if (isCancelled()) {
+          return _AiLegResult(_AiLegKind.cancelled, attempts: attempts);
+        }
+        pickupBeforeDispatch = false;
+        continue;
       }
       final result = res.body?['result'];
       if (res.statusCode == 200 &&
@@ -2084,18 +2442,19 @@ class ReportGenerationPipeline {
         succeeded: false,
         at: clock(),
       ));
-      if (!failure.retryable) {
-        return _AiLegResult(_AiLegKind.fatal,
-            attempts: attempts, failure: failure);
-      }
-      if (attempt - priorAttempts.length >= failure.maxAttempts) {
-        return _AiLegResult(_AiLegKind.exhausted,
-            attempts: attempts, failure: failure);
-      }
-      await delay(failure.backoffAfter(attempt - priorAttempts.length));
-      if (isCancelled()) {
-        return _AiLegResult(_AiLegKind.cancelled, attempts: attempts);
-      }
+      final terminal = await _policyAfterFailure(
+        failure,
+        attemptNo: attempt,
+        priorCount: priorAttempts.length,
+        attempts: attempts,
+        isCancelled: isCancelled,
+      );
+      if (terminal != null) return terminal;
+      // The policy says retry: pickup check point (i) — before
+      // the retry dispatch, ask the server whether the detached
+      // generation already finished (its socket may have died
+      // while the server kept working).
+      pickupBeforeDispatch = true;
     }
   }
 
@@ -2114,6 +2473,7 @@ class ReportGenerationPipeline {
         saveToDownloads,
     required void Function(ReportStage stage)? onStage,
     required bool Function() isCancelled,
+    int? heldCompletedAtMs,
   }) async {
     bool cancelled() => isCancelled();
     if (cancelled()) return const ReportFailed('Cancelled');
@@ -2180,6 +2540,7 @@ class ReportGenerationPipeline {
       rawBanner: rawBanner,
       aiAttempts: aiAttempts,
       downloadsSaved: downloadsSaved,
+      heldCompletedAtMs: heldCompletedAtMs,
     );
   }
 }
