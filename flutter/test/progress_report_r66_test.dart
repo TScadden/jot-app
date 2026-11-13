@@ -508,8 +508,9 @@ void main() {
       expect(snap.sectionMetadata['calories']!.status,
           DataSourceStatus.noData);
       expect(snap.sectionMetadata.keys.toList(), [
-        'logs', 'conditions', 'medications', 'documents', 'bloodPressure',
-        'sleep', 'deepSleep', 'heartRate', 'hrv', 'calories', 'hrSpikes',
+        'logs', 'dailyScore', 'conditions', 'medications', 'documents',
+        'bloodPressure', 'sleep', 'deepSleep', 'heartRate', 'hrv',
+        'calories', 'hrSpikes',
       ]);
 
       // RE-PIN (Report Reliability Phase 1): this case previously

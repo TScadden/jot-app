@@ -4,6 +4,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:tabs_lab/src/data/clinician_report.dart';
+import 'package:tabs_lab/src/data/correlation_copy.dart';
 import 'package:tabs_lab/src/data/progress_report.dart';
 import 'package:tabs_lab/src/data/progress_report_pdf.dart'
     show availabilityPdfLabel, availabilityStatusText;
@@ -64,12 +65,18 @@ List<ClinicianLine> clinicianPageLines(ClinicianReportData data) {
   ];
   if (patient.isNotEmpty) {
     lines.add((zone: 'Z1', text: patient.join(' · ')));
+  } else {
+    lines.add((zone: 'Z1', text: clinicianPatientProfileNotRecorded));
   }
 
   // Z2 — medications (the verified active list, R5).
   lines.add((zone: 'Z2', text: clinicianHeadingMedications));
   if (s.medications.isEmpty) {
-    lines.add((zone: 'Z2', text: clinicianNoMedications));
+    if (s.sectionMetadata['medications']?.status == DataSourceStatus.error) {
+      lines.add((zone: 'Z2', text: clinicianMedicationRecordsUnavailable));
+    } else {
+      lines.add((zone: 'Z2', text: clinicianNoMedications));
+    }
   } else {
     final shown = s.medications.take(clinicianMedicationCap).toList();
     for (final m in shown) {
@@ -111,37 +118,50 @@ List<ClinicianLine> clinicianPageLines(ClinicianReportData data) {
   ));
 
   // Z4 — flare / migraine / symptom summary.
+  final logsFailed =
+      s.sectionMetadata['logs']?.status == DataSourceStatus.error;
   lines.add((zone: 'Z4', text: clinicianHeadingFlareMigraine));
-  if (data.flareDays == 0) {
-    lines.add((zone: 'Z4', text: clinicianNoFlareDays));
+  if (logsFailed) {
+    lines.add((zone: 'Z4', text: clinicianLogEntriesUnavailable));
   } else {
-    lines.add((zone: 'Z4', text: 'Flare days: ${data.flareDays}'));
-    final mix = [
-      for (final sev in clinicianFlareSeverities)
-        if ((data.flareSeverityMix[sev] ?? 0) > 0)
-          '$sev ${data.flareSeverityMix[sev]}',
-    ];
-    if (mix.isNotEmpty) {
-      lines.add((zone: 'Z4', text: mix.join(' · ')));
+    if (data.flareDays == 0) {
+      lines.add((zone: 'Z4', text: clinicianNoFlareDays));
+    } else {
+      lines.add((zone: 'Z4', text: 'Flare days: ${data.flareDays}'));
+      final mix = [
+        for (final sev in clinicianFlareSeverities)
+          if ((data.flareSeverityMix[sev] ?? 0) > 0)
+            '$sev ${data.flareSeverityMix[sev]}',
+      ];
+      if (mix.isNotEmpty) {
+        lines.add((zone: 'Z4', text: mix.join(' · ')));
+      }
+    }
+    if (data.migraineCount == 0) {
+      lines.add((zone: 'Z4', text: clinicianNoMigraineEntries));
+    } else {
+      lines.add((zone: 'Z4', text: 'Migraine entries: ${data.migraineCount}'));
+    }
+    if (data.categoriesLoadFailed) {
+      lines.add((zone: 'Z4', text: clinicianCategoriesUnavailable));
+    }
+    if (data.topCategories.isNotEmpty) {
+      lines.add((
+        zone: 'Z4',
+        text:
+            'Most logged categories: ${data.topCategories.map((c) => '${c.name} (${c.count})').join(', ')}',
+      ));
+    } else if (!data.categoriesLoadFailed) {
+      lines.add((zone: 'Z4', text: clinicianTopCategoriesEmpty));
     }
   }
-  if (data.migraineCount == 0) {
-    lines.add((zone: 'Z4', text: clinicianNoMigraineEntries));
-  } else {
-    lines.add((zone: 'Z4', text: 'Migraine entries: ${data.migraineCount}'));
-  }
-  if (data.topCategories.isNotEmpty) {
-    lines.add((
-      zone: 'Z4',
-      text:
-          'Most logged categories: ${data.topCategories.map((c) => '${c.name} (${c.count})').join(', ')}',
-    ));
-  }
 
-  // Z5 — medication changes (absent entirely when there are no
-  // change lines: no heading, no placeholder — spec §4.3).
-  if (data.medChanges.isNotEmpty) {
-    lines.add((zone: 'Z5', text: clinicianHeadingMedChanges));
+  // Z5 — medication changes (heading always renders, with
+  // empty placeholder or change entries and score availability).
+  lines.add((zone: 'Z5', text: clinicianHeadingMedChanges));
+  if (data.medChanges.isEmpty) {
+    lines.add((zone: 'Z5', text: clinicianNoMedChangesRecorded));
+  } else {
     final shown = data.medChanges.take(clinicianChangeCap).toList();
     for (final change in shown) {
       lines.add((
@@ -165,6 +185,10 @@ List<ClinicianLine> clinicianPageLines(ClinicianReportData data) {
         text: clinicianOverflowLine(data.medChanges.length - shown.length),
       ));
     }
+    if (data.medChangesCaptured &&
+        shown.any((c) => c.beforeWindow == null || c.afterWindow == null)) {
+      lines.add((zone: 'Z5', text: clinicianInsufficientScoreData));
+    }
   }
 
   // Z6 — salt & fluids: ABSENT. Item 4 (timestamped intake) has
@@ -173,6 +197,100 @@ List<ClinicianLine> clinicianPageLines(ClinicianReportData data) {
   // line, no zeros). S10 renders only when Z6 does.
   // Z7 — latest lean test: ABSENT. Item 6 is blocked pending
   // clinician review (Juno Item 6 · R1); no placeholder.
+
+  // Z9 — sleep.
+  lines.add((zone: 'Z9', text: clinicianHeadingSleep));
+  String resolveMetricLine<T>({
+    required DataSourceStatus? status,
+    required T? summary,
+    required String Function(T) lineBuilder,
+    required String noDataText,
+    required String unavailableText,
+  }) {
+    final isSuccessOrStored =
+        status == DataSourceStatus.success ||
+            status == DataSourceStatus.storedOnly;
+    if (summary != null && isSuccessOrStored) {
+      return lineBuilder(summary);
+    }
+    if (status == DataSourceStatus.noData ||
+        (summary == null && isSuccessOrStored)) {
+      return noDataText;
+    }
+    return unavailableText;
+  }
+
+  lines.add((
+    zone: 'Z9',
+    text: resolveMetricLine(
+      status: s.sectionMetadata['sleep']?.status,
+      summary: deriveClinicianMetricSummary(s.sleepSeries),
+      lineBuilder: clinicianSleepDurationLine,
+      noDataText: clinicianSleepNoData,
+      unavailableText: clinicianSleepUnavailable,
+    ),
+  ));
+  lines.add((
+    zone: 'Z9',
+    text: resolveMetricLine(
+      status: s.sectionMetadata['deepSleep']?.status,
+      summary: deriveClinicianMetricSummary(s.deepSleepSeries),
+      lineBuilder: clinicianDeepSleepLine,
+      noDataText: clinicianDeepSleepNoData,
+      unavailableText: clinicianDeepSleepUnavailable,
+    ),
+  ));
+
+  // Z10 — HRV.
+  lines.add((zone: 'Z10', text: clinicianHeadingHrv));
+  lines.add((
+    zone: 'Z10',
+    text: resolveMetricLine(
+      status: s.sectionMetadata['hrv']?.status,
+      summary: deriveClinicianMetricSummaryD(s.hrvSeries),
+      lineBuilder: clinicianHrvLine,
+      noDataText: clinicianHrvNoData,
+      unavailableText: clinicianHrvUnavailable,
+    ),
+  ));
+
+  // Z11 — Heart Rate.
+  lines.add((zone: 'Z11', text: clinicianHeadingRestingHeartRate));
+  lines.add((
+    zone: 'Z11',
+    text: resolveMetricLine(
+      status: s.sectionMetadata['heartRate']?.status,
+      summary: deriveClinicianMetricSummary(s.heartRateSeries),
+      lineBuilder: clinicianRestingHrLine,
+      noDataText: clinicianRestingHrNoData,
+      unavailableText: clinicianRestingHrUnavailable,
+    ),
+  ));
+  lines.add((
+    zone: 'Z11',
+    text: resolveMetricLine(
+      status: s.sectionMetadata['hrSpikes']?.status,
+      summary: deriveClinicianSpikeSummary(s.heartRateSpikes),
+      lineBuilder: clinicianHrSpikesLine,
+      noDataText: clinicianHrSpikesNoData,
+      unavailableText: clinicianHrSpikesUnavailable,
+    ),
+  ));
+
+  // Z12 — Patterns.
+  lines.add((zone: 'Z12', text: correlationTitle));
+  if (data.patternsLoadFailed) {
+    lines.add((zone: 'Z12', text: clinicianPatternsUnavailable));
+  } else {
+    final patternLines = correlationInsightPrintLines(data.patternInsights);
+    if (patternLines.isEmpty) {
+      lines.add((zone: 'Z12', text: clinicianNoPatternsDetected));
+    } else {
+      for (final line in patternLines) {
+        lines.add((zone: 'Z12', text: line));
+      }
+    }
+  }
 
   // Z8 — footer.
   final unavailable = [
@@ -430,6 +548,10 @@ Future<List<int>> buildClinicianPdfBytes(ClinicianReportData data,
           zoneBlock('Z3', chart: data.scoredDays >= 2),
           zoneBlock('Z4'),
           zoneBlock('Z5'),
+          zoneBlock('Z9'),
+          zoneBlock('Z10'),
+          zoneBlock('Z11'),
+          zoneBlock('Z12'),
           pw.Spacer(),
           pw.Container(height: 0.7, color: _rgb(200, 200, 200)),
           pw.SizedBox(height: 4),

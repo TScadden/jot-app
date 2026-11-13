@@ -146,8 +146,12 @@ String availabilityStatusText(SectionMetadata meta) => switch (meta.status) {
 /// The PDF availability label: the section key with ONLY its first
 /// character upper-cased (native `replaceFirstChar uppercase` —
 /// `bloodPressure` → "BloodPressure", `hrv` → "Hrv").
-String availabilityPdfLabel(String key) =>
-    key.isEmpty ? key : key[0].toUpperCase() + key.substring(1);
+/// Exception: `dailyScore` is ruled as "Daily Score" to match
+/// clinicianHeadingDailyScore (the mechanical rule produces "DailyScore").
+String availabilityPdfLabel(String key) {
+  if (key == 'dailyScore') return 'Daily Score';
+  return key.isEmpty ? key : key[0].toUpperCase() + key.substring(1);
+}
 
 // ── Chart series (native chart-data construction) ────────────────
 

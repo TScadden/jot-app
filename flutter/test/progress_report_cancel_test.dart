@@ -115,6 +115,12 @@ class _RecordingQueries extends HealthHistoryQueries {
       await gate.future;
       return const [];
     },
+    // Phase 4 Pkg4: collect() also reads the correlation insight
+    // store through this loader. Left unstaged, the production
+    // default reads FlutterSecureStorage, whose platform-channel
+    // reply never lands in a fake-async widget test, so collect()
+    // would pend forever after the documents gate opens.
+    insightsLoader: () async => const [],
   );
   return (collector: collector, queries: queries);
 }

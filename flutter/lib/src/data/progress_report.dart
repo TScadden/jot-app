@@ -1,5 +1,8 @@
 import 'dart:async';
 
+import 'package:tabs_lab/src/data/correlation_copy.dart';
+import 'package:tabs_lab/src/data/correlation_engine.dart';
+import 'package:tabs_lab/src/data/correlation_insight_store.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart';
 import 'package:tabs_lab/src/data/hc_availability.dart';
@@ -378,6 +381,8 @@ class ReportSnapshot {
   /// native concurrent completion order and may vary — the key SET
   /// and wording are the parity contract).
   final Map<String, SectionMetadata> sectionMetadata;
+  final List<InsightRecord> correlationInsights;
+  final bool correlationInsightsLoadFailed;
 
   const ReportSnapshot({
     required this.last30Days,
@@ -400,6 +405,8 @@ class ReportSnapshot {
     this.heartRateSpikes = const [],
     this.bloodPressureSeries = const [],
     this.sectionMetadata = const {},
+    this.correlationInsights = const [],
+    this.correlationInsightsLoadFailed = false,
   });
 
   /// Native `hasAnyData`.
@@ -414,6 +421,55 @@ class ReportSnapshot {
       conditions.isNotEmpty ||
       medications.isNotEmpty ||
       knowledgeDocuments.isNotEmpty;
+
+  /// Returns a new [ReportSnapshot] with updated section status.
+  ///
+  /// Exists so a later pipeline stage that learns a section outcome after
+  /// collection (for example the clinician Daily Score read) can record that
+  /// outcome in the snapshot metadata without rebuilding the snapshot by hand.
+  ReportSnapshot withSectionStatus(
+    String key,
+    DataSourceStatus status,
+    int recordCount,
+  ) {
+    final updatedMetadata = <String, SectionMetadata>{};
+    var matched = false;
+    for (final entry in sectionMetadata.entries) {
+      if (entry.key == key) {
+        updatedMetadata[key] = SectionMetadata(key, status, recordCount);
+        matched = true;
+      } else {
+        updatedMetadata[entry.key] = entry.value;
+      }
+    }
+    if (!matched) {
+      updatedMetadata[key] = SectionMetadata(key, status, recordCount);
+    }
+    return ReportSnapshot(
+      last30Days: last30Days,
+      generationTimestampMs: generationTimestampMs,
+      logEntries: logEntries,
+      categoriesMap: categoriesMap,
+      userContext: userContext,
+      userAge: userAge,
+      userHeightIn: userHeightIn,
+      userWeightLbs: userWeightLbs,
+      userGender: userGender,
+      conditions: conditions,
+      medications: medications,
+      knowledgeDocuments: knowledgeDocuments,
+      heartRateSeries: heartRateSeries,
+      sleepSeries: sleepSeries,
+      deepSleepSeries: deepSleepSeries,
+      caloriesSeries: caloriesSeries,
+      hrvSeries: hrvSeries,
+      heartRateSpikes: heartRateSpikes,
+      bloodPressureSeries: bloodPressureSeries,
+      sectionMetadata: updatedMetadata,
+      correlationInsights: correlationInsights,
+      correlationInsightsLoadFailed: correlationInsightsLoadFailed,
+    );
+  }
 }
 
 // ── AI request assembly (GeminiService snapshot path, byte formats) ─
@@ -537,12 +593,87 @@ Map<String, dynamic> reportEntryJson(QuickLogEntry e) => {
       'updatedAt': 0,
     };
 
+/// Top-level cap on printed correlation insight lines in report requests.
+const int correlationInsightsPrintCap = 3;
+
+/// Formats up to [correlationInsightsPrintCap] correlation insight records
+/// into ruled sentence strings using ruled builders from correlation_copy.dart.
+List<String> correlationInsightPrintLines(List<InsightRecord> records) {
+  final lines = <String>[];
+  for (final record in records) {
+    if (lines.length >= correlationInsightsPrintCap) break;
+    if (record.state != InsightState.numbers) continue;
+
+    final incidence = record.incidence;
+    if (incidence != null) {
+      if (record.splitId.contains('migraine')) {
+        lines.add(correlationMigraineIncidenceSentence(
+          x: incidence.x,
+          n: incidence.n,
+          y: incidence.y,
+          m: incidence.m,
+        ));
+      } else {
+        lines.add(correlationFlareIncidenceSentence(
+          x: incidence.x,
+          n: incidence.n,
+          y: incidence.y,
+          m: incidence.m,
+        ));
+      }
+      continue;
+    }
+
+    if (record.familyId == 'F5') {
+      if (record.groups.length >= 2) {
+        final g0 = record.groups[0];
+        final g1 = record.groups[1];
+        final g0Mean = g0.mean;
+        final g1Mean = g1.mean;
+        if (g0Mean != null && g1Mean != null) {
+          final header = record.headerLabel ?? record.subjectName;
+          final prefix = header != null ? '$header: ' : '';
+          lines.add(
+            '$prefix$medWindowBeforeLabel ${medWindowValue(g0Mean, g0.n)} \u00B7 $medWindowAfterLabel ${medWindowValue(g1Mean, g1.n)}',
+          );
+        }
+      }
+      continue;
+    }
+
+    if (record.groups.length >= 2) {
+      final g0 = record.groups[0];
+      final g1 = record.groups[1];
+      final g0Mean = g0.mean;
+      final g1Mean = g1.mean;
+      if (g0Mean != null && g1Mean != null) {
+        lines.add(correlationComparisonSentence(
+          groupALabel: g0.label,
+          groupAN: g0.n,
+          groupAMean: g0Mean,
+          groupBLabel: g1.label,
+          groupBN: g1.n,
+          groupBMean: g1Mean,
+        ));
+      }
+    }
+  }
+  return lines;
+}
+
 /// The full `POST /api/ai/report` body (native `AiRequest` shape on
 /// the snapshot path: entries, categories, userContext,
 /// knowledgeBase, fitbitData, dataAvailability).
 Map<String, dynamic> buildAiReportRequest(ReportSnapshot s) {
   final kb = s.knowledgeDocuments.join('\n\n');
   final availability = buildDataAvailability(s);
+  final insightLines = s.correlationInsightsLoadFailed
+      ? null
+      : correlationInsightPrintLines(s.correlationInsights);
+  final correlationInsights =
+      (insightLines == null || insightLines.isEmpty)
+          ? null
+          : insightLines.join('\n');
   return {
     'entries': s.logEntries.map(reportEntryJson).toList(),
     'categories': {
@@ -552,6 +683,7 @@ Map<String, dynamic> buildAiReportRequest(ReportSnapshot s) {
     'knowledgeBase': kb.trim().isEmpty ? null : kb,
     'fitbitData': buildHealthSummary(s),
     'dataAvailability': availability.isEmpty ? null : availability,
+    'correlation_insights': correlationInsights,
   };
 }
 
@@ -653,7 +785,8 @@ class AiFailure {
   final bool noSession;
 
   /// True when an HTTP response arrived (200) but its body lacks
-  /// a string `result`: a malformed success, classified
+  /// a string `result` or its result is an empty or whitespace-only
+  /// string: a malformed success, classified
   /// [AiFailureClass.server].
   final bool missingResult;
 
@@ -904,16 +1037,22 @@ class ReportDataCollector {
   /// the page; see the file header). Defaults to no documents.
   final Future<List<String>> Function() documentsLoader;
 
+  /// Stored correlation insight records. Defaults to reading from
+  /// [CorrelationInsightStore.instance.readAllOrThrow].
+  final Future<List<InsightRecord>> Function() insightsLoader;
+
   ReportDataCollector({
     TabsBackend? backend,
     HealthConnectService? hc,
     HealthHistoryQueries? historyQueries,
     Future<List<String>> Function()? documentsLoader,
+    Future<List<InsightRecord>> Function()? insightsLoader,
   }) : this._internal(
           backend ?? TabsBackend(),
           hc ?? HealthConnectService(),
           historyQueries,
           documentsLoader ?? (() async => const []),
+          insightsLoader ?? _defaultInsightsLoader,
         );
 
   ReportDataCollector._internal(
@@ -921,7 +1060,11 @@ class ReportDataCollector {
     this.hc,
     HealthHistoryQueries? queries,
     this.documentsLoader,
+    this.insightsLoader,
   ) : historyQueries = queries ?? HealthHistoryQueries(hc: hc);
+
+  static Future<List<InsightRecord>> _defaultInsightsLoader() async =>
+      (await CorrelationInsightStore.instance.readAllOrThrow()).values.toList();
 
   Future<ReportSnapshot> collect({
     required List<QuickLogCategory> selectedCategories,
@@ -976,6 +1119,12 @@ class ReportDataCollector {
     meta('logs', pullFailed ? DataSourceStatus.error : DataSourceStatus.success,
         entries.length);
 
+    // 2. Daily score.
+    meta(
+        'dailyScore',
+        pullFailed ? DataSourceStatus.error : DataSourceStatus.success,
+        0);
+
     // 3. Conditions (profile list).
     meta(
         'conditions',
@@ -1015,18 +1164,25 @@ class ReportDataCollector {
         docsFailed ? DataSourceStatus.error : DataSourceStatus.success,
         docs.length);
 
-    // 6. Blood pressure — manual logs filtered to range. (Server BP
-    // storage is dropped on push/pull as of R62, so an empty result
-    // is the honest reachable state; native reports SUCCESS with
-    // the filtered count, including 0.)
+    List<InsightRecord> correlationInsights = const [];
+    var correlationInsightsLoadFailed = false;
+    try {
+      correlationInsights = await insightsLoader();
+    } catch (_) {
+      correlationInsights = const [];
+      correlationInsightsLoadFailed = true;
+    }
+
+    // 6. Blood pressure — manual logs filtered to range. Server BP
+    // storage was dropped on push/pull as of R62; per Juno Phase 4
+    // ruling B19, status is error since deprecated storage cannot
+    // establish that the patient recorded nothing.
     final allBp = await backend.fetchManualBpLogs();
     final bp = allBp
         .where((r) => !last30Days || r.timeEpochMs >= cutoff)
         .map((r) => ReportBpRecord(r.systolic, r.diastolic, r.timeEpochMs))
         .toList();
-    meta('bloodPressure',
-        pullFailed ? DataSourceStatus.error : DataSourceStatus.success,
-        bp.length);
+    meta('bloodPressure', DataSourceStatus.error, bp.length);
 
     // 7. Health Connect sections.
     onStage?.call('syncing');
@@ -1160,7 +1316,7 @@ class ReportDataCollector {
     // metadata map above is filled in completion order).
     final ordered = <String, SectionMetadata>{};
     for (final key in const [
-      'logs', 'conditions', 'medications', 'documents', 'bloodPressure',
+      'logs', 'dailyScore', 'conditions', 'medications', 'documents', 'bloodPressure',
       'sleep', 'deepSleep', 'heartRate', 'hrv', 'calories', 'hrSpikes',
     ]) {
       final m = metadata[key];
@@ -1188,6 +1344,8 @@ class ReportDataCollector {
       heartRateSpikes: spikes,
       bloodPressureSeries: bp,
       sectionMetadata: ordered,
+      correlationInsights: correlationInsights,
+      correlationInsightsLoadFailed: correlationInsightsLoadFailed,
     );
   }
 }
@@ -1733,7 +1891,9 @@ class ReportGenerationPipeline {
         return _AiLegResult(_AiLegKind.cancelled, attempts: attempts);
       }
       final result = res.body?['result'];
-      if (res.statusCode == 200 && result is String) {
+      if (res.statusCode == 200 &&
+          result is String &&
+          result.trim().isNotEmpty) {
         attempts.add(AiAttemptRecord(
           attempt: attempt,
           failureClass: null,

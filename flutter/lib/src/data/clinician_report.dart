@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:tabs_lab/src/data/correlation_engine.dart';
 import 'package:tabs_lab/src/data/medication_change_events.dart';
 import 'package:tabs_lab/src/data/medication_timeline.dart';
 import 'package:tabs_lab/src/data/medications.dart';
@@ -8,6 +9,8 @@ import 'package:tabs_lab/src/data/migraine_controller.dart'
 import 'package:tabs_lab/src/data/progress_report.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/today_summary.dart' hide dateStrOf;
+import 'package:tabs_lab/src/features/home/vitals_strip.dart'
+    show formatSleepMinutes;
 
 /// Phase 1, item 3 — Clinician PDF v2 data layer (spec
 /// `phase1-item3-clinician-pdf-spec.md`; copy per Juno's final
@@ -86,6 +89,97 @@ String clinicianTargetsLine({
   required String fluidTarget,
 }) =>
     'Targets recorded in Tabs: $electrolyteTarget and $fluidTarget daily.';
+
+// ── Phase 4 strings ruled by Juno on Nov 12 2026 (rulings 1 and 2) ────────
+
+/// clinician Z1, all demographic fields absent
+const String clinicianPatientProfileNotRecorded =
+    'Patient profile details not recorded';
+
+/// clinician Z2, sync pull failure
+const String clinicianMedicationRecordsUnavailable =
+    'Medication records unavailable';
+
+/// clinician Z4, logs pull failure
+const String clinicianLogEntriesUnavailable =
+    'Log entries unavailable';
+
+/// clinician Z5, no change lines
+const String clinicianNoMedChangesRecorded =
+    'No medication changes recorded in audit period';
+
+/// clinician Z5, a captured change below the score window floor
+const String clinicianInsufficientScoreData =
+    'Insufficient score data for 14-day comparison';
+
+/// clinician Z4, categories load failure
+const String clinicianCategoriesUnavailable =
+    'Categories could not be retrieved.';
+
+/// clinician Z4, successful loads and an empty top categories list
+const String clinicianTopCategoriesEmpty =
+    'No category entries recorded in this range.';
+
+/// clinician Sleep zone heading (ruled)
+const String clinicianHeadingSleep = 'Sleep';
+
+/// clinician Sleep zone, sleep duration data failure statuses (permissionDenied, stale, error)
+const String clinicianSleepUnavailable =
+    'Sleep data could not be retrieved for this period.';
+
+/// clinician Sleep zone, clean read returning no sleep duration data
+const String clinicianSleepNoData = 'No sleep recorded in this range.';
+
+/// clinician Sleep zone, deep sleep data failure statuses (permissionDenied, stale, error)
+const String clinicianDeepSleepUnavailable =
+    'Deep sleep data could not be retrieved for this period.';
+
+/// clinician Sleep zone, clean read returning no deep sleep data
+const String clinicianDeepSleepNoData =
+    'No deep sleep recorded in this range.';
+
+/// clinician Sleep zone label, reusing approved wording
+const String clinicianLabelSleepDuration = 'Sleep Duration';
+
+/// clinician Sleep zone label, reusing approved wording
+const String clinicianLabelDeepSleep = 'Deep Sleep';
+
+/// clinician HRV zone heading
+const String clinicianHeadingHrv = 'HRV (RMSSD)';
+
+/// clinician Resting Heart Rate zone heading
+const String clinicianHeadingRestingHeartRate = 'Resting Heart Rate';
+
+/// clinician HRV zone, failure statuses (permissionDenied, stale, error)
+const String clinicianHrvUnavailable =
+    'HRV (RMSSD) data could not be retrieved for this period.';
+
+/// clinician HRV zone, clean read returning no data
+const String clinicianHrvNoData = 'No HRV (RMSSD) recorded in this range.';
+
+/// clinician Resting Heart Rate zone, failure statuses (permissionDenied, stale, error)
+const String clinicianRestingHrUnavailable =
+    'Resting heart rate data could not be retrieved for this period.';
+
+/// clinician Resting Heart Rate zone, clean read returning no data
+const String clinicianRestingHrNoData =
+    'No resting heart rate recorded in this range.';
+
+/// clinician HR spikes zone, failure statuses (permissionDenied, stale, error)
+const String clinicianHrSpikesUnavailable =
+    'HR spike data could not be retrieved for this period.';
+
+/// clinician HR spikes zone, clean read returning no data
+const String clinicianHrSpikesNoData =
+    'No heart rate spike data recorded in this range.';
+
+/// clinician Patterns zone, clean read returning no printable patterns
+const String clinicianNoPatternsDetected =
+    'No patterns detected for this period';
+
+/// clinician Patterns zone, insight store load failure
+const String clinicianPatternsUnavailable =
+    'Patterns data could not be retrieved.';
 
 // ── Caps (spec §4.4: fixed one page, enforced by caps) ──────────
 
@@ -562,6 +656,189 @@ List<({String name, int count})> deriveTopCategories(
   return out.take(3).toList();
 }
 
+// ── Clinician metric summaries (sleep & biometrics) ──────────────
+
+/// Summary statistics for a biometric integer series (e.g. sleep duration,
+/// deep sleep).
+class ClinicianMetricSummary {
+  final int count;
+  final double min;
+  final double max;
+  final double average;
+
+  const ClinicianMetricSummary({
+    required this.count,
+    required this.min,
+    required this.max,
+    required this.average,
+  });
+}
+
+/// Derives summary statistics from a date-keyed biometric integer series
+/// (e.g. sleep minutes per day). Keeps only values greater than 0 (a zero
+/// in biometric data is a failed read, never a measurement). Returns null
+/// when nothing remains, and otherwise computes count, minimum, maximum,
+/// and the arithmetic mean as a double.
+ClinicianMetricSummary? deriveClinicianMetricSummary(
+  List<(String, int)> series,
+) {
+  final positiveValues = <int>[];
+  for (final record in series) {
+    if (record.$2 > 0) {
+      positiveValues.add(record.$2);
+    }
+  }
+  if (positiveValues.isEmpty) return null;
+
+  var minVal = positiveValues.first.toDouble();
+  var maxVal = positiveValues.first.toDouble();
+  var sum = 0.0;
+  for (final v in positiveValues) {
+    final d = v.toDouble();
+    if (d < minVal) minVal = d;
+    if (d > maxVal) maxVal = d;
+    sum += d;
+  }
+  return ClinicianMetricSummary(
+    count: positiveValues.length,
+    min: minVal,
+    max: maxVal,
+    average: sum / positiveValues.length,
+  );
+}
+
+/// Derives summary statistics from a date-keyed biometric double series
+/// (e.g. HRV RMSSD values). Keeps only values greater than 0 (a zero
+/// in biometric data is a failed read, never a measurement). Returns null
+/// when nothing remains, and otherwise computes count, minimum, maximum,
+/// and the arithmetic mean as a double.
+ClinicianMetricSummary? deriveClinicianMetricSummaryD(
+  List<(String, double)> series,
+) {
+  final positiveValues = <double>[];
+  for (final record in series) {
+    if (record.$2 > 0) {
+      positiveValues.add(record.$2);
+    }
+  }
+  if (positiveValues.isEmpty) return null;
+
+  var minVal = positiveValues.first;
+  var maxVal = positiveValues.first;
+  var sum = 0.0;
+  for (final v in positiveValues) {
+    if (v < minVal) minVal = v;
+    if (v > maxVal) maxVal = v;
+    sum += v;
+  }
+  return ClinicianMetricSummary(
+    count: positiveValues.length,
+    min: minVal,
+    max: maxVal,
+    average: sum / positiveValues.length,
+  );
+}
+
+/// Summary statistics for heart rate spikes.
+class ClinicianSpikeSummary {
+  final int total;
+  final int sampledDays;
+
+  const ClinicianSpikeSummary({
+    required this.total,
+    required this.sampledDays,
+  });
+}
+
+/// Derives summary statistics from a date-keyed spike count series. Returns null
+/// when the list is empty and otherwise the sum of all values as total and the
+/// list length as sampledDays. Days with 0 spikes are real sampled days and must
+/// not be filtered.
+ClinicianSpikeSummary? deriveClinicianSpikeSummary(
+  List<(String, int)> series,
+) {
+  if (series.isEmpty) return null;
+  var sum = 0;
+  for (final record in series) {
+    sum += record.$2;
+  }
+  return ClinicianSpikeSummary(
+    total: sum,
+    sampledDays: series.length,
+  );
+}
+
+// Ruled by Juno in juno-rulings-4-p4-templates.md, Task 1 Items 1a/1b:
+// APPROVED WITH EDIT — the day-word is 'day' at a count of exactly 1 and
+// 'days' otherwise; every other character is verbatim as templated.
+
+/// Sleep duration summary line:
+/// Sleep Duration: average `<avg>` across 1 day (count 1)
+/// Sleep Duration: average `<avg>` across `<count>` days [ · range `<min>` to `<max>`] (count > 1)
+String clinicianSleepDurationLine(ClinicianMetricSummary summary) {
+  final line =
+      '$clinicianLabelSleepDuration: average ${formatSleepMinutes(summary.average.round())} across ${summary.count} ${summary.count == 1 ? 'day' : 'days'}';
+  if (summary.count > 1) {
+    return '$line \u00B7 range ${formatSleepMinutes(summary.min.round())} to ${formatSleepMinutes(summary.max.round())}';
+  }
+  return line;
+}
+
+/// Deep sleep summary line:
+/// Deep Sleep: average `<avg>` across 1 day (count 1)
+/// Deep Sleep: average `<avg>` across `<count>` days [ · range `<min>` to `<max>`] (count > 1)
+String clinicianDeepSleepLine(ClinicianMetricSummary summary) {
+  final line =
+      '$clinicianLabelDeepSleep: average ${formatSleepMinutes(summary.average.round())} across ${summary.count} ${summary.count == 1 ? 'day' : 'days'}';
+  if (summary.count > 1) {
+    return '$line \u00B7 range ${formatSleepMinutes(summary.min.round())} to ${formatSleepMinutes(summary.max.round())}';
+  }
+  return line;
+}
+
+// Ruled by Juno in juno-rulings-4-p4-templates.md, Task 1 Item 2:
+// APPROVED WITH EDIT — the day-word is 'day' at a count of exactly 1 and
+// 'days' otherwise; every other character is verbatim as templated.
+
+/// HRV summary line:
+/// HRV (RMSSD): average `<avg>` ms across 1 day (count 1)
+/// HRV (RMSSD): average `<avg>` ms across `<count>` days [ · range `<min>` ms to `<max>` ms] (count > 1)
+String clinicianHrvLine(ClinicianMetricSummary summary) {
+  final line =
+      '$clinicianHeadingHrv: average ${summary.average.toStringAsFixed(1)} ms across ${summary.count} ${summary.count == 1 ? 'day' : 'days'}';
+  if (summary.count > 1) {
+    return '$line \u00B7 range ${summary.min.toStringAsFixed(1)} ms to ${summary.max.toStringAsFixed(1)} ms';
+  }
+  return line;
+}
+
+// Ruled by Juno in juno-rulings-4-p4-templates.md, Task 1 Item 3:
+// APPROVED WITH EDIT — the day-word is 'day' at a count of exactly 1 and
+// 'days' otherwise; every other character is verbatim as templated.
+
+/// Resting heart rate summary line:
+/// Resting Heart Rate: average `<avg>` bpm across 1 day (count 1)
+/// Resting Heart Rate: average `<avg>` bpm across `<count>` days [ · range `<min>` bpm to `<max>` bpm] (count > 1)
+String clinicianRestingHrLine(ClinicianMetricSummary summary) {
+  final line =
+      '$clinicianHeadingRestingHeartRate: average ${clinicianAverageText(summary.average)} bpm across ${summary.count} ${summary.count == 1 ? 'day' : 'days'}';
+  if (summary.count > 1) {
+    return '$line \u00B7 range ${clinicianAverageText(summary.min)} bpm to ${clinicianAverageText(summary.max)} bpm';
+  }
+  return line;
+}
+
+// Ruled by Juno in juno-rulings-4-p4-templates.md, Task 1 Item 4:
+// APPROVED WITH EDIT — the day-word is 'day' at sampledDays exactly 1
+// and 'days' otherwise; every other character is verbatim as templated.
+
+/// Heart rate spikes summary line:
+/// HR Spikes (>=100 BPM): `<total>` recorded across 1 day (sampledDays 1)
+/// HR Spikes (>=100 BPM): `<total>` recorded across `<sampledDays>` days (sampledDays > 1)
+String clinicianHrSpikesLine(ClinicianSpikeSummary summary) {
+  return 'HR Spikes (>=100 BPM): ${summary.total} recorded across ${summary.sampledDays} ${summary.sampledDays == 1 ? 'day' : 'days'}';
+}
+
 // ── The clinician report data (the renderer's only input) ───────
 
 class ClinicianReportData {
@@ -585,6 +862,9 @@ class ClinicianReportData {
   final Map<String, int> flareSeverityMix;
   final int migraineCount;
   final List<({String name, int count})> topCategories;
+  final bool categoriesLoadFailed;
+  final List<InsightRecord> patternInsights;
+  final bool patternsLoadFailed;
 
   const ClinicianReportData({
     required this.snapshot,
@@ -595,6 +875,9 @@ class ClinicianReportData {
     required this.flareSeverityMix,
     required this.migraineCount,
     required this.topCategories,
+    this.categoriesLoadFailed = false,
+    this.patternInsights = const [],
+    this.patternsLoadFailed = false,
   });
 
   /// The range's day span (device-local), from the snapshot's
@@ -622,10 +905,9 @@ class ClinicianReportData {
 
 // ── Collector extension ──────────────────────────────────────────
 
-/// Extends a base [ReportSnapshot] with the clinician fields.
-/// All sources are injectable; every loader failure degrades
-/// honestly (scores → empty series; events → declared form;
-/// categories → the snapshot's map) and never throws.
+/// Extends a base [ReportSnapshot] with clinician fields. A score load
+/// failure is recorded as an error status in the snapshot sectionMetadata
+/// under dailyScore. All sources are injectable and never throw.
 class ClinicianReportCollector {
   /// Stored Daily Scores by `yyyy-MM-dd` day key (from
   /// HealthHistoryStore in production — stored, write-once
@@ -663,22 +945,43 @@ class ClinicianReportCollector {
     ).range;
     final rangeKeys = range.dayKeys.toSet();
 
+    var scoreLoadFailed = false;
     Map<String, int> scores = const {};
     try {
       scores = await scoreLoader();
     } catch (_) {
+      scoreLoadFailed = true;
       scores = const {};
     }
     final series = [
       for (final key in range.dayKeys)
         if ((scores[key] ?? 0) > 0) (key, scores[key]!),
     ];
+    final effectiveSnapshot = scoreLoadFailed
+        ? snapshot.withSectionStatus('dailyScore', DataSourceStatus.error, 0)
+        : snapshot.withSectionStatus(
+            'dailyScore',
+            series.isEmpty ? DataSourceStatus.noData : DataSourceStatus.success,
+            series.length,
+          );
 
+    var categoriesLoadFailed = false;
     List<QuickLogCategory> categories = const [];
     try {
       categories = await categoriesLoader();
     } catch (_) {
-      categories = const [];
+      categoriesLoadFailed = true;
+      categories = [
+        for (final entry in snapshot.categoriesMap.entries)
+          QuickLogCategory(
+            id: entry.key,
+            name: entry.value,
+            icon: '',
+            colorHex: '',
+            isDefault: false,
+            sortOrder: 0,
+          ),
+      ];
     }
     final names = <int, String>{
       for (final c in categories) c.id: c.name,
@@ -737,7 +1040,7 @@ class ClinicianReportCollector {
     }
 
     return ClinicianReportData(
-      snapshot: snapshot,
+      snapshot: effectiveSnapshot,
       dailyScoreSeries: series,
       medChanges: changes,
       medChangesCaptured: captured,
@@ -745,6 +1048,9 @@ class ClinicianReportCollector {
       flareSeverityMix: flare.severityMix,
       migraineCount: migraines,
       topCategories: top,
+      categoriesLoadFailed: categoriesLoadFailed,
+      patternInsights: effectiveSnapshot.correlationInsights,
+      patternsLoadFailed: effectiveSnapshot.correlationInsightsLoadFailed,
     );
   }
 }
