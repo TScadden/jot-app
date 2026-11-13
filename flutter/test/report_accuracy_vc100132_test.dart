@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tabs_lab/src/data/clinician_report.dart';
+import 'package:tabs_lab/src/data/clinician_report_pdf.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart';
@@ -332,6 +334,112 @@ void main() {
       await capture(hc, store);
       expect(hc.spikeWindows, [180, 180]);
       expect(store.spikeBackfillComplete, isTrue);
+    });
+  });
+
+  group('P1 correction delta — blank frequency is never fabricated '
+      '(founder correction, Nov 13)', () {
+    // The founder's live shapes: ivabradine's stored frequency is
+    // BLANK ("" in the blob); BPC-157's true dose is 0.05 (the
+    // founder's own Nov 11 dose_change corrected his October
+    // entry mistake — the founder PDF's peptide doses were
+    // correct, and acceptance pins 0.05 everywhere).
+    final ivaBlank = MedicationEntry(
+        name: 'Ivabradine', dose: '7.5mg', frequency: '',
+        startDate: 'Apr 2026', endDate: 'Present');
+    final bpc005 = MedicationEntry(
+        name: 'BPC-157 Peptide', dose: '0.05', frequency: 'Once daily',
+        startDate: 'Oct 6, 2026', endDate: 'Present');
+    final ivaTwice = MedicationEntry(
+        name: 'Ivabradine', dose: '7.5mg', frequency: 'Twice daily',
+        startDate: 'Apr 2026', endDate: 'Present');
+
+    test('the display getter still synthesizes for the UI — and '
+        'the report path never reads it', () {
+      // Getter behavior is pinned app-wide behavior (Tools card);
+      // this package does NOT change it. The fabrication was the
+      // report path READING it.
+      expect(ivaBlank.frequency, 'Once daily');
+      expect(ivaBlank.rawFrequency, '');
+      expect(reportMedicationLabel(ivaBlank), 'Ivabradine 7.5mg');
+    });
+
+    test('blank-frequency med: payload frequency is "" and the '
+        'report prose states NO frequency for it', () async {
+      final snap = await _collect(
+        _Backend(),
+        profile: ReportProfileInput(
+          activeMedications: [ivaBlank, bpc005],
+          allMedications: [ivaBlank, bpc005],
+        ),
+      );
+      final body = buildAiReportRequest(snap);
+      final meds = body['medications'] as List<dynamic>;
+      final byName = {
+        for (final m in meds) (m as Map)['name'] as String: m,
+      };
+      expect(byName['Ivabradine']!['frequency'], '');
+      expect(byName['Ivabradine']!['dose'], '7.5mg');
+      // Founder-corrected truth passes through untouched.
+      expect(byName['BPC-157 Peptide']!['dose'], '0.05');
+      expect(byName['BPC-157 Peptide']!['frequency'], 'Once daily');
+
+      final context = body['userContext'] as String;
+      expect(
+          context,
+          contains('Active Medications: Ivabradine 7.5mg, '
+              'BPC-157 Peptide 0.05 (Once daily)'));
+      expect(context, isNot(contains('Ivabradine 7.5mg (')));
+      expect(context, isNot(contains('Ivabradine 7.5mg (Once daily)')));
+      // The standalone prose builder agrees with the payload path.
+      expect(buildReportUserContext(snap), context);
+    });
+
+    test('non-blank frequencies pass through unchanged in both '
+        'the payload and the prose', () async {
+      final snap = await _collect(
+        _Backend(),
+        profile: ReportProfileInput(
+          activeMedications: [ivaTwice],
+          allMedications: [ivaTwice],
+        ),
+      );
+      final meds = structuredProfileMedications(snap);
+      expect(meds.single['frequency'], 'Twice daily');
+      expect(reportMedicationLabel(ivaTwice),
+          'Ivabradine 7.5mg (Twice daily)');
+      expect(buildReportUserContext(snap),
+          contains('Active Medications: Ivabradine 7.5mg (Twice daily)'));
+    });
+
+    test('clinician Z2 list: blank frequency prints no frequency '
+        'phrase; stored frequency prints as before', () {
+      List<String> z2(MedicationEntry m) {
+        final data = ClinicianReportData(
+          snapshot: ReportSnapshot(
+            last30Days: false,
+            generationTimestampMs: _now.millisecondsSinceEpoch,
+            logEntries: const [],
+            categoriesMap: const {},
+            medications: [m],
+          ),
+          dailyScoreSeries: const [],
+          medChanges: const [],
+          medChangesCaptured: false,
+          flareDays: 0,
+          flareSeverityMix: const {},
+          migraineCount: 0,
+          topCategories: const [],
+        );
+        return [
+          for (final l in clinicianPageLines(data))
+            if (l.zone == 'Z2') l.text,
+        ];
+      }
+
+      expect(z2(ivaBlank), ['Medications', 'Ivabradine 7.5mg']);
+      expect(z2(ivaTwice),
+          ['Medications', 'Ivabradine 7.5mg (Twice daily)']);
     });
   });
 }
