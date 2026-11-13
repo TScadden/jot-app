@@ -78,6 +78,7 @@ Future<ReportSnapshot> _collect(
   ReportProfileInput profile = const ReportProfileInput(),
   Future<Map<String, int>> Function()? scoreLoader,
   HealthHistoryStore? store,
+  bool useDefaultScoreLoader = false,
 }) {
   final hc = _Hc();
   final s = store ?? HealthHistoryStore.testInstance();
@@ -85,7 +86,13 @@ Future<ReportSnapshot> _collect(
     backend: backend,
     hc: hc,
     historyQueries: HealthHistoryQueries(hc: hc, store: s),
-    scoreLoader: scoreLoader ?? () async => const {},
+    // Bram verification addendum (VC 100132 recovery): production
+    // constructs the collector with NO scoreLoader (the page's
+    // standard pipeline), so the default store read is the
+    // production path — [useDefaultScoreLoader] exercises it
+    // verbatim instead of masking it behind an injected loader.
+    scoreLoader:
+        useDefaultScoreLoader ? null : (scoreLoader ?? () async => const {}),
   ).collect(
     selectedCategories: [_cat(1, 'Symptoms')],
     last30Days: false,
@@ -198,6 +205,48 @@ void main() {
       expect(meta.recordCount, 0);
       expect(availabilityStatusText(meta),
           'Unavailable. Data could not be retrieved.');
+    });
+
+    test('default loader (production wiring): scores seeded in '
+        'the history store reach the snapshot with no injected '
+        'scoreLoader', () async {
+      // Bram verification addendum: every other P2 case injects a
+      // loader; this one seeds the SAME store the collector's
+      // history queries consult and lets the collector's default
+      // _readStoredScores run — the exact production construction
+      // (progress_reports_page's standard pipeline passes no
+      // scoreLoader). Scores enter the store only via its
+      // write-once score path (mergeRefresh strips score fields),
+      // so seed a biometric day first, then persistScore.
+      final disk = <String, String>{};
+      final store = HealthHistoryStore.testInstance();
+      store.debugSetStore(
+        read: (k) async => disk[k],
+        write: (k, v) async => disk[k] = v,
+        delete: (k) async => disk.remove(k),
+      );
+      await store.mergeRefresh(const [
+        DailyBiometrics(date: '2026-11-10', sleepMinutes: 420),
+        DailyBiometrics(date: '2026-11-11', sleepMinutes: 430),
+        DailyBiometrics(date: '2026-11-12', sleepMinutes: 440),
+      ]);
+      await store.persistScore('2026-11-10', dailyScore: 70);
+      await store.persistScore('2026-11-11', dailyScore: 80);
+      await store.persistScore('2026-11-12', dailyScore: 90);
+
+      final snap = await _collect(
+        _Backend(),
+        store: store,
+        useDefaultScoreLoader: true,
+      );
+      final meta = snap.sectionMetadata['dailyScore']!;
+      expect(meta.status, DataSourceStatus.success);
+      expect(meta.recordCount, 3);
+      expect(snap.dailyScoreSeries, [
+        ('2026-11-10', 70),
+        ('2026-11-11', 80),
+        ('2026-11-12', 90),
+      ]);
     });
 
     test('count 1: range clause suppressed (Ruling 1 template)',
