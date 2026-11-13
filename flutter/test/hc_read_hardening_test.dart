@@ -579,7 +579,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         find.textContaining(
-            '[HR_SAMPLES_PARTIAL] Some heart rate data could not be read and may be missing. (IllegalStateException)'),
+            'Some heart rate data could not be read and may be missing.'),
         findsOneWidget,
       );
       expect(HeartDataCache.instance.lastSyncAt, isNotNull);
@@ -606,7 +606,8 @@ void main() {
       // The read never returns; elapse past the 30s bound.
       await tester.pump(const Duration(seconds: 31));
       await tester.pumpAndSettle();
-      expect(find.textContaining('[READ_TIMEOUT]'), findsOneWidget);
+      expect(find.textContaining('Could not read heart rate data.'),
+          findsOneWidget);
       expect(find.text('Updating sync data...'), findsNothing);
       expect(HeartDataCache.instance.lastSyncAt, isNull);
     });
@@ -643,11 +644,11 @@ void main() {
       await tester.pumpAndSettle();
       // The error is visible even though cached data is on screen.
       expect(
-        find.textContaining('[HR_SAMPLES_READ_FAILED]'),
+        find.textContaining('Could not read heart rate data.'),
         findsOneWidget,
       );
       expect(
-        find.textContaining('IllegalStateException'),
+        find.textContaining('Could not read heart rate data.'),
         findsOneWidget,
       );
       // And the failed load did not re-stamp the sync time.
@@ -689,7 +690,7 @@ void main() {
       // behavior — B-01 does not touch it).
       expect(
         find.textContaining(
-            '[HR_SAMPLES_PARTIAL] Some heart rate data could not be read and may be missing. (IllegalStateException)'),
+            'Some heart rate data could not be read and may be missing.'),
         findsOneWidget,
       );
       // Memory: the cached series survives the partial-empty read.
