@@ -453,8 +453,8 @@ void main() {
       expect(
         z8.join('\n'),
         contains(
-            'Sleep: Available from stored history (1 records); '
-            'DeepSleep: Available from stored history (1 records)'),
+            'Sleep: Available from stored history (1 record); '
+            'DeepSleep: Available from stored history (1 record)'),
       );
     });
   });

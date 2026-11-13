@@ -128,13 +128,28 @@ String effectiveSummaryText(
 }
 
 /// Clean clinical wording for one availability status (native map).
+///
+/// VC 100132 Wave 2.5 (Vera A-C1): Juno R9-1/R9-2 printed forms are
+/// exact. The count slot uses [availabilityCountPhrase] — `(1
+/// record)` at N = 1 — on both the success and stored-only lines,
+/// and a genuine zero (noData) for Daily Score / Blood Pressure
+/// prints the ruled section sentence instead of the generic
+/// `No data recorded`, so the rendered list lines read exactly:
+///   `Daily Score: Unavailable. No Daily Scores were recorded for this period.`
+///   `BloodPressure: Unavailable. No manual Blood Pressure readings were recorded for this period.`
+/// "Data could not be retrieved" remains ONLY on actual fetch
+/// failure (the fallthrough arm below).
 String availabilityStatusText(SectionMetadata meta) => switch (meta.status) {
-      DataSourceStatus.success => 'Available (${meta.recordCount} records)',
+      DataSourceStatus.success =>
+        'Available ${availabilityCountPhrase(meta.recordCount)}',
       // Juno Phase 1 ruling (SIGN): stored-only line, verbatim —
       // the count slot mirrors the success line's form.
       DataSourceStatus.storedOnly =>
-        'Available from stored history (${meta.recordCount} records)',
-      DataSourceStatus.noData => 'No data recorded',
+        'Available from stored history ${availabilityCountPhrase(meta.recordCount)}',
+      DataSourceStatus.noData =>
+        ruledNoDataSentence(meta.sectionKey) != null
+            ? 'Unavailable. ${ruledNoDataSentence(meta.sectionKey)}'
+            : 'No data recorded',
       DataSourceStatus.permissionDenied =>
         'Unavailable. Permission not granted.',
       // Juno Phase 1 ruling (SIGN): stale-grant line, verbatim.

@@ -651,6 +651,67 @@ String buildHealthSummary(ReportSnapshot s) {
   return b.toString();
 }
 
+/// Juno R9-1 §2 genuine-zero sentence (Daily Score, clean empty):
+/// the fetch succeeded and the store held no scores in window.
+const String dailyScoreNoDataSentence =
+    'No Daily Scores were recorded for this period.';
+
+/// Juno R9-2 §3 genuine-zero sentence (Blood Pressure, clean
+/// empty): the local fetch succeeded and returned no readings in
+/// window. "Could not be retrieved" is banned for this case.
+const String bloodPressureNoDataSentence =
+    'No manual Blood Pressure readings were recorded for this period.';
+
+/// The count phrase for an availability line: Juno R9-1 §1 /
+/// R9-2 §1 rule the singular form `(1 record)` at N = 1, at every
+/// site that prints a count (this payload block and the PDF list's
+/// availabilityStatusText alike).
+String availabilityCountPhrase(int recordCount) =>
+    recordCount == 1 ? '(1 record)' : '($recordCount records)';
+
+/// The ruled genuine-zero sentence for a section key, or null when
+/// Juno ruled no section-specific line (the generic form governs).
+String? ruledNoDataSentence(String sectionKey) => switch (sectionKey) {
+      'dailyScore' => dailyScoreNoDataSentence,
+      'bloodPressure' => bloodPressureNoDataSentence,
+      _ => null,
+    };
+
+/// One section's status text in the payload availability block.
+///
+/// VC 100132 Wave 2.5 (Vera A-C3, client half): Daily Score and
+/// Blood Pressure distinguish a clean empty (noData) from a fetch
+/// failure (error) in what the client SENDS, so neither the server
+/// nor the narrative can render a clean empty as a retrieval
+/// failure. The BP segment the client sends is exactly:
+///   success/storedOnly → `Available (N records)` / `(1 record)`
+///   noData (clean empty) →
+///     `Unavailable. No manual Blood Pressure readings were recorded for this period.`
+///   error (fetch failure) → `Unavailable. Data could not be retrieved.`
+/// Daily Score sends the same three shapes with its own R9-1 §2
+/// sentence. Every other section keeps the historic bare
+/// `Unavailable` for any non-available status.
+String _payloadAvailabilityStatus(String key, SectionMetadata meta) {
+  if (meta.status == DataSourceStatus.success ||
+      meta.status == DataSourceStatus.storedOnly) {
+    // Stored-only data IS available (its series is in this very
+    // snapshot) — it carries the success form here, exactly as a
+    // fresh-read success does; its provenance is disclosed in the
+    // PDF availability list (see availabilityStatusText).
+    return 'Available ${availabilityCountPhrase(meta.recordCount)}';
+  }
+  final noDataSentence = ruledNoDataSentence(key);
+  if (noDataSentence == null) return 'Unavailable';
+  return switch (meta.status) {
+    DataSourceStatus.noData => 'Unavailable. $noDataSentence',
+    DataSourceStatus.error ||
+    DataSourceStatus.unavailable ||
+    DataSourceStatus.timedOut =>
+      'Unavailable. Data could not be retrieved.',
+    _ => 'Unavailable',
+  };
+}
+
 /// The anti-hallucination `dataAvailability` block: per-section
 /// `Label: Available (N records)` or `Label: Unavailable`, joined
 /// "; ", with native's hardcoded disambiguated labels only.
@@ -662,15 +723,7 @@ String buildDataAvailability(ReportSnapshot s) {
       'documents' => 'Documents (knowledge base)',
       _ => e.key[0].toUpperCase() + e.key.substring(1),
     };
-    // Stored-only data IS available (its series is in this very
-    // snapshot) — it carries the success form here, exactly as a
-    // fresh-read success does; its provenance is disclosed in the
-    // PDF availability list (see availabilityStatusText).
-    final status = e.value.status == DataSourceStatus.success ||
-            e.value.status == DataSourceStatus.storedOnly
-        ? 'Available (${e.value.recordCount} records)'
-        : 'Unavailable';
-    return '$label: $status';
+    return '$label: ${_payloadAvailabilityStatus(e.key, e.value)}';
   }).join('; ');
 }
 

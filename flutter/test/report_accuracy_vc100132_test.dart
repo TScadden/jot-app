@@ -182,13 +182,35 @@ void main() {
               '· latest 90 on 2026-11-12 · range 70 to 90. '));
     });
 
-    test('no scores in range: noData, Juno\'s empty line, no '
-        'score content anywhere', () async {
+    test('no scores in range: noData, Juno R9-1 §2 ruled line '
+        'verbatim in the PDF list AND the payload, no score '
+        'content anywhere', () async {
       final snap = await _collect(_Backend());
       final meta = snap.sectionMetadata['dailyScore']!;
       expect(meta.status, DataSourceStatus.noData);
       expect(meta.recordCount, 0);
-      expect(availabilityStatusText(meta), 'No data recorded');
+      // Wave 2.5 (Vera A-C1): the generic 'No data recorded' is
+      // replaced by R9-1 §2's exact genuine-zero form.
+      expect(availabilityStatusText(meta),
+          'Unavailable. No Daily Scores were recorded for this period.');
+      expect(
+          '${availabilityPdfLabel('dailyScore')}: '
+          '${availabilityStatusText(meta)}',
+          'Daily Score: Unavailable. '
+          'No Daily Scores were recorded for this period.');
+      // The payload segment carries the same distinction (A-C3
+      // shape, applied to Daily Score as well): clean empty is
+      // never phrased as a retrieval failure.
+      expect(
+          buildDataAvailability(snap),
+          contains('DailyScore: Unavailable. '
+              'No Daily Scores were recorded for this period.'));
+      // Scoped to the DailyScore segment: this snapshot's BP
+      // section is in error state, so BP's own segment DOES carry
+      // the fetch-failure form — legitimately, and only there.
+      expect(buildDataAvailability(snap),
+          isNot(contains('DailyScore: Unavailable. '
+              'Data could not be retrieved.')));
       expect(buildHealthSummary(snap), isNot(contains('Daily Score')));
       expect(buildDataAvailability(snap),
           isNot(contains('DailyScore: Available')));
@@ -205,6 +227,24 @@ void main() {
       expect(meta.recordCount, 0);
       expect(availabilityStatusText(meta),
           'Unavailable. Data could not be retrieved.');
+      expect(
+          buildDataAvailability(snap),
+          contains('DailyScore: Unavailable. '
+              'Data could not be retrieved.'));
+    });
+
+    test('count 1: singular `(1 record)` in the PDF list and '
+        'the payload (Vera A-C1)', () async {
+      final snap = await _collect(
+        _Backend(),
+        scoreLoader: () async => {'2026-11-12': 75},
+      );
+      final meta = snap.sectionMetadata['dailyScore']!;
+      expect(meta.status, DataSourceStatus.success);
+      expect(meta.recordCount, 1);
+      expect(availabilityStatusText(meta), 'Available (1 record)');
+      expect(buildDataAvailability(snap),
+          contains('DailyScore: Available (1 record)'));
     });
 
     test('default loader (production wiring): scores seeded in '
@@ -286,20 +326,70 @@ void main() {
           contains('BloodPressure: Available (2 records)'));
     });
 
-    test('empty + proven-clean source (R2-2 exit): noData', () async {
+    test('empty + proven-clean source (R2-2 exit): noData — '
+        'Juno R9-2 §3 ruled line in the PDF list AND the payload; '
+        'the banned retrieval sentence cannot be produced '
+        '(Vera A-C1 + A-C3 client half)', () async {
       final backend = _Backend()..bpSourceParsed = true;
       final snap = await _collect(backend);
       final meta = snap.sectionMetadata['bloodPressure']!;
       expect(meta.status, DataSourceStatus.noData);
-      expect(availabilityStatusText(meta), 'No data recorded');
+      expect(availabilityStatusText(meta),
+          'Unavailable. No manual Blood Pressure readings were '
+          'recorded for this period.');
+      expect(
+          '${availabilityPdfLabel('bloodPressure')}: '
+          '${availabilityStatusText(meta)}',
+          'BloodPressure: Unavailable. '
+          'No manual Blood Pressure readings were recorded for '
+          'this period.');
+      // A-C3 contract, as sent: the payload's BP segment is the
+      // ruled clean-empty sentence, byte-exact, and no segment of
+      // the payload phrases BP as a retrieval failure.
+      final payload = buildDataAvailability(snap);
+      expect(
+          payload,
+          contains('BloodPressure: Unavailable. '
+              'No manual Blood Pressure readings were recorded for '
+              'this period.'));
+      expect(payload, isNot(contains('could not be retrieved')));
+      // The request body the server actually receives agrees.
+      expect(buildAiReportRequest(snap)['dataAvailability'],
+          contains('BloodPressure: Unavailable. '
+              'No manual Blood Pressure readings were recorded for '
+              'this period.'));
     });
 
-    test('empty + unproven source (R2-2 default): error', () async {
+    test('empty + unproven source (R2-2 default): error — the '
+        'payload sends the could-not-be-retrieved form, and ONLY '
+        'here (Vera A-C3 client half)', () async {
       final snap = await _collect(_Backend());
       final meta = snap.sectionMetadata['bloodPressure']!;
       expect(meta.status, DataSourceStatus.error);
       expect(availabilityStatusText(meta),
           'Unavailable. Data could not be retrieved.');
+      expect(
+          buildDataAvailability(snap),
+          contains('BloodPressure: Unavailable. '
+              'Data could not be retrieved.'));
+    });
+
+    test('exactly one reading: singular `(1 record)` in the PDF '
+        'list and the payload (Vera A-C1)', () async {
+      final backend = _Backend()
+        ..bp = [
+          BpRecord(
+              systolic: 120,
+              diastolic: 80,
+              timeEpochMs: DateTime(2026, 11, 1).millisecondsSinceEpoch),
+        ];
+      final snap = await _collect(backend);
+      final meta = snap.sectionMetadata['bloodPressure']!;
+      expect(meta.status, DataSourceStatus.success);
+      expect(meta.recordCount, 1);
+      expect(availabilityStatusText(meta), 'Available (1 record)');
+      expect(buildDataAvailability(snap),
+          contains('BloodPressure: Available (1 record)'));
     });
 
     test('failed pull (R2-3): error even with a parsed signal',
@@ -489,6 +579,61 @@ void main() {
       expect(z2(ivaBlank), ['Medications', 'Ivabradine 7.5mg']);
       expect(z2(ivaTwice),
           ['Medications', 'Ivabradine 7.5mg (Twice daily)']);
+    });
+  });
+
+  group('Wave 2.5 — Vera A-C1 printed forms, unit pins', () {
+    SectionMetadata m(String key, DataSourceStatus s, [int n = 0]) =>
+        SectionMetadata(key, s, n);
+
+    test('singular form at every count render: success and '
+        'stored-only, ruled keys and generic keys alike', () {
+      expect(availabilityStatusText(m('dailyScore', DataSourceStatus.success, 1)),
+          'Available (1 record)');
+      expect(
+          availabilityStatusText(
+              m('bloodPressure', DataSourceStatus.success, 1)),
+          'Available (1 record)');
+      expect(availabilityStatusText(m('sleep', DataSourceStatus.success, 1)),
+          'Available (1 record)');
+      expect(
+          availabilityStatusText(m('sleep', DataSourceStatus.storedOnly, 1)),
+          'Available from stored history (1 record)');
+      expect(
+          availabilityStatusText(m('sleep', DataSourceStatus.storedOnly, 7)),
+          'Available from stored history (7 records)');
+      expect(availabilityCountPhrase(0), '(0 records)');
+      expect(availabilityCountPhrase(2), '(2 records)');
+    });
+
+    test('genuine-zero: only the two Juno-ruled keys get a '
+        'section sentence; every other key keeps the generic form',
+        () {
+      expect(availabilityStatusText(m('sleep', DataSourceStatus.noData)),
+          'No data recorded');
+      expect(availabilityStatusText(m('hrv', DataSourceStatus.noData)),
+          'No data recorded');
+    });
+
+    test('"could not be retrieved" appears ONLY on actual fetch '
+        'failure for the ruled keys', () {
+      for (final key in ['dailyScore', 'bloodPressure']) {
+        for (final s in [
+          DataSourceStatus.error,
+          DataSourceStatus.unavailable,
+          DataSourceStatus.timedOut,
+        ]) {
+          expect(availabilityStatusText(m(key, s)),
+              'Unavailable. Data could not be retrieved.');
+        }
+        // Permission-class statuses borrow neither ruled sentence.
+        expect(availabilityStatusText(m(key, DataSourceStatus.permissionDenied)),
+            'Unavailable. Permission not granted.');
+        expect(availabilityStatusText(m(key, DataSourceStatus.stale)),
+            'Unavailable. Permission shown as granted, but read blocked.');
+        expect(availabilityStatusText(m(key, DataSourceStatus.noData)),
+            isNot(contains('could not be retrieved')));
+      }
     });
   });
 }
