@@ -773,8 +773,8 @@ ClinicianSpikeSummary? deriveClinicianSpikeSummary(
 // 'days' otherwise; every other character is verbatim as templated.
 
 /// Sleep duration summary line:
-/// Sleep Duration: average <avg> across 1 day (count 1)
-/// Sleep Duration: average <avg> across <count> days [ · range <min> to <max>] (count > 1)
+/// Sleep Duration: average `<avg>` across 1 day (count 1)
+/// Sleep Duration: average `<avg>` across `<count>` days [ · range `<min>` to `<max>`] (count > 1)
 String clinicianSleepDurationLine(ClinicianMetricSummary summary) {
   final line =
       '$clinicianLabelSleepDuration: average ${formatSleepMinutes(summary.average.round())} across ${summary.count} ${summary.count == 1 ? 'day' : 'days'}';
@@ -785,8 +785,8 @@ String clinicianSleepDurationLine(ClinicianMetricSummary summary) {
 }
 
 /// Deep sleep summary line:
-/// Deep Sleep: average <avg> across 1 day (count 1)
-/// Deep Sleep: average <avg> across <count> days [ · range <min> to <max>] (count > 1)
+/// Deep Sleep: average `<avg>` across 1 day (count 1)
+/// Deep Sleep: average `<avg>` across `<count>` days [ · range `<min>` to `<max>`] (count > 1)
 String clinicianDeepSleepLine(ClinicianMetricSummary summary) {
   final line =
       '$clinicianLabelDeepSleep: average ${formatSleepMinutes(summary.average.round())} across ${summary.count} ${summary.count == 1 ? 'day' : 'days'}';
@@ -801,8 +801,8 @@ String clinicianDeepSleepLine(ClinicianMetricSummary summary) {
 // 'days' otherwise; every other character is verbatim as templated.
 
 /// HRV summary line:
-/// HRV (RMSSD): average <avg> ms across 1 day (count 1)
-/// HRV (RMSSD): average <avg> ms across <count> days [ · range <min> ms to <max> ms] (count > 1)
+/// HRV (RMSSD): average `<avg>` ms across 1 day (count 1)
+/// HRV (RMSSD): average `<avg>` ms across `<count>` days [ · range `<min>` ms to `<max>` ms] (count > 1)
 String clinicianHrvLine(ClinicianMetricSummary summary) {
   final line =
       '$clinicianHeadingHrv: average ${summary.average.toStringAsFixed(1)} ms across ${summary.count} ${summary.count == 1 ? 'day' : 'days'}';
@@ -817,8 +817,8 @@ String clinicianHrvLine(ClinicianMetricSummary summary) {
 // 'days' otherwise; every other character is verbatim as templated.
 
 /// Resting heart rate summary line:
-/// Resting Heart Rate: average <avg> bpm across 1 day (count 1)
-/// Resting Heart Rate: average <avg> bpm across <count> days [ · range <min> bpm to <max> bpm] (count > 1)
+/// Resting Heart Rate: average `<avg>` bpm across 1 day (count 1)
+/// Resting Heart Rate: average `<avg>` bpm across `<count>` days [ · range `<min>` bpm to `<max>` bpm] (count > 1)
 String clinicianRestingHrLine(ClinicianMetricSummary summary) {
   final line =
       '$clinicianHeadingRestingHeartRate: average ${clinicianAverageText(summary.average)} bpm across ${summary.count} ${summary.count == 1 ? 'day' : 'days'}';
@@ -833,8 +833,8 @@ String clinicianRestingHrLine(ClinicianMetricSummary summary) {
 // and 'days' otherwise; every other character is verbatim as templated.
 
 /// Heart rate spikes summary line:
-/// HR Spikes (>=100 BPM): <total> recorded across 1 day (sampledDays 1)
-/// HR Spikes (>=100 BPM): <total> recorded across <sampledDays> days (sampledDays > 1)
+/// HR Spikes (>=100 BPM): `<total>` recorded across 1 day (sampledDays 1)
+/// HR Spikes (>=100 BPM): `<total>` recorded across `<sampledDays>` days (sampledDays > 1)
 String clinicianHrSpikesLine(ClinicianSpikeSummary summary) {
   return 'HR Spikes (>=100 BPM): ${summary.total} recorded across ${summary.sampledDays} ${summary.sampledDays == 1 ? 'day' : 'days'}';
 }
