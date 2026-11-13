@@ -66,19 +66,18 @@ class _NotificationOnboardingScreenState
     });
     try {
       await _service.requestNotificationsPermission();
-    } on NotificationServiceException catch (e) {
+    } on NotificationServiceException {
       if (!mounted) return;
       setState(() {
         _requesting = false;
-        _error = '[${e.code}] Notification permission request failed.';
+        _error = 'Notification permission request failed.';
       });
       return;
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _requesting = false;
-        _error = '[PERMISSION_REQUEST_FAILED] Notification permission '
-            'request failed.';
+        _error = 'Notification permission request failed.';
       });
       return;
     }

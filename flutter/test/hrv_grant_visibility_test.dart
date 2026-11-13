@@ -554,12 +554,12 @@ void main() {
           historyStore: store, hc: _SettingsFakeHc(const []));
       await r51.openConnectedApps(tester);
       expect(
-          find.text('Last HRV sync check: the read failed '
-              '[HRV_SAMPLES_READ_FAILED]. 0 samples read, 0 days.'),
+          find.text('Last HRV sync check: the read failed. '
+              '0 samples read, 0 days.'),
           findsOneWidget);
     });
 
-    testWidgets('partial HRV outcome renders partial code + counts',
+    testWidgets('partial HRV outcome renders clean partial copy + counts',
         (tester) async {
       final disk = <String, String>{};
       final store = diagStore(disk);
@@ -575,8 +575,8 @@ void main() {
           historyStore: store, hc: _SettingsFakeHc(const []));
       await r51.openConnectedApps(tester);
       expect(
-          find.text('Last HRV sync check: some data could not be read '
-              '[HRV_SAMPLES_PARTIAL]. 132 samples read, 29 days.'),
+          find.text('Last HRV sync check: some data could not be read. '
+              '132 samples read, 29 days.'),
           findsOneWidget);
     });
 

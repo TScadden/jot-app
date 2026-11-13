@@ -240,6 +240,10 @@ class LogEntrySyncBadge extends StatelessWidget {
 /// loads the whole list via a Room Flow with NO pagination (LazyColumn
 /// renders lazily); this port mirrors that — one pull, full list.
 /// Honest empty/error states; never fake entries.
+// ignore: constant_identifier_names
+const String TODO_JUNO_HISTORY_LOAD_ERROR =
+    'Something went wrong loading history. Please try again.';
+
 class HistoryScreen extends StatefulWidget {
   final TabsBackend? backend;
 
@@ -431,12 +435,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
       if (retryPending && mounted) {
         unawaited(_flushOutboxThenRevalidate());
       }
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       if (!quiet) {
         setState(() {
           _loading = false;
-          _loadError = 'Something went wrong loading history: $e';
+          _loadError = TODO_JUNO_HISTORY_LOAD_ERROR;
         });
       }
       // Quiet failure: keep what's on screen; the next action retries.

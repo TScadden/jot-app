@@ -24,15 +24,15 @@ class VoiceInput {
       final text = await _channel.invokeMethod<String>('startVoiceInput');
       if (text == null || text.trim().isEmpty) {
         throw const VoiceInputException(
-            '[VOICE_EMPTY] No speech was recognized — try again.');
+            'No speech was recognized — try again.');
       }
       return text.trim();
     } on PlatformException catch (e) {
       throw VoiceInputException(
-          '[${e.code}] ${e.message ?? 'Voice input failed.'}');
+          e.message ?? 'Voice input failed.');
     } on MissingPluginException {
       throw const VoiceInputException(
-          '[NO_PLUGIN] Voice input is not available in this build.');
+          'Voice input is not available in this build.');
     }
   }
 }

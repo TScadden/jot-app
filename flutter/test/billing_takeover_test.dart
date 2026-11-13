@@ -675,7 +675,8 @@ void main() {
       store.queryError = StateError('play down');
       await service.initialize();
       expect(service.state.phase, BillingPhase.error);
-      expect(service.state.errorMessage, contains('play down'));
+      expect(service.state.errorMessage,
+          contains('Tabs Premium plans could not be loaded'));
     });
 
     // ── Vera fix 2: in-session retry after a failed verify ──────
@@ -722,7 +723,8 @@ void main() {
       store.emit(const [purchase]);
       await settle();
       expect(service.state.phase, BillingPhase.error);
-      expect(service.state.errorMessage, contains('network down'));
+      expect(service.state.errorMessage,
+          contains('Verification could not reach the Tabs server'));
 
       backend.verifyError = null;
       store.emit(const [purchase]);

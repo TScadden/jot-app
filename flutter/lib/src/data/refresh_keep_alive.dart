@@ -46,7 +46,7 @@ import 'package:tabs_lab/src/data/health_connect_service.dart';
 /// only and never reaches the UI.
 const String dailyScoreRefreshKeepAliveFailedLine =
     "Keep-alive couldn't start: this refresh wasn't protected if you "
-    'swiped Tabs away. [FGS_START_FAILED]';
+    'swiped Tabs away.';
 
 /// Thin, never-throwing wrapper over the plugin's keep-alive
 /// channel methods. See the file header for the full contract.

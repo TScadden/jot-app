@@ -124,10 +124,11 @@ class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
           ),
         ),
       );
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Export failed [$e]')),
+        const SnackBar(
+            content: Text('Export failed unexpectedly. Try again.')),
       );
     } finally {
       if (mounted) setState(() => _exporting = false);

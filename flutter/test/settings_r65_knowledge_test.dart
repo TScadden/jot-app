@@ -437,7 +437,7 @@ void main() {
           contains('ivabradine'));
     });
 
-    testWidgets('picker failure surfaces a visible error with its code',
+    testWidgets('picker failure surfaces a clean visible error',
         (tester) async {
       final server = FakeDocServer();
       final picker = FakePicker()
@@ -449,7 +449,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('knowledge_process_error')),
           findsOneWidget);
-      expect(find.textContaining('[LAUNCH_FAILED]'), findsOneWidget);
+      expect(find.text("Couldn't open the file picker."), findsOneWidget);
+      expect(find.textContaining('[LAUNCH_FAILED]'), findsNothing);
       expect(server.docs, isEmpty);
     });
 

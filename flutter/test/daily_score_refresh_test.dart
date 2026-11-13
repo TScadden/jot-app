@@ -529,15 +529,13 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump();
-      expect(find.textContaining('[CAPTURE_FAILED]'), findsWidgets);
+      expect(find.text('Refresh failed. Nothing was changed.'), findsOneWidget);
       // MF-5 pins both surfaces: the SnackBar and this inline line.
       expect(
-          find.text('Could not refresh. Please try again. '
-              '[CAPTURE_FAILED]'),
+          find.text('Could not refresh. Please try again.'),
           findsOneWidget);
       expect(
-          find.text('Refresh failed. Nothing was changed. '
-              '[CAPTURE_FAILED]'),
+          find.text('Refresh failed. Nothing was changed.'),
           findsOneWidget);
       expect(find.text('Daily Score: 62 · Good'), findsOneWidget);
       expect((await store.readAll())[_target]!.dailyScore, 62);
@@ -570,7 +568,7 @@ void main() {
       expect(find.text('Daily Score: 100 · Great'), findsOneWidget);
       expect(
           find.text('Some data could not be read in this refresh: '
-              'Sleep [SLEEP_HISTORY_READ_FAILED]. Any score shown '
+              'Sleep. Any score shown '
               'uses only the data that is stored.'),
           findsOneWidget);
     });
@@ -604,7 +602,7 @@ void main() {
       expect(find.text('No score stored for this day.'), findsOneWidget);
       expect(
           find.text('Some data could not be read in this refresh: '
-              'HRV [HRV_SAMPLES_READ_FAILED]. Any score shown uses '
+              'HRV. Any score shown uses '
               'only the data that is stored.'),
           findsOneWidget);
     });
@@ -1514,14 +1512,12 @@ void main() {
       // standing string — and NO SnackBar on entry (Juno ruling).
       await pumpDetail(tester, store: store, date: _target, owner: owner);
       expect(
-          find.text('Refresh failed. Nothing was changed. '
-              '[CAPTURE_FAILED]'),
+          find.text('Refresh failed. Nothing was changed.'),
           findsOneWidget);
       expect(find.text('Daily Score: 62 · Good'), findsOneWidget);
       expect(find.byType(SnackBar), findsNothing);
       expect(
-          find.text('Could not refresh. Please try again. '
-              '[CAPTURE_FAILED]'),
+          find.text('Could not refresh. Please try again.'),
           findsNothing);
       expect(owner.hasPendingOutcome(_target), isFalse); // consumed
       // Leave and re-enter: never shown again.
@@ -1558,7 +1554,7 @@ void main() {
       expect(find.text('Daily Score: 100 · Great'), findsOneWidget);
       expect(
           find.text('Some data could not be read in this refresh: '
-              'Sleep [SLEEP_HISTORY_READ_FAILED]. Any score shown '
+              'Sleep. Any score shown '
               'uses only the data that is stored.'),
           findsOneWidget);
       expect(find.byType(SnackBar), findsNothing);
@@ -1588,8 +1584,7 @@ void main() {
       // Its own day shows it.
       await pumpDetail(tester, store: store, date: _target, owner: owner);
       expect(
-          find.text('Refresh failed. Nothing was changed. '
-              '[CAPTURE_FAILED]'),
+          find.text('Refresh failed. Nothing was changed.'),
           findsOneWidget);
     });
 

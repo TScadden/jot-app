@@ -992,8 +992,8 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
 
   void _showRefreshError(String code) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Could not refresh. Please try again. [$code]'),
+      const SnackBar(
+        content: Text('Could not refresh. Please try again.'),
       ),
     );
   }
@@ -1008,17 +1008,16 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
   List<Widget> _refreshNotices() => [
         if (_refreshErrorCode != null) ...[
           const SizedBox(height: 16),
-          Text(
-            'Refresh failed. Nothing was changed. '
-            '[$_refreshErrorCode]',
-            style: const TextStyle(fontSize: 12, color: NotelColors.error),
+          const Text(
+            'Refresh failed. Nothing was changed.',
+            style: TextStyle(fontSize: 12, color: NotelColors.error),
           ),
         ],
         if (_refreshFailureCodes.isNotEmpty) ...[
           const SizedBox(height: 16),
           Text(
             'Some data could not be read in this refresh: '
-            '${_refreshFailureCodes.entries.map((e) => '${_captureMetricLabels[e.key] ?? e.key} [${e.value}]').join(', ')}'
+            '${_refreshFailureCodes.entries.map((e) => _captureMetricLabels[e.key] ?? e.key).join(', ')}'
             '. Any score shown uses only the data that is stored.',
             style: const TextStyle(fontSize: 12, color: NotelColors.warning),
           ),

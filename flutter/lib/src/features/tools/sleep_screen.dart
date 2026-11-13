@@ -202,10 +202,7 @@ class _SleepScreenState extends State<SleepScreen> {
   void _captureReadError() {
     final code = _hc.lastReadErrorCode;
     if (code == null) return;
-    final details = _hc.lastReadErrorDetails;
-    _readError = details != null
-        ? '[$code] Could not read sleep data. ($details)'
-        : '[$code] Could not read sleep data.';
+    _readError = 'Could not read sleep data.';
   }
 
   /// Juno J4 partial copy for the Sleep Need union's partial signal
@@ -213,11 +210,7 @@ class _SleepScreenState extends State<SleepScreen> {
   /// sleep history chunks could not be read, the rest is shown.
   void _capturePartialError() {
     if (_readError != null) return;
-    final code = _hc.lastPartialErrorCode ?? 'SLEEP_HISTORY_PARTIAL';
-    final details = _hc.lastReadErrorDetails;
-    _readError = details != null
-        ? '[$code] Some sleep data could not be read and may be missing. ($details)'
-        : '[$code] Some sleep data could not be read and may be missing.';
+    _readError = 'Some sleep data could not be read and may be missing.';
   }
 
   /// All real (positive) minutes read so far, dateStr → minutes.
