@@ -58,6 +58,76 @@ enum AiTransportFailure {
   preDispatch,
 }
 
+/// VC 100131 (Round 3) — the outcome of a report-result pickup
+/// (`GET /api/ai/report/result/:generationId`, owner-authenticated):
+/// the server holds a detached generation's outcome under the
+/// client's stable `reportGenerationId`, so a generation whose
+/// POST socket died can still be collected. Sealed: every caller
+/// handles every shape. Mapping is by HTTP status FIRST, the
+/// body's `status` field SECOND (see
+/// [TabsBackend.fetchReportPickup]).
+sealed class ReportPickupOutcome {
+  const ReportPickupOutcome();
+}
+
+/// 200 — the held narrative. Fetch-once server-side: the row is
+/// gone after a successful delivery, so a later pickup of the
+/// same identity answers not-found.
+class PickupReady extends ReportPickupOutcome {
+  /// The finished narrative, byte-identical to the POST success
+  /// body's `result`.
+  final String result;
+
+  /// Server completion time, when the body carried one
+  /// (`completedAt`, ISO-8601 or epoch ms); informational only.
+  final DateTime? completedAt;
+  const PickupReady(this.result, {this.completedAt});
+}
+
+/// 202 — the detached generation is still running server-side;
+/// the caller polls. [retryAfterMs] is the server's hint, when
+/// present (the pipeline's poll cadence is its own).
+class PickupRunning extends ReportPickupOutcome {
+  final int? retryAfterMs;
+  const PickupRunning({this.retryAfterMs});
+}
+
+/// The stored mapped failure: the generation finished and
+/// failed; the server stored ONLY the mapped HTTP status + the
+/// generic mapped string. The pipeline records this through the
+/// existing AiFailure mapping (status only — [error] is never
+/// rendered, exactly like POST serverError).
+class PickupFailed extends ReportPickupOutcome {
+  final int httpStatus;
+  final String? error;
+  const PickupFailed(this.httpStatus, {this.error});
+}
+
+/// 404 — no such generation for this account: it never reached
+/// the server (the pre-dispatch case), was already collected, or
+/// never existed. A normal state, NOT an error: callers fall
+/// back to a fresh POST with the SAME identity.
+class PickupNotFound extends ReportPickupOutcome {
+  const PickupNotFound();
+}
+
+/// 410 — the generation finished but its held narrative passed
+/// the 24 h ceiling and was deleted (content-free tombstone,
+/// Juno R8-1). Terminal for that identity: no POST, no retry;
+/// the generation ends in the expired presentation state.
+class PickupExpired extends ReportPickupOutcome {
+  const PickupExpired();
+}
+
+/// The pickup ITSELF could not be completed (transport failure,
+/// no session, or an unusable response talking to the pickup
+/// endpoint). This is NOT a generation failure and must never
+/// surface as one: callers fall through to their existing
+/// behaviour (a POST dispatch).
+class PickupUnreachable extends ReportPickupOutcome {
+  const PickupUnreachable();
+}
+
 class TabsBackend {
   static const String defaultBaseUrl = 'https://api.jottracker.com';
   static const Duration requestTimeout = Duration(seconds: 20);
@@ -1152,6 +1222,111 @@ class TabsBackend {
       serverError: serverError,
       transportFailure: null,
     );
+  }
+
+  /// VC 100131 (Round 3) — report-result pickup:
+  /// `GET /api/ai/report/result/:generationId`, through the SAME
+  /// authed detailed machinery as the report POST (in-flight
+  /// refresh awaited, one refresh + resend on 401), so its
+  /// session semantics match the POST exactly. Owner-scoped
+  /// server-side by the JWT: another account's identity answers
+  /// identically to a nonexistent one.
+  ///
+  /// This method NEVER throws and NEVER returns a generation
+  /// failure for a pickup-side problem: any transport failure
+  /// talking to the pickup endpoint maps to [PickupUnreachable],
+  /// which callers treat as "pickup is best-effort recovery,
+  /// fall through to a POST" — never as a user-visible failure.
+  Future<ReportPickupOutcome> fetchReportPickup(String generationId) async {
+    final sent = await _sendAuthedDetailed(
+      (token) => _client.get(
+        Uri.parse('$_baseUrl/api/ai/report/result/$generationId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      ),
+      timeout: aiRequestTimeout,
+    );
+    final response = sent.response;
+    if (response == null) return const PickupUnreachable();
+    Map<String, dynamic>? decoded;
+    try {
+      final d = jsonDecode(response.body);
+      if (d is Map<String, dynamic>) decoded = d;
+    } catch (_) {
+      decoded = null;
+    }
+    final bodyStatus = decoded?['status'];
+    // Mapping: HTTP status first, body `status` field second.
+    switch (response.statusCode) {
+      case 200:
+        final result = decoded?['result'];
+        if (result is String && result.trim().isNotEmpty) {
+          return PickupReady(result,
+              completedAt: _parsePickupCompletedAt(decoded?['completedAt']));
+        }
+        // A 200 without a usable narrative is an unusable pickup
+        // response, not a generation outcome: fall through to a
+        // POST rather than inventing a failure.
+        return const PickupUnreachable();
+      case 202:
+        final hint = decoded?['retryAfterMs'];
+        return PickupRunning(
+            retryAfterMs: hint is num ? hint.toInt() : null);
+      case 410:
+        return const PickupExpired();
+      case 404:
+        return const PickupNotFound();
+    }
+    // Body `status` second, for any other HTTP status.
+    if (bodyStatus == 'expired') return const PickupExpired();
+    if (bodyStatus == 'not_found') return const PickupNotFound();
+    if (bodyStatus == 'running') {
+      final hint = decoded?['retryAfterMs'];
+      return PickupRunning(retryAfterMs: hint is num ? hint.toInt() : null);
+    }
+    // Anything else with an HTTP status IS the stored mapped
+    // failure (the stored status + { error }), including the
+    // stored cancelled answer (unreachable behind the client's
+    // cancel tombstone, mapped here only for completeness).
+    final e = decoded?['error'] ?? decoded?['message'];
+    return PickupFailed(response.statusCode,
+        error: e == null ? null : '$e');
+  }
+
+  static DateTime? _parsePickupCompletedAt(Object? raw) {
+    if (raw is num) {
+      return DateTime.fromMillisecondsSinceEpoch(raw.toInt());
+    }
+    if (raw is String) return DateTime.tryParse(raw);
+    return null;
+  }
+
+  /// VC 100131 (Round 3) — cancel invalidation:
+  /// `DELETE /api/ai/report/result/:generationId` (Juno R8-2:
+  /// owner-scoped; a running row is marked cancelled and its
+  /// completion write is discarded server-side; a ready/failed
+  /// row is deleted). Fire-and-forget BY CONTRACT: every outcome
+  /// — transport failure, no session, any status — is swallowed.
+  /// The client's journal tombstone (written on the Cancel tap
+  /// itself) is what guarantees the cancelled identity is never
+  /// picked up or re-POSTed, independently of whether this
+  /// DELETE landed.
+  Future<void> invalidateReportGeneration(String generationId) async {
+    try {
+      await _sendAuthedDetailed(
+        (token) => _client.delete(
+          Uri.parse('$_baseUrl/api/ai/report/result/$generationId'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+    } catch (_) {
+      // Best-effort by contract (see above).
+    }
   }
 
   /// Current/best streak from `/api/sync/pull`. Nulls on any failure —

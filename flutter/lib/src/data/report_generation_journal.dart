@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -50,6 +51,61 @@ const restoredDecisionAction = 'Start a new report';
 
 /// R5-6 — F1 details expansion label.
 const attemptDetailsLabel = 'Details';
+
+// ── VC 100131 (Round 3) — expired-hold copy ─────────────────────
+//
+// FINAL — Juno's SIGNED R8-1 copy
+// (~/workspace/mega-100127/round3-juno-stage2-rulings.md, R8-1:
+// "FINAL expired-hold copy — SIGNED (not a draft; build exactly
+// this)"). An expired hold is a NEW terminal state (the report
+// DID finish server-side, but its held narrative passed the 24 h
+// ceiling and was deleted), so it may NOT reuse the
+// failed/decision copy. This is the ONLY place the expired copy
+// lives. Ruled presentation (R8-1): a 410 pickup answer at
+// decision-restore REPLACES the decision surface with this
+// presentation; an in-session 410 shows the SAME state and ends
+// the generation; the only exit is the action below, which mints
+// a NEW identity for a new logical generation.
+
+/// R8-1 FINAL — expired-hold title.
+const expiredHoldTitle = 'Your earlier report is no longer saved';
+
+/// R8-1 FINAL — expired-hold body.
+const expiredHoldBody =
+    'Tabs finished that report and held it for 24 hours. That time has passed and the held copy has been deleted. You can make a new report from your data.';
+
+/// R8-1 FINAL — expired-hold action (starts a NEW logical
+/// generation: new identity, full collect + generate).
+const expiredHoldActionLabel = 'Make a new report';
+
+// ── VC 100131 (Round 3) — the wire generation identity ──────────
+
+/// Mints the stable logical-generation identity sent to the
+/// server as `reportGenerationId` (POST /api/ai/report body field
+/// and the pickup path parameter): 128 bits from
+/// [Random.secure], lowercase hex (32 chars). Minted ONCE per
+/// user-initiated logical generation by
+/// ReportGenerationService.start and persisted on the journal
+/// entry; decision resumes, the interrupted auto-rerun, and
+/// interrupted retries REUSE the persisted value (see the service
+/// for the minting rule). Deliberately NOT the journal
+/// `generationId` (a per-start() bookkeeping id that rotates on
+/// every resume/restore and carries a process-local counter).
+///
+/// Vera Stage 2 adjudication, Item D1 condition: NO weak
+/// fallback. If secure randomness throws or is unavailable this
+/// returns null and the generation proceeds with NO
+/// reportGenerationId (legacy behaviour) — a missing ID beats a
+/// guessable one; never downgrade to a non-secure source.
+String? mintReportGenerationId() {
+  try {
+    final rng = Random.secure();
+    final bytes = List<int>.generate(16, (_) => rng.nextInt(256));
+    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  } catch (_) {
+    return null;
+  }
+}
 
 // ── Juno R6 verbatim strings (round2-juno-rulings, VC 100130) ──
 //
@@ -211,7 +267,25 @@ class ReportRequestIdentity {
 
 // ── Journal entry ────────────────────────────────────────────────
 
-enum JournalOutcomeKind { running, ready, failed, decision }
+enum JournalOutcomeKind {
+  running,
+  ready,
+  failed,
+  decision,
+
+  /// VC 100131 (Round 3): the generation FINISHED server-side
+  /// but its held narrative expired before pickup (the pickup
+  /// endpoint answered 410). A terminal presentation state of
+  /// its own — distinct from [failed] (the generation did not
+  /// fail) and from [decision] (there is nothing to resume: the
+  /// narrative is gone and Juno R7-7 forbids regeneration at
+  /// pickup or after expiry; the only action is a NEW logical
+  /// generation). Tolerant read: builds that predate this value
+  /// parse an unknown outcomeKind as [running] (the existing
+  /// orElse in fromJsonString), which degrades an expired record
+  /// to the interrupted handling — never to a false ready/failed.
+  expired,
+}
 
 class ReportJournalEntry {
   final String generationId;
@@ -248,6 +322,35 @@ class ReportJournalEntry {
   final String? failureKindName;
   final String? failureStageName;
 
+  // VC 100131 (Round 3) wire identity (additive): the stable
+  // logical-generation id sent to the server as
+  // `reportGenerationId` — 128-bit secure-random lowercase hex,
+  // minted once per user-initiated logical generation (see
+  // [mintReportGenerationId] and the service's minting rule) and
+  // REUSED across decision resumes, the interrupted auto-rerun,
+  // and interrupted retries of the same logical generation.
+  // Null on records written by builds that predate Round 3.
+  final String? reportGenerationId;
+
+  // VC 100131 (Round 3) cancel tombstone (additive, default
+  // false): set + persisted by requestCancel on the Cancel tap
+  // itself (Juno R8-2). While set, NO pickup is ever attempted
+  // for [reportGenerationId] at any call site and the identity
+  // is never re-POSTed: a cancelled generation is invalidated
+  // client-side independently of whether the server DELETE
+  // landed.
+  final bool generationInvalidated;
+
+  // VC 100131 (Round 3) held-completion record (additive,
+  // Vera Stage 2 Item 4 condition): the server's `completedAt`
+  // for a narrative collected by PICKUP, recorded on the
+  // terminal journal record. Recorded, NOT displayed anywhere
+  // (Juno's silent-pickup ruling stands — no provenance surface
+  // reads this). Null for POST-delivered completions (the POST
+  // success body carries no completedAt) and for every
+  // non-ready outcome.
+  final int? heldCompletedAtMs;
+
   const ReportJournalEntry({
     required this.generationId,
     required this.startedAtMs,
@@ -267,6 +370,9 @@ class ReportJournalEntry {
     this.attempts = const [],
     this.failureKindName,
     this.failureStageName,
+    this.reportGenerationId,
+    this.generationInvalidated = false,
+    this.heldCompletedAtMs,
   });
 
   bool get isTerminal => outcomeKind != JournalOutcomeKind.running;
@@ -301,6 +407,9 @@ class ReportJournalEntry {
     List<AiAttemptRecord>? attempts,
     String? failureKindName,
     String? failureStageName,
+    String? reportGenerationId,
+    bool? generationInvalidated,
+    int? heldCompletedAtMs,
   }) =>
       ReportJournalEntry(
         generationId: generationId,
@@ -321,6 +430,10 @@ class ReportJournalEntry {
         attempts: attempts ?? this.attempts,
         failureKindName: failureKindName ?? this.failureKindName,
         failureStageName: failureStageName ?? this.failureStageName,
+        reportGenerationId: reportGenerationId ?? this.reportGenerationId,
+        generationInvalidated:
+            generationInvalidated ?? this.generationInvalidated,
+        heldCompletedAtMs: heldCompletedAtMs ?? this.heldCompletedAtMs,
       );
 
   Map<String, dynamic> toJson() => {
@@ -341,6 +454,9 @@ class ReportJournalEntry {
         'failureClassName': failureClassName,
         'failureKindName': failureKindName,
         'failureStageName': failureStageName,
+        'reportGenerationId': reportGenerationId,
+        'generationInvalidated': generationInvalidated,
+        'heldCompletedAtMs': heldCompletedAtMs,
         'allowRawFallback': allowRawFallback,
         'attempts': [
           for (final a in attempts)
@@ -405,6 +521,16 @@ class ReportJournalEntry {
         failureClassName: decoded['failureClassName'] as String?,
         failureKindName: decoded['failureKindName'] as String?,
         failureStageName: decoded['failureStageName'] as String?,
+        // VC 100131 additive fields, tolerant exactly like the
+        // VC 100130 pair: absent/wrong-typed reads degrade to
+        // null / false (a pre-Round-3 record simply has no wire
+        // identity and no tombstone).
+        reportGenerationId: decoded['reportGenerationId'] is String &&
+                (decoded['reportGenerationId'] as String).isNotEmpty
+            ? decoded['reportGenerationId'] as String
+            : null,
+        generationInvalidated: decoded['generationInvalidated'] == true,
+        heldCompletedAtMs: (decoded['heldCompletedAtMs'] as num?)?.toInt(),
         allowRawFallback: decoded['allowRawFallback'] as bool?,
         attempts: attempts,
       );
