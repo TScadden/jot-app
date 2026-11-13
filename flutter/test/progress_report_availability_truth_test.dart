@@ -526,7 +526,14 @@ void main() {
       expect(availabilityPdfLabel('dailyScore'), 'Daily Score');
     });
 
-    test('Blood pressure B19', () async {
+    test('Blood pressure empty + unproven source (Juno R4 '
+        'Ruling 2, R2-2 default)', () async {
+      // This fixture's BP fetch returns [] and its pull carries
+      // no parsed manual-BP source field, so the empty cannot be
+      // proven clean: Ruling 2 keeps it a retrieval statement.
+      // (Present readings → success, and the proven-clean empty
+      // → noData, are pinned in
+      // report_accuracy_vc100132_test.dart.)
       final snap = await collect();
       final bpMeta = snap.sectionMetadata['bloodPressure'];
       expect(bpMeta, isNotNull);

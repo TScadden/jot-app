@@ -5,7 +5,6 @@ import 'package:tabs_lab/src/data/correlation_engine.dart';
 import 'package:tabs_lab/src/data/correlation_insight_store.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart';
-import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/hc_availability.dart';
 import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
@@ -1198,12 +1197,14 @@ class ReportDataCollector {
   final Future<List<InsightRecord>> Function() insightsLoader;
 
   /// VC 100132 (Problem 2) — stored Daily Scores by `yyyy-MM-dd`
-  /// day key. Defaults to the SAME source the clinician path
-  /// reads (progress_reports_page's clinician scoreLoader:
-  /// [HealthHistoryStore] rows' `dailyScore`) — before this, the
-  /// standard collector never read scores at all and hardcoded
-  /// the dailyScore section to success / 0 records.
-  final Future<Map<String, int>> Function() scoreLoader;
+  /// day key. When null (the default), scores are read from the
+  /// SAME store this collector's history queries consult —
+  /// [HealthHistoryQueries.store], whose rows' `dailyScore` is
+  /// exactly the source the clinician path reads
+  /// (progress_reports_page's clinician scoreLoader). Before
+  /// this, the standard collector never read scores at all and
+  /// hardcoded the dailyScore section to success / 0 records.
+  final Future<Map<String, int>> Function()? scoreLoader;
 
   /// R-1 F4 — the overall collection deadline. Derivation: a
   /// legitimate collection is a sync pull (20s transport bound),
@@ -1232,7 +1233,7 @@ class ReportDataCollector {
           historyQueries,
           documentsLoader ?? (() async => const []),
           insightsLoader ?? _defaultInsightsLoader,
-          scoreLoader ?? _defaultScoreLoader,
+          scoreLoader,
           collectTimeout ?? defaultCollectTimeout,
         );
 
@@ -1249,10 +1250,11 @@ class ReportDataCollector {
   static Future<List<InsightRecord>> _defaultInsightsLoader() async =>
       (await CorrelationInsightStore.instance.readAllOrThrow()).values.toList();
 
-  /// The clinician path's score source, verbatim: every stored
-  /// day's `dailyScore` from the history store.
-  static Future<Map<String, int>> _defaultScoreLoader() async {
-    final days = await HealthHistoryStore.instance.readAll();
+  /// The default score read: every stored day's `dailyScore`
+  /// from this collector's own history store (the clinician
+  /// path's score source, verbatim).
+  Future<Map<String, int>> _readStoredScores() async {
+    final days = await historyQueries.store.readAll();
     return {
       for (final e in days.entries)
         if (e.value.dailyScore != null) e.key: e.value.dailyScore!,
@@ -1350,7 +1352,7 @@ class ReportDataCollector {
     var scoreLoadFailed = false;
     Map<String, int> storedScores = const {};
     try {
-      storedScores = await scoreLoader();
+      storedScores = await (scoreLoader ?? _readStoredScores)();
     } catch (_) {
       scoreLoadFailed = true;
       storedScores = const {};
