@@ -51,6 +51,56 @@ const restoredDecisionAction = 'Start a new report';
 /// R5-6 — F1 details expansion label.
 const attemptDetailsLabel = 'Details';
 
+// ── Juno R6 verbatim strings (round2-juno-rulings, VC 100130) ──
+//
+// The closed set of base lines for NON-AI failures, ruled
+// verbatim in R6-2. These are the ONLY rendered form of the
+// journal's internal failure kind/stage names (R6-4 condition 1:
+// the names themselves are never rendered, in any form). The
+// stage is never user-visible (R6-3): the collection lines do
+// not split by stage, because the collection deadline is
+// cumulative across stages and a stage-specific line could
+// misattribute the cause.
+
+/// R6-2 — collectionTimeout base line (any collection stage).
+const failureLineCollectionTimeout =
+    'Collecting your report data took too long, so the report stopped';
+
+/// R6-2 — collectionFailure base line (any collection stage).
+const failureLineCollectionFailure =
+    'Something went wrong while collecting your report data';
+
+/// R6-2 — renderFailure base line.
+const failureLineRenderFailure =
+    'Something went wrong while creating the PDF file';
+
+/// R6-2 — saveFailure base line.
+const failureLineSaveFailure =
+    'Something went wrong while saving the PDF file';
+
+/// R6-1: the rendered non-AI failure line for a journaled
+/// failure kind: `{base line} · {time}`, where the time is the
+/// journal's recorded finish time in the governing format
+/// ([journalTimeText]). No recorded finish time → the base line
+/// alone (no separator, no placeholder). An unknown or absent
+/// kind (including a buildingSummary escape, which records no
+/// kind) → null: no line. Exactly one such line exists per
+/// failed generation; the service renders it AFTER any AI
+/// attempt lines.
+String? reportFailureDetailLine(String? failureKindName,
+    {DateTime? finishedAt}) {
+  final base = switch (failureKindName) {
+    'collectionTimeout' => failureLineCollectionTimeout,
+    'collectionFailure' => failureLineCollectionFailure,
+    'renderFailure' => failureLineRenderFailure,
+    'saveFailure' => failureLineSaveFailure,
+    _ => null,
+  };
+  if (base == null) return null;
+  if (finishedAt == null) return base;
+  return '$base · ${journalTimeText(finishedAt)}';
+}
+
 const _monthsShort = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
@@ -188,6 +238,16 @@ class ReportJournalEntry {
   final bool? allowRawFallback;
   final List<AiAttemptRecord> attempts;
 
+  // VC 100130 diagnostic record (additive): the failed
+  // generation's ReportFailureKind / ReportStage names, recorded
+  // whenever the producer supplied them — independent of the AI
+  // attempt history (a collection timeout has zero attempts and
+  // still records both). [stage] above is the LIVE stage and
+  // clears at finish; [failureStageName] is the permanent record
+  // of where the failure happened.
+  final String? failureKindName;
+  final String? failureStageName;
+
   const ReportJournalEntry({
     required this.generationId,
     required this.startedAtMs,
@@ -205,6 +265,8 @@ class ReportJournalEntry {
     this.failureClassName,
     this.allowRawFallback,
     this.attempts = const [],
+    this.failureKindName,
+    this.failureStageName,
   });
 
   bool get isTerminal => outcomeKind != JournalOutcomeKind.running;
@@ -237,6 +299,8 @@ class ReportJournalEntry {
     String? failureClassName,
     bool? allowRawFallback,
     List<AiAttemptRecord>? attempts,
+    String? failureKindName,
+    String? failureStageName,
   }) =>
       ReportJournalEntry(
         generationId: generationId,
@@ -255,6 +319,8 @@ class ReportJournalEntry {
         failureClassName: failureClassName ?? this.failureClassName,
         allowRawFallback: allowRawFallback ?? this.allowRawFallback,
         attempts: attempts ?? this.attempts,
+        failureKindName: failureKindName ?? this.failureKindName,
+        failureStageName: failureStageName ?? this.failureStageName,
       );
 
   Map<String, dynamic> toJson() => {
@@ -273,6 +339,8 @@ class ReportJournalEntry {
         'message': message,
         'aiFailureReason': aiFailureReason,
         'failureClassName': failureClassName,
+        'failureKindName': failureKindName,
+        'failureStageName': failureStageName,
         'allowRawFallback': allowRawFallback,
         'attempts': [
           for (final a in attempts)
@@ -335,6 +403,8 @@ class ReportJournalEntry {
         message: decoded['message'] as String?,
         aiFailureReason: decoded['aiFailureReason'] as String?,
         failureClassName: decoded['failureClassName'] as String?,
+        failureKindName: decoded['failureKindName'] as String?,
+        failureStageName: decoded['failureStageName'] as String?,
         allowRawFallback: decoded['allowRawFallback'] as bool?,
         attempts: attempts,
       );

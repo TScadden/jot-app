@@ -231,6 +231,25 @@ class ReportGenerationService extends ChangeNotifier {
     ];
   }
 
+  /// VC 100130 (Juno R6-1/R6-2): the ONE non-AI failure line for
+  /// the held failure, built from the journal entry (restored or
+  /// same-session) or, failing that, the pending failure itself.
+  /// Rendered AFTER [displayAttemptLines] in the same Details
+  /// expansion. Only Juno's ruled line is ever produced here —
+  /// the internal kind/stage names are never rendered (R6-4).
+  /// Empty when no kind was recorded (AI-leg failures, decisions,
+  /// and buildingSummary escapes record none).
+  List<String> get displayFailureLines {
+    final kindName =
+        _currentEntry?.failureKindName ?? _pendingFailure?.failureKind?.name;
+    if (kindName == null) return const [];
+    final line = reportFailureDetailLine(
+      kindName,
+      finishedAt: _currentEntry?.finishedAt,
+    );
+    return line == null ? const [] : [line];
+  }
+
   /// The user is looking at the app right now (foreground). The
   /// PR #55 page rule, lifted verbatim: a null lifecycle state
   /// counts as present.
@@ -518,8 +537,27 @@ class ReportGenerationService extends ChangeNotifier {
       // an escape from the injected run itself is surfaced with
       // the pipeline's existing export-failure copy rather than
       // dropped (no new strings).
-      outcome = const ReportFailed(reportExportFailureMessage,
-          allowRawFallback: true);
+      // VC 100130 + Juno R6-2/R6-3: the synthesized failure's
+      // kind is assigned by the OPERATION that was running when
+      // the escape happened — the service's current stage at
+      // catch time: collecting/syncing → collectionFailure;
+      // renderingPdf → renderFailure; savingFile → saveFailure;
+      // buildingSummary (the AI leg, governed by its attempt
+      // records) or no stage → NO kind recorded and no non-AI
+      // failure line. The stage itself is journal-internal only
+      // and is never rendered (R6-3).
+      final kind = switch (_stage) {
+        ReportStage.collecting ||
+        ReportStage.syncing =>
+          ReportFailureKind.collectionFailure,
+        ReportStage.renderingPdf => ReportFailureKind.renderFailure,
+        ReportStage.savingFile => ReportFailureKind.saveFailure,
+        _ => null,
+      };
+      outcome = ReportFailed(reportExportFailureMessage,
+          allowRawFallback: true,
+          failureKind: kind,
+          failureStage: kind == null ? null : _stage);
     }
     _finish(outcome);
   }
@@ -664,6 +702,14 @@ class ReportGenerationService extends ChangeNotifier {
       failureClassName: failed.aiAttempts.isNotEmpty
           ? failed.aiAttempts.last.failureClass?.name
           : null,
+      // VC 100130 diagnostic record: kind + stage are written
+      // whenever the producer supplied them, INDEPENDENT of the
+      // attempt history (a collection timeout has zero attempts
+      // and still records both). Juno R6-4: kind + stage + time
+      // only — no exception text or anything else about the
+      // failure is ever journaled.
+      failureKindName: failed.failureKind?.name,
+      failureStageName: failed.failureStage?.name,
       allowRawFallback: failed.allowRawFallback,
       attempts: failed.aiAttempts,
     ));
