@@ -171,6 +171,13 @@ ReportDataCollector _gatedCollector(
         await gate.future;
         return const [];
       },
+      // Phase 4 Pkg4: collect() also reads the correlation insight
+      // store through this loader. Left unstaged, the production
+      // default reads FlutterSecureStorage, whose platform-channel
+      // reply never lands in a fake-async widget test, so collect()
+      // pends forever after the documents gate opens (same staging
+      // gap fixed in the cancel harness, commit 1c48b999).
+      insightsLoader: () async => const [],
     );
 
 Future<void> _pumpUntil(
@@ -281,6 +288,8 @@ void main() {
       collector: ReportDataCollector(
         backend: backend,
         hc: _FakeHcDisconnected(),
+        // Phase 4 Pkg4 insightsLoader staging (see _gatedCollector).
+        insightsLoader: () async => const [],
       ),
       backend: backend,
     );
@@ -388,6 +397,8 @@ void main() {
       collector: ReportDataCollector(
         backend: backend,
         hc: _FakeHcDisconnected(),
+        // Phase 4 Pkg4 insightsLoader staging (see _gatedCollector).
+        insightsLoader: () async => const [],
       ),
       clinicianCollector: ClinicianReportCollector(
         scoreLoader: () async {
