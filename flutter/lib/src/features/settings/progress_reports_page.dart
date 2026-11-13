@@ -1157,7 +1157,14 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
   /// statuses render — never raw class names, reasons, exception
   /// text, URLs, or health content.
   Widget _attemptDetails() {
-    final lines = _service.displayAttemptLines;
+    // VC 100130 (Juno R6-1): the ONE non-AI failure line renders
+    // in this same expansion, AFTER any AI attempt lines — it is
+    // the outcome that ended the generation, so it closes the
+    // record. Same style as the attempt lines.
+    final lines = [
+      ..._service.displayAttemptLines,
+      ..._service.displayFailureLines,
+    ];
     if (lines.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

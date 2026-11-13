@@ -430,6 +430,11 @@ class _UnionQueries extends HealthHistoryQueries {
     DateTime? end,
     Set<HistoryMetric>? metrics,
     bool fetchFromHealthConnect = true,
+    // VC 100130: the union bounds — accepted and ignored here;
+    // this double serves a staged union regardless of bounds.
+    Duration? readTimeout,
+    Duration? unionBudget,
+    int? maxFetchDays,
   }) async =>
       union;
 }

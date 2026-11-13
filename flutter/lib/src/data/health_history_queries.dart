@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 
@@ -154,6 +156,11 @@ class HealthHistoryQueries {
 
   /// Union for the [days]-day window ending at [end] (inclusive,
   /// device-local calendar days; defaults to today).
+  ///
+  /// The VC 100130 bounds ([readTimeout], [unionBudget],
+  /// [maxFetchDays]) are opt-in and default to the historical
+  /// unbounded behavior, so existing callers are unchanged; the
+  /// report collector opts in (see progress_report.dart).
   Future<HistoryUnion> loadDays(
     int days, {
     DateTime? end,
@@ -164,6 +171,9 @@ class HealthHistoryQueries {
       HistoryMetric.spikes,
     },
     bool fetchFromHealthConnect = true,
+    Duration? readTimeout,
+    Duration? unionBudget,
+    int? maxFetchDays,
   }) {
     final e = end ?? DateTime.now();
     final endDay = DateTime(e.year, e.month, e.day);
@@ -173,12 +183,34 @@ class HealthHistoryQueries {
       endDate: historyDateStr(endDay),
       metrics: metrics,
       fetchFromHealthConnect: fetchFromHealthConnect,
+      readTimeout: readTimeout,
+      unionBudget: unionBudget,
+      maxFetchDays: maxFetchDays,
     );
   }
 
   /// Union for an explicit inclusive date range. Never throws:
   /// a failing source degrades to the other source's data, with
   /// HC failures named in [HistoryUnion.failedMetrics].
+  ///
+  /// VC 100130 bounds (all optional, null = unbounded / uncapped,
+  /// preserving every existing caller):
+  /// - [readTimeout]: a per-read bound. Each loader's outcome
+  ///   await is wrapped so a read that exceeds it fails THAT
+  ///   metric only, recorded with the class-only detail
+  ///   `TimeoutException` (the Juno J1 evidence convention — a
+  ///   class-style token, never a message).
+  /// - [unionBudget]: a soft budget for the whole union, tracked
+  ///   from loadRange entry. Before each loader starts, if the
+  ///   elapsed time already exceeds the budget, that loader's
+  ///   fresh read is skipped and the metric is noted failed with
+  ///   the class-style token `UnionBudgetExhausted`. Skipped
+  ///   metrics surface through the callers' existing failed-metric
+  ///   derivation (failed + store data → stored data; failed +
+  ///   no data → the existing error/denied/stale logic) — there
+  ///   are no new union states.
+  /// - [maxFetchDays]: caps the fresh-HC scan depth for THIS call
+  ///   only (default: [maxHealthConnectFetchDays]).
   Future<HistoryUnion> loadRange({
     required String startDate,
     required String endDate,
@@ -189,7 +221,12 @@ class HealthHistoryQueries {
       HistoryMetric.spikes,
     },
     bool fetchFromHealthConnect = true,
+    Duration? readTimeout,
+    Duration? unionBudget,
+    int? maxFetchDays,
   }) async {
+    // The union soft budget is tracked from loadRange entry.
+    final unionWatch = Stopwatch()..start();
     // 1. The store's slice of the range (full stored depth).
     Map<String, DailyBiometrics> stored = const {};
     try {
@@ -255,9 +292,10 @@ class HealthHistoryQueries {
       if (daysBack < 0) daysBack = 0;
     }
     final wantedFetch = rangeDays + daysBack;
-    final fetchDays = wantedFetch > maxHealthConnectFetchDays
-        ? maxHealthConnectFetchDays
-        : wantedFetch;
+    final fetchCap = (maxFetchDays != null && maxFetchDays > 0)
+        ? maxFetchDays
+        : maxHealthConnectFetchDays;
+    final fetchDays = wantedFetch > fetchCap ? fetchCap : wantedFetch;
 
     // Fresh rows collected per date, merged into the store in
     // step 3 and overlaid on the returned maps in step 4.
@@ -311,9 +349,22 @@ class HealthHistoryQueries {
       }
     }
 
+    // VC 100130: the per-read bound. A timeout surfaces as a
+    // thrown TimeoutException, which the loader's catch records
+    // with the class-only detail token below (Juno J1) — never
+    // the raw TimeoutException string, which carries a message.
+    Future<T> bounded<T>(Future<T> read) {
+      final t = readTimeout;
+      return t == null ? read : read.timeout(t);
+    }
+
+    String failureDetailOf(Object e) =>
+        e is TimeoutException ? 'TimeoutException' : e.toString();
+
     Future<void> loadRestingHr() async {
       try {
-        final outcome = await hc.readRestingHrHistoryWithOutcome(fetchDays);
+        final outcome =
+            await bounded(hc.readRestingHrHistoryWithOutcome(fetchDays));
         if (outcome.failed) {
           noteFailure(HistoryMetric.restingHr, outcome.errorDetails);
           return;
@@ -323,13 +374,14 @@ class HealthHistoryQueries {
           if (r.bpm > 0) putFresh(r.date, hr: r.bpm);
         }
       } catch (e) {
-        noteFailure(HistoryMetric.restingHr, e.toString());
+        noteFailure(HistoryMetric.restingHr, failureDetailOf(e));
       }
     }
 
     Future<void> loadSleep() async {
       try {
-        final outcome = await hc.readSleepHistoryWithOutcome(fetchDays);
+        final outcome =
+            await bounded(hc.readSleepHistoryWithOutcome(fetchDays));
         if (outcome.failed) {
           noteFailure(HistoryMetric.sleep, outcome.errorDetails);
           return;
@@ -343,13 +395,14 @@ class HealthHistoryQueries {
           if (r.deep > 0) putFresh(r.date, deep: r.deep);
         }
       } catch (e) {
-        noteFailure(HistoryMetric.sleep, e.toString());
+        noteFailure(HistoryMetric.sleep, failureDetailOf(e));
       }
     }
 
     Future<void> loadCalories() async {
       try {
-        final outcome = await hc.readCaloriesHistoryWithOutcome(fetchDays);
+        final outcome =
+            await bounded(hc.readCaloriesHistoryWithOutcome(fetchDays));
         if (outcome.failed) {
           noteFailure(HistoryMetric.calories, outcome.errorDetails);
           return;
@@ -358,13 +411,14 @@ class HealthHistoryQueries {
           if (r.kcal > 0) putFresh(r.date, kcal: r.kcal);
         }
       } catch (e) {
-        noteFailure(HistoryMetric.calories, e.toString());
+        noteFailure(HistoryMetric.calories, failureDetailOf(e));
       }
     }
 
     Future<void> loadSpikes() async {
       try {
-        final outcome = await hc.readSpikeCountsWithOutcome(fetchDays);
+        final outcome =
+            await bounded(hc.readSpikeCountsWithOutcome(fetchDays));
         if (outcome.failed) {
           noteFailure(HistoryMetric.spikes, outcome.errorDetails);
           return;
@@ -374,7 +428,7 @@ class HealthHistoryQueries {
           if (r.count >= 0) putFresh(r.date, spikeCount: r.count);
         }
       } catch (e) {
-        noteFailure(HistoryMetric.spikes, e.toString());
+        noteFailure(HistoryMetric.spikes, failureDetailOf(e));
       }
     }
 
@@ -382,7 +436,8 @@ class HealthHistoryQueries {
       // R71 — ONE range read of raw HRV samples; day attribution +
       // the daily top-tier rule run in Dart (attributeDailyHrv).
       try {
-        final outcome = await hc.readHrvSamplesWithOutcome(fetchDays);
+        final outcome =
+            await bounded(hc.readHrvSamplesWithOutcome(fetchDays));
         if (outcome.failed) {
           noteFailure(HistoryMetric.hrv, outcome.errorDetails);
           return;
@@ -397,18 +452,45 @@ class HealthHistoryQueries {
           if (entry.value > 0) putFresh(entry.key, hrvValue: entry.value);
         }
       } catch (e) {
-        noteFailure(HistoryMetric.hrv, e.toString());
+        noteFailure(HistoryMetric.hrv, failureDetailOf(e));
       }
     }
 
     // Sequential by design (step 2b): each loader fully completes
     // — read, claim from its outcome, row processing — before the
     // next read starts.
-    if (metrics.contains(HistoryMetric.restingHr)) await loadRestingHr();
-    if (metrics.contains(HistoryMetric.sleep)) await loadSleep();
-    if (metrics.contains(HistoryMetric.calories)) await loadCalories();
-    if (metrics.contains(HistoryMetric.spikes)) await loadSpikes();
-    if (metrics.contains(HistoryMetric.hrv)) await loadHrv();
+    //
+    // VC 100130 union soft budget: before each loader starts, if
+    // the elapsed time since loadRange entry already exceeds
+    // [unionBudget], the loader's fresh read is skipped and the
+    // metric is noted failed with the class-style token
+    // 'UnionBudgetExhausted' — its store data (if any) still
+    // surfaces through the normal union below.
+    Future<void> runLoader(
+        HistoryMetric metric, Future<void> Function() loader) async {
+      final budget = unionBudget;
+      if (budget != null && unionWatch.elapsed > budget) {
+        noteFailure(metric, 'UnionBudgetExhausted');
+        return;
+      }
+      await loader();
+    }
+
+    if (metrics.contains(HistoryMetric.restingHr)) {
+      await runLoader(HistoryMetric.restingHr, loadRestingHr);
+    }
+    if (metrics.contains(HistoryMetric.sleep)) {
+      await runLoader(HistoryMetric.sleep, loadSleep);
+    }
+    if (metrics.contains(HistoryMetric.calories)) {
+      await runLoader(HistoryMetric.calories, loadCalories);
+    }
+    if (metrics.contains(HistoryMetric.spikes)) {
+      await runLoader(HistoryMetric.spikes, loadSpikes);
+    }
+    if (metrics.contains(HistoryMetric.hrv)) {
+      await runLoader(HistoryMetric.hrv, loadHrv);
+    }
 
     // 3. Everything fresh feeds the store BEFORE returning — no
     //    reader can bypass the store's growth. mergeRefresh

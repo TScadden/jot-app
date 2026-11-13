@@ -1092,6 +1092,12 @@ class ClinicianReportPipeline {
   }) async {
     bool cancelled() => isCancelled?.call() ?? false;
 
+    // VC 100130: the last stage the collector reported, kept so a
+    // collection timeout's diagnostic record names where the
+    // collection actually was when the deadline fired (this
+    // pipeline shares the standard collector, so it inherits the
+    // VC 100130 per-read / union-budget / fetch-cap bounds).
+    var lastCollectStage = ReportStage.collecting;
     final ReportSnapshot snapshot;
     try {
       snapshot = await collector.collect(
@@ -1099,15 +1105,20 @@ class ClinicianReportPipeline {
         last30Days: last30Days,
         profile: profile,
         now: now,
-        onStage: (s) => onStage?.call(
-            s == 'syncing' ? ReportStage.syncing : ReportStage.collecting),
+        onStage: (s) {
+          lastCollectStage =
+              s == 'syncing' ? ReportStage.syncing : ReportStage.collecting;
+          onStage?.call(lastCollectStage);
+        },
         isCancelled: isCancelled,
       );
     } on ReportCollectionCancelled {
       return const ReportFailed('Cancelled');
     } on ReportCollectionTimeout {
-      return const ReportFailed(reportExportFailureMessage,
-          allowRawFallback: true);
+      return ReportFailed(reportExportFailureMessage,
+          allowRawFallback: true,
+          failureKind: ReportFailureKind.collectionTimeout,
+          failureStage: lastCollectStage);
     }
     if (cancelled()) return const ReportFailed('Cancelled');
 
@@ -1122,7 +1133,10 @@ class ClinicianReportPipeline {
     try {
       bytes = await renderPdf(data);
     } catch (_) {
-      return ReportFailed(reportExportFailureMessage, snapshot: snapshot);
+      return ReportFailed(reportExportFailureMessage,
+          snapshot: snapshot,
+          failureKind: ReportFailureKind.renderFailure,
+          failureStage: ReportStage.renderingPdf);
     }
     onStage?.call(ReportStage.savingFile);
     final fileName = reportFileName(
@@ -1131,7 +1145,10 @@ class ClinicianReportPipeline {
     try {
       savedPath = await savePdf(bytes, fileName);
     } catch (_) {
-      return ReportFailed(reportExportFailureMessage, snapshot: snapshot);
+      return ReportFailed(reportExportFailureMessage,
+          snapshot: snapshot,
+          failureKind: ReportFailureKind.saveFailure,
+          failureStage: ReportStage.savingFile);
     }
     try {
       onArtifactSaved?.call(fileName, savedPath);

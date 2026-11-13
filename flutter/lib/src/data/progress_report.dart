@@ -1301,10 +1301,35 @@ class ReportDataCollector {
     // series + availability counts below are built from them
     // exactly as they were built from the raw bridge reads, so
     // the counts are the UNION's honest day counts.
+    // VC 100130 (Round 2 root-cause fix): the union load is
+    // BOUNDED. Before this fix the five sequential bridge reads
+    // were individually unbounded, so on founder-scale data their
+    // sum crossed the 120 s F4 collection deadline and the report
+    // failed with ReportCollectionTimeout before any AI attempt
+    // existed (see ~/workspace/mega-100127/round2-mason-repro.md).
+    // Now: each read is capped at the HC service's own 30 s
+    // readTimeout (a wedged read fails its metric solo and the
+    // union falls back to store data for it), the union carries a
+    // 90 s soft budget (later loaders are skipped once it is
+    // exhausted, surfacing as failed metrics over store data),
+    // and the fresh HC scan is capped at 42 days. The report
+    // window stays 180 days of STORE data; only the fresh HC scan
+    // is capped — HC retention is weeks, the store carries the
+    // rest. Arithmetic: the heavy-band founder model scaled to a
+    // 42-day scan is spikes ≈18 s + HRV ≈22 s + sleep ≈7 s +
+    // resting HR ≈3 s + calories ≈2 s ≈ 52 s total, every read
+    // under 30 s and the sum under the 90 s budget, so a healthy
+    // heavy collect completes fresh; one wedged read costs 30 s
+    // solo; five wedged reads return from the union by ~90 s —
+    // all inside the 120 s F4 deadline. The clinician pipeline
+    // shares this collector, so it inherits all three bounds.
     final union = await historyQueries.loadDays(
       daysToFetch,
       end: n,
       metrics: HistoryMetric.values.toSet(),
+      readTimeout: HealthConnectService.readTimeout,
+      unionBudget: const Duration(seconds: 90),
+      maxFetchDays: 42,
     );
 
     // Phase 2 (§2/§3): the per-metric grant evidence comes from
@@ -1440,6 +1465,20 @@ class ReportDataCollector {
 
 enum ReportStage { collecting, syncing, buildingSummary, renderingPdf, savingFile }
 
+/// VC 100130 (Round 2): the diagnostic classification of a failed
+/// generation — WHICH stage family produced the failure. Recorded
+/// on [ReportFailed] by the pipelines, persisted by the generation
+/// journal (failureKindName / failureStageName), and surfaced to
+/// the user only through Juno's ruled plain-language line (see
+/// report_generation_journal.dart) — the raw kind/stage names are
+/// diagnostic record, never UI copy.
+enum ReportFailureKind {
+  collectionTimeout,
+  collectionFailure,
+  renderFailure,
+  saveFailure,
+}
+
 const reportStageLabels = <ReportStage, String>{
   ReportStage.collecting: 'Collecting patient data...',
   ReportStage.syncing: 'Syncing health metrics...',
@@ -1510,12 +1549,22 @@ class ReportFailed extends ReportOutcome {
   /// ship to the user's explicit tap, which is a choice.
   final RawReportBanner rawFallbackBanner;
 
+  /// VC 100130 diagnostic record: the failure's classification
+  /// and the pipeline stage that produced it, when the producer
+  /// knows them. Null for failures outside the classified
+  /// producers (AI-leg failures carry their own Phase 3 records;
+  /// [ReportAiDecision] is unaffected and leaves both null).
+  final ReportFailureKind? failureKind;
+  final ReportStage? failureStage;
+
   const ReportFailed(this.message,
       {this.allowRawFallback = false,
       this.snapshot,
       this.aiAttempts = const [],
       this.aiFailureReason,
-      this.rawFallbackBanner = RawReportBanner.explicitChoice});
+      this.rawFallbackBanner = RawReportBanner.explicitChoice,
+      this.failureKind,
+      this.failureStage});
 }
 
 /// The held AI-failure decision (Phase 3): the AI leg exhausted a
@@ -1750,6 +1799,10 @@ class ReportGenerationPipeline {
   }) async {
     bool cancelled() => isCancelled?.call() ?? false;
 
+    // VC 100130: the last stage the collector reported, kept so a
+    // collection timeout's diagnostic record names where the
+    // collection actually was when the deadline fired.
+    var lastCollectStage = ReportStage.collecting;
     final ReportSnapshot snapshot;
     try {
       snapshot = await collector.collect(
@@ -1757,8 +1810,11 @@ class ReportGenerationPipeline {
         last30Days: last30Days,
         profile: profile,
         now: now,
-        onStage: (s) => onStage?.call(
-            s == 'syncing' ? ReportStage.syncing : ReportStage.collecting),
+        onStage: (s) {
+          lastCollectStage =
+              s == 'syncing' ? ReportStage.syncing : ReportStage.collecting;
+          onStage?.call(lastCollectStage);
+        },
         isCancelled: isCancelled,
       );
     } on ReportCollectionCancelled {
@@ -1767,8 +1823,11 @@ class ReportGenerationPipeline {
       // R-1 F4: a bounded collection that ran out of time is a
       // named failure with the existing export-failure copy —
       // not a wedge and not a silent idle.
-      return const ReportFailed(reportExportFailureMessage,
-          allowRawFallback: true);
+      // VC 100130: it also carries its diagnostic record.
+      return ReportFailed(reportExportFailureMessage,
+          allowRawFallback: true,
+          failureKind: ReportFailureKind.collectionTimeout,
+          failureStage: lastCollectStage);
     }
     if (cancelled()) return const ReportFailed('Cancelled');
 
@@ -2072,6 +2131,8 @@ class ReportGenerationPipeline {
         allowRawFallback: true,
         snapshot: snapshot,
         aiAttempts: aiAttempts,
+        failureKind: ReportFailureKind.renderFailure,
+        failureStage: ReportStage.renderingPdf,
       );
     }
     onStage?.call(ReportStage.savingFile);
@@ -2082,7 +2143,11 @@ class ReportGenerationPipeline {
       savedPath = await savePdf(bytes, fileName);
     } catch (_) {
       return ReportFailed(reportExportFailureMessage,
-          allowRawFallback: true, snapshot: snapshot, aiAttempts: aiAttempts);
+          allowRawFallback: true,
+          snapshot: snapshot,
+          aiAttempts: aiAttempts,
+          failureKind: ReportFailureKind.saveFailure,
+          failureStage: ReportStage.savingFile);
     }
     // The save has landed: record the exact artifact reference
     // NOW (T1-2 save hook), before the Downloads copy and before
