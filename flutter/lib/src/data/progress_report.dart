@@ -5,6 +5,7 @@ import 'package:tabs_lab/src/data/correlation_engine.dart';
 import 'package:tabs_lab/src/data/correlation_insight_store.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart';
+import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/hc_availability.dart';
 import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
@@ -584,6 +585,27 @@ String buildHealthSummary(ReportSnapshot s) {
             s.deepSleepSeries.length;
     b.write(
         'Avg Deep Sleep: ${avgHrs.toStringAsFixed(1)} hrs/night across ${s.deepSleepSeries.length} days. ');
+  }
+  // VC 100132 (Problem 2): the Daily Score context the AI prompt
+  // and correlations section speak from, in Juno's Round 4
+  // Ruling 1 deterministic template verbatim (the defensible set:
+  // day count, period average, latest score with its date, and
+  // the observed range — range suppressed at count 1). Only when
+  // scores exist; with none, the availability block's noData
+  // status is the whole truth and no clause is invented.
+  if (s.dailyScoreSeries.isNotEmpty) {
+    final series = [...s.dailyScoreSeries]
+      ..sort((a, b) => a.$1.compareTo(b.$1));
+    final avg =
+        series.fold<int>(0, (a, e) => a + e.$2) / series.length;
+    final latest = series.last;
+    final values = series.map((e) => e.$2);
+    final min = values.reduce((a, c) => a < c ? a : c);
+    final max = values.reduce((a, c) => a > c ? a : c);
+    b.write('Daily Score: average ${avg.toStringAsFixed(1)} across '
+        '${series.length} ${series.length == 1 ? 'day' : 'days'} '
+        '· latest ${latest.$2} on ${latest.$1}'
+        '${series.length > 1 ? ' · range $min to $max' : ''}. ');
   }
   return b.toString();
 }
@@ -1165,6 +1187,14 @@ class ReportDataCollector {
   /// [CorrelationInsightStore.instance.readAllOrThrow].
   final Future<List<InsightRecord>> Function() insightsLoader;
 
+  /// VC 100132 (Problem 2) — stored Daily Scores by `yyyy-MM-dd`
+  /// day key. Defaults to the SAME source the clinician path
+  /// reads (progress_reports_page's clinician scoreLoader:
+  /// [HealthHistoryStore] rows' `dailyScore`) — before this, the
+  /// standard collector never read scores at all and hardcoded
+  /// the dailyScore section to success / 0 records.
+  final Future<Map<String, int>> Function() scoreLoader;
+
   /// R-1 F4 — the overall collection deadline. Derivation: a
   /// legitimate collection is a sync pull (20s transport bound),
   /// entry/BP fetches on the same bound, document/insight loads,
@@ -1184,6 +1214,7 @@ class ReportDataCollector {
     HealthHistoryQueries? historyQueries,
     Future<List<String>> Function()? documentsLoader,
     Future<List<InsightRecord>> Function()? insightsLoader,
+    Future<Map<String, int>> Function()? scoreLoader,
     Duration? collectTimeout,
   }) : this._internal(
           backend ?? TabsBackend(),
@@ -1191,6 +1222,7 @@ class ReportDataCollector {
           historyQueries,
           documentsLoader ?? (() async => const []),
           insightsLoader ?? _defaultInsightsLoader,
+          scoreLoader ?? _defaultScoreLoader,
           collectTimeout ?? defaultCollectTimeout,
         );
 
@@ -1200,11 +1232,22 @@ class ReportDataCollector {
     HealthHistoryQueries? queries,
     this.documentsLoader,
     this.insightsLoader,
+    this.scoreLoader,
     this.collectTimeout,
   ) : historyQueries = queries ?? HealthHistoryQueries(hc: hc);
 
   static Future<List<InsightRecord>> _defaultInsightsLoader() async =>
       (await CorrelationInsightStore.instance.readAllOrThrow()).values.toList();
+
+  /// The clinician path's score source, verbatim: every stored
+  /// day's `dailyScore` from the history store.
+  static Future<Map<String, int>> _defaultScoreLoader() async {
+    final days = await HealthHistoryStore.instance.readAll();
+    return {
+      for (final e in days.entries)
+        if (e.value.dailyScore != null) e.key: e.value.dailyScore!,
+    };
+  }
 
   Future<ReportSnapshot> collect({
     required List<QuickLogCategory> selectedCategories,
@@ -1281,11 +1324,43 @@ class ReportDataCollector {
     meta('logs', pullFailed ? DataSourceStatus.error : DataSourceStatus.success,
         entries.length);
 
-    // 2. Daily score.
+    // 2. Daily score — VC 100132 (Problem 2): REAL stored scores,
+    // read from the same history-store source the clinician path
+    // uses, filtered to the report range exactly as the clinician
+    // collector filters (range day keys ending on the generation
+    // day, values > 0). Before this the section was hardcoded
+    // success / 0 — the founder's VC 100131 PDF printed
+    // "Daily Score: Available (0 records)" over a store holding
+    // real scores, and the AI correlations section, seeing no
+    // score data anywhere in the payload, reported Daily Score
+    // as not retrieved. Status now derives from the load itself:
+    // load failure → error; no stored scores in range → noData
+    // (never success-with-0); otherwise success with the real
+    // count.
+    var scoreLoadFailed = false;
+    Map<String, int> storedScores = const {};
+    try {
+      storedScores = await scoreLoader();
+    } catch (_) {
+      scoreLoadFailed = true;
+      storedScores = const {};
+    }
+    final scoreRangeDays = last30Days ? 30 : 180;
+    final scoreEndDay = DateTime(n.year, n.month, n.day);
+    final dailyScoreSeries = <(String, int)>[];
+    for (var i = scoreRangeDays - 1; i >= 0; i--) {
+      final key = dateStrOf(scoreEndDay.subtract(Duration(days: i)));
+      final value = storedScores[key];
+      if (value != null && value > 0) dailyScoreSeries.add((key, value));
+    }
     meta(
         'dailyScore',
-        pullFailed ? DataSourceStatus.error : DataSourceStatus.success,
-        0);
+        scoreLoadFailed
+            ? DataSourceStatus.error
+            : (dailyScoreSeries.isEmpty
+                ? DataSourceStatus.noData
+                : DataSourceStatus.success),
+        dailyScoreSeries.length);
 
     // 3. Conditions (profile list).
     meta(
@@ -1536,6 +1611,7 @@ class ReportDataCollector {
       conditions: profile.conditions,
       medications: activeMedications,
       profileMedications: profileMedications,
+      dailyScoreSeries: dailyScoreSeries,
       knowledgeDocuments: docs,
       heartRateSeries: hr,
       sleepSeries: sleep,
