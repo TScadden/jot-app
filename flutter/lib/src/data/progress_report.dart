@@ -232,9 +232,20 @@ String formatPdfGenerated(int ms) {
   return '${_months[d.month - 1]} ${d.day.toString().padLeft(2, '0')}, ${d.year} - ${_hour12(d.hour).toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')} ${_amPm(d.hour)}';
 }
 
-/// `Tabs_Report_<MMM_dd_yyyy>.pdf` (native ReportGenerator file name).
+/// The generated artifact's file name. Native's form was
+/// date-only (`Tabs_Report_<MMM_dd_yyyy>.pdf`), which made
+/// same-day generations silently overwrite each other in the
+/// app documents directory (the save truncates the same path)
+/// and collide as duplicate Downloads display names. VC 100129:
+/// the name is unique per generation — the generation timestamp
+/// (both pipelines derive it from
+/// `snapshot.generationTimestampMs`, millisecond precision)
+/// is carried in the name, keeping the recognizable
+/// `Tabs_Report_` prefix and `.pdf`:
+/// `Tabs_Report_<MMM_dd_yyyy>_<HHmmss><fff>.pdf`.
 String reportFileName(DateTime d) =>
-    'Tabs_Report_${_months[d.month - 1]}_${d.day.toString().padLeft(2, '0')}_${d.year}.pdf';
+    'Tabs_Report_${_months[d.month - 1]}_${d.day.toString().padLeft(2, '0')}_${d.year}'
+    '_${d.hour.toString().padLeft(2, '0')}${d.minute.toString().padLeft(2, '0')}${d.second.toString().padLeft(2, '0')}${d.millisecond.toString().padLeft(3, '0')}.pdf';
 
 int _hour12(int h) {
   final x = h % 12;
@@ -630,7 +641,13 @@ List<String> correlationInsightPrintLines(List<InsightRecord> records) {
         final g1 = record.groups[1];
         final g0Mean = g0.mean;
         final g1Mean = g1.mean;
-        if (g0Mean != null && g1Mean != null) {
+        // R-1 F3: a non-finite mean is skipped exactly as a null
+        // mean is — _whole() rounds, and round() throws on
+        // NaN/Infinity, which used to take down the whole AI leg.
+        if (g0Mean != null &&
+            g1Mean != null &&
+            g0Mean.isFinite &&
+            g1Mean.isFinite) {
           final header = record.headerLabel ?? record.subjectName;
           final prefix = header != null ? '$header: ' : '';
           lines.add(
@@ -646,7 +663,11 @@ List<String> correlationInsightPrintLines(List<InsightRecord> records) {
       final g1 = record.groups[1];
       final g0Mean = g0.mean;
       final g1Mean = g1.mean;
-      if (g0Mean != null && g1Mean != null) {
+      // R-1 F3: non-finite means skipped exactly as nulls (above).
+      if (g0Mean != null &&
+          g1Mean != null &&
+          g0Mean.isFinite &&
+          g1Mean.isFinite) {
         lines.add(correlationComparisonSentence(
           groupALabel: g0.label,
           groupAN: g0.n,
@@ -758,6 +779,14 @@ enum AiFailureClass {
   /// failure gets its honest failure surface immediately rather
   /// than silently burning attempts under a guessed class.
   unknown,
+
+  /// VC 100129 (R-1 F2): the attempt failed BEFORE dispatch —
+  /// the request was never sent (the body could not be encoded,
+  /// or the stored session token could not be read). It is NOT
+  /// a connection failure: no network was involved. Fatal,
+  /// 1 attempt. Juno R5-7's surface label for this class is
+  /// "Could not start the request in the app".
+  preDispatch,
 }
 
 /// One attempt-outcome classification: the raw signals of a single
@@ -794,13 +823,19 @@ class AiFailure {
   /// call threw, or returned a responseless, signalless result).
   final bool unclassified;
 
+  /// True when the attempt failed before dispatch (R-1 F2):
+  /// the request was never built or never sent for a local
+  /// reason (encode failure, token-read failure).
+  final bool preDispatch;
+
   const AiFailure(
       {this.httpStatus,
       this.noResponse = false,
       this.timedOut = false,
       this.noSession = false,
       this.missingResult = false,
-      this.unclassified = false});
+      this.unclassified = false,
+      this.preDispatch = false});
 
   /// THE classification. Precedence is by signal strength: a
   /// timeout is a timeout even when nothing came back; a missing
@@ -811,6 +846,7 @@ class AiFailure {
   /// is honestly [AiFailureClass.unknown].
   AiFailureClass get failureClass {
     if (timedOut) return AiFailureClass.timeout;
+    if (preDispatch) return AiFailureClass.preDispatch;
     if (noSession) return AiFailureClass.session;
     final code = httpStatus;
     if (code != null) {
@@ -833,7 +869,8 @@ class AiFailure {
           true,
         AiFailureClass.session ||
         AiFailureClass.fatalRequest ||
-        AiFailureClass.unknown =>
+        AiFailureClass.unknown ||
+        AiFailureClass.preDispatch =>
           false,
       };
 
@@ -845,7 +882,8 @@ class AiFailure {
           2,
         AiFailureClass.session ||
         AiFailureClass.fatalRequest ||
-        AiFailureClass.unknown =>
+        AiFailureClass.unknown ||
+        AiFailureClass.preDispatch =>
           1,
       };
 
@@ -858,7 +896,8 @@ class AiFailure {
           const Duration(seconds: 2),
         AiFailureClass.session ||
         AiFailureClass.fatalRequest ||
-        AiFailureClass.unknown =>
+        AiFailureClass.unknown ||
+        AiFailureClass.preDispatch =>
           Duration.zero,
       };
 
@@ -879,6 +918,8 @@ class AiFailure {
         AiFailureClass.fatalRequest => 'HTTP $httpStatus (request failed)',
         AiFailureClass.connection => 'no connection',
         AiFailureClass.unknown => 'unknown error',
+        AiFailureClass.preDispatch =>
+          'could not start the request in the app',
       };
 }
 
@@ -1026,6 +1067,13 @@ class ReportCollectionCancelled implements Exception {
   const ReportCollectionCancelled();
 }
 
+/// R-1 F4: collection exceeded its overall deadline. A named
+/// failure (never a session-long wedge): the pipelines map it
+/// to the existing export-failure outcome.
+class ReportCollectionTimeout implements Exception {
+  const ReportCollectionTimeout();
+}
+
 class ReportDataCollector {
   final TabsBackend backend;
   final HealthConnectService hc;
@@ -1041,18 +1089,33 @@ class ReportDataCollector {
   /// [CorrelationInsightStore.instance.readAllOrThrow].
   final Future<List<InsightRecord>> Function() insightsLoader;
 
+  /// R-1 F4 — the overall collection deadline. Derivation: a
+  /// legitimate collection is a sync pull (20s transport bound),
+  /// entry/BP fetches on the same bound, document/insight loads,
+  /// and the Health Connect union load over up to 180 days —
+  /// the slowest legitimate union loads observed complete in
+  /// tens of seconds. 120s clears that whole stack with
+  /// headroom, while a genuinely hung read can no longer wedge
+  /// the generation service (and every later Export tap) for
+  /// the rest of the session.
+  static const Duration defaultCollectTimeout = Duration(seconds: 120);
+
+  final Duration collectTimeout;
+
   ReportDataCollector({
     TabsBackend? backend,
     HealthConnectService? hc,
     HealthHistoryQueries? historyQueries,
     Future<List<String>> Function()? documentsLoader,
     Future<List<InsightRecord>> Function()? insightsLoader,
+    Duration? collectTimeout,
   }) : this._internal(
           backend ?? TabsBackend(),
           hc ?? HealthConnectService(),
           historyQueries,
           documentsLoader ?? (() async => const []),
           insightsLoader ?? _defaultInsightsLoader,
+          collectTimeout ?? defaultCollectTimeout,
         );
 
   ReportDataCollector._internal(
@@ -1061,12 +1124,35 @@ class ReportDataCollector {
     HealthHistoryQueries? queries,
     this.documentsLoader,
     this.insightsLoader,
+    this.collectTimeout,
   ) : historyQueries = queries ?? HealthHistoryQueries(hc: hc);
 
   static Future<List<InsightRecord>> _defaultInsightsLoader() async =>
       (await CorrelationInsightStore.instance.readAllOrThrow()).values.toList();
 
   Future<ReportSnapshot> collect({
+    required List<QuickLogCategory> selectedCategories,
+    required bool last30Days,
+    required ReportProfileInput profile,
+    void Function(String stage)? onStage,
+    bool Function()? isCancelled,
+    DateTime? now,
+  }) {
+    // R-1 F4: the whole collection runs under one deadline; a
+    // timeout surfaces as the named [ReportCollectionTimeout],
+    // never as a hung future.
+    return _collectInner(
+      selectedCategories: selectedCategories,
+      last30Days: last30Days,
+      profile: profile,
+      onStage: onStage,
+      isCancelled: isCancelled,
+      now: now,
+    ).timeout(collectTimeout,
+        onTimeout: () => throw const ReportCollectionTimeout());
+  }
+
+  Future<ReportSnapshot> _collectInner({
     required List<QuickLogCategory> selectedCategories,
     required bool last30Days,
     required ReportProfileInput profile,
@@ -1565,6 +1651,14 @@ class ReportGenerationPipeline {
   /// Clock for attempt records (test seam).
   final DateTime Function() clock;
 
+  /// VC 100129 (R-2 T1-2): invoked with the exact file name and
+  /// path the moment the PDF save lands — inside the pipeline,
+  /// BEFORE the ReportReady outcome exists — so the generation
+  /// journal can record the artifact reference and a process
+  /// death in the post-save window restores the finished report
+  /// instead of orphaning the file.
+  final void Function(String fileName, String savedPath)? onArtifactSaved;
+
   ReportGenerationPipeline({
     required this.collector,
     required this.backend,
@@ -1572,6 +1666,7 @@ class ReportGenerationPipeline {
     Future<void> Function(Duration d)? delay,
     Duration? attemptTimeout,
     DateTime Function()? clock,
+    this.onArtifactSaved,
   })  : delay = delay ?? ((d) => Future.delayed(d)),
         attemptTimeout = attemptTimeout ?? aiAttemptTimeout,
         clock = clock ?? DateTime.now;
@@ -1668,6 +1763,12 @@ class ReportGenerationPipeline {
       );
     } on ReportCollectionCancelled {
       return const ReportFailed('Cancelled');
+    } on ReportCollectionTimeout {
+      // R-1 F4: a bounded collection that ran out of time is a
+      // named failure with the existing export-failure copy —
+      // not a wedge and not a silent idle.
+      return const ReportFailed(reportExportFailureMessage,
+          allowRawFallback: true);
     }
     if (cancelled()) return const ReportFailed('Cancelled');
 
@@ -1914,6 +2015,8 @@ class ReportGenerationPipeline {
             res.transportFailure == AiTransportFailure.timeout,
         missingResult: res.statusCode == 200,
         unclassified: threw && !timedOut,
+        preDispatch:
+            res.transportFailure == AiTransportFailure.preDispatch,
       );
       attempts.add(AiAttemptRecord(
         attempt: attempt,
@@ -1980,6 +2083,14 @@ class ReportGenerationPipeline {
     } catch (_) {
       return ReportFailed(reportExportFailureMessage,
           allowRawFallback: true, snapshot: snapshot, aiAttempts: aiAttempts);
+    }
+    // The save has landed: record the exact artifact reference
+    // NOW (T1-2 save hook), before the Downloads copy and before
+    // the outcome exists — this is the orphan-adoption window.
+    try {
+      onArtifactSaved?.call(fileName, savedPath);
+    } catch (_) {
+      // Journaling never breaks a generation.
     }
     // Juno Ruling 2: the Downloads attempt finishes BEFORE the
     // ready outcome (and therefore before the share confirmation),

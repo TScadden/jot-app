@@ -50,6 +50,12 @@ enum AiTransportFailure {
 
   /// No request was attempted: there is no stored session token.
   noSession,
+
+  /// VC 100129 (R-1 F2): the attempt failed BEFORE dispatch —
+  /// the request body could not be encoded, or the stored
+  /// session token could not be read. No network was involved;
+  /// this must never be recorded as a connection failure.
+  preDispatch,
 }
 
 class TabsBackend {
@@ -77,6 +83,16 @@ class TabsBackend {
   /// and the pipeline guard fires first, the classification is
   /// the same timeout class.
   static const Duration aiRequestTimeout = Duration(seconds: 90);
+
+  /// R-1 F4 bounds: the refresh path's storage legs and the
+  /// wait for an in-flight refresh. A single secure-storage
+  /// operation is local and normally sub-second; 10s is far
+  /// beyond any legitimate storage latency while still bounding
+  /// a wedged Keystore read. The refresh await (45s) covers the
+  /// refresh's own 20s network timeout plus its bounded storage
+  /// legs with headroom.
+  static const Duration refreshStorageTimeout = Duration(seconds: 10);
+  static const Duration refreshAwaitTimeout = Duration(seconds: 45);
 
   /// Round 18 — in-memory cache for the (large) sync pull so the 16
   /// tools share one fetch per session window instead of each firing
@@ -255,9 +271,27 @@ class TabsBackend {
     // temporary failure, whose 401 path below still applies).
     final refreshInFlight = _refreshInFlight;
     if (refreshInFlight != null) {
-      await refreshInFlight;
+      // R-1 F4: this await is bounded — the refresh's network leg
+      // carries its own 20s timeout and its storage legs are
+      // bounded by [refreshStorageTimeout], so 45s comfortably
+      // covers a legitimate refresh; a wedged refresh must not
+      // wedge every authed call behind it. On timeout we proceed
+      // to the token read, exactly as if the refresh had settled.
+      try {
+        await refreshInFlight.timeout(refreshAwaitTimeout);
+      } on TimeoutException {
+        // Proceed: the token read below sees whatever is stored.
+      }
     }
-    final token = await _sessionStore.readToken();
+    // R-1 F2: a token-read throw is a pre-dispatch failure with
+    // its own honest class — previously it propagated to the
+    // pipeline's catch-all and recorded as unknown/fatal.
+    final String? token;
+    try {
+      token = await _sessionStore.readToken();
+    } catch (_) {
+      return (response: null, failure: AiTransportFailure.preDispatch);
+    }
     if (token == null || token.trim().isEmpty) {
       return (response: null, failure: AiTransportFailure.noSession);
     }
@@ -305,13 +339,16 @@ class TabsBackend {
       // while this one waited for the single-flight slot — reuse
       // the stored token instead of refreshing a second time
       // (native AuthInterceptor does the same check under its lock).
-      final current = await _sessionStore.readToken();
+      final current =
+          await _sessionStore.readToken().timeout(refreshStorageTimeout);
       if (current != null &&
           current.trim().isNotEmpty &&
           current != failedToken) {
         return _RefreshSucceeded(current);
       }
-      final refreshToken = await _sessionStore.readRefreshToken();
+      final refreshToken = await _sessionStore
+          .readRefreshToken()
+          .timeout(refreshStorageTimeout);
       if (refreshToken == null || refreshToken.trim().isEmpty) {
         // A null/empty refresh-token READ is a local storage
         // outcome, NOT a server verdict: the server was never
@@ -355,21 +392,27 @@ class TabsBackend {
         // previously stored email untouched.
         String? email;
         try {
-          email = await _sessionStore.readEmail();
+          email = await _sessionStore
+              .readEmail()
+              .timeout(refreshStorageTimeout);
         } catch (_) {
           email = null;
         }
         if (email != null && email.isNotEmpty) {
-          await _sessionStore.saveSession(
-            token: result.token,
-            refreshToken: result.refreshToken,
-            email: email,
-          );
+          await _sessionStore
+              .saveSession(
+                token: result.token,
+                refreshToken: result.refreshToken,
+                email: email,
+              )
+              .timeout(refreshStorageTimeout);
         } else {
-          await _sessionStore.saveRotatedTokens(
-            token: result.token,
-            refreshToken: result.refreshToken,
-          );
+          await _sessionStore
+              .saveRotatedTokens(
+                token: result.token,
+                refreshToken: result.refreshToken,
+              )
+              .timeout(refreshStorageTimeout);
         }
         return _RefreshSucceeded(result.token);
       }
@@ -390,8 +433,12 @@ class TabsBackend {
         // temporary outcome. This path NEVER reaches
         // _definitiveFailure and never clears the session.
         final storedPair = (
-          token: await _sessionStore.readToken(),
-          refreshToken: await _sessionStore.readRefreshToken(),
+          token: await _sessionStore
+              .readToken()
+              .timeout(refreshStorageTimeout),
+          refreshToken: await _sessionStore
+              .readRefreshToken()
+              .timeout(refreshStorageTimeout),
         );
         final storedToken = storedPair.token;
         if (storedToken != null &&
@@ -1037,6 +1084,25 @@ class TabsBackend {
     // other call. Its timeout (and every other no-response
     // outcome) is CLASSIFIED instead of collapsed to a bare null
     // (Juno Ruling 3). [timeoutOverride] is a test seam.
+    //
+    // R-1 F2: the body is encoded BEFORE dispatch, outside the
+    // transport try/catch. Previously jsonEncode ran inside the
+    // send closure, so an encode throw was caught as a transport
+    // no-response and recorded as "no connection" — a local
+    // failure wearing a network label. An encode throw now
+    // returns the preDispatch classification and no request is
+    // attempted.
+    final String encodedBody;
+    try {
+      encodedBody = jsonEncode(body);
+    } catch (_) {
+      return (
+        statusCode: null,
+        body: null,
+        serverError: null,
+        transportFailure: AiTransportFailure.preDispatch,
+      );
+    }
     final sent = await _sendAuthedDetailed(
       (token) => _client.post(
         Uri.parse('$_baseUrl$path'),
@@ -1044,7 +1110,7 @@ class TabsBackend {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
         },
-        body: jsonEncode(body),
+        body: encodedBody,
       ),
       timeout: timeoutOverride ?? aiRequestTimeout,
     );

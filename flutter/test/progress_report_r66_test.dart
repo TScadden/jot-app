@@ -731,8 +731,15 @@ void main() {
       expect(appointmentCountdown('2026-10-20', now: now), 'in 4 days');
       expect(appointmentCountdown('2026-10-15', now: now), isNull);
       expect(formatIsoDate('2026-11-03'), 'Nov 3, 2026');
+      // VC 100129: the artifact name is unique per generation
+      // (generation timestamp carried in the name) — the old
+      // date-only form made same-day generations overwrite
+      // each other.
       expect(reportFileName(DateTime(2026, 10, 16)),
-          'Tabs_Report_Oct_16_2026.pdf');
+          'Tabs_Report_Oct_16_2026_000000000.pdf');
+      expect(
+          reportFileName(DateTime(2026, 10, 16, 1, 37, 5, 123)),
+          'Tabs_Report_Oct_16_2026_013705123.pdf');
       expect(formatExportTimestamp(
               DateTime(2026, 10, 16, 16, 17).millisecondsSinceEpoch),
           'Oct 16, 4:17 PM');
