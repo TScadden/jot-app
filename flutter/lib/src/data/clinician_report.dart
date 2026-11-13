@@ -1066,9 +1066,16 @@ class ClinicianReportPipeline {
   final ReportDataCollector collector;
   final ClinicianReportCollector clinicianCollector;
 
+  /// VC 100129 (R-2 T1-2): the save-step journal hook, identical
+  /// to the standard pipeline's — invoked with the exact file
+  /// name and path the moment the PDF save lands, before the
+  /// ReportReady outcome exists.
+  final void Function(String fileName, String savedPath)? onArtifactSaved;
+
   const ClinicianReportPipeline({
     required this.collector,
     required this.clinicianCollector,
+    this.onArtifactSaved,
   });
 
   Future<ReportOutcome> generate({
@@ -1098,6 +1105,9 @@ class ClinicianReportPipeline {
       );
     } on ReportCollectionCancelled {
       return const ReportFailed('Cancelled');
+    } on ReportCollectionTimeout {
+      return const ReportFailed(reportExportFailureMessage,
+          allowRawFallback: true);
     }
     if (cancelled()) return const ReportFailed('Cancelled');
 
@@ -1122,6 +1132,11 @@ class ClinicianReportPipeline {
       savedPath = await savePdf(bytes, fileName);
     } catch (_) {
       return ReportFailed(reportExportFailureMessage, snapshot: snapshot);
+    }
+    try {
+      onArtifactSaved?.call(fileName, savedPath);
+    } catch (_) {
+      // Journaling never breaks a generation.
     }
     bool? downloadsSaved;
     final downloads = saveToDownloads;

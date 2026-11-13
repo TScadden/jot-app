@@ -14,6 +14,7 @@ import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/progress_report.dart';
 import 'package:tabs_lab/src/data/progress_report_pdf.dart';
+import 'package:tabs_lab/src/data/report_generation_journal.dart';
 import 'package:tabs_lab/src/data/report_generation_service.dart';
 import 'package:tabs_lab/src/data/report_ready_notification.dart';
 import 'package:tabs_lab/src/features/settings/report_share_flow.dart';
@@ -171,6 +172,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
 
   int? _selectedHour;
   bool _showSources = false;
+  bool _showAttemptDetails = false;
 
   /// The generation's owner (see [ReportGenerationService]):
   /// stage, cancellation, and the held outcome are SERVICE state
@@ -294,7 +296,116 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
       _loaded = true;
       _seedCustomIfNeeded();
     });
+    // VC 100129 (R5-9): a generation interrupted by process
+    // death auto-starts ONCE from its persisted request
+    // identity, framed "Starting your report again". If the
+    // auto-start cannot proceed, the interrupted surface below
+    // (R5-1–R5-3) is what renders instead.
+    final interrupted = _service.interruptedEntry;
+    if (interrupted != null && !_service.autoRestoreAttempted) {
+      unawaited(
+          _service.autoRestoreInterrupted(_buildRun(interrupted.request)));
+    }
   }
+
+  /// Builds the service run for a persisted request identity
+  /// (restore / retry paths): selections resolve from the
+  /// identity against the page's loaded categories.
+  ReportGenerationRun _buildRun(ReportRequestIdentity identity) {
+    final focus = ReportFocus.fromKey(identity.focusKey);
+    final selected = resolveReportCategories(
+        _categories, focus, identity.categoryIds.toSet());
+    if (identity.kind == 'clinician') {
+      final pipeline = _clinicianPipeline();
+      return ({required onStage, required isCancelled}) => pipeline.generate(
+            selectedCategories: selected,
+            last30Days: identity.last30Days,
+            profile: _profileInput,
+            onStage: onStage,
+            isCancelled: isCancelled,
+            renderPdf: (data) async => buildClinicianPdfBytes(data,
+                fonts: await loadClinicianPdfFonts()),
+            savePdf: widget.savePdf ?? _defaultSave,
+            saveToDownloads:
+                widget.saveToDownloads ?? _defaultSaveToDownloads,
+          );
+    }
+    final pipeline = _standardPipeline();
+    return ({required onStage, required isCancelled}) => pipeline.generate(
+          selectedCategories: selected,
+          last30Days: identity.last30Days,
+          profile: _profileInput,
+          forceRawFallback: identity.forceRaw,
+          onStage: onStage,
+          isCancelled: isCancelled,
+          renderPdf: (snapshot, aiSummary,
+                  {required bool isRawFallback, RawReportBanner? rawBanner}) =>
+              buildReportPdfBytes(snapshot,
+                  aiSummary: aiSummary,
+                  isRawFallback: isRawFallback,
+                  rawBanner: rawBanner ?? RawReportBanner.noChoiceFailure),
+          savePdf: widget.savePdf ?? _defaultSave,
+          saveToDownloads: widget.saveToDownloads ?? _defaultSaveToDownloads,
+        );
+  }
+
+  ReportRequestIdentity _identityFor(
+          {required String kind, bool forceRaw = false}) =>
+      ReportRequestIdentity(
+        kind: kind,
+        focusKey: _focus.key,
+        last30Days: _last30Days,
+        categoryIds: _selected.map((c) => c.id).toList(),
+        forceRaw: forceRaw,
+      );
+
+  ReportGenerationPipeline _standardPipeline() =>
+      widget.pipeline ??
+      ReportGenerationPipeline(
+        collector: ReportDataCollector(
+          backend: _backend,
+          hc: widget.healthConnectService ?? HealthConnectService(),
+          documentsLoader: () async {
+            final pull = await _backend.fetchSyncPull();
+            final docs = KnowledgeDocumentMeta.listFromPull(pull);
+            if (docs.isEmpty) return const [];
+            final store =
+                widget.knowledgeStore ?? KnowledgeExtractionStore.instance;
+            await store.load(await _backend.readEmail());
+            return [
+              for (final d in docs)
+                if (store.textFor(d.id) case final t?
+                    when t.trim().isNotEmpty)
+                  t,
+            ];
+          },
+        ),
+        backend: _backend,
+        // T1-2 save hook: the journal records the exact artifact
+        // path the moment the save lands inside the pipeline.
+        onArtifactSaved: _service.noteArtifactSaved,
+      );
+
+  ClinicianReportPipeline _clinicianPipeline() =>
+      widget.clinicianPipeline ??
+      ClinicianReportPipeline(
+        collector: ReportDataCollector(
+          backend: _backend,
+          hc: widget.healthConnectService ?? HealthConnectService(),
+        ),
+        clinicianCollector: ClinicianReportCollector(
+          scoreLoader: () async {
+            final days = await HealthHistoryStore.instance.readAll();
+            return {
+              for (final e in days.entries)
+                if (e.value.dailyScore != null) e.key: e.value.dailyScore!,
+            };
+          },
+          eventsLoader: () => _backend.fetchMedicationChangeEvents(),
+          categoriesLoader: () => _backend.fetchLogCategories(),
+        ),
+        onArtifactSaved: _service.noteArtifactSaved,
+      );
 
   void _seedCustomIfNeeded() {
     // Native: preselect ALL categories the first time Custom opens
@@ -349,32 +460,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
 
   Future<void> _generate({bool forceRaw = false}) async {
     if (_service.isGenerating) return;
-    final pipeline = widget.pipeline ??
-        ReportGenerationPipeline(
-          collector: ReportDataCollector(
-            backend: _backend,
-            hc: widget.healthConnectService ?? HealthConnectService(),
-            // R65's document store, read the same way native's
-            // collector reads its DAO: the pull's document rows,
-            // each with its on-device extracted text (blank/failed
-            // extractions skipped — native's rule).
-            documentsLoader: () async {
-              final pull = await _backend.fetchSyncPull();
-              final docs = KnowledgeDocumentMeta.listFromPull(pull);
-              if (docs.isEmpty) return const [];
-              final store =
-                  widget.knowledgeStore ?? KnowledgeExtractionStore.instance;
-              await store.load(await _backend.readEmail());
-              return [
-                for (final d in docs)
-                  if (store.textFor(d.id) case final t?
-                      when t.trim().isNotEmpty)
-                    t,
-              ];
-            },
-          ),
-          backend: _backend,
-        );
+    final pipeline = _standardPipeline();
     // The service owns the run from here: it survives this
     // page's disposal, holds the outcome, and routes its
     // presentation (see ReportGenerationService).
@@ -402,6 +488,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
         savePdf: widget.savePdf ?? _defaultSave,
         saveToDownloads: widget.saveToDownloads ?? _defaultSaveToDownloads,
       ),
+      request: _identityFor(kind: 'standard', forceRaw: forceRaw),
     );
   }
 
@@ -415,25 +502,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
     // non-premium or unverified entitlement.
     if (_clinicianUnlocked != true) return;
     if (_service.isGenerating) return;
-    final pipeline = widget.clinicianPipeline ??
-        ClinicianReportPipeline(
-          collector: ReportDataCollector(
-            backend: _backend,
-            hc: widget.healthConnectService ?? HealthConnectService(),
-          ),
-          clinicianCollector: ClinicianReportCollector(
-            // Stored, write-once Daily Scores only (spec §5.3).
-            scoreLoader: () async {
-              final days = await HealthHistoryStore.instance.readAll();
-              return {
-                for (final e in days.entries)
-                  if (e.value.dailyScore != null) e.key: e.value.dailyScore!,
-              };
-            },
-            eventsLoader: () => _backend.fetchMedicationChangeEvents(),
-            categoriesLoader: () => _backend.fetchLogCategories(),
-          ),
-        );
+    final pipeline = _clinicianPipeline();
     await _service.start(
       ({required onStage, required isCancelled}) => pipeline.generate(
         selectedCategories: _selected,
@@ -446,6 +515,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
         savePdf: widget.savePdf ?? _defaultSave,
         saveToDownloads: widget.saveToDownloads ?? _defaultSaveToDownloads,
       ),
+      request: _identityFor(kind: 'clinician'),
     );
   }
 
@@ -802,6 +872,18 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
       ],
       const SizedBox(height: 12),
       if (generating) ...[
+        // R5-9: the auto re-run framing line, above the standard
+        // stage label, only while an auto re-run is in flight.
+        if (_service.autoRunInFlight) ...[
+          const Center(
+            child: Text(autoRerunFraming,
+                style: TextStyle(
+                    color: NotelColors.textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600)),
+          ),
+          const SizedBox(height: 6),
+        ],
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           const SizedBox(
             width: 18,
@@ -825,12 +907,79 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
           ),
         ),
       ],
-      if (_service.pendingFailure is ReportAiDecision) ...[
+      if (!generating && _service.restoredDecisionEntry != null) ...[
+        // VC 100129, R5-5 Case 2 — a decision restored after
+        // relaunch: framing line + unchanged title, Case 2 body,
+        // ONE action (no snapshot survives death, so the
+        // same-session body/buttons would be false here).
+        if (_service.restoredDecisionFraming != null) ...[
+          Text(_service.restoredDecisionFraming!,
+              style: const TextStyle(
+                  color: NotelColors.textSecondary, fontSize: 11)),
+          const SizedBox(height: 4),
+        ],
+        const Text(aiDecisionTitle,
+            style: TextStyle(
+                color: NotelColors.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600)),
+        const SizedBox(height: 6),
+        const Text(restoredDecisionBodyCase2,
+            style: TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
+        const SizedBox(height: 4),
+        TextButton(
+          onPressed: () {
+            final entry = _service.restoredDecisionEntry!;
+            _service.clearRestoredDecision();
+            unawaited(_service.start(_buildRun(entry.request),
+                request: entry.request));
+          },
+          child: const Text(restoredDecisionAction,
+              style: TextStyle(
+                  color: NotelColors.primary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold)),
+        ),
+        _attemptDetails(),
+        const SizedBox(height: 8),
+      ] else if (!generating && _service.interruptedEntry != null) ...[
+        // VC 100129, R5-1–R5-3 — the interrupted surface (shown
+        // when the auto re-run could not proceed).
+        const Text(interruptedTitle,
+            style: TextStyle(
+                color: NotelColors.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600)),
+        const SizedBox(height: 6),
+        const Text(interruptedBody,
+            style: TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
+        const SizedBox(height: 4),
+        TextButton(
+          onPressed: () {
+            final entry = _service.interruptedEntry!;
+            unawaited(_service.retryInterrupted(_buildRun(entry.request)));
+          },
+          child: const Text(interruptedRetryLabel,
+              style: TextStyle(
+                  color: NotelColors.primary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold)),
+        ),
+        const SizedBox(height: 8),
+      ] else if (_service.pendingFailure is ReportAiDecision) ...[
         // Phase 3 — the held AI-failure decision (Juno's ruled
         // surface, byte-exact): the AI leg exhausted a retryable
         // class, no PDF shipped, and the generation holds until
         // the user retries the analysis on the collected data or
         // explicitly chooses the data-only report.
+        // VC 100129 F5: a decision rendered later than it was
+        // produced carries the earlier-attempt framing line.
+        if (_service.heldFramingLine != null) ...[
+          Text(_service.heldFramingLine!,
+              style: const TextStyle(
+                  color: NotelColors.textSecondary, fontSize: 11)),
+          const SizedBox(height: 4),
+        ],
         const Text(aiDecisionTitle,
             style: TextStyle(
                 color: NotelColors.textPrimary,
@@ -858,8 +1007,18 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
                     fontWeight: FontWeight.bold)),
           ),
         ]),
+        _attemptDetails(),
         const SizedBox(height: 8),
       ] else if (_failureMessage != null) ...[
+        // VC 100129 R5-4: a restored failure carries the
+        // earlier-attempt framing line above the unchanged
+        // failure message.
+        if (_service.heldFramingLine != null) ...[
+          Text(_service.heldFramingLine!,
+              style: const TextStyle(
+                  color: NotelColors.textSecondary, fontSize: 11)),
+          const SizedBox(height: 4),
+        ],
         Text(_failureMessage!,
             style: const TextStyle(color: NotelColors.error, fontSize: 12)),
         if (_failureAllowRaw)
@@ -871,6 +1030,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
                     fontSize: 11,
                     fontWeight: FontWeight.bold)),
           ),
+        _attemptDetails(),
         const SizedBox(height: 8),
       ],
       SizedBox(
@@ -989,6 +1149,50 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
             'Written by AI from your data. Informational only, not medical advice.'),
       ],
     ]);
+  }
+
+  /// R-1 F1 (R5-6/R5-7): the recorded attempt history behind a
+  /// "Details" expansion, read from the generation journal.
+  /// Only Juno's mapped plain labels and actually-received HTTP
+  /// statuses render — never raw class names, reasons, exception
+  /// text, URLs, or health content.
+  Widget _attemptDetails() {
+    final lines = _service.displayAttemptLines;
+    if (lines.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () =>
+              setState(() => _showAttemptDetails = !_showAttemptDetails),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(attemptDetailsLabel,
+                    style: TextStyle(
+                        color: NotelColors.textSecondary, fontSize: 12)),
+                Icon(
+                    _showAttemptDetails
+                        ? Icons.expand_less
+                        : Icons.expand_more,
+                    size: 18,
+                    color: NotelColors.textSecondary),
+              ],
+            ),
+          ),
+        ),
+        if (_showAttemptDetails)
+          for (final line in lines)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Text(line,
+                  style: const TextStyle(
+                      color: NotelColors.textSecondary, fontSize: 11)),
+            ),
+      ],
+    );
   }
 
   Widget _sourceRow(String title, String detail) => Row(

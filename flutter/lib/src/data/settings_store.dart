@@ -531,6 +531,10 @@ class SettingsStore extends ChangeNotifier {
       intakeTargetsKey,
       intakePresetsKey,
       identityOwnerEmailKey,
+      // VC 100129: the report generation journal is
+      // account-bound outcome metadata — wiped with the rest
+      // (key owned by report_generation_journal.dart).
+      'report_generation_journal_v1',
     ]) {
       try {
         await _delete(k);
