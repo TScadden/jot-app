@@ -512,9 +512,41 @@ class ReportSnapshot {
 /// (e.g. 165.4, 161.0).
 String _floatText(double v) => v.toString();
 
+/// The report-path label for one medication: `Name dose
+/// (frequency)` when the entry carries a STORED frequency, and
+/// `Name dose` — no frequency phrase at all — when it does not.
+///
+/// VC 100132 correction delta (founder correction, Nov 13): this
+/// helper reads [MedicationEntry.rawFrequency], NEVER the display
+/// getter [MedicationEntry.frequency]. The getter synthesizes
+/// `'Once daily'` from a blank stored frequency
+/// (medications.dart:93-94) — correct for the Tools card, where
+/// it is the app's pinned view, but a fabrication in a report:
+/// ivabradine's stored frequency is blank (`""`), and the
+/// founder's VC 100131 narrative printed "Ivabradine 7.5mg once
+/// daily" by copying this prose line (and the structured payload
+/// carried the same synthesized value). A report states only
+/// what the entry stores. The display getter itself is NOT
+/// changed — its UI behavior is out of this package's scope.
+/// Precedent: [MedicationFieldSnapshot.fromEntry] already
+/// snapshots `rawFrequency` for the change-event channel
+/// (medication_change_events.dart).
+String reportMedicationLabel(MedicationEntry m) {
+  if (m.rawFrequency.trim().isEmpty) return '${m.name} ${m.dose}';
+  return '${m.name} ${m.dose} (${m.rawFrequency})';
+}
+
 /// The enriched `userContext` body field, byte-for-byte native:
 /// `<userContext>\n\nREPORT RANGE: <TYPE> (<days> days)\n` +
 /// profile text.
+///
+/// VC 100132 correction delta: the `Active Medications:` line
+/// renders each entry through [reportMedicationLabel], so a
+/// blank stored frequency emits NO frequency phrase for that
+/// medication (pre-fix it emitted the display getter's
+/// synthesized `(Once daily)`). For every entry WITH a stored
+/// frequency the line is byte-identical to before — the getter
+/// and the raw value agree whenever the raw value is non-blank.
 String buildReportUserContext(ReportSnapshot s) {
   final heightCm = (s.userHeightIn * 2.54).toStringAsFixed(1);
   final b = StringBuffer()
@@ -525,7 +557,7 @@ String buildReportUserContext(ReportSnapshot s) {
   }
   if (s.medications.isNotEmpty) {
     b.write(
-        'Active Medications: ${s.medications.map((m) => '${m.name} ${m.dose} (${m.frequency})').join(', ')}\n');
+        'Active Medications: ${s.medications.map(reportMedicationLabel).join(', ')}\n');
   }
   return '${s.userContext}\n\nREPORT RANGE: ${s.rangeTypeName} '
       '(${s.durationDays} days)\n$b';
@@ -760,10 +792,20 @@ List<String> correlationInsightPrintLines(List<InsightRecord> records) {
 /// current AND discontinued entries. The source is the snapshot's
 /// full profile list ([ReportSnapshot.profileMedications]); a
 /// snapshot built without it falls back to its active list.
-/// Deleted rows never travel. `frequency` is the entry's display
-/// frequency (blank raw reads 'Once daily', the app's own pinned
-/// view — medications.dart), so a blank never reaches the guard
-/// as an empty frequency the model could refill from logs.
+/// Deleted rows never travel.
+///
+/// CORRECTION DELTA (founder correction, Nov 13 — supersedes this
+/// function's original R4 doc): `frequency` is the entry's RAW
+/// stored value ([MedicationEntry.rawFrequency]) — `""` for
+/// ivabradine, whose entry carries no frequency. The original R4
+/// code sent the DISPLAY getter's value, which synthesizes
+/// `'Once daily'` from a blank (medications.dart:93-94): the
+/// payload itself was stating a frequency the entry does not
+/// carry, and the narrative copied it ("Ivabradine 7.5mg once
+/// daily" in the founder's VC 100131 PDF). An honest `""` is the
+/// contract: the server renders a blank-frequency entry without
+/// a frequency and its guard has no fabricated cadence to diff —
+/// the narrative must state no frequency for such an entry.
 List<Map<String, dynamic>> structuredProfileMedications(ReportSnapshot s) {
   final source =
       s.profileMedications.isNotEmpty ? s.profileMedications : s.medications;
@@ -773,7 +815,7 @@ List<Map<String, dynamic>> structuredProfileMedications(ReportSnapshot s) {
         {
           'name': m.name,
           'dose': m.dose,
-          'frequency': m.frequency,
+          'frequency': m.rawFrequency,
           'startDate': m.startDate,
           'endDate': m.endDate,
           'archived': m.isArchived,

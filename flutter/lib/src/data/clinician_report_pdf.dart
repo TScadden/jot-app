@@ -80,7 +80,14 @@ List<ClinicianLine> clinicianPageLines(ClinicianReportData data) {
   } else {
     final shown = s.medications.take(clinicianMedicationCap).toList();
     for (final m in shown) {
-      lines.add((zone: 'Z2', text: '${m.name} ${m.dose} (${m.frequency})'));
+      // VC 100132 correction delta: reportMedicationLabel reads
+      // the RAW stored frequency — a blank stored frequency
+      // prints NO frequency phrase here either, instead of the
+      // display getter's synthesized "(Once daily)" (the same
+      // fabrication fixed in the AI-report prose/payload; see
+      // progress_report.dart reportMedicationLabel). Entries
+      // with a stored frequency print byte-identically to before.
+      lines.add((zone: 'Z2', text: reportMedicationLabel(m)));
     }
     if (s.medications.length > shown.length) {
       lines.add((
