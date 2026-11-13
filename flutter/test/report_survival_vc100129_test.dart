@@ -859,6 +859,429 @@ void main() {
     });
   });
 
+  // Vera §9 Observation 1 (delta follow-on, test-only): her 4
+  // probe tests covered three gaps this suite did not exercise
+  // directly — autoRestoreInterrupted, the restore/single-flight
+  // interaction, and the second-death case. The probes are landed
+  // here as permanent shipped tests, split where one probe
+  // bundled distinct guards so each guard fails on its own:
+  // probe (b) "auto re-run once" → tests 1–3 (fresh run +
+  // journaled outcome / second-call refusal / adoption
+  // precedence); probe (c) "single-flight" → tests 4–6 (auto
+  // refuses while a stage is live / restore landing after a
+  // start cannot overwrite it / direct second start is a no-op);
+  // probe (d) "second death" → test 7.
+  group('auto re-run / single-flight / second death '
+      '(Vera §9 probes, permanent)', () {
+    test('1. autoRestoreInterrupted: fresh generation from the '
+        'persisted identity, fresh outcome journaled', () async {
+      final mem = <String, String>{};
+      await seedJournal(
+          mem,
+          entryFor(
+              kind: JournalOutcomeKind.running,
+              stage: ReportStage.buildingSummary.name));
+      final s = serviceOver(mem);
+      await s.restoreSettled;
+      expect(s.interruptedEntry, isNotNull);
+      expect(s.interruptedEntry!.generationId, 'g1');
+
+      var runCalls = 0;
+      bool? framingWhileRunning;
+      bool? generatingWhileRunning;
+      final started = await s.autoRestoreInterrupted(
+        ({required onStage, required isCancelled}) async {
+          runCalls++;
+          // R5-9 state must be observable WHILE the re-run is
+          // in flight, not just after it.
+          framingWhileRunning = s.autoRunInFlight;
+          generatingWhileRunning = s.isGenerating;
+          onStage(ReportStage.syncing);
+          return ReportReady(
+            snapshot: snap(),
+            pdfBytes: const [7],
+            fileName: 'rerun.pdf',
+            savedPath: '/docs/rerun.pdf',
+            isRawFallback: false,
+          );
+        },
+      );
+      expect(started, isTrue);
+      expect(runCalls, 1);
+      expect(framingWhileRunning, isTrue);
+      expect(generatingWhileRunning, isTrue);
+      expect(s.autoRunInFlight, isFalse);
+      expect(s.autoRestoreAttempted, isTrue);
+      expect(s.interruptedEntry, isNull);
+      expect(s.pendingShare, isNotNull);
+      expect(s.pendingShare!.savedPath, '/docs/rerun.pdf');
+      expect(s.pendingFailure, isNull);
+      // The fresh outcome is journaled under the PERSISTED
+      // identity (testRequest: standard/health, last30Days
+      // false, categories [1, 5]) — a default identity here
+      // (last30Days true, no categories) fails this test.
+      final stored =
+          await ReportGenerationJournal.inMemory(mem).read();
+      expect(stored, isNotNull);
+      expect(stored!.outcomeKind, JournalOutcomeKind.ready);
+      expect(stored.generationId, isNot('g1'));
+      expect(stored.savedPath, '/docs/rerun.pdf');
+      expect(stored.fileName, 'rerun.pdf');
+      expect(stored.finishedAtMs, isNotNull);
+      expect(stored.request.kind, 'standard');
+      expect(stored.request.focusKey, 'health');
+      expect(stored.request.last30Days, isFalse);
+      expect(stored.request.categoryIds, [1, 5]);
+    });
+
+    test('2. autoRestoreInterrupted: a second call — concurrent '
+        'or after completion — runs nothing', () async {
+      final mem = <String, String>{};
+      await seedJournal(
+          mem,
+          entryFor(
+              kind: JournalOutcomeKind.running,
+              stage: ReportStage.buildingSummary.name));
+      final s = serviceOver(mem);
+      await s.restoreSettled;
+      expect(s.interruptedEntry, isNotNull);
+
+      var firstCalls = 0, otherCalls = 0;
+      Future<ReportOutcome> otherRun({
+        required void Function(ReportStage stage) onStage,
+        required bool Function() isCancelled,
+      }) async {
+        otherCalls++;
+        return const ReportFailed('must never run');
+      }
+      final gate = Completer<void>();
+      final first = s.autoRestoreInterrupted(
+        ({required onStage, required isCancelled}) async {
+          firstCalls++;
+          onStage(ReportStage.syncing);
+          await gate.future;
+          return ReportReady(
+            snapshot: snap(),
+            pdfBytes: const [3],
+            fileName: 'once.pdf',
+            savedPath: '/docs/once.pdf',
+            isRawFallback: false,
+          );
+        },
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(firstCalls, 1);
+      expect(s.autoRunInFlight, isTrue);
+      // Concurrent second call: refused, runs nothing, and does
+      // not disturb the in-flight auto re-run's framing state.
+      expect(await s.autoRestoreInterrupted(otherRun), isFalse);
+      expect(otherCalls, 0);
+      expect(s.autoRunInFlight, isTrue);
+      expect(s.isGenerating, isTrue);
+
+      gate.complete();
+      expect(await first, isTrue);
+      expect(firstCalls, 1);
+      expect(s.pendingShare!.savedPath, '/docs/once.pdf');
+      // Post-completion call: still refused (the one auto
+      // attempt for this process is spent and nothing is
+      // interrupted), the held outcome is untouched.
+      expect(await s.autoRestoreInterrupted(otherRun), isFalse);
+      expect(otherCalls, 0);
+      expect(s.pendingShare!.savedPath, '/docs/once.pdf');
+    });
+
+    test('3. adoption precedence: running + artifact restores '
+        'as ready and autoRestoreInterrupted refuses without '
+        'burning the attempt', () async {
+      final mem = <String, String>{};
+      await seedJournal(
+          mem,
+          entryFor(
+              kind: JournalOutcomeKind.running,
+              stage: ReportStage.savingFile.name,
+              savedPath: '/docs/orphan.pdf',
+              fileName: 'orphan.pdf'));
+      final s = serviceOver(mem, files: {
+        '/docs/orphan.pdf': [4, 4, 4],
+      });
+      await s.restoreSettled;
+      expect(s.pendingShare, isNotNull);
+      expect(s.pendingShare!.savedPath, '/docs/orphan.pdf');
+      expect(s.interruptedEntry, isNull,
+          reason: 'adopted, not interrupted — nothing to re-run');
+
+      var runCalls = 0;
+      final started = await s.autoRestoreInterrupted(
+        ({required onStage, required isCancelled}) async {
+          runCalls++;
+          return const ReportFailed('must never run');
+        },
+      );
+      expect(started, isFalse);
+      expect(runCalls, 0);
+      // A refusal because nothing was interrupted must not
+      // consume the process's one auto attempt.
+      expect(s.autoRestoreAttempted, isFalse);
+      expect(s.pendingShare!.savedPath, '/docs/orphan.pdf');
+      expect(s.pendingShare!.pdfBytes, [4, 4, 4]);
+      // And it must not supersede the journal record.
+      final stored =
+          await ReportGenerationJournal.inMemory(mem).read();
+      expect(stored!.generationId, 'g1');
+      expect(stored.outcomeKind, JournalOutcomeKind.running);
+      expect(stored.savedPath, '/docs/orphan.pdf');
+    });
+
+    test('4. single-flight: autoRestoreInterrupted refuses '
+        'while a generation is already in flight', () async {
+      final mem = <String, String>{};
+      await seedJournal(
+          mem,
+          entryFor(
+              kind: JournalOutcomeKind.running,
+              stage: ReportStage.buildingSummary.name));
+      final s = serviceOver(mem);
+      await s.restoreSettled;
+      expect(s.interruptedEntry, isNotNull);
+
+      // A manual generation starts while the interrupted entry
+      // is still on the service (start() itself does not clear
+      // it — retryInterrupted does). That makes the auto path's
+      // stage guard reachable, and this test pins it.
+      final gate = Completer<void>();
+      var manualCalls = 0;
+      final manual = s.start(
+        ({required onStage, required isCancelled}) async {
+          manualCalls++;
+          onStage(ReportStage.syncing);
+          await gate.future;
+          return ReportReady(
+            snapshot: snap(),
+            pdfBytes: const [1],
+            fileName: 'manual.pdf',
+            savedPath: '/docs/manual.pdf',
+            isRawFallback: false,
+          );
+        },
+        request: testRequest,
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(manualCalls, 1);
+      expect(s.isGenerating, isTrue);
+      expect(s.interruptedEntry, isNotNull);
+      final liveGeneration = s.journalEntry!.generationId;
+
+      var autoCalls = 0;
+      final started = await s.autoRestoreInterrupted(
+        ({required onStage, required isCancelled}) async {
+          autoCalls++;
+          return const ReportFailed('must never run');
+        },
+      );
+      expect(started, isFalse);
+      expect(autoCalls, 0);
+      // The refusal was the stage guard, not the attempt guard:
+      // the one auto attempt is not burned by it.
+      expect(s.autoRestoreAttempted, isFalse);
+      expect(s.isGenerating, isTrue);
+      expect(s.journalEntry!.generationId, liveGeneration);
+
+      gate.complete();
+      await manual;
+      expect(s.pendingShare!.savedPath, '/docs/manual.pdf');
+    });
+
+    test('5. single-flight: a restore landing after a start '
+        'cannot overwrite the live generation', () async {
+      final mem = <String, String>{};
+      await seedJournal(
+          mem,
+          entryFor(
+              kind: JournalOutcomeKind.running,
+              stage: ReportStage.buildingSummary.name));
+      const liveRequest = ReportRequestIdentity(
+        kind: 'clinician',
+        focusKey: 'clinician',
+        last30Days: true,
+        categoryIds: [9],
+      );
+      // No await between construction and start(): the restore
+      // is still in flight (its journal read has not landed)
+      // when the live generation begins — deterministically,
+      // because Dart microtasks cannot interleave synchronous
+      // code. The epoch / live-state guard in _restore() must
+      // then keep the seeded record off the live generation.
+      final s = serviceOver(mem);
+      final gate = Completer<void>();
+      var liveCalls = 0;
+      final live = s.start(
+        ({required onStage, required isCancelled}) async {
+          liveCalls++;
+          onStage(ReportStage.syncing);
+          await gate.future;
+          return ReportReady(
+            snapshot: snap(),
+            pdfBytes: const [2],
+            fileName: 'live.pdf',
+            savedPath: '/docs/live.pdf',
+            isRawFallback: false,
+          );
+        },
+        request: liveRequest,
+      );
+      await s.restoreSettled;
+      expect(liveCalls, 1);
+      expect(s.isGenerating, isTrue);
+      expect(s.stage, ReportStage.syncing);
+      expect(s.interruptedEntry, isNull,
+          reason: 'the seeded running entry must not surface '
+              'as interrupted over a live generation');
+      expect(s.pendingShare, isNull);
+      expect(s.pendingFailure, isNull);
+      expect(s.journalEntry!.request.categoryIds, [9]);
+      final stored =
+          await ReportGenerationJournal.inMemory(mem).read();
+      expect(stored!.outcomeKind, JournalOutcomeKind.running);
+      expect(stored.request.kind, 'clinician');
+      expect(stored.request.categoryIds, [9]);
+      expect(stored.generationId, s.journalEntry!.generationId);
+
+      gate.complete();
+      await live;
+      expect(s.pendingShare!.savedPath, '/docs/live.pdf');
+    });
+
+    test('6. single-flight: a second start() while one is in '
+        'flight runs nothing and leaves the journal untouched',
+        () async {
+      final mem = <String, String>{};
+      final s = serviceOver(mem);
+      await s.restoreSettled;
+      final gate = Completer<void>();
+      var firstCalls = 0, secondCalls = 0;
+      final first = s.start(
+        ({required onStage, required isCancelled}) async {
+          firstCalls++;
+          onStage(ReportStage.syncing);
+          await gate.future;
+          return ReportReady(
+            snapshot: snap(),
+            pdfBytes: const [1],
+            fileName: 'first.pdf',
+            savedPath: '/docs/first.pdf',
+            isRawFallback: false,
+          );
+        },
+        request: testRequest,
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(firstCalls, 1);
+      expect(s.stage, ReportStage.syncing);
+      final liveGeneration = s.journalEntry!.generationId;
+
+      // Awaited directly: the second start returns without
+      // invoking its run at all.
+      await s.start(
+        ({required onStage, required isCancelled}) async {
+          secondCalls++;
+          return const ReportFailed('must never run');
+        },
+        request: const ReportRequestIdentity(
+          kind: 'clinician',
+          focusKey: 'clinician',
+          last30Days: true,
+          categoryIds: [9],
+        ),
+      );
+      expect(secondCalls, 0);
+      expect(s.isGenerating, isTrue);
+      expect(s.stage, ReportStage.syncing);
+      expect(s.journalEntry!.generationId, liveGeneration);
+      final stored =
+          await ReportGenerationJournal.inMemory(mem).read();
+      expect(stored!.generationId, liveGeneration);
+      expect(stored.outcomeKind, JournalOutcomeKind.running);
+      expect(stored.stage, ReportStage.syncing.name);
+      expect(stored.request.categoryIds, [1, 5]);
+
+      gate.complete();
+      await first;
+      expect(firstCalls, 1);
+      expect(s.pendingShare!.savedPath, '/docs/first.pdf');
+    });
+
+    test('7. second death: death during the auto re-run leaves '
+        'a single truthful running record the next relaunch '
+        'restores as interrupted again', () async {
+      final mem = <String, String>{};
+      await seedJournal(
+          mem,
+          entryFor(
+              kind: JournalOutcomeKind.running,
+              stage: ReportStage.buildingSummary.name));
+      final s2 = serviceOver(mem);
+      await s2.restoreSettled;
+      expect(s2.interruptedEntry, isNotNull);
+
+      // The auto re-run starts, then the process "dies"
+      // mid-flight: the run's gate never completes while we
+      // inspect the journal and relaunch.
+      final gate = Completer<void>();
+      var rerunCalls = 0;
+      final rerun = s2.autoRestoreInterrupted(
+        ({required onStage, required isCancelled}) async {
+          rerunCalls++;
+          onStage(ReportStage.syncing);
+          await gate.future;
+          return const ReportFailed('Cancelled');
+        },
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(rerunCalls, 1);
+      expect(s2.autoRunInFlight, isTrue);
+
+      // Exactly one journal record, still valid, truthfully
+      // 'running' for the NEW generation under the ORIGINAL
+      // request identity — no phantom outcome, no corruption,
+      // no artifact claimed.
+      expect(mem.keys, [ReportGenerationJournal.journalKey]);
+      expect(
+          jsonDecode(mem[ReportGenerationJournal.journalKey]!),
+          isA<Map<String, dynamic>>());
+      final mid =
+          await ReportGenerationJournal.inMemory(mem).read();
+      expect(mid, isNotNull);
+      expect(mid!.outcomeKind, JournalOutcomeKind.running);
+      expect(mid.generationId, isNot('g1'));
+      expect(mid.stage, ReportStage.syncing.name);
+      expect(mid.savedPath, isNull);
+      expect(mid.finishedAtMs, isNull);
+      expect(mid.request.kind, 'standard');
+      expect(mid.request.categoryIds, [1, 5]);
+      expect(mid.request.last30Days, isFalse);
+      final rerunGeneration = mid.generationId;
+
+      // THIRD process over the same store: the re-run's death
+      // restores as interrupted again, carrying the re-run's
+      // generation id and the original identity.
+      final s3 = serviceOver(mem);
+      await s3.restoreSettled;
+      expect(s3.interruptedEntry, isNotNull);
+      expect(s3.interruptedEntry!.generationId, rerunGeneration);
+      expect(s3.interruptedEntry!.request.categoryIds, [1, 5]);
+      expect(s3.isGenerating, isFalse);
+      expect(s3.pendingShare, isNull);
+      expect(s3.pendingFailure, isNull);
+      expect(s3.restoredDecisionEntry, isNull);
+
+      // Settle the abandoned re-run so no future dangles: its
+      // Cancelled finish clears the (already-asserted) record.
+      gate.complete();
+      expect(await rerun, isTrue);
+    });
+  });
+
   group('Juno string pins (rulings-5 verbatim)', () {
     test('interrupted / auto-run / details strings', () {
       expect(interruptedTitle, "Your report didn't finish");
