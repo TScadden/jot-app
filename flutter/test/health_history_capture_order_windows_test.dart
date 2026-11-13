@@ -134,6 +134,12 @@ Future<({_RecordingHc hc, HealthHistoryStore store})> _runCapture({
     // keep reading 90 — pinned in
     // health_history_partial_capture_b02_test.dart.)
     await store.markHrvBackfillComplete();
+    // Same modelling for VC 100132 (spikes): a seeded store
+    // stands for one whose 180-day spike backfill already
+    // completed on a clean read, so its routine spike window
+    // is 31. Backfill-incomplete stores keep reading 180 —
+    // pinned in report_accuracy_vc100132_test.dart.
+    await store.markSpikeBackfillComplete();
   }
   final recording = hc ?? _RecordingHc();
   final sync = HealthHistorySync.withDeps(

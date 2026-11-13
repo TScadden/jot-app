@@ -557,7 +557,17 @@ String buildHealthSummary(ReportSnapshot s) {
   }
   if (s.heartRateSpikes.isNotEmpty) {
     final total = s.heartRateSpikes.fold<int>(0, (a, e) => a + e.$2);
-    b.write('Total HR Spikes: $total recorded. ');
+    // VC 100132 (Problem 4): the total is scoped to the days the
+    // spike series actually covers, in the same across-N-days
+    // form every sibling clause uses. The bare form let the
+    // narrative frame a partial-window total (the founder's
+    // 42-day series) as a full-window one ("Over the 180-day
+    // period... A total of 1000 heart rate spikes"). The dates
+    // are the series' own first/last sampled days.
+    final sorted = [...s.heartRateSpikes]
+      ..sort((a, b) => a.$1.compareTo(b.$1));
+    b.write('Total HR Spikes: $total recorded across '
+        '${sorted.length} days (${sorted.first.$1} to ${sorted.last.$1}). ');
   }
   if (s.bloodPressureSeries.isNotEmpty) {
     final sys = s.bloodPressureSeries.map((e) => e.systolic).reduce((a, c) => a + c) /
