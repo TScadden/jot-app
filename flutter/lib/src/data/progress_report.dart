@@ -1423,16 +1423,41 @@ class ReportDataCollector {
       correlationInsightsLoadFailed = true;
     }
 
-    // 6. Blood pressure — manual logs filtered to range. Server BP
-    // storage was dropped on push/pull as of R62; per Juno Phase 4
-    // ruling B19, status is error since deprecated storage cannot
-    // establish that the patient recorded nothing.
+    // 6. Blood pressure — manual logs filtered to range, read
+    // from the sync pull's profile field (fetchManualBpLogs).
+    // VC 100132 (Problem 3): the status was hardcoded `error`
+    // under Juno's Phase 4 ruling B19 while the SAME collect
+    // placed the real in-range readings in the snapshot and the
+    // PDF charted them — the founder's VC 100131 report printed
+    // "BloodPressure: Unavailable" beside its own Systolic BP
+    // chart (Jul 28–Nov 12). Juno's Round 4 Ruling 2 supersedes
+    // B19 in part: status now derives from the pull outcome and
+    // the in-range series itself, the same objects the chart and
+    // health summary consume —
+    //   readings in range → success with the readings count;
+    //   pull failed → error;
+    //   empty in range → error, UNLESS the source field was
+    //   present in the successful pull and parsed (the R2-2
+    //   approved clean-empty exit, backend.manualBpSourceParsed)
+    //   → noData. fetchManualBpLogs alone folds a clean empty
+    //   and an unreadable source into the same [], so without
+    //   that signal empty stays a retrieval statement.
     final allBp = await backend.fetchManualBpLogs();
     final bp = allBp
         .where((r) => !last30Days || r.timeEpochMs >= cutoff)
         .map((r) => ReportBpRecord(r.systolic, r.diastolic, r.timeEpochMs))
         .toList();
-    meta('bloodPressure', DataSourceStatus.error, bp.length);
+    final DataSourceStatus bpStatus;
+    if (bp.isNotEmpty) {
+      bpStatus = DataSourceStatus.success;
+    } else if (pullFailed) {
+      bpStatus = DataSourceStatus.error;
+    } else {
+      bpStatus = await backend.manualBpSourceParsed()
+          ? DataSourceStatus.noData
+          : DataSourceStatus.error;
+    }
+    meta('bloodPressure', bpStatus, bp.length);
 
     // 7. Health Connect sections.
     onStage?.call('syncing');
