@@ -372,7 +372,24 @@ class ReportSnapshot {
   final String userGender;
   final List<String> conditions;
   final List<MedicationEntry> medications;
+
+  /// VC 100132 (Round 4, Problem 1) — the FULL parsed profile
+  /// medication list (active + archived, deleted excluded) for the
+  /// structured `medications` channel of the /api/ai/report payload
+  /// (see [buildAiReportRequest]). [medications] stays the ACTIVE
+  /// list every local render uses; this list is what the server's
+  /// structured-medications guard expects: current AND discontinued
+  /// entries, each with name/dose/frequency/start/end + archived
+  /// flag. Empty when the caller built the snapshot without it —
+  /// the request builder then falls back to [medications].
+  final List<MedicationEntry> profileMedications;
   final List<String> knowledgeDocuments;
+
+  /// VC 100132 (Round 4, Problem 2) — stored Daily Scores in range,
+  /// date keys `yyyy-MM-dd`, values > 0 (the clinician reader's
+  /// filter, reused). Empty until the collector wires the store
+  /// read in; the section metadata count is THIS list's length.
+  final List<(String, int)> dailyScoreSeries;
 
   /// Per-day series, date keys `yyyy-MM-dd`, values > 0 only
   /// (the founder zero rule, applied at collection).
@@ -407,6 +424,8 @@ class ReportSnapshot {
     this.userGender = '',
     this.conditions = const [],
     this.medications = const [],
+    this.profileMedications = const [],
+    this.dailyScoreSeries = const [],
     this.knowledgeDocuments = const [],
     this.heartRateSeries = const [],
     this.sleepSeries = const [],
@@ -431,6 +450,7 @@ class ReportSnapshot {
       bloodPressureSeries.isNotEmpty ||
       conditions.isNotEmpty ||
       medications.isNotEmpty ||
+      dailyScoreSeries.isNotEmpty ||
       knowledgeDocuments.isNotEmpty;
 
   /// Returns a new [ReportSnapshot] with updated section status.
@@ -468,6 +488,8 @@ class ReportSnapshot {
       userGender: userGender,
       conditions: conditions,
       medications: medications,
+      profileMedications: profileMedications,
+      dailyScoreSeries: dailyScoreSeries,
       knowledgeDocuments: knowledgeDocuments,
       heartRateSeries: heartRateSeries,
       sleepSeries: sleepSeries,
@@ -699,6 +721,35 @@ List<String> correlationInsightPrintLines(List<InsightRecord> records) {
 /// clinician_report_test fixtures assert aiCalls == 0), so the
 /// clinician generation path carries the identity through the
 /// generation journal instead (service-level, kind 'clinician').
+/// VC 100132 (Round 4, Problem 1) — the structured profile
+/// medications channel the server guard expects (jot-server
+/// `src/routes/ai.js` `normalizeProfileMedications` + its
+/// report_medications tests): an array of
+/// `{name, dose, frequency, startDate, endDate, archived}` carrying
+/// current AND discontinued entries. The source is the snapshot's
+/// full profile list ([ReportSnapshot.profileMedications]); a
+/// snapshot built without it falls back to its active list.
+/// Deleted rows never travel. `frequency` is the entry's display
+/// frequency (blank raw reads 'Once daily', the app's own pinned
+/// view — medications.dart), so a blank never reaches the guard
+/// as an empty frequency the model could refill from logs.
+List<Map<String, dynamic>> structuredProfileMedications(ReportSnapshot s) {
+  final source =
+      s.profileMedications.isNotEmpty ? s.profileMedications : s.medications;
+  return [
+    for (final m in source)
+      if (!m.isDeleted)
+        {
+          'name': m.name,
+          'dose': m.dose,
+          'frequency': m.frequency,
+          'startDate': m.startDate,
+          'endDate': m.endDate,
+          'archived': m.isArchived,
+        },
+  ];
+}
+
 Map<String, dynamic> buildAiReportRequest(ReportSnapshot s,
     {String? reportGenerationId}) {
   final kb = s.knowledgeDocuments.join('\n\n');
@@ -719,6 +770,14 @@ Map<String, dynamic> buildAiReportRequest(ReportSnapshot s,
     'knowledgeBase': kb.trim().isEmpty ? null : kb,
     'fitbitData': buildHealthSummary(s),
     'dataAvailability': availability.isEmpty ? null : availability,
+    // VC 100132: the structured medications channel (own field,
+    // per the server contract — before this, the payload carried
+    // medications ONLY as prose inside userContext, so the
+    // server's structured guard never engaged:
+    // medicationsStructured=false, medCurrentCount=0 on the
+    // founder's VC 100131 report, and the narrative took doses /
+    // frequencies from logs instead).
+    'medications': structuredProfileMedications(s),
     'correlation_insights': correlationInsights,
     if (reportGenerationId != null && reportGenerationId.isNotEmpty)
       'reportGenerationId': reportGenerationId,
@@ -1250,6 +1309,19 @@ class ReportDataCollector {
         pullFailed ? DataSourceStatus.error : DataSourceStatus.success,
         activeMedications.length);
 
+    // VC 100132 (Problem 1): the full profile list for the
+    // structured payload channel — active + archived, deleted
+    // excluded. Source is the profile input's full parsed list;
+    // a caller that supplied only the active list degrades to
+    // exactly that list (never an invented discontinued set).
+    final profileMedications = [
+      for (final m
+          in (profile.allMedications.isNotEmpty
+              ? profile.allMedications
+              : profile.activeMedications))
+        if (!m.isDeleted) m,
+    ];
+
     throwIfCancelled();
 
     // 5. Knowledge documents.
@@ -1463,6 +1535,7 @@ class ReportDataCollector {
       userGender: profile.gender,
       conditions: profile.conditions,
       medications: activeMedications,
+      profileMedications: profileMedications,
       knowledgeDocuments: docs,
       heartRateSeries: hr,
       sleepSeries: sleep,
