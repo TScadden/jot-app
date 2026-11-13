@@ -90,6 +90,7 @@ Set<String> activeMedicationNamesFromProfile(Map<String, dynamic>? profile) {
   return out;
 }
 
+// ignore: constant_identifier_names
 const String TODO_JUNO_QUICKLOG_LOAD_ERROR =
     'Something went wrong loading Quick Log. Please try again.';
 

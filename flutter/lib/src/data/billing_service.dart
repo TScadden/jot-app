@@ -249,13 +249,16 @@ class BillingState {
   }
 }
 
+// ignore: constant_identifier_names
 const String TODO_JUNO_BILLING_PLAY_PROBLEM =
     'Google Play reported a problem. Please try again.';
 
+// ignore: constant_identifier_names
 const String TODO_JUNO_BILLING_VERIFY_UNREACHABLE =
     'Verification could not reach the Tabs server. Reopen Tabs once you '
     'are connected to try again.';
 
+// ignore: constant_identifier_names
 const String TODO_JUNO_BILLING_ACK_FAILED =
     'Your membership is active, but Google Play acknowledgement failed. '
     'Reopen Tabs to retry it.';

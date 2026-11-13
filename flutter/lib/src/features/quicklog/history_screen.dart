@@ -240,6 +240,7 @@ class LogEntrySyncBadge extends StatelessWidget {
 /// loads the whole list via a Room Flow with NO pagination (LazyColumn
 /// renders lazily); this port mirrors that — one pull, full list.
 /// Honest empty/error states; never fake entries.
+// ignore: constant_identifier_names
 const String TODO_JUNO_HISTORY_LOAD_ERROR =
     'Something went wrong loading history. Please try again.';
 
