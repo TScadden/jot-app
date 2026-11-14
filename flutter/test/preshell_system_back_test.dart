@@ -5,6 +5,7 @@ import 'package:http/testing.dart';
 import 'package:tabs_lab/main.dart';
 import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
+import 'package:tabs_lab/src/features/auth/email_verification_screen.dart';
 import 'package:tabs_lab/src/features/auth/login_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/conditions_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/consent_screen.dart';
@@ -283,6 +284,71 @@ void main() {
       expect(find.byType(AppFlow), findsNothing,
           reason: 'the AppFlow route should have been popped');
       expect(find.text('OPEN APP'), findsOneWidget);
+    });
+  });
+
+  group('Verify stage system back (VC 100134)', () {
+    testWidgets(
+        'verify stage: system back runs the escape — session '
+        'cleared, back to the Welcome stage, AppFlow alive',
+        (tester) async {
+      tester.view.physicalSize = const Size(1080, 3400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final session = FakeSessionStore()
+        ..token = 'fake-access'
+        ..refreshToken = 'fake-refresh'
+        ..email = 'pending@tabs.app'
+        ..emailVerified = false;
+      await tester.pumpWidget(MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => AppFlow(
+                      authApi: AuthApiClient(
+                          client: MockClient(
+                              (_) async => http.Response('nf', 404))),
+                      sessionStore: session,
+                      onboardingStore: r32.fakeOnboardingStore({}),
+                      tabsBackend:
+                          r32.FakeOnboardingBackend(sessionStore: session),
+                      weatherApi: WeatherApiClient(
+                          client: MockClient(
+                              (_) async => http.Response('nf', 404))),
+                      healthConnectService: r32.FakeOnboardingHC(),
+                      notificationService:
+                          FakeReminderNotificationService(),
+                    ),
+                  ),
+                ),
+                child: const Text('OPEN APP'),
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.pump();
+      await tester.tap(find.text('OPEN APP'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1850));
+      await tester.pump(const Duration(milliseconds: 650));
+      await tester.pump();
+      expectAppFlowAlive(tester);
+      expect(find.byType(EmailVerificationScreen), findsOneWidget);
+
+      await systemBack(tester);
+
+      expectAppFlowAlive(tester);
+      expect(find.byType(EmailVerificationScreen), findsNothing);
+      expect(find.byType(WelcomeScreen), findsOneWidget);
+      // The escape is a real sign-out: the whole session is gone.
+      expect(session.token, isNull);
+      expect(session.refreshToken, isNull);
+      expect(session.email, isNull);
+      expect(session.emailVerified, isNull);
     });
   });
 }

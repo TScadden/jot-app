@@ -10,6 +10,7 @@ import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/onboarding_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
+import 'package:tabs_lab/src/features/auth/email_verification_screen.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
 
@@ -59,6 +60,15 @@ class _EmailThrowingStore extends FakeSessionStore {
   @override
   Future<String?> readEmail() async =>
       throw StateError('fake email read failure');
+}
+
+/// VC 100134 — a seeded store whose VERIFIED-flag read throws:
+/// restore must fail OPEN (verified) and land home, never lock an
+/// existing user behind a code screen on a keystore hiccup.
+class _VerifiedThrowingStore extends FakeSessionStore {
+  @override
+  Future<bool?> readEmailVerified() async =>
+      throw StateError('fake verified read failure');
 }
 
 void main() {
@@ -1013,6 +1023,48 @@ void main() {
       expect(find.byType(WelcomeScreen), findsNothing);
       expect(store.token, _oldAccess);
       expect(store.refreshToken, _oldRefresh);
+      await tester.pump(const Duration(milliseconds: 300));
+    });
+
+    // VC 100134 — restore mid-verification: a stored session with
+    // an explicit unverified flag restores INTO the verify stage,
+    // not home, not onboarding, not welcome.
+    testWidgets(
+        'VC 100134: cold start with stored emailVerified:false '
+        'lands on the verify stage', (tester) async {
+      final store = _seededStore()..emailVerified = false;
+      await pumpFlow(tester, store);
+
+      expect(find.byType(EmailVerificationScreen), findsOneWidget);
+      expect(find.text('Verify your email'), findsOneWidget);
+      expect(find.text('We sent a code to $_email'), findsOneWidget);
+      expect(find.byType(HomeScreen), findsNothing);
+      expect(find.byType(WelcomeScreen), findsNothing);
+      // The session itself is untouched by the gate.
+      expect(store.token, _oldAccess);
+      // Escape disposes the screen (and its countdown timer).
+      await tester.tap(find.byKey(const ValueKey('verify_escape')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.byType(WelcomeScreen), findsOneWidget);
+      expect(store.token, isNull);
+      expect(store.emailVerified, isNull);
+    });
+
+    // VC 100134 — fail-open restore read: a throwing verified-flag
+    // read is treated as verified and restore lands home.
+    testWidgets(
+        'VC 100134: cold start with a THROWING verified-flag read '
+        'fails open and lands in Main', (tester) async {
+      final store = _VerifiedThrowingStore()
+        ..token = _oldAccess
+        ..refreshToken = _oldRefresh
+        ..email = _email
+        ..emailVerified = false;
+      await pumpFlow(tester, store);
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(EmailVerificationScreen), findsNothing);
       await tester.pump(const Duration(milliseconds: 300));
     });
 

@@ -1,7 +1,38 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/main.dart';
+import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/features/auth/login_screen.dart';
+
+import 'test_helpers.dart';
+
+/// VC 100134 — fake auth API returning canned register/login
+/// results (the inherited real HTTP client is never used).
+class _FakeAuthApi extends AuthApiClient {
+  LoginResult registerResult = const LoginFailure(
+    LoginFailureKind.server,
+    'unconfigured fake',
+  );
+  LoginResult loginResult = const LoginFailure(
+    LoginFailureKind.server,
+    'unconfigured fake',
+  );
+
+  @override
+  Future<LoginResult> register({
+    required String email,
+    required String password,
+    required bool ageConfirmed,
+  }) async =>
+      registerResult;
+
+  @override
+  Future<LoginResult> login({
+    required String email,
+    required String password,
+  }) async =>
+      loginResult;
+}
 
 void main() {
   testWidgets('login screen builds in register mode by default',
@@ -56,6 +87,71 @@ void main() {
     expect(find.text('Send Reset Link'), findsOneWidget);
     expect(find.text('Password'), findsNothing);
     expect(find.text('Back to Log In'), findsOneWidget);
+  });
+
+  testWidgets(
+      'VC 100134: register success with emailVerified:false fires '
+      'onRegisterSuccess carrying the flag, and the flag reaches '
+      'saveSession', (tester) async {
+    final api = _FakeAuthApi()
+      ..registerResult = const LoginSuccess(
+        token: 'tok',
+        refreshToken: 'ref',
+        email: 'new@tabs.app',
+        emailVerified: false,
+      );
+    final store = FakeSessionStore();
+    AuthSuccess? fired;
+    await tester.pumpWidget(MaterialApp(
+      home: LoginScreen(
+        authApi: api,
+        sessionStore: store,
+        onRegisterSuccess: (s) => fired = s,
+      ),
+    ));
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(0), 'new@tabs.app');
+    await tester.enterText(fields.at(1), 'secret');
+    await tester.tap(find.text('I confirm I am 13 or older.'));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Sign Up'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(fired, isNotNull);
+    expect(fired!.email, 'new@tabs.app');
+    expect(fired!.emailVerified, isFalse);
+    expect(store.emailVerified, isFalse);
+  });
+
+  testWidgets(
+      'VC 100134: login success with emailVerified:false fires '
+      'onLoginSuccess carrying the flag', (tester) async {
+    final api = _FakeAuthApi()
+      ..loginResult = const LoginSuccess(
+        token: 'tok',
+        refreshToken: 'ref',
+        email: 'back@tabs.app',
+        emailVerified: false,
+      );
+    final store = FakeSessionStore();
+    AuthSuccess? fired;
+    await tester.pumpWidget(MaterialApp(
+      home: LoginScreen(
+        initialRegisterMode: false,
+        authApi: api,
+        sessionStore: store,
+        onLoginSuccess: (s) => fired = s,
+      ),
+    ));
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(0), 'back@tabs.app');
+    await tester.enterText(fields.at(1), 'secret');
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Log In'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(fired, isNotNull);
+    expect(fired!.emailVerified, isFalse);
+    expect(store.emailVerified, isFalse);
   });
 
   testWidgets('app flow reveals welcome after splash exit', (tester) async {

@@ -15,6 +15,12 @@ class SessionStore {
   static const _refreshTokenKey = 'refresh_token';
   static const _emailKey = 'user_email';
 
+  /// VC 100134 Package C — persisted email-verification flag
+  /// ('true' / 'false' strings). Absent means verified
+  /// (grandfathering + client-first rollout safety): only an
+  /// explicit 'false' gates a restored session.
+  static const _emailVerifiedKey = 'email_verified';
+
   final FlutterSecureStorage _storage;
 
   SessionStore({FlutterSecureStorage? storage})
@@ -24,6 +30,7 @@ class SessionStore {
     required String token,
     required String refreshToken,
     required String email,
+    bool? emailVerified,
   }) async {
     // WRITE ORDER IS LOAD-BEARING (Round 31 fix pass, Vera
     // SHOULD-FIX 1): the refresh token is written BEFORE the
@@ -45,6 +52,36 @@ class SessionStore {
     await _storage.write(key: _refreshTokenKey, value: refreshToken);
     await _storage.write(key: _tokenKey, value: token);
     await _storage.write(key: _emailKey, value: email);
+    // VC 100134 — the verified flag is written LAST, after the
+    // email, and only when the caller carries one: it is a
+    // routing-only value like the email (a lagging write can never
+    // strand the session), and callers that know nothing about
+    // verification (the refresh rotation path) must leave a stored
+    // flag untouched rather than clobber it.
+    if (emailVerified != null) {
+      await _storage.write(
+        key: _emailVerifiedKey,
+        value: emailVerified ? 'true' : 'false',
+      );
+    }
+  }
+
+  /// VC 100134 — persist ONLY the verified flag (post-verify
+  /// success). Touches nothing else in the session.
+  Future<void> saveEmailVerified(bool verified) async {
+    await _storage.write(
+      key: _emailVerifiedKey,
+      value: verified ? 'true' : 'false',
+    );
+  }
+
+  /// VC 100134 — the stored verified flag, or null when absent or
+  /// malformed. Callers treat null as VERIFIED (see the key doc).
+  Future<bool?> readEmailVerified() async {
+    final raw = await _storage.read(key: _emailVerifiedKey);
+    if (raw == 'true') return true;
+    if (raw == 'false') return false;
+    return null;
   }
 
   /// H1-02 — persist ONLY a rotated token pair, leaving the
@@ -89,6 +126,9 @@ class SessionStore {
     } catch (_) {}
     try {
       await _storage.delete(key: _emailKey);
+    } catch (_) {}
+    try {
+      await _storage.delete(key: _emailVerifiedKey);
     } catch (_) {}
   }
 }

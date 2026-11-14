@@ -134,6 +134,65 @@ void main() {
     });
   });
 
+  group('VC 100134 emailVerified parsing', () {
+    AuthApiClient clientReturning(Map<String, dynamic> body) =>
+        AuthApiClient(
+          client: MockClient((_) async => http.Response(
+                jsonEncode({
+                  'token': 'tok',
+                  'refreshToken': 'ref',
+                  'email': 'a@b.com',
+                  ...body,
+                }),
+                200,
+              )),
+        );
+
+    test('login: explicit false → unverified; true → verified; '
+        'absent → verified (grandfathering)', () async {
+      final unverified = await clientReturning({'emailVerified': false})
+          .login(email: 'a@b.com', password: 'x') as LoginSuccess;
+      expect(unverified.emailVerified, isFalse);
+      final verified = await clientReturning({'emailVerified': true})
+          .login(email: 'a@b.com', password: 'x') as LoginSuccess;
+      expect(verified.emailVerified, isTrue);
+      final absent = await clientReturning({})
+              .login(email: 'a@b.com', password: 'x') as LoginSuccess;
+      expect(absent.emailVerified, isTrue);
+      final nullFlag = await clientReturning({'emailVerified': null})
+              .login(email: 'a@b.com', password: 'x') as LoginSuccess;
+      expect(nullFlag.emailVerified, isTrue);
+    });
+
+    test('register: explicit false → unverified; absent → verified',
+        () async {
+      final unverified =
+          await clientReturning({'emailVerified': false}).register(
+        email: 'a@b.com',
+        password: 'x',
+        ageConfirmed: true,
+      ) as LoginSuccess;
+      expect(unverified.emailVerified, isFalse);
+      final absent = await clientReturning({}).register(
+        email: 'a@b.com',
+        password: 'x',
+        ageConfirmed: true,
+      ) as LoginSuccess;
+      expect(absent.emailVerified, isTrue);
+    });
+
+    test('google: force-verified even when the payload says false',
+        () async {
+      final result =
+          await clientReturning({'emailVerified': false}).googleLogin(
+        idToken: 'fake-id-token',
+        isRegisterMode: false,
+        ageConfirmed: false,
+      ) as LoginSuccess;
+      expect(result.emailVerified, isTrue);
+    });
+  });
+
   group('AuthApiClient.googleLogin', () {
     test('posts to the Google endpoint with the native payload and '
         'parses the AuthResponse like password login', () async {
