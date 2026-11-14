@@ -562,16 +562,41 @@ class HealthConnectService {
   // outcome untouched (never reconstructed from the shared
   // slots), so concurrent outcome reads attribute EXACTLY. When
   // a subclass overrides the legacy method instead (the existing
-  // test fakes), the box stays empty and the outer frame
-  // reconstructs the outcome from the slot fields the override
-  // set — sound for the sequential single-union use those fakes
-  // model, and the reason the union's loaders claim ONLY from
-  // outcome objects after this change.
+  // test fakes), the box stays empty and the outcome is
+  // reconstructed from the slot fields the override set — since
+  // VC 100133 (Phase 5 parallel union reads) that reconstruction
+  // runs under a per-instance gate until the read's box shape
+  // is proven (see [_outcomeOf]), because the shared slots
+  // cannot attribute concurrent reads; the union's loaders
+  // claim ONLY from outcome objects after this change.
   static final Object _restingHrOutcomeZoneKey = Object();
   static final Object _sleepOutcomeZoneKey = Object();
   static final Object _hrvOutcomeZoneKey = Object();
   static final Object _caloriesOutcomeZoneKey = Object();
   static final Object _spikesOutcomeZoneKey = Object();
+
+  /// VC 100133 (Phase 5 follow-up) — the gate serializing
+  /// UNPROVEN reads in [_outcomeOf] (see there). Chained-future
+  /// mutex: each holder appends its gate to the chain and runs
+  /// when the previous gate completes. A read whose Zone-box
+  /// shape is proven never waits on it.
+  Future<void> _slotGate = Future<void>.value();
+
+  Future<HcReadOutcome<T>> _withSlotGate<T>(
+      Future<HcReadOutcome<T>> Function() body) {
+    final previous = _slotGate;
+    final gate = Completer<void>();
+    _slotGate = gate.future;
+    return previous.then((_) => body()).whenComplete(gate.complete);
+  }
+
+  /// Zone keys (one per read) whose outcome is KNOWN to arrive
+  /// through the per-call Zone box on this instance — i.e. the
+  /// legacy method is this class's own delegation, not a
+  /// subclass override reporting through the shared slots.
+  /// Proven once, on the read's first (gated) run; see
+  /// [_outcomeOf].
+  final Set<Object> _boxProvenReads = <Object>{};
 
   Future<HcReadOutcome<T>> _outcomeOf<T>(
     Object zoneKey,
@@ -582,29 +607,105 @@ class HealthConnectService {
     if (box is List<HcReadOutcome<T>>) {
       // Inner frame (reached via this class's legacy delegation):
       // run the single implementation and hand its outcome to the
-      // outer frame through the per-call box.
+      // outer frame through the per-call box. The diagnostic slots
+      // are cleared HERE (VC 100133: the outer frame clears them
+      // only on its gated path — see below), preserving the slot
+      // lifecycle the screens rely on: cleared at read start,
+      // set by the core on failure, untouched by a successful
+      // core.
+      lastReadErrorCode = null;
+      lastReadErrorDetails = null;
+      lastPartialErrorCode = null;
       final outcome = await coreRead();
       box.add(outcome);
       return outcome;
     }
-    final capture = <HcReadOutcome<T>>[];
-    // Slot reconstruction (the subclass-override path) must see
-    // ONLY this read's signals: clear the diagnostic slots before
-    // the read, exactly as the union's deleted entry drain did.
-    lastReadErrorCode = null;
-    lastReadErrorDetails = null;
-    lastPartialErrorCode = null;
-    final value = await runZoned<Future<T>>(
-      () => virtualRead(),
-      zoneValues: {zoneKey: capture},
-    );
-    if (capture.isNotEmpty) return capture.single;
-    return HcReadOutcome<T>(
-      value: value,
-      errorCode: lastReadErrorCode,
-      errorDetails: lastReadErrorDetails,
-      partialCode: lastPartialErrorCode,
-    );
+    if (_boxProvenReads.contains(zoneKey)) {
+      // Proven box shape: attribution rides the per-call box and
+      // never touches the shared slots, so this read runs at
+      // full concurrency with no gate and no slot clearing.
+      final capture = <HcReadOutcome<T>>[];
+      final value = await runZoned<Future<T>>(
+        () => virtualRead(),
+        zoneValues: {zoneKey: capture},
+      );
+      if (capture.isNotEmpty) return capture.single;
+      // Defensive: a proven read whose delegation is somehow
+      // conditional left the box empty — fall back to the slot
+      // reconstruction rather than throwing.
+      return HcReadOutcome<T>(
+        value: value,
+        errorCode: lastReadErrorCode,
+        errorDetails: lastReadErrorDetails,
+        partialCode: lastPartialErrorCode,
+      );
+    }
+    // Unproven shape: run under the gate — clear → read →
+    // claim, atomically with respect to every other unproven
+    // read on this instance. Before VC 100133 the outer frame
+    // did exactly this WITHOUT a gate, which was sound only
+    // while outcome reads on one instance ran sequentially
+    // (the union's loaders did); Phase 5 runs the union's five
+    // reads concurrently, and for a subclass override — which
+    // reports through the shared slot fields — concurrent
+    // frames clear and write the slots under each other, so a
+    // reconstruction could claim a NEIGHBOUR read's signals
+    // (cross-attribution: a metric marked failed/partial by
+    // another metric's slot writes). The gate restores the
+    // sequential soundness for that shape with each read issued
+    // exactly once. If this run's outcome arrives through the
+    // box (this class's own legacy delegation), the read is
+    // marked proven and every later run takes the ungated path
+    // above — so the production service pays the gate only for
+    // the first read of each metric per instance, and override
+    // subclasses (today: test fakes only; no production code
+    // overrides the legacy reads) stay serialized, as their
+    // slot contract requires. Residual, documented: a proven
+    // core's diagnostic slot writes can still land inside an
+    // unproven read's gated window on a MIXED instance (some
+    // reads overridden, some not) — the slots are a diagnostic
+    // side channel, and attribution for proven reads never
+    // reads them.
+    return _withSlotGate(() async {
+      // Re-check inside the gate: a queued same-metric read may
+      // have proven the shape while this frame waited.
+      if (_boxProvenReads.contains(zoneKey)) {
+        final capture = <HcReadOutcome<T>>[];
+        final value = await runZoned<Future<T>>(
+          () => virtualRead(),
+          zoneValues: {zoneKey: capture},
+        );
+        if (capture.isNotEmpty) return capture.single;
+        return HcReadOutcome<T>(
+          value: value,
+          errorCode: lastReadErrorCode,
+          errorDetails: lastReadErrorDetails,
+          partialCode: lastPartialErrorCode,
+        );
+      }
+      // Slot reconstruction (the subclass-override path) must
+      // see ONLY this read's signals: clear the diagnostic
+      // slots before the read, exactly as the union's deleted
+      // entry drain did.
+      lastReadErrorCode = null;
+      lastReadErrorDetails = null;
+      lastPartialErrorCode = null;
+      final capture = <HcReadOutcome<T>>[];
+      final value = await runZoned<Future<T>>(
+        () => virtualRead(),
+        zoneValues: {zoneKey: capture},
+      );
+      if (capture.isNotEmpty) {
+        _boxProvenReads.add(zoneKey);
+        return capture.single;
+      }
+      return HcReadOutcome<T>(
+        value: value,
+        errorCode: lastReadErrorCode,
+        errorDetails: lastReadErrorDetails,
+        partialCode: lastPartialErrorCode,
+      );
+    });
   }
 
   void _notePlatformError(PlatformException e) =>
