@@ -382,13 +382,22 @@ class AccountActions {
     // funnel has no test-injected storage for the outbox, so an
     // awaited channel future could park the reset behind a
     // wedged storage channel. clear() drops the in-memory queue
-    // SYNCHRONOUSLY before its first await, so [logout]'s flush
-    // provably sees an empty queue; the blob delete completes in
-    // the background, and a blob that somehow survives stays
-    // guarded (the reset's next login routes into onboarding,
-    // whose finalize restages fresh slots, and the flush's
-    // recency/merge guards treat the stale payload as
-    // superseded).
+    // SYNCHRONOUSLY before its first await, so a flush that
+    // STARTS after this point sees an empty queue. That alone
+    // does NOT cover a flush already in flight (an earlier
+    // version of this comment claimed it did — Vera's E-review
+    // P1 probe proved otherwise): the in-flight case is covered
+    // by the outbox itself, which re-checks slot identity,
+    // generation, and bound owner after its attempts-persist
+    // await, immediately before dispatch, so this clear landing
+    // in that window suppresses the stale post, and by the
+    // generation-guarded persist, which cannot resurrect the
+    // cleared blob after clear's delete. The blob delete
+    // completes in the background, and a blob that somehow
+    // survives stays guarded (the reset's next login routes
+    // into onboarding, whose finalize restages fresh slots, and
+    // the flush's recency/merge guards treat the stale payload
+    // as superseded).
     unawaited(OnboardingSyncOutbox.instance.clear());
     await logout();
     return true;

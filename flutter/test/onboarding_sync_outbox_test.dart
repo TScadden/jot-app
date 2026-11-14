@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -51,6 +52,60 @@ class _FakeDisk {
     values.remove(key);
   }
 }
+
+/// Disk whose NEXT write (once armed) parks on a gate until
+/// released — Vera's probe shape for the E-condition pins: it
+/// lets a test land a clear() / owner switch INSIDE a flush's
+/// attempts-persist await, between the post-pull identity
+/// check and the post dispatch. The gated write's value only
+/// lands when the gate releases, which is exactly the ordering
+/// that resurrected the blob past an enforcement delete in
+/// probes P1/P2.
+class _GatedDisk {
+  final Map<String, String> values = {};
+  Completer<void>? _gate;
+  bool _gateNextWrite = false;
+  bool gatedWriteStarted = false;
+
+  void gateNextWrite() {
+    _gate = Completer<void>();
+    _gateNextWrite = true;
+    gatedWriteStarted = false;
+  }
+
+  void releaseGate() => _gate?.complete();
+
+  Future<String?> read(String key) async => values[key];
+
+  Future<void> write(String key, String value) async {
+    if (_gateNextWrite) {
+      _gateNextWrite = false;
+      gatedWriteStarted = true;
+      await _gate!.future;
+    }
+    values[key] = value;
+  }
+
+  Future<void> delete(String key) async {
+    values.remove(key);
+  }
+}
+
+Future<void> _untilParked(_GatedDisk disk) async {
+  for (var i = 0; i < 1000 && !disk.gatedWriteStarted; i++) {
+    await Future<void>.delayed(Duration.zero);
+  }
+  if (!disk.gatedWriteStarted) {
+    throw StateError('flush never reached the gated persist');
+  }
+}
+
+OnboardingSyncOutbox _gatedOutbox(_GatedDisk disk) =>
+    OnboardingSyncOutbox.withDeps(
+      read: disk.read,
+      write: disk.write,
+      delete: disk.delete,
+    );
 
 QuickLogCategory _cat(int id, String name, {bool isDefault = false}) =>
     QuickLogCategory(
@@ -378,6 +433,97 @@ void main() {
       expect(await outbox.clearIfOwnerMismatch(_ownerB), isTrue);
       final backendB = _FakeBackend(email: _ownerB);
       expect(await outbox.pendingCategories(backendB), isNull);
+    });
+
+    test('(f) Vera P1 shape: clear() landing during the profile '
+        'flush persist window ⇒ zero posts, no blob '
+        'resurrection', () async {
+      final disk = _GatedDisk();
+      final outbox = _gatedOutbox(disk);
+      final backend = _FakeBackend(email: _ownerA);
+      await outbox.stageProfile(backend, {
+        'userContext': 'stale context',
+        'conditions': '["POTS"]',
+        'onboardingComplete': true,
+      });
+
+      disk.gateNextWrite();
+      final flushFuture = outbox.flush(backend);
+      await _untilParked(disk);
+      // Reset Account Status's clear lands INSIDE the persist
+      // window — after the pull check, before dispatch.
+      await outbox.clear();
+      disk.releaseGate();
+      await flushFuture;
+
+      expect(backend.profilePosts, 0);
+      expect(backend.serverProfile, isEmpty);
+      // The gated write landed after clear's delete; the
+      // generation guard must not leave it resurrected.
+      expect(disk.values[OnboardingSyncOutbox.storageKey], isNull);
+      expect(await outbox.pendingProfile(backend), isNull);
+    });
+
+    test('(f2) clear() landing during the categories flush '
+        'persist window ⇒ zero posts, no blob resurrection',
+        () async {
+      final disk = _GatedDisk();
+      final outbox = _gatedOutbox(disk);
+      final backend = _FakeBackend(email: _ownerA);
+      await outbox.stageCategories(backend, [_cat(8, 'Focus')]);
+
+      disk.gateNextWrite();
+      final flushFuture = outbox.flush(backend);
+      await _untilParked(disk);
+      await outbox.clear();
+      disk.releaseGate();
+      await flushFuture;
+
+      expect(backend.categoryPosts, 0);
+      expect(
+        backend.serverCategories.map((c) => c.name),
+        isNot(contains('Focus')),
+      );
+      expect(disk.values[OnboardingSyncOutbox.storageKey], isNull);
+      expect(await outbox.pendingCategories(backend), isNull);
+    });
+
+    test('(g) Vera P2 shape: owner switch landing during the '
+        'flush persist window ⇒ zero posts under either token, '
+        'no blob resurrection', () async {
+      final disk = _GatedDisk();
+      final outbox = _gatedOutbox(disk);
+      // One backend object models the real TabsBackend's
+      // token-at-dispatch read: switching its email mid-window
+      // is B signing in, so any dispatch after the switch would
+      // be counted here as a post under B's token.
+      final backend = _FakeBackend(email: _ownerA);
+      await outbox.stageCategories(backend, [_cat(8, 'Focus')]);
+      await outbox.stageProfile(backend, {
+        'userContext': 'a context',
+        'conditions': '[]',
+        'onboardingComplete': true,
+      });
+
+      disk.gateNextWrite();
+      final flushFuture = outbox.flush(backend);
+      await _untilParked(disk);
+      backend.email = _ownerB;
+      final dropped = await outbox.clearIfOwnerMismatch(_ownerB);
+      expect(dropped, isTrue);
+      disk.releaseGate();
+      await flushFuture;
+
+      expect(backend.categoryPosts, 0);
+      expect(backend.profilePosts, 0);
+      expect(
+        backend.serverCategories.map((c) => c.name),
+        isNot(contains('Focus')),
+      );
+      expect(backend.serverProfile, isEmpty);
+      expect(disk.values[OnboardingSyncOutbox.storageKey], isNull);
+      expect(await outbox.pendingCategories(backend), isNull);
+      expect(await outbox.pendingProfile(backend), isNull);
     });
 
     test('failed pull keeps both slots queued for the next '

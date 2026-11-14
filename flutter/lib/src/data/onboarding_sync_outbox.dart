@@ -40,6 +40,13 @@
 ///   UNSENT when the session owner is account B, and an
 ///   unstamped queue meeting a known owner is likewise
 ///   unprovable and dropped unsent (the medication-outbox rule).
+/// - DISPATCH-WINDOW GUARDED (Vera E-condition 1): both flush
+///   slots re-check slot identity, generation, and bound owner
+///   after the attempts-persist await, immediately before
+///   dispatch — a clear/owner-drop landing in that window
+///   suppresses the post — and the persist write itself is
+///   generation-guarded so it cannot resurrect a blob an
+///   enforcement delete already removed.
 /// - LOGOUT DISPOSITION (stated, never silent): explicit logout
 ///   first attempts a bounded flush (AccountActions); whatever
 ///   remains unconfirmed is RETAINED owner-stamped for the same
@@ -378,6 +385,19 @@ class OnboardingSyncOutbox {
   /// false when the write was gated off or failed — memory
   /// stays either way and the next persist retries; a queue
   /// write failure must never break onboarding itself.
+  ///
+  /// GENERATION-GUARDED (Vera E-condition 1, blob-resurrection
+  /// half): the snapshot (slot identities, bound owner,
+  /// [_generation]) is captured BEFORE the storage await. A
+  /// [clear] / owner-mismatch drop landing while the write is
+  /// in flight bumps [_generation], nulls the slots and issues
+  /// its own delete — but that delete can run BEFORE this
+  /// write lands, so an unguarded write would resurrect the
+  /// dropped blob on disk after the enforcement delete. After
+  /// the await, a diverged snapshot is therefore never left
+  /// on disk: an emptied queue is re-deleted, and a queue that
+  /// now holds a DIFFERENT payload (a restage during the
+  /// window) is re-persisted from current memory instead.
   Future<bool> _persistQueue() async {
     // D-T04 persist gate: a no-op until a load has SUCCEEDED in
     // this process. After a transient read failure the in-memory
@@ -386,23 +406,51 @@ class OnboardingSyncOutbox {
     // [clear] re-arms writes explicitly (it marks the queue
     // loaded over an authoritative-empty memory).
     if (!_loaded) return false;
+    final genAtStart = _generation;
+    final snapCategories = _categories;
+    final snapProfile = _profile;
+    final snapOwner = _boundOwner;
+    bool snapshotCurrent() =>
+        _generation == genAtStart &&
+        identical(_categories, snapCategories) &&
+        identical(_profile, snapProfile) &&
+        _boundOwner == snapOwner;
+    var repersist = false;
     try {
-      if (!hasPending) {
+      if (snapCategories == null && snapProfile == null) {
         await _ioDelete(storageKey);
-        return true;
+        if (snapshotCurrent()) return true;
+        // A restage landed during the delete: its payload must
+        // not be left deleted — persist the current image.
+        if (!hasPending) return false;
+        repersist = true;
+      } else {
+        await _ioWrite(
+          storageKey,
+          jsonEncode({
+            'ownerEmail': snapOwner,
+            'categories': snapCategories?.toJson(),
+            'profile': snapProfile?.toJson(),
+          }),
+        );
+        if (snapshotCurrent()) return true;
+        // The queue was cleared, owner-dropped, or restaged
+        // while this write was in flight, and the write may
+        // have landed AFTER the enforcement's delete: do not
+        // leave the stale snapshot blob resurrected on disk.
+        if (!hasPending) {
+          try {
+            await _ioDelete(storageKey);
+          } catch (_) {}
+          return false;
+        }
+        repersist = true;
       }
-      await _ioWrite(
-        storageKey,
-        jsonEncode({
-          'ownerEmail': _boundOwner,
-          'categories': _categories?.toJson(),
-          'profile': _profile?.toJson(),
-        }),
-      );
-      return true;
     } catch (_) {
       return false;
     }
+    if (repersist) return _persistQueue();
+    return false;
   }
 
   // ── Stage ──────────────────────────────────────────────────────
@@ -506,6 +554,7 @@ class OnboardingSyncOutbox {
     final slot = _categories;
     if (slot == null) return;
     final generation = _generation;
+    final boundOwnerAtStart = _boundOwner;
     List<QuickLogCategory>? current;
     try {
       current = await backend.fetchLogCategoriesOrNull();
@@ -580,6 +629,23 @@ class OnboardingSyncOutbox {
     final attempted = slot.copyWith(attempts: slot.attempts + 1);
     _categories = attempted;
     await _persistQueue();
+    // Vera E-condition 1 — DISPATCH-WINDOW RE-CHECK: the
+    // attempts-persist await above is a window in which a
+    // clear() (Reset Account Status / account deletion) or an
+    // owner-mismatch drop (logout + another account's sign-in)
+    // can land. Those paths mutate exactly this identity —
+    // they null the slot and bump [_generation] (and rebind
+    // [_boundOwner] on a switch) — so re-check all three AFTER
+    // the persist, immediately before dispatch. Without this,
+    // the post below would still fire, and because
+    // TabsBackend reads the CURRENT session token at dispatch
+    // time, a stale full-list replace could land under the
+    // NEW account's token and delete its categories.
+    if (!identical(_categories, attempted) ||
+        generation != _generation ||
+        boundOwnerAtStart != _boundOwner) {
+      return; // cleared / owner-dropped / restaged mid-window
+    }
     var ok = false;
     try {
       ok = await backend.postLogCategories(merged);
@@ -606,6 +672,7 @@ class OnboardingSyncOutbox {
     final slot = _profile;
     if (slot == null) return;
     final generation = _generation;
+    final boundOwnerAtStart = _boundOwner;
     Map<String, dynamic>? current;
     try {
       current = await backend.fetchProfile();
@@ -662,6 +729,19 @@ class OnboardingSyncOutbox {
     final attempted = slot.copyWith(attempts: slot.attempts + 1);
     _profile = attempted;
     await _persistQueue();
+    // Vera E-condition 1 — DISPATCH-WINDOW RE-CHECK: same
+    // window and same identity as in [_flushCategories]. A
+    // clear() landing in the persist window (notably Reset
+    // Account Status, whose explicit `onboardingComplete:
+    // false` this slot's stale `true` would silently undo) or
+    // an owner switch must suppress this dispatch; the backend
+    // reads the CURRENT token at dispatch, so an unchecked
+    // post could also land in another account's profile.
+    if (!identical(_profile, attempted) ||
+        generation != _generation ||
+        boundOwnerAtStart != _boundOwner) {
+      return; // cleared / owner-dropped / restaged mid-window
+    }
     var ok = false;
     try {
       ok = await backend.postSyncProfile(payload);

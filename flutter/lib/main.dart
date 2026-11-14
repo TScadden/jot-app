@@ -711,9 +711,20 @@ class _AppFlowState extends State<AppFlow>
         MedicationChangeEventOutbox.instance.clearIfOwnerMismatch(email));
     // C-08: same enforcement for the onboarding-sync outbox — a
     // previous account's staged finalize payload is dropped
-    // UNSENT before it can flush under this session (the
-    // outbox's flush re-checks the owner itself, so this
-    // unawaited drop cannot be raced into a cross-account send).
+    // UNSENT before it can flush under this session. The drop
+    // is unawaited, so the guarantee is NOT that it always
+    // lands before a flush: it is that the outbox's flush
+    // re-checks slot identity, generation, and bound owner
+    // after its server pull AND again after its attempts-
+    // persist await, immediately before dispatch, while the
+    // persist write itself is generation-guarded — so a drop
+    // landing inside either flush window suppresses the post
+    // rather than racing it into a cross-account send, and the
+    // gated write cannot resurrect the dropped blob after this
+    // drop's delete. (An earlier version of this comment
+    // claimed the race impossible outright; Vera's E-review P2
+    // probe proved the persist window unguarded and the claim
+    // false — the re-checks above are the fix, E-condition 1.)
     unawaited(
         OnboardingSyncOutbox.instance.clearIfOwnerMismatch(email));
     // Refresh-scope fix (Oct 20, 2026): same enforcement for the
@@ -1053,7 +1064,9 @@ class _AppFlowState extends State<AppFlow>
     unawaited(
         MedicationChangeEventOutbox.instance.clearIfOwnerMismatch(email));
     // C-08: same enforcement for the onboarding-sync outbox as
-    // login (see _onLoginSuccess).
+    // login (see _onLoginSuccess — the safety of the unawaited
+    // drop rests on the flush's dispatch-window re-checks, not
+    // on the drop being unraceable).
     unawaited(
         OnboardingSyncOutbox.instance.clearIfOwnerMismatch(email));
     // Refresh-scope fix (Oct 20, 2026): same enforcement for the
