@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'package:tabs_lab/src/data/onboarding_store.dart';
+import 'package:tabs_lab/src/data/onboarding_sync_outbox.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/onboarding/onboarding_header.dart';
@@ -39,19 +40,29 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// (userContext, conditions) in native's payload shape.
 ///
 /// Push failures do not trap the user here: the local flag is the
-/// routing source of truth (as in native), and the server copy is
-/// reconciled by later pulls/syncs. The step never fabricates a
+/// routing source of truth (as in native). C-08 (sub-claim 2):
+/// a failed push is no longer merely "reconciled by later syncs"
+/// — its payload is staged in the durable
+/// [OnboardingSyncOutbox] and retried, merge-safely, at the next
+/// app start / session restore, because before the outbox the
+/// discarded result meant the picked categories existed nowhere
+/// and were lost outright. The step never fabricates a
 /// finished state before the finalize work has actually run.
 class SetupLoadingScreen extends StatefulWidget {
   final VoidCallback onNavigateMain;
   final OnboardingStore? onboardingStore;
   final TabsBackend? backend;
 
+  /// C-08 — injectable for tests; defaults to the shared
+  /// [OnboardingSyncOutbox.instance].
+  final OnboardingSyncOutbox? onboardingSyncOutbox;
+
   const SetupLoadingScreen({
     super.key,
     required this.onNavigateMain,
     this.onboardingStore,
     this.backend,
+    this.onboardingSyncOutbox,
   });
 
   @override
@@ -95,6 +106,7 @@ class _SetupLoadingScreenState extends State<SetupLoadingScreen> {
 
   late final OnboardingStore _store;
   late final TabsBackend _backend;
+  late final OnboardingSyncOutbox _outbox;
   bool _finished = false;
   int _dotCount = 1;
   Timer? _dotTimer;
@@ -104,6 +116,7 @@ class _SetupLoadingScreenState extends State<SetupLoadingScreen> {
     super.initState();
     _store = widget.onboardingStore ?? OnboardingStore();
     _backend = widget.backend ?? TabsBackend();
+    _outbox = widget.onboardingSyncOutbox ?? OnboardingSyncOutbox.instance;
     _dotTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
       if (mounted && !_finished) {
         setState(() => _dotCount = (_dotCount % 3) + 1);
@@ -149,23 +162,40 @@ class _SetupLoadingScreenState extends State<SetupLoadingScreen> {
       var nextId = maxId < 7 ? 8 : maxId + 1;
       final merged = List<QuickLogCategory>.of(kept);
       final takenNames = merged.map((c) => c.name.toLowerCase()).toSet();
-      var added = 0;
+      final addedCategories = <QuickLogCategory>[];
       for (final name in names) {
-        if (added >= 5) break;
+        if (addedCategories.length >= 5) break;
         if (takenNames.contains(name.toLowerCase())) continue;
-        merged.add(QuickLogCategory(
+        final category = QuickLogCategory(
           id: nextId++,
           name: name,
-          icon: _icons[added % _icons.length],
-          colorHex: _colors[added % _colors.length],
+          icon: _icons[addedCategories.length % _icons.length],
+          colorHex: _colors[addedCategories.length % _colors.length],
           isDefault: false,
-          sortOrder: added,
-        ));
+          sortOrder: addedCategories.length,
+        );
+        merged.add(category);
+        addedCategories.add(category);
         takenNames.add(name.toLowerCase());
-        added++;
       }
-      if (merged.length != existing.length || added > 0) {
-        await _backend.postLogCategories(merged);
+      if (merged.length != existing.length || addedCategories.isNotEmpty) {
+        var posted = false;
+        try {
+          posted = await _backend.postLogCategories(merged);
+        } catch (_) {
+          posted = false;
+        }
+        if (!posted) {
+          // C-08 — the post FAILED (the backend returns false,
+          // it does not throw, on transport failure / non-200):
+          // stage ONLY the additions in the durable outbox. The
+          // kept rows already exist server-side; the additions
+          // exist nowhere else, and discarding this result —
+          // the pre-C-08 behavior — lost them outright. A later
+          // flush re-merges them against the server's CURRENT
+          // list (additive union; see OnboardingSyncOutbox).
+          await _outbox.stageCategories(_backend, addedCategories);
+        }
       }
     } catch (_) {}
 
@@ -182,11 +212,25 @@ class _SetupLoadingScreenState extends State<SetupLoadingScreen> {
       try {
         conditionsRaw = await _store.getUserConditionsRaw();
       } catch (_) {}
-      await _backend.postSyncProfile({
+      final profileFields = <String, dynamic>{
         'userContext': userContext,
         'conditions': conditionsRaw,
         'onboardingComplete': true,
-      });
+      };
+      var posted = false;
+      try {
+        posted = await _backend.postSyncProfile(profileFields);
+      } catch (_) {
+        posted = false;
+      }
+      if (!posted) {
+        // C-08 — same loss path as the categories post above:
+        // stage the exact payload in the durable outbox; a
+        // later flush delivers it under a recency guard so it
+        // can never overwrite a profile edited after onboarding
+        // (see OnboardingSyncOutbox).
+        await _outbox.stageProfile(_backend, profileFields);
+      }
     } catch (_) {}
 
     if (!mounted) return;

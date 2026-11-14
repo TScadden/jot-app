@@ -20,6 +20,7 @@ import 'package:tabs_lab/src/data/medication_change_events.dart';
 import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
+import 'package:tabs_lab/src/data/onboarding_sync_outbox.dart';
 import 'package:tabs_lab/src/data/report_generation_service.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -112,6 +113,13 @@ class SettingsScreen extends StatefulWidget {
   final AccountActions? accountActions;
   final HealthConnectService? healthConnectService;
 
+  /// Injectable C-08 onboarding outbox (Juno P4 supersession,
+  /// VC 100133). Null in production (the shared
+  /// [OnboardingSyncOutbox.instance]); tests inject a fake-disk
+  /// instance so a successful profile push's supersession of a
+  /// staged onboarding snapshot is observable.
+  final OnboardingSyncOutbox? onboardingSyncOutbox;
+
   /// Injectable for tests (Round 30 reminder scheduling).
   final ReminderNotificationService? notificationService;
 
@@ -177,6 +185,7 @@ class SettingsScreen extends StatefulWidget {
     this.settingsStore,
     this.accountActions,
     this.healthConnectService,
+    this.onboardingSyncOutbox,
     this.notificationService,
     this.googleSignInService,
     this.calendarService,
@@ -214,6 +223,7 @@ enum _Page {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late final TabsBackend _backend;
+  late final OnboardingSyncOutbox _onboardingOutbox;
   late final KnowledgeExtractionStore _kStore;
   late final KnowledgeDocumentService _kService;
   late final KnowledgeDocumentPicker _kPicker;
@@ -380,6 +390,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ? _Page.aiKnowledge
             : _Page.main;
     _backend = widget.backend ?? TabsBackend();
+    _onboardingOutbox =
+        widget.onboardingSyncOutbox ?? OnboardingSyncOutbox.instance;
     _store = widget.settingsStore ?? SettingsStore();
     _actions = widget.accountActions ??
         AccountActions(backend: _backend, settingsStore: _store);
@@ -930,6 +942,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final ok = await _backend.postSyncProfile(fields);
     if (ok) {
       _backend.invalidateSyncPull();
+      // Juno P4 supersession (VC 100133, BINDING condition on
+      // item E): a SUCCESSFUL Settings push of `userContext`
+      // and/or `conditions` is the user's newest intent for
+      // exactly those fields — including a deliberate clear,
+      // whose value is empty. Supersede the staged onboarding
+      // snapshot's copy of those fields so a later outbox
+      // flush cannot resurrect values the user removed (the
+      // recency guard alone reads a cleared server value as
+      // "nothing to protect"). Any value counts, not only
+      // empty: a successful non-empty edit is equally the
+      // newer intent. On a FAILED push nothing is superseded
+      // (the else branch below) — the clear never landed
+      // server-side, and the staged snapshot remains the
+      // user's undelivered data. Unawaited, on the Reset-clear
+      // precedent: the supersession's in-memory amendment is
+      // synchronous, and its persist must never park this
+      // save behind a wedged storage channel.
+      final supersededKeys = fields.keys
+          .where((k) => k == 'userContext' || k == 'conditions')
+          .toList();
+      if (supersededKeys.isNotEmpty) {
+        unawaited(
+            _onboardingOutbox.supersedeStagedProfileFields(supersededKeys));
+      }
       // Juno C1: a landed push confirms sync; a failed one drops
       // the chip until the next successful pull/push (the reload
       // below re-confirms only if its own pull lands).

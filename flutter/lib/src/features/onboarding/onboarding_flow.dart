@@ -4,6 +4,7 @@ import 'package:tabs_lab/src/data/billing_service.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/onboarding_store.dart';
+import 'package:tabs_lab/src/data/onboarding_sync_outbox.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/onboarding/conditions_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/consent_screen.dart';
@@ -68,6 +69,10 @@ class OnboardingFlow extends StatefulWidget {
   final OnboardingStep initialStep;
   final OnboardingStore? onboardingStore;
   final TabsBackend? backend;
+
+  /// C-08 — injectable for tests; forwarded to the setup-loading
+  /// step, which stages failed finalize posts in it.
+  final OnboardingSyncOutbox? onboardingSyncOutbox;
   final HealthConnectService? healthConnectService;
   final ReminderNotificationService? notificationService;
 
@@ -89,6 +94,7 @@ class OnboardingFlow extends StatefulWidget {
     this.initialStep = OnboardingStep.consent,
     this.onboardingStore,
     this.backend,
+    this.onboardingSyncOutbox,
     this.healthConnectService,
     this.notificationService,
     this.billingService,
@@ -231,6 +237,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
             onNavigateMain: widget.onComplete,
             onboardingStore: _store,
             backend: widget.backend,
+            onboardingSyncOutbox: widget.onboardingSyncOutbox,
           ),
       },
     );
