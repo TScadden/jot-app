@@ -250,8 +250,8 @@ void main() {
 
     test(
         'multi-wedge: every read wedged returns from the union by '
-        'the soft budget, metrics failed/skipped, store data kept',
-        () async {
+        'ONE read bound, every metric failed on its OWN timeout, '
+        'store data kept', () async {
       final store = await seededStore();
       final hc = WedgeHc(
           {'restingHr', 'sleep', 'calories', 'spikes', 'hrv'});
@@ -262,26 +262,35 @@ void main() {
         end: reproNow,
         metrics: HistoryMetric.values.toSet(),
         // Production shape at test scale: 30 s read bound, 90 s
-        // budget ÷ 150 → 200 ms / 600 ms. Reads time out in
-        // sequence (200 + 200 + 200); the budget check then skips
-        // the remaining loaders. Expected return ≈600 ms.
+        // budget ÷ 150 → 200 ms / 600 ms.
         readTimeout: const Duration(milliseconds: 200),
         unionBudget: const Duration(milliseconds: 600),
         maxFetchDays: 42,
       );
       sw.stop();
       expect(union.failedMetrics, HistoryMetric.values.toSet());
-      final details = union.failureDetails.values.toSet();
-      expect(details, contains('TimeoutException'));
-      expect(details, contains('UnionBudgetExhausted'));
+      // VC 100133 (Phase 5 parallel reads) SUPERSEDES the VC
+      // 100130 sequential expectation below: the loaders used to
+      // run one at a time, so three reads timed out in sequence
+      // (200 + 200 + 200 ms) and the budget check then SKIPPED
+      // the remaining loaders with 'UnionBudgetExhausted'
+      // (expected return ≈600 ms, details mixed
+      // TimeoutException + UnionBudgetExhausted). In parallel
+      // every loader starts at once, so every wedged read meets
+      // its OWN 30 s-class bound concurrently: the truthful
+      // detail for all five is 'TimeoutException', the return is
+      // ≈ one read bound, and the budget token now fires only
+      // when the budget is the tighter bound (pinned in
+      // report_hardening_vc100133_test.dart).
+      expect(union.failureDetails.values.toSet(), {'TimeoutException'});
       // Store data still surfaces for the failed metrics.
       expect(union.sleepMinutes, isNotEmpty);
       expect(union.restingHr, isNotEmpty);
-      expect(sw.elapsed, lessThan(const Duration(milliseconds: 1500)),
-          reason: 'the union returns by ~its budget, not 5× the '
-              'read bound');
+      expect(sw.elapsed, lessThan(const Duration(milliseconds: 1000)),
+          reason: 'the parallel union returns by ~one read bound, '
+              'not 5× it and not the full budget');
       expect(sw.elapsed,
-          greaterThan(const Duration(milliseconds: 500)));
+          greaterThan(const Duration(milliseconds: 190)));
     });
   });
 
