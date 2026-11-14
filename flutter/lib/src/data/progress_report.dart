@@ -1314,6 +1314,28 @@ class ReportDataCollector {
 
   final Duration collectTimeout;
 
+  /// VC 100133 (Item A) — the bound on the post-union
+  /// availability probe ([HealthConnectService.probeAvailability],
+  /// consulted lazily by the HC status derivation in
+  /// [_collectInner]). Derivation: the probe is three small
+  /// control-plane calls (a persisted-flag storage read, the
+  /// availability check, the granted-permissions read, and — on a
+  /// full grant only — the tiny Steps read probe, which carries
+  /// its own 30 s service-side bound); none of them scales with
+  /// founder data, unlike the history reads the per-read 30 s /
+  /// union 90 s bounds govern. 15 s is half the per-read bound
+  /// and one eighth of the F4 deadline: a healthy heavy union
+  /// (~52 s at the founder model) plus a fully-spent probe lands
+  /// at ~67 s, and even a union that returns at its 90 s soft
+  /// budget plus a spent probe lands at ~105 s — the probe alone
+  /// can never be what pushes a collection into the F4 deadline.
+  /// On expiry the probe degrades to the grant-UNKNOWN snapshot
+  /// (see [_collectInner]), never to a stall or a claim.
+  static const Duration defaultAvailabilityProbeTimeout =
+      Duration(seconds: 15);
+
+  final Duration availabilityProbeTimeout;
+
   ReportDataCollector({
     TabsBackend? backend,
     HealthConnectService? hc,
@@ -1322,6 +1344,7 @@ class ReportDataCollector {
     Future<List<InsightRecord>> Function()? insightsLoader,
     Future<Map<String, int>> Function()? scoreLoader,
     Duration? collectTimeout,
+    Duration? availabilityProbeTimeout,
   }) : this._internal(
           backend ?? TabsBackend(),
           hc ?? HealthConnectService(),
@@ -1330,6 +1353,7 @@ class ReportDataCollector {
           insightsLoader ?? _defaultInsightsLoader,
           scoreLoader,
           collectTimeout ?? defaultCollectTimeout,
+          availabilityProbeTimeout ?? defaultAvailabilityProbeTimeout,
         );
 
   ReportDataCollector._internal(
@@ -1340,6 +1364,7 @@ class ReportDataCollector {
     this.insightsLoader,
     this.scoreLoader,
     this.collectTimeout,
+    this.availabilityProbeTimeout,
   ) : historyQueries = queries ?? HealthHistoryQueries(hc: hc);
 
   static Future<List<InsightRecord>> _defaultInsightsLoader() async =>
@@ -1619,6 +1644,14 @@ class ReportDataCollector {
     // solo; five wedged reads return from the union by ~90 s —
     // all inside the 120 s F4 deadline. The clinician pipeline
     // shares this collector, so it inherits all three bounds.
+    // VC 100133 (Phase 5): the five union reads now run
+    // CONCURRENTLY under those same bounds (see
+    // health_history_queries.dart step 2b) — the healthy heavy
+    // collect's union wall-clock drops from the ~52 s sum toward
+    // its slowest single read (~22 s), and five wedged reads now
+    // cost one 30 s read bound in parallel instead of returning
+    // by the 90 s budget; the budget remains as the launch gate +
+    // completion cap behind them.
     final union = await historyQueries.loadDays(
       daysToFetch,
       end: n,
@@ -1637,9 +1670,44 @@ class ReportDataCollector {
     // is null and the affected metrics fall back to error rather
     // than claiming a denial or a stale grant — Phase 1's
     // stale-masking semantics, preserved exactly.
+    //
+    // VC 100133 (Item A): the probe itself is now BOUNDED
+    // ([availabilityProbeTimeout]). Before this, the probe sat
+    // OUTSIDE every VC 100130 budget: probeAvailability() bounds
+    // only its inner Steps read (the service's probeTimeout);
+    // its persisted-flag storage read, isAvailable() call and
+    // granted-permissions read are bare awaits, and the memoized
+    // future below was awaited bare — so a wedged probe (a bridge
+    // that never answers the grant read) stalled collection
+    // until the 120 s F4 deadline killed the WHOLE report, even
+    // though every series had already been collected. On expiry
+    // the probe degrades to exactly the grant-UNKNOWN snapshot
+    // the Phase 2 contract already defines for a bridge-errored
+    // probe (grantedPermissions null, bridgeErrorCode recorded
+    // for logs only): [hcStatus] then derives error for a failed
+    // metric with no data — never permissionDenied, never stale,
+    // never a fabricated success — and collection completes with
+    // the series it has. The late probe result, if it ever
+    // arrives, is dropped with the memoized future.
+    Future<HcAvailability> probeOnce() async {
+      try {
+        return await hc
+            .probeAvailability()
+            .timeout(availabilityProbeTimeout);
+      } on TimeoutException {
+        return const HcAvailability(
+          serviceAvailable: false,
+          grantedPermissions: null,
+          bridgeErrorCode: 'PROBE_TIMEOUT',
+          stepsProbe: null,
+          persistedConnected: false,
+        );
+      }
+    }
+
     Future<HcAvailability>? availabilitySnapshot;
     Future<HcAvailability> loadAvailability() =>
-        availabilitySnapshot ??= hc.probeAvailability();
+        availabilitySnapshot ??= probeOnce();
 
     // Per-metric availability from real evidence, through the ONE
     // shared derivation ([deriveMetricStatus] — Phase 1's decision

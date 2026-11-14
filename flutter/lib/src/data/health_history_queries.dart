@@ -137,6 +137,31 @@ class HistoryUnion {
   }
 }
 
+/// VC 100133 (Phase 5) — ONE metric loader's finished work,
+/// returned (never thrown) by each union loader: the rows it
+/// collected in its OWN map (absorbed into the union's shared
+/// fresh map centrally, in canonical order, only if the loader
+/// was not abandoned at the union budget), plus its failure /
+/// partial signals claimed from its own read's outcome object.
+class _UnionLoaderResult {
+  final Map<String, DailyBiometrics> rows;
+  final bool failed;
+  final String? failureDetail;
+  final bool partial;
+
+  const _UnionLoaderResult({
+    this.rows = const {},
+    this.partial = false,
+  })  : failed = false,
+        failureDetail = null;
+
+  const _UnionLoaderResult.failure(String? detail)
+      : rows = const {},
+        failed = true,
+        failureDetail = detail,
+        partial = false;
+}
+
 String historyDateStr(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-'
     '${d.month.toString().padLeft(2, '0')}-'
@@ -201,14 +226,17 @@ class HealthHistoryQueries {
   ///   `TimeoutException` (the Juno J1 evidence convention — a
   ///   class-style token, never a message).
   /// - [unionBudget]: a soft budget for the whole union, tracked
-  ///   from loadRange entry. Before each loader starts, if the
-  ///   elapsed time already exceeds the budget, that loader's
-  ///   fresh read is skipped and the metric is noted failed with
-  ///   the class-style token `UnionBudgetExhausted`. Skipped
-  ///   metrics surface through the callers' existing failed-metric
-  ///   derivation (failed + store data → stored data; failed +
-  ///   no data → the existing error/denied/stale logic) — there
-  ///   are no new union states.
+  ///   from loadRange entry. VC 100133: the loaders run
+  ///   concurrently, and the budget binds two ways — a loader
+  ///   whose start is already past the budget never issues its
+  ///   read, and a loader still in flight when the budget runs
+  ///   out is abandoned (its late result is never merged); both
+  ///   are noted failed with the class-style token
+  ///   `UnionBudgetExhausted`. Skipped/abandoned metrics surface
+  ///   through the callers' existing failed-metric derivation
+  ///   (failed + store data → stored data; failed + no data →
+  ///   the existing error/denied/stale logic) — there are no new
+  ///   union states.
   /// - [maxFetchDays]: caps the fresh-HC scan depth for THIS call
   ///   only (default: [maxHealthConnectFetchDays]).
   Future<HistoryUnion> loadRange({
@@ -336,12 +364,37 @@ class HealthHistoryQueries {
     //     record timing, record-then-yield included (the Phase 1
     //     Vera residual, closed by construction).
     //
-    //     The reads still run SEQUENTIALLY within one union —
-    //     that ordering is now a bridge-load choice, not an
-    //     attribution requirement: it preserves the established
-    //     call order and per-read error isolation (the R60 Vera
+    //     VC 100133 (Phase 5): the five loaders now run
+    //     CONCURRENTLY within one union. That is safe by the same
+    //     construction: attribution was already per-read (outcome
+    //     objects, never the shared slots — the production cores
+    //     carry their outcome through a per-call Zone box, so
+    //     overlapping reads on one service instance attribute
+    //     exactly), and each loader now builds its OWN row map
+    //     and returns it in a [_UnionLoaderResult]; the shared
+    //     [fresh] / [failed] / [partial] state is merged
+    //     afterwards, in canonical metric order, on this one
+    //     isolate. No loader mutates shared state while reads are
+    //     in flight, so a loader abandoned at the union budget
+    //     (below) can never write into a union that has already
+    //     returned: its late result is simply never merged.
+    //     Per-read error isolation is unchanged (the R60 Vera
     //     pattern: a loader that throws marks only its own metric
-    //     failed and never fails the union).
+    //     failed and never fails the union) — every loader catches
+    //     its own errors and RETURNS its result, so loader futures
+    //     never complete with an error.
+    //
+    //     Platform concurrency, honestly stated: the five bridge
+    //     calls are issued without waiting on each other. On the
+    //     Kotlin side each call launches its own coroutine in the
+    //     plugin's engineScope (SupervisorJob + Dispatchers.Main)
+    //     against the shared HealthConnectClient (an IPC stub,
+    //     safe for concurrent calls): the suspending Health
+    //     Connect IPC waits overlap, while the CPU-bound record
+    //     mapping inside each read still serializes on the main
+    //     dispatcher. The win is therefore the overlapped IPC /
+    //     pagination wait, not 5× CPU — measured wall-clocks are
+    //     in the VC 100133 acceptance tests.
     void noteFailure(HistoryMetric metric, String? details) {
       failed.add(metric);
       if (details != null && details.isNotEmpty) {
@@ -361,135 +414,214 @@ class HealthHistoryQueries {
     String failureDetailOf(Object e) =>
         e is TimeoutException ? 'TimeoutException' : e.toString();
 
-    Future<void> loadRestingHr() async {
+    // Row accumulation for ONE loader, in the loader's own map —
+    // the parallel replacement for writing the shared [fresh]
+    // map mid-read. Same range guard and per-field merge as
+    // [putFresh]; the loader's finished map is absorbed into
+    // [fresh] centrally (see [absorbRows]).
+    void putRow(
+      Map<String, DailyBiometrics> rows,
+      String date, {
+      int? hr,
+      int? sleep,
+      int? deep,
+      int? kcal,
+      int? spikeCount,
+      double? hrvValue,
+    }) {
+      if (date.compareTo(startDate) < 0 || date.compareTo(endDate) > 0) {
+        return; // bridge rows outside the requested range don't leak in
+      }
+      final prev = rows[date];
+      rows[date] = DailyBiometrics(
+        date: date,
+        restingHrBpm: hr ?? prev?.restingHrBpm,
+        sleepMinutes: sleep ?? prev?.sleepMinutes,
+        deepSleepMinutes: deep ?? prev?.deepSleepMinutes,
+        caloriesKcal: kcal ?? prev?.caloriesKcal,
+        spikeCount: spikeCount ?? prev?.spikeCount,
+        hrvRmssdMs: hrvValue ?? prev?.hrvRmssdMs,
+      );
+    }
+
+    void absorbRows(Map<String, DailyBiometrics> rows) {
+      for (final row in rows.values) {
+        putFresh(
+          row.date,
+          hr: row.restingHrBpm,
+          sleep: row.sleepMinutes,
+          deep: row.deepSleepMinutes,
+          kcal: row.caloriesKcal,
+          spikeCount: row.spikeCount,
+          hrvValue: row.hrvRmssdMs,
+        );
+      }
+    }
+
+    Future<_UnionLoaderResult> loadRestingHr() async {
+      final rows = <String, DailyBiometrics>{};
       try {
         final outcome =
             await bounded(hc.readRestingHrHistoryWithOutcome(fetchDays));
         if (outcome.failed) {
-          noteFailure(HistoryMetric.restingHr, outcome.errorDetails);
-          return;
+          return _UnionLoaderResult.failure(outcome.errorDetails);
         }
         for (final r in outcome.value) {
           // Zero rule, exactly as the readers it replaces.
-          if (r.bpm > 0) putFresh(r.date, hr: r.bpm);
+          if (r.bpm > 0) putRow(rows, r.date, hr: r.bpm);
         }
+        return _UnionLoaderResult(rows: rows);
       } catch (e) {
-        noteFailure(HistoryMetric.restingHr, failureDetailOf(e));
+        return _UnionLoaderResult.failure(failureDetailOf(e));
       }
     }
 
-    Future<void> loadSleep() async {
+    Future<_UnionLoaderResult> loadSleep() async {
+      final rows = <String, DailyBiometrics>{};
       try {
         final outcome =
             await bounded(hc.readSleepHistoryWithOutcome(fetchDays));
         if (outcome.failed) {
-          noteFailure(HistoryMetric.sleep, outcome.errorDetails);
-          return;
+          return _UnionLoaderResult.failure(outcome.errorDetails);
         }
         // Partial data is data (F2): rows are processed; the
         // partial signal rides along as a warning, never as a
         // failed metric.
-        if (outcome.partial) partial.add(HistoryMetric.sleep);
         for (final r in outcome.value) {
-          if (r.mins > 0) putFresh(r.date, sleep: r.mins);
-          if (r.deep > 0) putFresh(r.date, deep: r.deep);
+          if (r.mins > 0) putRow(rows, r.date, sleep: r.mins);
+          if (r.deep > 0) putRow(rows, r.date, deep: r.deep);
         }
+        return _UnionLoaderResult(rows: rows, partial: outcome.partial);
       } catch (e) {
-        noteFailure(HistoryMetric.sleep, failureDetailOf(e));
+        return _UnionLoaderResult.failure(failureDetailOf(e));
       }
     }
 
-    Future<void> loadCalories() async {
+    Future<_UnionLoaderResult> loadCalories() async {
+      final rows = <String, DailyBiometrics>{};
       try {
         final outcome =
             await bounded(hc.readCaloriesHistoryWithOutcome(fetchDays));
         if (outcome.failed) {
-          noteFailure(HistoryMetric.calories, outcome.errorDetails);
-          return;
+          return _UnionLoaderResult.failure(outcome.errorDetails);
         }
         for (final r in outcome.value) {
-          if (r.kcal > 0) putFresh(r.date, kcal: r.kcal);
+          if (r.kcal > 0) putRow(rows, r.date, kcal: r.kcal);
         }
+        return _UnionLoaderResult(rows: rows);
       } catch (e) {
-        noteFailure(HistoryMetric.calories, failureDetailOf(e));
+        return _UnionLoaderResult.failure(failureDetailOf(e));
       }
     }
 
-    Future<void> loadSpikes() async {
+    Future<_UnionLoaderResult> loadSpikes() async {
+      final rows = <String, DailyBiometrics>{};
       try {
         final outcome =
             await bounded(hc.readSpikeCountsWithOutcome(fetchDays));
         if (outcome.failed) {
-          noteFailure(HistoryMetric.spikes, outcome.errorDetails);
-          return;
+          return _UnionLoaderResult.failure(outcome.errorDetails);
         }
         for (final r in outcome.value) {
           // 0 spikes is REAL data (a sampled day, no spikes).
-          if (r.count >= 0) putFresh(r.date, spikeCount: r.count);
+          if (r.count >= 0) putRow(rows, r.date, spikeCount: r.count);
         }
+        return _UnionLoaderResult(rows: rows);
       } catch (e) {
-        noteFailure(HistoryMetric.spikes, failureDetailOf(e));
+        return _UnionLoaderResult.failure(failureDetailOf(e));
       }
     }
 
-    Future<void> loadHrv() async {
+    Future<_UnionLoaderResult> loadHrv() async {
       // R71 — ONE range read of raw HRV samples; day attribution +
       // the daily top-tier rule run in Dart (attributeDailyHrv).
+      final rows = <String, DailyBiometrics>{};
       try {
         final outcome =
             await bounded(hc.readHrvSamplesWithOutcome(fetchDays));
         if (outcome.failed) {
-          noteFailure(HistoryMetric.hrv, outcome.errorDetails);
-          return;
+          return _UnionLoaderResult.failure(outcome.errorDetails);
         }
         // Partial data is data (Defect 0): the surviving chunks'
         // samples are processed; the partial signal rides along
         // as a warning, exactly like sleep above.
-        if (outcome.partial) partial.add(HistoryMetric.hrv);
         final dailyHrv = attributeDailyHrv(
             outcome.value, _datesInRange(startDate, endDate).toSet());
         for (final entry in dailyHrv.entries) {
-          if (entry.value > 0) putFresh(entry.key, hrvValue: entry.value);
+          if (entry.value > 0) putRow(rows, entry.key, hrvValue: entry.value);
         }
+        return _UnionLoaderResult(rows: rows, partial: outcome.partial);
       } catch (e) {
-        noteFailure(HistoryMetric.hrv, failureDetailOf(e));
+        return _UnionLoaderResult.failure(failureDetailOf(e));
       }
     }
 
-    // Sequential by design (step 2b): each loader fully completes
-    // — read, claim from its outcome, row processing — before the
-    // next read starts.
-    //
-    // VC 100130 union soft budget: before each loader starts, if
-    // the elapsed time since loadRange entry already exceeds
-    // [unionBudget], the loader's fresh read is skipped and the
-    // metric is noted failed with the class-style token
-    // 'UnionBudgetExhausted' — its store data (if any) still
-    // surfaces through the normal union below.
-    Future<void> runLoader(
-        HistoryMetric metric, Future<void> Function() loader) async {
+    // VC 100130 union soft budget, VC 100133 parallel form. The
+    // budget is tracked from loadRange entry (unionWatch) and
+    // bounds the union two ways:
+    // - launch gate (the VC 100130 semantics): a loader whose
+    //   start would already be past the budget never issues its
+    //   read and is noted failed 'UnionBudgetExhausted';
+    // - completion cap: a loader still in flight when the budget
+    //   runs out is ABANDONED — noted failed with the same token
+    //   and never merged, even when its read later completes (its
+    //   result object is dropped; the loader itself only ever
+    //   wrote its own row map, so nothing leaks into the returned
+    //   union or the store refresh below).
+    // With the production wiring (30 s per-read bound inside a
+    // 90 s budget) a wedged read still classifies by its OWN
+    // timeout first ('TimeoutException', at 30 s); the cap is the
+    // backstop that keeps the whole union inside the budget when
+    // the per-read bound is the larger of the two. Either way the
+    // metric surfaces over its store data through the normal
+    // union below — no new union states.
+    Future<_UnionLoaderResult> runLoader(
+        Future<_UnionLoaderResult> Function() loader) async {
       final budget = unionBudget;
       if (budget != null && unionWatch.elapsed > budget) {
-        noteFailure(metric, 'UnionBudgetExhausted');
-        return;
+        return const _UnionLoaderResult.failure('UnionBudgetExhausted');
       }
-      await loader();
+      final result = loader();
+      if (budget == null) return result;
+      final remaining = budget - unionWatch.elapsed;
+      if (remaining <= Duration.zero) {
+        return const _UnionLoaderResult.failure('UnionBudgetExhausted');
+      }
+      return result.timeout(
+        remaining,
+        onTimeout: () =>
+            const _UnionLoaderResult.failure('UnionBudgetExhausted'),
+      );
     }
 
-    if (metrics.contains(HistoryMetric.restingHr)) {
-      await runLoader(HistoryMetric.restingHr, loadRestingHr);
-    }
-    if (metrics.contains(HistoryMetric.sleep)) {
-      await runLoader(HistoryMetric.sleep, loadSleep);
-    }
-    if (metrics.contains(HistoryMetric.calories)) {
-      await runLoader(HistoryMetric.calories, loadCalories);
-    }
-    if (metrics.contains(HistoryMetric.spikes)) {
-      await runLoader(HistoryMetric.spikes, loadSpikes);
-    }
-    if (metrics.contains(HistoryMetric.hrv)) {
-      await runLoader(HistoryMetric.hrv, loadHrv);
+    // The launch plan, in the canonical (pre-Phase-5) read
+    // order. Every requested loader is STARTED before any is
+    // awaited — calling runLoader issues its bridge read
+    // synchronously — then all results are awaited together and
+    // merged in this same order, so the returned union is
+    // identical in content to the sequential union's.
+    final plan = <(HistoryMetric, Future<_UnionLoaderResult> Function())>[
+      if (metrics.contains(HistoryMetric.restingHr))
+        (HistoryMetric.restingHr, loadRestingHr),
+      if (metrics.contains(HistoryMetric.sleep))
+        (HistoryMetric.sleep, loadSleep),
+      if (metrics.contains(HistoryMetric.calories))
+        (HistoryMetric.calories, loadCalories),
+      if (metrics.contains(HistoryMetric.spikes))
+        (HistoryMetric.spikes, loadSpikes),
+      if (metrics.contains(HistoryMetric.hrv)) (HistoryMetric.hrv, loadHrv),
+    ];
+    final pending = [for (final step in plan) runLoader(step.$2)];
+    final results = await Future.wait(pending);
+    for (var i = 0; i < plan.length; i++) {
+      final metric = plan[i].$1;
+      final result = results[i];
+      if (result.failed) {
+        noteFailure(metric, result.failureDetail);
+        continue;
+      }
+      if (result.partial) partial.add(metric);
+      absorbRows(result.rows);
     }
 
     // 3. Everything fresh feeds the store BEFORE returning — no
