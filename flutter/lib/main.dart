@@ -40,6 +40,7 @@ import 'package:tabs_lab/src/data/today_plan_store.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/data/widget_sync.dart';
+import 'package:tabs_lab/src/features/auth/email_verification_screen.dart';
 import 'package:tabs_lab/src/features/auth/login_screen.dart';
 import 'package:tabs_lab/src/features/settings/report_generation_presenter.dart';
 import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
@@ -262,7 +263,12 @@ class AppFlow extends StatefulWidget {
   State<AppFlow> createState() => _AppFlowState();
 }
 
-enum _FlowStage { welcome, login, resolving, onboarding, home }
+enum _FlowStage { welcome, login, resolving, verifyEmail, onboarding, home }
+
+/// VC 100134 — which door entered the verifyEmail stage; the
+/// verify-success handler routes each origin to the destination
+/// that door would have reached unverified-free.
+enum _VerifyOrigin { register, login, restore }
 
 class _AppFlowState extends State<AppFlow>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
@@ -288,6 +294,10 @@ class _AppFlowState extends State<AppFlow>
   Future<bool>? _onboardingClaim;
   late final TabsBackend _tabsBackend;
   OnboardingStep _onboardingStep = OnboardingStep.consent;
+
+  /// VC 100134 — set by whichever path entered the verifyEmail
+  /// stage; consumed (and cleared) by the verify-success handler.
+  _VerifyOrigin? _verifyOrigin;
 
   void _goLogin(bool isRegister) {
     setState(() {
@@ -330,6 +340,7 @@ class _AppFlowState extends State<AppFlow>
     _tabsBackend.invalidateSyncPull();
     setState(() {
       _loggedInEmail = null;
+      _verifyOrigin = null;
       _stage = _FlowStage.welcome;
     });
   }
@@ -368,6 +379,19 @@ class _AppFlowState extends State<AppFlow>
   Future<String?> _readEmailOrNull() async {
     try {
       return await _sessionStore.readEmail();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // VC 100134 — the stored verified flag, isolated exactly like
+  // the email read above: a throwing read FAILS OPEN (null →
+  // treated as verified), so a keystore hiccup can never lock an
+  // existing user behind a code screen. Only an explicit stored
+  // false gates.
+  Future<bool?> _readEmailVerifiedOrNull() async {
+    try {
+      return await _sessionStore.readEmailVerified();
     } catch (_) {
       return null;
     }
@@ -462,6 +486,12 @@ class _AppFlowState extends State<AppFlow>
       // finalize payload is dropped unsent here, before the
       // gate routes anywhere.
       unawaited(OnboardingSyncOutbox.instance.clearIfOwnerMismatch(email));
+      // VC 100134 — verification gate, AFTER the owner claims and
+      // BEFORE the onboarding gate is consulted for routing: an
+      // explicitly-unverified stored session restores INTO the
+      // verify stage. Absent/null (every legacy session) and a
+      // throwing read both pass through as verified.
+      final storedVerified = await _readEmailVerifiedOrNull();
       final gate = await _readOnboardingGate();
       final hasState = hadStateBeforeClaim;
       final resumeStep = hadStateBeforeClaim ? gate.resumeStep : null;
@@ -469,6 +499,20 @@ class _AppFlowState extends State<AppFlow>
       // gone), the restore has nothing to do.
       if (!mounted || _stage != _FlowStage.welcome) return;
       LaunchTrace.instance.mark(LaunchTrace.sessionRestored);
+      if (storedVerified == false) {
+        // Park on the code screen. NONE of the home-landing side
+        // effects run (no first-run resync, no app-open capture,
+        // no flushes) — they fire only on home landings, so the
+        // stage gate suppresses them for free. Post-verify routing
+        // re-consults the onboarding gate (see
+        // _onVerificationSuccess).
+        setState(() {
+          _loggedInEmail = email;
+          _verifyOrigin = _VerifyOrigin.restore;
+          _stage = _FlowStage.verifyEmail;
+        });
+        return;
+      }
       if (!hasState) {
         // Legacy (pre-Round-32) session: backfill the flags complete,
         // mirroring native's login/pull marking (see the header).
@@ -680,7 +724,7 @@ class _AppFlowState extends State<AppFlow>
   // same clear-on-mismatch for parity (Vera named it in the same
   // fix). Both calls also bind the new account, so subsequent loads
   // stamp their cache blobs with this owner.
-  void _onLoginSuccess(String email) {
+  void _onLoginSuccess(String email, bool emailVerified) {
     // Billing account-switch hygiene: a new account signing in
     // clears ONLY the previous account's billing error message.
     _billingSync?.service.resetErrorMessageForAccountChange();
@@ -792,6 +836,21 @@ class _AppFlowState extends State<AppFlow>
     // synchronously, unmounting the login form so nothing on it can
     // race the decision (Vera HIGH).
     if (!mounted) return;
+    // VC 100134 — an explicitly-unverified LOGIN parks on the code
+    // screen instead of resolving (this is also the return path
+    // for a user who registered unverified, escaped, and signed
+    // back in — without it, logout→login would bypass the gate).
+    // The owner-mismatch clears above have already run, exactly as
+    // for a verified login. Google never reaches this branch: its
+    // flag is force-verified client-side.
+    if (!emailVerified) {
+      setState(() {
+        _loggedInEmail = email;
+        _verifyOrigin = _VerifyOrigin.login;
+        _stage = _FlowStage.verifyEmail;
+      });
+      return;
+    }
     setState(() => _stage = _FlowStage.resolving);
     unawaited(_resolveLoginRoute(email));
   }
@@ -1040,7 +1099,7 @@ class _AppFlowState extends State<AppFlow>
   // is what lets a later cold start resume onboarding instead of
   // taking the legacy-session home path — then enter the flow at
   // the consent step.
-  void _onRegisterSuccess(String email) {
+  void _onRegisterSuccess(String email, bool emailVerified) {
     // Billing account-switch hygiene: as on login, a fresh
     // account clears ONLY the prior billing error message.
     _billingSync?.service.resetErrorMessageForAccountChange();
@@ -1098,10 +1157,97 @@ class _AppFlowState extends State<AppFlow>
     unawaited(_onboardingStore
         .clearIfOwnerMismatch(email)
         .then((_) => _stampFreshAccountOnboarding()));
+    // VC 100134 — the register-time side effects above are
+    // UNCHANGED (owner clears + the all-false onboarding stamp run
+    // at register time as always); only the final stage differs:
+    // an explicitly-unverified registration goes to the code
+    // screen instead of onboarding. Because the flags were stamped
+    // here, a user who closes the app mid-verification restores
+    // with real onboarding state and resumes at consent after
+    // verifying.
     setState(() {
       _loggedInEmail = email;
       _onboardingStep = OnboardingStep.consent;
-      _stage = _FlowStage.onboarding;
+      if (emailVerified) {
+        _stage = _FlowStage.onboarding;
+      } else {
+        _verifyOrigin = _VerifyOrigin.register;
+        _stage = _FlowStage.verifyEmail;
+      }
+    });
+  }
+
+  // VC 100134 — the code was accepted server-side. Persist the
+  // verified flag FIRST (isolated: a storage failure must not
+  // strand a user the server now considers verified — the next
+  // login payload carries the flag again), then route by origin
+  // to the destination that door would have reached.
+  Future<void> _onVerificationSuccess() async {
+    try {
+      await _sessionStore.saveEmailVerified(true);
+    } catch (_) {}
+    if (!mounted || _stage != _FlowStage.verifyEmail) return;
+    final origin = _verifyOrigin;
+    _verifyOrigin = null;
+    final email = _loggedInEmail;
+    switch (origin) {
+      case _VerifyOrigin.register:
+        // The destination _onRegisterSuccess already computed:
+        // onboarding at consent, flags stamped at register time.
+        setState(() {
+          _onboardingStep = OnboardingStep.consent;
+          _stage = _FlowStage.onboarding;
+        });
+      case _VerifyOrigin.login:
+        if (email == null) {
+          setState(() => _stage = _FlowStage.welcome);
+          return;
+        }
+        setState(() => _stage = _FlowStage.resolving);
+        unawaited(_resolveLoginRoute(email));
+      case _VerifyOrigin.restore:
+      case null:
+        // Re-run the routing the restore would have taken:
+        // consult the onboarding gate from the post-claim flags —
+        // a resume step lands onboarding there; otherwise home
+        // with the standard home-landing kicks.
+        final gate = await _readOnboardingGate();
+        if (!mounted || _stage != _FlowStage.verifyEmail) return;
+        final resumeStep = gate.resumeStep;
+        if (resumeStep != null) {
+          setState(() {
+            _onboardingStep = resumeStep;
+            _stage = _FlowStage.onboarding;
+          });
+        } else {
+          setState(() => _stage = _FlowStage.home);
+          _kickFirstRunResync();
+          _triggerAppOpenCapture();
+        }
+    }
+  }
+
+  // VC 100134 — escape from the code screen: sign out and return
+  // to welcome, mirroring _onConsentDecline (the app's one
+  // existing pre-home escape) — the LIGHTWEIGHT path, deliberately
+  // NOT AccountActions.logout(): a minutes-old unverified
+  // registration has no data to flush, and an escape hatch whose
+  // network calls can stall on a dead connection is a failed
+  // escape hatch. Local session destruction (token, refresh,
+  // email, AND the verified flag — SessionStore.clear covers all
+  // four), immediate welcome.
+  Future<void> _onVerificationEscape() async {
+    try {
+      await _sessionStore.clear();
+    } catch (_) {}
+    // _onConsentDecline's Juno-C2 rider, for parity: no
+    // account-bound residue for the next account to trip over.
+    unawaited(SettingsStore().clearDeletedCounterIds());
+    if (!mounted) return;
+    setState(() {
+      _loggedInEmail = null;
+      _verifyOrigin = null;
+      _stage = _FlowStage.welcome;
     });
   }
 
@@ -1407,10 +1553,20 @@ class _AppFlowState extends State<AppFlow>
           LoginScreen(
             initialRegisterMode: _loginIsRegister,
             onBack: _goWelcome,
-            onLoginSuccess: _onLoginSuccess,
-            onRegisterSuccess: _onRegisterSuccess,
+            onLoginSuccess: (s) =>
+                _onLoginSuccess(s.email, s.emailVerified),
+            onRegisterSuccess: (s) =>
+                _onRegisterSuccess(s.email, s.emailVerified),
             authApi: widget.authApi,
             sessionStore: widget.sessionStore,
+          )
+        else if (_stage == _FlowStage.verifyEmail)
+          EmailVerificationScreen(
+            email: _loggedInEmail ?? '',
+            backend: _tabsBackend,
+            sessionStore: _sessionStore,
+            onVerified: () => unawaited(_onVerificationSuccess()),
+            onEscape: () => unawaited(_onVerificationEscape()),
           )
         else if (_stage == _FlowStage.resolving)
           // Founder fix (Oct 2026) — post-login routing is resolving

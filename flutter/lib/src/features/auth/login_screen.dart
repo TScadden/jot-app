@@ -5,6 +5,7 @@ import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/google_sign_in_service.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
+import 'package:tabs_lab/src/features/auth/auth_top_logo_header.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -83,15 +84,21 @@ import 'package:url_launcher/url_launcher.dart';
 /// starts on "Create Your Account", `false` on "Welcome Back".
 /// [onBack] pops to the welcome screen (native back button).
 /// [onLoginSuccess] fires with the account email after a real login.
+/// VC 100134 — the payload every auth success callback carries:
+/// the account email plus its email-verification state (only an
+/// explicit server `false` is unverified; see
+/// [LoginSuccess.emailVerified]). AppFlow routes on the flag.
+typedef AuthSuccess = ({String email, bool emailVerified});
+
 class LoginScreen extends StatefulWidget {
   final bool initialRegisterMode;
   final VoidCallback? onBack;
-  final ValueChanged<String>? onLoginSuccess;
+  final ValueChanged<AuthSuccess>? onLoginSuccess;
 
   /// Round 32 — fires with the account email after a real
   /// email+password REGISTRATION (see the class doc). Falls back to
   /// [onLoginSuccess] when unset so older call sites keep working.
-  final ValueChanged<String>? onRegisterSuccess;
+  final ValueChanged<AuthSuccess>? onRegisterSuccess;
 
   /// Injectable for tests; defaults to the real backend client.
   final AuthApiClient? authApi;
@@ -168,10 +175,13 @@ class _LoginScreenState extends State<LoginScreen> {
             token: token,
             refreshToken: refreshToken,
             email: result.email,
+            emailVerified: result.emailVerified,
           );
           if (!mounted) return;
           setState(() => _isLoading = false);
-          widget.onLoginSuccess?.call(result.email);
+          widget.onLoginSuccess?.call(
+            (email: result.email, emailVerified: result.emailVerified),
+          );
         case LoginFailure(:final message):
           setState(() {
             _isLoading = false;
@@ -228,11 +238,13 @@ class _LoginScreenState extends State<LoginScreen> {
             token: success.token,
             refreshToken: success.refreshToken,
             email: success.email,
+            emailVerified: success.emailVerified,
           );
           if (!mounted) return;
           setState(() => _isLoading = false);
-          (widget.onRegisterSuccess ?? widget.onLoginSuccess)
-              ?.call(success.email);
+          (widget.onRegisterSuccess ?? widget.onLoginSuccess)?.call(
+            (email: success.email, emailVerified: success.emailVerified),
+          );
         case LoginFailure(:final message):
           setState(() {
             _isLoading = false;
@@ -285,6 +297,10 @@ class _LoginScreenState extends State<LoginScreen> {
             token: token,
             refreshToken: refreshToken,
             email: result.email,
+            // VC 100134 — Google is verified by definition: force
+            // true here regardless of payload, so the Google path
+            // can never land on the code screen (client invariant).
+            emailVerified: true,
           );
           // Round 51 — native parity (LoginScreen.kt:220-221):
           // seed the Google Account connection state Settings'
@@ -302,7 +318,8 @@ class _LoginScreenState extends State<LoginScreen> {
           }());
           if (!mounted) return;
           setState(() => _isLoading = false);
-          widget.onLoginSuccess?.call(result.email);
+          widget.onLoginSuccess
+              ?.call((email: result.email, emailVerified: true));
         case LoginFailure(:final message):
           setState(() {
             _isLoading = false;
@@ -453,7 +470,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         horizontal: 20.0, vertical: 16.0),
                     child: Padding(
                       padding: const EdgeInsets.only(top: 8.0),
-                      child: _TopLogoHeader(onBack: widget.onBack),
+                      child: AuthTopLogoHeader(onBack: widget.onBack),
                     ),
                   ),
                 ),
@@ -803,67 +820,6 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         const Text('.', style: base),
       ],
-    );
-  }
-}
-
-/// Port of the native `TopLogoHeader`: circular back button on the left,
-/// centered Tabs logo + wordmark.
-class _TopLogoHeader extends StatelessWidget {
-  final VoidCallback? onBack;
-
-  const _TopLogoHeader({this.onBack});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 40,
-      child: Stack(
-        children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: const BoxDecoration(
-                color: NotelColors.surfaceHigh,
-                shape: BoxShape.circle,
-              ),
-              child: IconButton(
-                onPressed: onBack,
-                padding: EdgeInsets.zero,
-                icon: const Icon(
-                  Icons.arrow_back,
-                  color: NotelColors.textPrimary,
-                ),
-              ),
-            ),
-          ),
-          Align(
-            alignment: Alignment.center,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Image.asset(
-                  'assets/images/ic_tabs_note.png',
-                  width: 28,
-                  height: 28,
-                ),
-                const SizedBox(width: 8),
-                const Text(
-                  'Tabs',
-                  style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w900,
-                    color: NotelColors.primary,
-                    letterSpacing: 1,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

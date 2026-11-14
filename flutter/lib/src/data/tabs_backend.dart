@@ -128,6 +128,56 @@ class PickupUnreachable extends ReportPickupOutcome {
   const PickupUnreachable();
 }
 
+/// VC 100134 Package C — outcome of the authenticated email
+/// verification call (`POST /api/auth/verify-email`). Status-first
+/// mapping (see [TabsBackend.verifyEmailCode]): 200 is the ONLY
+/// distinguishable success; every other definitive server answer
+/// collapses to [VerifyEmailRejected] so the client can never
+/// become a code-state oracle (Juno §2.2 / Vera R11); transport
+/// and 5xx are [VerifyEmailUnreachable].
+sealed class VerifyEmailOutcome {
+  const VerifyEmailOutcome();
+}
+
+class VerifyEmailSuccess extends VerifyEmailOutcome {
+  const VerifyEmailSuccess();
+}
+
+class VerifyEmailRejected extends VerifyEmailOutcome {
+  const VerifyEmailRejected();
+}
+
+class VerifyEmailUnreachable extends VerifyEmailOutcome {
+  const VerifyEmailUnreachable();
+}
+
+/// VC 100134 Package C — outcome of the authenticated resend call
+/// (`POST /api/auth/resend-verification`).
+sealed class ResendVerificationOutcome {
+  const ResendVerificationOutcome();
+}
+
+class ResendVerificationSent extends ResendVerificationOutcome {
+  const ResendVerificationSent();
+}
+
+/// 429 — the server's 60s cooldown (or limiter) is still running;
+/// [retryAfterSeconds] is adopted as the new local countdown.
+class ResendVerificationCooldown extends ResendVerificationOutcome {
+  final int retryAfterSeconds;
+  const ResendVerificationCooldown(this.retryAfterSeconds);
+}
+
+class ResendVerificationUnreachable extends ResendVerificationOutcome {
+  const ResendVerificationUnreachable();
+}
+
+/// Any other definitive non-200/non-429 answer — the catch-all
+/// failure shape on the screen.
+class ResendVerificationFailed extends ResendVerificationOutcome {
+  const ResendVerificationFailed();
+}
+
 class TabsBackend {
   static const String defaultBaseUrl = 'https://api.jottracker.com';
   static const Duration requestTimeout = Duration(seconds: 20);
@@ -1921,6 +1971,76 @@ class TabsBackend {
     } catch (_) {
       return null;
     }
+  }
+
+  /// VC 100134 Package C — submit the emailed 6-digit code:
+  /// `POST /api/auth/verify-email` with `{code: <string>}`. The
+  /// code travels ONLY in the request body (Vera R32), as a JSON
+  /// string, so leading zeros survive end to end (Vera R2/R38:
+  /// "001234" is sent as the string "001234", never a number).
+  /// Authenticated via [_sendAuthed]: a user can sit on the code
+  /// screen past the access token's life, so the 401→refresh
+  /// wrapper is load-bearing here. Per the server contract a
+  /// wrong/expired/burned code is a 400 — never a 401 — so a 401
+  /// seen here is the stale-token case the wrapper already handled.
+  /// The server's error string is deliberately NOT surfaced:
+  /// every definitive non-200 below 500 maps to the single
+  /// [VerifyEmailRejected] outcome (no oracle).
+  Future<VerifyEmailOutcome> verifyEmailCode(String code) async {
+    final response = await _sendAuthed((token) => _client.post(
+          Uri.parse('$_baseUrl/api/auth/verify-email'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({'code': code}),
+        ));
+    if (response == null) return const VerifyEmailUnreachable();
+    if (response.statusCode == 200) return const VerifyEmailSuccess();
+    if (response.statusCode >= 500) return const VerifyEmailUnreachable();
+    return const VerifyEmailRejected();
+  }
+
+  /// VC 100134 Package C — request a fresh code:
+  /// `POST /api/auth/resend-verification` (authenticated, no body
+  /// fields — the server reads the destination from the account
+  /// row, Vera R17). 200 → sent (an already-verified account is a
+  /// silent 200 no-op server-side, same shape). 429 → cooldown,
+  /// adopting the server's `retryAfterSeconds` when present
+  /// (defaulting to the 60s cooldown).
+  Future<ResendVerificationOutcome> resendVerificationCode() async {
+    final response = await _sendAuthed((token) => _client.post(
+          Uri.parse('$_baseUrl/api/auth/resend-verification'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(const <String, dynamic>{}),
+        ));
+    if (response == null) return const ResendVerificationUnreachable();
+    if (response.statusCode == 200) return const ResendVerificationSent();
+    if (response.statusCode == 429) {
+      var seconds = 60;
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          final raw = decoded['retryAfterSeconds'];
+          final parsed = raw is num
+              ? raw.toInt()
+              : raw is String
+                  ? int.tryParse(raw)
+                  : null;
+          if (parsed != null && parsed > 0) seconds = parsed;
+        }
+      } catch (_) {
+        // Unparseable 429 body — the 60s default governs.
+      }
+      return ResendVerificationCooldown(seconds);
+    }
+    if (response.statusCode >= 500) {
+      return const ResendVerificationUnreachable();
+    }
+    return const ResendVerificationFailed();
   }
 
   /// Round 29 — server logout (revokes the refresh token), mirroring

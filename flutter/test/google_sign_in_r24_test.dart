@@ -80,7 +80,7 @@ void main() {
         authApi: api,
         sessionStore: store,
         googleSignInService: service,
-        onLoginSuccess: (email) => successEmail = email,
+        onLoginSuccess: (s) => successEmail = s.email,
       ),
     ));
 
@@ -96,6 +96,41 @@ void main() {
     expect(store.refreshToken, 'ref-google');
     expect(store.email, 'google@example.com');
     expect(successEmail, 'google@example.com');
+    // VC 100134 — Google is verified by definition.
+    expect(store.emailVerified, isTrue);
+  });
+
+  testWidgets(
+      'VC 100134: a Google success carrying emailVerified:false in '
+      'its payload is STILL force-verified client-side — the flag '
+      'saved and the flag fired are both true, so the Google path '
+      'can never land on the code screen', (tester) async {
+    final service = FakeGoogleSignInService();
+    final api = FakeAuthApiClient()
+      ..googleResult = const LoginSuccess(
+        token: 'tok-google',
+        refreshToken: 'ref-google',
+        userId: 'u-google',
+        email: 'google@example.com',
+        emailVerified: false,
+      );
+    final store = FakeSessionStore();
+    bool? firedVerified;
+
+    await tester.pumpWidget(MaterialApp(
+      home: LoginScreen(
+        initialRegisterMode: false,
+        authApi: api,
+        sessionStore: store,
+        googleSignInService: service,
+        onLoginSuccess: (s) => firedVerified = s.emailVerified,
+      ),
+    ));
+
+    await tapGoogle(tester, 'Log in with Google');
+
+    expect(store.emailVerified, isTrue);
+    expect(firedVerified, isTrue);
   });
 
   testWidgets(

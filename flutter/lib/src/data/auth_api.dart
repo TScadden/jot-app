@@ -93,6 +93,9 @@ class AuthApiClient {
           refreshToken: body['refreshToken']?.toString() ?? '',
           userId: body['userId']?.toString(),
           email: body['email']?.toString() ?? email,
+          // VC 100134 — only an explicit JSON false is unverified;
+          // absent/null/malformed means verified (grandfathering).
+          emailVerified: body['emailVerified'] != false,
         );
       }
       // 200 without a token is a server bug — treat as a server error.
@@ -194,6 +197,7 @@ class AuthApiClient {
           refreshToken: body['refreshToken']?.toString() ?? '',
           userId: body['userId']?.toString(),
           email: body['email']?.toString() ?? email,
+          emailVerified: body['emailVerified'] != false,
         );
       }
       return const LoginFailure(
@@ -283,6 +287,12 @@ class AuthApiClient {
           // No typed email on this flow — the account email comes
           // back in the AuthResponse, same as password login.
           email: body['email']?.toString() ?? '',
+          // VC 100134 — Google sign-in is verified BY DEFINITION
+          // (Google already proved the inbox; the server requires
+          // Google's own email_verified). Force-verified here so
+          // "Google never sees the code screen" is a client-side
+          // invariant, not a server-behaviour assumption.
+          emailVerified: true,
         );
       }
       // 200 without a token is a server bug — treat as a server error.
@@ -428,11 +438,19 @@ class LoginSuccess extends LoginResult {
   final String? userId;
   final String email;
 
+  /// VC 100134 — whether the account's email is verified. Parsed
+  /// as `body['emailVerified'] != false` on the password flows:
+  /// only an explicit JSON `false` is unverified, so a payload
+  /// without the field (every existing account, any pre-feature
+  /// server) is verified. The Google flow forces this true.
+  final bool emailVerified;
+
   const LoginSuccess({
     required this.token,
     required this.refreshToken,
     this.userId,
     required this.email,
+    this.emailVerified = true,
   });
 }
 

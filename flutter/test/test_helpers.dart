@@ -8,16 +8,31 @@ class FakeSessionStore extends SessionStore {
   String? refreshToken;
   String? email;
 
+  /// VC 100134 — the persisted verified flag. Null = absent =
+  /// verified (grandfathering), exactly like the real store.
+  bool? emailVerified;
+
   @override
   Future<void> saveSession({
     required String token,
     required String refreshToken,
     required String email,
+    bool? emailVerified,
   }) async {
     this.token = token;
     this.refreshToken = refreshToken;
     this.email = email;
+    // A null flag leaves a stored flag untouched (refresh path).
+    if (emailVerified != null) this.emailVerified = emailVerified;
   }
+
+  @override
+  Future<void> saveEmailVerified(bool verified) async {
+    emailVerified = verified;
+  }
+
+  @override
+  Future<bool?> readEmailVerified() async => emailVerified;
 
   @override
   Future<void> saveRotatedTokens({
@@ -43,6 +58,7 @@ class FakeSessionStore extends SessionStore {
     token = null;
     refreshToken = null;
     email = null;
+    emailVerified = null;
   }
 }
 

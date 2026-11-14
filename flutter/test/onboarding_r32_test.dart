@@ -12,6 +12,7 @@ import 'package:tabs_lab/src/data/onboarding_store.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
+import 'package:tabs_lab/src/features/auth/email_verification_screen.dart';
 import 'package:tabs_lab/src/features/auth/login_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/conditions_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/membership_onboarding_screen.dart';
@@ -306,8 +307,8 @@ void main() {
           initialRegisterMode: true,
           authApi: api,
           sessionStore: store,
-          onLoginSuccess: (e) => loggedIn = e,
-          onRegisterSuccess: (e) => registered = e,
+          onLoginSuccess: (s) => loggedIn = s.email,
+          onRegisterSuccess: (s) => registered = s.email,
         ),
       ));
       await tester.pumpAndSettle();
@@ -438,6 +439,63 @@ void main() {
       expect(find.text('Privacy & Data Consent'), findsOneWidget);
       expect(map['onboarding_complete'], 'false');
       expect(map['has_consented'], 'false');
+    });
+
+    // VC 100134 — register-origin ordering guard: an explicitly
+    // unverified registration lands on the code screen, NOT
+    // onboarding, with the fresh-account flags stamped all-false
+    // at register time intact (the full verify→consent leg is
+    // pinned in email_verification_flow_test.dart).
+    testWidgets(
+        'VC 100134: unverified registration lands on the verify '
+        'stage, not onboarding, flags stamped intact', (tester) async {
+      final session = FakeSessionStore();
+      final map = <String, String>{};
+      final api = AuthApiClient(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/auth/register') {
+            return http.Response(
+              jsonEncode({
+                'token': 'tok',
+                'refreshToken': 'ref',
+                'email': 'new@tabs.app',
+                'emailVerified': false,
+              }),
+              200,
+            );
+          }
+          return http.Response('nf', 404);
+        }),
+      );
+      await _pumpAppFlow(
+        tester,
+        session: session,
+        onboardingMap: map,
+        authApi: api,
+      );
+      await tester.tap(find.text('Register'));
+      await tester.pumpAndSettle();
+      final fields = find.byType(TextField);
+      await tester.enterText(fields.at(0), 'new@tabs.app');
+      await tester.enterText(fields.at(1), 'secret');
+      await tester.tap(find.text('I confirm I am 13 or older.'));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Sign Up'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump();
+      expect(find.byType(EmailVerificationScreen), findsOneWidget);
+      expect(find.byType(OnboardingFlow), findsNothing);
+      expect(find.text('Privacy & Data Consent'), findsNothing);
+      expect(session.emailVerified, isFalse);
+      expect(map['onboarding_complete'], 'false');
+      expect(map['has_consented'], 'false');
+      expect(map['intro_consultation_seen'], 'false');
+      // Leave the verify stage via escape so its countdown timer
+      // is disposed before teardown.
+      await tester.tap(find.byKey(const ValueKey('verify_escape')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
     });
 
     testWidgets('consent decline logs out to welcome', (tester) async {
