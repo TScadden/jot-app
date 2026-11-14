@@ -7,6 +7,7 @@ import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/data/medication_change_event_outbox.dart';
+import 'package:tabs_lab/src/data/onboarding_sync_outbox.dart';
 import 'package:tabs_lab/src/data/lean_test_session.dart';
 import 'package:tabs_lab/src/data/migraine_attack_store.dart';
 import 'package:tabs_lab/src/data/migraine_notification.dart';
@@ -43,6 +44,9 @@ import 'package:tabs_lab/src/data/weekly_snapshot_cache.dart';
 ///   owner-mismatch enforcement before they can render or push.
 ///   Account deletion keeps the full wipe: the account is gone
 ///   server-side, so there is no session for entries to return to.
+///   The C-08 onboarding-sync outbox rides the same rule (its own
+///   bounded flush in [logout], retention on an unconfirmed
+///   flush, full wipe only on account deletion).
 /// - Delete: native calls `DELETE /api/auth/delete-account` FIRST and
 ///   only wipes locally on success; on failure the account and session
 ///   stay intact and the error is shown. Same order here.
@@ -196,6 +200,29 @@ class AccountActions {
     // stays guarded (flush re-checks the owner, and login's
     // clearIfOwnerMismatch re-wipes a mismatched blob).
     unawaited(MedicationChangeEventOutbox.instance.clear());
+    // C-08: the onboarding-sync outbox holds a staged finalize
+    // payload that exists NOWHERE else (its direct posts failed)
+    // — it gets the log-entry outbox's F2 treatment, not the
+    // medication outbox's clear: in retain mode (logout whose
+    // flush did not confirm every payload) the owner-stamped
+    // blob is RETAINED for the same account's return and dropped
+    // unsent by a different account's sign-in; in normal mode
+    // (account deletion — the account is gone server-side, so
+    // no session could ever legitimately receive the payload)
+    // it is cleared with everything else. Deliberately NOT
+    // awaited, on the two precedents directly above: this funnel
+    // has no test-injected storage for the outbox, so its
+    // storage futures reach the real channel — a channel future
+    // that cannot complete in a caller's async zone would park
+    // the whole wipe. Both operations drop/retain the in-memory
+    // queue synchronously before their first await, and a
+    // surviving blob stays guarded (flush re-checks the owner;
+    // login's clearIfOwnerMismatch re-wipes a mismatched blob).
+    if (retainUnconfirmedLogEntries) {
+      unawaited(OnboardingSyncOutbox.instance.retainUnconfirmed());
+    } else {
+      unawaited(OnboardingSyncOutbox.instance.clear());
+    }
     // Refresh-scope fix (Oct 20, 2026): the refresh owner's
     // pending outcomes live only in memory, but they belong to
     // the account too — logout / account deletion drops them
@@ -281,13 +308,29 @@ class AccountActions {
     } catch (_) {
       flushed = false;
     }
+    // C-08: the same push-first chance for a staged onboarding
+    // finalize payload, on the same 3-second bound. The retain
+    // decision below is the OR of both flushes: either payload
+    // left unconfirmed keeps the wipe in retain mode, so neither
+    // outbox's unconfirmed data is silently wiped on logout
+    // (the F2 rule; lean-test retention already rides this same
+    // flag).
+    var onboardingFlushed = false;
+    try {
+      onboardingFlushed = await OnboardingSyncOutbox.instance
+          .flush(_backend)
+          .timeout(const Duration(seconds: 3), onTimeout: () => false);
+    } catch (_) {
+      onboardingFlushed = false;
+    }
     var revoked = false;
     try {
       revoked = await _backend.logoutAccount();
     } catch (_) {
       revoked = false;
     }
-    await _clearEverything(retainUnconfirmedLogEntries: !flushed);
+    await _clearEverything(
+        retainUnconfirmedLogEntries: !flushed || !onboardingFlushed);
     return revoked;
   }
 
@@ -328,6 +371,25 @@ class AccountActions {
       ok = false;
     }
     if (!ok) return false;
+    // C-08: the reset discards the pre-reset onboarding run, so
+    // its staged finalize payload is discarded WITH it — cleared
+    // here, after the false push landed and before [logout]'s
+    // bounded flush could re-post the stale snapshot's
+    // `onboardingComplete: true` over the reset's explicit false.
+    // (On a failed push nothing above ran, so a failed reset
+    // loses nothing.) Deliberately NOT awaited, on the
+    // medication-outbox precedent in _clearDefaultCaches: this
+    // funnel has no test-injected storage for the outbox, so an
+    // awaited channel future could park the reset behind a
+    // wedged storage channel. clear() drops the in-memory queue
+    // SYNCHRONOUSLY before its first await, so [logout]'s flush
+    // provably sees an empty queue; the blob delete completes in
+    // the background, and a blob that somehow survives stays
+    // guarded (the reset's next login routes into onboarding,
+    // whose finalize restages fresh slots, and the flush's
+    // recency/merge guards treat the stale payload as
+    // superseded).
+    unawaited(OnboardingSyncOutbox.instance.clear());
     await logout();
     return true;
   }

@@ -32,6 +32,7 @@ import 'package:tabs_lab/src/data/refresh_keep_alive.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/report_generation_service.dart';
 import 'package:tabs_lab/src/data/onboarding_store.dart';
+import 'package:tabs_lab/src/data/onboarding_sync_outbox.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -456,6 +457,11 @@ class _AppFlowState extends State<AppFlow>
       // fake-async-driven flows; the harness deadlock lesson).
       unawaited(StreakStore.instance.clearIfOwnerMismatch(email));
       unawaited(MedicationChangeEventOutbox.instance.clearIfOwnerMismatch(email));
+      // C-08: same restore-claim enforcement for the pending
+      // onboarding-sync outbox — a previous account's staged
+      // finalize payload is dropped unsent here, before the
+      // gate routes anywhere.
+      unawaited(OnboardingSyncOutbox.instance.clearIfOwnerMismatch(email));
       final gate = await _readOnboardingGate();
       final hasState = hadStateBeforeClaim;
       final resumeStep = hadStateBeforeClaim ? gate.resumeStep : null;
@@ -581,6 +587,16 @@ class _AppFlowState extends State<AppFlow>
     // login owner-mismatch wiring below before any flush runs.
     // Explicit logout / account deletion DOES clear it, via
     // AccountActions.
+    // C-08 — the onboarding-sync outbox is likewise deliberately
+    // NOT cleared here: its staged categories/profile payload
+    // exists nowhere else locally (the finalize posts failed),
+    // so an expiry wipe would recreate the exact C-08 loss. The
+    // owner-stamped blob is RETAINED: the same account's next
+    // sign-in flushes it (merge-safely), and a different
+    // account's sign-in drops it unsent via the owner-mismatch
+    // wiring. Explicit logout RETAINS it too when its bounded
+    // flush cannot confirm delivery (AccountActions); only
+    // account deletion clears it.
     // Refresh-scope fix (Oct 20, 2026): the app-scoped Daily
     // Score refresh owner's pending outcomes are in-memory only,
     // but they are account-bound too — session expiry drops them
@@ -693,6 +709,13 @@ class _AppFlowState extends State<AppFlow>
     // unawaited drop cannot be raced into a cross-account send).
     unawaited(
         MedicationChangeEventOutbox.instance.clearIfOwnerMismatch(email));
+    // C-08: same enforcement for the onboarding-sync outbox — a
+    // previous account's staged finalize payload is dropped
+    // UNSENT before it can flush under this session (the
+    // outbox's flush re-checks the owner itself, so this
+    // unawaited drop cannot be raced into a cross-account send).
+    unawaited(
+        OnboardingSyncOutbox.instance.clearIfOwnerMismatch(email));
     // Refresh-scope fix (Oct 20, 2026): same enforcement for the
     // refresh owner's in-memory pending outcomes — synchronous,
     // so a previous account's deferred outcome is gone before the
@@ -944,10 +967,27 @@ class _AppFlowState extends State<AppFlow>
     unawaited(flushMedicationChangeEvents(_tabsBackend));
   }
 
+  /// C-08 flush trigger: every home landing (sign-in completion,
+  /// cold-start session restore, onboarding completion — all
+  /// funnel through [_kickFirstRunResync]) and every resume
+  /// while home is a retry opportunity for an onboarding
+  /// finalize payload staged by an earlier failed post. This is
+  /// the app-start / session-restore trigger: a finalize that
+  /// failed on an offline first run is retried on the next
+  /// launch's home landing. Fire-and-forget and silent: the
+  /// outbox never throws, an empty queue makes no call, and its
+  /// merge-safe flush + owner checks keep a stale payload from
+  /// clobbering newer data or flushing under a different
+  /// account.
+  void _triggerOnboardingSyncFlush() {
+    unawaited(flushOnboardingSync(_tabsBackend));
+  }
+
   void _kickFirstRunResync() {
     _retryPendingLogEntries();
     _triggerDailyScoreSync();
     _triggerMedicationChangeEventFlush();
+    _triggerOnboardingSyncFlush();
     _firstRunResyncFuture ??= _runFirstRunResync();
     // Every home landing funnels through here (cold-start restore,
     // sign-in, onboarding completion): a stashed Daily Score
@@ -1012,6 +1052,10 @@ class _AppFlowState extends State<AppFlow>
     // unawaited drop cannot be raced into a cross-account send).
     unawaited(
         MedicationChangeEventOutbox.instance.clearIfOwnerMismatch(email));
+    // C-08: same enforcement for the onboarding-sync outbox as
+    // login (see _onLoginSuccess).
+    unawaited(
+        OnboardingSyncOutbox.instance.clearIfOwnerMismatch(email));
     // Refresh-scope fix (Oct 20, 2026): same enforcement for the
     // refresh owner's in-memory pending outcomes.
     DailyScoreRefreshOwner.instance.clearIfOwnerMismatch(email);
@@ -1301,6 +1345,9 @@ class _AppFlowState extends State<AppFlow>
       // H1-07: a resume while home is likewise a flush trigger
       // for staged medication change events.
       if (_stage == _FlowStage.home) _triggerMedicationChangeEventFlush();
+      // C-08: a resume while home is likewise a flush trigger
+      // for a staged onboarding finalize payload.
+      if (_stage == _FlowStage.home) _triggerOnboardingSyncFlush();
       // App-open sync (founder directive, Oct 22, 2026): a return
       // from background while home is an app open — trigger the
       // open capture NOW, in the foreground (Juno F1), through
