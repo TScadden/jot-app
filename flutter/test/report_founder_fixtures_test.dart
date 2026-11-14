@@ -498,9 +498,28 @@ void main() {
         hc: FounderHc(perReadDelay: const Duration(milliseconds: 100)),
         store: store,
       ));
-      // Five sequential union reads × 100 ms of modeled bridge
-      // latency — the shape the instant fixtures could never show.
-      expect(sw.elapsed, greaterThanOrEqualTo(const Duration(milliseconds: 400)));
+      // ignore: avoid_print
+      print('slow reads: elapsed=${sw.elapsedMilliseconds}ms');
+      // Five union reads × 100 ms of modeled bridge latency, run
+      // in PARALLEL since Bram's item B (VC 100133): every loader
+      // starts before any is awaited, so the union costs one
+      // read's latency, not the sum of five. This pin previously
+      // asserted ≥400 ms on the sequential premise — five reads
+      // in series cannot cost less than 5 × 100 ms (measured
+      // 524 ms at this scale); B superseded that premise, not
+      // the protection. The pin now asserts both directions:
+      //  - floor ≥100 ms: at least one read's full latency
+      //    really elapsed, so the slow path genuinely ran and
+      //    was not bypassed — a completed parallel union cannot
+      //    beat its own slowest read, and timers never fire
+      //    materially early;
+      //  - ceiling <300 ms: the reads genuinely overlapped —
+      //    ~2.5× the measured parallel collect (116–122 ms),
+      //    and decisively under the ≥500 ms sequential floor,
+      //    which the old in-series union would fail.
+      expect(sw.elapsed,
+          greaterThanOrEqualTo(const Duration(milliseconds: 100)));
+      expect(sw.elapsed, lessThan(const Duration(milliseconds: 300)));
       expect(snap.sectionMetadata['sleep']!.recordCount, founderSleepDays);
       expect(snap.sectionMetadata['hrSpikes']!.recordCount,
           founderSpikeDaysFull);
