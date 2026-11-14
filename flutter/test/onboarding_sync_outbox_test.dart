@@ -10,6 +10,7 @@ import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/onboarding/setup_loading_screen.dart';
 import 'package:tabs_lab/src/features/settings/account_actions.dart';
+import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 
 import 'test_helpers.dart';
 
@@ -182,6 +183,26 @@ class _FakeBackend extends TabsBackend {
     });
     return true;
   }
+}
+
+/// The same fake backend, extended with the Settings screen's
+/// pull surface so the P4 wiring pins can drive the REAL
+/// `SettingsScreen._pushProfile` choke point: the pull body is
+/// built from [serverProfile], exactly what Settings loads.
+class _SettingsBackend extends _FakeBackend {
+  _SettingsBackend({super.email});
+
+  @override
+  Future<Map<String, dynamic>?> fetchSyncPull() async => failPull
+      ? null
+      : {
+          'isUnlimited': false,
+          'isAdmin': false,
+          'nickname': 'Tyson',
+          'tag': '1234',
+          'profile': Map<String, dynamic>.of(serverProfile),
+          'insights': const [],
+        };
 }
 
 OnboardingSyncOutbox _outbox(_FakeDisk disk) => OnboardingSyncOutbox.withDeps(
@@ -526,6 +547,134 @@ void main() {
       expect(await outbox.pendingProfile(backend), isNull);
     });
 
+    test('(h) P4 (i): both-fields supersession in the '
+        'lost-response shape — flush delivers neither cleared '
+        'field; onboardingComplete still delivers', () async {
+      final disk = _FakeDisk();
+      final outbox = _outbox(disk);
+      final backend = _FakeBackend(email: _ownerA);
+      await outbox.stageProfile(backend, {
+        'userContext': 'stale context',
+        'conditions': '["POTS"]',
+        'onboardingComplete': true,
+      });
+
+      // Lost-response shape + deliberate clear: the finalize
+      // post actually landed, the user then cleared BOTH fields
+      // in Settings (successful pushes — the server now holds
+      // the cleared empty values), and the staged slot was
+      // never removed. The supersession call below is exactly
+      // the call _pushProfile makes on ok == true for a push
+      // carrying both fields.
+      backend.serverProfile = {
+        'userContext': '',
+        'conditions': '[]',
+        'onboardingComplete': false,
+      };
+      await outbox.supersedeStagedProfileFields(
+          ['userContext', 'conditions']);
+
+      // Per-field removal: ONLY onboardingComplete remains
+      // staged — its delivery obligation is untouched.
+      final pending = await outbox.pendingProfile(backend);
+      expect(pending, isNotNull);
+      expect(pending!.fields, {'onboardingComplete': true});
+      // The supersession is durable, not just in memory.
+      final relaunched = _outbox(disk);
+      final reloaded = await relaunched.pendingProfile(backend);
+      expect(reloaded!.fields, {'onboardingComplete': true});
+
+      expect(await relaunched.flush(backend), isTrue);
+      // Exactly one post, carrying NEITHER cleared field.
+      expect(backend.profilePosts, 1);
+      expect(backend.profilePayloads.single, {'onboardingComplete': true});
+      expect(backend.serverProfile['userContext'], '');
+      expect(backend.serverProfile['conditions'], '[]');
+      expect(backend.serverProfile['onboardingComplete'], true);
+      expect(await relaunched.pendingProfile(backend), isNull);
+      expect(disk.values[OnboardingSyncOutbox.storageKey], isNull);
+    });
+
+    test('(i) P4 (ii): single-field supersession — clearing '
+        'conditions only leaves a still-undelivered userContext '
+        'deliverable (per-field, not whole-slot)', () async {
+      final disk = _FakeDisk();
+      final outbox = _outbox(disk);
+      final backend = _FakeBackend(email: _ownerA);
+      await outbox.stageProfile(backend, {
+        'userContext': 'onboarding context',
+        'conditions': '["POTS"]',
+        'onboardingComplete': true,
+      });
+
+      // Only conditions was cleared in Settings (successful
+      // push, server holds the cleared value); userContext
+      // never landed anywhere.
+      backend.serverProfile = {'conditions': '[]'};
+      await outbox.supersedeStagedProfileFields(['conditions']);
+
+      final pending = await outbox.pendingProfile(backend);
+      expect(pending, isNotNull);
+      expect(pending!.fields.containsKey('conditions'), isFalse);
+      expect(pending.fields['userContext'], 'onboarding context');
+      expect(pending.fields['onboardingComplete'], true);
+
+      expect(await outbox.flush(backend), isTrue);
+      expect(backend.profilePosts, 1);
+      final sent = backend.profilePayloads.single;
+      expect(sent.containsKey('conditions'), isFalse);
+      expect(sent['userContext'], 'onboarding context');
+      expect(sent['onboardingComplete'], true);
+      // The cleared conditions stay cleared; the undelivered
+      // userContext lands.
+      expect(backend.serverProfile['conditions'], '[]');
+      expect(backend.serverProfile['userContext'], 'onboarding context');
+      expect(await outbox.pendingProfile(backend), isNull);
+    });
+
+    test('(j) P4 (iii): supersession landing DURING a flush\'s '
+        'persist window aborts the in-flight profile post at '
+        'the dispatch re-check — zero posts carrying the '
+        'cleared field', () async {
+      final disk = _GatedDisk();
+      final outbox = _gatedOutbox(disk);
+      final backend = _FakeBackend(email: _ownerA);
+      await outbox.stageProfile(backend, {
+        'userContext': 'stale context',
+        'conditions': '["POTS"]',
+        'onboardingComplete': true,
+      });
+
+      disk.gateNextWrite();
+      final flushFuture = outbox.flush(backend);
+      await _untilParked(disk);
+      // The Settings clear's supersession lands INSIDE the
+      // persist window — after the pull, before dispatch. Its
+      // in-memory amendment is synchronous, so it is in force
+      // before the gate releases.
+      final supersedeFuture = outbox
+          .supersedeStagedProfileFields(['userContext', 'conditions']);
+      disk.releaseGate();
+      await flushFuture;
+      await supersedeFuture;
+
+      // The in-flight flush aborted at the re-check: it posted
+      // NOTHING — above all, not the just-cleared fields.
+      expect(backend.profilePosts, 0);
+      expect(backend.serverProfile, isEmpty);
+      // The slot survives with ONLY onboardingComplete, which
+      // the next flush still delivers — alone.
+      final pending = await outbox.pendingProfile(backend);
+      expect(pending, isNotNull);
+      expect(pending!.fields, {'onboardingComplete': true});
+      expect(await outbox.flush(backend), isTrue);
+      expect(backend.profilePosts, 1);
+      expect(backend.profilePayloads.single, {'onboardingComplete': true});
+      expect(backend.serverProfile.containsKey('userContext'), isFalse);
+      expect(backend.serverProfile.containsKey('conditions'), isFalse);
+      expect(disk.values[OnboardingSyncOutbox.storageKey], isNull);
+    });
+
     test('failed pull keeps both slots queued for the next '
         'trigger (a failed pull is not an empty account)', () async {
       final disk = _FakeDisk();
@@ -583,6 +732,133 @@ void main() {
       await relaunched.clear();
       expect(disk.values[OnboardingSyncOutbox.storageKey], isNull);
       expect(await relaunched.pendingCategories(backend), isNull);
+    });
+  });
+
+  group('P4 supersession — Settings wiring (Juno §1.3.2)', () {
+    SettingsStore storeFor(Map<String, String> map) =>
+        SettingsStore.withStorage(
+          read: (k) async => map[k],
+          write: (k, v) async => map[k] = v,
+          delete: (k) async => map.remove(k),
+        );
+
+    Future<void> pumpSettings(
+        WidgetTester tester, _SettingsBackend backend,
+        OnboardingSyncOutbox outbox, Map<String, String> storeMap) async {
+      tester.view.physicalSize = const Size(1080, 3400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SettingsScreen(
+              backend: backend,
+              settingsStore: storeFor(storeMap),
+              onboardingSyncOutbox: outbox,
+              notificationService: FakeReminderNotificationService(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('(k) P4 wiring: a successful Settings clear of '
+        'userContext supersedes the staged field — a later '
+        'flush does not resurrect it', (tester) async {
+      final disk = _FakeDisk();
+      final outbox = _outbox(disk);
+      final backend = _SettingsBackend(email: _ownerA);
+      await outbox.stageProfile(backend, {
+        'userContext': 'stale context',
+        'conditions': '["POTS"]',
+        'onboardingComplete': true,
+      });
+      // Lost-response shape: the finalize post landed, its
+      // slot removal was lost.
+      backend.serverProfile = {
+        'userContext': 'stale context',
+        'conditions': '["POTS"]',
+        'onboardingComplete': true,
+      };
+
+      await pumpSettings(tester, backend, outbox, {
+        SettingsStore.userContextHiddenKey: 'false',
+      });
+      // Clear the Personal Context field; the 3 s debounce
+      // pushes {'userContext': ''} through _pushProfile.
+      await tester.enterText(
+          find.byKey(const ValueKey('personal_context_field')), '');
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
+
+      // The clear landed server-side (exactly one push)…
+      expect(backend.profilePosts, 1);
+      expect(backend.profilePayloads.single, {'userContext': ''});
+      expect(backend.serverProfile['userContext'], '');
+      // …and _pushProfile superseded ONLY that staged field.
+      final pending = await outbox.pendingProfile(backend);
+      expect(pending, isNotNull);
+      expect(pending!.fields.containsKey('userContext'), isFalse);
+      expect(pending.fields['conditions'], '["POTS"]');
+      expect(pending.fields['onboardingComplete'], true);
+
+      // The later flush resurrects nothing: conditions and
+      // onboardingComplete already match the server, so it
+      // posts nothing at all and the cleared value stands.
+      expect(await outbox.flush(backend), isTrue);
+      expect(backend.profilePosts, 1);
+      expect(backend.serverProfile['userContext'], '');
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('(l) P4 (iv): a FAILED Settings push supersedes '
+        'nothing — the staged fields remain deliverable on the '
+        'next flush', (tester) async {
+      final disk = _FakeDisk();
+      final outbox = _outbox(disk);
+      final backend = _SettingsBackend(email: _ownerA)..failProfilePost = true;
+      // The finalize post truly failed: nothing ever landed.
+      await outbox.stageProfile(backend, {
+        'userContext': 'onboarding context',
+        'conditions': '["POTS"]',
+        'onboardingComplete': true,
+      });
+
+      await pumpSettings(tester, backend, outbox, {
+        SettingsStore.userContextHiddenKey: 'false',
+      });
+      // A Settings edit whose push FAILS (the same ok == false
+      // branch a failed clear takes): the value never lands
+      // server-side, so nothing may be superseded — E's
+      // protection must survive a failed clear exactly as it
+      // survives a failed finalize.
+      await tester.enterText(
+          find.byKey(const ValueKey('personal_context_field')),
+          'typed but unsaved');
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
+      expect(backend.profilePosts, 1);
+      expect(backend.serverProfile, isEmpty);
+
+      final pending = await outbox.pendingProfile(backend);
+      expect(pending, isNotNull);
+      expect(pending!.fields['userContext'], 'onboarding context');
+      expect(pending.fields['conditions'], '["POTS"]');
+      expect(pending.fields['onboardingComplete'], true);
+
+      // The next (healthy) flush still delivers the ORIGINAL
+      // staged values — not the failed edit, and not nothing.
+      backend.failProfilePost = false;
+      expect(await outbox.flush(backend), isTrue);
+      expect(backend.serverProfile['userContext'], 'onboarding context');
+      expect(backend.serverProfile['conditions'], '["POTS"]');
+      expect(backend.serverProfile['onboardingComplete'], true);
+      expect(await outbox.pendingProfile(backend), isNull);
+
+      await tester.pumpWidget(const SizedBox());
     });
   });
 

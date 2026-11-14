@@ -47,6 +47,14 @@
 ///   suppresses the post — and the persist write itself is
 ///   generation-guarded so it cannot resurrect a blob an
 ///   enforcement delete already removed.
+/// - SUPERSESSION (Juno P4 condition, VC 100133): a successful
+///   Settings push of `userContext` / `conditions` supersedes
+///   the staged copy of exactly those fields (see
+///   [supersedeStagedProfileFields]). A deliberate clear is an
+///   edit whose value is empty; without this, the recency
+///   guard would read the cleared server value as "nothing to
+///   protect" and a later flush would silently resurrect
+///   health data the user removed.
 /// - LOGOUT DISPOSITION (stated, never silent): explicit logout
 ///   first attempts a bounded flush (AccountActions); whatever
 ///   remains unconfirmed is RETAINED owner-stamped for the same
@@ -136,8 +144,11 @@ class OnboardingProfileSync {
     this.attempts = 0,
   });
 
-  OnboardingProfileSync copyWith({int? attempts}) => OnboardingProfileSync(
-    fields: fields,
+  OnboardingProfileSync copyWith({
+    int? attempts,
+    Map<String, dynamic>? fields,
+  }) => OnboardingProfileSync(
+    fields: fields ?? this.fields,
     stagedAtMs: stagedAtMs,
     attempts: attempts ?? this.attempts,
   );
@@ -504,6 +515,56 @@ class OnboardingSyncOutbox {
       return await _persistQueue();
     } catch (_) {
       return false;
+    }
+  }
+
+  // ── Supersession (Juno P4 condition) ─────────────────────────
+
+  /// Per-field supersession of the staged profile snapshot
+  /// (Juno ruling §1.3.1, VC 100133 — BINDING condition on E).
+  ///
+  /// Semantics, exactly as ruled:
+  /// - Only `userContext` and `conditions` are affected; every
+  ///   other key is ignored. `onboardingComplete` is NEVER
+  ///   removed by this operation — its monotonic-true delivery
+  ///   obligation (and the Reset handling) is unchanged.
+  /// - The named key(s) are removed from the staged profile
+  ///   slot's field map. If fields remain (including the case
+  ///   where ONLY `onboardingComplete` remains), the slot
+  ///   persists so `onboardingComplete: true` still delivers;
+  ///   if the field map becomes wholly empty, the slot drops.
+  /// - No staged profile slot, or none of the named keys
+  ///   present in it ⇒ no-op (no identity change, no generation
+  ///   bump, no persist).
+  ///
+  /// Discipline: the in-memory amendment is SYNCHRONOUS — it
+  /// runs in this method's synchronous prefix, before the
+  /// first await, through the same slot-identity replacement +
+  /// [_generation] bump as [clear] — and persistence goes
+  /// through the generation-guarded [_persistQueue]. A flush
+  /// already parked in its attempts-persist window therefore
+  /// aborts at its existing dispatch-window re-check instead
+  /// of posting a just-superseded field. Never throws (a
+  /// persist failure leaves the amended memory authoritative
+  /// for this process; the next persist retries the write).
+  Future<void> supersedeStagedProfileFields(Iterable<String> keys) async {
+    const supersedeable = {'userContext', 'conditions'};
+    final targets = keys.where(supersedeable.contains).toSet();
+    if (targets.isEmpty) return;
+    final slot = _profile;
+    if (slot == null) return;
+    if (!targets.any(slot.fields.containsKey)) return;
+    final remaining = Map<String, dynamic>.from(slot.fields)
+      ..removeWhere((key, _) => targets.contains(key));
+    _generation++;
+    _profile = remaining.isEmpty ? null : slot.copyWith(fields: remaining);
+    try {
+      await _persistQueue();
+    } catch (_) {
+      // _persistQueue never throws by contract; this guard is
+      // belt-and-braces so a supersession call site can never
+      // surface an error into a Settings save that already
+      // succeeded server-side.
     }
   }
 
