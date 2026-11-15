@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -21,7 +22,7 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// - title `Verify your email`
 /// - instruction `We sent a code to {email}` (the account's own
 ///   email, shown back to its owner — §2.2 oracle check)
-/// - helper, field label/hint, Verify / Resend labels, the
+/// - helper, field label, Verify / Resend labels, the
 ///   `Resend code in {m}:{ss}` cooldown shape, the sent
 ///   confirmation, and the error strings in §2.1.
 /// Verify failures are ONE generic string for wrong, expired,
@@ -30,6 +31,17 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// failures, never shows attempts remaining, and adds no
 /// shake/red-border inventions (the login error language is
 /// text-only).
+///
+/// Founder-directed change (Tyson, Nov 14, 2026, on the VC 100134
+/// screen): "I don't want text in the box. Make it so each number
+/// has its own box." The single code field is therefore six
+/// individual digit boxes, each empty until filled, with NO text
+/// or hint inside any box — the Juno §2 in-field hint
+/// (`6-digit code`) is removed by this direction, and the
+/// `Verification code` label now renders as a plain label ABOVE
+/// the box row (there is no floating label). No other copy
+/// changes; the label arrangement is flagged for Juno's micro
+/// copy sign in the build report.
 ///
 /// The ONE string without a verbatim Juno §2 slot is the escape
 /// label: §2's table carries no sign-out string, so the button
@@ -90,13 +102,25 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
       'Network error. Please check your connection and try again.';
   static const _catchAllError = 'Something went wrong. Please try again.';
 
+  static const int _codeLength = 6;
+
   static String _formatCountdown(int totalSeconds) {
     final m = totalSeconds ~/ 60;
     final ss = (totalSeconds % 60).toString().padLeft(2, '0');
     return '$m:$ss';
   }
 
-  final _codeController = TextEditingController();
+  // Six digit boxes: one controller + one focus node per box.
+  final List<TextEditingController> _digitControllers =
+      List<TextEditingController>.generate(
+        _codeLength,
+        (_) => TextEditingController(),
+      );
+  final List<FocusNode> _digitFocusNodes = List<FocusNode>.generate(
+    _codeLength,
+    (_) => FocusNode(),
+  );
+
   bool _isVerifying = false;
   bool _isResending = false;
   String? _errorMessage;
@@ -115,6 +139,11 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
       widget.backend ??
       TabsBackend(sessionStore: widget.sessionStore ?? SessionStore());
 
+  /// The entered digits joined in box order.
+  String get _enteredCode => _digitControllers.map((c) => c.text).join();
+
+  bool get _codeComplete => _digitControllers.every((c) => c.text.length == 1);
+
   @override
   void initState() {
     super.initState();
@@ -125,7 +154,12 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
   @override
   void dispose() {
     _resendTimer?.cancel();
-    _codeController.dispose();
+    for (final controller in _digitControllers) {
+      controller.dispose();
+    }
+    for (final node in _digitFocusNodes) {
+      node.dispose();
+    }
     super.dispose();
   }
 
@@ -145,9 +179,80 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
     _startCooldownTimer();
   }
 
+  void _setDigit(int index, String digit) {
+    _digitControllers[index].value = TextEditingValue(
+      text: digit,
+      selection: TextSelection.collapsed(offset: digit.length),
+    );
+  }
+
+  void _clearAllDigits() {
+    for (final controller in _digitControllers) {
+      controller.clear();
+    }
+  }
+
+  /// One box's text changed (typing, paste, or Android
+  /// oneTimeCode autofill landing in that box).
+  ///
+  /// A single digit fills just its box and advances focus to the
+  /// next box. A multi-digit string is distributed across boxes:
+  /// a full 6-digit code fills all six boxes in order wherever it
+  /// lands; a shorter multi-digit string fills forward from the
+  /// box it landed in. An empty value (backspace on a filled box)
+  /// simply clears that box — focus stays.
+  void _onDigitChanged(int index, String value) {
+    final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) {
+      setState(() {});
+      return;
+    }
+    if (digits.length == 1) {
+      // The box already holds the digit via its controller; make
+      // sure it holds exactly that digit, then advance.
+      if (_digitControllers[index].text != digits) {
+        _setDigit(index, digits);
+      }
+      setState(() {});
+      if (index < _codeLength - 1) {
+        _digitFocusNodes[index + 1].requestFocus();
+      }
+      return;
+    }
+    // Multi-digit input (paste / autofill).
+    final start = digits.length >= _codeLength ? 0 : index;
+    final count = math.min(digits.length, _codeLength - start);
+    for (var i = 0; i < count; i++) {
+      _setDigit(start + i, digits[i]);
+    }
+    // If this box was the start and the platform left the whole
+    // string in it, the loop above already reduced it to its one
+    // digit; any boxes past the distributed range are untouched.
+    setState(() {});
+    final next = math.min(start + count, _codeLength - 1);
+    _digitFocusNodes[next].requestFocus();
+  }
+
+  /// Backspace on an EMPTY box deletes the previous box's digit
+  /// and moves focus back to it (standard OTP behavior). Returns
+  /// handled only for that case; every other key — including
+  /// backspace on a filled box, which the field itself clears —
+  /// is left to the field.
+  KeyEventResult _onDigitBoxKeyEvent(int index, KeyEvent event) {
+    if ((event is KeyDownEvent || event is KeyRepeatEvent) &&
+        event.logicalKey == LogicalKeyboardKey.backspace &&
+        _digitControllers[index].text.isEmpty &&
+        index > 0) {
+      setState(() => _digitControllers[index - 1].clear());
+      _digitFocusNodes[index - 1].requestFocus();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   Future<void> _onVerifyPressed() async {
-    final code = _codeController.text;
-    if (code.length != 6 || _isVerifying) return;
+    final code = _enteredCode;
+    if (code.length != _codeLength || _isVerifying) return;
     setState(() {
       _isVerifying = true;
       _errorMessage = null;
@@ -161,17 +266,19 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
           setState(() => _isVerifying = false);
           widget.onVerified?.call();
         case VerifyEmailRejected():
-          // One generic error for every rejection class; the field
-          // clears so a stale wrong code can never be re-submitted
-          // by a double-tap.
+          // One generic error for every rejection class; all six
+          // boxes clear so a stale wrong code can never be
+          // re-submitted by a double-tap, and focus returns to
+          // the first box.
           setState(() {
             _isVerifying = false;
             _errorMessage = _genericError;
+            _clearAllDigits();
           });
-          _codeController.clear();
+          _digitFocusNodes[0].requestFocus();
         case VerifyEmailUnreachable():
           // Transport failure must not punish the user by erasing
-          // a possibly-correct code — the field is kept.
+          // a possibly-correct code — the digits are kept.
           setState(() {
             _isVerifying = false;
             _errorMessage = _networkError;
@@ -298,8 +405,49 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
     );
   }
 
+  Widget _buildDigitBox(int index) {
+    return Focus(
+      onKeyEvent: (_, event) => _onDigitBoxKeyEvent(index, event),
+      child: SizedBox(
+        height: 52,
+        child: TextField(
+          key: ValueKey('verify_digit_$index'),
+          controller: _digitControllers[index],
+          focusNode: _digitFocusNodes[index],
+          keyboardType: TextInputType.number,
+          autofillHints: index == 0
+              ? const [AutofillHints.oneTimeCode]
+              : const <String>[],
+          autofocus: index == 0,
+          autocorrect: false,
+          enableSuggestions: false,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: NotelColors.textPrimary, fontSize: 24),
+          cursorColor: NotelColors.primary,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          onChanged: (value) => _onDigitChanged(index, value),
+          decoration: InputDecoration(
+            // Founder direction: nothing inside the box — no
+            // label, no hint, no placeholder. Only the entered
+            // digit (or the caret when focused) renders here.
+            filled: false,
+            contentPadding: EdgeInsets.zero,
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: NotelColors.fieldBorderIdle),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: NotelColors.primary),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildCard() {
-    final codeComplete = _codeController.text.length == 6;
+    final codeComplete = _codeComplete;
     final busy = _isVerifying || _isResending;
     return Container(
       key: const ValueKey('verify_card'),
@@ -345,53 +493,26 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
           const SizedBox(height: 8),
           const Text(
             "Enter the 6-digit code to finish creating your account. If you don't see the email, check your spam folder.",
-            style: TextStyle(
-              fontSize: 13,
-              color: NotelColors.textSecondary,
-            ),
+            style: TextStyle(fontSize: 13, color: NotelColors.textSecondary),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 20),
-          TextField(
-            key: const ValueKey('verify_code_field'),
-            controller: _codeController,
-            keyboardType: TextInputType.number,
-            autofillHints: const [AutofillHints.oneTimeCode],
-            autofocus: true,
-            autocorrect: false,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: NotelColors.textPrimary,
-              fontSize: 24,
-              letterSpacing: 8,
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Verification code',
+              style: TextStyle(color: NotelColors.textSecondary),
             ),
-            cursorColor: NotelColors.primary,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(6),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            key: const ValueKey('verify_code_boxes'),
+            children: [
+              for (var i = 0; i < _codeLength; i++) ...[
+                if (i > 0) const SizedBox(width: 8),
+                Expanded(child: _buildDigitBox(i)),
+              ],
             ],
-            onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(
-              labelText: 'Verification code',
-              hintText: '6-digit code',
-              labelStyle:
-                  const TextStyle(color: NotelColors.textSecondary),
-              floatingLabelStyle:
-                  const TextStyle(color: NotelColors.primary),
-              hintStyle:
-                  const TextStyle(color: NotelColors.textSecondary),
-              filled: false,
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide:
-                    const BorderSide(color: NotelColors.fieldBorderIdle),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide:
-                    const BorderSide(color: NotelColors.primary),
-              ),
-            ),
           ),
           const SizedBox(height: 20),
           SizedBox(
