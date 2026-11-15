@@ -111,8 +111,9 @@ class _FlakyRefreshBackend extends TabsBackend {
   }
 
   @override
-  Future<HabitDto?> createHabit(String title) async =>
-      HabitDto(id: 'h2', title: title, logs: const []);
+  Future<HabitDto?> createHabit(String title,
+          {String targetTime = 'Anytime'}) async =>
+      HabitDto(id: 'h2', title: title, logs: const [], targetTime: targetTime);
 }
 
 /// In-memory stand-in for the habits endpoints.

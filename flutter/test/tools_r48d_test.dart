@@ -290,7 +290,12 @@ void main() {
         {
           'id': 'h1',
           'title': 'Drink water',
-          'target_time': 'Morning',
+          // VC 100137: the stored format is exactly 'Anytime' or
+          // zero-padded 24h 'HH:mm' (the r48d-era free-text value
+          // 'Morning' is garbage under the new contract and now
+          // displays as Anytime). A valid time renders in the
+          // user's locale display format, never raw 'HH:mm'.
+          'target_time': '07:30',
           'logs': <String>[],
         },
         {'id': 'h2', 'title': 'Walk', 'logs': <String>[]},
@@ -299,9 +304,11 @@ void main() {
           tester,
           HabitsScreen(
               backend: _backendWith(server.client(), token: 'tok')));
-      expect(find.text('Morning'), findsOneWidget);
-      // Missing target_time falls back to the DTO default.
-      expect(find.text('Anytime'), findsOneWidget);
+      expect(find.text('7:30 AM'), findsOneWidget);
+      // Missing target_time falls back to the DTO default. Two
+      // 'Anytime' labels exist since VC 100137: h2's card AND the
+      // add flow's time chip (its Juno-signed default).
+      expect(find.text('Anytime'), findsNWidgets(2));
     });
   });
 

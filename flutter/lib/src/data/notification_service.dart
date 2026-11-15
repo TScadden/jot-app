@@ -6,6 +6,8 @@ import 'package:timezone/timezone.dart' as tz;
 
 import 'daily_score_background.dart' show LocalDailyScoreReadyNotifier;
 import 'focus_test.dart';
+import 'habit_time.dart';
+import 'health_data.dart' show HabitDto;
 import 'migraine_notification.dart' show LocalMigraineNotifier;
 import 'report_ready_notification.dart' show LocalReportReadyNotifier;
 
@@ -482,6 +484,166 @@ List<DateTime> projectReminderFireTimes({
     }
   }
   return out;
+}
+
+/// VC 100137 — habit scheduled-time reminders: the Juno-ruled body
+/// copy (juno-copy-100137.md, item 1: SIGN WITH CHANGES — the
+/// proposed "It is time to check off this habit in Tabs." was
+/// rejected on voice). Wired verbatim, lowercase and punctuation
+/// included; the title is the habit's own title. Do not edit
+/// without a new Juno ruling.
+const String habitTimeReminderBody =
+    "whenever you're ready. one tap is enough.";
+
+/// Habit scheduled-time projection horizon: [HabitTimeReminderSync]
+/// looks this many local days ahead (today included), the same
+/// 35-day bound as the Project Focus projection.
+const int habitTimeReminderHorizonDays = 35;
+
+/// Base of the habit scheduled-time one-shot id block:
+/// `900000 + (djb2 % 1000000)` → 900000–1899999.
+///
+/// Disjointness (verified against every other id owner in the app):
+/// - Fixed ids 1003 / 1004 / 770001 / 7301 / 7303 / 7304: all lie
+///   below the block.
+/// - Event-counter ids ([eventNotificationId]): 700000–799998 —
+///   strictly below the block.
+/// - Project Focus projection ids: 800000–809999 — strictly below
+///   the block.
+/// - User-reminder blocks (`reminder_alarm_sync.dart`):
+///   101500–699999 — strictly below the block.
+/// Inside the block, an id is a hash of (habit id, date): two
+/// DIFFERENT habits could in principle hash-collide on the same
+/// date, and the same habit on two dates could collide across the
+/// 73-day cancellable window only if the hashes coincide mod
+/// 1000000. That is the same collision class the event-counter
+/// scheme already accepts (djb2 into a 99999-wide block); here the
+/// block is ten times wider and the habit count per user is small,
+/// and a collision would only replace one habit's one-shot with
+/// another's on a single date — never a wrong-time or duplicate
+/// fire. The window/distinctness tests pin the practical cases.
+const int habitTimeIdBase = 900000;
+
+/// Span of the habit scheduled-time one-shot id block (see
+/// [habitTimeIdBase]).
+const int habitTimeIdSpan = 1000000;
+
+/// Stable plugin notification id for [habitId]'s scheduled-time
+/// reminder on the local calendar date of [date] (djb2 over
+/// `'$habitId|yyyy-MM-dd'` — Dart's String.hashCode is not a stable
+/// cross-run contract; see [eventNotificationId]).
+int habitTimeNotificationId(String habitId, DateTime date) {
+  final key = '$habitId|${focusLogDateKey(date)}';
+  var hash = 5381;
+  for (final unit in key.codeUnits) {
+    hash = ((hash * 33) + unit) & 0x7fffffff;
+  }
+  return habitTimeIdBase + (hash % habitTimeIdSpan);
+}
+
+/// Every habit scheduled-time id a previous sync could have left
+/// pending for [habitId] around [now]: the ids for local dates from
+/// `today - [habitTimeReminderHorizonDays] - 1` through
+/// `today + [habitTimeReminderHorizonDays] + 1` (the task's
+/// today−36..today+36 sweep). A sync never projects beyond
+/// today + horizon, and a one-shot projected for a past date has
+/// already fired (or was projected at most horizon days before
+/// that date), so sweeping this window reaches every stale id.
+Iterable<int> habitTimeCancelIds(String habitId, DateTime now) sync* {
+  for (var offset = -(habitTimeReminderHorizonDays + 1);
+      offset <= habitTimeReminderHorizonDays + 1;
+      offset++) {
+    yield habitTimeNotificationId(
+        habitId, DateTime(now.year, now.month, now.day + offset));
+  }
+}
+
+/// The bounded habit scheduled-time projection (the Nov 11
+/// fire-time-gates lesson, Project Focus precedent): for each local
+/// date offset 0..[horizonDays], the fire time is that date at the
+/// habit's stored HH:mm; it is included iff it is strictly after
+/// [now] AND the date's `yyyy-MM-dd` key is NOT in [completedDates]
+/// (the habit's log dates — a completed day never fires, and the
+/// gate is re-projected at every sync that can change the inputs).
+/// A [targetTime] with no specific time (`'Anytime'` or garbage,
+/// per [parseHabitTargetTime]) projects nothing. Dates are built
+/// by calendar-day arithmetic, so DST cannot skip or repeat one.
+List<DateTime> habitTimeFireTimes({
+  required DateTime now,
+  required String targetTime,
+  required Set<String> completedDates,
+  int horizonDays = habitTimeReminderHorizonDays,
+}) {
+  final parsed = parseHabitTargetTime(targetTime);
+  if (parsed == null) return const [];
+  final out = <DateTime>[];
+  for (var offset = 0; offset <= horizonDays; offset++) {
+    final date = DateTime(now.year, now.month, now.day + offset);
+    if (completedDates.contains(focusLogDateKey(date))) continue;
+    final fire = DateTime(
+        date.year, date.month, date.day, parsed.hour, parsed.minute);
+    if (!fire.isAfter(now)) continue;
+    out.add(fire);
+  }
+  return out;
+}
+
+/// Keeps habit scheduled-time one-shots in step with the habits
+/// list. Separate from [ReminderSync.syncAll] on purpose: habit
+/// times are per-habit data (not a Settings toggle), and their
+/// inputs (the list, its times, its logs) change on the Habits
+/// screen's own writes, which is where this sync is wired. Follows
+/// the Project Focus pattern inside [ReminderSync]: cancel the
+/// whole window on EVERY sync before re-arming — including the
+/// notifications-disabled path and Anytime habits (cancel only).
+class HabitTimeReminderSync {
+  final ReminderNotificationService service;
+  HabitTimeReminderSync(this.service);
+
+  /// Re-projects every habit in [habits]: each habit's window is
+  /// cancelled first; then, when notifications are enabled and the
+  /// habit carries a specific time, one one-shot per projected
+  /// fire time is armed on the existing `habit_reminders` channel
+  /// (the local service sends the channel id as the payload, so
+  /// the payload is `'habit_reminders'` by construction).
+  Future<void> syncHabits(List<HabitDto> habits, {DateTime? now}) async {
+    final n = now ?? DateTime.now();
+    await service.initialize();
+    final enabled = await service.areNotificationsEnabled();
+    for (final habit in habits) {
+      for (final id in habitTimeCancelIds(habit.id, n)) {
+        await service.cancel(id);
+      }
+      if (!enabled) continue;
+      if (!hasHabitTargetTime(habit.targetTime)) continue;
+      for (final fire in habitTimeFireTimes(
+        now: n,
+        targetTime: habit.targetTime,
+        completedDates: habit.logs.toSet(),
+      )) {
+        await service.scheduleOnce(
+          id: habitTimeNotificationId(habit.id, fire),
+          title: habit.title,
+          body: habitTimeReminderBody,
+          channelId: 'habit_reminders',
+          channelName: 'Habit Reminders',
+          when: fire,
+          highImportance: false,
+        );
+      }
+    }
+  }
+
+  /// Cancels every scheduled-time one-shot [habitId] could have
+  /// pending (the delete path: called after a successful delete,
+  /// with the deleted habit's id).
+  Future<void> cancelHabit(String habitId, {DateTime? now}) async {
+    final n = now ?? DateTime.now();
+    await service.initialize();
+    for (final id in habitTimeCancelIds(habitId, n)) {
+      await service.cancel(id);
+    }
+  }
 }
 
 /// Keeps the device's schedules in step with the persisted reminder
