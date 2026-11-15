@@ -121,6 +121,17 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
     (_) => FocusNode(),
   );
 
+  // The digit each box held before the current edit, per box.
+  // _onDigitChanged needs this snapshot: by the time it runs, the
+  // box's controller already holds the NEW value, so the previous
+  // digit cannot be read back from it — and distinguishing a
+  // replace-on-type delivery (previous digit + one typed digit)
+  // from a paste depends on knowing that previous digit. Kept in
+  // sync by _setDigit, _clearAllDigits, the empty-value path, the
+  // single-digit path, and the backspace key handler.
+  final List<String> _previousDigits =
+      List<String>.filled(_codeLength, '');
+
   bool _isVerifying = false;
   bool _isResending = false;
   String? _errorMessage;
@@ -180,6 +191,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
   }
 
   void _setDigit(int index, String digit) {
+    _previousDigits[index] = digit;
     _digitControllers[index].value = TextEditingValue(
       text: digit,
       selection: TextSelection.collapsed(offset: digit.length),
@@ -187,8 +199,9 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
   }
 
   void _clearAllDigits() {
-    for (final controller in _digitControllers) {
-      controller.clear();
+    for (var i = 0; i < _codeLength; i++) {
+      _previousDigits[i] = '';
+      _digitControllers[i].clear();
     }
   }
 
@@ -200,10 +213,14 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
   /// a full 6-digit code fills all six boxes in order wherever it
   /// lands; a shorter multi-digit string fills forward from the
   /// box it landed in. An empty value (backspace on a filled box)
-  /// simply clears that box — focus stays.
+  /// simply clears that box — focus stays. The one exception to
+  /// distribution is a 2-char delivery into an already-filled
+  /// box (previous digit + one typed digit): that replaces this
+  /// box's digit only — see the replace-on-type branch below.
   void _onDigitChanged(int index, String value) {
     final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.isEmpty) {
+      _previousDigits[index] = '';
       setState(() {});
       return;
     }
@@ -212,12 +229,52 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
       // sure it holds exactly that digit, then advance.
       if (_digitControllers[index].text != digits) {
         _setDigit(index, digits);
+      } else {
+        _previousDigits[index] = digits;
       }
       setState(() {});
       if (index < _codeLength - 1) {
         _digitFocusNodes[index + 1].requestFocus();
       }
       return;
+    }
+    if (digits.length == 2) {
+      // Replace-on-type (Vera NO SIGN fix): a digit typed into an
+      // already-FILLED box is delivered by the platform as a
+      // 2-char value — the box's previous digit plus the typed
+      // digit, appended (caret at end: '39') or prepended (caret
+      // at start: '93'). That is NOT a paste: the typed digit
+      // must REPLACE this box's digit only, then advance as a
+      // normal single-digit entry. Distributing it forward (the
+      // paste path below) silently overwrote the NEXT box's
+      // digit, and in the last box the typed digit vanished.
+      // Distinction from paste/autofill: exactly 2 chars, this
+      // box previously held exactly one digit (the snapshot in
+      // _previousDigits), and one of the two chars IS that
+      // previous digit — the other char is the newly typed one.
+      // A paste/autofill of >= 3 chars, and a 2-char delivery
+      // into an EMPTY box, keep the distribution behaviour below.
+      final previous = _previousDigits[index];
+      if (previous.length == 1) {
+        String? replacement;
+        if (digits[0] == previous && digits[1] == previous) {
+          replacement = digits[0];
+        } else if (digits[0] == previous) {
+          // Appended delivery: previous digit first, typed second.
+          replacement = digits[1];
+        } else if (digits[1] == previous) {
+          // Prepended delivery: typed digit first, previous second.
+          replacement = digits[0];
+        }
+        if (replacement != null) {
+          _setDigit(index, replacement);
+          setState(() {});
+          if (index < _codeLength - 1) {
+            _digitFocusNodes[index + 1].requestFocus();
+          }
+          return;
+        }
+      }
     }
     // Multi-digit input (paste / autofill).
     final start = digits.length >= _codeLength ? 0 : index;
@@ -243,7 +300,10 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
         event.logicalKey == LogicalKeyboardKey.backspace &&
         _digitControllers[index].text.isEmpty &&
         index > 0) {
-      setState(() => _digitControllers[index - 1].clear());
+      setState(() {
+        _previousDigits[index - 1] = '';
+        _digitControllers[index - 1].clear();
+      });
       _digitFocusNodes[index - 1].requestFocus();
       return KeyEventResult.handled;
     }

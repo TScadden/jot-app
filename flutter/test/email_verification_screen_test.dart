@@ -272,6 +272,56 @@ void main() {
       await disposeScreen(tester);
     });
 
+    testWidgets('replace-on-type (appended delivery): typing 9 '
+        'into a FILLED middle box replaces that box only — the '
+        'following box\'s digit is NOT overwritten', (tester) async {
+      await pumpScreen(tester);
+      await fillAllBoxes(tester, '123456');
+      expect(enteredCode(tester), '123456');
+      // Vera's reproduction, delivered as the platform delivers
+      // it: box 2 already holds '3', caret at end, typed '9'
+      // arrives as the 2-char value '39'.
+      await enterIntoBox(tester, 2, '39');
+      // Box 2 is replaced with '9'; every other digit is intact
+      // (pre-fix this became '123956': box 3's '4' destroyed).
+      expect(enteredCode(tester), '129456');
+      expect(digitText(tester, 2), '9');
+      expect(digitText(tester, 3), '4');
+      expect(digitHasFocus(tester, 3), isTrue);
+      expect(submitButton(tester).onPressed, isNotNull);
+      await disposeScreen(tester);
+    });
+
+    testWidgets('replace-on-type (appended delivery): typing 9 '
+        'into the FILLED last box replaces its digit — the typed '
+        'digit does not vanish and Verify stays enabled on the '
+        'corrected code', (tester) async {
+      await pumpScreen(tester);
+      await fillAllBoxes(tester, '123456');
+      // Last box holds '6'; typed '9' arrives appended as '69'.
+      await enterIntoBox(tester, 5, '69');
+      expect(enteredCode(tester), '123459');
+      expect(digitText(tester, 5), '9');
+      expect(submitButton(tester).onPressed, isNotNull);
+      await disposeScreen(tester);
+    });
+
+    testWidgets('replace-on-type (prepended delivery): typing 9 '
+        'into a FILLED middle box with the caret at the start '
+        'replaces that box only', (tester) async {
+      await pumpScreen(tester);
+      await fillAllBoxes(tester, '123456');
+      // Caret at start: typed '9' arrives prepended to the box's
+      // previous digit '3', as the 2-char value '93'.
+      await enterIntoBox(tester, 2, '93');
+      expect(enteredCode(tester), '129456');
+      expect(digitText(tester, 2), '9');
+      expect(digitText(tester, 3), '4');
+      expect(digitHasFocus(tester, 3), isTrue);
+      expect(submitButton(tester).onPressed, isNotNull);
+      await disposeScreen(tester);
+    });
+
     testWidgets('backspace on a FILLED box clears that box and '
         'focus stays on it', (tester) async {
       await pumpScreen(tester);
