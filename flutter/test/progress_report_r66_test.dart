@@ -469,6 +469,17 @@ void main() {
 
   group('collector', () {
     test('zero-filtering, BP range filter, gate-collapse re-pin', () async {
+      // RE-PIN (fixture expiry): the HC fixture dates are computed
+      // relative to today — the collector's inclusive 31-day window
+      // is [today−30, today], so [windowEdge] is the window's first
+      // day and [windowInner] sits one day inside it. Hard-coding
+      // calendar dates here expired at the window roll-off
+      // (2026-10-15 fell out on 2026-11-15).
+      final now = DateTime.now();
+      final windowEdge =
+          dateStrOf(DateTime(now.year, now.month, now.day - 30));
+      final windowInner =
+          dateStrOf(DateTime(now.year, now.month, now.day - 29));
       final backend = FakeBackend()
         ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)]
         ..bp = [
@@ -485,12 +496,12 @@ void main() {
         ];
       final hc = FakeHc()
         ..sleepHist = [
-          (date: '2026-10-15', mins: 0, deep: 0),
-          (date: '2026-10-16', mins: 430, deep: 90),
+          (date: windowEdge, mins: 0, deep: 0),
+          (date: windowInner, mins: 430, deep: 90),
         ]
-        ..hrHist = [(date: '2026-10-16', bpm: 0), (date: '2026-10-15', bpm: 62)]
-        ..calHist = [(date: '2026-10-16', kcal: 0)]
-        ..spikeHist = [(date: '2026-10-16', count: 0)]
+        ..hrHist = [(date: windowInner, bpm: 0), (date: windowEdge, bpm: 62)]
+        ..calHist = [(date: windowInner, kcal: 0)]
+        ..spikeHist = [(date: windowInner, count: 0)]
         ..hrvValue = 0;
       final collector = ReportDataCollector(backend: backend, hc: hc);
       final snap = await collector.collect(
@@ -498,13 +509,13 @@ void main() {
         last30Days: true,
         profile: const ReportProfileInput(),
       );
-      expect(snap.sleepSeries, [('2026-10-16', 430)]);
-      expect(snap.deepSleepSeries, [('2026-10-16', 90)]);
-      expect(snap.heartRateSeries, [('2026-10-15', 62)]);
+      expect(snap.sleepSeries, [(windowInner, 430)]);
+      expect(snap.deepSleepSeries, [(windowInner, 90)]);
+      expect(snap.heartRateSeries, [(windowEdge, 62)]);
       expect(snap.caloriesSeries, isEmpty);
       expect(snap.hrvSeries, isEmpty);
       // A 0 spike count is a real sampled day (native keeps the row).
-      expect(snap.heartRateSpikes, [('2026-10-16', 0)]);
+      expect(snap.heartRateSpikes, [(windowInner, 0)]);
       expect(snap.bloodPressureSeries.length, 1);
       expect(snap.sectionMetadata['calories']!.status,
           DataSourceStatus.noData);
@@ -520,7 +531,7 @@ void main() {
       // deletes the gate: the union load runs and the store is
       // consulted, so this collect truthfully reports the sleep
       // day the FIRST collect above merged into the shared store
-      // (2026-10-16, the zero-filtered survivor) as a union
+      // (windowInner, the zero-filtered survivor) as a union
       // success — not a denial. A TRUE per-metric
       // permissionDenied is pinned by
       // progress_report_availability_truth_test.dart.
@@ -534,7 +545,7 @@ void main() {
       expect(denied.sectionMetadata['sleep']!.status,
           DataSourceStatus.success);
       expect(denied.sectionMetadata['sleep']!.recordCount, 1);
-      expect(denied.sleepSeries, [('2026-10-16', 430)]);
+      expect(denied.sleepSeries, [(windowInner, 430)]);
     });
 
     test('documents loader feeds snapshot + request knowledgeBase',
