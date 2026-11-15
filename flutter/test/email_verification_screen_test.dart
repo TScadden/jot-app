@@ -20,6 +20,14 @@ import 'test_helpers.dart';
 /// digit boxes (`verify_digit_0` … `verify_digit_5`), no text or
 /// hint inside any box, `Verification code` as a plain label
 /// above the row.
+///
+/// VC 100136: completing the code (typing the last digit,
+/// replace-on-type on a complete code, or a full-code paste)
+/// AUTO-SUBMITS via the same verify path as the Verify button,
+/// exactly once per completion. Tests below that filled all six
+/// boxes and then tapped Verify were re-pointed at the
+/// auto-submit; the button itself is pinned by the
+/// unreachable-then-tap-retry test.
 
 const _email = 'pending@tabs.app';
 const _genericError =
@@ -204,8 +212,9 @@ void main() {
     });
 
     testWidgets('typing: each digit auto-advances focus; 5 digits '
-        'keeps Verify disabled, the 6th enables it', (tester) async {
-      await pumpScreen(tester);
+        'keeps Verify disabled and fires NO verify attempt, the '
+        '6th auto-submits exactly once (VC 100136)', (tester) async {
+      final backend = await pumpScreen(tester);
       await tester.tap(digitFinder(0));
       await tester.pump();
       expect(digitHasFocus(tester, 0), isTrue);
@@ -219,9 +228,15 @@ void main() {
           reason: 'focus should advance past box $i',
         );
         expect(submitButton(tester).onPressed, isNull);
+        expect(backend.verifyCalls, 0, reason: 'after digit $i');
       }
       await enterIntoBox(tester, 5, '6');
+      await tester.pump();
       expect(enteredCode(tester), '123456');
+      // The 6th digit auto-submitted — exactly one attempt, with
+      // the typed code, and no Verify tap was made.
+      expect(backend.verifyCalls, 1);
+      expect(backend.lastCode, '123456');
       expect(submitButton(tester).onPressed, isNotNull);
       await disposeScreen(tester);
     });
@@ -239,12 +254,16 @@ void main() {
     });
 
     testWidgets('paste: a full 6-digit code into the FIRST box '
-        'fills all six boxes in order and enables Verify', (tester) async {
-      await pumpScreen(tester);
+        'fills all six boxes in order, enables Verify, and '
+        'auto-submits exactly once (VC 100136)', (tester) async {
+      final backend = await pumpScreen(tester);
       await enterIntoBox(tester, 0, '001234');
+      await tester.pump();
       expect(enteredCode(tester), '001234');
       expect(digitHasFocus(tester, 5), isTrue);
       expect(submitButton(tester).onPressed, isNotNull);
+      expect(backend.verifyCalls, 1);
+      expect(backend.lastCode, '001234');
       await disposeScreen(tester);
     });
 
@@ -258,8 +277,9 @@ void main() {
     });
 
     testWidgets('paste: a multi-digit string landing in a box '
-        'distributes across the following boxes', (tester) async {
-      await pumpScreen(tester);
+        'distributes across the following boxes and fires NO '
+        'verify attempt (code incomplete)', (tester) async {
+      final backend = await pumpScreen(tester);
       await enterIntoBox(tester, 1, '789');
       expect(digitText(tester, 0), isEmpty);
       expect(digitText(tester, 1), '7');
@@ -269,6 +289,7 @@ void main() {
       expect(digitText(tester, 5), isEmpty);
       expect(digitHasFocus(tester, 4), isTrue);
       expect(submitButton(tester).onPressed, isNull);
+      expect(backend.verifyCalls, 0);
       await disposeScreen(tester);
     });
 
@@ -295,14 +316,25 @@ void main() {
     testWidgets('replace-on-type (appended delivery): typing 9 '
         'into the FILLED last box replaces its digit — the typed '
         'digit does not vanish and Verify stays enabled on the '
-        'corrected code', (tester) async {
-      await pumpScreen(tester);
+        'corrected code; the replace auto-submits the corrected '
+        'code exactly once (VC 100136)', (tester) async {
+      final backend = await pumpScreen(tester);
       await fillAllBoxes(tester, '123456');
+      await tester.pump();
+      // The paste auto-submitted '123456'; reset the counters so
+      // the assertions below count ONLY the replace's attempt.
+      expect(backend.verifyCalls, 1);
+      expect(backend.lastCode, '123456');
+      backend.verifyCalls = 0;
+      backend.lastCode = null;
       // Last box holds '6'; typed '9' arrives appended as '69'.
       await enterIntoBox(tester, 5, '69');
+      await tester.pump();
       expect(enteredCode(tester), '123459');
       expect(digitText(tester, 5), '9');
       expect(submitButton(tester).onPressed, isNotNull);
+      expect(backend.verifyCalls, 1);
+      expect(backend.lastCode, '123459');
       await disposeScreen(tester);
     });
 
@@ -361,15 +393,15 @@ void main() {
       await disposeScreen(tester);
     });
 
-    testWidgets('verify tap sends "001234" as the string "001234" '
-        '(Vera R38) and success fires onVerified exactly once', (tester) async {
+    testWidgets('auto-submit on paste sends "001234" as the string '
+        '"001234" (Vera R38) and success fires onVerified exactly '
+        'once — no Verify tap (VC 100136)', (tester) async {
       var verifiedCalls = 0;
       final backend = await pumpScreen(
         tester,
         onVerified: () => verifiedCalls++,
       );
       await fillAllBoxes(tester, '001234');
-      await tester.tap(find.byKey(const ValueKey('verify_submit')));
       await tester.pump();
       await tester.pump();
       expect(backend.verifyCalls, 1);
@@ -379,7 +411,36 @@ void main() {
       await disposeScreen(tester);
     });
 
-    testWidgets('while verifying: spinner, all actions disabled', (
+    testWidgets('Verify button still works: after an unreachable '
+        'auto-submit keeps the digits, tapping Verify retries '
+        'with the same code and succeeds (VC 100136)', (tester) async {
+      var verifiedCalls = 0;
+      final backend = await pumpScreen(
+        tester,
+        onVerified: () => verifiedCalls++,
+      );
+      backend.verifyOutcome = const VerifyEmailUnreachable();
+      await fillAllBoxes(tester, '123456');
+      await tester.pump();
+      await tester.pump();
+      // Auto-submit fired once; transport failure kept the digits.
+      expect(backend.verifyCalls, 1);
+      expect(find.text(_networkError), findsOneWidget);
+      expect(enteredCode(tester), '123456');
+      expect(submitButton(tester).onPressed, isNotNull);
+      backend.verifyOutcome = const VerifyEmailSuccess();
+      await tester.tap(find.byKey(const ValueKey('verify_submit')));
+      await tester.pump();
+      await tester.pump();
+      expect(backend.verifyCalls, 2);
+      expect(backend.lastCode, '123456');
+      expect(verifiedCalls, 1);
+      await disposeScreen(tester);
+    });
+
+    testWidgets('while verifying (auto-submitted, gated): spinner, '
+        'all actions disabled, and further edits fire NO second '
+        'attempt (VC 100136)', (
       tester,
     ) async {
       var verifiedCalls = 0;
@@ -388,9 +449,11 @@ void main() {
         onVerified: () => verifiedCalls++,
       );
       backend.verifyGate = Completer<VerifyEmailOutcome>();
+      // Filling the last box auto-submits; the gate holds that
+      // one attempt in flight. No Verify tap is made.
       await fillAllBoxes(tester, '123456');
-      await tester.tap(find.byKey(const ValueKey('verify_submit')));
       await tester.pump();
+      expect(backend.verifyCalls, 1);
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('verify_submit')),
@@ -405,14 +468,22 @@ void main() {
             .onPressed,
         isNull,
       );
+      // An edit while the verify is in flight (replace-on-type
+      // in the last box) must NOT fire a second attempt: the
+      // _isVerifying guard in _onVerifyPressed rejects it.
+      await enterIntoBox(tester, 5, '69');
+      await tester.pump();
+      expect(backend.verifyCalls, 1);
       backend.verifyGate!.complete(const VerifyEmailSuccess());
       await tester.pump();
       await tester.pump();
+      expect(backend.verifyCalls, 1);
       expect(verifiedCalls, 1);
       await disposeScreen(tester);
     });
 
-    testWidgets('rejection: the ONE generic Juno error, ALL six '
+    testWidgets('rejection (auto-submitted): the ONE generic Juno '
+        'error, ALL six '
         'boxes cleared, focus back on the first box, Verify '
         'disabled again — no server string, no attempts remaining', (
       tester,
@@ -420,9 +491,9 @@ void main() {
       final backend = await pumpScreen(tester);
       backend.verifyOutcome = const VerifyEmailRejected();
       await fillAllBoxes(tester, '999999');
-      await tester.tap(find.byKey(const ValueKey('verify_submit')));
       await tester.pump();
       await tester.pump();
+      expect(backend.verifyCalls, 1);
       expect(find.byKey(const ValueKey('verify_error')), findsOneWidget);
       expect(find.text(_genericError), findsOneWidget);
       expect(find.textContaining('attempt'), findsNothing);
@@ -435,14 +506,15 @@ void main() {
       await disposeScreen(tester);
     });
 
-    testWidgets('unreachable: network string, digits KEPT in all '
+    testWidgets('unreachable (auto-submitted): network string, '
+        'digits KEPT in all '
         'six boxes', (tester) async {
       final backend = await pumpScreen(tester);
       backend.verifyOutcome = const VerifyEmailUnreachable();
       await fillAllBoxes(tester, '123456');
-      await tester.tap(find.byKey(const ValueKey('verify_submit')));
       await tester.pump();
       await tester.pump();
+      expect(backend.verifyCalls, 1);
       expect(find.text(_networkError), findsOneWidget);
       expect(enteredCode(tester), '123456');
       await disposeScreen(tester);

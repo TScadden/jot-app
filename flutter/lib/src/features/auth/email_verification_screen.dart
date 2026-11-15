@@ -205,6 +205,30 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
     }
   }
 
+  /// VC 100136 — auto-submit on a completed code (founder
+  /// direction, Tyson, Nov 14, 2026: "It should do that. If it
+  /// doesn't then fix it then push").
+  ///
+  /// Called at the end of every completion-capable path in
+  /// [_onDigitChanged] — after that path's digits and focus have
+  /// settled — so all three ways a code can become complete fire
+  /// it: (a) a single digit typed into the last empty box, (b)
+  /// replace-on-type in an already-complete code (which submits
+  /// the corrected code), and (c) paste/autofill distribution
+  /// that fills all six boxes. It invokes the SAME
+  /// [_onVerifyPressed] the Verify button uses.
+  ///
+  /// Double-submit is impossible: [_onVerifyPressed] guards on
+  /// `code.length != _codeLength || _isVerifying` and sets
+  /// `_isVerifying = true` synchronously (before its first
+  /// await), so a second invocation — from a further edit while
+  /// a verify is in flight, or from the Verify button racing the
+  /// auto-fire — returns immediately without a backend call.
+  void _maybeAutoSubmit() {
+    if (!_codeComplete) return;
+    unawaited(_onVerifyPressed());
+  }
+
   /// One box's text changed (typing, paste, or Android
   /// oneTimeCode autofill landing in that box).
   ///
@@ -236,6 +260,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
       if (index < _codeLength - 1) {
         _digitFocusNodes[index + 1].requestFocus();
       }
+      _maybeAutoSubmit();
       return;
     }
     if (digits.length == 2) {
@@ -272,6 +297,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
           if (index < _codeLength - 1) {
             _digitFocusNodes[index + 1].requestFocus();
           }
+          _maybeAutoSubmit();
           return;
         }
       }
@@ -288,6 +314,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
     setState(() {});
     final next = math.min(start + count, _codeLength - 1);
     _digitFocusNodes[next].requestFocus();
+    _maybeAutoSubmit();
   }
 
   /// Backspace on an EMPTY box deletes the previous box's digit
