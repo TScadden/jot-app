@@ -144,8 +144,10 @@ Future<void> driveLogin(WidgetTester tester) async {
 }
 
 Future<void> submitCode(WidgetTester tester) async {
+  // Six-box UI: pasting the full code into the first box fills
+  // all six boxes in order.
   await tester.enterText(
-      find.byKey(const ValueKey('verify_code_field')), '001234');
+      find.byKey(const ValueKey('verify_digit_0')), '001234');
   await tester.pump();
   await tester.tap(find.byKey(const ValueKey('verify_submit')));
   await tester.pump();
