@@ -57,6 +57,16 @@ class BanditReadingSlot extends StatefulWidget {
   static const String posterAsset =
       'assets/images/bandit_reading_poster_v8.png';
 
+  /// VC 100137 — the options the reading loop is constructed with.
+  /// The loop is muted (volume 0), but without `mixWithOthers` the
+  /// player's default audio focus still pauses the user's music or
+  /// video in other apps when Home builds (founder-reported).
+  /// Mixing means the silent loop never takes audio focus. Pinned
+  /// as a named field so a test can assert the construction site
+  /// keeps passing it (see bandit_audio_100137_test.dart).
+  static final VideoPlayerOptions videoPlayerOptions =
+      VideoPlayerOptions(mixWithOthers: true);
+
   /// Round 4 slot width: 240 × 1.175 = 282dp. At 360dp wide this
   /// still leaves 39dp of page margin on each side.
   static const double slotWidth = 282;
@@ -96,8 +106,9 @@ class _BanditReadingSlotState extends State<BanditReadingSlot> {
 
   Future<void> _initVideo() async {
     try {
-      final controller =
-          VideoPlayerController.asset(BanditReadingSlot.videoAsset);
+      final controller = VideoPlayerController.asset(
+          BanditReadingSlot.videoAsset,
+          videoPlayerOptions: BanditReadingSlot.videoPlayerOptions);
       _controller = controller;
       await controller.initialize();
       if (!mounted) {

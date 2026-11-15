@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/data/habit_time.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
+import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/skeleton.dart';
@@ -21,9 +25,11 @@ import 'package:tabs_lab/src/theme/skeleton.dart';
 ///   (optimistic; failure reverts + shows an error).
 /// - Delete: small ✕ at the card's top-right, no confirmation →
 ///   `DELETE /api/habits/{id}` → re-fetch on success.
-/// - NO habit edit: native has none and no update endpoint exists;
-///   a rename via delete+recreate would destroy the habit's
-///   server-side log history, so editing is deliberately not built.
+/// - NO habit rename: a rename via delete+recreate would destroy
+///   the habit's server-side log history, so renaming is
+///   deliberately not built. VC 100137 adds the ONE supported edit:
+///   the scheduled time (add-flow chip + per-card editor, PATCH
+///   `/api/habits/{id}`), with its notification projection.
 ///
 /// Pure helpers ([todayDateString], [isHabitCheckedToday], [habitStreak],
 /// [overallHabitStreak], [habitDayMarks]) mirror the native
@@ -130,13 +136,19 @@ DateTime? _parseDay(String s) {
 }
 
 /// Round 18 — Habits screen. Round 47 — add / delete / tap-to-log.
+/// VC 100137 — optional scheduled time per habit (add chip, per-card
+/// time editor) + the bounded one-shot notification projection.
 ///
 /// [backend] is injectable so widget tests can drive the screen with a
 /// mock client; production defaults to a real [TabsBackend].
+/// [notificationService] is injectable the same way (the pattern of
+/// RemindersScreen / SettingsScreen); production defaults to the
+/// local plugin service.
 class HabitsScreen extends StatefulWidget {
   final TabsBackend? backend;
+  final ReminderNotificationService? notificationService;
 
-  const HabitsScreen({super.key, this.backend});
+  const HabitsScreen({super.key, this.backend, this.notificationService});
 
   @override
   State<HabitsScreen> createState() => _HabitsScreenState();
@@ -144,6 +156,7 @@ class HabitsScreen extends StatefulWidget {
 
 class _HabitsScreenState extends State<HabitsScreen> {
   late final TabsBackend _backend;
+  late final HabitTimeReminderSync _habitTimeSync;
   final TextEditingController _addController = TextEditingController();
   bool _loading = true;
   bool _failed = false;
@@ -151,11 +164,73 @@ class _HabitsScreenState extends State<HabitsScreen> {
   bool _writing = false; // any habit write in flight (fix round, Vera B3)
   List<HabitDto> _habits = const [];
 
+  /// The add flow's picked time; null = Anytime (no set time).
+  TimeOfDay? _addTime;
+
   @override
   void initState() {
     super.initState();
     _backend = widget.backend ?? TabsBackend();
+    _habitTimeSync = HabitTimeReminderSync(
+        widget.notificationService ?? LocalReminderNotificationService());
     _load();
+  }
+
+  /// Re-projects every habit's scheduled-time one-shots from the
+  /// given list (VC 100137). Deliberately NOT awaited by callers:
+  /// the sync is a device-state side effect of the list state, and
+  /// its window sweep is dozens of plugin calls — holding a load,
+  /// a save, or the [_writing] serializer open for it would delay
+  /// the UI for bookkeeping the user never sees (and, with the
+  /// real plugin service, channel replies land on the real event
+  /// loop, which widget tests' fake-async pumps starve — the
+  /// r47 habits tests caught exactly that wedge). Execution is
+  /// serialized through [_notifSyncChain], so ordering follows
+  /// list-state order exactly; the next load/write re-syncs again
+  /// regardless.
+  ///
+  /// Failure handling, decided: a [NotificationServiceException]
+  /// is logged (debugPrint, with its visible code) and swallowed —
+  /// never a reason to fail a load, a save, or a toggle the server
+  /// already accepted, and a snackbar on every load failure would
+  /// train the user to ignore the screen's real error messages.
+  /// A transient failure self-heals at the next sync.
+  /// The notification-sync chain: syncs execute strictly in the
+  /// order they were initiated (a slow load sync can never re-arm
+  /// a one-shot a later toggle sync already cancelled), while no
+  /// caller ever awaits them. Every link catches its own failures,
+  /// so the chain itself never completes with an error.
+  Future<void> _notifSyncChain = Future<void>.value();
+
+  void _syncHabitNotifications(List<HabitDto> habits) {
+    _notifSyncChain = _notifSyncChain.then((_) async {
+      try {
+        await _habitTimeSync.syncHabits(habits);
+      } on NotificationServiceException catch (e) {
+        debugPrint('HabitTimeReminderSync failed: $e');
+      } catch (e) {
+        // The local service converts plugin failures to
+        // NotificationServiceException by contract; anything else
+        // is a programming error — log it, still never break the
+        // screen over notification bookkeeping.
+        debugPrint('HabitTimeReminderSync unexpected failure: $e');
+      }
+    });
+  }
+
+  /// Cancels one deleted habit's scheduled-time window (VC 100137);
+  /// same chained, fire-and-forget + failure rules as
+  /// [_syncHabitNotifications].
+  void _cancelHabitNotifications(String habitId) {
+    _notifSyncChain = _notifSyncChain.then((_) async {
+      try {
+        await _habitTimeSync.cancelHabit(habitId);
+      } on NotificationServiceException catch (e) {
+        debugPrint('HabitTimeReminderSync cancel failed: $e');
+      } catch (e) {
+        debugPrint('HabitTimeReminderSync cancel unexpected failure: $e');
+      }
+    });
   }
 
   @override
@@ -176,6 +251,8 @@ class _HabitsScreenState extends State<HabitsScreen> {
         _habits = habits;
         _loading = false;
       });
+      // VC 100137: a fresh list is a new projection input.
+      _syncHabitNotifications(habits);
     } catch (_) {
       // TabsBackend is contractually non-throwing (null/empty on failure);
       // this is a defensive last resort — never a crash.
@@ -210,6 +287,10 @@ class _HabitsScreenState extends State<HabitsScreen> {
         return;
       }
       setState(() => _habits = habits);
+      // VC 100137: every successful refresh re-projects the
+      // scheduled-time one-shots (add and time-change flow through
+      // here; toggle and delete sync on their own paths).
+      _syncHabitNotifications(habits);
     } catch (_) {
       // Defensive: a throwing backend override is a failed refresh
       // too — same message, list preserved.
@@ -224,16 +305,25 @@ class _HabitsScreenState extends State<HabitsScreen> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
-  /// Native add: title only (blank rejected, trimmed) →
-  /// `POST /api/habits` → re-fetch. Serialized with every other
-  /// habit write (Vera B3): taps are dropped while [_writing].
+  /// Native add: title (blank rejected, trimmed) → `POST /api/habits`
+  /// → re-fetch. Serialized with every other habit write (Vera B3):
+  /// taps are dropped while [_writing].
+  ///
+  /// VC 100137: the add flow's time chip contributes the picked
+  /// time (stored `'HH:mm'`, or `'Anytime'` when none was picked).
+  /// After a successful add the picker state resets to Anytime.
   Future<void> _addHabit() async {
     final title = _addController.text.trim();
     if (title.isEmpty || _writing) return;
     _writing = true;
     setState(() => _adding = true);
     try {
-      final created = await _backend.createHabit(title);
+      final created = await _backend.createHabit(
+        title,
+        targetTime: _addTime == null
+            ? kHabitAnytime
+            : formatHabitTargetTimeForStorage(_addTime!),
+      );
       if (!mounted) return;
       if (created == null) {
         _showError(
@@ -241,11 +331,108 @@ class _HabitsScreenState extends State<HabitsScreen> {
         return;
       }
       _addController.clear();
+      setState(() => _addTime = null);
       _backend.invalidateSyncPull();
       await _refresh();
     } finally {
       _writing = false;
       if (mounted) setState(() => _adding = false);
+    }
+  }
+
+  /// Add-flow time chip tap: pick (or re-pick) the new habit's
+  /// time. Cancelling the picker leaves the current choice alone.
+  Future<void> _pickAddTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _addTime ?? TimeOfDay.now(),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _addTime = picked);
+  }
+
+  /// VC 100137 — the per-habit time editor: a small dialog with
+  /// 'Pick a time' (opens the time picker seeded with the current
+  /// time, or now when Anytime), 'Anytime' (clears the set time),
+  /// and 'Cancel' (no change). The labels are Juno-signed as a set
+  /// (juno-copy-100137.md, item 3). Saving goes through
+  /// [TabsBackend.updateHabitTargetTime], serialized through
+  /// [_writing] like every other habit write; a failure shows the
+  /// Juno-signed error and preserves the old value (no optimistic
+  /// update is ever applied).
+  Future<void> _editHabitTime(HabitDto habit) async {
+    if (_writing) return;
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: NotelColors.surface,
+        title: Text(
+          habit.title,
+          style: const TextStyle(
+            color: NotelColors.textPrimary,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop('pick'),
+              child: const Text('Pick a time'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop('anytime'),
+              child: const Text('Anytime'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || choice == null) return;
+    final String targetTime;
+    if (choice == 'anytime') {
+      targetTime = kHabitAnytime;
+    } else {
+      final picked = await showTimePicker(
+        context: context,
+        initialTime:
+            habitTargetTimeOfDay(habit.targetTime) ?? TimeOfDay.now(),
+      );
+      if (picked == null || !mounted) return;
+      targetTime = formatHabitTargetTimeForStorage(picked);
+    }
+    await _saveHabitTime(habit, targetTime);
+  }
+
+  /// The PATCH leg of [_editHabitTime], serialized via [_writing].
+  /// On success the list refreshes (which also re-syncs the
+  /// notification projection, [_refresh]).
+  Future<void> _saveHabitTime(HabitDto habit, String targetTime) async {
+    if (_writing) return;
+    _writing = true;
+    setState(() {});
+    try {
+      final ok = await _backend.updateHabitTargetTime(
+        habitId: habit.id,
+        targetTime: targetTime,
+      );
+      if (!mounted) return;
+      if (!ok) {
+        _showError(
+            'Could not save that time. Check your connection and try again.');
+        return;
+      }
+      _backend.invalidateSyncPull();
+      await _refresh();
+    } finally {
+      _writing = false;
+      if (mounted) setState(() {});
     }
   }
 
@@ -264,6 +451,10 @@ class _HabitsScreenState extends State<HabitsScreen> {
       }
       _backend.invalidateSyncPull();
       await _refresh();
+      // VC 100137: the deleted habit is no longer in the refreshed
+      // list, so its scheduled-time window is cancelled explicitly,
+      // after the successful delete, by its id.
+      _cancelHabitNotifications(habit.id);
     } finally {
       _writing = false;
       if (mounted) setState(() {});
@@ -311,6 +502,12 @@ class _HabitsScreenState extends State<HabitsScreen> {
         return;
       }
       _backend.invalidateSyncPull();
+      // VC 100137: completing today lands today in the habit's
+      // completed dates, so the re-projection cancels today's
+      // pending one-shot; un-completing re-arms today when its
+      // time is still ahead. The list synced is the optimistic
+      // (server-confirmed) one already on screen.
+      _syncHabitNotifications(_habits);
     } finally {
       _writing = false;
       if (mounted) setState(() {});
@@ -447,6 +644,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _addField(),
+          _addTimeChip(),
           const SizedBox(height: 16),
           if (overallStreak > 0) ...[
             _streakBanner(overallStreak),
@@ -488,7 +686,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
 
   /// The inline add field pinned at the top of the screen (native):
   /// placeholder "Add new routine habit...", the add IconButton
-  /// (spinner while loading) or IME Done submits. Title only.
+  /// (spinner while loading) or IME Done submits.
   Widget _addField() {
     return Row(
       children: [
@@ -540,6 +738,38 @@ class _HabitsScreenState extends State<HabitsScreen> {
             onPressed: _writing ? null : _addHabit,
           ),
       ],
+    );
+  }
+
+  /// VC 100137 — the add flow's time chip, directly under the add
+  /// field: a schedule icon + 'Anytime' by default (Juno-signed
+  /// label) or the picked time in the user's locale format, with
+  /// a clear (✕) action when a time is set. Tapping opens the
+  /// time picker ([_pickAddTime]).
+  Widget _addTimeChip() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: InputChip(
+        key: const ValueKey('habit_add_time_chip'),
+        avatar: const Icon(
+          Icons.schedule,
+          size: 16,
+          color: NotelColors.textSecondary,
+        ),
+        label: Text(
+          _addTime == null ? kHabitAnytime : _addTime!.format(context),
+          style: const TextStyle(
+            color: NotelColors.textPrimary,
+            fontSize: 12,
+          ),
+        ),
+        backgroundColor: NotelColors.surfaceHigh.withValues(alpha: 0.1),
+        onPressed: _writing ? null : _pickAddTime,
+        onDeleted: _addTime == null
+            ? null
+            : () => setState(() => _addTime = null),
+        deleteIconColor: NotelColors.textSecondary,
+      ),
     );
   }
 
@@ -709,11 +939,37 @@ class _HabitsScreenState extends State<HabitsScreen> {
           // defaults a missing value to "Anytime"). Round 48:
           // the Flutter card parsed this field but never rendered
           // it; restored for native parity.
-          Text(
-            habit.targetTime,
-            style: const TextStyle(
-              color: NotelColors.textSecondary,
-              fontSize: 10,
+          //
+          // VC 100137: the stored value is rendered for DISPLAY
+          // (locale format, e.g. `7:30 AM`; Anytime stays Anytime),
+          // and the row is its own tap target that opens the time
+          // editor — an InkWell here wins the gesture arena over
+          // the card's toggle GestureDetector, exactly like the
+          // delete ✕ above, so editing never toggles today's log.
+          InkWell(
+            key: ValueKey('habit_time_${habit.id}'),
+            onTap: _writing ? null : () => _editHabitTime(habit),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.schedule,
+                    size: 11,
+                    color: NotelColors.textSecondary,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    formatHabitTargetTimeForDisplay(
+                        habit.targetTime, context),
+                    style: const TextStyle(
+                      color: NotelColors.textSecondary,
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 8),

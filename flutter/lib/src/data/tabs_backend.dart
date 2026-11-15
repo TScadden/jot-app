@@ -830,25 +830,31 @@ class TabsBackend {
   }
 
   /// Round 47 — create a habit, mirroring native habit creation:
-  /// `POST /api/habits` with `{"title": ..., "target_time": "Anytime"}`
+  /// `POST /api/habits` with `{"title": ..., "target_time": ...}`
   /// → `{"habit": {...}}`. Returns the created habit, or null on any
   /// failure (the caller keeps the honest error path and re-fetches).
   /// Accepts 200 or 201 (resource-created) like the native client's
   /// 2xx handling; every other status is a failure.
+  ///
+  /// VC 100137 — [targetTime] is the stored-format value: exactly
+  /// `'Anytime'` (the default, native parity) or a zero-padded 24h
+  /// `'HH:mm'` string. It is sent verbatim; formatting/validation
+  /// of a picked time lives in `habit_time.dart`.
   ///
   /// Fix-round hardening: a 2xx response whose body lacks a usable
   /// `habit` object is still a SUCCESS — the POST itself landed, so
   /// reporting failure would invite a retry that creates a
   /// duplicate. A placeholder carrying the requested title is
   /// returned and the caller's re-fetch confirms the real row.
-  Future<HabitDto?> createHabit(String title) async {
+  Future<HabitDto?> createHabit(String title,
+      {String targetTime = 'Anytime'}) async {
     final response = await _sendAuthed((token) => _client.post(
           Uri.parse('$_baseUrl/api/habits'),
           headers: {
             'Authorization': 'Bearer $token',
             'Content-Type': 'application/json',
           },
-          body: jsonEncode({'title': title, 'target_time': 'Anytime'}),
+          body: jsonEncode({'title': title, 'target_time': targetTime}),
         ));
     if (response == null ||
         (response.statusCode != 200 && response.statusCode != 201)) {
@@ -864,13 +870,47 @@ class TabsBackend {
     } catch (_) {
       // A 2xx with an unparseable body still means the POST landed.
     }
-    return HabitDto(id: '', title: title, logs: const []);
+    return HabitDto(
+        id: '', title: title, logs: const [], targetTime: targetTime);
+  }
+
+  /// VC 100137 — set (or clear) a habit's scheduled time:
+  /// `PATCH /api/habits/{id}` with `{"target_time": ...}` →
+  /// `{"habit": {...}}`. [targetTime] is the stored format
+  /// (`'Anytime'` or zero-padded 24h `'HH:mm'`). True ONLY on
+  /// HTTP 200; 400 (invalid value) and 404 (missing / not owned)
+  /// are failures, as are transport failure and no session. The
+  /// habits cache is invalidated on success only, so a caller's
+  /// re-fetch sees the new value.
+  ///
+  /// There is no generic PATCH helper in this file (checked:
+  /// `_postJson`/`_postJsonMap` are POST-only, `_delete` is
+  /// DELETE-only), so this routes through [_sendAuthed] directly,
+  /// exactly like [createHabit] does for its POST — the 401 →
+  /// refresh → retry-once semantics are identical.
+  Future<bool> updateHabitTargetTime({
+    required String habitId,
+    required String targetTime,
+  }) async {
+    final response = await _sendAuthed((token) => _client.patch(
+          Uri.parse(
+              '$_baseUrl/api/habits/${Uri.encodeComponent(habitId)}'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({'target_time': targetTime}),
+        ));
+    if (response == null || response.statusCode != 200) return false;
+    invalidateHabits();
+    return true;
   }
 
   /// Round 47 — delete a habit: `DELETE /api/habits/{id}` (native).
-  /// True on HTTP 200. There is NO habit update endpoint — a rename
-  /// would need delete+recreate, which destroys the habit's
-  /// server-side log history, so editing is deliberately not built.
+  /// True on HTTP 200. A rename would need delete+recreate, which
+  /// destroys the habit's server-side log history, so renaming is
+  /// deliberately not built; the ONE update the server supports is
+  /// the scheduled time ([updateHabitTargetTime], VC 100137).
   Future<bool> deleteHabit(String id) async {
     final ok = await _delete('/api/habits/${Uri.encodeComponent(id)}');
     if (ok) invalidateHabits();
