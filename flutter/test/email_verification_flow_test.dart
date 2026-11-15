@@ -145,11 +145,12 @@ Future<void> driveLogin(WidgetTester tester) async {
 
 Future<void> submitCode(WidgetTester tester) async {
   // Six-box UI: pasting the full code into the first box fills
-  // all six boxes in order.
+  // all six boxes in order — and since VC 100136 that completion
+  // AUTO-SUBMITS (no Verify tap; by the time the verify resolves
+  // the stage has already changed and the button is gone).
   await tester.enterText(
       find.byKey(const ValueKey('verify_digit_0')), '001234');
   await tester.pump();
-  await tester.tap(find.byKey(const ValueKey('verify_submit')));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 100));
   await tester.pump();
