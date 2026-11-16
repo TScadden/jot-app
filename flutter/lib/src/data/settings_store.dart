@@ -16,7 +16,10 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// - `tabs_lab_checkin_reminder_enabled` (bool, default true) — :111.
 ///   Native arms/cancels a 4 AM alarm when this flips; Round 30 wires
 ///   the Flutter equivalent (ReminderSync in notification_service.dart
-///   schedules/cancels the daily 4 AM notification with the toggle).
+///   schedules/cancels the check-in notification with the toggle).
+///   VC 100138: the Flutter schedule is now a gated 8 PM one-shot
+///   projection (20:00, skipping Tabs days already checked in), not
+///   the daily 4 AM notification.
 /// - `google_calendar_connected` / `google_calendar_email` and
 ///   `google_account_connected` / `google_account_email` — native
 ///   keeps all four in DataStore only (NotelPreferences.kt:155-156,

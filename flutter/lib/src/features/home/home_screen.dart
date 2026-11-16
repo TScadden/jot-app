@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:tabs_lab/src/data/billing_service.dart';
+import 'package:tabs_lab/src/data/correlation_engine.dart'
+    show energyDayLabel;
 import 'package:tabs_lab/src/data/daily_score.dart';
 import 'package:tabs_lab/src/data/daily_score_refresh.dart'
     show ScoreCapture;
@@ -17,6 +19,7 @@ import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/data/migraine_controller.dart';
+import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/streak_engine.dart';
@@ -212,6 +215,12 @@ class HomeScreen extends StatefulWidget {
   /// writer uses.
   final LogEntryOutbox? logEntryOutbox;
 
+  /// VC 100138 — injectable for tests; defaults to the real
+  /// on-device service. Used ONLY for the check-in reminder
+  /// re-projection that runs after a feeling check-in is saved
+  /// (see [_HomeScreenState._syncCheckInReminderAfterSave]).
+  final ReminderNotificationService? notificationService;
+
   const HomeScreen(
       {super.key,
       this.email,
@@ -227,7 +236,8 @@ class HomeScreen extends StatefulWidget {
       this.dailyScoreSync,
       this.billingService,
       this.migraineController,
-      this.logEntryOutbox});
+      this.logEntryOutbox,
+      this.notificationService});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -518,9 +528,22 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_loadDailyScore());
   }
 
+  /// VC 100138 — the reminder service for the check-in
+  /// re-projection; see [HomeScreen.notificationService].
+  late final ReminderNotificationService _checkInNotifs;
+
+  /// The check-in notification-sync chain (the habits pattern,
+  /// VC 100137): re-projections execute strictly in initiation
+  /// order and no caller ever awaits them. Every link catches
+  /// its own failures, so the chain never completes with an
+  /// error.
+  Future<void> _checkInNotifSyncChain = Future<void>.value();
+
   @override
   void initState() {
     super.initState();
+    _checkInNotifs =
+        widget.notificationService ?? LocalReminderNotificationService();
     _healthRepo = widget.healthRepository ??
         HealthRepository(
           hc: widget.healthConnectService ?? HealthConnectService(),
@@ -1318,6 +1341,57 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// VC 100138 — re-projects the check-in reminder after a
+  /// check-in save, mirroring the habits completion re-sync
+  /// (VC 100137): today's pending 20:00 one-shot must drop once
+  /// today is checked in, without waiting for the next Settings
+  /// load or first-run resync. Deliberately NOT awaited by the
+  /// commit: the sync is a device-state side effect whose window
+  /// sweep is dozens of plugin calls, and holding the tap flow
+  /// open for it would delay the UI for bookkeeping the user
+  /// never sees. Execution is serialized through
+  /// [_checkInNotifSyncChain].
+  ///
+  /// The checked-in labels derive from the LOCAL merged entry
+  /// view ([_mergedEntries] — pulled entries overlaid with the
+  /// outbox), NOT a fresh pull: a just-staged check-in counts
+  /// here even before its server push lands, which is exactly
+  /// the day that must drop. The derivation is the Daily
+  /// Ranking identity (mood category + the reserved tag + a
+  /// parseable ranking), attributed by [energyDayLabel] — the
+  /// same labels [deriveFeelingByDay] would produce over this
+  /// entry set for the resolved mood category.
+  ///
+  /// Failure handling (the habits rule): a
+  /// [NotificationServiceException] is logged with its visible
+  /// code and swallowed — never a reason to fail a save the
+  /// outbox already accepted. A transient failure self-heals at
+  /// the next sync.
+  void _syncCheckInReminderAfterSave() {
+    _checkInNotifSyncChain = _checkInNotifSyncChain.then((_) async {
+      try {
+        final enabled = await _settingsStore.getCheckInReminderEnabled();
+        final moodId = _feelingCategoryId;
+        final labels = <String>{
+          if (moodId != null)
+            for (final e in _mergedEntries)
+              if (e.categoryId == moodId &&
+                  chipsContainFeelingTag(e.chips) &&
+                  feelingRankingOf(e) != null)
+                energyDayLabel(e.timestamp),
+        };
+        await ReminderSync(_checkInNotifs).syncCheckInOnly(
+          checkInEnabled: enabled,
+          checkedInDayLabels: labels,
+        );
+      } on NotificationServiceException catch (e) {
+        debugPrint('CheckInReminderSync failed: $e');
+      } catch (e) {
+        debugPrint('CheckInReminderSync unexpected failure: $e');
+      }
+    });
+  }
+
   // ── Ranking commit (the check-in write, on the outbox) ────────
 
   /// One tap logs the ranking through the shipped outbox —
@@ -1348,7 +1422,13 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     final ok = await _stageAndApply(entry,
         serverKnown: false, fresh: ctx.fresh);
-    return ok ? (entry: entry, created: true) : null;
+    if (!ok) return null;
+    // VC 100138 — the check-in just saved: re-project the 8 PM
+    // reminder so today's one-shot drops (the merged view the
+    // sync derives from already includes this entry — see
+    // _stageAndApply).
+    _syncCheckInReminderAfterSave();
+    return (entry: entry, created: true);
   }
 
   /// The number tap: the single entry point of the merged flow.

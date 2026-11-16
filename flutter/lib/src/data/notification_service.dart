@@ -38,17 +38,20 @@ import 'report_ready_notification.dart' show LocalReportReadyNotifier;
 ///
 /// Flutter mapping: flutter_local_notifications `zonedSchedule` with
 /// `matchDateTimeComponents: DateTimeComponents.time` gives the same
-/// daily wall-clock recurrence for the three daily reminders, and a
-/// plain one-shot `zonedSchedule` per event counter. The plugin's
-/// boot receiver restores schedules after a reboot.
+/// daily wall-clock recurrence for the habit daily reminder, and a
+/// plain one-shot `zonedSchedule` per event counter and per
+/// projected gate-fix date (Project Focus and, since VC 100138,
+/// the check-in reminder). The plugin's boot receiver restores
+/// schedules after a reboot.
 ///
 /// Known deviation (flagged in the round report): the plugin cannot
 /// run Dart code at fire time, so the habit "only if still
-/// unchecked" gate and the check-in "only if not checked in yet" gate
-/// (both evaluated at fire time in native) cannot be re-evaluated when
-/// the notification fires. Those schedules fire daily while the toggle
-/// is on; the subtitle copy on the Notifications page says exactly
-/// what each reminder does.
+/// unchecked" gate (evaluated at fire time in native) cannot be
+/// re-evaluated when the notification fires. That schedule fires
+/// daily while the toggle is on; the subtitle copy on the
+/// Notifications page says exactly what each reminder does. The
+/// check-in "only if not checked in yet" gate is no longer part of
+/// this deviation — see the check-in gate fix below.
 ///
 /// Project Focus gate fix: the project reminder no longer fires
 /// daily unconditionally. Native `ProjectReminderWorker` evaluates
@@ -60,6 +63,21 @@ import 'report_ready_notification.dart' show LocalReportReadyNotifier;
 /// pass, and [ReminderSync] arms one one-shot per such date. A test
 /// that completes, or a day that gets checked in, drops out at the
 /// next sync; with no qualifying test nothing is armed at all.
+///
+/// Check-in gate fix (VC 100138): the check-in reminder no longer
+/// fires daily unconditionally, and it no longer fires at 04:00.
+/// Native evaluated its gate at fire time (skip when today's
+/// feeling check-in already exists); the Flutter equivalent is the
+/// same bounded one-shot projection shape —
+/// [checkInReminderFireTimes] precomputes, at sync time, the
+/// 20:00 dates inside the next [checkInReminderHorizonDays] days
+/// whose Tabs day is NOT already checked in (checked-in Tabs-day
+/// labels come from the sync pull via
+/// `SettingsProfileData.checkedInDayLabels`, attributed by
+/// `energyDayLabel`), and [ReminderSync] arms one one-shot per
+/// such date. A check-in that gets saved drops today's one-shot at
+/// the next sync — Home re-runs the projection on save (see
+/// [ReminderSync.syncCheckInOnly]).
 ///
 /// HR spike / delta alerts are NOT scheduled here: native runs them
 /// from `HrSpikeMonitorService` (service/HrSpikeMonitorService.kt), a
@@ -378,6 +396,10 @@ const int projectReminderHorizonDays = 35;
 ///   the block starts at 800000, strictly above that range's top.
 /// - User-reminder blocks (`reminder_alarm_sync.dart`):
 ///   101500–699999 — strictly below the block.
+/// - Check-in projection ids: 810000–819999 — strictly above
+///   the block.
+/// - Habit scheduled-time ids: 900000–1899999 — strictly above
+///   the block.
 /// Inside the block, distinct dates can share an id only when their
 /// epoch days differ by a multiple of 10000 (~27 years); the
 /// projection horizon and the cancellable window are both 71 days
@@ -486,6 +508,104 @@ List<DateTime> projectReminderFireTimes({
   return out;
 }
 
+/// Check-in reminder one-shot projection horizon: [ReminderSync]
+/// looks this many local days ahead (today included) when
+/// projecting check-in one-shots, and cancels this many days
+/// either side of today when sweeping stale ones (see
+/// [checkInReminderCancelIds]). The same 35-day bound as the
+/// Project Focus projection.
+const int checkInReminderHorizonDays = 35;
+
+/// Base of the projected check-in one-shot id block:
+/// `810000 + (epochDay % 10000)` → 810000–819999.
+///
+/// Disjointness (verified against every other id owner in the
+/// app, by grepping the whole lib/ tree):
+/// - Fixed ids 1003 / 1004 / 770001 / 7301 / 7303 / 7304: all lie
+///   outside 810000–819999 (770001 is the largest of them and is
+///   still below the block). 7301 is the Daily Score notifier
+///   (`daily_score_background.dart`), 7303 the migraine notifier
+///   (`migraine_notification.dart`), 7304 the report-ready
+///   notifier (`report_ready_notification.dart`).
+/// - Event-counter ids ([eventNotificationId]): 700000–799998 —
+///   the block starts at 810000, strictly above that range's top.
+/// - User-reminder blocks (`reminder_alarm_sync.dart`):
+///   101500–699999 — strictly below the block.
+/// - Project Focus projection ids: 800000–809999 — strictly
+///   below the block.
+/// - Habit scheduled-time ids: 900000–1899999 — strictly above
+///   the block.
+/// Inside the block, distinct dates can share an id only when
+/// their epoch days differ by a multiple of 10000 (~27 years);
+/// the projection horizon and the cancellable window are both
+/// 71 days wide at most, so two dates that could ever be pending
+/// at once never collide.
+const int checkInReminderIdBase = 810000;
+
+/// Span of the projected check-in one-shot id block (see
+/// [checkInReminderIdBase]).
+const int checkInReminderIdSpan = 10000;
+
+/// Plugin notification id for the check-in one-shot on the local
+/// calendar date of [date] (see [checkInReminderIdBase] for the
+/// disjointness proof).
+int checkInReminderIdForDate(DateTime date) {
+  final epochDay = DateTime.utc(date.year, date.month, date.day)
+          .millisecondsSinceEpoch ~/
+      Duration.millisecondsPerDay;
+  return checkInReminderIdBase + (epochDay % checkInReminderIdSpan);
+}
+
+/// Every projected check-in id a previous sync could have left
+/// pending around [now]: the ids for local dates from
+/// `today - [checkInReminderHorizonDays]` through
+/// `today + [checkInReminderHorizonDays]`. A sync never projects
+/// beyond today + horizon, and a one-shot projected for a past
+/// date has already fired (or was projected at most horizon days
+/// before that date), so sweeping this window reaches every
+/// stale projected id.
+Iterable<int> checkInReminderCancelIds(DateTime now) sync* {
+  for (var offset = -checkInReminderHorizonDays;
+      offset <= checkInReminderHorizonDays;
+      offset++) {
+    yield checkInReminderIdForDate(
+        DateTime(now.year, now.month, now.day + offset));
+  }
+}
+
+/// The bounded check-in projection (VC 100138): the 20:00-local
+/// fire times [ReminderSync] arms as one-shots, mirroring
+/// native's fire-time "only if not checked in yet" gate as
+/// evaluated at sync time. For each local date D from today
+/// through today + [checkInReminderHorizonDays] days, D's 20:00
+/// fire time qualifies iff it is strictly after [now] AND D's
+/// Tabs-day label is NOT in [checkedInDayLabels].
+///
+/// Attribution: [checkedInDayLabels] holds Tabs-day labels in
+/// `energyDayLabel`'s `yyyy-MM-dd` format (the Daily Ranking
+/// attribution — a check-in at 03:59 on calendar date D belongs
+/// to Tabs day D−1; at 04:00+ it belongs to D). At 20:00 on
+/// calendar date D the current Tabs day's label is D itself
+/// (20:00 is past the 04:00 reset), so D's label is compared
+/// directly — [focusLogDateKey] formats the same `yyyy-MM-dd`
+/// shape. Dates are built by calendar-day arithmetic (never
+/// 24-hour durations), so DST transitions cannot skip or repeat
+/// a date.
+List<DateTime> checkInReminderFireTimes({
+  required DateTime now,
+  required Set<String> checkedInDayLabels,
+}) {
+  final out = <DateTime>[];
+  for (var offset = 0; offset <= checkInReminderHorizonDays; offset++) {
+    final date = DateTime(now.year, now.month, now.day + offset);
+    if (checkedInDayLabels.contains(focusLogDateKey(date))) continue;
+    final fire = DateTime(date.year, date.month, date.day, 20);
+    if (!fire.isAfter(now)) continue;
+    out.add(fire);
+  }
+  return out;
+}
+
 /// VC 100137 — habit scheduled-time reminders: the Juno-ruled body
 /// copy (juno-copy-100137.md, item 1: SIGN WITH CHANGES — the
 /// proposed "It is time to check off this habit in Tabs." was
@@ -509,6 +629,8 @@ const int habitTimeReminderHorizonDays = 35;
 /// - Event-counter ids ([eventNotificationId]): 700000–799998 —
 ///   strictly below the block.
 /// - Project Focus projection ids: 800000–809999 — strictly below
+///   the block.
+/// - Check-in projection ids: 810000–819999 — strictly below
 ///   the block.
 /// - User-reminder blocks (`reminder_alarm_sync.dart`):
 ///   101500–699999 — strictly below the block.
@@ -667,6 +789,67 @@ class ReminderSync {
     }
   }
 
+  /// Cancels EVERY check-in schedule a previous sync could have
+  /// left pending: the legacy daily id ([ReminderIds.checkIn],
+  /// the retired unconditional 04:00 daily) and every projected
+  /// one-shot id in the cancellable window
+  /// ([checkInReminderCancelIds]). Runs on every [syncAll] —
+  /// before any re-arm, and on the paths that arm nothing
+  /// (toggle off, OS permission off) — and on every
+  /// [syncCheckInOnly], so a stale daily or one-shot can never
+  /// survive a sync.
+  Future<void> _cancelCheckInSchedules(DateTime n) async {
+    await service.cancel(ReminderIds.checkIn);
+    for (final id in checkInReminderCancelIds(n)) {
+      await service.cancel(id);
+    }
+  }
+
+  /// Arms the bounded check-in one-shot projection (see
+  /// [checkInReminderFireTimes]): one one-shot per projected
+  /// 20:00 fire time, with the SAME title/body/channel/
+  /// importance as the retired daily schedule.
+  Future<void> _armCheckInProjection(
+      DateTime n, Set<String> checkedInDayLabels) async {
+    for (final fire in checkInReminderFireTimes(
+        now: n, checkedInDayLabels: checkedInDayLabels)) {
+      await service.scheduleOnce(
+        id: checkInReminderIdForDate(fire),
+        title: 'how are you feeling?',
+        body: 'one tap is enough. whenever you\'re ready.',
+        channelId: 'check_in_reminder',
+        channelName: 'Check in reminders',
+        when: fire,
+        highImportance: true,
+      );
+    }
+  }
+
+  /// Re-projects ONLY the check-in reminder (VC 100138) — the
+  /// check-in save path's re-sync, mirroring the habits
+  /// completion re-sync ([HabitTimeReminderSync.syncHabits]):
+  /// after a feeling check-in is saved, today's pending 20:00
+  /// one-shot must drop without waiting for the next full
+  /// [syncAll]. The legacy daily id and the whole projected
+  /// window are cancelled first, on EVERY path (toggle off and
+  /// OS-permission off included); then, only when the toggle is
+  /// on and notifications are enabled, the projection is
+  /// re-armed from [checkedInDayLabels] — which the caller
+  /// derives from its LOCAL merged entry view, so a just-saved
+  /// check-in counts even before its server push lands.
+  Future<void> syncCheckInOnly({
+    required bool checkInEnabled,
+    required Set<String> checkedInDayLabels,
+    DateTime? now,
+  }) async {
+    final n = now ?? DateTime.now();
+    await service.initialize();
+    final enabled = await service.areNotificationsEnabled();
+    await _cancelCheckInSchedules(n);
+    if (!enabled || !checkInEnabled) return;
+    await _armCheckInProjection(n, checkedInDayLabels);
+  }
+
   Future<void> syncAll({
     required bool habitEnabled,
     required bool projectEnabled,
@@ -674,6 +857,7 @@ class ReminderSync {
     required bool eventEnabled,
     required List<EventReminderRequest> events,
     List<FocusTest> focusTests = const [],
+    Set<String> checkedInDayLabels = const {},
     DateTime? now,
   }) async {
     final n = now ?? DateTime.now();
@@ -684,7 +868,7 @@ class ReminderSync {
       // stale schedule survives from an earlier grant.
       await service.cancel(ReminderIds.habit);
       await _cancelProjectSchedules(n);
-      await service.cancel(ReminderIds.checkIn);
+      await _cancelCheckInSchedules(n);
       for (final e in events) {
         await service.cancel(eventNotificationId(e.counterId));
       }
@@ -727,19 +911,17 @@ class ReminderSync {
         );
       }
     }
+    // Check-in: the legacy daily schedule is ALWAYS cancelled
+    // first (with the whole projected window), then — only when
+    // the toggle is on — the bounded one-shot projection is
+    // armed: one one-shot per 20:00 date whose Tabs day is not
+    // already checked in (see [checkInReminderFireTimes]). Copy
+    // and channel are byte-identical to the retired daily
+    // schedule; only the fire time (20:00, not 04:00) and the
+    // gate changed.
+    await _cancelCheckInSchedules(n);
     if (checkInEnabled) {
-      await service.scheduleDaily(
-        id: ReminderIds.checkIn,
-        title: 'how are you feeling?',
-        body: 'one tap is enough. whenever you\'re ready.',
-        channelId: 'check_in_reminder',
-        channelName: 'Check in reminders',
-        hour: 4,
-        minute: 0,
-        highImportance: true,
-      );
-    } else {
-      await service.cancel(ReminderIds.checkIn);
+      await _armCheckInProjection(n, checkedInDayLabels);
     }
     for (final e in events) {
       final id = eventNotificationId(e.counterId);

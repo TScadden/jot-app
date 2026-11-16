@@ -42,7 +42,12 @@ class FirstRunReminderResync {
   /// devices must re-run the resync once so the stale daily alarm
   /// is cancelled (and any qualifying one-shots armed) without the
   /// user opening Settings.
-  static const String doneKey = 'first_run_reminder_resync_v2';
+  /// v3: the check-in reminder moved from an unconditional
+  /// 4 AM daily schedule to a gated 8 PM one-shot projection —
+  /// upgraded devices must re-run the resync once so the stale
+  /// daily alarm is cancelled (and the 8 PM projection armed)
+  /// without the user opening Settings.
+  static const String doneKey = 'first_run_reminder_resync_v3';
   static const String doneValue = 'done';
 
   final SecureStore _store;
@@ -83,10 +88,12 @@ class FirstRunReminderResync {
 /// - `ReminderSync.syncAll` inputs: the profile's habit / project /
 ///   event toggles + event counters (server-synced), the profile's
 ///   decoded focus tests (the Project Focus reminder gate, via
-///   `SettingsProfileData.focusTests`) and the LOCAL check-in toggle
-///   from [SettingsStore] — after a migration import that toggle is
-///   the imported value, which is why the import action runs this
-///   too.
+///   `SettingsProfileData.focusTests`), the pull's checked-in
+///   Tabs-day labels (the check-in reminder gate, via
+///   `SettingsProfileData.checkedInDayLabels`) and the LOCAL
+///   check-in toggle from [SettingsStore] — after a migration
+///   import that toggle is the imported value, which is why the
+///   import action runs this too.
 /// - `reconcileReminderAlarms` inputs: the profile's `reminders`
 ///   blob, parsed with the Reminders screen's own parser.
 ///
@@ -111,6 +118,7 @@ Future<void> performReminderResync({
     checkInEnabled: checkInEnabled,
     eventEnabled: data.eventReminderEnabled,
     focusTests: data.focusTests,
+    checkedInDayLabels: data.checkedInDayLabels,
     events: data.eventCounters
         .map(EventCounterItem.fromMap)
         .map((c) => EventReminderRequest(
