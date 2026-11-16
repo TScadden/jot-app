@@ -7,6 +7,39 @@ import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 import 'settings_r29_test.dart' as r29;
 import 'test_helpers.dart';
 
+/// Records scheduleOnce copy/channel/importance per id (the base
+/// fake records only the fire time) — the project-gate test's
+/// RecordingFake pattern, for the check-in projection's pins.
+class RecordingReminderFake extends FakeReminderNotificationService {
+  final Map<int, ({String title, String body, String channelId, bool high})>
+      onceDetails = {};
+
+  RecordingReminderFake({super.enabled});
+
+  @override
+  Future<void> scheduleOnce({
+    required int id,
+    required String title,
+    required String body,
+    required String channelId,
+    required String channelName,
+    required DateTime when,
+    required bool highImportance,
+  }) async {
+    onceDetails[id] =
+        (title: title, body: body, channelId: channelId, high: highImportance);
+    await super.scheduleOnce(
+      id: id,
+      title: title,
+      body: body,
+      channelId: channelId,
+      channelName: channelName,
+      when: when,
+      highImportance: highImportance,
+    );
+  }
+}
+
 /// Round 30 Step 1 — notification scheduling: pure scheduling math,
 /// the ReminderSync arm/cancel matrix, and the Settings permission
 /// gate (disclosure dialog BEFORE the system request; the toggle
@@ -58,12 +91,20 @@ void main() {
       expect(fake.daily[ReminderIds.habit], '19:0');
       expect(fake.daily.containsKey(ReminderIds.project), isFalse);
       expect(fake.cancelled, contains(ReminderIds.project));
-      expect(fake.daily[ReminderIds.checkIn], '4:0');
+      // VC 100138: check-in is no longer a daily — it is the
+      // 20:00 one-shot projection. The legacy daily id is
+      // cancelled on every sync and never re-armed as a daily.
+      expect(fake.daily.containsKey(ReminderIds.checkIn), isFalse);
+      expect(fake.cancelled, contains(ReminderIds.checkIn));
+      expect(
+          fake.once[checkInReminderIdForDate(DateTime(2026, 10, 12))],
+          DateTime(2026, 10, 12, 20));
     });
 
-    test('check-in reminder uses the Juno restyle strings, '
-        'channel and 4 AM fire time untouched', () async {
-      final fake = FakeReminderNotificationService();
+    test('check-in reminder uses the Juno restyle strings and '
+        'channel, as a 20:00 one-shot projection (VC 100138)',
+        () async {
+      final fake = RecordingReminderFake();
       await ReminderSync(fake).syncAll(
         habitEnabled: false,
         projectEnabled: false,
@@ -72,11 +113,14 @@ void main() {
         events: const [],
         now: DateTime(2026, 10, 12, 12),
       );
-      final details = fake.dailyDetails[ReminderIds.checkIn];
+      final todayId = checkInReminderIdForDate(DateTime(2026, 10, 12));
+      final details = fake.onceDetails[todayId];
       expect(details?.title, 'how are you feeling?');
       expect(details?.body, 'one tap is enough. whenever you\'re ready.');
       expect(details?.channelId, 'check_in_reminder');
-      expect(fake.daily[ReminderIds.checkIn], '4:0');
+      expect(details?.high, isTrue);
+      expect(fake.once[todayId], DateTime(2026, 10, 12, 20));
+      expect(fake.daily.containsKey(ReminderIds.checkIn), isFalse);
     });
 
     test('event counters: only future, active, count-down counters arm',
@@ -177,15 +221,21 @@ void main() {
 
     test('permission off cancels everything', () async {
       final fake = FakeReminderNotificationService(enabled: false);
+      final now = DateTime(2026, 10, 12, 12);
       await ReminderSync(fake).syncAll(
         habitEnabled: true,
         projectEnabled: true,
         checkInEnabled: true,
         eventEnabled: true,
         events: const [],
+        now: now,
       );
       expect(fake.daily, isEmpty);
+      expect(fake.once, isEmpty);
       expect(fake.cancelled, containsAll([1003, 1004, 770001]));
+      // VC 100138: the whole projected check-in window is swept
+      // on the permission-off path too.
+      expect(fake.cancelled, containsAll(checkInReminderCancelIds(now)));
     });
   });
 

@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:tabs_lab/src/data/correlation_engine.dart'
+    show deriveFeelingByDay;
 import 'package:tabs_lab/src/data/focus_test.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
@@ -50,6 +52,17 @@ class SettingsProfileData {
   /// shared parse path ([focusTests]) so Settings and the
   /// first-run resync can never drift on how a test is read.
   final String focusStateRaw;
+
+  /// The Tabs-day labels (`yyyy-MM-dd`, `energyDayLabel`
+  /// attribution) that already carry a feeling check-in — the
+  /// check-in reminder gate's input (VC 100138). Derived in
+  /// [SettingsProfileData.fromPull] from the pull's top-level
+  /// `entries` + `categories` through the ONE shared derivation
+  /// ([deriveFeelingByDay], the correlation engine's Daily
+  /// Ranking derivation), so Settings and the first-run resync
+  /// can never drift on what "checked in" means. Empty when the
+  /// pull carried no check-in entries (or no entries at all).
+  final Set<String> checkedInDayLabels;
   final List<QuickLogInsight> insights;
 
   /// Round 65 — knowledge documents from the pull's top-level
@@ -84,6 +97,7 @@ class SettingsProfileData {
     this.medicationsRaw = '',
     this.conditionsRaw = '',
     this.focusStateRaw = '',
+    this.checkedInDayLabels = const {},
     this.insights = const [],
     this.documents = const [],
   });
@@ -141,6 +155,7 @@ class SettingsProfileData {
     String? medicationsRaw,
     String? conditionsRaw,
     String? focusStateRaw,
+    Set<String>? checkedInDayLabels,
     List<KnowledgeDocumentMeta>? documents,
   }) {
     return SettingsProfileData(
@@ -170,6 +185,7 @@ class SettingsProfileData {
       medicationsRaw: medicationsRaw ?? this.medicationsRaw,
       conditionsRaw: conditionsRaw ?? this.conditionsRaw,
       focusStateRaw: focusStateRaw ?? this.focusStateRaw,
+      checkedInDayLabels: checkedInDayLabels ?? this.checkedInDayLabels,
       documents: documents ?? this.documents,
       insights: insights,
     );
@@ -182,6 +198,13 @@ class SettingsProfileData {
     final profile = body['profile'];
     final p = profile is Map<String, dynamic> ? profile : const <String, dynamic>{};
     final isAdmin = body['isAdmin'] == true;
+    // VC 100138 — the check-in reminder gate's checked-in labels,
+    // from the pull's top-level `entries` + `categories` (the
+    // same rows Home's check-in state reads). Malformed rows are
+    // skipped, mirroring TabsBackend.fetchLogEntryDtos /
+    // fetchLogCategories; a pull with no usable rows yields an
+    // empty set, never a throw.
+    final checkedInDayLabels = _checkedInDayLabelsFromPull(body);
     final insightsRaw = body['insights'];
     final insights = <QuickLogInsight>[];
     if (insightsRaw is List) {
@@ -219,9 +242,45 @@ class SettingsProfileData {
       medicationsRaw: _asRaw(p['medications']),
       conditionsRaw: _asRaw(p['conditions']),
       focusStateRaw: _asRaw(p['focusState']),
+      checkedInDayLabels: checkedInDayLabels,
       documents: KnowledgeDocumentMeta.listFromPull(body),
       insights: insights,
     );
+  }
+
+  /// Parses the pull's `entries` / `categories` and derives the
+  /// checked-in Tabs-day label set via [deriveFeelingByDay] (its
+  /// keys are exactly the `energyDayLabel` labels of the days
+  /// carrying a Daily Ranking check-in).
+  static Set<String> _checkedInDayLabelsFromPull(
+      Map<String, dynamic> body) {
+    final entriesRaw = body['entries'];
+    final categoriesRaw = body['categories'];
+    if (entriesRaw is! List || entriesRaw.isEmpty) return const {};
+    final entries = <QuickLogEntry>[];
+    for (final e in entriesRaw) {
+      if (e is Map<String, dynamic>) {
+        try {
+          entries.add(QuickLogEntry.fromJson(e));
+        } catch (_) {
+          // Skip malformed rows — never fail the whole list.
+        }
+      }
+    }
+    if (entries.isEmpty) return const {};
+    final categories = <QuickLogCategory>[];
+    if (categoriesRaw is List) {
+      for (final c in categoriesRaw) {
+        if (c is Map<String, dynamic>) {
+          try {
+            categories.add(QuickLogCategory.fromJson(c));
+          } catch (_) {
+            // Skip malformed rows — never fail the whole list.
+          }
+        }
+      }
+    }
+    return deriveFeelingByDay(entries, categories).keys.toSet();
   }
 
   static String _asString(dynamic v) => v == null ? '' : '$v';

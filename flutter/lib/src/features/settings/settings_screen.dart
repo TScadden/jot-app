@@ -739,6 +739,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         checkInEnabled: _checkInEnabled,
         eventEnabled: _data.eventReminderEnabled,
         focusTests: _data.focusTests,
+        checkedInDayLabels: _data.checkedInDayLabels,
         events: _counters
             .map((c) => EventReminderRequest(
                   counterId: c.id,
@@ -796,7 +797,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 fontWeight: FontWeight.bold)),
         content: Text(
           checkIn
-              ? 'Tabs needs permission to send notifications before it can remind you. The reminder fires at 4:00 AM, only on mornings you have not checked in yet.'
+              ? 'Tabs needs permission to send notifications before it can remind you. The reminder fires at 8:00 PM, only on days you have not checked in yet.'
               : 'Tabs needs permission to send notifications before it can remind you. Each reminder fires at the time shown for its toggle, only while that toggle is on.',
           style: const TextStyle(color: NotelColors.textPrimary),
         ),
@@ -5838,7 +5839,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const SizedBox(height: 20),
         _toggleRow(
           'Remind me to log how I feel',
-          'Daily at 4:00 AM, only if you have not checked in yet.',
+          'Daily at 8:00 PM, only if you have not checked in yet.',
           _checkInEnabled,
           (v) async {
             if (v) {
