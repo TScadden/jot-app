@@ -32,8 +32,8 @@ import 'package:url_launcher/url_launcher.dart';
 /// On success the session (token + refresh token + email) is written to
 /// secure storage and [onLoginSuccess] fires with the account email.
 /// On failure an error line appears under the fields:
-/// - nonexistent account (HTTP 404): "That account doesn't exist."
-/// - wrong password (HTTP 401): "Wrong password or email."
+/// - credential failure (HTTP 401, unknown email or wrong password —
+///   indistinguishable by design): "Email or password is incorrect."
 /// - network/server problems: a generic message.
 /// The password is never logged or stored — it lives in memory only for
 /// the request duration.
@@ -622,9 +622,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
             ),
           ),
-          // Inline auth error (Round 5): wrong password / nonexistent
-          // account / network. Cleared on mode switch and on each
-          // new attempt.
+          // Inline auth error (Round 5): credential failure / network.
+          // Cleared on mode switch and on each new attempt.
           if (_errorMessage != null) ...[
             const SizedBox(height: 10),
             Text(

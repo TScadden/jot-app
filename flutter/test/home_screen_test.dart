@@ -214,13 +214,15 @@ void main() {
     await _attemptLogin(
         tester, email: 'founder@tabs.app', password: 'wrong-password');
 
-    expect(find.text('Wrong password or email.'), findsOneWidget);
+    expect(find.text('Email or password is incorrect.'), findsOneWidget);
     expect(find.text('Welcome Back'), findsOneWidget);
     expect(find.byType(HomeScreen), findsNothing);
     expect(store.token, isNull);
   });
 
-  testWidgets('nonexistent account shows its error and stays on login',
+  testWidgets(
+      'unknown email (legacy 404) shows the SAME generic error and stays '
+      'on login — no account-existence distinction',
       (tester) async {
     final store = FakeSessionStore();
     await _pumpAppFlow(
@@ -239,7 +241,7 @@ void main() {
     await tester.pump();
     await _attemptLogin(tester, email: 'ghost@tabs.app', password: 'whatever');
 
-    expect(find.text("That account doesn't exist."), findsOneWidget);
+    expect(find.text('Email or password is incorrect.'), findsOneWidget);
     expect(find.text('Welcome Back'), findsOneWidget);
     expect(find.byType(HomeScreen), findsNothing);
     expect(store.token, isNull);
