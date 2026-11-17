@@ -399,6 +399,11 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
         pickupCheckIdProvider: () => _service.currentPickupCheckId,
         generationInvalidatedProvider: () =>
             _service.currentGenerationInvalidated,
+        // Pickup reconciliation: a narrative the service's
+        // one-shot probe already collected for a held/restored
+        // decision (consuming the server's held row) is handed
+        // to the leg through this seam instead of re-fetched.
+        prefetchedNarrativeProvider: _service.takePrefetchedNarrative,
       );
 
   ClinicianReportPipeline _clinicianPipeline() =>
