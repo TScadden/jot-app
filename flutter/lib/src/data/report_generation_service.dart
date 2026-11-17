@@ -80,6 +80,9 @@ class ReportGenerationService extends ChangeNotifier {
     /// [mintReportGenerationId] — secure random, null on
     /// failure, never a weak fallback).
     String? Function()? reportGenerationIdMint,
+
+    /// Pickup-reconciliation test seam: see [pickupCall].
+    this.pickupCall,
   })  : _journal = journal ?? ReportGenerationJournal(),
         _clock = clock ?? DateTime.now,
         _artifactExists =
@@ -103,6 +106,16 @@ class ReportGenerationService extends ChangeNotifier {
   /// handler.
   ReportReadyNotifier? notifier;
 
+  /// Pickup-reconciliation seam: the one-shot pickup fetch
+  /// [reconcileDecisionPickup] probes with. Production leaves
+  /// this null and the probe defaults to the bound backend's
+  /// [TabsBackend.fetchReportPickup] (see [useBackend]); with
+  /// neither a seam nor a bound backend there is nothing to
+  /// probe with and reconciliation is inert — it never builds a
+  /// backend of its own.
+  final Future<ReportPickupOutcome> Function(String generationId)?
+      pickupCall;
+
   final ReportGenerationJournal _journal;
   final DateTime Function() _clock;
   final Future<bool> Function(String path) _artifactExists;
@@ -120,8 +133,15 @@ class ReportGenerationService extends ChangeNotifier {
   /// Binds the app backend for the cancel-invalidation DELETE
   /// (the page calls this with its own backend, mirroring
   /// [useNotifier]).
+  ///
+  /// Pickup reconciliation: binding the backend is also a
+  /// reconciliation trigger — on the relaunch path the journal
+  /// restore has settled at construction and the page binds the
+  /// backend at initState, before a restored decision renders,
+  /// so a held decision's server row is probed here first.
   void useBackend(TabsBackend backend) {
     _backend = backend;
+    unawaited(reconcileDecisionPickup());
   }
 
   ReportStage? _stage;
@@ -213,6 +233,38 @@ class ReportGenerationService extends ChangeNotifier {
   /// LATER than the moment it was produced.
   DateTime? _heldDecisionAt;
   bool _heldDecisionIsEarlier = false;
+
+  // ── Pickup reconciliation (post-VC 100131 fix) ───────────────
+  //
+  // The defect this closes: pickup was checked ONLY inside the
+  // AI leg, so once a leg exhausted and its outcome was HELD as
+  // a decision (same-session) or restored as one (Case 2), no
+  // code path ever checked pickup again for that identity — a
+  // report the server had finished and was holding (24 h) sat
+  // uncollected behind a failure surface. [reconcileDecisionPickup]
+  // is the missing post-leg check; these fields are its state.
+
+  /// The narrative a reconciliation probe collected (Ready), keyed
+  /// by its wire identity and held for the delivery run's leg to
+  /// consume through the pipeline's prefetched-narrative seam —
+  /// the probe CONSUMED the server's held row (fetch-once-then-
+  /// delete), so the narrative is handed over, never re-fetched.
+  /// Consume-on-read: [takePrefetchedNarrative] returns it once.
+  String? _prefetchedGenerationId;
+  String? _prefetchedResult;
+  DateTime? _prefetchedCompletedAt;
+
+  /// The once-per-decision guard: the journal `generationId` of
+  /// the held/restored decision record a probe has already been
+  /// issued for. Triggers (resume / page registration / backend
+  /// bind) funnel into [reconcileDecisionPickup] repeatedly; the
+  /// guard makes every repeat inert until the decision CHANGES
+  /// (a new decision record carries a new journal generationId).
+  String? _reconcileAttemptedForKey;
+
+  /// A probe (or the delivery run it auto-drives) is in flight:
+  /// concurrent triggers return instead of double-probing.
+  bool _reconcileInFlight = false;
 
   // ── Public state (the page is a view of this) ─────────────────
 
@@ -548,6 +600,196 @@ class ReportGenerationService extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Pickup reconciliation ─────────────────────────────────────
+
+  /// Consume-on-read hand-off for the pipeline's prefetched-
+  /// narrative seam (the page wires the pipeline's
+  /// `prefetchedNarrativeProvider` to this method): returns the
+  /// narrative a reconciliation probe stashed for [generationId]
+  /// exactly once, or null when nothing is stashed for it.
+  ({String result, DateTime? completedAt})? takePrefetchedNarrative(
+      String generationId) {
+    final result = _prefetchedResult;
+    if (result == null || _prefetchedGenerationId != generationId) {
+      return null;
+    }
+    final completedAt = _prefetchedCompletedAt;
+    _prefetchedGenerationId = null;
+    _prefetchedResult = null;
+    _prefetchedCompletedAt = null;
+    return (result: result, completedAt: completedAt);
+  }
+
+  void _stashPrefetchedNarrative(String generationId, PickupReady ready) {
+    _prefetchedGenerationId = generationId;
+    _prefetchedResult = ready.result;
+    _prefetchedCompletedAt = ready.completedAt;
+  }
+
+  /// THE post-leg pickup check (the VC 100131 defect: pickup was
+  /// checked only inside the AI leg, so a held or restored
+  /// DECISION — which starts no run — was never checked again,
+  /// even though the server might be holding its finished
+  /// narrative). A pickup-ONLY probe: a single fetch through the
+  /// injected seam or the bound backend's
+  /// [TabsBackend.fetchReportPickup] — never a poll (a Running
+  /// answer hands off to a real run's polling leg, below).
+  ///
+  /// Guards: no run in flight (a run's leg owns pickup); a held
+  /// (same-session [ReportAiDecision]) or restored (Case 2)
+  /// decision with a wire identity must be present; a tombstoned
+  /// identity is NEVER probed; at most once per decision record
+  /// (keyed on the journal entry's generationId) until the
+  /// decision changes; with no seam and no bound backend there is
+  /// nothing to probe with and the call is inert WITHOUT
+  /// consuming the once-guard (a later backend bind can still
+  /// probe). A throwing probe is a transport failure: no change.
+  ///
+  /// Outcomes:
+  /// - Ready → the narrative is stashed in the prefetched seam,
+  ///   then delivered through the EXISTING run paths: a held
+  ///   decision auto-drives [resumeAiDecision] (its leg head
+  ///   consumes the stash and renders with the held snapshot —
+  ///   no POST, no new AI generation); a restored decision is
+  ///   converted to [_interruptedEntry] so the page's existing
+  ///   auto-restore starts the paired run (carried identity +
+  ///   checkPickupFirst; the leg consumes the stash after
+  ///   re-collect).
+  /// - Running → the same handoff without a stash: the delivery
+  ///   run's own pickup polling ([ReportGenerationPipeline]'s
+  ///   `_resolvePickup`) polls the real endpoint; a same-session
+  ///   handoff auto-drives [resumeAiDecision] the same way.
+  /// - Expired → the expired terminal state, mirroring [_finish]'s
+  ///   expired handling (journaled expired, [_expiredEntry] set,
+  ///   the decision/restored surface cleared).
+  /// - Failed / NotFound / Unreachable → NOTHING changes: the
+  ///   failure decision presents exactly as it does today.
+  Future<void> reconcileDecisionPickup() async {
+    if (_reconcileInFlight) return;
+    _reconcileInFlight = true;
+    try {
+      // A trigger can land before the construction-time restore
+      // has settled (a presenter registering on a fresh process):
+      // wait for it, then judge the settled state.
+      if (_pendingFailure is! ReportAiDecision &&
+          _restoredDecisionEntry == null &&
+          _restoreFuture != null) {
+        try {
+          await _restoreFuture;
+        } catch (_) {
+          // Restore errors are already swallowed inside _restore;
+          // reconciliation simply finds whatever state settled.
+        }
+      }
+      // No run in flight: a running generation's leg owns pickup.
+      if (_stage != null) return;
+      final bool restored;
+      final ReportJournalEntry? decisionEntry;
+      final String? identity;
+      if (_pendingFailure is ReportAiDecision) {
+        restored = false;
+        decisionEntry = _currentEntry;
+        identity = decisionEntry?.reportGenerationId ??
+            _currentReportGenerationId;
+      } else if (_restoredDecisionEntry != null) {
+        restored = true;
+        decisionEntry = _restoredDecisionEntry;
+        identity = decisionEntry?.reportGenerationId;
+      } else {
+        return;
+      }
+      if (identity == null || identity.isEmpty) return;
+      // Juno R8-2: never probe a cancelled (tombstoned) identity.
+      if ((decisionEntry?.generationInvalidated ?? false) ||
+          currentGenerationInvalidated) {
+        return;
+      }
+      final pickup = pickupCall ?? _backend?.fetchReportPickup;
+      if (pickup == null) return;
+      final key = decisionEntry?.generationId ?? identity;
+      if (_reconcileAttemptedForKey == key) return;
+      _reconcileAttemptedForKey = key;
+      final ReportPickupOutcome outcome;
+      try {
+        outcome = await pickup(identity);
+      } catch (_) {
+        // A throwing seam is PickupUnreachable by contract: the
+        // decision surface stays exactly as it is.
+        return;
+      }
+      // The probe consumed a moment: only land state rewrites on
+      // the SAME decision record that was probed.
+      final stillSameDecision = restored
+          ? _restoredDecisionEntry?.generationId == key
+          : _pendingFailure is ReportAiDecision &&
+              (_currentEntry?.generationId ?? identity) == key;
+      switch (outcome) {
+        case PickupReady ready:
+          // Stash FIRST, keyed by identity: even if a delivery
+          // run is already in flight (a manual retry raced the
+          // probe), its leg can still consume the stash at its
+          // next pickup check point — the server row is gone, so
+          // this stash is the narrative's only copy.
+          _stashPrefetchedNarrative(identity, ready);
+          if (!stillSameDecision) return;
+          if (restored) {
+            _convertRestoredDecisionToInterrupted(decisionEntry!);
+          } else if (_stage == null) {
+            await resumeAiDecision(retryAi: true);
+          }
+        case PickupRunning():
+          if (!stillSameDecision) return;
+          if (restored) {
+            _convertRestoredDecisionToInterrupted(decisionEntry!);
+          } else if (_stage == null) {
+            await resumeAiDecision(retryAi: true);
+          }
+        case PickupExpired():
+          if (!stillSameDecision) return;
+          _applyReconciledExpired(decisionEntry);
+        case PickupFailed() || PickupNotFound() || PickupUnreachable():
+          // Change NOTHING (brief-compliant): the failure
+          // decision presents exactly as today.
+          return;
+      }
+    } finally {
+      _reconcileInFlight = false;
+    }
+  }
+
+  /// Restored Ready/Running handoff: the Case 2 decision entry
+  /// becomes the interrupted entry, so the page's existing
+  /// auto-restore (R5-9) starts the paired run for it — carried
+  /// identity + checkPickupFirst, exactly as an interrupted
+  /// auto-rerun starts. The decision surface clears with it.
+  void _convertRestoredDecisionToInterrupted(ReportJournalEntry entry) {
+    _restoredDecisionEntry = null;
+    _interruptedEntry = entry;
+    notifyListeners();
+  }
+
+  /// Expired discovered by reconciliation: mirrors [_finish]'s
+  /// expired handling (journal the expired outcome, hold
+  /// [_expiredEntry], clear the decision/restored surface), with
+  /// the decision's recorded attempts preserved on the expired
+  /// record.
+  void _applyReconciledExpired(ReportJournalEntry? decisionEntry) {
+    if (_currentEntry == null && decisionEntry != null) {
+      _currentEntry = decisionEntry;
+    }
+    _journalFinishExpired(ReportGenerationExpired(
+      aiAttempts:
+          decisionEntry?.attempts ?? _currentEntry?.attempts ?? const [],
+    ));
+    _expiredEntry = _currentEntry ?? decisionEntry;
+    _restoredDecisionEntry = null;
+    _pendingFailure = null;
+    _failureRevealPending = false;
+    _heldDecisionAt = null;
+    _heldDecisionIsEarlier = false;
+    notifyListeners();
+  }
+
   // ── Presenter registration ────────────────────────────────────
 
   /// The Progress Reports page registers while mounted: it is the
@@ -565,6 +807,10 @@ class ReportGenerationService extends ChangeNotifier {
     // F5: a decision already held when a page (re)registers is
     // being rendered later than it was produced.
     if (_pendingFailure is ReportAiDecision) _heldDecisionIsEarlier = true;
+    // Pickup reconciliation trigger: entering Progress Reports
+    // is a post-leg pickup check point for a held/restored
+    // decision (guarded inside; repeats are inert).
+    unawaited(reconcileDecisionPickup());
   }
 
   void unregisterPagePresenter(ReportCompletionPresenter presenter) {
@@ -1031,6 +1277,10 @@ class ReportGenerationService extends ChangeNotifier {
       // With the page mounted, its inline rendering of
       // [pendingFailure] IS the surface.
     }
+    // Pickup reconciliation trigger: returning to the foreground
+    // is a post-leg pickup check point for a held/restored
+    // decision (guarded inside; repeats are inert).
+    unawaited(reconcileDecisionPickup());
   }
 
   /// The report-ready notification was tapped: the platform has
@@ -1095,5 +1345,10 @@ class ReportGenerationService extends ChangeNotifier {
     _autoRestoreAttempted = false;
     _heldDecisionAt = null;
     _heldDecisionIsEarlier = false;
+    _prefetchedGenerationId = null;
+    _prefetchedResult = null;
+    _prefetchedCompletedAt = null;
+    _reconcileAttemptedForKey = null;
+    _reconcileInFlight = false;
   }
 }

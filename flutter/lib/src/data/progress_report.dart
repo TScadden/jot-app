@@ -2157,6 +2157,22 @@ class ReportGenerationPipeline {
   /// re-POSTs a cancelled identity).
   final bool Function()? generationInvalidatedProvider;
 
+  /// Report pickup reconciliation (post-VC 100131 fix): a
+  /// narrative the generation SERVICE already collected through
+  /// its one-shot reconciliation probe
+  /// (ReportGenerationService.reconcileDecisionPickup), handed to
+  /// the leg instead of re-fetched — a probe pickup CONSUMES the
+  /// server's held row (fetch-once-then-delete), so the narrative
+  /// can never be fetched twice. Given the leg's effective pickup
+  /// identity, returns the stashed (result, completedAt) ONCE
+  /// (consume-on-read) or null when nothing is stashed for that
+  /// identity. Consulted in the pickup phase BEFORE the network
+  /// pickup, under the same tombstone guard; a hit is handled
+  /// exactly as a [PickupReady] outcome. The page wires this to
+  /// the service; null in unit tests that drive pickup directly.
+  final ({String result, DateTime? completedAt})? Function(
+      String generationId)? prefetchedNarrativeProvider;
+
   /// Pickup poll cadence while the server answers `running`
   /// (wire contract: every 5 s).
   final Duration pickupPollInterval;
@@ -2185,6 +2201,7 @@ class ReportGenerationPipeline {
     this.checkPickupFirstProvider,
     this.pickupCheckIdProvider,
     this.generationInvalidatedProvider,
+    this.prefetchedNarrativeProvider,
     Duration? pickupPollInterval,
     Duration? pickupPollCap,
   })  : delay = delay ?? ((d) => Future.delayed(d)),
@@ -2575,6 +2592,11 @@ class ReportGenerationPipeline {
   /// (Juno R8-1); Unreachable → POST dispatch (pickup is
   /// best-effort recovery, never a gate). NO pickup is ever
   /// attempted while the generation's cancel tombstone is set.
+  /// Before each network pickup the leg first asks
+  /// [prefetchedNarrativeProvider] for the same identity: a hit
+  /// (a narrative the service's reconciliation probe already
+  /// collected, consuming the held row) is handled exactly as
+  /// [PickupReady] and the network pickup is skipped entirely.
   ///
   /// Vera Stage 2 addenda: a duplicate/waiter POST can answer
   /// 202 {status:'running'} (the server caps its waiter at 55 s)
@@ -2657,6 +2679,22 @@ class ReportGenerationPipeline {
       }
     }
 
+    /// Reconciliation seam: a narrative the service's one-shot
+    /// probe already collected for THIS identity (consuming the
+    /// server's held row), handled exactly as [PickupReady] —
+    /// never re-fetched. Returns null when nothing is stashed,
+    /// in which case the caller does the network pickup as
+    /// before. The tombstone guard applies here exactly as at
+    /// every other pickup call site.
+    Future<_AiLegResult?> handlePrefetched() async {
+      if (effectivePickupId == null || tombstoned()) return null;
+      final prefetched =
+          prefetchedNarrativeProvider?.call(effectivePickupId);
+      if (prefetched == null) return null;
+      return handlePickup(PickupReady(prefetched.result,
+          completedAt: prefetched.completedAt));
+    }
+
     var pickupBeforeDispatch = checkPickupFirst;
     while (true) {
       if (isCancelled()) {
@@ -2666,6 +2704,11 @@ class ReportGenerationPipeline {
       if (pickupBeforeDispatch) {
         pickupBeforeDispatch = false;
         if (effectivePickupId != null && !tombstoned()) {
+          // Prefetched seam FIRST: a service-probe narrative is
+          // already consumed server-side — re-fetching it would
+          // answer NotFound and burn a POST.
+          final prefetchedHandled = await handlePrefetched();
+          if (prefetchedHandled != null) return prefetchedHandled;
           final outcome =
               await _resolvePickup(pickup, effectivePickupId, isCancelled);
           if (outcome == null) {
@@ -2741,6 +2784,8 @@ class ReportGenerationPipeline {
       if (res.statusCode == 202 && res.body?['status'] == 'running') {
         attempt--;
         if (effectivePickupId != null && !tombstoned()) {
+          final prefetchedHandled = await handlePrefetched();
+          if (prefetchedHandled != null) return prefetchedHandled;
           final outcome =
               await _resolvePickup(pickup, effectivePickupId, isCancelled);
           if (outcome == null) {
