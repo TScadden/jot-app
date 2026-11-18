@@ -1443,15 +1443,33 @@ class TabsBackend {
   /// the streak store's anti-fabrication rule turns on that
   /// distinction (a successful pull with no streak fields is a
   /// confirmed-empty record, not a failure).
-  Future<({bool succeeded, int? current, int? best, String? stateJson})>
-      fetchStreakRecord() async {
+  Future<
+      ({
+        bool succeeded,
+        int? current,
+        int? best,
+        String? stateJson,
+        int? purchasedFreezes
+      })> fetchStreakRecord() async {
     final body = await fetchSyncPull();
     if (body == null) {
-      return (succeeded: false, current: null, best: null, stateJson: null);
+      return (
+        succeeded: false,
+        current: null,
+        best: null,
+        stateJson: null,
+        purchasedFreezes: null
+      );
     }
     final profile = body['profile'];
     if (profile is! Map<String, dynamic>) {
-      return (succeeded: true, current: null, best: null, stateJson: null);
+      return (
+        succeeded: true,
+        current: null,
+        best: null,
+        stateJson: null,
+        purchasedFreezes: null
+      );
     }
     final rawState = profile['streakState'];
     return (
@@ -1459,17 +1477,32 @@ class TabsBackend {
       current: _asInt(profile['currentStreak']),
       best: _asInt(profile['bestStreak']),
       stateJson: rawState is String ? rawState : null,
+      // The server purchased-freeze column (streak upgrade A2).
+      // The server contract names the pull field
+      // `purchased_freezes`; the camelCase twin is accepted so
+      // either serialization of the profile row parses.
+      purchasedFreezes: _asInt(
+          profile['purchased_freezes'] ?? profile['purchasedFreezes']),
     );
   }
 
   /// Push one settled streak record to the profile (VC 100115):
   /// counters + day-level blob in a single partial profile push —
   /// the server's COALESCE upsert means no other field is touched.
-  Future<bool> pushStreakRecord(int current, int best, String stateJson) {
+  ///
+  /// [purchasedFreezes] is sent ONLY when the settle being pushed
+  /// consumed a purchased freeze (streak upgrade A2): the body
+  /// then carries `purchased_freezes` with the decreased count,
+  /// which the server applies only when the pushed blob justifies
+  /// the decrease. It is never sent otherwise — an increase on
+  /// this route is ignored by the server by design.
+  Future<bool> pushStreakRecord(int current, int best, String stateJson,
+      {int? purchasedFreezes}) {
     return postSyncProfile({
       'currentStreak': current,
       'bestStreak': best,
       'streakState': stateJson,
+      'purchased_freezes': ?purchasedFreezes,
     });
   }
 

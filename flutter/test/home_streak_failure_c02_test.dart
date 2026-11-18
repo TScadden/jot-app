@@ -76,9 +76,22 @@ class _FailedStreakRepository extends HealthRepository {
       (succeeded: false, current: null, best: null);
 
   @override
-  Future<({bool succeeded, int? current, int? best, String? stateJson})>
-  loadStreakRecord() async =>
-      (succeeded: false, current: null, best: null, stateJson: null);
+  Future<
+    ({
+      bool succeeded,
+      int? current,
+      int? best,
+      String? stateJson,
+      int? purchasedFreezes,
+    })
+  >
+  loadStreakRecord() async => (
+    succeeded: false,
+    current: null,
+    best: null,
+    stateJson: null,
+    purchasedFreezes: null,
+  );
 }
 
 HealthRepository _repoWith(MockClient client, {String? token = 'tok'}) {
