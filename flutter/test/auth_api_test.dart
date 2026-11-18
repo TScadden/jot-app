@@ -48,7 +48,26 @@ void main() {
       expect(success.email, 'a@b.com');
     });
 
-    test('404 maps to account-not-found with the founder wording', () async {
+    test('401 maps to the unified credential failure with Juno\'s ruled '
+        'wording (anti-enumeration, decision 2026-11-16)', () async {
+      final client = AuthApiClient(
+        client: MockClient((_) async => http.Response(
+              jsonEncode({'error': 'Email or password is incorrect.'}),
+              401,
+            )),
+      );
+
+      final result = await client.login(email: 'a@b.com', password: 'wrong');
+
+      expect(result, isA<LoginFailure>());
+      final failure = result as LoginFailure;
+      expect(failure.kind, LoginFailureKind.wrongCredentials);
+      expect(failure.message, 'Email or password is incorrect.');
+    });
+
+    test('legacy 404 (pre-fix server unknown-email) maps to the SAME '
+        'unified credential failure — no account-existence distinction',
+        () async {
       final client = AuthApiClient(
         client: MockClient((_) async => http.Response(
               jsonEncode({
@@ -63,22 +82,24 @@ void main() {
 
       expect(result, isA<LoginFailure>());
       final failure = result as LoginFailure;
-      expect(failure.kind, LoginFailureKind.accountNotFound);
-      expect(failure.message, "That account doesn't exist.");
+      expect(failure.kind, LoginFailureKind.wrongCredentials);
+      expect(failure.message, 'Email or password is incorrect.');
     });
 
-    test('401 maps to wrong-credentials with the founder wording', () async {
-      final client = AuthApiClient(
-        client: MockClient(
-            (_) async => http.Response('{"error":"Invalid credentials"}', 401)),
-      );
+    test('401 and 404 produce identical kind and message', () async {
+      Future<LoginFailure> loginWith(int status) async {
+        final client = AuthApiClient(
+          client: MockClient(
+              (_) async => http.Response('{"error":"anything"}', status)),
+        );
+        return await client.login(email: 'a@b.com', password: 'x')
+            as LoginFailure;
+      }
 
-      final result = await client.login(email: 'a@b.com', password: 'wrong');
-
-      expect(result, isA<LoginFailure>());
-      final failure = result as LoginFailure;
-      expect(failure.kind, LoginFailureKind.wrongCredentials);
-      expect(failure.message, 'Wrong password or email.');
+      final from401 = await loginWith(401);
+      final from404 = await loginWith(404);
+      expect(from401.kind, from404.kind);
+      expect(from401.message, from404.message);
     });
 
     test('200 without a token is a server failure', () async {
