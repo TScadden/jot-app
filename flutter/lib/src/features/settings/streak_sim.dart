@@ -92,6 +92,11 @@ class StreakSimEntry extends StatelessWidget {
                   builder: (_) => StreakCelebrationScreen(
                     data: data,
                     nickname: nickname,
+                    // B-APP-1 / Juno §10: the preview count is
+                    // simulated, so the celebration's share
+                    // affordances are suppressed entirely in the
+                    // preview — no share card may carry it.
+                    isSimulation: true,
                   ),
                 ),
               );

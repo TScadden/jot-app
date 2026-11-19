@@ -126,6 +126,16 @@ class StreakCelebrationScreen extends StatefulWidget {
   final StreakCelebrationData data;
   final String? nickname;
 
+  /// True only for the Developer Terminal SIM preview (B-APP-1).
+  /// The SIM's count is simulated (settled + 1), and Juno §10
+  /// forbids generating a share card from a simulated count, so
+  /// when this is set BOTH share affordances (the share icon
+  /// button and the SHARE MILESTONE primary button) are suppressed
+  /// entirely — not rendered — and [_share] is a no-op. The
+  /// YAY/Continue dismissal is unchanged. Real celebrations leave
+  /// this false and are unchanged.
+  final bool isSimulation;
+
   /// Test seam: replaces the share-sheet invocation.
   final Future<bool> Function(GlobalKey boundaryKey, int count)? shareFn;
 
@@ -134,18 +144,20 @@ class StreakCelebrationScreen extends StatefulWidget {
     required this.data,
     this.nickname,
     this.shareFn,
+    this.isSimulation = false,
   });
 
   static Future<void> show(
     BuildContext context, {
     required StreakCelebrationData data,
     String? nickname,
+    bool isSimulation = false,
   }) async {
     if (!context.mounted) return;
     await Navigator.of(context).push(
       SlidePageRoute<void>(
-        builder: (_) =>
-            StreakCelebrationScreen(data: data, nickname: nickname),
+        builder: (_) => StreakCelebrationScreen(
+            data: data, nickname: nickname, isSimulation: isSimulation),
       ),
     );
   }
@@ -160,6 +172,9 @@ class _StreakCelebrationScreenState extends State<StreakCelebrationScreen> {
   bool _sharing = false;
 
   Future<void> _share() async {
+    // B-APP-1 defense in depth: a simulated preview never shares,
+    // even if a share affordance were somehow reached.
+    if (widget.isSimulation) return;
     if (_sharing) return;
     _sharing = true;
     try {
@@ -266,30 +281,35 @@ class _StreakCelebrationScreenState extends State<StreakCelebrationScreen> {
                   ],
                   const Spacer(),
                   if (data.isMilestoneDay) ...[
-                    SizedBox(
-                      width: double.infinity,
-                      height: 58,
-                      child: ElevatedButton(
-                        key: const Key('celebrationShareMilestone'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: NotelColors.primary,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                    // B-APP-1: in the SIM preview the SHARE MILESTONE
+                    // primary button is suppressed entirely; only the
+                    // Continue dismissal below remains.
+                    if (!widget.isSimulation) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        height: 58,
+                        child: ElevatedButton(
+                          key: const Key('celebrationShareMilestone'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: NotelColors.primary,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
                           ),
-                        ),
-                        onPressed: () => _share(),
-                        child: const Text(
-                          'SHARE MILESTONE',
-                          style: TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.5,
+                          onPressed: () => _share(),
+                          child: const Text(
+                            'SHARE MILESTONE',
+                            style: TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.5,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 6),
+                      const SizedBox(height: 6),
+                    ],
                     TextButton(
                       key: const Key('celebrationContinue'),
                       onPressed: () => Navigator.of(context).pop(),
@@ -305,30 +325,35 @@ class _StreakCelebrationScreenState extends State<StreakCelebrationScreen> {
                   ] else
                     Row(
                       children: [
-                        SizedBox(
-                          width: 58,
-                          height: 58,
-                          child: OutlinedButton(
-                            key: const Key('celebrationShareIcon'),
-                            style: OutlinedButton.styleFrom(
-                              side: const BorderSide(
-                                color: Color(0xFF2A3560),
-                                width: 2,
+                        // B-APP-1: in the SIM preview the share icon
+                        // button is suppressed entirely; only the YAY
+                        // dismissal remains (expanded full width).
+                        if (!widget.isSimulation) ...[
+                          SizedBox(
+                            width: 58,
+                            height: 58,
+                            child: OutlinedButton(
+                              key: const Key('celebrationShareIcon'),
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(
+                                  color: Color(0xFF2A3560),
+                                  width: 2,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                padding: EdgeInsets.zero,
                               ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
+                              onPressed: () => _share(),
+                              child: const Icon(
+                                Icons.ios_share,
+                                color: NotelColors.primary,
+                                size: 24,
                               ),
-                              padding: EdgeInsets.zero,
-                            ),
-                            onPressed: () => _share(),
-                            child: const Icon(
-                              Icons.ios_share,
-                              color: NotelColors.primary,
-                              size: 24,
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
+                          const SizedBox(width: 12),
+                        ],
                         Expanded(
                           child: SizedBox(
                             height: 58,

@@ -338,7 +338,7 @@ void main() {
           as Map<String, dynamic>,
     );
     expect(pushedState.countedDays, hasLength(14));
-    expect(pushedState.lastEvaluatedDay, streakDayStr(DateTime.now()));
+    expect(pushedState.lastEvaluatedDay, tabsDayStr(DateTime.now()));
 
     File('${outDir.path}/tabs_streak_captures_vc100115_2026-11-05.json')
         .writeAsStringSync(

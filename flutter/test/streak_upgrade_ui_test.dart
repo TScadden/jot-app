@@ -849,6 +849,22 @@ void main() {
       // Snapshot 3: the analytics sink (fake).
       final analyticsSink = <Object?>[];
 
+      // B-APP-1: mock the share_plus platform channel and record
+      // every invocation. The SIM preview's count is simulated, so
+      // the share path must never be reached from it (Juno §10).
+      const shareChannel =
+          MethodChannel('dev.fluttercommunity.plus/share');
+      final shareCalls = <MethodCall>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(shareChannel, (call) async {
+        shareCalls.add(call);
+        return 'dev.fluttercommunity.plus/share/success';
+      });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(shareChannel, null);
+      });
+
       tester.view.physicalSize = const Size(1080, 2400);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(tester.view.reset);
@@ -884,14 +900,84 @@ void main() {
             .data,
         '21',
       );
+      // B-APP-1: BOTH share affordances are suppressed entirely in
+      // the SIM preview — neither the share icon (normal days) nor
+      // SHARE MILESTONE (milestone days) is rendered, so there is
+      // no share affordance to tap and no share invocation can
+      // occur. (Pre-fix both were live and this fails.)
+      expect(find.byKey(const Key('celebrationShareIcon')), findsNothing);
+      expect(
+          find.byKey(const Key('celebrationShareMilestone')), findsNothing);
+      expect(find.text('SHARE MILESTONE'), findsNothing);
+      expect(shareCalls, isEmpty);
+      // The YAY dismissal stays and still dismisses the preview.
       await tester.tap(find.byKey(const Key('celebrationYay')));
       await tester.pumpAndSettle();
       expect(find.byType(StreakCelebrationScreen), findsNothing);
 
-      // All three snapshots byte-identical / empty.
+      // All three snapshots byte-identical / empty, and still no
+      // share invocation after the full SIM run.
       expect(Map<String, String>.of(disk).toString(), storageBefore);
       expect(profilePushes, isEmpty);
       expect(analyticsSink, isEmpty);
+      expect(shareCalls, isEmpty);
+    });
+
+    testWidgets('B-APP-1: a milestone SIM preview (settled + 1 lands '
+        'on a ladder rung) renders no SHARE MILESTONE and never '
+        'invokes share', (tester) async {
+      const shareChannel =
+          MethodChannel('dev.fluttercommunity.plus/share');
+      final shareCalls = <MethodCall>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(shareChannel, (call) async {
+        shareCalls.add(call);
+        return 'dev.fluttercommunity.plus/share/success';
+      });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(shareChannel, null);
+      });
+
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreakSimEntry(
+              // 29 + 1 = 30, a milestone rung: pre-fix this preview's
+              // primary button was the live SHARE MILESTONE button.
+              currentCount: 29,
+              nickname: 'Tyson Scadden',
+              now: at(2026, 11, 18),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('streakSimPreviewButton')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(StreakCelebrationScreen), findsOneWidget);
+      expect(
+        (tester.widget<Text>(find.byKey(const Key('celebrationCount'))))
+            .data,
+        '30',
+      );
+      expect(find.text('You reached a milestone today: 30 days.'),
+          findsOneWidget);
+      // Both share affordances suppressed entirely; Continue stays.
+      expect(
+          find.byKey(const Key('celebrationShareMilestone')), findsNothing);
+      expect(find.text('SHARE MILESTONE'), findsNothing);
+      expect(find.byKey(const Key('celebrationShareIcon')), findsNothing);
+      expect(find.byKey(const Key('celebrationContinue')), findsOneWidget);
+      expect(shareCalls, isEmpty);
+      await tester.tap(find.byKey(const Key('celebrationContinue')));
+      await tester.pumpAndSettle();
+      expect(find.byType(StreakCelebrationScreen), findsNothing);
+      expect(shareCalls, isEmpty);
     });
 
     test('grep fence: the SIM source references no store, backend, '
