@@ -242,7 +242,16 @@ class _StreakScreenState extends State<StreakScreen> {
       switch (result.status) {
         case GemSpendStatus.success:
         case GemSpendStatus.replay:
-          _gemSuccessBalance = result.balance ?? _gems.balance ?? 0;
+          // Juno §2c prints the post-spend balance FROM the spend
+          // body (PR #41's contract always sends gemBalance). If
+          // a body ever lacked it, suppress the success body and
+          // re-sync state instead of displaying an invented
+          // number (Vera M2, Fix Round 1).
+          if (result.balance != null) {
+            _gemSuccessBalance = result.balance;
+          } else {
+            unawaited(_gems.refreshBalance());
+          }
           // Juno §2c motion: the freeze icon animates once into
           // the freeze row, exactly as for a §1a money grant.
           _grantEpoch++;

@@ -301,6 +301,69 @@ void main() {
       expect(find.textContaining('insufficient_gems'), findsNothing);
     });
 
+    testWidgets('spend answered alreadyHeld (409): the adopted '
+        'held state lands — buy rows hide, no success copy, no '
+        'raw error', (tester) async {
+      final gems = fakeGems(
+        balance: 500,
+        onSpend: () => const GemSpendResult(
+          status: GemSpendStatus.alreadyHeld,
+          balance: 500,
+          purchasedFreezes: 1,
+        ),
+      );
+      await pumpScreen(tester, baseState(), gems);
+      await scrollToGemSection(tester);
+      expect(find.text('You have 500 gems.'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('gemBuyButton')));
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      // No §2c success copy, and no raw error code anywhere.
+      expect(find.text('freeze added'), findsNothing);
+      expect(find.textContaining('purchased_already_held'),
+          findsNothing);
+      // The 409's adopted held state IS the surface: the buy
+      // rows hide exactly as when a freeze was already held,
+      // and the §4 explainer stays.
+      expect(find.byKey(const Key('gemBuyButton')), findsNothing);
+      expect(find.byKey(const Key('gemBalanceLine')), findsNothing);
+      expect(find.byKey(const Key('gemExplainerHeading')),
+          findsOneWidget);
+    });
+
+    testWidgets('spend answered capReached (409): no success '
+        'copy, no raw error, refusal not cached — the surface '
+        're-derives from the adopted balance', (tester) async {
+      final gems = fakeGems(
+        balance: 500,
+        onSpend: () => const GemSpendResult(
+          status: GemSpendStatus.capReached,
+          balance: 500,
+          purchasedFreezes: 0,
+        ),
+      );
+      await pumpScreen(tester, baseState(), gems);
+      await scrollToGemSection(tester);
+      await tester.tap(find.byKey(const Key('gemBuyButton')));
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(find.text('freeze added'), findsNothing);
+      expect(find.textContaining('freeze_cap_reached'),
+          findsNothing);
+      // The refusal is cached nowhere: after the one re-sync the
+      // buy surface is live again from the adopted balance, so
+      // the user can retry.
+      expect(find.text('You have 500 gems.'), findsOneWidget);
+      final button = tester.widget<ElevatedButton>(
+        find.byKey(const Key('gemBuyButton')),
+      );
+      expect(button.onPressed, isNotNull);
+      expect(find.byKey(const Key('gemExplainerHeading')),
+          findsOneWidget);
+    });
+
     testWidgets('buy rows hidden when a purchased freeze is held; '
         'explainer still present', (tester) async {
       await pumpScreen(
