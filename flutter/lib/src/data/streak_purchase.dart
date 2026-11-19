@@ -60,27 +60,31 @@ abstract class StreakFreezeStore {
   Future<void> restorePurchases();
 }
 
-/// Purchase-flow copy that Juno rules (streak-bugs package,
-/// Nov 19, 2026). PLACEHOLDERS — Juno's ruled strings replace
-/// these constants in ONE place (this class) when her copy lands;
-/// no other file hardcodes this copy. The already-ruled §5b/§5c
-/// strings (the screen's formatSuccess and the service's failure
-/// string) predate this package and are unchanged.
+/// Purchase-flow copy ruled by Juno (streak-bugs package,
+/// Nov 19, 2026; JUNO-COPY.md §§1a/1b — ship exactly, casing and
+/// punctuation included). These constants are the ONE place this
+/// copy lives; no other file hardcodes it. Each value is Juno's
+/// ruled title over her ruled body, newline-joined for this
+/// single-string slot. The already-ruled §5b/§5c strings (the
+/// screen's formatSuccess and the service's failure string)
+/// predate this package and are unchanged.
 abstract final class StreakPurchaseCopy {
-  /// Shown when a freeze grant lands and the caller supplied no
-  /// count-formatted success string.
+  /// Juno §1a success — shown when a freeze grant lands and the
+  /// caller supplied no count-formatted success string.
   static const String freezeGranted =
-      'PLACEHOLDER (Juno to rule): your freeze was added.';
+      'freeze added\nyou\'ve got a freeze now. it covers one missed day.';
 
   /// Shown when a restored (replayed) purchase verifies and the
-  /// freeze lands.
+  /// freeze lands. Juno §1 ruling: a recovery that succeeds shows
+  /// the same §1a success confirmation as a first-try purchase.
   static const String freezeRestored =
-      'PLACEHOLDER (Juno to rule): your earlier freeze purchase was restored.';
+      'freeze added\nyou\'ve got a freeze now. it covers one missed day.';
 
-  /// Shown while a paid purchase is still awaiting a successful
-  /// server verify (never completed/consumed in the meantime).
+  /// Juno §1b — shown while a paid purchase is still awaiting a
+  /// successful server verify (never completed/consumed in the
+  /// meantime; the app re-checks automatically on the next open).
   static const String verifyPending =
-      'PLACEHOLDER (Juno to rule): we got your purchase and are still confirming it — your freeze is not lost.';
+      'freeze not added yet\nyour payment went through, but we couldn\'t add your freeze yet. your purchase is safe with google play — the app checks again automatically next time you open it. please don\'t buy it again.';
 }
 
 /// The real store: `in_app_purchase` over Google Play.

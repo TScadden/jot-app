@@ -544,7 +544,7 @@ void main() {
         find.byKey(const Key('streakRestoreFeedback')),
         findsOneWidget,
       );
-      expect(find.text(StreakRestoreCopy.restoredPlaceholder),
+      expect(find.text(StreakRestoreCopy.restored('2026-11-18', 27)),
           findsOneWidget);
 
       outcome = const StreakRestoreOutcome(
@@ -554,7 +554,7 @@ void main() {
       );
       await tester.tap(find.byKey(const Key('streakRestoreButton')));
       await tester.pumpAndSettle();
-      expect(find.text(StreakRestoreCopy.noBrokenDayPlaceholder),
+      expect(find.text(StreakRestoreCopy.noBrokenDay),
           findsOneWidget);
     });
 

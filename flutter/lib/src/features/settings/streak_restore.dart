@@ -21,19 +21,23 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// surface: it holds no store/backend references and renders the
 /// outcome the callback reports.
 ///
-/// Feedback copy is Juno-ruled in parallel (streak-bugs package):
-/// the strings below are PLACEHOLDERS in ONE place
-/// ([StreakRestoreCopy]) for her ruled strings to replace. The
-/// button label is the founder's own name for the feature and is
-/// not placeholder copy.
+/// Feedback copy ruled by Juno (streak-bugs package, Nov 19,
+/// 2026; JUNO-COPY.md §2 — ship exactly). The button label is the
+/// founder's own name for the feature. The caption is plain
+/// dev-facing description, outside Juno's ruled strings.
 abstract final class StreakRestoreCopy {
   static const String buttonLabel = 'Restore Streak';
-  static const String restoredPlaceholder =
-      'PLACEHOLDER (Juno to rule): streak restored — the missed day now counts as completed.';
-  static const String noBrokenDayPlaceholder =
-      'PLACEHOLDER (Juno to rule): nothing to restore — there is no broken day.';
-  static const String captionPlaceholder =
-      'PLACEHOLDER (Juno to rule): dev only — marks your most recent missed day as completed and restores the streak.';
+
+  /// Juno §2a template, exact: the restored day (YYYY-MM-DD) and
+  /// the resulting current streak count filled in.
+  static String restored(String date, int current) =>
+      'Restored — $date marked complete. Streak is now $current.';
+
+  /// Juno §2b, exact.
+  static const String noBrokenDay = 'Nothing to restore — no broken day found.';
+
+  static const String caption =
+      'Dev only — marks your most recent missed day as completed and restores the streak it broke.';
 }
 
 /// The outcome of one restore tap, reported by the caller's
@@ -78,12 +82,12 @@ class _StreakRestoreEntryState extends State<StreakRestoreEntry> {
       if (!mounted) return;
       setState(() {
         _feedback = outcome.restoredDay != null
-            ? StreakRestoreCopy.restoredPlaceholder
-            : StreakRestoreCopy.noBrokenDayPlaceholder;
+            ? StreakRestoreCopy.restored(outcome.restoredDay!, outcome.current)
+            : StreakRestoreCopy.noBrokenDay;
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _feedback = StreakRestoreCopy.noBrokenDayPlaceholder);
+      setState(() => _feedback = StreakRestoreCopy.noBrokenDay);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -108,7 +112,7 @@ class _StreakRestoreEntryState extends State<StreakRestoreEntry> {
         ),
         const SizedBox(height: 8),
         const Text(
-          StreakRestoreCopy.captionPlaceholder,
+          StreakRestoreCopy.caption,
           key: Key('streakRestoreCaption'),
           style: TextStyle(fontSize: 12, color: LabBlackColors.textSecondary),
         ),
