@@ -62,14 +62,29 @@ void main() {
     goalsCategoryId: goalsCat,
   );
 
+  // P0 adaptation (Bram, flagged for Vera): the attestation API
+  // replaced the plan + planResolved pair — the plan value now
+  // carries its resolved-ness (AttestedPlan). `resolved: false`
+  // maps to a fully unresolved attestation; a null plan maps to
+  // no attested plan at all. Assertions unchanged.
   bool complete({
     required TodayPlanData? plan,
     required bool resolved,
     required List<QuickLogEntry> entries,
   }) => isSummaryComplete(
     feelingDayStart: dayStart,
-    plan: plan,
-    planResolved: resolved,
+    attestedPlan: plan == null
+        ? null
+        : AttestedPlan(
+            plan: plan,
+            attestation: resolved
+                ? const PlanAttestation(
+                    medicationsResolved: true,
+                    remindersResolved: true,
+                    habitsResolved: true,
+                  )
+                : const PlanAttestation.unresolved(),
+          ),
     entries: entries,
     moodCategoryId: moodCat,
   );
@@ -174,17 +189,24 @@ void main() {
       List<QuickLogEntry> entries, {
       DateTime? start,
     }) => SummaryCompletionContext(
-      plan: buildPlanForFeelingDay(
-        feelingDayStart: start ?? dayStart,
-        medications: const [],
-        reminders: const [],
-        habits: const [],
-        localState: const TodayPlanLocalState(),
-        entries: entries,
-        medicationCategoryId: medCat,
-        goalsCategoryId: goalsCat,
+      // P0 adaptation (flagged): fully-attested plan wrapper.
+      attestedPlan: AttestedPlan(
+        plan: buildPlanForFeelingDay(
+          feelingDayStart: start ?? dayStart,
+          medications: const [],
+          reminders: const [],
+          habits: const [],
+          localState: const TodayPlanLocalState(),
+          entries: entries,
+          medicationCategoryId: medCat,
+          goalsCategoryId: goalsCat,
+        ),
+        attestation: const PlanAttestation(
+          medicationsResolved: true,
+          remindersResolved: true,
+          habitsResolved: true,
+        ),
       ),
-      planResolved: true,
       entries: entries,
       moodCategoryId: moodCat,
     );

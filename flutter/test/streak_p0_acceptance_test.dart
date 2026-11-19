@@ -99,9 +99,20 @@ void main() {
   Future<bool> push(int c, int b, String j, {int? purchasedFreezes}) async =>
       true;
 
+  // Fully-attested plan wrapper (the post-fix API: the plan value
+  // carries its resolved-ness; there is no proxy boolean).
+  AttestedPlan attested(TodayPlanData plan) => AttestedPlan(
+        plan: plan,
+        attestation: const PlanAttestation(
+          medicationsResolved: true,
+          remindersResolved: true,
+          habitsResolved: true,
+        ),
+      );
+
   SummaryCompletionContext completeCtx(List<QuickLogEntry> entries) =>
       SummaryCompletionContext(
-        plan: buildPlanForFeelingDay(
+        attestedPlan: attested(buildPlanForFeelingDay(
           feelingDayStart: dayStart,
           medications: const [],
           reminders: const [],
@@ -110,14 +121,13 @@ void main() {
           entries: entries,
           medicationCategoryId: medCat,
           goalsCategoryId: goalsCat,
-        ),
-        planResolved: true,
+        )),
         entries: entries,
         moodCategoryId: moodCat,
       );
 
   SummaryCompletionContext incompleteCtx() => SummaryCompletionContext(
-        plan: buildPlanForFeelingDay(
+        attestedPlan: attested(buildPlanForFeelingDay(
           feelingDayStart: dayStart,
           medications: const [
             SummaryMedication(key: 'k1', name: 'MedA', dose: '5mg'),
@@ -128,8 +138,7 @@ void main() {
           entries: [checkIn()],
           medicationCategoryId: medCat,
           goalsCategoryId: goalsCat,
-        ),
-        planResolved: true,
+        )),
         entries: [checkIn()],
         moodCategoryId: moodCat,
       );
@@ -238,6 +247,9 @@ void main() {
       expect(events.single.newCount, 27);
       expect(streakCurrent(store.state!, now), 27);
       expect(store.state!.countedDays, contains(today));
+      // The completion is RECORDED — the mark that makes today's
+      // counted day legitimate at every future adoption.
+      expect(store.state!.summaryCompletedDays, contains(today));
 
       final again = await watcher.maybeFireSummaryCompletion(
         context: completeCtx(entries),
@@ -288,6 +300,7 @@ void main() {
       );
       expect(done.completion!.newCount, 27);
       expect(streakCurrent(store.state!, now), 27);
+      expect(done.state.summaryCompletedDays, contains(today));
 
       // Next open: the server still holds the STALE morning blob
       // with an EQUAL stamp. The local completion must survive.
@@ -306,11 +319,18 @@ void main() {
 
   group('P0 Defect A2 — plan attestation shapes', () {
     // Mirrors Home's _evaluateSummaryCompletion plan construction
-    // on the base code: decode the profile's lists, build the
-    // feeling-day plan, attest planResolved as `profile != null`.
-    bool homeBaseCompletes(Map<String, dynamic>? profile) {
+    // WITH the fix: decode the profile's lists, build the
+    // feeling-day plan, and attest each input at the decode layer
+    // (profileListFieldResolved per field; habits fetch answered).
+    // On the base code this same shape completed: Home attested
+    // `profile != null` and decodeProfileList(absent) == [] read
+    // as a plan-free day (the repro run's failing test).
+    bool homeCompletes(
+      Map<String, dynamic>? profile, {
+      bool habitsLoaded = true,
+    }) {
       final entries = [checkIn()];
-      TodayPlanData? plan;
+      AttestedPlan? attestedPlan;
       if (profile != null) {
         final meds = <SummaryMedication>[];
         for (final row
@@ -325,21 +345,29 @@ void main() {
               SummaryReminder.fromBlobRow(rows[i], fallbackId: -(i + 1));
           if (rem != null) reminders.add(rem);
         }
-        plan = buildPlanForFeelingDay(
-          feelingDayStart: dayStart,
-          medications: meds,
-          reminders: reminders,
-          habits: const [],
-          localState: const TodayPlanLocalState(),
-          entries: entries,
-          medicationCategoryId: medCat,
-          goalsCategoryId: goalsCat,
+        attestedPlan = AttestedPlan(
+          plan: buildPlanForFeelingDay(
+            feelingDayStart: dayStart,
+            medications: meds,
+            reminders: reminders,
+            habits: const [],
+            localState: const TodayPlanLocalState(),
+            entries: entries,
+            medicationCategoryId: medCat,
+            goalsCategoryId: goalsCat,
+          ),
+          attestation: PlanAttestation(
+            medicationsResolved:
+                profileListFieldResolved(profile, 'medications'),
+            remindersResolved:
+                profileListFieldResolved(profile, 'reminders'),
+            habitsResolved: habitsLoaded,
+          ),
         );
       }
       return isSummaryComplete(
         feelingDayStart: dayStart,
-        plan: plan,
-        planResolved: profile != null,
+        attestedPlan: attestedPlan,
         entries: entries,
         moodCategoryId: moodCat,
       );
@@ -349,9 +377,33 @@ void main() {
         'profile payload with the medications field ABSENT must not '
         'complete on the check-in alone', () {
       // A partial payload: profile object present, plan fields
-      // missing. decodeProfileList(absent) == [] reads as a
-      // plan-free day under the proxy attestation.
-      expect(homeBaseCompletes(<String, dynamic>{}), isFalse);
+      // missing. decodeProfileList(absent) == [] read as a
+      // plan-free day under the old proxy attestation.
+      expect(homeCompletes(<String, dynamic>{}), isFalse);
+    });
+
+    test(
+        'profile payload with a MALFORMED medications field must '
+        'not complete on the check-in alone', () {
+      expect(
+        homeCompletes(<String, dynamic>{
+          'medications': 'not-json{{{',
+          'reminders': '[]',
+        }),
+        isFalse,
+      );
+    });
+
+    test(
+        'a failed habits fetch (unattested habits) must not '
+        'complete even with present, empty profile fields', () {
+      expect(
+        homeCompletes(
+          <String, dynamic>{'medications': '[]', 'reminders': '[]'},
+          habitsLoaded: false,
+        ),
+        isFalse,
+      );
     });
 
     test(
@@ -479,8 +531,7 @@ void main() {
       expect(
         isSummaryComplete(
           feelingDayStart: dayStart,
-          plan: plan,
-          planResolved: true,
+          attestedPlan: attested(plan),
           entries: entries,
           moodCategoryId: moodCat,
         ),
@@ -492,7 +543,7 @@ void main() {
         'genuinely empty LOADED inputs (fields present, empty) can '
         'complete on the check-in alone (plan-free user)', () {
       expect(
-        homeBaseCompletes(<String, dynamic>{
+        homeCompletes(<String, dynamic>{
           'medications': '[]',
           'reminders': '[]',
         }),

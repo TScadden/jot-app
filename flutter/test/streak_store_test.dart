@@ -315,10 +315,17 @@ void main() {
       readFails = false;
       // The true local record: a 6-day run (Oct 30 – Nov 4) seeded
       // 6/12, settled Nov 4, stamped with its owner.
+      // P0 adaptation (Bram, flagged for Vera): Nov 4 is recorded
+      // as summary-completed — under the P0 open-day revalidation
+      // a counted open day WITHOUT a completion record is a legacy
+      // app-open artifact and is stripped at adoption, which is
+      // not what these C-04 disk-failure tests are about. With the
+      // completion record the fixture is a legitimate v2 record
+      // and every assertion below stands unchanged.
       final settled = streakEvaluate(
         streakSeed(current: 6, best: 12, now: at(2026, 11, 4)),
         at(2026, 11, 4),
-      );
+      ).copyWith(summaryCompletedDays: {'2026-11-04'});
       trueBlob = jsonEncode({
         'ownerEmail': 'owner@example.test',
         'state': settled.toJson(),
