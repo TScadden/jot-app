@@ -377,7 +377,15 @@ void main() {
     );
     await tester.pump();
     await _bridge(tester);
-    expect(find.text('1 restore left this month'), findsOneWidget);
+    // The rebuilt screen is taller: the freeze card sits below
+    // the fold — scroll it into the built region before asserting.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('streakFreezeStatus')),
+      160,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pump();
+    expect(find.byKey(const Key('streakFreezeStatus')), findsOneWidget);
     await _capture(tester, screenBoundary, outDir, 'tabs_streak_screen_vc100115_2026-11-05.png');
 
     var savedState = streakSeed(
@@ -408,7 +416,7 @@ void main() {
     await tester.pump();
     await _bridge(tester);
     await tester.scrollUntilVisible(
-      find.text('A day with a purple ring was restored.'),
+      find.text('A day with a snowflake was covered by a freeze.'),
       160,
       scrollable: find.byType(Scrollable).first,
     );

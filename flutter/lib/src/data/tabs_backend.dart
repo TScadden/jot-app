@@ -1506,6 +1506,47 @@ class TabsBackend {
     });
   }
 
+  /// Verify one streak-freeze purchase with the server (streak
+  /// upgrade D9/A9; contract in BRIEF-SERVER.md):
+  /// `POST /api/streak/purchase/verify` `{productId, purchaseToken,
+  /// orderId}` → 200 `{purchasedFreezes}` (plus `alreadyGranted:
+  /// true` on a replayed token — idempotent, never a double grant),
+  /// 409 `{error: 'purchased_already_held'}` when a purchased freeze
+  /// is already held, other 4xx with a stable error code on any
+  /// verification failure (no grant). Returns the HTTP status and
+  /// decoded body (null body on transport failure). The purchase
+  /// token travels only in the request body over HTTPS — never
+  /// logged.
+  Future<({int? statusCode, Map<String, dynamic>? body})>
+      verifyStreakFreezePurchase({
+    required String productId,
+    required String purchaseToken,
+    required String orderId,
+  }) async {
+    final response = await _sendAuthed((token) => _client.post(
+          Uri.parse('$_baseUrl/api/streak/purchase/verify'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'productId': productId,
+            'purchaseToken': purchaseToken,
+            'orderId': orderId,
+          }),
+        ));
+    if (response == null) return (statusCode: null, body: null);
+    try {
+      final decoded = jsonDecode(response.body);
+      return (
+        statusCode: response.statusCode,
+        body: decoded is Map<String, dynamic> ? decoded : null,
+      );
+    } catch (_) {
+      return (statusCode: response.statusCode, body: null);
+    }
+  }
+
   /// Log-entry timestamps (epoch ms) from `/api/sync/pull` `entries`.
   Future<List<int>> fetchLogEntries() async {
     // Shared TTL pull cache; see fetchStreak.

@@ -188,6 +188,21 @@ Future<void> _drainScoreChain(WidgetTester tester) async {
   await tester.pump(const Duration(seconds: 31));
 }
 
+/// Streak upgrade (Nov 2026): committing the Daily Ranking
+/// completes the Daily Summary, and a log-entry commit is one of
+/// the completion triggers — so the celebration screen
+/// legitimately covers Home right after the commit this file's
+/// check-in test performs. Dismiss it when shown so the Today
+/// Summary face (the surface under test) is onstage again.
+Future<void> _dismissCelebrationIfShown(WidgetTester tester) async {
+  final yay = find.byKey(const Key('celebrationYay'));
+  if (yay.evaluate().isEmpty) return;
+  await tester.tap(yay);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.pump();
+}
+
 Future<void> _pumpHome(
   WidgetTester tester, {
   required Size physicalSize,
@@ -674,6 +689,9 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pump();
+      // The commit completed the summary → the celebration may
+      // be covering Home (see _dismissCelebrationIfShown).
+      await _dismissCelebrationIfShown(tester);
 
       expect(posted, isNotNull);
       final rows = posted!['entries'] as List<dynamic>;

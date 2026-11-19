@@ -252,6 +252,21 @@ Future<void> _pumpHome(
     ),
   );
   await _bridge(tester);
+  await _dismissCelebrationIfShown(tester);
+}
+
+/// Streak upgrade (Nov 2026): in the scored fixtures the Daily
+/// Summary is complete, and Home load is one of the completion
+/// triggers — so the celebration screen legitimately covers
+/// Home after load, leaving the band offstage. Dismiss it when
+/// shown so the band (the surface under test) is onstage.
+Future<void> _dismissCelebrationIfShown(WidgetTester tester) async {
+  final yay = find.byKey(const Key('celebrationYay'));
+  if (yay.evaluate().isEmpty) return;
+  await tester.tap(yay);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.pump();
 }
 
 EventCounterItem _item(

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
+import 'package:tabs_lab/src/data/streak_engine.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 
 /// Round 50 — Dart side of the Android home-screen vitals widget.
@@ -57,6 +58,16 @@ class WidgetSync {
   static const String keyCalories = 'widget_streak';
   static const String keyLogs = 'widget_logs';
   static const String keySleep = 'widget_sleep';
+
+  // ── Streak upgrade (D14) — the streak banner fields. Separate
+  // keys from the vitals cells above: `widget_streak` is the
+  // calories wire value (Round 59) and is NOT reused here.
+  static const String keyStreakCount = 'widget_streak_count';
+  static const String keyStreakTodayDone = 'widget_streak_today_done';
+  static const String keyStreakPose = 'widget_streak_pose';
+  static const String keyStreakName = 'widget_streak_name';
+  static const String keyStreakGreeting = 'widget_streak_greeting';
+  static const String keyStreakSubline = 'widget_streak_subline';
 
   /// Qualified Android provider name for `HomeWidget.updateWidget`.
   static const String qualifiedProviderName =
@@ -263,8 +274,154 @@ class WidgetSync {
   static Future<void> clear() async {
     try {
       await _enqueuePush(const WidgetPayload.signedOut());
+      // NOTE (streak upgrade): the streak banner keys are NOT
+      // cleared here — clear()'s exact save set is pinned by the
+      // Round 50/59 regression tests. It does not need to be: the
+      // signed-in flag this clear writes (false) gates EVERY face
+      // in the native provider, banner included, so a previous
+      // account's streak can never render signed-out.
     } catch (_) {
       // Silent side-channel: logout must never see this fail.
+    }
+  }
+
+  // ── Streak banner (D14) ────────────────────────────────────────
+
+  /// The done-state peek expressions (FOUNDER WIDGET RESTYLE,
+  /// Nov 18, 2026): rotation alternates the two governing mocks
+  /// by day-of-year — 'peek' (eyes open, bandit_full art) and
+  /// 'peek_cheer' (eyes closed, fists up, cheer art). The
+  /// not-done pose is ALWAYS 'peek' (the v5 mock): the worried
+  /// late-evening variant was dropped by the restyle, and the
+  /// purple-gradient full-Bandit celebrate design is superseded —
+  /// done uses the SAME dark navy card and bottom-edge peek crop
+  /// as not-done.
+  static const List<String> donePosePool = ['peek', 'peek_cheer'];
+
+  /// Builds the streak banner payload from a SETTLED streak state.
+  /// Pure — unit tests exercise this directly.
+  ///
+  /// - count: the settled current count, read with the Tabs anchor
+  ///   (A7).
+  /// - todayDone: today's Tabs day is counted.
+  /// - greeting: not-done → Juno §9a/§9d "Hey {name}." with the
+  ///   nickname's first word, OMITTED ENTIRELY (empty string, the
+  ///   native side collapses the slot) when no nickname is set;
+  ///   done → the founder-dictated headline "See you tomorrow!".
+  /// - subline: not-done → Juno §9b with the ENGINE-PROJECTED next
+  ///   count (the count a completion today would record, computed
+  ///   by running the engine's completion on the settled state —
+  ///   never a blind current+1, so a restart day projects 1);
+  ///   done → the founder-dictated "Day {N} is locked in.".
+  static StreakWidgetPayload buildStreakPayload(
+    StreakState state, {
+    required bool signedIn,
+    required String? nickname,
+    required DateTime now,
+  }) {
+    if (!signedIn || !state.seeded) {
+      return const StreakWidgetPayload.signedOut();
+    }
+    final anchor = tabsDayAnchor(now);
+    final count = streakCurrent(state, anchor);
+    final today = tabsDayStr(now);
+    final todayDone = state.countedDays.contains(today);
+    final firstName = _firstName(nickname);
+    final String pose;
+    final String greeting;
+    final String subline;
+    if (todayDone) {
+      // Founder-dictated done copy (widget only — the celebration
+      // SCREEN keeps Juno's §9c; see the STAGE-LOG copy note).
+      final dayOfYear = anchor.difference(DateTime(anchor.year)).inDays;
+      pose = donePosePool[dayOfYear % donePosePool.length];
+      greeting = 'See you tomorrow!';
+      subline = 'Day $count is locked in.';
+    } else {
+      // Juno §9a/§9d: "Hey {name}." — omitted entirely (empty
+      // string; the native side collapses the slot) with no
+      // nickname. §9b sub-line with the engine-projected count.
+      pose = 'peek';
+      greeting = firstName == null ? '' : 'Hey $firstName.';
+      final projected = completeDay(
+        state,
+        summaryTabsDay: today,
+        now: now,
+      ).result.newCount;
+      subline =
+          "Finish today's Daily Summary when you're ready to lock in day $projected.";
+    }
+    return StreakWidgetPayload(
+      signedIn: true,
+      count: '$count',
+      todayDone: todayDone,
+      pose: pose,
+      name: firstName ?? '',
+      greeting: greeting,
+      subline: subline,
+    );
+  }
+
+  static String? _firstName(String? nickname) {
+    if (nickname == null) return null;
+    final trimmed = nickname.trim();
+    if (trimmed.isEmpty) return null;
+    return trimmed.split(RegExp(r'\s+')).first;
+  }
+
+  /// Pushes the streak banner payload (serialized through the same
+  /// drain discipline as vitals pushes — the saves run inside one
+  /// drain turn so they can never interleave per-key with another
+  /// payload's saves). Never throws.
+  static Future<void> pushStreak(
+    StreakState state, {
+    required bool signedIn,
+    required String? nickname,
+    required DateTime now,
+  }) async {
+    try {
+      final payload = buildStreakPayload(
+        state,
+        signedIn: signedIn,
+        nickname: nickname,
+        now: now,
+      );
+      await _enqueueStreakPush(payload);
+    } catch (_) {
+      // Silent side-channel, same as every widget push.
+    }
+  }
+
+  static Future<void>? _streakDrainFuture;
+  static StreakWidgetPayload? _pendingStreakPayload;
+
+  static Future<void> _enqueueStreakPush(StreakWidgetPayload payload) {
+    _pendingStreakPayload = payload;
+    final running = _streakDrainFuture;
+    if (running != null) return running;
+    final drain = _drainStreak();
+    _streakDrainFuture = drain;
+    return drain;
+  }
+
+  static Future<void> _drainStreak() async {
+    try {
+      while (_pendingStreakPayload != null) {
+        final payload = _pendingStreakPayload!;
+        _pendingStreakPayload = null;
+        try {
+          await _save(keyStreakCount, payload.count);
+          await _save(keyStreakTodayDone, payload.todayDone);
+          await _save(keyStreakPose, payload.pose);
+          await _save(keyStreakName, payload.name);
+          await _save(keyStreakGreeting, payload.greeting);
+          await _save(keyStreakSubline, payload.subline);
+        } finally {
+          await _requestUpdate();
+        }
+      }
+    } finally {
+      _streakDrainFuture = null;
     }
   }
 
@@ -342,4 +499,68 @@ class WidgetPayload {
   @override
   int get hashCode =>
       Object.hash(signedIn, heartRate, calories, logs, sleep);
+}
+
+/// The streak banner payload (D14): preformatted strings + flags
+/// the native provider renders verbatim. Signed-out payloads carry
+/// empty strings and todayDone false, so no previous account's
+/// streak can render.
+class StreakWidgetPayload {
+  final bool signedIn;
+  final String count;
+  final bool todayDone;
+
+  /// 'peek' | 'peek_cheer' (done-state expression rotation).
+  final String pose;
+  final String name;
+
+  /// Not-done: Juno §9a greeting, or '' when omitted entirely
+  /// (§9d). Done: the founder headline "See you tomorrow!".
+  final String greeting;
+
+  /// Not-done: Juno §9b. Done: "Day {N} is locked in.".
+  final String subline;
+
+  const StreakWidgetPayload({
+    required this.signedIn,
+    required this.count,
+    required this.todayDone,
+    required this.pose,
+    required this.name,
+    required this.greeting,
+    required this.subline,
+  });
+
+  const StreakWidgetPayload.signedOut()
+      : signedIn = false,
+        count = '',
+        todayDone = false,
+        pose = 'peek',
+        name = '',
+        greeting = '',
+        subline = '';
+
+  Map<String, Object?> toMap() => {
+        WidgetSync.keyStreakCount: count,
+        WidgetSync.keyStreakTodayDone: todayDone,
+        WidgetSync.keyStreakPose: pose,
+        WidgetSync.keyStreakName: name,
+        WidgetSync.keyStreakGreeting: greeting,
+        WidgetSync.keyStreakSubline: subline,
+      };
+
+  @override
+  bool operator ==(Object other) =>
+      other is StreakWidgetPayload &&
+      other.signedIn == signedIn &&
+      other.count == count &&
+      other.todayDone == todayDone &&
+      other.pose == pose &&
+      other.name == name &&
+      other.greeting == greeting &&
+      other.subline == subline;
+
+  @override
+  int get hashCode =>
+      Object.hash(signedIn, count, todayDone, pose, name, greeting, subline);
 }

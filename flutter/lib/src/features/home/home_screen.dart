@@ -24,6 +24,10 @@ import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/streak_engine.dart';
 import 'package:tabs_lab/src/data/streak_store.dart';
+import 'package:tabs_lab/src/data/summary_completeness.dart';
+import 'package:tabs_lab/src/data/today_plan_store.dart';
+import 'package:tabs_lab/src/data/today_summary.dart';
+import 'package:tabs_lab/src/features/home/streak_celebration_screen.dart';
 import 'package:tabs_lab/src/data/launch_trace.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -243,7 +247,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with WidgetsBindingObserver {
   int? _temp;
   bool _weatherLoaded = false;
 
@@ -539,9 +544,153 @@ class _HomeScreenState extends State<HomeScreen> {
   /// error.
   Future<void> _checkInNotifSyncChain = Future<void>.value();
 
+  // ── Streak upgrade: Daily Summary completion → celebration ────
+  /// The completion watcher (D11): re-evaluated on check-in
+  /// commit, any log-entry commit (the outbox listener), Home
+  /// load, and app resume; fires recordSummaryComplete exactly
+  /// once per open feeling day and hands the result to the
+  /// celebration screen. The nickname (Juno §6a/§9a source) comes
+  /// from the pull's top level, loaded with the check-in state.
+  SummaryCompletionWatcher? _completionWatcher;
+  String? _nickname;
+
+  SummaryCompletionWatcher get _watcher => _completionWatcher ??=
+      SummaryCompletionWatcher(
+        onCompletion: (result, state) {
+          if (!mounted) return;
+          final data = StreakCelebrationData.fromCompletion(
+            result: result,
+            state: state,
+            now: DateTime.now(),
+          );
+          final cache = HomeDataCache.instance;
+          if (cache.applyStreak(result.newCount, streakBest(state))) {
+            unawaited(cache.persist());
+          }
+          setState(() {
+            _currentStreak = result.newCount;
+            _bestStreak = streakBest(state);
+          });
+          unawaited(WidgetSync.pushStreak(
+            state,
+            signedIn: true,
+            nickname: _nickname,
+            now: DateTime.now(),
+          ));
+          unawaited(StreakCelebrationScreen.show(
+            context,
+            data: data,
+            nickname: _nickname,
+          ));
+        },
+      );
+
+  /// Evaluations are SERIALIZED through this chain: Home's
+  /// triggers cluster (the load settle and the outbox listener
+  /// can land in the same microtask burst), and the watcher's
+  /// fired-marker guard is designed for one evaluation at a time
+  /// — two concurrent evaluations could both pass the
+  /// not-yet-fired check before either writes the marker and
+  /// double-fire the celebration. The evaluation body never
+  /// throws (fail-safe catch inside), so the chain never wedges.
+  Future<void> _completionEvalChain = Future<void>.value();
+
+  void _queueSummaryCompletionEvaluation() {
+    _completionEvalChain =
+        _completionEvalChain.then((_) => _evaluateSummaryCompletion());
+  }
+
+  /// One completeness re-evaluation for the currently open
+  /// feeling day. Fail-safe: any failure leaves the day un-fired
+  /// and a later trigger retries.
+  Future<void> _evaluateSummaryCompletion() async {
+    try {
+      final now = DateTime.now();
+      final dayStart = feelingDayStart(now);
+      final rec = await _healthRepo.loadStreakRecord();
+      final profile = await _backend.fetchProfile();
+      final categories = await _backend.fetchLogCategories();
+      final habits = await _backend.fetchHabits();
+      String? email;
+      try {
+        email = await _backend.readEmail();
+      } catch (_) {
+        email = null;
+      }
+      final localState = await TodayPlanStore.instance.load(
+        email: email,
+        todayStr: dateStrOf(dayStart),
+      );
+      TodayPlanData? plan;
+      if (profile != null) {
+        final meds = <SummaryMedication>[];
+        for (final row
+            in TabsBackend.decodeProfileList(profile['medications'])) {
+          final med = SummaryMedication.fromBlobRow(row);
+          if (med != null) meds.add(med);
+        }
+        final reminders = <SummaryReminder>[];
+        final rows = TabsBackend.decodeProfileList(profile['reminders']);
+        for (var i = 0; i < rows.length; i++) {
+          final rem =
+              SummaryReminder.fromBlobRow(rows[i], fallbackId: -(i + 1));
+          if (rem != null) reminders.add(rem);
+        }
+        plan = buildPlanForFeelingDay(
+          feelingDayStart: dayStart,
+          medications: meds,
+          reminders: reminders,
+          habits: habits,
+          localState: localState,
+          entries: _mergedEntries,
+          medicationCategoryId: resolveSummaryCategoryId(
+            categories,
+            name: 'Medication',
+            fallbackId: 8,
+          ),
+          goalsCategoryId: resolveSummaryCategoryId(
+            categories,
+            name: 'Goals & Habits',
+            fallbackId: 4,
+          ),
+        );
+      }
+      await _watcher.maybeFireSummaryCompletion(
+        context: SummaryCompletionContext(
+          plan: plan,
+          planResolved: profile != null,
+          entries: _mergedEntries,
+          moodCategoryId:
+              resolveFeelingCategoryId(categories) ?? _feelingCategoryId,
+        ),
+        pullSucceeded: rec.succeeded,
+        seedCurrent: rec.current,
+        seedBest: rec.best,
+        seedStateJson: rec.stateJson,
+        seedPurchasedFreezes: rec.purchasedFreezes,
+        push: _healthRepo.pushStreakRecord,
+        now: now,
+      );
+    } catch (_) {
+      // A failed evaluation fires nothing; the next trigger
+      // (commit / load / resume) re-evaluates.
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // App resume is a D11 re-evaluation trigger (and a widget
+    // re-sync point: the pose/state refresh at existing sync
+    // points is the recorded D14 contract).
+    if (state == AppLifecycleState.resumed && mounted) {
+      _queueSummaryCompletionEvaluation();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _checkInNotifs =
         widget.notificationService ?? LocalReminderNotificationService();
     _healthRepo = widget.healthRepository ??
@@ -637,6 +786,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _completionWatcher?.dispose();
     widget.migraineController?.removeListener(_onMigraineChanged);
     _outbox.removeListener(_onCheckInOutboxChanged);
     _outbox.removeListener(_onIntakeOutboxChanged);
@@ -725,6 +876,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _intakePresets = presets;
       final pull = await _backend.fetchSyncPull();
       if (pull == null) return;
+      final nicknameRaw = pull['nickname'];
+      if (nicknameRaw is String) _nickname = nicknameRaw;
       final entries = await _backend.fetchLogEntryDtos();
       final categories = await _backend.fetchLogCategories();
       final categoryId = resolveIntakeCategoryId(categories);
@@ -1191,6 +1344,8 @@ class _HomeScreenState extends State<HomeScreen> {
       await _outbox.load(ownerEmail: email);
       final pull = await _backend.fetchSyncPull();
       if (pull == null) return;
+      final nicknameRaw = pull['nickname'];
+      if (nicknameRaw is String) _nickname = nicknameRaw;
       final entries = await _backend.fetchLogEntryDtos();
       final categories = await _backend.fetchLogCategories();
       if (!mounted) return;
@@ -1272,6 +1427,9 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onCheckInOutboxChanged() {
     if (!mounted) return;
     _deriveCheckInState(_mergedEntries);
+    // Any log-entry commit is a D11 completion trigger (the
+    // check-in commit rides this same listener).
+    _queueSummaryCompletionEvaluation();
   }
 
   /// Fresh-pull context for a commit: invalidates the pull,
@@ -1835,12 +1993,25 @@ class _HomeScreenState extends State<HomeScreen> {
         seedCurrent: rec.current,
         seedBest: rec.best,
         seedStateJson: rec.stateJson,
+        seedPurchasedFreezes: rec.purchasedFreezes,
         now: DateTime.now(),
         push: _healthRepo.pushStreakRecord,
       );
       if (!engineState.seeded || !mounted) return engineState;
-      final engineCurrent = streakCurrent(engineState, DateTime.now());
+      // A7: Home display reads anchor on the Tabs day, never raw
+      // wall-clock now.
+      final engineCurrent =
+          streakCurrent(engineState, tabsDayAnchor(DateTime.now()));
       final engineBest = streakBest(engineState);
+      // D14: the widget's streak banner follows the settled state.
+      unawaited(WidgetSync.pushStreak(
+        engineState,
+        signedIn: true,
+        nickname: _nickname,
+        now: DateTime.now(),
+      ));
+      // Home load is a D11 completion trigger.
+      _queueSummaryCompletionEvaluation();
       if (engineCurrent == _currentStreak && engineBest == _bestStreak) {
         return engineState;
       }
