@@ -157,6 +157,17 @@ class StreakState {
   /// decrements (B1).
   final int freezeFreeMonthsCompleted;
 
+  /// Days whose Daily Summary actually COMPLETED (P0 fix, Nov 18,
+  /// 2026): written only by the completion path
+  /// (StreakStore.recordSummaryComplete). This is the record the
+  /// adoption-time open-day revalidation checks — a counted or
+  /// restored mark for the CURRENT OPEN Tabs day with no entry
+  /// here is a legacy app-open artifact (v1 counted at app open)
+  /// and is stripped at adoption; closed days are never touched.
+  /// Additive + JSON-tolerant: states written before this field
+  /// existed deserialize with it empty.
+  final Set<String> summaryCompletedDays;
+
   const StreakState({
     this.seeded = false,
     this.seededCurrent = 0,
@@ -171,6 +182,7 @@ class StreakState {
     this.accrualMonth = '',
     this.spoiledMonths = const {},
     this.freezeFreeMonthsCompleted = 0,
+    this.summaryCompletedDays = const {},
   });
 
   /// Whether a freeze of any kind was consumed with attribution to
@@ -205,6 +217,7 @@ class StreakState {
     String? accrualMonth,
     Set<String>? spoiledMonths,
     int? freezeFreeMonthsCompleted,
+    Set<String>? summaryCompletedDays,
   }) {
     return StreakState(
       seeded: seeded ?? this.seeded,
@@ -221,6 +234,7 @@ class StreakState {
       spoiledMonths: spoiledMonths ?? this.spoiledMonths,
       freezeFreeMonthsCompleted:
           freezeFreeMonthsCompleted ?? this.freezeFreeMonthsCompleted,
+      summaryCompletedDays: summaryCompletedDays ?? this.summaryCompletedDays,
     );
   }
 
@@ -239,6 +253,7 @@ class StreakState {
     'accrualMonth': accrualMonth,
     'spoiledMonths': spoiledMonths.toList()..sort(),
     'freezeFreeMonthsCompleted': freezeFreeMonthsCompleted,
+    'summaryCompletedDays': summaryCompletedDays.toList()..sort(),
   };
 
   /// Parses a v2 blob, or migrates a v1 blob losslessly (A4+B1):
@@ -292,6 +307,10 @@ class StreakState {
           : _monthOfDay(tabsDayStr(migrationNow ?? DateTime.now())),
       spoiledMonths: isV2 ? setOf('spoiledMonths') : Set<String>.of(consumed),
       freezeFreeMonthsCompleted: isV2 ? intOf('freezeFreeMonthsCompleted') : 0,
+      // P0 fix: absent on every pre-fix blob (v1 AND shipped v2) —
+      // setOf returns {} for a missing key, which is exactly the
+      // legacy default the open-day revalidation relies on.
+      summaryCompletedDays: setOf('summaryCompletedDays'),
     );
   }
 
@@ -310,7 +329,8 @@ class StreakState {
       other.earnedPending == earnedPending &&
       other.accrualMonth == accrualMonth &&
       setEquals(other.spoiledMonths, spoiledMonths) &&
-      other.freezeFreeMonthsCompleted == freezeFreeMonthsCompleted;
+      other.freezeFreeMonthsCompleted == freezeFreeMonthsCompleted &&
+      setEquals(other.summaryCompletedDays, summaryCompletedDays);
 
   @override
   int get hashCode => Object.hash(
@@ -327,6 +347,27 @@ class StreakState {
     accrualMonth,
     Object.hashAllUnordered(spoiledMonths),
     freezeFreeMonthsCompleted,
+    Object.hashAllUnordered(summaryCompletedDays),
+  );
+}
+
+/// Open-day revalidation (P0 fix, Defect A1): a counted/restored
+/// mark for the CURRENT OPEN Tabs day [openTabsDay] that has no
+/// summary-completion record is a legacy app-open artifact — v1
+/// counted the day at app open, and adoption carried that mark
+/// into v2 wholesale. Strip ONLY that day's marks; closed days
+/// are grandfathered untouched, and a day with a completion
+/// record keeps its marks. Pure; returns [s] unchanged when there
+/// is nothing to strip.
+StreakState revalidateOpenDay(StreakState s, String openTabsDay) {
+  if (s.summaryCompletedDays.contains(openTabsDay)) return s;
+  if (!s.countedDays.contains(openTabsDay) &&
+      !s.restoredDays.contains(openTabsDay)) {
+    return s;
+  }
+  return s.copyWith(
+    countedDays: Set<String>.of(s.countedDays)..remove(openTabsDay),
+    restoredDays: Set<String>.of(s.restoredDays)..remove(openTabsDay),
   );
 }
 

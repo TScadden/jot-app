@@ -225,8 +225,35 @@ class StreakStore {
     if (server != null) {
       final serverDay = server.lastEvaluatedDay ?? '';
       final localDay = s?.lastEvaluatedDay ?? '';
-      if (s == null || serverDay.compareTo(localDay) >= 0) {
+      if (s == null) {
         s = server;
+      } else if (serverDay.compareTo(localDay) >= 0) {
+        // P0 fix (Defect B) — adoption MONOTONICITY: an equal- or
+        // newer-stamp server blob no longer REPLACES the local
+        // record wholesale. The completion push is fire-and-forget,
+        // so a stale server blob (equal stamp) used to regress the
+        // store after a completion — the celebration read one
+        // adopted snapshot (28) and the streak screen another (27).
+        // The day-level sets UNION-merge instead: no counted,
+        // restored, or summary-completed day held locally is ever
+        // lost to an equal-or-older-stamp adoption, and consumed /
+        // spoiled months (freeze accounting) never un-consume.
+        // Scalar fields (seeded counters, freeze inventory,
+        // accrual) still come from the winning server record; the
+        // A2 purchased-freeze formula below then applies on top.
+        s = server.copyWith(
+          countedDays: {...server.countedDays, ...s.countedDays},
+          restoredDays: {...server.restoredDays, ...s.restoredDays},
+          consumedSaveMonths: {
+            ...server.consumedSaveMonths,
+            ...s.consumedSaveMonths,
+          },
+          spoiledMonths: {...server.spoiledMonths, ...s.spoiledMonths},
+          summaryCompletedDays: {
+            ...server.summaryCompletedDays,
+            ...s.summaryCompletedDays,
+          },
+        );
       }
       // A2 FIELD-LEVEL MERGE for the purchased freeze: the concrete
       // stamp-comparison formula governs (it takes precedence over
@@ -408,7 +435,7 @@ class StreakStore {
       return StreakState.empty;
     }
 
-    final effective = _adopt(
+    final adopted = _adopt(
       pullSucceeded: pullSucceeded,
       seedCurrent: seedCurrent,
       seedBest: seedBest,
@@ -417,11 +444,20 @@ class StreakStore {
       now: now,
       seedMode: _seedAdoption,
     );
-    if (effective == null) {
+    if (adopted == null) {
       // No local record and no successful pull: NEVER fabricate a
       // run. The caller keeps its honest empty display.
       return StreakState.empty;
     }
+
+    // P0 fix (Defect A1) — open-day revalidation at adoption: a
+    // counted/restored mark for the still-open Tabs day with no
+    // summary-completion record is a legacy app-open artifact and
+    // is stripped before settlement (closed days untouched).
+    final effective = revalidateOpenDay(adopted, tabsDayStr(now));
+    // A strip is itself a state change: force the persist below
+    // even when settlement turns out to be a no-op.
+    if (effective != adopted) _dirty = true;
 
     final next = settle(effective, now);
     _installAndPush(
@@ -473,7 +509,7 @@ class StreakStore {
     }
 
     final summaryTabsDay = tabsDayStr(summaryDay);
-    final effective = _adopt(
+    final adopted = _adopt(
       pullSucceeded: pullSucceeded,
       seedCurrent: seedCurrent,
       seedBest: seedBest,
@@ -483,20 +519,39 @@ class StreakStore {
       seedMode: _seedCompletion,
       summaryTabsDay: summaryTabsDay,
     );
-    if (effective == null) {
+    if (adopted == null) {
       // Anti-fabrication parity: no local record + no successful
       // pull = no counted day (the brief's pinned test case).
       return (state: StreakState.empty, completion: null);
     }
+
+    // P0 fix (Defect A1) — same open-day revalidation as
+    // recordOpen: a legacy mark for the open day is stripped
+    // first, then the genuine completion below re-counts the day
+    // AND records it, so the day is henceforth legitimate.
+    final effective = revalidateOpenDay(adopted, tabsDayStr(now));
+    if (effective != adopted) _dirty = true;
 
     final done = completeDay(
       effective,
       summaryTabsDay: summaryTabsDay,
       now: now,
     );
+    // The completion record (P0 fix): this day's summary really
+    // completed — the mark that protects the counted day from
+    // every future adoption's open-day revalidation.
+    var nextState = done.state;
+    if (!nextState.summaryCompletedDays.contains(summaryTabsDay)) {
+      nextState = nextState.copyWith(
+        summaryCompletedDays: {
+          ...nextState.summaryCompletedDays,
+          summaryTabsDay,
+        },
+      );
+    }
     _installAndPush(
       effective: effective,
-      next: done.state,
+      next: nextState,
       pullSucceeded: pullSucceeded,
       seedCurrent: seedCurrent,
       seedBest: seedBest,
@@ -504,7 +559,7 @@ class StreakStore {
       now: now,
       push: push,
     );
-    return (state: done.state, completion: done.result);
+    return (state: nextState, completion: done.result);
   }
 
   Future<void> _persist() async {

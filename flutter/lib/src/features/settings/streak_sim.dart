@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:tabs_lab/src/data/streak_engine.dart';
@@ -64,6 +66,9 @@ class StreakSimEntry extends StatelessWidget {
     }
     return StreakCelebrationData(
       count: count,
+      // The ignition roll starts from the settled count — the
+      // preview is settled + 1, so it rolls up from settled.
+      previousCount: currentCount,
       week: week,
       isMilestoneDay: isMilestone(count),
     );
@@ -87,17 +92,19 @@ class StreakSimEntry extends StatelessWidget {
                 currentCount: currentCount,
                 now: now,
               );
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => StreakCelebrationScreen(
-                    data: data,
-                    nickname: nickname,
-                    // B-APP-1 / Juno §10: the preview count is
-                    // simulated, so the celebration's share
-                    // affordances are suppressed entirely in the
-                    // preview — no share card may carry it.
-                    isSimulation: true,
-                  ),
+              // The SIM goes through the SAME entry as the real
+              // celebration (Nov 18, 2026 fix): StreakCelebration-
+              // Screen.show — in-place entrance, same sequence.
+              // B-APP-1 / Juno §10: the preview count is
+              // simulated, so the celebration's share affordances
+              // are suppressed entirely in the preview — no share
+              // card may carry it.
+              unawaited(
+                StreakCelebrationScreen.show(
+                  context,
+                  data: data,
+                  nickname: nickname,
+                  isSimulation: true,
                 ),
               );
             },
@@ -114,10 +121,7 @@ class StreakSimEntry extends StatelessWidget {
           child: const Text(
             'Simulation only. This does not change your real streak.',
             key: Key('streakSimCaption'),
-            style: TextStyle(
-              fontSize: 12,
-              color: LabBlackColors.textSecondary,
-            ),
+            style: TextStyle(fontSize: 12, color: LabBlackColors.textSecondary),
           ),
         ),
       ],

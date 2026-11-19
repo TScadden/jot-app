@@ -610,7 +610,10 @@ class _HomeScreenState extends State<HomeScreen>
       final rec = await _healthRepo.loadStreakRecord();
       final profile = await _backend.fetchProfile();
       final categories = await _backend.fetchLogCategories();
-      final habits = await _backend.fetchHabits();
+      // P0 fix (Defect A2): the NULLABLE habits fetch — a failed
+      // fetch (null) must not read as "no habits planned" in the
+      // attestation below (fetchHabits collapses failure to []).
+      final habits = await _backend.fetchHabitsOrNull();
       String? email;
       try {
         email = await _backend.readEmail();
@@ -621,7 +624,7 @@ class _HomeScreenState extends State<HomeScreen>
         email: email,
         todayStr: dateStrOf(dayStart),
       );
-      TodayPlanData? plan;
+      AttestedPlan? attestedPlan;
       if (profile != null) {
         final meds = <SummaryMedication>[];
         for (final row
@@ -636,11 +639,11 @@ class _HomeScreenState extends State<HomeScreen>
               SummaryReminder.fromBlobRow(rows[i], fallbackId: -(i + 1));
           if (rem != null) reminders.add(rem);
         }
-        plan = buildPlanForFeelingDay(
+        final plan = buildPlanForFeelingDay(
           feelingDayStart: dayStart,
           medications: meds,
           reminders: reminders,
-          habits: habits,
+          habits: habits ?? const [],
           localState: localState,
           entries: _mergedEntries,
           medicationCategoryId: resolveSummaryCategoryId(
@@ -654,11 +657,25 @@ class _HomeScreenState extends State<HomeScreen>
             fallbackId: 4,
           ),
         );
+        // P0 fix (Defect A2): AUTHORITATIVE attestation — each
+        // plan input attests ITSELF at the decode layer (field
+        // present + decodable; habits fetch answered). The pre-fix
+        // proxy `profile != null` let an absent/partial payload
+        // read plannedCount == 0 and fire on the check-in alone.
+        attestedPlan = AttestedPlan(
+          plan: plan,
+          attestation: PlanAttestation(
+            medicationsResolved:
+                profileListFieldResolved(profile, 'medications'),
+            remindersResolved:
+                profileListFieldResolved(profile, 'reminders'),
+            habitsResolved: habits != null,
+          ),
+        );
       }
       await _watcher.maybeFireSummaryCompletion(
         context: SummaryCompletionContext(
-          plan: plan,
-          planResolved: profile != null,
+          attestedPlan: attestedPlan,
           entries: _mergedEntries,
           moodCategoryId:
               resolveFeelingCategoryId(categories) ?? _feelingCategoryId,

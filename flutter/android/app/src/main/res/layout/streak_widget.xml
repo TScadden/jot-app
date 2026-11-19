@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Standalone streak widget — values face (Nov 18, 2026).
+     One dark navy card (widget_banner_bg, the in-app banner's
+     background), matching the governing mocks: flame + count row
+     centered at top (flame grey / count #8E97B8 while today is
+     open; flame lit / count #FF7A50 once done), the payload
+     greeting (GONE entirely when empty, Juno §9d), the payload
+     sub-line verbatim, and Bandit PEEKING from the bottom edge —
+     the pre-rendered head crop (bandit_peek / bandit_peek_cheer,
+     full nose visible) anchored to the card's bottom with a
+     negative bottom margin so its neck crop line sits below the
+     card edge, the banner's bottom-edge crop.
+     RemoteViews-safe classes only. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/streak_widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_banner_bg"
+    android:clipChildren="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingStart="12dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="12dp">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/streak_widget_flame"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:contentDescription="Streak flame"
+                android:src="@drawable/ic_widget_flame_grey" />
+
+            <TextView
+                android:id="@+id/streak_widget_count"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:text=""
+                android:textColor="#8E97B8"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/streak_widget_greeting"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:singleLine="true"
+            android:text=""
+            android:textColor="#F0EEFF"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/streak_widget_subline"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:maxLines="2"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:text=""
+            android:textColor="#8E97B8"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <ImageView
+        android:id="@+id/streak_widget_bandit"
+        android:layout_width="132dp"
+        android:layout_height="92dp"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="-20dp"
+        android:contentDescription="Bandit"
+        android:scaleType="fitCenter"
+        android:src="@drawable/bandit_peek" />
+</FrameLayout>

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -38,20 +39,113 @@ import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
 /// Evidence backfilled into a closed day's window after the 04:00
 /// close never retro-fires it.
 
-/// The composed completeness test. [plan] is the feeling day's
-/// plan (see [buildPlanForFeelingDay]); [planResolved] is the
-/// caller's attestation that the plan was actually loaded for
-/// that day — pass false whenever the plan is a default, a cache
-/// placeholder for another day, or not yet loaded, and completion
-/// can never fire (Vera condition 1).
+/// Authoritative plan attestation (P0 fix, Defect A2 — Vera D11
+/// condition 1 in substance). The pre-fix Home attested
+/// planResolved as `profile != null`: a profile payload ARRIVING
+/// proved nothing about whether the plan reflected the day's real
+/// obligations — a payload whose medications/reminders fields were
+/// absent or undecodable decoded to empty lists, read
+/// plannedCount == 0, and fired on the check-in alone.
+///
+/// This value attests the plan's INPUTS individually, at the
+/// decode layer: each flag is true only when that input was
+/// actually loaded — for profile fields, the field is PRESENT in
+/// the payload and decodable as a list (possibly empty); for
+/// habits, the fetch actually answered (fetchHabitsOrNull non-
+/// null). A genuinely plan-free account (every input loaded, all
+/// empty) attests fully resolved and can still complete on the
+/// check-in alone — Vera's protected case.
+class PlanAttestation {
+  final bool medicationsResolved;
+  final bool remindersResolved;
+  final bool habitsResolved;
+
+  const PlanAttestation({
+    required this.medicationsResolved,
+    required this.remindersResolved,
+    required this.habitsResolved,
+  });
+
+  /// Nothing attested — the state whenever any part of the plan's
+  /// inputs failed to load.
+  const PlanAttestation.unresolved()
+      : medicationsResolved = false,
+        remindersResolved = false,
+        habitsResolved = false;
+
+  bool get resolved =>
+      medicationsResolved && remindersResolved && habitsResolved;
+
+  @override
+  bool operator ==(Object other) =>
+      other is PlanAttestation &&
+      other.medicationsResolved == medicationsResolved &&
+      other.remindersResolved == remindersResolved &&
+      other.habitsResolved == habitsResolved;
+
+  @override
+  int get hashCode =>
+      Object.hash(medicationsResolved, remindersResolved, habitsResolved);
+}
+
+/// Whether one profile list field (e.g. `medications`) is PRESENT
+/// in [profile] and decodable as a list — the decode-layer
+/// distinction between "field absent / payload partial" (false)
+/// and "field present, decoded, possibly empty" (true). Mirrors
+/// TabsBackend.decodeProfileList's tolerance (JSON string,
+/// double-encoded string, already-decoded List/Map) but reports
+/// decodability instead of collapsing every failure to [].
+bool profileListFieldResolved(Map<String, dynamic> profile, String key) {
+  if (!profile.containsKey(key)) return false;
+  final raw = profile[key];
+  if (raw == null) return false;
+  if (raw is List || raw is Map) return true;
+  if (raw is String) {
+    if (raw.trim().isEmpty) return false;
+    try {
+      var decoded = jsonDecode(raw);
+      var guard = 0;
+      while (decoded is String && decoded.trim().isNotEmpty && guard < 3) {
+        guard++;
+        try {
+          decoded = jsonDecode(decoded);
+        } catch (_) {
+          break;
+        }
+      }
+      return decoded is List || decoded is Map;
+    } catch (_) {
+      return false;
+    }
+  }
+  return false;
+}
+
+/// A feeling day's plan together with the attestation of its
+/// inputs: the plan VALUE carries its resolved-ness (P0 fix) — no
+/// side boolean attested by proxy can drift from the plan it
+/// describes.
+class AttestedPlan {
+  final TodayPlanData plan;
+  final PlanAttestation attestation;
+
+  const AttestedPlan({required this.plan, required this.attestation});
+
+  bool get resolved => attestation.resolved;
+}
+
+/// The composed completeness test. [attestedPlan] is the feeling
+/// day's plan (see [buildPlanForFeelingDay]) WITH its input
+/// attestation; an unattested or partially-attested plan can
+/// never complete (Vera condition 1).
 bool isSummaryComplete({
   required DateTime feelingDayStart,
-  required TodayPlanData? plan,
-  required bool planResolved,
+  required AttestedPlan? attestedPlan,
   required List<QuickLogEntry> entries,
   required int? moodCategoryId,
 }) {
-  if (!planResolved || plan == null) return false;
+  if (attestedPlan == null || !attestedPlan.resolved) return false;
+  final plan = attestedPlan.plan;
   if (moodCategoryId == null) return false;
   if (!(plan.plannedCount == 0 || plan.remainingCount == 0)) {
     return false;
@@ -142,14 +236,12 @@ TodayPlanData buildPlanForFeelingDay({
 /// the caller for the CURRENTLY OPEN feeling day (plan + entries
 /// + category resolution are Home's data, not the watcher's).
 class SummaryCompletionContext {
-  final TodayPlanData? plan;
-  final bool planResolved;
+  final AttestedPlan? attestedPlan;
   final List<QuickLogEntry> entries;
   final int? moodCategoryId;
 
   const SummaryCompletionContext({
-    required this.plan,
-    required this.planResolved,
+    required this.attestedPlan,
     required this.entries,
     required this.moodCategoryId,
   });
@@ -239,8 +331,7 @@ class SummaryCompletionWatcher {
 
     if (!isSummaryComplete(
       feelingDayStart: openDayStart,
-      plan: context.plan,
-      planResolved: context.planResolved,
+      attestedPlan: context.attestedPlan,
       entries: context.entries,
       moodCategoryId: context.moodCategoryId,
     )) {

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Standalone streak widget — signed-out / unseeded face
+     (Nov 18, 2026): the same dark navy card, one centered quiet
+     line, NO numbers ever (mirrors the vitals widget's signed-out
+     discipline). Text color is NotelColors.textSecondary
+     (#7A8FAF). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/streak_widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_banner_bg"
+    android:gravity="center"
+    android:orientation="horizontal"
+    android:paddingStart="18dp"
+    android:paddingTop="12dp"
+    android:paddingEnd="18dp"
+    android:paddingBottom="12dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:text="Open Tabs to sign in"
+        android:textColor="#7A8FAF"
+        android:textSize="14sp" />
+</LinearLayout>

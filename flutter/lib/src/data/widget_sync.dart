@@ -74,6 +74,15 @@ class WidgetSync {
       'com.notel.notel.playground.flutter.VitalsWidgetProvider';
   static const String providerName = 'VitalsWidgetProvider';
 
+  /// The STANDALONE streak widget's provider (Nov 18, 2026): a
+  /// separate AppWidget provider rendering the same streak payload
+  /// keys below. The vitals provider also carries a banner face;
+  /// this one exists so the streak has its own entry in the
+  /// Android widget picker.
+  static const String qualifiedStreakProviderName =
+      'com.notel.notel.playground.flutter.StreakWidgetProvider';
+  static const String streakProviderName = 'StreakWidgetProvider';
+
   // Injectable bridge (unit tests): replaces the platform-channel
   // calls so the mapping + failure-swallowing can be verified without
   // a device. Null in production.
@@ -205,6 +214,30 @@ class WidgetSync {
     }
   }
 
+  /// Update request for the standalone streak widget — same
+  /// bridge discipline as [_requestUpdate] (the test override
+  /// stands in for BOTH providers' platform calls, so a streak
+  /// drain turn through the bridge records two updates: vitals +
+  /// streak). The vitals path never calls this.
+  static Future<void> _requestStreakUpdate() async {
+    try {
+      final override = _updateOverride;
+      if (override != null) {
+        await override();
+        return;
+      }
+      final ok = await HomeWidget.updateWidget(
+        name: streakProviderName,
+        qualifiedAndroidName: qualifiedStreakProviderName,
+      );
+      if (ok == false) {
+        debugPrint('WidgetSync: streak updateWidget returned false');
+      }
+    } catch (e) {
+      debugPrint('WidgetSync: streak updateWidget failed: $e');
+    }
+  }
+
   /// Saves every key of [payload], then requests exactly one widget
   /// update. The update is requested from a `finally` block: even
   /// if an individual save misbehaves beyond its own isolation, a
@@ -236,8 +269,7 @@ class WidgetSync {
     final sleepMinutes = vitals?.sleepMinutes;
     return WidgetPayload(
       signedIn: true,
-      heartRate:
-          (heartRate == null || heartRate == 0) ? '--' : '$heartRate',
+      heartRate: (heartRate == null || heartRate == 0) ? '--' : '$heartRate',
       calories: (activeCalories == null || activeCalories == 0)
           ? '--'
           : '$activeCalories',
@@ -417,7 +449,10 @@ class WidgetSync {
           await _save(keyStreakGreeting, payload.greeting);
           await _save(keyStreakSubline, payload.subline);
         } finally {
+          // The vitals provider's banner face refreshes as before;
+          // the standalone streak widget refreshes additionally.
           await _requestUpdate();
+          await _requestStreakUpdate();
         }
       }
     } finally {
@@ -441,7 +476,8 @@ class WidgetSync {
     required bool hasSession,
     required HomeCacheSnapshot snapshot,
   }) async {
-    final hasSnapshot = snapshot.vitalsLoaded ||
+    final hasSnapshot =
+        snapshot.vitalsLoaded ||
         snapshot.streakLoaded ||
         snapshot.countersLoaded;
     if (hasSession && hasSnapshot) {
@@ -473,19 +509,19 @@ class WidgetPayload {
   });
 
   const WidgetPayload.signedOut()
-      : signedIn = false,
-        heartRate = '--',
-        calories = '--',
-        logs = '--',
-        sleep = '--';
+    : signedIn = false,
+      heartRate = '--',
+      calories = '--',
+      logs = '--',
+      sleep = '--';
 
   Map<String, Object?> toMap() => {
-        WidgetSync.keySignedIn: signedIn,
-        WidgetSync.keyHeartRate: heartRate,
-        WidgetSync.keyCalories: calories,
-        WidgetSync.keyLogs: logs,
-        WidgetSync.keySleep: sleep,
-      };
+    WidgetSync.keySignedIn: signedIn,
+    WidgetSync.keyHeartRate: heartRate,
+    WidgetSync.keyCalories: calories,
+    WidgetSync.keyLogs: logs,
+    WidgetSync.keySleep: sleep,
+  };
 
   @override
   bool operator ==(Object other) =>
@@ -497,8 +533,7 @@ class WidgetPayload {
       other.sleep == sleep;
 
   @override
-  int get hashCode =>
-      Object.hash(signedIn, heartRate, calories, logs, sleep);
+  int get hashCode => Object.hash(signedIn, heartRate, calories, logs, sleep);
 }
 
 /// The streak banner payload (D14): preformatted strings + flags
@@ -532,22 +567,22 @@ class StreakWidgetPayload {
   });
 
   const StreakWidgetPayload.signedOut()
-      : signedIn = false,
-        count = '',
-        todayDone = false,
-        pose = 'peek',
-        name = '',
-        greeting = '',
-        subline = '';
+    : signedIn = false,
+      count = '',
+      todayDone = false,
+      pose = 'peek',
+      name = '',
+      greeting = '',
+      subline = '';
 
   Map<String, Object?> toMap() => {
-        WidgetSync.keyStreakCount: count,
-        WidgetSync.keyStreakTodayDone: todayDone,
-        WidgetSync.keyStreakPose: pose,
-        WidgetSync.keyStreakName: name,
-        WidgetSync.keyStreakGreeting: greeting,
-        WidgetSync.keyStreakSubline: subline,
-      };
+    WidgetSync.keyStreakCount: count,
+    WidgetSync.keyStreakTodayDone: todayDone,
+    WidgetSync.keyStreakPose: pose,
+    WidgetSync.keyStreakName: name,
+    WidgetSync.keyStreakGreeting: greeting,
+    WidgetSync.keyStreakSubline: subline,
+  };
 
   @override
   bool operator ==(Object other) =>
