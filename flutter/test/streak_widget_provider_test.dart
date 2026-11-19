@@ -226,8 +226,10 @@ void main() {
         expect(compact, contains('@+id/$id'), reason: 'missing $id');
       }
       // A.2: no subline slot and no truncation path may exist.
+      // (The attribute is pinned, not the word — the layout's own
+      // comment explains the rule using the word "ellipsize".)
       expect(compact, isNot(contains('streak_widget_subline')));
-      expect(compact, isNot(contains('ellipsize')));
+      expect(compact, isNot(contains('android:ellipsize')));
       // B flag: the greeting is sized against "See you tomorrow!".
       expect(compact, contains('android:textSize="13sp"'));
       expect(compact, contains('android:layout_height="20dp"'));
