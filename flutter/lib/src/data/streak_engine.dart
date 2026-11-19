@@ -19,6 +19,17 @@ import 'package:flutter/foundation.dart';
 /// per calendar month; a missed day consumes it automatically and
 /// the streak survives; the saved day is marked as restored.
 ///
+/// STATE V2 (streak upgrade, Nov 18, 2026; design SIGNED round 3 —
+/// STAGE-LOG.md D1–D14/A1–A10/B1–B2 + VERA-DESIGN-REVIEW.md): the
+/// counted-day event is Daily Summary completion, not app-open.
+/// App-open runs rollover SETTLEMENT only ([settle]); the freeze
+/// inventory (earned / purchased / monthly grant) bridges missed
+/// days chronologically, purchased first; a freeze-free month with
+/// the streak alive earns an extra freeze under the A1 cap
+/// accounting (total available cover vs cap 2, or 3 while a
+/// purchased freeze is held). All day keys derive from the Tabs
+/// anchor ([tabsDayAnchor], 04:00 boundary).
+///
 /// Named interpretations (STREAK_SPEC.md, founder can flip any):
 /// - No rollover: the grant is derived per month — a month has a
 ///   save iff no save was consumed for a missed day in that month.
@@ -43,6 +54,32 @@ String streakDayStr(DateTime d) =>
 String streakMonthKey(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-'
     '${d.month.toString().padLeft(2, '0')}';
+
+/// The Tabs-day anchor (design A7, streak upgrade Nov 18, 2026):
+/// the ONE day derivation every streak read and write path uses.
+/// A Tabs day starts at 04:00 local, so the anchor is [now] shifted
+/// back 4 hours; the Tabs day a wall-clock moment belongs to is the
+/// calendar day of its anchor. Between 00:00–03:59 the anchor still
+/// belongs to the previous calendar day — the still-open Tabs day.
+DateTime tabsDayAnchor(DateTime now) => now.subtract(const Duration(hours: 4));
+
+/// The Tabs day (ISO `yyyy-MM-dd`) containing [now], via
+/// [tabsDayAnchor]. All day keys in the v2 engine derive from this,
+/// never from raw wall-clock `now`.
+String tabsDayStr(DateTime now) => streakDayStr(tabsDayAnchor(now));
+
+/// The `yyyy-MM` key of the month containing an ISO day string.
+String _monthOfDay(String day) => day.substring(0, 7);
+
+/// Adds [n] months to a `yyyy-MM` key.
+String _addMonthsToKey(String key, int n) {
+  final y = int.parse(key.substring(0, 4));
+  final m = int.parse(key.substring(5, 7));
+  final total = y * 12 + (m - 1) + n;
+  final ny = total ~/ 12;
+  final nm = total % 12 + 1;
+  return '${ny.toString().padLeft(4, '0')}-${nm.toString().padLeft(2, '0')}';
+}
 
 DateTime _parseDay(String s) => DateTime.parse(s);
 
@@ -87,6 +124,39 @@ class StreakState {
   /// The last day an evaluation ran (ISO), or null before the first.
   final String? lastEvaluatedDay;
 
+  // ── State v2 (streak upgrade, design D4/A1/A4/B1) ──────────────
+
+  /// Earned freezes held (0..1): granted when a full calendar month
+  /// closes with zero attributed freeze consumption while the streak
+  /// was alive in it.
+  final int earnedFreezes;
+
+  /// Purchased freezes held (0..1): server-verified inventory (the
+  /// server profile column is authoritative; see streak_store's A2
+  /// field-level merge).
+  final int purchasedFreezes;
+
+  /// An earned freeze is due but paused: it waits (at most one) for
+  /// BOTH the earned slot and a total-cover slot to free (A1).
+  final bool earnedPending;
+
+  /// The `yyyy-MM` the accrual counters belong to. Months before
+  /// this have been close-evaluated; this month is still open.
+  /// Empty only on never-migrated in-memory states; [settle]
+  /// anchors it to the current month without closing anything.
+  final String accrualMonth;
+
+  /// Every month with >= 1 attributed freeze consumption
+  /// (attribution = the missed day's month, A5). The source of
+  /// truth for spoils; pruned to the trailing 24 months, and only
+  /// months already closed are ever pruned (B1/Vera round 3).
+  final Set<String> spoiledMonths;
+
+  /// Consecutive full calendar months that closed freeze-free with
+  /// the streak alive. Pauses across inactive months; never
+  /// decrements (B1).
+  final int freezeFreeMonthsCompleted;
+
   const StreakState({
     this.seeded = false,
     this.seededCurrent = 0,
@@ -95,14 +165,31 @@ class StreakState {
     this.restoredDays = const {},
     this.consumedSaveMonths = const {},
     this.lastEvaluatedDay,
+    this.earnedFreezes = 0,
+    this.purchasedFreezes = 0,
+    this.earnedPending = false,
+    this.accrualMonth = '',
+    this.spoiledMonths = const {},
+    this.freezeFreeMonthsCompleted = 0,
   });
+
+  /// Whether a freeze of any kind was consumed with attribution to
+  /// the accrual month (B1: DERIVED from [spoiledMonths], never a
+  /// stored bool that could go stale across a rollover).
+  bool get freezeUsedInAccrualMonth => spoiledMonths.contains(accrualMonth);
 
   static const empty = StreakState();
 
   /// Lab-local history worth protecting from a re-seed: any restored
   /// day or consumed save exists only in this record.
   bool get hasProtectedHistory =>
-      restoredDays.isNotEmpty || consumedSaveMonths.isNotEmpty;
+      restoredDays.isNotEmpty ||
+      consumedSaveMonths.isNotEmpty ||
+      spoiledMonths.isNotEmpty ||
+      earnedFreezes > 0 ||
+      purchasedFreezes > 0 ||
+      earnedPending ||
+      freezeFreeMonthsCompleted > 0;
 
   StreakState copyWith({
     bool? seeded,
@@ -112,6 +199,12 @@ class StreakState {
     Set<String>? restoredDays,
     Set<String>? consumedSaveMonths,
     String? lastEvaluatedDay,
+    int? earnedFreezes,
+    int? purchasedFreezes,
+    bool? earnedPending,
+    String? accrualMonth,
+    Set<String>? spoiledMonths,
+    int? freezeFreeMonthsCompleted,
   }) {
     return StreakState(
       seeded: seeded ?? this.seeded,
@@ -121,21 +214,50 @@ class StreakState {
       restoredDays: restoredDays ?? this.restoredDays,
       consumedSaveMonths: consumedSaveMonths ?? this.consumedSaveMonths,
       lastEvaluatedDay: lastEvaluatedDay ?? this.lastEvaluatedDay,
+      earnedFreezes: earnedFreezes ?? this.earnedFreezes,
+      purchasedFreezes: purchasedFreezes ?? this.purchasedFreezes,
+      earnedPending: earnedPending ?? this.earnedPending,
+      accrualMonth: accrualMonth ?? this.accrualMonth,
+      spoiledMonths: spoiledMonths ?? this.spoiledMonths,
+      freezeFreeMonthsCompleted:
+          freezeFreeMonthsCompleted ?? this.freezeFreeMonthsCompleted,
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'v': 1,
-        'seeded': seeded,
-        'seededCurrent': seededCurrent,
-        'seededBest': seededBest,
-        'countedDays': countedDays.toList()..sort(),
-        'restoredDays': restoredDays.toList()..sort(),
-        'consumedSaveMonths': consumedSaveMonths.toList()..sort(),
-        'lastEvaluatedDay': lastEvaluatedDay,
-      };
+    'v': 2,
+    'seeded': seeded,
+    'seededCurrent': seededCurrent,
+    'seededBest': seededBest,
+    'countedDays': countedDays.toList()..sort(),
+    'restoredDays': restoredDays.toList()..sort(),
+    'consumedSaveMonths': consumedSaveMonths.toList()..sort(),
+    'lastEvaluatedDay': lastEvaluatedDay,
+    'earnedFreezes': earnedFreezes,
+    'purchasedFreezes': purchasedFreezes,
+    'earnedPending': earnedPending,
+    'accrualMonth': accrualMonth,
+    'spoiledMonths': spoiledMonths.toList()..sort(),
+    'freezeFreeMonthsCompleted': freezeFreeMonthsCompleted,
+  };
 
-  factory StreakState.fromJson(Map<String, dynamic> json) {
+  /// Parses a v2 blob, or migrates a v1 blob losslessly (A4+B1):
+  /// the day-level record and counters carry over untouched;
+  /// `freezeFreeMonthsCompleted` := 0 (NEVER inferred — an absent
+  /// consumed-month key also means "inactive" or "before the
+  /// account existed"); `spoiledMonths` := [consumedSaveMonths]
+  /// (those months had a monthly-grant consumption by definition);
+  /// `accrualMonth` := the current Tabs month of [migrationNow]
+  /// (defaults to the wall clock — the store loads at app-open, so
+  /// that IS the current month; tests pass it explicitly). The A4
+  /// derivation `freezeUsedInAccrualMonth =
+  /// consumedSaveMonths.contains(current month)` falls out of the
+  /// spoiled-months seed + the derived getter, so a pre-upgrade
+  /// Restore use this month correctly spoils this month's accrual.
+  factory StreakState.fromJson(
+    Map<String, dynamic> json, {
+    DateTime? migrationNow,
+  }) {
     Set<String> setOf(String key) {
       final v = json[key];
       if (v is! List) return const {};
@@ -147,15 +269,29 @@ class StreakState {
       return v is int ? v : 0;
     }
 
+    int heldOf(String key) => intOf(key).clamp(0, 1);
+
     final last = json['lastEvaluatedDay'];
+    final consumed = setOf('consumedSaveMonths');
+    final version = json['v'];
+    final isV2 = version is int && version >= 2;
+    final accrualRaw = json['accrualMonth'];
     return StreakState(
       seeded: json['seeded'] == true,
       seededCurrent: intOf('seededCurrent'),
       seededBest: intOf('seededBest'),
       countedDays: setOf('countedDays'),
       restoredDays: setOf('restoredDays'),
-      consumedSaveMonths: setOf('consumedSaveMonths'),
+      consumedSaveMonths: consumed,
       lastEvaluatedDay: last is String ? last : null,
+      earnedFreezes: isV2 ? heldOf('earnedFreezes') : 0,
+      purchasedFreezes: isV2 ? heldOf('purchasedFreezes') : 0,
+      earnedPending: isV2 ? json['earnedPending'] == true : false,
+      accrualMonth: isV2
+          ? (accrualRaw is String ? accrualRaw : '')
+          : _monthOfDay(tabsDayStr(migrationNow ?? DateTime.now())),
+      spoiledMonths: isV2 ? setOf('spoiledMonths') : Set<String>.of(consumed),
+      freezeFreeMonthsCompleted: isV2 ? intOf('freezeFreeMonthsCompleted') : 0,
     );
   }
 
@@ -168,18 +304,30 @@ class StreakState {
       setEquals(other.countedDays, countedDays) &&
       setEquals(other.restoredDays, restoredDays) &&
       setEquals(other.consumedSaveMonths, consumedSaveMonths) &&
-      other.lastEvaluatedDay == lastEvaluatedDay;
+      other.lastEvaluatedDay == lastEvaluatedDay &&
+      other.earnedFreezes == earnedFreezes &&
+      other.purchasedFreezes == purchasedFreezes &&
+      other.earnedPending == earnedPending &&
+      other.accrualMonth == accrualMonth &&
+      setEquals(other.spoiledMonths, spoiledMonths) &&
+      other.freezeFreeMonthsCompleted == freezeFreeMonthsCompleted;
 
   @override
   int get hashCode => Object.hash(
-        seeded,
-        seededCurrent,
-        seededBest,
-        Object.hashAllUnordered(countedDays),
-        Object.hashAllUnordered(restoredDays),
-        Object.hashAllUnordered(consumedSaveMonths),
-        lastEvaluatedDay,
-      );
+    seeded,
+    seededCurrent,
+    seededBest,
+    Object.hashAllUnordered(countedDays),
+    Object.hashAllUnordered(restoredDays),
+    Object.hashAllUnordered(consumedSaveMonths),
+    lastEvaluatedDay,
+    earnedFreezes,
+    purchasedFreezes,
+    earnedPending,
+    accrualMonth,
+    Object.hashAllUnordered(spoiledMonths),
+    freezeFreeMonthsCompleted,
+  );
 }
 
 /// The consecutive-day run ending on [endDay] within [days], as
@@ -259,6 +407,314 @@ int streakBest(StreakState s) {
 int streakSavesLeft(StreakState s, DateTime now) =>
     s.consumedSaveMonths.contains(streakMonthKey(now)) ? 0 : 1;
 
+/// Total available cover (A1, Vera's D6 ruling): the monthly grant
+/// while it is unused for the month containing [now]'s Tabs day,
+/// plus held earned and purchased freezes. This — never held-only —
+/// is the number the UI displays as freezes held (Juno ruling).
+int totalAvailableCover(StreakState s, DateTime now) =>
+    (s.consumedSaveMonths.contains(streakMonthKey(tabsDayAnchor(now)))
+        ? 0
+        : 1) +
+    s.earnedFreezes +
+    s.purchasedFreezes;
+
+/// The freeze cap (A1): 2, or 3 while a purchased freeze is held.
+/// (The monthly grant counts toward the cap while unused; the
+/// purchased freeze is the +1.)
+int streakCap(StreakState s) => 2 + (s.purchasedFreezes > 0 ? 1 : 0);
+
+/// Cover against a specific month's grant, for accrual arithmetic
+/// inside a settlement (the month whose grant is being counted is
+/// not always the settlement's current month).
+int _coverFor(
+  Set<String> consumed,
+  String grantMonth,
+  int earned,
+  int purchased,
+) => (consumed.contains(grantMonth) ? 0 : 1) + earned + purchased;
+
+/// The milestone ladder (stage log, coordinator ladder signed in
+/// the design pass): [7, 14, 30, 60, 90, 180, 365], then +365 steps.
+const List<int> streakMilestoneLadder = [7, 14, 30, 60, 90, 180, 365];
+
+/// True when [count] is exactly a milestone rung.
+bool isMilestone(int count) {
+  if (count <= 0) return false;
+  if (streakMilestoneLadder.contains(count)) return true;
+  return count > 365 && count % 365 == 0;
+}
+
+/// The next milestone strictly above [count].
+int nextMilestone(int count) {
+  for (final rung in streakMilestoneLadder) {
+    if (count < rung) return rung;
+  }
+  return 365 * (count ~/ 365 + 1);
+}
+
+/// Which freeze kind bridged a missed day (A5 draw order:
+/// purchased, then earned, then the missed day's monthly grant).
+enum FreezeKind { purchased, earned, monthly }
+
+/// The outcome of a rollover settlement, beyond the state itself:
+/// which days were bridged and by what, and whether the gap broke
+/// the run (nothing consumed in that case — the shipped rule).
+class StreakSettleResult {
+  final StreakState state;
+  final List<String> bridgedDays;
+  final Map<String, FreezeKind> freezeUsedKinds;
+  final bool brokeStreak;
+
+  const StreakSettleResult({
+    required this.state,
+    required this.bridgedDays,
+    required this.freezeUsedKinds,
+    required this.brokeStreak,
+  });
+}
+
+/// What the UI layer needs from one Daily Summary completion
+/// (brief deliverable 1): the new run length, the days this
+/// completion's settlement bridged (and with what), whether the
+/// run broke and restarted at the summary day, whether an earned
+/// freeze landed during the operation, and whether the new count
+/// is a milestone.
+class StreakCompletionResult {
+  final int newCount;
+  final List<String> bridgedDays;
+  final Map<String, FreezeKind> freezeUsedKinds;
+  final bool brokeStreak;
+  final bool earnedLanded;
+  final bool isMilestone;
+
+  const StreakCompletionResult({
+    required this.newCount,
+    required this.bridgedDays,
+    required this.freezeUsedKinds,
+    required this.brokeStreak,
+    required this.earnedLanded,
+    required this.isMilestone,
+  });
+}
+
+/// The settlement core, against an explicit Tabs [today] day
+/// string. Shared by [settle] (today = the current Tabs day) and
+/// [completeDay] (today = the summary's Tabs day).
+StreakSettleResult _settleDetailed(StreakState s, String today) {
+  var earned = s.earnedFreezes;
+  var purchased = s.purchasedFreezes;
+  var pending = s.earnedPending;
+  var ffmc = s.freezeFreeMonthsCompleted;
+  final counted = Set<String>.of(s.countedDays);
+  final restored = Set<String>.of(s.restoredDays);
+  var consumed = Set<String>.of(s.consumedSaveMonths);
+  final spoiled = Set<String>.of(s.spoiledMonths);
+  final bridged = <String>[];
+  final kinds = <String, FreezeKind>{};
+  var broke = false;
+
+  // ── Gap bridging (D3/D5/A5): chronological, per missed day,
+  // oldest first, drawn purchased → earned → the monthly grant OF
+  // THE MONTH CONTAINING THAT MISSED DAY. All draws are computed
+  // on working copies and committed only if the FULL gap bridges;
+  // a gap that cannot fully bridge breaks the run and consumes
+  // NOTHING (the shipped rule, generalized).
+  String? lastCounted;
+  for (final d in counted) {
+    if (streakDaysBetween(d, today) > 0 &&
+        (lastCounted == null || d.compareTo(lastCounted) > 0)) {
+      lastCounted = d;
+    }
+  }
+  if (lastCounted != null) {
+    final gap = streakDaysBetween(lastCounted, today);
+    if (gap > 1) {
+      var wEarned = earned;
+      var wPurchased = purchased;
+      final wConsumed = Set<String>.of(consumed);
+      final draws = <String, FreezeKind>{};
+      var ok = true;
+      for (var i = 1; i < gap; i++) {
+        final missed = _addDays(lastCounted, i);
+        final mk = _monthOfDay(missed);
+        if (wPurchased > 0) {
+          wPurchased--;
+          draws[missed] = FreezeKind.purchased;
+        } else if (wEarned > 0) {
+          wEarned--;
+          draws[missed] = FreezeKind.earned;
+        } else if (!wConsumed.contains(mk)) {
+          wConsumed.add(mk);
+          draws[missed] = FreezeKind.monthly;
+        } else {
+          ok = false;
+          break;
+        }
+      }
+      if (ok) {
+        earned = wEarned;
+        purchased = wPurchased;
+        consumed = wConsumed;
+        for (final e in draws.entries) {
+          counted.add(e.key);
+          restored.add(e.key);
+          // Spoils attribution (A5): the missed day's month.
+          spoiled.add(_monthOfDay(e.key));
+          bridged.add(e.key);
+          kinds[e.key] = e.value;
+        }
+        bridged.sort();
+      } else {
+        broke = true;
+      }
+    }
+  }
+
+  // ── Accrual rollover (B1), AFTER the bridging walk so every
+  // attribution for a month lands BEFORE that month's close is
+  // evaluated. Each month from accrualMonth forward while it is
+  // behind the current month is closed in chronological order
+  // (multi-month catch-up fully processed, never skipped); the
+  // current partial month is never closed early.
+  var accrual = s.accrualMonth;
+  final currentMonth = _monthOfDay(today);
+  if (accrual.isEmpty) {
+    // Never-migrated in-memory state: anchor without closing
+    // anything — the past cannot be inferred (A4's rule).
+    accrual = currentMonth;
+  } else {
+    while (accrual.compareTo(currentMonth) < 0) {
+      final m = accrual;
+      final alive =
+          counted.any((d) => _monthOfDay(d) == m) ||
+          restored.any((d) => _monthOfDay(d) == m);
+      if (!spoiled.contains(m) && alive) {
+        ffmc++;
+        // An earned freeze comes due, resolved immediately under
+        // A1 against the evolving inventory. The cover count uses
+        // the grant of the month being entered (m+1): at m's close
+        // that is the live monthly grant.
+        final cover = _coverFor(
+          consumed,
+          _addMonthsToKey(m, 1),
+          earned,
+          purchased,
+        );
+        final cap = 2 + (purchased > 0 ? 1 : 0);
+        if (earned == 0 && cover < cap) {
+          earned = 1;
+        } else {
+          // Grant blocked (earned slot held, or at cap): the due
+          // freeze queues as pending. If one is held AND one is
+          // already pending, the due does NOT bank — pending is
+          // already true and stays true; the month still counted.
+          pending = true;
+        }
+      }
+      // A month that was spoiled, or in which the streak was never
+      // alive (no counted/restored day), mints nothing and does
+      // NOT reset ffmc — the count pauses (B1).
+      accrual = _addMonthsToKey(m, 1);
+    }
+  }
+
+  // ── Pending landing (A1): checked at every settlement, as the
+  // final step, against the CURRENT month's cover. BOTH clauses
+  // must hold: the earned slot free AND total cover under cap. A
+  // purchased-first bridge that frees only a total slot while an
+  // earned freeze is held does NOT land the pending freeze.
+  if (pending && earned == 0) {
+    final cover = _coverFor(consumed, currentMonth, earned, purchased);
+    final cap = 2 + (purchased > 0 ? 1 : 0);
+    if (cover < cap) {
+      earned = 1;
+      pending = false;
+    }
+  }
+
+  // ── Prune spoiledMonths to the trailing 24 months (B1), only
+  // months already closed (behind the post-catch-up accrualMonth)
+  // — an unclosed month never loses its spoiled mark before its
+  // close evaluation reads it (Vera round 3 note).
+  final threshold = _addMonthsToKey(currentMonth, -23);
+  spoiled.removeWhere(
+    (m) => m.compareTo(threshold) < 0 && m.compareTo(accrual) < 0,
+  );
+
+  // ── Stamp (A3): every settlement stamps lastEvaluatedDay with
+  // the current Tabs day, exactly as the shipped engine stamps
+  // every evaluation. A backwards clock never moves the stamp
+  // backwards (adoption comparisons depend on its monotonicity).
+  final stamp =
+      (s.lastEvaluatedDay != null && s.lastEvaluatedDay!.compareTo(today) > 0)
+      ? s.lastEvaluatedDay!
+      : today;
+
+  final next = s.copyWith(
+    countedDays: counted,
+    restoredDays: restored,
+    consumedSaveMonths: consumed,
+    earnedFreezes: earned,
+    purchasedFreezes: purchased,
+    earnedPending: pending,
+    accrualMonth: accrual,
+    spoiledMonths: spoiled,
+    freezeFreeMonthsCompleted: ffmc,
+    lastEvaluatedDay: stamp,
+  );
+  return StreakSettleResult(
+    state: next,
+    bridgedDays: bridged,
+    freezeUsedKinds: kinds,
+    brokeStreak: broke,
+  );
+}
+
+/// Rollover settlement (D3): bridges or breaks the gap between the
+/// last counted day and the current Tabs day, runs accrual
+/// rollover, lands a pending earned freeze when A1's conditions
+/// hold, and stamps [StreakState.lastEvaluatedDay]. It NEVER adds
+/// a counted day — the counted-day event is Daily Summary
+/// completion ([completeDay]) only.
+StreakState settle(StreakState s, DateTime now) =>
+    _settleDetailed(s, tabsDayStr(now)).state;
+
+/// [settle] with its bridging detail exposed.
+StreakSettleResult settleDetailed(StreakState s, DateTime now) =>
+    _settleDetailed(s, tabsDayStr(now));
+
+/// One Daily Summary completion (D1): settles first with the
+/// summary's own Tabs day as the anchor "today", then counts that
+/// day. If the gap from the last counted day to the summary day
+/// cannot bridge, the run restarts at the summary day (the shipped
+/// evaluate semantics). A completion for a day already counted
+/// (e.g. bridged content aside, a repeat fire) changes nothing.
+({StreakState state, StreakCompletionResult result}) completeDay(
+  StreakState s, {
+  required String summaryTabsDay,
+  required DateTime now,
+}) {
+  final settled = _settleDetailed(s, summaryTabsDay);
+  var st = settled.state;
+  if (!st.countedDays.contains(summaryTabsDay)) {
+    st = st.copyWith(
+      countedDays: Set<String>.of(st.countedDays)..add(summaryTabsDay),
+    );
+  }
+  final newCount = _runEndingAt(st.countedDays, summaryTabsDay).length;
+  return (
+    state: st,
+    result: StreakCompletionResult(
+      newCount: newCount,
+      bridgedDays: settled.bridgedDays,
+      freezeUsedKinds: settled.freezeUsedKinds,
+      brokeStreak: settled.brokeStreak,
+      earnedLanded: st.earnedFreezes > s.earnedFreezes,
+      isMilestone: isMilestone(newCount),
+    ),
+  );
+}
+
 /// Days in the given month that count toward the streak.
 int streakCountedDaysInMonth(StreakState s, int year, int month) {
   final prefix =
@@ -266,21 +722,18 @@ int streakCountedDaysInMonth(StreakState s, int year, int month) {
   return s.countedDays.where((d) => d.startsWith(prefix)).length;
 }
 
-/// Seed the engine from the profile pull counters. The current run
-/// is assumed to end today (the app is open today; the native rule
-/// counts today), so the run's days become counted days. A null or
-/// non-positive pull seeds nothing but still marks the state seeded
-/// when [markSeeded] — callers pass the pull's real values only.
-StreakState streakSeed({
+/// The shared seeding core: the run the pull counters attest is
+/// assumed to end on [endDay], so its days become counted days.
+StreakState _seedEndingAt({
   required int current,
   required int best,
-  required DateTime now,
+  required String endDay,
+  int purchasedFreezes = 0,
 }) {
-  final today = streakDayStr(now);
   final counted = <String>{};
   if (current >= 1) {
     for (var i = 0; i < current; i++) {
-      counted.add(_addDays(today, -i));
+      counted.add(_addDays(endDay, -i));
     }
   }
   return StreakState(
@@ -288,12 +741,66 @@ StreakState streakSeed({
     seededCurrent: current > 0 ? current : 0,
     seededBest: best > 0 ? best : 0,
     countedDays: counted,
-    lastEvaluatedDay: counted.contains(today) ? today : null,
+    lastEvaluatedDay: counted.isEmpty ? null : endDay,
+    purchasedFreezes: purchasedFreezes.clamp(0, 1),
+    accrualMonth: _monthOfDay(endDay),
   );
 }
 
+/// Seed the engine from the profile pull counters. The current run
+/// is assumed to end today (the app is open today; the native rule
+/// counts today), so the run's days become counted days. A null or
+/// non-positive pull seeds nothing but still marks the state seeded
+/// when [markSeeded] — callers pass the pull's real values only.
+///
+/// LEGACY (pre-v2): [settle]/[completeDay] seeding goes through
+/// [streakSeedForAdoption] / [streakSeedForCompletion] (A6); this
+/// form remains for the legacy [streakEvaluate] path and its tests.
+StreakState streakSeed({
+  required int current,
+  required int best,
+  required DateTime now,
+}) => _seedEndingAt(current: current, best: best, endDay: streakDayStr(now));
+
+/// Adoption seeding (A6): the assumed run anchors on the PRIOR
+/// Tabs day — today is not yet counted (no summary has completed),
+/// so the run the counters attest ended yesterday-Tabs-day. Used
+/// by the app-open path; no counted day is fabricated for a day
+/// with no completed summary.
+StreakState streakSeedForAdoption({
+  required int current,
+  required int best,
+  required DateTime now,
+  int purchasedFreezes = 0,
+}) => _seedEndingAt(
+  current: current,
+  best: best,
+  endDay: _addDays(tabsDayStr(now), -1),
+  purchasedFreezes: purchasedFreezes,
+);
+
+/// Completion seeding (A6): the assumed run anchors on the
+/// summary's own Tabs day — the completion being recorded is the
+/// event that culminates the attested run on that day.
+StreakState streakSeedForCompletion({
+  required int current,
+  required int best,
+  required String summaryTabsDay,
+  int purchasedFreezes = 0,
+}) => _seedEndingAt(
+  current: current,
+  best: best,
+  endDay: summaryTabsDay,
+  purchasedFreezes: purchasedFreezes,
+);
+
 /// One app-open evaluation at [now]. Idempotent within a day.
 /// Returns the (possibly unchanged) next state.
+///
+/// LEGACY (pre-v2): superseded by [settle] + [completeDay] — the
+/// counted-day event is now Daily Summary completion, and app-open
+/// never adds a counted day (D1). Retained for its pinned tests;
+/// no production path calls it.
 ///
 /// - Today already counted → unchanged.
 /// - Last counted day was yesterday → today joins the run.

@@ -152,6 +152,21 @@ Future<void> _bridge(WidgetTester tester) async {
   await tester.pump(const Duration(seconds: 3));
 }
 
+/// Streak upgrade (Nov 2026): in the checked fixture the Daily
+/// Summary is complete, and Home load is one of the completion
+/// triggers — so the celebration screen legitimately covers
+/// Home after load, leaving the Today Summary card offstage.
+/// Dismiss it when shown; the captured frames are Home states,
+/// and the celebration is not a frame subject.
+Future<void> _dismissCelebrationIfShown(WidgetTester tester) async {
+  final yay = find.byKey(const Key('celebrationYay'));
+  if (yay.evaluate().isEmpty) return;
+  await tester.tap(yay);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.pump();
+}
+
 void main() {
   setUp(() {
     TabsBackend.debugResetSharedCaches();
@@ -318,6 +333,7 @@ void main() {
         ),
       );
       await _bridge(tester);
+      await _dismissCelebrationIfShown(tester);
     }
 
     Future<void> capture(String name, int wantW, int wantH) async {

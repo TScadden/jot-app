@@ -23,6 +23,16 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 class SettingsProfileData {
   final bool isUnlimited;
   final bool isAdmin;
+
+  /// Founder ruling (Nov 18, 2026) — the Developer Terminal / dev
+  /// area is TYSON-ONLY: it renders iff the signed-in account's
+  /// pulled `dev_access` flag is true. This is NOT the admin flag
+  /// (other admins must not see the dev area) and NOT a build
+  /// flavor gate. The server sets it true only on Tyson's profile;
+  /// it arrives in /api/sync/pull's profile map (alongside
+  /// `purchased_freezes`); the top level is also accepted so either
+  /// serialization parses. Absent/false → no dev area, ever.
+  final bool devAccess;
   final String nickname;
   final String tag;
   final String userContext;
@@ -74,6 +84,7 @@ class SettingsProfileData {
   const SettingsProfileData({
     this.isUnlimited = false,
     this.isAdmin = false,
+    this.devAccess = false,
     this.nickname = '',
     this.tag = '',
     this.userContext = '',
@@ -161,6 +172,7 @@ class SettingsProfileData {
     return SettingsProfileData(
       isUnlimited: isUnlimited,
       isAdmin: isAdmin,
+      devAccess: devAccess,
       nickname: nickname ?? this.nickname,
       tag: tag ?? this.tag,
       userContext: userContext ?? this.userContext,
@@ -218,6 +230,7 @@ class SettingsProfileData {
     }
     return SettingsProfileData(
       isAdmin: isAdmin,
+      devAccess: body['dev_access'] == true || p['dev_access'] == true,
       isUnlimited: body['isUnlimited'] == true || isAdmin,
       nickname: _asString(body['nickname']),
       tag: _asString(body['tag']),

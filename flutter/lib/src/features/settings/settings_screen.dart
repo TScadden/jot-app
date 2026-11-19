@@ -28,7 +28,10 @@ import 'package:tabs_lab/src/features/billing/billing_plans_panel.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
 import 'package:tabs_lab/src/data/crash_reporting.dart';
 import 'package:tabs_lab/src/features/settings/account_actions.dart';
+import 'package:tabs_lab/src/data/streak_engine.dart';
+import 'package:tabs_lab/src/data/streak_store.dart';
 import 'package:tabs_lab/src/features/settings/crash_test_hook.dart';
+import 'package:tabs_lab/src/features/settings/streak_sim.dart';
 import 'package:tabs_lab/src/features/settings/progress_reports_page.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
@@ -1136,8 +1139,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (_page == _Page.syncSettings) ..._syncPage(),
           if (_page == _Page.jotLive) ..._unavailablePage(
               'Tabs Live Beta streams live heart data from a connected band over Bluetooth. Bluetooth streaming is not available in the Flutter Lab yet.'),
-          if (_page == _Page.debug) ..._unavailablePage(
-              'The Developer Terminal fires test notifications from the native app. Test notifications are not available in the Flutter Lab yet.'),
+          if (_page == _Page.debug) ..._debugPage(),
           if (_page == _Page.progressReports)
             ProgressReportsPage(
               // Round 66 — the real Progress Reports page (native
@@ -1284,6 +1286,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ],
     );
+  }
+
+  /// The Developer Terminal page. Founder ruling (Nov 18, 2026):
+  /// the whole dev area — this page and the streak SIM entry in
+  /// it — renders ONLY for the signed-in account whose pulled
+  /// `dev_access` flag is true (Tyson's account). The entry point
+  /// is gated on the same flag, and the SIM is gated here too, so
+  /// no path renders it for anyone else — not other admins, not
+  /// any build flavor. The SIM receives plain values — the
+  /// current settled count read here, and the nickname — and
+  /// builds its preview in memory (see streak_sim.dart's A10
+  /// fence: no store/backend/metrics references on that path).
+  List<Widget> _debugPage() {
+    final widgets = _unavailablePage(
+        'The Developer Terminal fires test notifications from the native app. Test notifications are not available in the Flutter Lab yet.');
+    if (_data.devAccess) {
+      final streakState = StreakStore.instance.state;
+      final now = DateTime.now();
+      final currentCount = streakState == null
+          ? 0
+          : streakCurrent(streakState, tabsDayAnchor(now));
+      widgets.addAll([
+        const SizedBox(height: 24),
+        _sectionLabel('STREAK'),
+        _card([
+          StreakSimEntry(
+            currentCount: currentCount,
+            nickname: _data.nickname,
+            now: now,
+          ),
+        ]),
+      ]);
+    }
+    return widgets;
   }
 
   List<Widget> _unavailablePage(String message) {
@@ -1568,10 +1604,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         ),
       ),
-      if (_data.isAdmin) ...[
+      // Founder ruling (Nov 18, 2026) — the Developer Terminal is
+      // TYSON-ONLY: rendered iff the signed-in account's pulled
+      // dev_access flag is true. NOT the admin gate (Dad, Julee,
+      // and Boston are admins and must NOT see it) and NOT a build
+      // flavor gate.
+      if (_data.devAccess) ...[
         const SizedBox(height: 8),
         Center(
           child: TextButton(
+            key: const ValueKey('developer_terminal_entry'),
             onPressed: () => setState(() => _page = _Page.debug),
             child: const Text('Developer Terminal Options',
                 style: TextStyle(
