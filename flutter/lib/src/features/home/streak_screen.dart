@@ -1,11 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:tabs_lab/src/data/gem_service.dart';
 import 'package:tabs_lab/src/data/streak_engine.dart';
+import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/streak_purchase.dart';
 import 'package:tabs_lab/src/data/streak_store.dart';
+import 'package:tabs_lab/src/data/widget_sync.dart';
 import 'package:tabs_lab/src/features/home/streak_flame.dart';
 import 'package:tabs_lab/src/features/home/streak_share_card.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
@@ -37,11 +41,28 @@ class StreakScreen extends StatefulWidget {
   /// which case the screen creates one against Play + the backend.
   final StreakFreezePurchaseService? purchaseService;
 
+  /// Gems service for the buy-with-gems section. Tests inject a
+  /// fake; production leaves null and the screen uses the shared
+  /// [GemService.instance] (the same balance source as Home).
+  final GemService? gemService;
+
+  /// The account nickname, forwarded to the widget payload when a
+  /// gem spend refreshes it. Optional; null omits the name slot.
+  final String? nickname;
+
+  /// The settled-record push used before a gem spend (Vera §3
+  /// blob-before-spend discipline). Tests inject a no-op; null
+  /// uses the real profile push through the backend.
+  final StreakSyncPush? streakPush;
+
   const StreakScreen({
     super.key,
     required this.state,
     required this.now,
     this.purchaseService,
+    this.gemService,
+    this.nickname,
+    this.streakPush,
   });
 
   /// Push the streak screen with an already-settled [state].
@@ -54,6 +75,8 @@ class StreakScreen extends StatefulWidget {
     BuildContext context, {
     required StreakState state,
     StreakFreezePurchaseService? purchaseService,
+    GemService? gemService,
+    String? nickname,
   }) async {
     if (!context.mounted) return;
     await Navigator.of(context).push(
@@ -62,6 +85,8 @@ class StreakScreen extends StatefulWidget {
           state: state,
           now: DateTime.now(),
           purchaseService: purchaseService,
+          gemService: gemService,
+          nickname: nickname,
         ),
       ),
     );
@@ -104,6 +129,18 @@ class _StreakScreenState extends State<StreakScreen> {
   StreakFreezePurchaseService? _purchase;
   bool _ownsPurchase = false;
 
+  /// The gems service (injected or the shared instance — never
+  /// owned/disposed here).
+  late final GemService _gems;
+
+  /// True while a gem spend request is in flight.
+  bool _gemSpendBusy = false;
+
+  /// Juno §2c surface: the post-spend SERVER balance from the
+  /// verified gem spend this session; null until one lands. The
+  /// success copy renders only while this is set — never on a tap.
+  int? _gemSuccessBalance;
+
   /// The purchased-freeze count adopted from a successful verify
   /// this session (Juno §5b: counts read AFTER adoption). The
   /// server column + next settle remain the durable record; this
@@ -142,6 +179,103 @@ class _StreakScreenState extends State<StreakScreen> {
     }
     _purchase!.addListener(_onPurchaseChanged);
     unawaited(_initPurchase());
+    _gems = widget.gemService ?? GemService.instance;
+    _gems.addListener(_onGemsChanged);
+    // The buy surface reads the SAME server balance as the Home
+    // pill: refresh it from the profile pull on entry.
+    unawaited(_gems.refreshBalance());
+  }
+
+  void _onGemsChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// One gem spend (Juno §2): a unique spendId per tap intent is
+  /// generated inside the service. Success/replay adopts the
+  /// server freeze count into the streak store (every surface —
+  /// this screen, Home, the widget — then reads the held freeze)
+  /// and shows §2c ONLY on the verified spend. The three 409s
+  /// refresh state from the server body (balance + freeze count
+  /// ride along) and fall into the ruled surface state — held/cap
+  /// hides the buy rows, insufficient shows §2d — with no raw
+  /// error code and no dead end.
+  /// Push the settled streak record before a gem spend (Vera
+  /// §3 guidance, Nov 19, 2026): the server's freeze-cap check
+  /// reads the pushed blob (its monthly-grant component is
+  /// evaluated against the blob's lastEvaluatedDay month), so the
+  /// blob the buy surface was computed from must be the one on
+  /// the server when spend/freeze runs. Fail-soft: a failed push
+  /// still attempts the spend, whose 409 handling re-syncs.
+  Future<void> _pushSettledBeforeSpend() async {
+    try {
+      final effective = _effectiveState();
+      final push = widget.streakPush ??
+          (int c, int b, String j, {int? purchasedFreezes}) =>
+              TabsBackend().pushStreakRecord(
+                c,
+                b,
+                j,
+                purchasedFreezes: purchasedFreezes,
+              );
+      await push(
+        streakCurrent(effective, _anchor),
+        streakBest(effective),
+        jsonEncode(effective.toJson()),
+      );
+    } catch (_) {
+      // The spend's own refresh handling covers a stale blob.
+    }
+  }
+
+  Future<void> _spendGems() async {
+    if (_gemSpendBusy) return;
+    setState(() => _gemSpendBusy = true);
+    try {
+      await _pushSettledBeforeSpend();
+      final result = await _gems.spendOnFreeze();
+      if (!mounted) return;
+      final freezes = result.purchasedFreezes;
+      if (freezes != null) {
+        _adoptedPurchased = freezes.clamp(0, 1);
+        unawaited(StreakStore.instance.adoptPurchasedFreezes(freezes));
+      }
+      switch (result.status) {
+        case GemSpendStatus.success:
+        case GemSpendStatus.replay:
+          _gemSuccessBalance = result.balance ?? _gems.balance ?? 0;
+          // Juno §2c motion: the freeze icon animates once into
+          // the freeze row, exactly as for a §1a money grant.
+          _grantEpoch++;
+          final adopted = StreakStore.instance.state;
+          if (adopted != null) {
+            unawaited(WidgetSync.pushStreak(
+              adopted.copyWith(
+                purchasedFreezes: (freezes ?? adopted.purchasedFreezes)
+                    .clamp(0, 1),
+              ),
+              signedIn: true,
+              nickname: widget.nickname,
+              now: DateTime.now(),
+            ));
+          }
+        case GemSpendStatus.capReached:
+          // Vera §3: a cap refusal right at a month boundary can
+          // be an artifact of the server's blob-month basis —
+          // re-sync ONCE and let the user retry from the refreshed
+          // state. The refusal itself is never cached or treated
+          // as terminal.
+          unawaited(_gems.refreshBalance());
+        case GemSpendStatus.insufficient:
+        case GemSpendStatus.alreadyHeld:
+        case GemSpendStatus.failed:
+          // No success copy (Juno §2 ruling): the refreshed
+          // balance / held state below IS the surface.
+          break;
+      }
+      if (mounted) setState(() {});
+    } finally {
+      if (mounted) setState(() => _gemSpendBusy = false);
+    }
   }
 
   Future<void> _initPurchase() async {
@@ -176,6 +310,7 @@ class _StreakScreenState extends State<StreakScreen> {
   void dispose() {
     _purchase?.removeListener(_onPurchaseChanged);
     if (_ownsPurchase) _purchase?.dispose();
+    _gems.removeListener(_onGemsChanged);
     super.dispose();
   }
 
@@ -829,8 +964,145 @@ class _StreakScreenState extends State<StreakScreen> {
               ),
             ],
           ],
+          // Gems — the buy-with-gems section (Juno §2) + the
+          // founder-addition explainer (§4), inside this card.
+          _gemSection(
+            heldPurchased: heldPurchased,
+            available: available,
+            max: max,
+          ),
         ],
       ),
+    );
+  }
+
+  /// The gem-buy section of the Streak Freeze card (Juno §2 + §4).
+  ///
+  /// Buy rows (balance line §2b, button §2a, insufficient line
+  /// §2d) render only while the buy affordance is live: hidden in
+  /// exactly the ruled states — a purchased-class freeze held or
+  /// total cover at cap (the same rule as the $0.99 affordance) —
+  /// and only once a server balance exists. Under 100 gems the
+  /// button is present but DISABLED with the §2d line under it.
+  /// The §2c success feedback renders only on a verified server
+  /// spend. The §4 explainer is text-only and always renders as
+  /// part of this section, under the buy rows: the screen stays
+  /// information-only apart from the buy affordances.
+  Widget _gemSection({
+    required bool heldPurchased,
+    required int available,
+    required int max,
+  }) {
+    final balance = _gems.balance;
+    final buyHidden = heldPurchased || available >= max;
+    final showBuy = !buyHidden && balance != null;
+    final insufficient = balance != null && balance < GemCopy.freezePrice;
+    return Column(
+      key: const Key('gemBuySection'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 16),
+        const Divider(height: 1, thickness: 1, color: LabBlackColors.hairline),
+        const SizedBox(height: 12),
+        if (_gemSuccessBalance != null) ...[
+          const Text(
+            GemCopy.spendSuccessTitle,
+            key: Key('gemSpendSuccessTitle'),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: LabBlackColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            GemCopy.spendSuccessBody(_gemSuccessBalance!),
+            key: const Key('gemSpendSuccessBody'),
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: LabBlackColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (showBuy) ...[
+          Text(
+            GemCopy.balanceLine(balance),
+            key: const Key('gemBalanceLine'),
+            style: const TextStyle(
+              fontSize: 14.5,
+              fontWeight: FontWeight.w700,
+              height: 1.45,
+              color: Color(0xFFAAB3D0),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              key: const Key('gemBuyButton'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: NotelColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              onPressed: (insufficient || _gemSpendBusy)
+                  ? null
+                  : () => unawaited(_spendGems()),
+              child: const Text(
+                GemCopy.buyButtonLabel,
+                style: TextStyle(
+                  fontSize: 16.5,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+          if (insufficient) ...[
+            const SizedBox(height: 8),
+            Text(
+              GemCopy.insufficientLine(GemCopy.freezePrice - balance),
+              key: const Key('gemInsufficientLine'),
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF59637F),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+        ],
+        // Juno §4 explainer — verbatim, text only, no buttons or
+        // flows. Understandable from this block alone.
+        const Text(
+          GemCopy.explainerHeading,
+          key: Key('gemExplainerHeading'),
+          style: TextStyle(
+            fontSize: 14.5,
+            fontWeight: FontWeight.w700,
+            color: LabBlackColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 6),
+        for (var i = 0; i < GemCopy.explainerLines.length; i++) ...[
+          Text(
+            GemCopy.explainerLines[i],
+            key: Key('gemExplainerLine$i'),
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              height: 1.45,
+              color: Color(0xFFAAB3D0),
+            ),
+          ),
+          if (i < GemCopy.explainerLines.length - 1)
+            const SizedBox(height: 6),
+        ],
+      ],
     );
   }
 
@@ -1132,7 +1404,16 @@ class _FreezeGrantIconState extends State<_FreezeGrantIcon>
     super.didUpdateWidget(oldWidget);
     if (widget.grantEpoch == oldWidget.grantEpoch) return;
     if (widget.alreadyPresented) return;
-    _playEntrance();
+    // Deferred to post-frame (gems fix, Nov 19, 2026): playing
+    // the entrance synchronously here calls the screen's
+    // onPresented setState DURING the build phase, which throws.
+    // This is the same hazard the initState path already avoids
+    // via a post-frame callback; a grant that lands while the
+    // freeze card is on screen (a gem spend, or a money verify
+    // completing with the card visible) reaches this branch.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _playEntrance();
+    });
   }
 
   void _playEntrance() {

@@ -346,7 +346,17 @@ class HealthRepository {
         int? purchasedFreezes
       })> loadStreakRecord() async {
     try {
-      return await backend.fetchStreakRecord();
+      // Field-mapped (not returned directly): fetchStreakRecord's
+      // record also carries gemBalance, which this pinned shape
+      // deliberately omits — existing test fakes construct it.
+      final rec = await backend.fetchStreakRecord();
+      return (
+        succeeded: rec.succeeded,
+        current: rec.current,
+        best: rec.best,
+        stateJson: rec.stateJson,
+        purchasedFreezes: rec.purchasedFreezes,
+      );
     } catch (_) {
       return (
         succeeded: false,
@@ -355,6 +365,18 @@ class HealthRepository {
         stateJson: null,
         purchasedFreezes: null
       );
+    }
+  }
+
+  /// The server gem balance from the same sync pull
+  /// (jot-server PR #41: profile `gem_balance`). Null on any
+  /// failure — callers keep the last server value, never a guess.
+  Future<int?> loadGemBalance() async {
+    try {
+      final rec = await backend.fetchStreakRecord();
+      return rec.succeeded ? rec.gemBalance : null;
+    } catch (_) {
+      return null;
     }
   }
 

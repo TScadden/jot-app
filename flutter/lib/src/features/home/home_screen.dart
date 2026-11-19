@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -10,6 +11,7 @@ import 'package:tabs_lab/src/data/daily_score.dart';
 import 'package:tabs_lab/src/data/daily_score_refresh.dart'
     show ScoreCapture;
 import 'package:tabs_lab/src/data/daily_score_sync.dart';
+import 'package:tabs_lab/src/data/gem_service.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart'
     show historyDateStr;
@@ -554,39 +556,98 @@ class _HomeScreenState extends State<HomeScreen>
   SummaryCompletionWatcher? _completionWatcher;
   String? _nickname;
 
+  /// Gems — the server gem balance for the Home gem pill. Null
+  /// until a server payload lands (pull / grant / spend); the pill
+  /// renders only on a real value, never a local guess. Kept in
+  /// step by the [GemService] listener (the service adopts every
+  /// server payload) plus the streak-record pulls below.
+  int? _gemBalance;
+
+  void _onGemBalanceChanged() {
+    final next = GemService.instance.balance;
+    if (!mounted || next == null || next == _gemBalance) return;
+    setState(() => _gemBalance = next);
+  }
+
   SummaryCompletionWatcher get _watcher => _completionWatcher ??=
       SummaryCompletionWatcher(
         onCompletion: (result, state) {
           if (!mounted) return;
-          // A completion IS a settlement: from here the settled
-          // state owns the pills (Bug 3 unification).
-          _streakSettleLanded = true;
-          final data = StreakCelebrationData.fromCompletion(
-            result: result,
-            state: state,
-            now: DateTime.now(),
-          );
-          final cache = HomeDataCache.instance;
-          if (cache.applyStreak(result.newCount, streakBest(state))) {
-            unawaited(cache.persist());
-          }
-          setState(() {
-            _currentStreak = result.newCount;
-            _bestStreak = streakBest(state);
-          });
-          unawaited(WidgetSync.pushStreak(
-            state,
-            signedIn: true,
-            nickname: _nickname,
-            now: DateTime.now(),
-          ));
-          unawaited(StreakCelebrationScreen.show(
-            context,
-            data: data,
-            nickname: _nickname,
-          ));
+          unawaited(_presentCompletion(result, state));
         },
       );
+
+  /// One real Daily Summary completion (the post-PR-#115
+  /// deterministic path — the ONLY earn entry point; the dev SIM
+  /// and dev Restore paths never reach this): run the gem earn
+  /// hooks FIRST (their grants are persisted before requesting,
+  /// and a failure queues silently without breaking the flow),
+  /// then present the celebration with Juno §3's earn lines for
+  /// the grants the server confirmed.
+  Future<void> _presentCompletion(
+    StreakCompletionResult result,
+    StreakState state,
+  ) async {
+    // A completion IS a settlement: from here the settled
+    // state owns the pills (Bug 3 unification).
+    _streakSettleLanded = true;
+    final now = DateTime.now();
+    final summaryTabsDay = tabsDayStr(now);
+    // Gems bound discipline (Vera server review, Nov 19, 2026):
+    // the server validates grants against the PUSHED streak_state
+    // blob (the day must be in its summaryCompletedDays; milestone
+    // n must not exceed best_streak). recordSummaryComplete's own
+    // push is fire-and-forget, so push the settled record
+    // EXPLICITLY here and await it before any grant is requested
+    // for this completion. A failed push does not block the flow:
+    // the grants then refuse retryably and land at the next
+    // app-open sync, after the record's re-push.
+    try {
+      await _healthRepo.pushStreakRecord(
+        result.newCount,
+        streakBest(state),
+        jsonEncode(state.toJson()),
+      );
+    } catch (_) {
+      // Grants queue/retry; the celebration is unaffected.
+    }
+    final gemResult = await GemService.instance.processCompletion(
+      summaryTabsDay: summaryTabsDay,
+      previousStreak: gemSettledStreakBefore(state, summaryTabsDay),
+      newStreak: result.newCount,
+      settledState: state,
+      now: now,
+    );
+    if (!mounted) return;
+    if (gemResult.balance != null && gemResult.balance != _gemBalance) {
+      setState(() => _gemBalance = gemResult.balance);
+    }
+    final data = StreakCelebrationData.fromCompletion(
+      result: result,
+      state: state,
+      now: now,
+      gemLines: gemResult.lines,
+    );
+    final cache = HomeDataCache.instance;
+    if (cache.applyStreak(result.newCount, streakBest(state))) {
+      unawaited(cache.persist());
+    }
+    setState(() {
+      _currentStreak = result.newCount;
+      _bestStreak = streakBest(state);
+    });
+    unawaited(WidgetSync.pushStreak(
+      state,
+      signedIn: true,
+      nickname: _nickname,
+      now: DateTime.now(),
+    ));
+    unawaited(StreakCelebrationScreen.show(
+      context,
+      data: data,
+      nickname: _nickname,
+    ));
+  }
 
   /// Evaluations are SERIALIZED through this chain: Home's
   /// triggers cluster (the load settle and the outbox listener
@@ -711,6 +772,10 @@ class _HomeScreenState extends State<HomeScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    GemService.instance.addListener(_onGemBalanceChanged);
+    // A cached server balance from an earlier payload paints the
+    // gem pill on the first frame; the settle below refreshes it.
+    _gemBalance = GemService.instance.balance;
     _checkInNotifs =
         widget.notificationService ?? LocalReminderNotificationService();
     _healthRepo = widget.healthRepository ??
@@ -807,6 +872,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    GemService.instance.removeListener(_onGemBalanceChanged);
     _completionWatcher?.dispose();
     widget.migraineController?.removeListener(_onMigraineChanged);
     _outbox.removeListener(_onCheckInOutboxChanged);
@@ -2039,6 +2105,11 @@ class _HomeScreenState extends State<HomeScreen>
       );
       if (!engineState.seeded || !mounted) return engineState;
       _streakSettleLanded = true;
+      // Gems — app-open sync: adopt the pull's server balance
+      // (the pill's and buy surface's one source), retry any
+      // queued grants, and settle-check the perfect week. Runs
+      // off the critical path; failures keep the last value.
+      unawaited(_syncGemsOnOpen(engineState));
       // A7: Home display reads anchor on the Tabs day, never raw
       // wall-clock now.
       final engineCurrent =
@@ -2071,6 +2142,34 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
+  /// Gems app-open sync (see the settle call site): pull balance
+  /// in, queued grants retried, perfect week settle-checked. The
+  /// GemService listener mirrors any new balance into the pill.
+  Future<void> _syncGemsOnOpen(StreakState engineState) async {
+    try {
+      // Bound discipline (Vera server review): retried grants are
+      // validated against the pushed blob, so the settled record
+      // is pushed (awaited) BEFORE the retry flush runs.
+      try {
+        await _healthRepo.pushStreakRecord(
+          streakCurrent(engineState, tabsDayAnchor(DateTime.now())),
+          streakBest(engineState),
+          jsonEncode(engineState.toJson()),
+        );
+      } catch (_) {
+        // The flush below still runs; refusals stay queued.
+      }
+      final pulled = await _healthRepo.loadGemBalance();
+      GemService.instance.adoptServerBalance(pulled);
+      await GemService.instance.onAppOpen(
+        state: engineState,
+        now: DateTime.now(),
+      );
+    } catch (_) {
+      // The last server balance stands; the next open retries.
+    }
+  }
+
   /// Streak pills tap: open the Streak screen with the settled
   /// state. Awaits the load's own settle when it has not landed
   /// yet (starting one if Home has not loaded); when no seeded
@@ -2084,7 +2183,20 @@ class _HomeScreenState extends State<HomeScreen>
       s = await _streakSettle;
     }
     if (!mounted || s == null || !s.seeded) return;
-    await StreakScreen.openWith(context, state: s);
+    await StreakScreen.openWith(context, state: s, nickname: _nickname);
+    // A gem spend on the streak screen moves the balance (the
+    // service listener already mirrors it); re-pull on return so
+    // the pill and the settled state agree with the server.
+    if (!mounted) return;
+    unawaited(GemService.instance.refreshBalance());
+    final settled = StreakStore.instance.state;
+    if (settled != null && settled.seeded) {
+      setState(() {
+        _currentStreak =
+            streakCurrent(settled, tabsDayAnchor(DateTime.now()));
+        _bestStreak = streakBest(settled);
+      });
+    }
   }
 
   /// Opens the data-connections screen — the one destination/flow
@@ -2633,6 +2745,7 @@ class _HomeScreenState extends State<HomeScreen>
                         animateCountUps: _countUpsAnimate,
                         onStreakTap: () => unawaited(_openStreakScreen()),
                         crossAxisAlignment: CrossAxisAlignment.center,
+                        gemBalance: _gemBalance,
                       ),
                     ),
                     Expanded(

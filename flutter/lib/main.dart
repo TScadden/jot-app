@@ -13,6 +13,7 @@ import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_history_sync.dart';
 import 'package:tabs_lab/src/data/heart_data_cache.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
+import 'package:tabs_lab/src/data/gem_service.dart';
 import 'package:tabs_lab/src/data/streak_store.dart';
 import 'package:tabs_lab/src/data/weekly_snapshot_cache.dart';
 import 'package:tabs_lab/src/data/launch_trace.dart';
@@ -480,6 +481,7 @@ class _AppFlowState extends State<AppFlow>
       // channel must never be awaited in this funnel (it stalls
       // fake-async-driven flows; the harness deadlock lesson).
       unawaited(StreakStore.instance.clearIfOwnerMismatch(email));
+      unawaited(GemService.instance.clearIfOwnerMismatch(email));
       unawaited(MedicationChangeEventOutbox.instance.clearIfOwnerMismatch(email));
       // C-08: same restore-claim enforcement for the pending
       // onboarding-sync outbox — a previous account's staged
@@ -733,6 +735,7 @@ class _AppFlowState extends State<AppFlow>
     // Lab (streak screen package, Nov 4, 2026): same enforcement
     // for the local streak record.
     unawaited(StreakStore.instance.clearIfOwnerMismatch(email));
+    unawaited(GemService.instance.clearIfOwnerMismatch(email));
     // Optimistic logging: a previous account's unconfirmed entries
     // must never render under, or push into, the new account.
     unawaited(LogEntryOutbox.instance.clearIfOwnerMismatch(email));
@@ -1108,6 +1111,7 @@ class _AppFlowState extends State<AppFlow>
     // Lab (streak screen package, Nov 4, 2026): same enforcement
     // for the local streak record.
     unawaited(StreakStore.instance.clearIfOwnerMismatch(email));
+    unawaited(GemService.instance.clearIfOwnerMismatch(email));
     unawaited(LogEntryOutbox.instance.clearIfOwnerMismatch(email));
     // R70 fix pass (Vera F1 / Juno C1) — same owner-mismatch
     // enforcement for the historical health store.

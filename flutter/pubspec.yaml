@@ -140,6 +140,9 @@ flutter:
     # Streak upgrade — Bandit cheer art for the share card (copied
     # verbatim from the signed mock source; do not recut).
     - assets/images/bandit_cheer_cut_v3.png
+    # Gems — founder-approved gem icon v1 (Nov 19, 2026), copied
+    # byte-identical from the design record; do not redraw/recolor.
+    - assets/images/tabs_gem_icon_v1_20261119.png
     - assets/videos/bandit_reading_loop_v8.mp4
     # Round 18b — bundled research library (mirrors native
     # app/src/main/assets/research/*.json).
