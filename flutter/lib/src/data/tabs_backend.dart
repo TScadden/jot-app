@@ -1449,7 +1449,8 @@ class TabsBackend {
         int? current,
         int? best,
         String? stateJson,
-        int? purchasedFreezes
+        int? purchasedFreezes,
+        int? gemBalance
       })> fetchStreakRecord() async {
     final body = await fetchSyncPull();
     if (body == null) {
@@ -1458,7 +1459,8 @@ class TabsBackend {
         current: null,
         best: null,
         stateJson: null,
-        purchasedFreezes: null
+        purchasedFreezes: null,
+        gemBalance: null
       );
     }
     final profile = body['profile'];
@@ -1468,7 +1470,8 @@ class TabsBackend {
         current: null,
         best: null,
         stateJson: null,
-        purchasedFreezes: null
+        purchasedFreezes: null,
+        gemBalance: null
       );
     }
     final rawState = profile['streakState'];
@@ -1483,8 +1486,64 @@ class TabsBackend {
       // either serialization of the profile row parses.
       purchasedFreezes: _asInt(
           profile['purchased_freezes'] ?? profile['purchasedFreezes']),
+      // Gems (Nov 19, 2026; jot-server PR #41): the pull profile
+      // carries `gem_balance` — the ONE balance source for the
+      // Home pill and the buy surface. The camelCase twin is
+      // accepted like purchasedFreezes above.
+      gemBalance:
+          _asInt(profile['gem_balance'] ?? profile['gemBalance']),
     );
   }
+
+  /// Status-carrying authenticated POST (the verify-endpoint
+  /// shape): returns the HTTP status and decoded body (null body
+  /// on transport failure or an unparseable response).
+  Future<({int? statusCode, Map<String, dynamic>? body})> _postAuthedWithStatus(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    final response = await _sendAuthed((token) => _client.post(
+          Uri.parse('$_baseUrl$path'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(body),
+        ));
+    if (response == null) return (statusCode: null, body: null);
+    try {
+      final decoded = jsonDecode(response.body);
+      return (
+        statusCode: response.statusCode,
+        body: decoded is Map<String, dynamic> ? decoded : null,
+      );
+    } catch (_) {
+      return (statusCode: response.statusCode, body: null);
+    }
+  }
+
+  /// Gems grant (jot-server PR #41): `POST /api/gems/grant {key}`
+  /// → 200 `{gemBalance, amount, alreadyGranted}`. The amount is
+  /// derived SERVER-side from the key kind (daily +5, milestone
+  /// 7/30/100+ +25/+50/+100, perfect week +20); a replay answers
+  /// `alreadyGranted: true` with the current balance and never
+  /// double-grants.
+  Future<({int? statusCode, Map<String, dynamic>? body})> grantGems(
+    String key,
+  ) =>
+      _postAuthedWithStatus('/api/gems/grant', {'key': key});
+
+  /// Gems spend (jot-server PR #41): `POST /api/gems/spend/freeze
+  /// {spendId}` → 200 `{gemBalance, purchasedFreezes,
+  /// alreadyGranted}`; 409 `{error: purchased_already_held |
+  /// freeze_cap_reached | insufficient_gems, gemBalance,
+  /// purchasedFreezes}`. The spendId is client-generated, unique
+  /// per user intent; a replayed spendId is a replay, never a
+  /// double charge.
+  Future<({int? statusCode, Map<String, dynamic>? body})> spendGemsOnFreeze(
+    String spendId,
+  ) =>
+      _postAuthedWithStatus('/api/gems/spend/freeze', {'spendId': spendId});
 
   /// Push one settled streak record to the profile (VC 100115):
   /// counters + day-level blob in a single partial profile push —

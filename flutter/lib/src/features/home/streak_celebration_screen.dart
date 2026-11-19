@@ -2,8 +2,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'package:tabs_lab/src/data/gem_service.dart';
 import 'package:tabs_lab/src/data/streak_engine.dart';
 import 'package:tabs_lab/src/features/home/streak_flame.dart';
+import 'package:tabs_lab/src/features/home/vitals_strip.dart'
+    show kGemCountColor;
 import 'package:tabs_lab/src/features/home/streak_share_card.dart';
 import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
@@ -49,6 +52,14 @@ class StreakCelebrationData {
   /// during this completion; otherwise null.
   final String? earnedLandedNotice;
 
+  /// Gems — Juno §3 earn lines for THIS completion, in ruled
+  /// order (daily, milestone, perfect week), each present ONLY
+  /// when its grant was server-confirmed for this completion.
+  /// Empty when the day's grants were already made (or none
+  /// landed) — no line shows then. The SIM never sets this:
+  /// simulated completions never earn.
+  final List<String> gemLines;
+
   const StreakCelebrationData({
     required this.count,
     required this.week,
@@ -56,6 +67,7 @@ class StreakCelebrationData {
     this.previousCount,
     this.freezeUsedNotice,
     this.earnedLandedNotice,
+    this.gemLines = const [],
   });
 
   /// Builds the display state from a settled completion: the count
@@ -66,6 +78,7 @@ class StreakCelebrationData {
     required StreakCompletionResult result,
     required StreakState state,
     required DateTime now,
+    List<String> gemLines = const [],
   }) {
     final today = tabsDayStr(now);
     final todayDate = DateTime.parse(today);
@@ -115,6 +128,7 @@ class StreakCelebrationData {
       earnedLandedNotice: result.earnedLanded
           ? 'Your earned freeze is here. You now have $available of $max freezes available.'
           : null,
+      gemLines: gemLines,
     );
   }
 
@@ -454,6 +468,52 @@ class _StreakCelebrationScreenState extends State<StreakCelebrationScreen>
             ),
           ),
         ),
+        // Gems — Juno §3: the earn lines sit DIRECTLY UNDER the
+        // line that confirms the day counted toward the streak,
+        // as part of that same confirmation block (never a toast
+        // or banner). Each line renders only when its own grant
+        // was server-confirmed for this completion; the gem icon
+        // sits beside the base line, as on the Home pill.
+        if (data.gemLines.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Opacity(
+            opacity: _phase(t, 0.90, 0.98),
+            child: Column(
+              key: const Key('celebrationGemLines'),
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var i = 0; i < data.gemLines.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (i == 0) ...[
+                        Image.asset(
+                          GemCopy.iconAsset,
+                          height: 18,
+                          fit: BoxFit.contain,
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      Flexible(
+                        child: Text(
+                          data.gemLines[i],
+                          key: Key('celebrationGemLine$i'),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: kGemCountColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }

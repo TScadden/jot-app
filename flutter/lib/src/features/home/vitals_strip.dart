@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/data/gem_service.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/features/home/event_counter_rotator.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
@@ -210,15 +211,88 @@ Widget streakPill({required String glyph, required Widget value}) {
   );
 }
 
+/// The gem pill's count color (founder-approved mock, Nov 19,
+/// 2026): lavender, following the streak pills' per-pill accent
+/// pattern (gold for the trophy, orange for the flame).
+const Color kGemCountColor = Color(0xFFB9AFFF);
+
+/// The Home gem pill (gems feature, Nov 19, 2026): directly under
+/// the two streak pills, same pill construction as [streakPill]
+/// (height 34, radius 8, same fill/border/padding), founder-
+/// approved gem icon v1 + the SERVER balance in lavender, plain
+/// digits (no thousands separator). The pill hugs its content, so
+/// it widens as the count grows. Its semantics label is Juno §1
+/// (`{count} gems` / `1 gem`) via [GemCopy.pillLabel].
+class HomeGemPill extends StatelessWidget {
+  final int gemBalance;
+
+  const HomeGemPill({super.key, required this.gemBalance});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      label: GemCopy.pillLabel(gemBalance),
+      child: ExcludeSemantics(
+        child: Container(
+          key: const Key('homeGemPill'),
+          height: 34,
+          decoration: BoxDecoration(
+            color: NotelColors.surfaceHigh.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: const Color(0xFFFFFFFF).withValues(alpha: 0.08),
+              width: 1,
+            ),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Image.asset(
+                GemCopy.iconAsset,
+                key: const Key('homeGemPillIcon'),
+                height: 20,
+                fit: BoxFit.contain,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '$gemBalance',
+                key: const Key('homeGemPillCount'),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: kGemCountColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Home redesign — the streak pills as a vertical stack for the corner
 /// band: 🏆 BEST on TOP, 🔥 CURRENT under it (tweak 5), 8dp gap, hug
 /// content width, left aligned. The pair is ONE combined tap target,
 /// exactly as in [HomeStreakRow]; null values render `--` via CountUp.
+///
+/// Gems (Nov 19, 2026): when [gemBalance] is non-null (a server
+/// balance has landed), the gem pill renders DIRECTLY UNDER the
+/// two streak pills in the same stack and the same tap target.
+/// Null keeps the pre-gems stack exactly — no pill is rendered on
+/// a guess.
 class HomeStreakStack extends StatelessWidget {
   final int? currentStreak;
   final int? bestStreak;
   final bool animateCountUps;
   final VoidCallback? onStreakTap;
+
+  /// The server gem balance for the gem pill under the streak
+  /// pills; null hides the pill (no server value yet).
+  final int? gemBalance;
 
   /// Header alignment package (Nov 10, 2026) — the Home corner
   /// band centers the pills in their 62dp slot so both pills share
@@ -234,6 +308,7 @@ class HomeStreakStack extends StatelessWidget {
     this.animateCountUps = true,
     this.onStreakTap,
     this.crossAxisAlignment = CrossAxisAlignment.start,
+    this.gemBalance,
   });
 
   @override
@@ -271,6 +346,10 @@ class HomeStreakStack extends StatelessWidget {
               animate: animateCountUps,
             ),
           ),
+          if (gemBalance != null) ...[
+            const SizedBox(height: 8),
+            HomeGemPill(gemBalance: gemBalance!),
+          ],
         ],
       ),
     );
