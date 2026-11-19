@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Standalone streak widget — COMPACT signed-out / unseeded face
+     (Nov 19, 2026): the same dark navy card at compact size, one
+     centered quiet line, NO numbers ever (mirrors the banner
+     signed-out face's discipline). Copy unchanged by Juno's
+     compact ruling: "Open Tabs to sign in". Text color is
+     NotelColors.textSecondary (#7A8FAF). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/streak_widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_banner_bg"
+    android:gravity="center"
+    android:orientation="horizontal"
+    android:paddingStart="10dp"
+    android:paddingTop="6dp"
+    android:paddingEnd="10dp"
+    android:paddingBottom="6dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:text="Open Tabs to sign in"
+        android:textColor="#7A8FAF"
+        android:textSize="12sp" />
+</LinearLayout>

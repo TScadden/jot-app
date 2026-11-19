@@ -111,14 +111,23 @@ void main() {
       expect(manifest, contains('@xml/vitals_widget_info'));
     });
 
-    test('streak_widget_info: wide 4x2, resizable, 30-min rollover '
-        'period (platform minimum)', () {
+    test('streak_widget_info: compact 2x1 offered default, resizable '
+        'down to the compact floor, 30-min rollover period (platform '
+        'minimum) — size-fix package, Nov 19, 2026', () {
       final info = read('$androidMain/res/xml/streak_widget_info.xml');
-      expect(info, contains('android:targetCellWidth="4"'));
-      expect(info, contains('android:targetCellHeight="2"'));
+      expect(info, contains('android:targetCellWidth="2"'));
+      expect(info, contains('android:targetCellHeight="1"'));
+      expect(info, contains('android:minWidth="110dp"'));
+      expect(info, contains('android:minHeight="50dp"'));
+      expect(info, contains('android:minResizeWidth="110dp"'));
+      expect(info, contains('android:minResizeHeight="50dp"'));
       expect(info, contains('android:resizeMode="horizontal|vertical"'));
       expect(info, contains('android:updatePeriodMillis="1800000"'));
-      expect(info, contains('@layout/streak_widget'));
+      expect(info, contains('@layout/streak_widget_compact'));
+      expect(
+        info,
+        contains('android:previewImage="@drawable/streak_widget_preview"'),
+      );
     });
 
     test('the Kotlin provider reads the EXISTING payload keys '
@@ -142,6 +151,31 @@ void main() {
       expect(kt, contains('R.drawable.ic_widget_flame_grey'));
     });
 
+    test('size buckets: ONE provider re-renders per placed size '
+        '(Nov 19, 2026) — options read in onUpdate, resize callback '
+        'overridden, both faces + both signed-out faces bound', () {
+      final kt = read(
+        '$androidMain/kotlin/com/notel/notel/playground/flutter/'
+        'StreakWidgetProvider.kt',
+      );
+      expect(kt, contains('onAppWidgetOptionsChanged'));
+      expect(kt, contains('getAppWidgetOptions'));
+      expect(kt, contains('R.layout.streak_widget'));
+      expect(kt, contains('R.layout.streak_widget_compact'));
+      expect(kt, contains('R.layout.streak_widget_signed_out'));
+      expect(kt, contains('R.layout.streak_widget_compact_signed_out'));
+      // Juno compact ruling (JUNO-COMPACT-COPY.md A.2): the compact
+      // face must not bind the subline at all. The banner binding is
+      // the single permitted subline view bind in the provider.
+      expect(
+        'R.id.streak_widget_subline'.allMatches(kt).length,
+        1,
+        reason: 'exactly one subline bind (the banner face) may exist',
+      );
+      expect(kt, contains('Bucket.COMPACT'));
+      expect(kt, contains('Bucket.BANNER'));
+    });
+
     test('layouts: values face binds every payload view; the '
         'signed-out face has no number views', () {
       final values = read('$androidMain/res/layout/streak_widget.xml');
@@ -158,6 +192,59 @@ void main() {
           read('$androidMain/res/layout/streak_widget_signed_out.xml');
       expect(signedOut, isNot(contains('streak_widget_count')));
       expect(signedOut, contains('Open Tabs to sign in'));
+    });
+
+    test('banner occlusion fix is structural: vertical LinearLayout '
+        'root, weight-1 clipped text zone, fixed-height Bandit zone',
+        () {
+      final banner = read('$androidMain/res/layout/streak_widget.xml');
+      expect(banner, contains('<LinearLayout'));
+      // The ROOT element is the LinearLayout (it precedes the
+      // Bandit-zone FrameLayout in the file).
+      expect(
+        banner.indexOf('<LinearLayout'),
+        lessThan(banner.indexOf('<FrameLayout')),
+      );
+      expect(banner, contains('android:layout_weight="1"'));
+      expect(banner, contains('@+id/streak_widget_bandit_zone'));
+      expect(banner, contains('android:layout_height="64dp"'));
+      expect(banner, contains('android:clipChildren="true"'));
+    });
+
+    test('compact layout (Juno ruling): binds flame/count/greeting/'
+        'bandit ONLY — no subline view, no ellipsize anywhere; '
+        'compact signed-out face has no number views', () {
+      final compact =
+          read('$androidMain/res/layout/streak_widget_compact.xml');
+      for (final id in [
+        'streak_widget_count',
+        'streak_widget_flame',
+        'streak_widget_greeting',
+        'streak_widget_bandit',
+        'streak_widget_bandit_zone',
+      ]) {
+        expect(compact, contains('@+id/$id'), reason: 'missing $id');
+      }
+      // A.2: no subline slot and no truncation path may exist.
+      expect(compact, isNot(contains('streak_widget_subline')));
+      expect(compact, isNot(contains('ellipsize')));
+      // B flag: the greeting is sized against "See you tomorrow!".
+      expect(compact, contains('android:textSize="13sp"'));
+      expect(compact, contains('android:layout_height="20dp"'));
+      final compactSignedOut = read(
+        '$androidMain/res/layout/streak_widget_compact_signed_out.xml',
+      );
+      expect(compactSignedOut, isNot(contains('streak_widget_count')));
+      expect(compactSignedOut, contains('Open Tabs to sign in'));
+    });
+
+    test('the compact preview drawable exists (streak_widget_preview, '
+        'not the vitals widget_preview)', () {
+      final f = File(
+        '$androidMain/res/drawable-nodpi/streak_widget_preview.png',
+      );
+      expect(f.existsSync(), isTrue, reason: 'preview png missing');
+      expect(f.lengthSync(), greaterThan(0));
     });
 
     test('the pre-rendered peek bitmaps exist in drawable-nodpi',
