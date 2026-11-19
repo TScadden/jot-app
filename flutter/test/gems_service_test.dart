@@ -93,6 +93,143 @@ void main() {
       expect(server.ledger.length, 1);
     });
 
+    test('B1 regression (Vera probe): wiped local history + '
+        'server alreadyGranted → NO earn line, key retired, '
+        'balance adopted', () async {
+      // Vera's probe at head 75461e9, replicated exactly: the
+      // local gems_v1 history is GONE (owner-mismatch clear /
+      // reinstall / storage loss — the disk starts empty), so
+      // the completion re-requests its key and the server
+      // answers 200 {alreadyGranted: true} with the unchanged
+      // balance. At head this returned lines: ['+5 gems'] —
+      // a false earn line, forbidden by Juno §3a.
+      final wiped = <String, String>{};
+      final calls = <String>[];
+      final s = GemService(
+        grant: (key) async {
+          calls.add(key);
+          return (
+            statusCode: 200,
+            body: {
+              'gemBalance': 5,
+              'amount': 5,
+              'alreadyGranted': true,
+            },
+          );
+        },
+        spend: server.spend,
+        pullBalance: () async => 5,
+      );
+      s.debugSetStore(
+        read: (k) async => wiped[k],
+        write: (k, v) async => wiped[k] = v,
+        delete: (k) async => wiped.remove(k),
+      );
+      final state = stateWith(
+        counted: {'2026-11-19'},
+        completed: {'2026-11-19'},
+      );
+      final r = await s.processCompletion(
+        summaryTabsDay: '2026-11-19',
+        previousStreak: 0,
+        newStreak: 1,
+        settledState: state,
+        now: DateTime(2026, 11, 19, 12),
+      );
+      expect(r.lines, isEmpty,
+          reason: 'Juno §3a: an already-granted day shows no line');
+      expect(r.balance, 5,
+          reason: 'the response balance is adopted either way');
+      expect(calls, ['daily:2026-11-19']);
+      expect(s.debugPending, isEmpty,
+          reason: 'an alreadyGranted key still retires');
+      expect(s.debugGranted, contains('daily:2026-11-19'));
+    });
+
+    test('B1 regression, milestone leg: an alreadyGranted '
+        'milestone crossing earns no line either', () async {
+      final wiped = <String, String>{};
+      final s = GemService(
+        grant: (key) async => (
+          statusCode: 200,
+          body: {
+            'gemBalance': 30,
+            'amount': key.startsWith('milestone:') ? 25 : 5,
+            'alreadyGranted': true,
+          },
+        ),
+        spend: server.spend,
+        pullBalance: () async => 30,
+      );
+      s.debugSetStore(
+        read: (k) async => wiped[k],
+        write: (k, v) async => wiped[k] = v,
+        delete: (k) async => wiped.remove(k),
+      );
+      final days = {
+        '2026-11-13',
+        '2026-11-14',
+        '2026-11-15',
+        '2026-11-16',
+        '2026-11-17',
+        '2026-11-18',
+        '2026-11-19',
+      };
+      final state = stateWith(counted: days, completed: days);
+      final r = await s.processCompletion(
+        summaryTabsDay: '2026-11-19',
+        previousStreak: 6,
+        newStreak: 7,
+        settledState: state,
+        now: DateTime(2026, 11, 19, 12),
+      );
+      expect(r.lines, isEmpty,
+          reason: 'neither the daily nor the milestone line shows '
+              'when both grants are replays');
+      expect(r.balance, 30);
+      expect(s.debugPending, isEmpty);
+      expect(
+        s.debugGranted,
+        containsAll(['daily:2026-11-19', 'milestone:7']),
+      );
+    });
+
+    test('B1 paired case: a FRESH grant after the same wipe '
+        'earns its line', () async {
+      final wiped = <String, String>{};
+      final s = GemService(
+        grant: (key) async => (
+          statusCode: 200,
+          body: {
+            'gemBalance': 5,
+            'amount': 5,
+            'alreadyGranted': false,
+          },
+        ),
+        spend: server.spend,
+        pullBalance: () async => 5,
+      );
+      s.debugSetStore(
+        read: (k) async => wiped[k],
+        write: (k, v) async => wiped[k] = v,
+        delete: (k) async => wiped.remove(k),
+      );
+      final state = stateWith(
+        counted: {'2026-11-19'},
+        completed: {'2026-11-19'},
+      );
+      final r = await s.processCompletion(
+        summaryTabsDay: '2026-11-19',
+        previousStreak: 0,
+        newStreak: 1,
+        settledState: state,
+        now: DateTime(2026, 11, 19, 12),
+      );
+      expect(r.lines, ['+5 gems']);
+      expect(r.balance, 5);
+      expect(s.debugPending, isEmpty);
+    });
+
     test('milestone crossing fires once, with the Juno §3 lines '
         'in order', () async {
       final days = {

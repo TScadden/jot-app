@@ -442,9 +442,21 @@ class GemService extends ChangeNotifier {
   /// refusal (409 grant_not_ready) leaves it queued for the next
   /// app-open sync; a permanent 400 retires the key silently
   /// (unreachable by construction — see [isRetryableRefusal]).
-  /// Returns the keys retired by THIS flush.
-  Future<List<String>> _flushPending() async {
+  ///
+  /// Returns the keys retired by THIS flush, split by freshness.
+  /// A 200 whose body reports `alreadyGranted: true` is a
+  /// REPLAY: the key still retires and the response balance is
+  /// still adopted, but the gems did NOT land in this flush, so
+  /// Juno §3a forbids an earn line for it — only keys in `fresh`
+  /// (a 200 without `alreadyGranted`) may earn one. The split
+  /// matters whenever the local granted-history is gone (owner-
+  /// mismatch clear, reinstall, secure-storage loss): a replayed
+  /// completion then re-requests its key and the server answers
+  /// `alreadyGranted: true` (Vera B1, Fix Round 1).
+  Future<({List<String> retired, List<String> fresh})>
+      _flushPending() async {
     final retired = <String>[];
+    final fresh = <String>[];
     for (final key in List<String>.of(_pending)) {
       GemRequestResult r;
       try {
@@ -457,10 +469,13 @@ class GemService extends ChangeNotifier {
       _pending.remove(key);
       _granted.add(key);
       retired.add(key);
+      if (r.statusCode == 200 && r.body!['alreadyGranted'] != true) {
+        fresh.add(key);
+      }
       if (bal is int) _setBalance(bal);
     }
     if (retired.isNotEmpty) await _persist();
-    return retired;
+    return (retired: retired, fresh: fresh);
   }
 
   String? _lineForKey(String key) {
@@ -483,8 +498,9 @@ class GemService extends ChangeNotifier {
   /// Computes this completion's grant keys (daily, milestone
   /// crossings, perfect week), persists them to the pending queue
   /// BEFORE requesting, then flushes. Lines are returned ONLY for
-  /// grants the server confirmed during this call (Juno §3 truth
-  /// rule); a failed grant queues silently and the completion flow
+  /// grants the server confirmed FRESH during this call — an
+  /// alreadyGranted replay earns no line (Juno §3 truth rule); a
+  /// failed grant queues silently and the completion flow
   /// is never broken by it. [previousStreak] is the settled streak
   /// before this completion counted the day (the caller derives it
   /// from the settled state); the persisted marker governs when it
@@ -527,12 +543,15 @@ class GemService extends ChangeNotifier {
       // The marker + queue land BEFORE the first request.
       await _persist();
 
-      final retired = await _flushPending();
-      // Lines only for THIS completion's keys that just landed,
-      // in Juno §3 order: daily, milestone(s), perfect week.
+      final flush = await _flushPending();
+      // Lines only for THIS completion's keys whose grants the
+      // server confirmed FRESH in this flush — an alreadyGranted
+      // replay retires the key and adopts the balance but earns
+      // NO line (Juno §3a) — in Juno §3 order: daily,
+      // milestone(s), perfect week.
       final lines = <String>[];
       for (final k in keys) {
-        if (!retired.contains(k)) continue;
+        if (!flush.fresh.contains(k)) continue;
         final line = _lineForKey(k);
         if (line != null) lines.add(line);
       }
