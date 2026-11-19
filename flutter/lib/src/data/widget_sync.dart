@@ -74,6 +74,15 @@ class WidgetSync {
       'com.notel.notel.playground.flutter.VitalsWidgetProvider';
   static const String providerName = 'VitalsWidgetProvider';
 
+  /// The STANDALONE streak widget's provider (Nov 18, 2026): a
+  /// separate AppWidget provider rendering the same streak payload
+  /// keys below. The vitals provider also carries a banner face;
+  /// this one exists so the streak has its own entry in the
+  /// Android widget picker.
+  static const String qualifiedStreakProviderName =
+      'com.notel.notel.playground.flutter.StreakWidgetProvider';
+  static const String streakProviderName = 'StreakWidgetProvider';
+
   // Injectable bridge (unit tests): replaces the platform-channel
   // calls so the mapping + failure-swallowing can be verified without
   // a device. Null in production.
@@ -202,6 +211,30 @@ class WidgetSync {
       }
     } catch (e) {
       debugPrint('WidgetSync: updateWidget failed: $e');
+    }
+  }
+
+  /// Update request for the standalone streak widget — same
+  /// bridge discipline as [_requestUpdate] (the test override
+  /// stands in for BOTH providers' platform calls, so a streak
+  /// drain turn through the bridge records two updates: vitals +
+  /// streak). The vitals path never calls this.
+  static Future<void> _requestStreakUpdate() async {
+    try {
+      final override = _updateOverride;
+      if (override != null) {
+        await override();
+        return;
+      }
+      final ok = await HomeWidget.updateWidget(
+        name: streakProviderName,
+        qualifiedAndroidName: qualifiedStreakProviderName,
+      );
+      if (ok == false) {
+        debugPrint('WidgetSync: streak updateWidget returned false');
+      }
+    } catch (e) {
+      debugPrint('WidgetSync: streak updateWidget failed: $e');
     }
   }
 
@@ -417,7 +450,10 @@ class WidgetSync {
           await _save(keyStreakGreeting, payload.greeting);
           await _save(keyStreakSubline, payload.subline);
         } finally {
+          // The vitals provider's banner face refreshes as before;
+          // the standalone streak widget refreshes additionally.
           await _requestUpdate();
+          await _requestStreakUpdate();
         }
       }
     } finally {
