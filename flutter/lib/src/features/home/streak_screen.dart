@@ -1,11 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:tabs_lab/src/data/streak_engine.dart';
 import 'package:tabs_lab/src/data/streak_purchase.dart';
+import 'package:tabs_lab/src/data/streak_store.dart';
 import 'package:tabs_lab/src/features/home/streak_flame.dart';
 import 'package:tabs_lab/src/features/home/streak_share_card.dart';
+import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
@@ -121,14 +124,20 @@ class _StreakScreenState extends State<StreakScreen> {
       _ownsPurchase = true;
       _purchase = StreakFreezePurchaseService(
         onAdopted: (count) {
+          // Streak-bugs fix: the grant also lands in the streak
+          // store, so every surface reading the settled state
+          // (Home, widget, a reopened streak screen) sees the held
+          // freeze immediately — not just this screen's override.
+          unawaited(StreakStore.instance.adoptPurchasedFreezes(count));
           if (mounted) setState(() => _adoptedPurchased = count);
         },
-        formatSuccess: (count) {
-          final s = _effectiveState();
-          final available = totalAvailableCover(s, now);
-          final max = streakCap(s);
-          return "You've got an extra freeze. You now have $available of $max freezes available.";
-        },
+        // A2 copy fix (Vera blocker): NO formatSuccess here. The
+        // pre-existing §5b count formatter made the screen's
+        // confirmation the §5b string and Juno §1a a dead fallback
+        // (and on recovery §1a rendered IN ADDITION to §5b — two
+        // stacked confirmations). Juno §1a is now the ONE visible
+        // confirmation for a verified grant; the freeze counts
+        // still render in the card's §4a status line above it.
       );
     }
     _purchase!.addListener(_onPurchaseChanged);
@@ -144,7 +153,22 @@ class _StreakScreenState extends State<StreakScreen> {
     }
   }
 
+  /// Juno §1a motion trigger (A2 fix): increments exactly once
+  /// per verified grant (first-try or recovered) so the freeze
+  /// icon animates into the freeze row once per grant — never on
+  /// ordinary rebuilds or repeated service notifications.
+  /// [_grantEpochsPresented] remembers which epochs the icon has
+  /// already animated: the freeze card is built lazily (ListView),
+  /// so a grant can land before the icon exists — it then plays
+  /// its entrance when first built, and never replays after.
+  int _grantEpoch = 0;
+  bool _grantSeen = false;
+  final Set<int> _grantEpochsPresented = {};
+
   void _onPurchaseChanged() {
+    final granted = _purchase?.successMessage != null;
+    if (granted && !_grantSeen) _grantEpoch++;
+    _grantSeen = granted;
     if (mounted) setState(() {});
   }
 
@@ -631,6 +655,10 @@ class _StreakScreenState extends State<StreakScreen> {
     final max = streakCap(effective);
     final purchase = _purchase;
     final heldPurchased = effective.purchasedFreezes > 0;
+    // Juno §1c state: the account already holds the purchased
+    // freeze — known from the held inventory or from a verify
+    // answered 409 purchased_already_held this session.
+    final alreadyHeldKnown = heldPurchased || purchase?.alreadyHeld == true;
 
     return _sectionCard(
       label: 'Streak Freeze',
@@ -640,18 +668,14 @@ class _StreakScreenState extends State<StreakScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF12314F),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: const Icon(
-                  Icons.ac_unit,
-                  size: 32,
-                  color: Color(0xFF6EC6FF),
-                ),
+              _FreezeGrantIcon(
+                grantEpoch: _grantEpoch,
+                alreadyPresented: _grantEpochsPresented.contains(_grantEpoch),
+                onPresented: (epoch) {
+                  if (mounted) {
+                    setState(() => _grantEpochsPresented.add(epoch));
+                  }
+                },
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -670,6 +694,11 @@ class _StreakScreenState extends State<StreakScreen> {
               ),
             ],
           ),
+          // Juno §1a — THE confirmation surface for a verified
+          // grant (A2 fix): exactly one confirmation renders. The
+          // recovered-grant surface (restoredMessage) carries the
+          // same §1a text and renders only when it is not already
+          // the successMessage, so a recovery never stacks two.
           if (purchase?.successMessage != null) ...[
             const SizedBox(height: 12),
             Text(
@@ -681,8 +710,34 @@ class _StreakScreenState extends State<StreakScreen> {
                 color: LabBlackColors.textPrimary,
               ),
             ),
+          ] else if (purchase?.restoredMessage != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              purchase!.restoredMessage!,
+              key: const Key('streakPurchaseRestored'),
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: LabBlackColors.textPrimary,
+              ),
+            ),
           ],
-          if (purchase?.failureMessage != null) ...[
+          // Juno §1b — the verify-pending state. While it shows,
+          // the generic §5c failure string must NOT also render
+          // for the same event (A2 fix; the service no longer sets
+          // it then either — this guard is belt-and-braces).
+          if (purchase?.pendingMessage != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              purchase!.pendingMessage!,
+              key: const Key('streakPurchasePending'),
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: LabBlackColors.textSecondary,
+              ),
+            ),
+          ] else if (purchase?.failureMessage != null) ...[
             const SizedBox(height: 12),
             Text(
               purchase!.failureMessage!,
@@ -694,7 +749,29 @@ class _StreakScreenState extends State<StreakScreen> {
               ),
             ),
           ],
-          if (!heldPurchased && purchase != null) ...[
+          // Juno §1c — inline on the purchase card when the
+          // already-held state is known (including a 409
+          // purchased_already_held answer): in place of the buy
+          // action (the buy row below is suppressed in this state,
+          // so no purchase sheet can launch and no charge is
+          // attempted).
+          if (purchase != null &&
+              (purchase.alreadyHeld ||
+                  (heldPurchased &&
+                      purchase.adoptedPurchasedFreezes == null &&
+                      _adoptedPurchased == null))) ...[
+            const SizedBox(height: 12),
+            const Text(
+              StreakPurchaseCopy.alreadyHeld,
+              key: Key('streakPurchaseAlreadyHeld'),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: LabBlackColors.textSecondary,
+              ),
+            ),
+          ],
+          if (!alreadyHeldKnown && purchase != null) ...[
             const SizedBox(height: 12),
             if (purchase.state == StreakFreezeBuyState.unavailable) ...[
               const Text(
@@ -992,6 +1069,121 @@ class _StreakScreenState extends State<StreakScreen> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The freeze card's existing freeze icon, with Juno §1a's ruled
+/// motion shape (A2 fix): on a verified grant ([grantEpoch]
+/// increments) the icon animates ONCE into the freeze row — a
+/// ~350 ms fade + slide with a slight scale-up as it lands, no
+/// loop, no bounce — and one light haptic tap fires at the moment
+/// it lands. The held state updates in the same moment (the
+/// service adopts before notifying). With reduce-motion on, the
+/// icon renders in place (no slide/scale) and the haptic still
+/// fires once. No Bandit animation, no confetti (Juno §1a ruling;
+/// Bandit preview-first rule).
+class _FreezeGrantIcon extends StatefulWidget {
+  final int grantEpoch;
+
+  /// Whether this epoch's entrance has already been presented
+  /// (owned by the screen, which outlives this lazily built icon).
+  final bool alreadyPresented;
+
+  /// Marks [grantEpoch] presented the moment its entrance starts.
+  final void Function(int epoch) onPresented;
+
+  const _FreezeGrantIcon({
+    required this.grantEpoch,
+    required this.alreadyPresented,
+    required this.onPresented,
+  });
+
+  @override
+  State<_FreezeGrantIcon> createState() => _FreezeGrantIconState();
+}
+
+class _FreezeGrantIconState extends State<_FreezeGrantIcon>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 350),
+    value: 1,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    // The freeze card builds lazily: a grant that landed while
+    // the card was off-screen reaches this icon as a first build
+    // with an unpresented epoch — play the entrance now (once;
+    // the screen's presented set prevents any replay).
+    if (widget.grantEpoch > 0 && !widget.alreadyPresented) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _playEntrance();
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(_FreezeGrantIcon oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.grantEpoch == oldWidget.grantEpoch) return;
+    if (widget.alreadyPresented) return;
+    _playEntrance();
+  }
+
+  void _playEntrance() {
+    widget.onPresented(widget.grantEpoch);
+    if (animationsDisabled(context)) {
+      // Reduce-motion: render in place, one light tap on landing.
+      _controller.value = 1;
+      HapticFeedback.lightImpact();
+      return;
+    }
+    _controller.forward(from: 0).whenComplete(() {
+      // One light haptic tap at the moment the icon lands.
+      HapticFeedback.lightImpact();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final t = Curves.easeOut.transform(_controller.value);
+        return Opacity(
+          opacity: 0.25 + 0.75 * t,
+          child: Transform.translate(
+            offset: Offset(-10 * (1 - t), 0),
+            child: Transform.scale(
+              scale: 0.85 + 0.15 * t,
+              child: child,
+            ),
+          ),
+        );
+      },
+      child: Container(
+        key: const Key('streakFreezeGrantIcon'),
+        width: 52,
+        height: 52,
+        decoration: BoxDecoration(
+          color: const Color(0xFF12314F),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: const Icon(
+          Icons.ac_unit,
+          size: 32,
+          color: Color(0xFF6EC6FF),
         ),
       ),
     );

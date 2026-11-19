@@ -317,7 +317,9 @@ void main() {
       expect(service.failureMessage, isNull);
     });
 
-    test('verify failure and cancellation both render §5c', () async {
+    test('verify failure renders §1b ONLY (A2 fix: Juno §1b '
+        'supersedes §5c for the verify-pending event); '
+        'cancellation renders §5c', () async {
       final store = _FakeStore(
         product: const StreakFreezeProduct(
           id: StreakFreezePurchaseService.productId,
@@ -344,10 +346,11 @@ void main() {
       );
       await Future<void>.delayed(Duration.zero);
       await Future<void>.delayed(Duration.zero);
-      expect(
-        service.failureMessage,
-        "Purchase didn't finish — no freeze was added. Try again whenever you're ready, or come back later.",
-      );
+      // A paid purchase whose verify has not landed is the
+      // verify-pending state: Juno §1b is its message, and the
+      // §5c string must not also be set for the same event.
+      expect(service.pendingMessage, StreakPurchaseCopy.verifyPending);
+      expect(service.failureMessage, isNull);
       expect(service.successMessage, isNull);
 
       await service.buy();
@@ -1076,4 +1079,7 @@ class _FakeStore implements StreakFreezeStore {
   Future<void> completePurchase(StreakFreezePurchaseUpdate update) async {
     completed = true;
   }
+
+  @override
+  Future<void> restorePurchases() async {}
 }

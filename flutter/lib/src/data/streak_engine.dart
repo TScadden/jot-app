@@ -168,6 +168,22 @@ class StreakState {
   /// existed deserialize with it empty.
   final Set<String> summaryCompletedDays;
 
+  /// Days whose counted/restored marks revalidation STRIPPED
+  /// (streak-bugs fix, Nov 19, 2026): a day counted under legacy
+  /// app-open semantics with no summary completion and no freeze
+  /// cover. The tombstone is what makes settlement deterministic
+  /// across sync: an adoption merge must never resurrect a
+  /// tombstoned day from a stale server blob (the Nov 18
+  /// flip-flop — strict evaluation broke the run, then the
+  /// union-merge restored the day and the 27 was pushed back).
+  /// A day leaves this set by genuinely completing its
+  /// summary ([completeDay]), by the dev Restore Streak path —
+  /// both also record it in [summaryCompletedDays] — or by a
+  /// settlement freeze bridge covering it (the day joins
+  /// [restoredDays]; A1 fix, Nov 19, 2026). Additive +
+  /// JSON-tolerant: pre-fix blobs deserialize with it empty.
+  final Set<String> invalidatedDays;
+
   const StreakState({
     this.seeded = false,
     this.seededCurrent = 0,
@@ -183,6 +199,7 @@ class StreakState {
     this.spoiledMonths = const {},
     this.freezeFreeMonthsCompleted = 0,
     this.summaryCompletedDays = const {},
+    this.invalidatedDays = const {},
   });
 
   /// Whether a freeze of any kind was consumed with attribution to
@@ -218,6 +235,7 @@ class StreakState {
     Set<String>? spoiledMonths,
     int? freezeFreeMonthsCompleted,
     Set<String>? summaryCompletedDays,
+    Set<String>? invalidatedDays,
   }) {
     return StreakState(
       seeded: seeded ?? this.seeded,
@@ -235,6 +253,7 @@ class StreakState {
       freezeFreeMonthsCompleted:
           freezeFreeMonthsCompleted ?? this.freezeFreeMonthsCompleted,
       summaryCompletedDays: summaryCompletedDays ?? this.summaryCompletedDays,
+      invalidatedDays: invalidatedDays ?? this.invalidatedDays,
     );
   }
 
@@ -254,6 +273,7 @@ class StreakState {
     'spoiledMonths': spoiledMonths.toList()..sort(),
     'freezeFreeMonthsCompleted': freezeFreeMonthsCompleted,
     'summaryCompletedDays': summaryCompletedDays.toList()..sort(),
+    'invalidatedDays': invalidatedDays.toList()..sort(),
   };
 
   /// Parses a v2 blob, or migrates a v1 blob losslessly (A4+B1):
@@ -311,6 +331,9 @@ class StreakState {
       // setOf returns {} for a missing key, which is exactly the
       // legacy default the open-day revalidation relies on.
       summaryCompletedDays: setOf('summaryCompletedDays'),
+      // Streak-bugs fix: absent on every pre-fix blob — {} is the
+      // correct default (nothing tombstoned yet).
+      invalidatedDays: setOf('invalidatedDays'),
     );
   }
 
@@ -330,7 +353,8 @@ class StreakState {
       other.accrualMonth == accrualMonth &&
       setEquals(other.spoiledMonths, spoiledMonths) &&
       other.freezeFreeMonthsCompleted == freezeFreeMonthsCompleted &&
-      setEquals(other.summaryCompletedDays, summaryCompletedDays);
+      setEquals(other.summaryCompletedDays, summaryCompletedDays) &&
+      setEquals(other.invalidatedDays, invalidatedDays);
 
   @override
   int get hashCode => Object.hash(
@@ -348,6 +372,7 @@ class StreakState {
     Object.hashAllUnordered(spoiledMonths),
     freezeFreeMonthsCompleted,
     Object.hashAllUnordered(summaryCompletedDays),
+    Object.hashAllUnordered(invalidatedDays),
   );
 }
 
@@ -368,7 +393,95 @@ StreakState revalidateOpenDay(StreakState s, String openTabsDay) {
   return s.copyWith(
     countedDays: Set<String>.of(s.countedDays)..remove(openTabsDay),
     restoredDays: Set<String>.of(s.restoredDays)..remove(openTabsDay),
+    // Streak-bugs fix: tombstone the stripped day so no later
+    // adoption/union-merge can resurrect it from a stale blob.
+    invalidatedDays: {...s.invalidatedDays, openTabsDay},
   );
+}
+
+/// Just-closed revalidation (streak-bugs fix, Nov 19, 2026): the
+/// day that was the OPEN Tabs day at the state's last evaluation
+/// ([StreakState.lastEvaluatedDay]) has now closed. If it is
+/// counted with no summary completion and no freeze cover
+/// (not in [StreakState.restoredDays]), its counted mark is a
+/// legacy app-open artifact that arrived (or survived) after the
+/// open-day revalidation ran — strip and tombstone it, exactly
+/// as the open-day rule would have. The subsequent settlement
+/// then treats the day as missed: gap bridging may still cover
+/// it with a freeze (it then renders as a freeze day), otherwise
+/// the run breaks. Days that closed BEFORE the last evaluation
+/// are not touched — closed-day grandfathering (the P0 doctrine)
+/// still governs history the engine never evaluated while open.
+StreakState revalidateJustClosedDay(StreakState s, String todayTabsDay) {
+  final last = s.lastEvaluatedDay;
+  if (last == null || last.compareTo(todayTabsDay) >= 0) return s;
+  // ONLY the day that just closed — the one that was open at the
+  // last evaluation, i.e. yesterday relative to this evaluation.
+  // An older stamp means several days closed since the last
+  // evaluation; that head day is part of a multi-day gap, which
+  // settlement's ordinary bridging/breaking governs (a pinned
+  // store test bridges exactly such a gap with the monthly
+  // grant), not this revalidation.
+  if (last != _addDays(todayTabsDay, -1)) return s;
+  if (!s.countedDays.contains(last)) return s;
+  if (s.summaryCompletedDays.contains(last)) return s;
+  if (s.restoredDays.contains(last)) return s;
+  // Cover guard (A2 contract): if any freeze COULD cover the day
+  // — the missed day's monthly grant still unused, or an earned
+  // or purchased freeze held — the day has a legitimate basis and
+  // stays counted: settlement's bridging governs GAPS, and a
+  // counted day is not a gap (stripping it here would manufacture
+  // a gap and burn the very freeze inventory the A2 merge just
+  // adopted). Revalidation strips only a day with no completion,
+  // no freeze cover, and no possible cover — the founder's
+  // Nov 18 exactly (grant consumed by Nov 7, earned 0, purchased 0).
+  if (!s.consumedSaveMonths.contains(_monthOfDay(last)) ||
+      s.earnedFreezes > 0 ||
+      s.purchasedFreezes > 0) {
+    return s;
+  }
+  return s.copyWith(
+    countedDays: Set<String>.of(s.countedDays)..remove(last),
+    invalidatedDays: {...s.invalidatedDays, last},
+  );
+}
+
+/// Dev "Restore Streak" (founder ask, Nov 19, 2026): mark the
+/// most recent broken day as a NORMAL completed day — the day
+/// right after a counted day, itself uncounted, whose next day
+/// is counted or is the current open Tabs day (a single-day
+/// break a one-day repair can actually reconnect). The day joins
+/// [StreakState.countedDays] AND [StreakState.summaryCompletedDays]
+/// (it counts as if the summary had completed — never a freeze
+/// day: [StreakState.restoredDays] is untouched and no freeze is
+/// consumed or granted) and any tombstone for it clears. Returns
+/// the state unchanged with a null day when there is no such
+/// single-day break (run alive, gap of 2+, or no counted days) —
+/// the caller's safe no-op.
+({StreakState state, String? restoredDay}) restoreBrokenDay(
+  StreakState s, {
+  required String todayTabsDay,
+}) {
+  if (s.countedDays.isEmpty) return (state: s, restoredDay: null);
+  final sorted = s.countedDays.toList()..sort();
+  final earliest = sorted.first;
+  var d = _addDays(todayTabsDay, -1);
+  while (d.compareTo(earliest) >= 0) {
+    final prev = _addDays(d, -1);
+    final next = _addDays(d, 1);
+    if (!s.countedDays.contains(d) &&
+        s.countedDays.contains(prev) &&
+        (s.countedDays.contains(next) || next == todayTabsDay)) {
+      final nextState = s.copyWith(
+        countedDays: {...s.countedDays, d},
+        summaryCompletedDays: {...s.summaryCompletedDays, d},
+        invalidatedDays: Set<String>.of(s.invalidatedDays)..remove(d),
+      );
+      return (state: nextState, restoredDay: d);
+    }
+    d = _addDays(d, -1);
+  }
+  return (state: s, restoredDay: null);
 }
 
 /// The consecutive-day run ending on [endDay] within [days], as
@@ -548,6 +661,7 @@ StreakSettleResult _settleDetailed(StreakState s, String today) {
   var ffmc = s.freezeFreeMonthsCompleted;
   final counted = Set<String>.of(s.countedDays);
   final restored = Set<String>.of(s.restoredDays);
+  final invalidated = Set<String>.of(s.invalidatedDays);
   var consumed = Set<String>.of(s.consumedSaveMonths);
   final spoiled = Set<String>.of(s.spoiledMonths);
   final bridged = <String>[];
@@ -599,6 +713,15 @@ StreakSettleResult _settleDetailed(StreakState s, String today) {
         for (final e in draws.entries) {
           counted.add(e.key);
           restored.add(e.key);
+          // A freeze bridge LEGITIMIZES the day it covers (A1 fix,
+          // Vera blocker, Nov 19, 2026): clear any revalidation
+          // tombstone for it, exactly as a genuine completion does
+          // in completeDay. Without this, the adoption merge —
+          // which admits a tombstoned day only on completion or
+          // freeze cover — could eat the bridged day on the next
+          // adoption while the freeze spent bridging it stays
+          // spent (the 27 → 0 flip-flop, with a paid freeze burned).
+          invalidated.remove(e.key);
           // Spoils attribution (A5): the missed day's month.
           spoiled.add(_monthOfDay(e.key));
           bridged.add(e.key);
@@ -694,6 +817,7 @@ StreakSettleResult _settleDetailed(StreakState s, String today) {
   final next = s.copyWith(
     countedDays: counted,
     restoredDays: restored,
+    invalidatedDays: invalidated,
     consumedSaveMonths: consumed,
     earnedFreezes: earned,
     purchasedFreezes: purchased,
@@ -740,6 +864,14 @@ StreakSettleResult settleDetailed(StreakState s, DateTime now) =>
   if (!st.countedDays.contains(summaryTabsDay)) {
     st = st.copyWith(
       countedDays: Set<String>.of(st.countedDays)..add(summaryTabsDay),
+    );
+  }
+  // A genuine completion legitimizes the day: clear any
+  // revalidation tombstone for it (streak-bugs fix).
+  if (st.invalidatedDays.contains(summaryTabsDay)) {
+    st = st.copyWith(
+      invalidatedDays: Set<String>.of(st.invalidatedDays)
+        ..remove(summaryTabsDay),
     );
   }
   final newCount = _runEndingAt(st.countedDays, summaryTabsDay).length;

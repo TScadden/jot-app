@@ -31,6 +31,9 @@ import 'package:tabs_lab/src/features/settings/account_actions.dart';
 import 'package:tabs_lab/src/data/streak_engine.dart';
 import 'package:tabs_lab/src/data/streak_store.dart';
 import 'package:tabs_lab/src/features/settings/crash_test_hook.dart';
+import 'package:tabs_lab/src/data/home_data_cache.dart';
+import 'package:tabs_lab/src/data/widget_sync.dart';
+import 'package:tabs_lab/src/features/settings/streak_restore.dart';
 import 'package:tabs_lab/src/features/settings/streak_sim.dart';
 import 'package:tabs_lab/src/features/settings/progress_reports_page.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
@@ -1317,9 +1320,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
             now: now,
           ),
         ]),
+        const SizedBox(height: 16),
+        _card([
+          StreakRestoreEntry(onRestore: _runStreakRestore),
+        ]),
       ]);
     }
     return widgets;
+  }
+
+  /// The dev Restore Streak action (founder ask, Nov 19, 2026):
+  /// runs the restore through the streak store's authoritative
+  /// path (the same adoption / revalidation / settle / profile
+  /// push machinery as app-open), then refreshes the other
+  /// settled-state surfaces — the Home cache and the home-screen
+  /// widget — from the restored state so every surface agrees
+  /// immediately. Rendered only inside the dev_access gate above.
+  Future<StreakRestoreOutcome> _runStreakRestore() async {
+    final rec = await _backend.fetchStreakRecord();
+    final result = await StreakStore.instance.recordDevRestore(
+      pullSucceeded: rec.succeeded,
+      seedCurrent: rec.current,
+      seedBest: rec.best,
+      seedStateJson: rec.stateJson,
+      seedPurchasedFreezes: rec.purchasedFreezes,
+      now: DateTime.now(),
+      push: (current, best, stateJson, {int? purchasedFreezes}) =>
+          _backend.pushStreakRecord(
+        current,
+        best,
+        stateJson,
+        purchasedFreezes: purchasedFreezes,
+      ),
+    );
+    if (result.restoredDay != null) {
+      final cache = HomeDataCache.instance;
+      if (cache.applyStreak(result.current, result.best)) {
+        unawaited(cache.persist());
+      }
+      unawaited(WidgetSync.pushStreak(
+        result.state,
+        signedIn: true,
+        nickname: _data.nickname,
+        now: DateTime.now(),
+      ));
+    }
+    return StreakRestoreOutcome(
+      restoredDay: result.restoredDay,
+      current: result.current,
+      best: result.best,
+    );
   }
 
   List<Widget> _unavailablePage(String message) {

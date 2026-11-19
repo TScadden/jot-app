@@ -194,8 +194,12 @@ class StreakStore {
   ///
   /// Returns the state to evaluate from, or null when there is no
   /// local record and the pull did not succeed — the caller must
-  /// fabricate NOTHING in that case.
-  StreakState? _adopt({
+  /// fabricate NOTHING in that case. [freshSeed] is true only when
+  /// this call CREATED the state from the pull counters (or a
+  /// confirmed-empty record): a counters-attested seed is
+  /// grandfathered against just-closed revalidation, which only
+  /// governs pre-existing day-level records.
+  ({StreakState state, bool freshSeed})? _adopt({
     required bool pullSucceeded,
     required int? seedCurrent,
     required int? seedBest,
@@ -206,7 +210,11 @@ class StreakStore {
     String? summaryTabsDay,
   }) {
     var s = _state;
-    if (!pullSucceeded) return s;
+    var freshSeed = false;
+    if (!pullSucceeded) {
+      final local = s;
+      return local == null ? null : (state: local, freshSeed: false);
+    }
 
     // 1) The server blob is the authoritative day-level record:
     //    adopt it unless the local record is strictly newer (its
@@ -241,18 +249,54 @@ class StreakStore {
         // Scalar fields (seeded counters, freeze inventory,
         // accrual) still come from the winning server record; the
         // A2 purchased-freeze formula below then applies on top.
+        // Streak-bugs fix (Nov 19, 2026) — the union merge is
+        // TOMBSTONE-AWARE: days either side revalidation-stripped
+        // (invalidatedDays, unioned here) are excluded from the
+        // merged counted/restored sets, so a stale server blob can
+        // never resurrect a day a strict evaluation broke the run
+        // on (the Nov 18 flip-flop: strip → 0 on the streak
+        // screen, union-merge → 27 pushed back to the profile).
+        // The exemptions are a genuine summary completion (a day
+        // in the merged summaryCompletedDays is legitimate
+        // wherever it was completed, tombstone or not) and freeze
+        // cover (a day in the merged restoredDays was bridged by
+        // a freeze — A1 fix below).
+        final mergedCompleted = {
+          ...server.summaryCompletedDays,
+          ...s.summaryCompletedDays,
+        };
+        // A1 fix (Vera blocker, Nov 19, 2026): a freeze-bridged day
+        // is legitimized the same way a completion legitimizes it.
+        // The merged restored set is the freeze-cover evidence —
+        // a tombstoned day that either record holds as restored
+        // was covered by a freeze, so its tombstone clears and it
+        // survives every later merge. A tombstoned day with NO
+        // completion and NO freeze cover (not in either restored
+        // set) stays excluded: the Bug 2 guarantee is unchanged.
+        final mergedRestored = {
+          ...server.restoredDays,
+          ...s.restoredDays,
+        };
+        final mergedInvalidated = {
+          ...server.invalidatedDays,
+          ...s.invalidatedDays,
+        }
+          ..removeAll(mergedCompleted)
+          ..removeAll(mergedRestored);
+        bool live(String d) =>
+            !mergedInvalidated.contains(d) ||
+            mergedCompleted.contains(d) ||
+            mergedRestored.contains(d);
         s = server.copyWith(
-          countedDays: {...server.countedDays, ...s.countedDays},
-          restoredDays: {...server.restoredDays, ...s.restoredDays},
+          countedDays: {...server.countedDays, ...s.countedDays}.where(live).toSet(),
+          restoredDays: mergedRestored.where(live).toSet(),
           consumedSaveMonths: {
             ...server.consumedSaveMonths,
             ...s.consumedSaveMonths,
           },
           spoiledMonths: {...server.spoiledMonths, ...s.spoiledMonths},
-          summaryCompletedDays: {
-            ...server.summaryCompletedDays,
-            ...s.summaryCompletedDays,
-          },
+          summaryCompletedDays: mergedCompleted,
+          invalidatedDays: mergedInvalidated,
         );
       }
       // A2 FIELD-LEVEL MERGE for the purchased freeze: the concrete
@@ -299,6 +343,7 @@ class StreakStore {
           seededBest: seedBest > base.seededBest ? seedBest : base.seededBest,
         );
       } else if (pairChanged) {
+        freshSeed = true;
         s = seedMode == _seedCompletion
             ? streakSeedForCompletion(
                 current: seedCurrent,
@@ -320,6 +365,7 @@ class StreakStore {
       //    genuinely new account. Seeding an empty record is
       //    correct here — under v2 it counts NOTHING until the
       //    first Daily Summary completes (D1).
+      if (s == null) freshSeed = true;
       s ??= seedMode == _seedCompletion
           ? streakSeedForCompletion(
               current: 0,
@@ -341,7 +387,28 @@ class StreakStore {
     if (!adopted.seeded) {
       s = adopted.copyWith(seeded: true);
     }
-    return s;
+    return (state: s, freshSeed: freshSeed);
+  }
+
+  /// The ONE authoritative evaluation pipeline (streak-bugs fix):
+  /// every entry point that evaluates an adopted record runs the
+  /// same revalidations in the same order before settlement —
+  /// open-day first (P0), then just-closed — so no surface can
+  /// ever evaluate the same record two different ways. Fresh
+  /// counters-attested seeds are exempt from the just-closed rule
+  /// (their run is attested by the counters themselves); the
+  /// open-day rule still applies to them exactly as it did in P0.
+  StreakState _revalidate(
+    StreakState adopted, {
+    required bool freshSeed,
+    required DateTime now,
+  }) {
+    var effective = revalidateOpenDay(adopted, tabsDayStr(now));
+    if (!freshSeed) {
+      effective = revalidateJustClosedDay(effective, tabsDayStr(now));
+    }
+    if (effective != adopted) _dirty = true;
+    return effective;
   }
 
   /// Shared tail of both entry points: install the settled state,
@@ -435,7 +502,7 @@ class StreakStore {
       return StreakState.empty;
     }
 
-    final adopted = _adopt(
+    final adoption = _adopt(
       pullSucceeded: pullSucceeded,
       seedCurrent: seedCurrent,
       seedBest: seedBest,
@@ -444,20 +511,21 @@ class StreakStore {
       now: now,
       seedMode: _seedAdoption,
     );
-    if (adopted == null) {
+    if (adoption == null) {
       // No local record and no successful pull: NEVER fabricate a
       // run. The caller keeps its honest empty display.
       return StreakState.empty;
     }
 
-    // P0 fix (Defect A1) — open-day revalidation at adoption: a
-    // counted/restored mark for the still-open Tabs day with no
-    // summary-completion record is a legacy app-open artifact and
-    // is stripped before settlement (closed days untouched).
-    final effective = revalidateOpenDay(adopted, tabsDayStr(now));
-    // A strip is itself a state change: force the persist below
-    // even when settlement turns out to be a no-op.
-    if (effective != adopted) _dirty = true;
+    // P0 fix (Defect A1) + streak-bugs fix — the ONE authoritative
+    // revalidation pipeline (open-day, then just-closed) runs at
+    // adoption, before settlement; strips are tombstoned so no
+    // later merge resurrects them.
+    final effective = _revalidate(
+      adoption.state,
+      freshSeed: adoption.freshSeed,
+      now: now,
+    );
 
     final next = settle(effective, now);
     _installAndPush(
@@ -509,7 +577,7 @@ class StreakStore {
     }
 
     final summaryTabsDay = tabsDayStr(summaryDay);
-    final adopted = _adopt(
+    final adoption = _adopt(
       pullSucceeded: pullSucceeded,
       seedCurrent: seedCurrent,
       seedBest: seedBest,
@@ -519,18 +587,22 @@ class StreakStore {
       seedMode: _seedCompletion,
       summaryTabsDay: summaryTabsDay,
     );
-    if (adopted == null) {
+    if (adoption == null) {
       // Anti-fabrication parity: no local record + no successful
       // pull = no counted day (the brief's pinned test case).
       return (state: StreakState.empty, completion: null);
     }
 
-    // P0 fix (Defect A1) — same open-day revalidation as
-    // recordOpen: a legacy mark for the open day is stripped
-    // first, then the genuine completion below re-counts the day
-    // AND records it, so the day is henceforth legitimate.
-    final effective = revalidateOpenDay(adopted, tabsDayStr(now));
-    if (effective != adopted) _dirty = true;
+    // P0 fix (Defect A1) + streak-bugs fix — same authoritative
+    // revalidation pipeline as recordOpen: a legacy mark for the
+    // open day is stripped first, then the genuine completion
+    // below re-counts the day AND records it (clearing its
+    // tombstone), so the day is henceforth legitimate.
+    final effective = _revalidate(
+      adoption.state,
+      freshSeed: adoption.freshSeed,
+      now: now,
+    );
 
     final done = completeDay(
       effective,
@@ -560,6 +632,102 @@ class StreakStore {
       push: push,
     );
     return (state: nextState, completion: done.result);
+  }
+
+  /// Dev "Restore Streak" (founder ask, Nov 19, 2026; dev_access
+  /// gate lives at the UI — this is the engine's own state path):
+  /// adopt + revalidate exactly like [recordOpen], then mark the
+  /// most recent single-day break as a NORMAL completed day via
+  /// [restoreBrokenDay] (counted + summary-completed; never a
+  /// freeze day, no freeze consumed or granted), settle, and
+  /// install + push through the same authoritative profile path
+  /// as every other evaluation, so Home, the streak screen, the
+  /// celebration, and the widget all read the restored state.
+  /// Idempotent: with no single-day break the restore is a pure
+  /// no-op — nothing is installed, persisted, or pushed — and a
+  /// second tap after a successful restore finds no break.
+  Future<({StreakState state, String? restoredDay, int current, int best})>
+  recordDevRestore({
+    required bool pullSucceeded,
+    required int? seedCurrent,
+    required int? seedBest,
+    required String? seedStateJson,
+    int? seedPurchasedFreezes,
+    required DateTime now,
+    StreakSyncPush? push,
+  }) async {
+    await ensureLoaded();
+    if (!_loaded) {
+      return (state: StreakState.empty, restoredDay: null, current: 0, best: 0);
+    }
+    final adoption = _adopt(
+      pullSucceeded: pullSucceeded,
+      seedCurrent: seedCurrent,
+      seedBest: seedBest,
+      seedStateJson: seedStateJson,
+      seedPurchasedFreezes: seedPurchasedFreezes,
+      now: now,
+      seedMode: _seedAdoption,
+    );
+    if (adoption == null || !adoption.state.seeded) {
+      return (state: StreakState.empty, restoredDay: null, current: 0, best: 0);
+    }
+    final effective = _revalidate(
+      adoption.state,
+      freshSeed: adoption.freshSeed,
+      now: now,
+    );
+    final restored = restoreBrokenDay(effective, todayTabsDay: tabsDayStr(now));
+    if (restored.restoredDay == null) {
+      final anchor = tabsDayAnchor(now);
+      return (
+        state: effective,
+        restoredDay: null,
+        current: streakCurrent(effective, anchor),
+        best: streakBest(effective),
+      );
+    }
+    final next = settle(restored.state, now);
+    _installAndPush(
+      effective: effective,
+      next: next,
+      pullSucceeded: pullSucceeded,
+      seedCurrent: seedCurrent,
+      seedBest: seedBest,
+      seedStateJson: seedStateJson,
+      now: now,
+      push: push,
+    );
+    final anchor = tabsDayAnchor(now);
+    return (
+      state: next,
+      restoredDay: restored.restoredDay,
+      current: streakCurrent(next, anchor),
+      best: streakBest(next),
+    );
+  }
+
+  /// Adopt a server-verified purchased-freeze count into the
+  /// local record (streak purchase fix, Nov 19, 2026): the verify
+  /// endpoint already granted it server-side; this makes the held
+  /// freeze visible on every surface that reads the store NOW,
+  /// instead of only after the next settle's A2 column merge.
+  /// Persists locally only — the profile's purchased-freeze
+  /// column already holds the count (it rises only via verify),
+  /// and the next settle's blob push carries the same value.
+  Future<void> adoptPurchasedFreezes(int count) async {
+    await ensureLoaded();
+    if (!_loaded) return;
+    final s = _state;
+    if (s == null) return;
+    final clamped = count.clamp(0, 1);
+    if (s.purchasedFreezes == clamped) return;
+    _state = s.copyWith(purchasedFreezes: clamped);
+    _dirty = true;
+    if (_dirty) {
+      _dirty = false;
+      await _persist();
+    }
   }
 
   Future<void> _persist() async {
