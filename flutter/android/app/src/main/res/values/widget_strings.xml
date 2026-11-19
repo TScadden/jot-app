@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="vitals_widget_description">Tabs vitals at a glance: heart rate, streak, logs and sleep</string>
-    <string name="streak_widget_description">Tabs streak: your day streak and today&apos;s Daily Summary</string>
+    <string name="streak_widget_description">Tabs streak: your day streak and today\'s Daily Summary</string>
 </resources>
