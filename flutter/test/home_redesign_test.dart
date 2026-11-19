@@ -197,8 +197,16 @@ Future<void> _drainScoreChain(WidgetTester tester) async {
 Future<void> _dismissCelebrationIfShown(WidgetTester tester) async {
   final yay = find.byKey(const Key('celebrationYay'));
   if (yay.evaluate().isEmpty) return;
+  // Sequence adaptation (Nov 18, 2026): the celebration plays the
+  // ignition sequence and its buttons are not tappable during it —
+  // the first tap skips to the final state, the second dismisses.
   await tester.tap(yay);
   await tester.pump();
+  final yayAgain = find.byKey(const Key('celebrationYay'));
+  if (yayAgain.evaluate().isNotEmpty) {
+    await tester.tap(yayAgain);
+    await tester.pump();
+  }
   await tester.pump(const Duration(milliseconds: 400));
   await tester.pump();
 }

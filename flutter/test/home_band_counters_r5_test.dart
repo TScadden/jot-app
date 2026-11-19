@@ -263,8 +263,16 @@ Future<void> _pumpHome(
 Future<void> _dismissCelebrationIfShown(WidgetTester tester) async {
   final yay = find.byKey(const Key('celebrationYay'));
   if (yay.evaluate().isEmpty) return;
+  // Sequence adaptation (Nov 18, 2026): the celebration plays the
+  // ignition sequence and its buttons are not tappable during it —
+  // the first tap skips to the final state, the second dismisses.
   await tester.tap(yay);
   await tester.pump();
+  final yayAgain = find.byKey(const Key('celebrationYay'));
+  if (yayAgain.evaluate().isNotEmpty) {
+    await tester.tap(yayAgain);
+    await tester.pump();
+  }
   await tester.pump(const Duration(milliseconds: 400));
   await tester.pump();
 }
@@ -367,6 +375,26 @@ void main() {
       final seen = <double>[];
       for (var i = 0; i < 60 && (seen.isEmpty || seen.last < 1.0); i++) {
         await tester.pump(const Duration(milliseconds: 16));
+        // The commit completes the summary, so the celebration
+        // legitimately covers Home mid-sampling — and since the
+        // Nov 18, 2026 in-place entrance it does so from the
+        // first frame (Home offstage under it), where the old
+        // slide kept Home findable during its 300 ms travel.
+        // Dismiss the celebration when it appears so the reveal
+        // stays observable; the fade is what is under test. The
+        // dismissal here uses zero-duration pumps ONLY (first tap
+        // skips the sequence, second dismisses): advancing the
+        // clock inside the dismissal would let the fade finish
+        // before the first sample.
+        if (find
+            .byKey(const Key('celebrationYay'))
+            .evaluate()
+            .isNotEmpty) {
+          await tester.tap(find.byKey(const Key('celebrationYay')));
+          await tester.pump();
+          await tester.tap(find.byKey(const Key('celebrationYay')));
+          await tester.pump();
+        }
         if (_revealBuilder().evaluate().isNotEmpty) {
           seen.add(_bandOpacity(tester));
         }

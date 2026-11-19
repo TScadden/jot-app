@@ -13,7 +13,7 @@ import 'package:share_plus/share_plus.dart';
 /// The card is rendered as a PNG (RepaintBoundary → image,
 /// 1080×1080) matching tabs_streak_share_card_v7_20261118.png:
 /// dark navy gradient background, the founder-set text
-/// "I have a streak of / {N} / days of tracking my health!"
+/// "I have a streak of / {N} / days tracking my health!"
 /// ({N} = the SETTLED count at generation time — never a
 /// projected, simulated, or pre-settlement count, Juno §10), the
 /// number in orange (#FF6A3D family), the Bandit cheer art
@@ -130,7 +130,7 @@ class StreakShareCard extends StatelessWidget {
                   ),
                 ),
                 const Text(
-                  'days of tracking my health!',
+                  'days tracking my health!',
                   style: TextStyle(
                     fontSize: 58,
                     fontWeight: FontWeight.w700,
@@ -181,7 +181,10 @@ class StreakShareService {
 
   static Future<void> _defaultShare(File file) async {
     await SharePlus.instance.share(
-      ShareParams(files: [XFile(file.path)], fileNameOverrides: [file.path.split(Platform.pathSeparator).last]),
+      ShareParams(
+        files: [XFile(file.path)],
+        fileNameOverrides: [file.path.split(Platform.pathSeparator).last],
+      ),
     );
   }
 

@@ -54,9 +54,9 @@ void main() {
   }
 
   Set<String> daysThrough(int lastDay) => {
-        for (var d = 1; d <= lastDay; d++)
-          '2026-11-${d.toString().padLeft(2, '0')}',
-      };
+    for (var d = 1; d <= lastDay; d++)
+      '2026-11-${d.toString().padLeft(2, '0')}',
+  };
 
   // ── Fake purchase store ────────────────────────────────────────
   // (Defined as local classes via a helper — see _FakeStore below.)
@@ -87,13 +87,14 @@ void main() {
       // 20 counted days (Nov 1–17 + Oct 29–31 → run of 20 ending
       // yesterday); today (Nov 18) not counted.
       final counted = <String>{
-        '2026-10-29', '2026-10-30', '2026-10-31',
+        '2026-10-29',
+        '2026-10-30',
+        '2026-10-31',
         ...daysThrough(17),
       };
       await pumpScreen(tester, stateWith(counted: counted));
       expect(
-        (tester.widget<Text>(find.byKey(const Key('streakHeroNumber'))))
-            .data,
+        (tester.widget<Text>(find.byKey(const Key('streakHeroNumber')))).data,
         '20',
       );
       expect(find.text('day streak!'), findsOneWidget);
@@ -101,17 +102,20 @@ void main() {
       expect(find.text('10 days to your next milestone'), findsOneWidget);
       // §3a + §3b + §3c (not pending).
       expect(
-        find.text("Finish November without using a freeze, and you'll "
-            'earn an extra freeze — on top of your free monthly freeze.'),
+        find.text(
+          "Finish November without using a freeze, and you'll "
+          'earn an extra freeze — on top of your free monthly freeze.',
+        ),
         findsOneWidget,
       );
-      expect(find.text('18 / 30 DAYS freeze-free in November'),
-          findsOneWidget);
+      expect(find.text('18 / 30 DAYS freeze-free in November'), findsOneWidget);
       expect(
-        find.text("If you finish November with no freezes used, you "
-            "earn one extra freeze. If you're at your max when it "
-            'comes due, it waits — pending — until there\'s room for '
-            'it. Max 2 freezes, or 3 while you hold a purchased freeze.'),
+        find.text(
+          "If you finish November with no freezes used, you "
+          "earn one extra freeze. If you're at your max when it "
+          'comes due, it waits — pending — until there\'s room for '
+          'it. Max 2 freezes, or 3 while you hold a purchased freeze.',
+        ),
         findsOneWidget,
       );
       // §4a ready variant: monthly (1) + earned 0 + purchased 0 = 1 of 2.
@@ -121,9 +125,11 @@ void main() {
       );
       await tester.pump();
       expect(
-        find.text('Your free monthly freeze is ready for November. '
-            'You have 1 of 2 freezes available. A freeze can cover one '
-            'missed day automatically when you have one available.'),
+        find.text(
+          'Your free monthly freeze is ready for November. '
+          'You have 1 of 2 freezes available. A freeze can cover one '
+          'missed day automatically when you have one available.',
+        ),
         findsOneWidget,
       );
       // No bottom action button: the only ElevatedButtons on the
@@ -138,40 +144,41 @@ void main() {
       }
     });
 
-    testWidgets('done state: today counted, milestone line updates',
-        (tester) async {
+    testWidgets('done state: today counted, milestone line updates', (
+      tester,
+    ) async {
       final counted = <String>{
-        '2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31',
+        '2026-10-28',
+        '2026-10-29',
+        '2026-10-30',
+        '2026-10-31',
         ...daysThrough(18),
       };
       await pumpScreen(tester, stateWith(counted: counted));
       expect(
-        (tester.widget<Text>(find.byKey(const Key('streakHeroNumber'))))
-            .data,
+        (tester.widget<Text>(find.byKey(const Key('streakHeroNumber')))).data,
         '22',
       );
       expect(find.text('8 days to your next milestone'), findsOneWidget);
     });
 
-    testWidgets('pending pause text + pinned-full progress (§3b/§3c)',
-        (tester) async {
-      final s = stateWith(
-        counted: daysThrough(18),
-        pending: true,
-        earned: 0,
-      );
+    testWidgets('pending pause text + pinned-full progress (§3b/§3c)', (
+      tester,
+    ) async {
+      final s = stateWith(counted: daysThrough(18), pending: true, earned: 0);
       await pumpScreen(tester, s);
       expect(
-        find.text("Your earned freeze is ready and waiting. It lands "
-            "as soon as there's room for it: you aren't already "
-            'holding an earned freeze, and your total freezes are '
-            'under your max (2, or 3 while you hold a purchased '
-            'freeze).'),
+        find.text(
+          "Your earned freeze is ready and waiting. It lands "
+          "as soon as there's room for it: you aren't already "
+          'holding an earned freeze, and your total freezes are '
+          'under your max (2, or 3 while you hold a purchased '
+          'freeze).',
+        ),
         findsOneWidget,
       );
       // October (the completed month) has 31 days, pinned full.
-      expect(find.text('31 / 31 DAYS freeze-free in October'),
-          findsOneWidget);
+      expect(find.text('31 / 31 DAYS freeze-free in October'), findsOneWidget);
     });
 
     testWidgets('freeze card: buy button renders the LISTING price; '
@@ -184,7 +191,11 @@ void main() {
       );
       final service = StreakFreezePurchaseService(
         store: store,
-        verify: ({required productId, required purchaseToken, required orderId}) async => 1,
+        verify: ({
+          required productId,
+          required purchaseToken,
+          required orderId,
+        }) async => 1,
       );
       await service.initialize();
       await pumpScreen(
@@ -200,9 +211,11 @@ void main() {
       // hardcoded $0.99.
       expect(find.text('GET ONE MORE FREEZE · \$1.25'), findsOneWidget);
       expect(
-        find.text("Not a subscription — you pay once for this freeze. "
-            "While you hold it, your max is 3. Once it's used, your "
-            'max goes back to 2.'),
+        find.text(
+          "Not a subscription — you pay once for this freeze. "
+          "While you hold it, your max is 3. Once it's used, your "
+          'max goes back to 2.',
+        ),
         findsOneWidget,
       );
 
@@ -214,18 +227,25 @@ void main() {
       );
       expect(find.byKey(const Key('streakBuyButton')), findsNothing);
       expect(
-        find.text('Your free monthly freeze is ready for November. '
-            'You have 2 of 3 freezes available. A freeze can cover one '
-            'missed day automatically when you have one available.'),
+        find.text(
+          'Your free monthly freeze is ready for November. '
+          'You have 2 of 3 freezes available. A freeze can cover one '
+          'missed day automatically when you have one available.',
+        ),
         findsOneWidget,
       );
     });
 
-    testWidgets('freeze card: product unavailable renders Juno §5a',
-        (tester) async {
+    testWidgets('freeze card: product unavailable renders Juno §5a', (
+      tester,
+    ) async {
       final service = StreakFreezePurchaseService(
         store: _FakeStore(product: null),
-        verify: ({required productId, required purchaseToken, required orderId}) async => null,
+        verify: ({
+          required productId,
+          required purchaseToken,
+          required orderId,
+        }) async => null,
       );
       await service.initialize();
       expect(service.state, StreakFreezeBuyState.unavailable);
@@ -238,11 +258,15 @@ void main() {
         find.byKey(const Key('streakBuyUnavailable')),
         120,
       );
-      expect(find.text('EXTRA FREEZE — NOT AVAILABLE RIGHT NOW'),
-          findsOneWidget);
       expect(
-        find.text("We can't reach Google Play right now, so extra "
-            "freezes can't be bought at the moment. Try again later."),
+        find.text('EXTRA FREEZE — NOT AVAILABLE RIGHT NOW'),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          "We can't reach Google Play right now, so extra "
+          "freezes can't be bought at the moment. Try again later.",
+        ),
         findsOneWidget,
       );
       expect(find.byKey(const Key('streakBuyButton')), findsNothing);
@@ -260,23 +284,29 @@ void main() {
       int? adopted;
       final service = StreakFreezePurchaseService(
         store: store,
-        verify: ({required productId, required purchaseToken, required orderId}) async {
-          expect(productId, StreakFreezePurchaseService.productId);
-          expect(purchaseToken, 'tok-1');
-          return 1;
-        },
+        verify:
+            ({
+              required productId,
+              required purchaseToken,
+              required orderId,
+            }) async {
+              expect(productId, StreakFreezePurchaseService.productId);
+              expect(purchaseToken, 'tok-1');
+              return 1;
+            },
         onAdopted: (count) => adopted = count,
-        formatSuccess: (count) =>
-            "You've got an extra freeze. You now have 2 of 3 freezes available.",
+        formatSuccess: (count) => "You've got an extra freeze. You now have 2 of 3 freezes available.",
       );
       await service.initialize();
       await service.buy();
-      store.emit(const StreakFreezePurchaseUpdate(
-        productId: StreakFreezePurchaseService.productId,
-        purchaseToken: 'tok-1',
-        orderId: 'order-1',
-        status: 'purchased',
-      ));
+      store.emit(
+        const StreakFreezePurchaseUpdate(
+          productId: StreakFreezePurchaseService.productId,
+          purchaseToken: 'tok-1',
+          orderId: 'order-1',
+          status: 'purchased',
+        ),
+      );
       await Future<void>.delayed(Duration.zero);
       await Future<void>.delayed(Duration.zero);
       expect(adopted, 1);
@@ -296,16 +326,22 @@ void main() {
       );
       final service = StreakFreezePurchaseService(
         store: store,
-        verify: ({required productId, required purchaseToken, required orderId}) async => null,
+        verify: ({
+          required productId,
+          required purchaseToken,
+          required orderId,
+        }) async => null,
       );
       await service.initialize();
       await service.buy();
-      store.emit(const StreakFreezePurchaseUpdate(
-        productId: StreakFreezePurchaseService.productId,
-        purchaseToken: 'tok-x',
-        orderId: 'order-x',
-        status: 'purchased',
-      ));
+      store.emit(
+        const StreakFreezePurchaseUpdate(
+          productId: StreakFreezePurchaseService.productId,
+          purchaseToken: 'tok-x',
+          orderId: 'order-x',
+          status: 'purchased',
+        ),
+      );
       await Future<void>.delayed(Duration.zero);
       await Future<void>.delayed(Duration.zero);
       expect(
@@ -315,12 +351,14 @@ void main() {
       expect(service.successMessage, isNull);
 
       await service.buy();
-      store.emit(const StreakFreezePurchaseUpdate(
-        productId: StreakFreezePurchaseService.productId,
-        purchaseToken: '',
-        orderId: '',
-        status: 'canceled',
-      ));
+      store.emit(
+        const StreakFreezePurchaseUpdate(
+          productId: StreakFreezePurchaseService.productId,
+          purchaseToken: '',
+          orderId: '',
+          status: 'canceled',
+        ),
+      );
       await Future<void>.delayed(Duration.zero);
       await Future<void>.delayed(Duration.zero);
       expect(service.failureMessage, isNotNull);
@@ -379,37 +417,48 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('normal day: count, §2 line, share icon + YAY, {FIRSTNAME}',
-        (tester) async {
-      await pumpCelebration(tester, data(count: 21),
-          nickname: 'Tyson Scadden');
+    testWidgets('normal day: count, §2 line, share icon + LET\'S GO!', (
+      tester,
+    ) async {
+      await pumpCelebration(tester, data(count: 21), nickname: 'Tyson Scadden');
       expect(
-        (tester.widget<Text>(find.byKey(const Key('celebrationCount'))))
-            .data,
+        (tester.widget<Text>(find.byKey(const Key('celebrationCount')))).data,
         '21',
       );
       expect(find.text('day streak'), findsOneWidget);
       expect(find.text('9 days to your next milestone'), findsOneWidget);
       expect(find.byKey(const Key('celebrationShareIcon')), findsOneWidget);
-      // §6a: first word of the nickname, exactly as typed.
-      expect(find.text('YAY, Tyson'), findsOneWidget);
-      expect(
-          find.byKey(const Key('celebrationShareMilestone')), findsNothing);
+      // Founder-dictated copy (Juno copy update §1, superseding
+      // §6a): the button reads exactly "LET'S GO!" — no name, even
+      // with a nickname set.
+      expect(find.text("LET'S GO!"), findsOneWidget);
+      expect(find.text('YAY, Tyson'), findsNothing);
+      expect(find.byKey(const Key('celebrationShareMilestone')), findsNothing);
     });
 
-    testWidgets('unset nickname → exactly "YAY!"', (tester) async {
+    testWidgets('the LET\'S GO! button ignores the nickname entirely', (
+      tester,
+    ) async {
       await pumpCelebration(tester, data(count: 3), nickname: '   ');
-      expect(find.text('YAY!'), findsOneWidget);
+      expect(find.text("LET'S GO!"), findsOneWidget);
+      expect(find.text('YAY!'), findsNothing);
     });
 
     testWidgets('milestone day: §7 line, SHARE MILESTONE primary, '
         'Continue ungated', (tester) async {
-      await pumpCelebration(tester, data(count: 30, milestone: true),
-          nickname: 'Tyson');
-      expect(find.text('You reached a milestone today: 30 days.'),
-          findsOneWidget);
-      expect(find.byKey(const Key('celebrationShareMilestone')),
-          findsOneWidget);
+      await pumpCelebration(
+        tester,
+        data(count: 30, milestone: true),
+        nickname: 'Tyson',
+      );
+      expect(
+        find.text('You reached a milestone today: 30 days.'),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('celebrationShareMilestone')),
+        findsOneWidget,
+      );
       expect(find.text('SHARE MILESTONE'), findsOneWidget);
       // Continue dismisses WITHOUT any share first (§6c).
       await tester.tap(find.byKey(const Key('celebrationContinue')));
@@ -442,18 +491,14 @@ void main() {
     });
 
     testWidgets('the generated card is exactly a 1080×1080 PNG and '
-        'the share service hands THAT file to the share sheet',
-        (tester) async {
+        'the share service hands THAT file to the share sheet', (tester) async {
       // path_provider has no test implementation: route the temp
       // dir through the service's seam (production uses the real
       // app temp dir).
       File? handedOff;
-      StreakShareService.debugSetShareFn(
-        (file) async {
-          handedOff = file;
-        },
-        tempDir: () async => Directory.systemTemp,
-      );
+      StreakShareService.debugSetShareFn((file) async {
+        handedOff = file;
+      }, tempDir: () async => Directory.systemTemp);
       addTearDown(() => StreakShareService.debugSetShareFn(null));
       tester.view.physicalSize = const Size(1080, 2400);
       tester.view.devicePixelRatio = 3.0;
@@ -484,8 +529,7 @@ void main() {
       // teardown — bisected Nov 5, 2026; see streak_render_test).
       late final List<int> bytes;
       await tester.runAsync(() async {
-        final ok =
-            await StreakShareService.shareFromBoundary(key, count: 21);
+        final ok = await StreakShareService.shareFromBoundary(key, count: 21);
         expect(ok, isTrue);
         expect(handedOff, isNotNull);
         bytes = await handedOff!.readAsBytes();
@@ -516,8 +560,11 @@ void main() {
       final decoration = container.decoration! as BoxDecoration;
       expect(decoration.shape, BoxShape.circle);
       expect(decoration.color, const Color(0xFF6EC6FF));
-      expect(decoration.border, isNull,
-          reason: 'the retired purple ring must not render');
+      expect(
+        decoration.border,
+        isNull,
+        reason: 'the retired purple ring must not render',
+      );
       final icon = tester.widget<Icon>(
         find.descendant(of: circle, matching: find.byIcon(Icons.ac_unit)),
       );
@@ -555,8 +602,9 @@ void main() {
     });
 
     testWidgets('celebration week row: freeze day is the icy-blue '
-        'snowflake circle, other counted days keep their checks',
-        (tester) async {
+        'snowflake circle, other counted days keep their checks', (
+      tester,
+    ) async {
       tester.view.physicalSize = const Size(1080, 2400);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(tester.view.reset);
@@ -593,19 +641,19 @@ void main() {
     });
 
     testWidgets('streak screen: freeze day renders the icy-blue '
-        'snowflake circle in the week row AND the month calendar',
-        (tester) async {
+        'snowflake circle in the week row AND the month calendar', (
+      tester,
+    ) async {
       tester.view.physicalSize = const Size(1080, 2400);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(tester.view.reset);
       // Mon Nov 16 was covered by a freeze; it is in this week's
       // row and in the November calendar.
-      final s = stateWith(
-        counted: daysThrough(18),
-        restored: {'2026-11-16'},
-      );
+      final s = stateWith(counted: daysThrough(18), restored: {'2026-11-16'});
       await tester.pumpWidget(
-        MaterialApp(home: StreakScreen(state: s, now: at(2026, 11, 18))),
+        MaterialApp(
+          home: StreakScreen(state: s, now: at(2026, 11, 18)),
+        ),
       );
       await tester.pump();
       // Week row (42dp circle) is built at the top of the screen.
@@ -620,8 +668,7 @@ void main() {
         120,
       );
       await tester.pump();
-      final calCircle =
-          find.byKey(const Key('streakRestoredDay-2026-11-16'));
+      final calCircle = find.byKey(const Key('streakRestoredDay-2026-11-16'));
       expect(calCircle, findsOneWidget);
       expect(tester.widget<StreakFreezeDayCircle>(calCircle).size, 32);
       expectFreezeStyle(tester, calCircle);
@@ -649,18 +696,18 @@ void main() {
       final calls = <MethodCall>[];
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
-        const MethodChannel('dev.fluttercommunity.plus/share'),
-        (call) async {
-          calls.add(call);
-          return null;
-        },
-      );
+            const MethodChannel('dev.fluttercommunity.plus/share'),
+            (call) async {
+              calls.add(call);
+              return null;
+            },
+          );
       addTearDown(() {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(
-          const MethodChannel('dev.fluttercommunity.plus/share'),
-          null,
-        );
+              const MethodChannel('dev.fluttercommunity.plus/share'),
+              null,
+            );
       });
       StreakShareService.debugSetShareFn(
         null,
@@ -673,15 +720,12 @@ void main() {
       final key = GlobalKey();
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(
-            body: StreakShareCardHost(boundaryKey: key, count: 7),
-          ),
+          home: Scaffold(body: StreakShareCardHost(boundaryKey: key, count: 7)),
         ),
       );
       await tester.pump();
       await tester.runAsync(() async {
-        final ok =
-            await StreakShareService.shareFromBoundary(key, count: 7);
+        final ok = await StreakShareService.shareFromBoundary(key, count: 7);
         expect(ok, isTrue);
       });
       expect(calls, isNotEmpty);
@@ -703,10 +747,9 @@ void main() {
 
   group('widget sync (D14)', () {
     test('not-done morning: peek pose, greeting, projected sub-line', () {
-      final s = stateWith(counted: {
-        '2026-10-29', '2026-10-30', '2026-10-31',
-        ...daysThrough(17),
-      });
+      final s = stateWith(
+        counted: {'2026-10-29', '2026-10-30', '2026-10-31', ...daysThrough(17)},
+      );
       final p = WidgetSync.buildStreakPayload(
         s,
         signedIn: true,
@@ -724,8 +767,7 @@ void main() {
     });
 
     test('not-done pose is always the v5 peek — the worried '
-        'late-evening variant was dropped by the founder restyle',
-        () {
+        'late-evening variant was dropped by the founder restyle', () {
       final s = stateWith(counted: daysThrough(17));
       final p = WidgetSync.buildStreakPayload(
         s,
@@ -742,10 +784,12 @@ void main() {
       // Last counted day was Nov 10; the gap to Nov 18 cannot
       // bridge with the freezes held (monthly Nov only) → the
       // next completion starts at 1.
-      final s = stateWith(counted: {
-        for (var d = 1; d <= 10; d++)
-          '2026-11-${d.toString().padLeft(2, '0')}',
-      });
+      final s = stateWith(
+        counted: {
+          for (var d = 1; d <= 10; d++)
+            '2026-11-${d.toString().padLeft(2, '0')}',
+        },
+      );
       final p = WidgetSync.buildStreakPayload(
         s,
         signedIn: true,
@@ -787,8 +831,7 @@ void main() {
       expect(WidgetSync.donePosePool, contains(next.pose));
     });
 
-    test('pushStreak writes the new fields through the bridge',
-        () async {
+    test('pushStreak writes the new fields through the bridge', () async {
       final saved = <String, Object?>{};
       var updates = 0;
       WidgetSync.debugSetBridge(
@@ -821,8 +864,7 @@ void main() {
 
   group('A10 — SIM isolation', () {
     testWidgets('a full SIM run changes NOTHING: secure storage, '
-        'profile pushes, and the analytics sink are untouched',
-        (tester) async {
+        'profile pushes, and the analytics sink are untouched', (tester) async {
       // Snapshot 1: the ENTIRE secure-storage map behind the
       // streak store (in-memory fake), byte-for-byte.
       final disk = <String, String>{
@@ -852,14 +894,13 @@ void main() {
       // B-APP-1: mock the share_plus platform channel and record
       // every invocation. The SIM preview's count is simulated, so
       // the share path must never be reached from it (Juno §10).
-      const shareChannel =
-          MethodChannel('dev.fluttercommunity.plus/share');
+      const shareChannel = MethodChannel('dev.fluttercommunity.plus/share');
       final shareCalls = <MethodCall>[];
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(shareChannel, (call) async {
-        shareCalls.add(call);
-        return 'dev.fluttercommunity.plus/share/success';
-      });
+            shareCalls.add(call);
+            return 'dev.fluttercommunity.plus/share/success';
+          });
       addTearDown(() {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(shareChannel, null);
@@ -881,8 +922,10 @@ void main() {
       );
       await tester.pump();
       // Juno §8 verbatim label + caption.
-      expect(find.text('Preview celebration — streak +1 [SIM]'),
-          findsOneWidget);
+      expect(
+        find.text('Preview celebration — streak +1 [SIM]'),
+        findsOneWidget,
+      );
       expect(
         find.text('Simulation only. This does not change your real streak.'),
         findsOneWidget,
@@ -896,8 +939,7 @@ void main() {
       // The preview shows settled + 1 with today completed.
       expect(find.byType(StreakCelebrationScreen), findsOneWidget);
       expect(
-        (tester.widget<Text>(find.byKey(const Key('celebrationCount'))))
-            .data,
+        (tester.widget<Text>(find.byKey(const Key('celebrationCount')))).data,
         '21',
       );
       // B-APP-1: BOTH share affordances are suppressed entirely in
@@ -906,11 +948,17 @@ void main() {
       // no share affordance to tap and no share invocation can
       // occur. (Pre-fix both were live and this fails.)
       expect(find.byKey(const Key('celebrationShareIcon')), findsNothing);
-      expect(
-          find.byKey(const Key('celebrationShareMilestone')), findsNothing);
+      expect(find.byKey(const Key('celebrationShareMilestone')), findsNothing);
       expect(find.text('SHARE MILESTONE'), findsNothing);
       expect(shareCalls, isEmpty);
-      // The YAY dismissal stays and still dismisses the preview.
+      // The LET'S GO! dismissal stays and still dismisses the
+      // preview. ADAPTED for the sequence (Nov 18, 2026): the SIM
+      // preview runs the ignition sequence without reduced motion,
+      // and buttons are not tappable DURING it — the first tap
+      // skips to the final state, the second dismisses.
+      await tester.tap(find.byKey(const Key('celebrationYay')));
+      await tester.pump();
+      expect(find.byType(StreakCelebrationScreen), findsOneWidget);
       await tester.tap(find.byKey(const Key('celebrationYay')));
       await tester.pumpAndSettle();
       expect(find.byType(StreakCelebrationScreen), findsNothing);
@@ -926,14 +974,13 @@ void main() {
     testWidgets('B-APP-1: a milestone SIM preview (settled + 1 lands '
         'on a ladder rung) renders no SHARE MILESTONE and never '
         'invokes share', (tester) async {
-      const shareChannel =
-          MethodChannel('dev.fluttercommunity.plus/share');
+      const shareChannel = MethodChannel('dev.fluttercommunity.plus/share');
       final shareCalls = <MethodCall>[];
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(shareChannel, (call) async {
-        shareCalls.add(call);
-        return 'dev.fluttercommunity.plus/share/success';
-      });
+            shareCalls.add(call);
+            return 'dev.fluttercommunity.plus/share/success';
+          });
       addTearDown(() {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(shareChannel, null);
@@ -961,19 +1008,24 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.byType(StreakCelebrationScreen), findsOneWidget);
       expect(
-        (tester.widget<Text>(find.byKey(const Key('celebrationCount'))))
-            .data,
+        (tester.widget<Text>(find.byKey(const Key('celebrationCount')))).data,
         '30',
       );
-      expect(find.text('You reached a milestone today: 30 days.'),
-          findsOneWidget);
-      // Both share affordances suppressed entirely; Continue stays.
       expect(
-          find.byKey(const Key('celebrationShareMilestone')), findsNothing);
+        find.text('You reached a milestone today: 30 days.'),
+        findsOneWidget,
+      );
+      // Both share affordances suppressed entirely; Continue stays.
+      expect(find.byKey(const Key('celebrationShareMilestone')), findsNothing);
       expect(find.text('SHARE MILESTONE'), findsNothing);
       expect(find.byKey(const Key('celebrationShareIcon')), findsNothing);
       expect(find.byKey(const Key('celebrationContinue')), findsOneWidget);
       expect(shareCalls, isEmpty);
+      // Same sequence adaptation as the normal-day SIM test: the
+      // first tap skips the sequence, the second dismisses.
+      await tester.tap(find.byKey(const Key('celebrationContinue')));
+      await tester.pump();
+      expect(find.byType(StreakCelebrationScreen), findsOneWidget);
       await tester.tap(find.byKey(const Key('celebrationContinue')));
       await tester.pumpAndSettle();
       expect(find.byType(StreakCelebrationScreen), findsNothing);
@@ -982,8 +1034,8 @@ void main() {
 
     test('grep fence: the SIM source references no store, backend, '
         'or analytics API (A10)', () {
-      final source =
-          File('lib/src/features/settings/streak_sim.dart').readAsStringSync();
+      final source = File('lib/src/features/settings/streak_sim.dart')
+          .readAsStringSync();
       expect(source, isNot(contains('StreakStore')));
       expect(source, isNot(contains('TabsBackend')));
       expect(source.toLowerCase(), isNot(contains('analytics')));
@@ -1002,8 +1054,7 @@ class _FakeStore implements StreakFreezeStore {
 
   _FakeStore({required this.product});
 
-  void emit(StreakFreezePurchaseUpdate update) =>
-      _controller.add([update]);
+  void emit(StreakFreezePurchaseUpdate update) => _controller.add([update]);
 
   @override
   Future<bool> isAvailable() async => true;
@@ -1013,8 +1064,7 @@ class _FakeStore implements StreakFreezeStore {
       _controller.stream;
 
   @override
-  Future<StreakFreezeProduct?> queryProduct(String productId) async =>
-      product;
+  Future<StreakFreezeProduct?> queryProduct(String productId) async => product;
 
   @override
   Future<bool> buyConsumable(StreakFreezeProduct product) async {

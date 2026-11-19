@@ -45,37 +45,55 @@ class SlidePageRoute<T> extends PageRouteBuilder<T> {
     super.settings,
     bool reducedMotion = false,
   }) : super(
-          opaque: true,
-          transitionDuration: reducedMotion
-              ? Duration.zero
-              : const Duration(milliseconds: 300),
-          reverseTransitionDuration: reducedMotion
-              ? Duration.zero
-              : const Duration(milliseconds: 300),
-          pageBuilder: (context, _, _) => builder(context),
-          transitionsBuilder:
-              (context, animation, secondaryAnimation, child) {
-            if (reducedMotion || animationsDisabled(context)) return child;
-            return SlideTransition(
-              position: slideFromRight(animation),
-              child: child,
-            );
-          },
-        );
+         opaque: true,
+         transitionDuration: reducedMotion
+             ? Duration.zero
+             : const Duration(milliseconds: 300),
+         reverseTransitionDuration: reducedMotion
+             ? Duration.zero
+             : const Duration(milliseconds: 300),
+         pageBuilder: (context, _, _) => builder(context),
+         transitionsBuilder: (context, animation, secondaryAnimation, child) {
+           if (reducedMotion || animationsDisabled(context)) return child;
+           return SlideTransition(
+             position: slideFromRight(animation),
+             child: child,
+           );
+         },
+       );
+}
+
+/// A route with NO transition at all: the page appears IN PLACE
+/// (streak celebration fix, Nov 18, 2026 — the founder reported the
+/// celebration "just slid in from the side"; a full-screen takeover
+/// moment must not travel). Zero durations both ways, the child is
+/// rendered untransformed from the first frame. Used by
+/// StreakCelebrationScreen.show on BOTH the real and SIM paths.
+class InPlacePageRoute<T> extends PageRouteBuilder<T> {
+  InPlacePageRoute({
+    required Widget Function(BuildContext) builder,
+    super.settings,
+  }) : super(
+         opaque: true,
+         transitionDuration: Duration.zero,
+         reverseTransitionDuration: Duration.zero,
+         pageBuilder: (context, _, _) => builder(context),
+         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+             child,
+       );
 }
 
 /// The shared slide tween: from fully off-screen right to zero —
 /// easeOut on the way in; a pop reverses the same animation (easeIn
 /// back out to the right).
 Animation<Offset> slideFromRight(Animation<double> animation) {
-  return Tween<Offset>(
-    begin: const Offset(1.0, 0.0),
-    end: Offset.zero,
-  ).animate(CurvedAnimation(
-    parent: animation,
-    curve: Curves.easeOut,
-    reverseCurve: Curves.easeIn,
-  ));
+  return Tween<Offset>(begin: const Offset(1.0, 0.0), end: Offset.zero).animate(
+    CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeOut,
+      reverseCurve: Curves.easeIn,
+    ),
+  );
 }
 
 /// Round 22 — the theme-level twin of [SlidePageRoute]: gives every
@@ -94,10 +112,7 @@ class SlidePageTransitionsBuilder extends PageTransitionsBuilder {
     Widget child,
   ) {
     if (animationsDisabled(context)) return child;
-    return SlideTransition(
-      position: slideFromRight(animation),
-      child: child,
-    );
+    return SlideTransition(position: slideFromRight(animation), child: child);
   }
 }
 

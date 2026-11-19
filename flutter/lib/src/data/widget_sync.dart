@@ -269,8 +269,7 @@ class WidgetSync {
     final sleepMinutes = vitals?.sleepMinutes;
     return WidgetPayload(
       signedIn: true,
-      heartRate:
-          (heartRate == null || heartRate == 0) ? '--' : '$heartRate',
+      heartRate: (heartRate == null || heartRate == 0) ? '--' : '$heartRate',
       calories: (activeCalories == null || activeCalories == 0)
           ? '--'
           : '$activeCalories',
@@ -477,7 +476,8 @@ class WidgetSync {
     required bool hasSession,
     required HomeCacheSnapshot snapshot,
   }) async {
-    final hasSnapshot = snapshot.vitalsLoaded ||
+    final hasSnapshot =
+        snapshot.vitalsLoaded ||
         snapshot.streakLoaded ||
         snapshot.countersLoaded;
     if (hasSession && hasSnapshot) {
@@ -509,19 +509,19 @@ class WidgetPayload {
   });
 
   const WidgetPayload.signedOut()
-      : signedIn = false,
-        heartRate = '--',
-        calories = '--',
-        logs = '--',
-        sleep = '--';
+    : signedIn = false,
+      heartRate = '--',
+      calories = '--',
+      logs = '--',
+      sleep = '--';
 
   Map<String, Object?> toMap() => {
-        WidgetSync.keySignedIn: signedIn,
-        WidgetSync.keyHeartRate: heartRate,
-        WidgetSync.keyCalories: calories,
-        WidgetSync.keyLogs: logs,
-        WidgetSync.keySleep: sleep,
-      };
+    WidgetSync.keySignedIn: signedIn,
+    WidgetSync.keyHeartRate: heartRate,
+    WidgetSync.keyCalories: calories,
+    WidgetSync.keyLogs: logs,
+    WidgetSync.keySleep: sleep,
+  };
 
   @override
   bool operator ==(Object other) =>
@@ -533,8 +533,7 @@ class WidgetPayload {
       other.sleep == sleep;
 
   @override
-  int get hashCode =>
-      Object.hash(signedIn, heartRate, calories, logs, sleep);
+  int get hashCode => Object.hash(signedIn, heartRate, calories, logs, sleep);
 }
 
 /// The streak banner payload (D14): preformatted strings + flags
@@ -568,22 +567,22 @@ class StreakWidgetPayload {
   });
 
   const StreakWidgetPayload.signedOut()
-      : signedIn = false,
-        count = '',
-        todayDone = false,
-        pose = 'peek',
-        name = '',
-        greeting = '',
-        subline = '';
+    : signedIn = false,
+      count = '',
+      todayDone = false,
+      pose = 'peek',
+      name = '',
+      greeting = '',
+      subline = '';
 
   Map<String, Object?> toMap() => {
-        WidgetSync.keyStreakCount: count,
-        WidgetSync.keyStreakTodayDone: todayDone,
-        WidgetSync.keyStreakPose: pose,
-        WidgetSync.keyStreakName: name,
-        WidgetSync.keyStreakGreeting: greeting,
-        WidgetSync.keyStreakSubline: subline,
-      };
+    WidgetSync.keyStreakCount: count,
+    WidgetSync.keyStreakTodayDone: todayDone,
+    WidgetSync.keyStreakPose: pose,
+    WidgetSync.keyStreakName: name,
+    WidgetSync.keyStreakGreeting: greeting,
+    WidgetSync.keyStreakSubline: subline,
+  };
 
   @override
   bool operator ==(Object other) =>
