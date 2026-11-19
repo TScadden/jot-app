@@ -176,9 +176,11 @@ class StreakState {
   /// tombstoned day from a stale server blob (the Nov 18
   /// flip-flop — strict evaluation broke the run, then the
   /// union-merge restored the day and the 27 was pushed back).
-  /// A day leaves this set only by genuinely completing its
-  /// summary ([completeDay]) or by the dev Restore Streak path —
-  /// both also record it in [summaryCompletedDays]. Additive +
+  /// A day leaves this set by genuinely completing its
+  /// summary ([completeDay]), by the dev Restore Streak path —
+  /// both also record it in [summaryCompletedDays] — or by a
+  /// settlement freeze bridge covering it (the day joins
+  /// [restoredDays]; A1 fix, Nov 19, 2026). Additive +
   /// JSON-tolerant: pre-fix blobs deserialize with it empty.
   final Set<String> invalidatedDays;
 
@@ -659,6 +661,7 @@ StreakSettleResult _settleDetailed(StreakState s, String today) {
   var ffmc = s.freezeFreeMonthsCompleted;
   final counted = Set<String>.of(s.countedDays);
   final restored = Set<String>.of(s.restoredDays);
+  final invalidated = Set<String>.of(s.invalidatedDays);
   var consumed = Set<String>.of(s.consumedSaveMonths);
   final spoiled = Set<String>.of(s.spoiledMonths);
   final bridged = <String>[];
@@ -710,6 +713,15 @@ StreakSettleResult _settleDetailed(StreakState s, String today) {
         for (final e in draws.entries) {
           counted.add(e.key);
           restored.add(e.key);
+          // A freeze bridge LEGITIMIZES the day it covers (A1 fix,
+          // Vera blocker, Nov 19, 2026): clear any revalidation
+          // tombstone for it, exactly as a genuine completion does
+          // in completeDay. Without this, the adoption merge —
+          // which admits a tombstoned day only on completion or
+          // freeze cover — could eat the bridged day on the next
+          // adoption while the freeze spent bridging it stays
+          // spent (the 27 → 0 flip-flop, with a paid freeze burned).
+          invalidated.remove(e.key);
           // Spoils attribution (A5): the missed day's month.
           spoiled.add(_monthOfDay(e.key));
           bridged.add(e.key);
@@ -805,6 +817,7 @@ StreakSettleResult _settleDetailed(StreakState s, String today) {
   final next = s.copyWith(
     countedDays: counted,
     restoredDays: restored,
+    invalidatedDays: invalidated,
     consumedSaveMonths: consumed,
     earnedFreezes: earned,
     purchasedFreezes: purchased,

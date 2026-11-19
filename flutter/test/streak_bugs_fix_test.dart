@@ -15,6 +15,7 @@ import 'package:tabs_lab/src/data/streak_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
+import 'package:tabs_lab/src/features/home/streak_screen.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 import 'package:tabs_lab/src/features/settings/streak_restore.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
@@ -104,7 +105,11 @@ void main() {
           reason: 'a failed verify must never consume the purchase');
       expect(service.hasPendingVerification, isTrue);
       expect(service.pendingVerification!.orderId, 'GPA.1234');
-      expect(service.failureMessage, isNotNull);
+      // A2 copy fix: §1b is THE message for the verify-pending
+      // event — the generic §5c failure string must not also be
+      // set for the same event (they contradict).
+      expect(service.failureMessage, isNull,
+          reason: '§5c must not accompany §1b for a verify-pending');
       expect(service.pendingMessage, StreakPurchaseCopy.verifyPending);
       expect(service.adoptedPurchasedFreezes, isNull);
     });
@@ -181,6 +186,83 @@ void main() {
       expect(svc.adoptedPurchasedFreezes, 1);
       expect(store.completeCalls, 1);
       expect(svc.hasPendingVerification, isFalse);
+    });
+
+    test('A2 pin: the server REAL 409 shape '
+        '{error: purchased_already_held} (NO purchasedFreezes '
+        'field — jot-server PR #40 streak.js) adopts the held '
+        'state from the profile pull and is NOT parked as a '
+        'pending failure', () async {
+      final backend = TabsBackend(
+        client: MockClient((request) async {
+          if (request.url.path.contains('streak/purchase/verify')) {
+            // The ONLY 409 the server produces (PR #40).
+            return http.Response(
+              jsonEncode({'error': 'purchased_already_held'}),
+              409,
+            );
+          }
+          if (request.url.path.contains('sync/pull')) {
+            // The authoritative held count lives in the profile
+            // state, not in the 409 body.
+            return http.Response(
+              jsonEncode({
+                'profile': {
+                  'currentStreak': 27,
+                  'bestStreak': 68,
+                  'purchased_freezes': 1,
+                },
+              }),
+              200,
+            );
+          }
+          return http.Response('{}', 200);
+        }),
+        sessionStore: FakeSessionStore()..token = 'tok-a2',
+      );
+      final svc = StreakFreezePurchaseService(store: store, backend: backend);
+      addTearDown(svc.dispose);
+      await svc.initialize();
+      store.emit(update('purchased'));
+      await flush();
+      expect(svc.adoptedPurchasedFreezes, 1,
+          reason: 'held count must come from the profile state');
+      expect(svc.hasPendingVerification, isFalse,
+          reason: 'an already-held answer is not a pending failure');
+      expect(svc.pendingMessage, isNull);
+      expect(svc.failureMessage, isNull);
+      expect(store.completeCalls, 1);
+      // Juno §1c is the surface for this state, byte-exact.
+      expect(svc.alreadyHeldMessage, StreakPurchaseCopy.alreadyHeld);
+      expect(
+        StreakPurchaseCopy.alreadyHeld,
+        'you\'ve already got a freeze — it covers one missed day.',
+      );
+    });
+
+    test('A2: an injected detailed verify answering alreadyHeld '
+        'adopts the resolver count and never parks', () async {
+      final svc = StreakFreezePurchaseService(
+        store: store,
+        verifyDetailed: ({
+          required String productId,
+          required String purchaseToken,
+          required String orderId,
+        }) async =>
+            (count: null, alreadyHeld: true),
+        resolveHeldCount: () async => 1,
+      );
+      addTearDown(svc.dispose);
+      await svc.initialize();
+      store.emit(update('purchased'));
+      await flush();
+      expect(svc.alreadyHeld, isTrue);
+      expect(svc.alreadyHeldMessage, StreakPurchaseCopy.alreadyHeld);
+      expect(svc.adoptedPurchasedFreezes, 1);
+      expect(svc.hasPendingVerification, isFalse);
+      expect(svc.pendingMessage, isNull);
+      expect(svc.failureMessage, isNull);
+      expect(store.completeCalls, 1);
     });
   });
 
@@ -336,6 +418,71 @@ void main() {
       expect(s.countedDays, contains('2026-11-18'));
       expect(s.restoredDays, contains('2026-11-18'));
       expect(streakCurrent(s, DateTime(2026, 11, 19, 10)), 27);
+    });
+
+    test('A1 pin (Vera repro): tombstone → purchased freeze '
+        'adopted → settlement bridges the tombstoned day → the '
+        'next adoption merge must NOT eat the bridged day; the '
+        'freeze stays spent exactly once and current never '
+        'returns to 0', () async {
+      final blob = founderBlob(stamp: '2026-11-18');
+      // 1) Nov 19 10:00 — strict evaluation strips + tombstones
+      // Nov 18 (no completion, no cover): current 0.
+      final s1 = await store.recordOpen(
+        pullSucceeded: true,
+        seedCurrent: 27,
+        seedBest: 68,
+        seedStateJson: blob,
+        seedPurchasedFreezes: 0,
+        now: DateTime(2026, 11, 19, 10),
+        push: push,
+      );
+      expect(s1.countedDays, isNot(contains('2026-11-18')));
+      expect(s1.invalidatedDays, contains('2026-11-18'));
+      expect(streakCurrent(s1, DateTime(2026, 11, 19, 10)), 0);
+
+      // 2) The Bug 1 grant-adoption path lands a purchased freeze.
+      await store.adoptPurchasedFreezes(1);
+      final withFreeze = jsonEncode(store.state!.toJson());
+
+      // 3) Nov 19 18:00 — settlement bridges Nov 18 with the
+      // purchased freeze: counted + restored, freeze spent,
+      // current back to 27.
+      final s3 = await store.recordOpen(
+        pullSucceeded: true,
+        seedCurrent: 27,
+        seedBest: 68,
+        seedStateJson: withFreeze,
+        seedPurchasedFreezes: 1,
+        now: DateTime(2026, 11, 19, 18),
+        push: push,
+      );
+      expect(s3.countedDays, contains('2026-11-18'),
+          reason: 'settlement must bridge Nov 18 with the freeze');
+      expect(s3.restoredDays, contains('2026-11-18'));
+      expect(s3.purchasedFreezes, 0,
+          reason: 'the bridging freeze is spent');
+      expect(streakCurrent(s3, DateTime(2026, 11, 19, 18)), 27);
+
+      // 4) Nov 19 20:00 — re-adopt the blob step 3 pushed. The
+      // freeze-bridged day must SURVIVE the adoption merge.
+      final bridgedBlob = jsonEncode(s3.toJson());
+      final s4 = await store.recordOpen(
+        pullSucceeded: true,
+        seedCurrent: 27,
+        seedBest: 68,
+        seedStateJson: bridgedBlob,
+        seedPurchasedFreezes: 0,
+        now: DateTime(2026, 11, 19, 20),
+        push: push,
+      );
+      expect(s4.countedDays, contains('2026-11-18'),
+          reason: 'freeze-covered Nov 18 was eaten by the merge');
+      expect(s4.restoredDays, contains('2026-11-18'));
+      expect(s4.purchasedFreezes, 0,
+          reason: 'the freeze stays spent exactly once');
+      expect(streakCurrent(s4, DateTime(2026, 11, 19, 20)), 27,
+          reason: 'current must never flip back to 0');
     });
 
     test('engine: revalidateOpenDay tombstones; a genuine '
@@ -620,6 +767,222 @@ void main() {
         'Restore Streak', (tester) async {
       await pumpSettings(tester, gatePull(isAdmin: true));
       expect(find.byKey(const Key('streakRestoreButton')), findsNothing);
+    });
+  });
+
+  // ── A2 copy rendering on the real streak screen ─────────────
+
+  group('A2 — purchase copy rendering (Juno §§1a/1b/1c)', () {
+    late _FakePurchaseStore store;
+
+    StreakState screenState() => StreakState(
+          seeded: true,
+          seededCurrent: 17,
+          seededBest: 17,
+          countedDays: runEnding('2026-11-17', 17),
+          accrualMonth: '2026-11',
+          lastEvaluatedDay: '2026-11-17',
+        );
+
+    Future<void> pumpScreen(
+      WidgetTester tester,
+      StreakFreezePurchaseService service, {
+      bool reduceMotion = false,
+    }) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: reduceMotion
+              ? (context, child) => MediaQuery(
+                    data: const MediaQueryData(disableAnimations: true),
+                    child: child!,
+                  )
+              : null,
+          home: StreakScreen(
+            state: screenState(),
+            now: DateTime(2026, 11, 18, 12),
+            purchaseService: service,
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    /// Fake-async-safe flush for widget tests: stream deliveries
+    /// and verify futures resolve as microtasks, which only run
+    /// when the tester pumps (a real Future.delayed here would
+    /// deadlock the test body).
+    Future<void> flush(WidgetTester tester) async {
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(Duration.zero);
+      }
+    }
+
+    setUp(() {
+      store = _FakePurchaseStore();
+    });
+
+    testWidgets('verified grant: Juno §1a is the ONE confirmation '
+        '(no §5b count string, no stacked restored copy), the '
+        'freeze icon animates in once and one light haptic lands',
+        (tester) async {
+      var haptics = 0;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'HapticFeedback.vibrate') haptics++;
+        return null;
+      });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(SystemChannels.platform, null);
+      });
+      final service = StreakFreezePurchaseService(
+        store: store,
+        verify: ({
+          required String productId,
+          required String purchaseToken,
+          required String orderId,
+        }) async =>
+            1,
+      );
+      addTearDown(service.dispose);
+      await pumpScreen(tester, service);
+      await flush(tester);
+      store.emit(const StreakFreezePurchaseUpdate(
+        productId: StreakFreezePurchaseService.productId,
+        purchaseToken: 'token-1',
+        orderId: 'GPA.1234',
+        status: 'purchased',
+      ));
+      await flush(tester);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('streakPurchaseSuccess')),
+        120,
+      );
+      // §1a exactly once; §5b formatter string nowhere.
+      expect(find.byKey(const Key('streakPurchaseSuccess')), findsOneWidget);
+      expect(find.text(StreakPurchaseCopy.freezeGranted), findsOneWidget);
+      expect(
+        find.textContaining("You've got an extra freeze. You now have"),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('streakPurchaseRestored')), findsNothing);
+      expect(find.byKey(const Key('streakFreezeGrantIcon')), findsOneWidget);
+      // Let the ~350 ms grant animation land: exactly one haptic.
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      expect(haptics, 1,
+          reason: 'one light haptic tap when the icon lands');
+      // The confirmation STAYS (no auto-vanish).
+      await tester.pump(const Duration(seconds: 2));
+      expect(find.text(StreakPurchaseCopy.freezeGranted), findsOneWidget);
+    });
+
+    testWidgets('reduce-motion: the grant icon renders in place, '
+        '§1a still shows, one haptic', (tester) async {
+      var haptics = 0;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'HapticFeedback.vibrate') haptics++;
+        return null;
+      });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(SystemChannels.platform, null);
+      });
+      final service = StreakFreezePurchaseService(
+        store: store,
+        verify: ({
+          required String productId,
+          required String purchaseToken,
+          required String orderId,
+        }) async =>
+            1,
+      );
+      addTearDown(service.dispose);
+      await pumpScreen(tester, service, reduceMotion: true);
+      await flush(tester);
+      store.emit(const StreakFreezePurchaseUpdate(
+        productId: StreakFreezePurchaseService.productId,
+        purchaseToken: 'token-1',
+        orderId: 'GPA.1234',
+        status: 'purchased',
+      ));
+      await flush(tester);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('streakPurchaseSuccess')),
+        120,
+      );
+      expect(find.text(StreakPurchaseCopy.freezeGranted), findsOneWidget);
+      expect(find.byKey(const Key('streakFreezeGrantIcon')), findsOneWidget);
+      expect(haptics, 1);
+    });
+
+    testWidgets('already-held (409): §1c renders inline on the '
+        'purchase card and the buy action is gone', (tester) async {
+      final service = StreakFreezePurchaseService(
+        store: store,
+        verifyDetailed: ({
+          required String productId,
+          required String purchaseToken,
+          required String orderId,
+        }) async =>
+            (count: null, alreadyHeld: true),
+        resolveHeldCount: () async => 1,
+      );
+      addTearDown(service.dispose);
+      await pumpScreen(tester, service);
+      await flush(tester);
+      store.emit(const StreakFreezePurchaseUpdate(
+        productId: StreakFreezePurchaseService.productId,
+        purchaseToken: 'token-1',
+        orderId: 'GPA.1234',
+        status: 'purchased',
+      ));
+      await flush(tester);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('streakPurchaseAlreadyHeld')),
+        120,
+      );
+      expect(find.text(StreakPurchaseCopy.alreadyHeld), findsOneWidget);
+      expect(find.byKey(const Key('streakBuyButton')), findsNothing);
+      expect(find.byKey(const Key('streakPurchasePending')), findsNothing);
+      expect(find.byKey(const Key('streakPurchaseFailure')), findsNothing);
+    });
+
+    testWidgets('verify-pending: §1b renders and the §5c failure '
+        'string does NOT render for the same event', (tester) async {
+      final service = StreakFreezePurchaseService(
+        store: store,
+        verify: ({
+          required String productId,
+          required String purchaseToken,
+          required String orderId,
+        }) async =>
+            null,
+      );
+      addTearDown(service.dispose);
+      await pumpScreen(tester, service);
+      await flush(tester);
+      store.emit(const StreakFreezePurchaseUpdate(
+        productId: StreakFreezePurchaseService.productId,
+        purchaseToken: 'token-1',
+        orderId: 'GPA.1234',
+        status: 'purchased',
+      ));
+      await flush(tester);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('streakPurchasePending')),
+        120,
+      );
+      expect(find.text(StreakPurchaseCopy.verifyPending), findsOneWidget);
+      expect(find.byKey(const Key('streakPurchaseFailure')), findsNothing);
+      expect(
+        find.textContaining("Purchase didn't finish"),
+        findsNothing,
+      );
     });
   });
 

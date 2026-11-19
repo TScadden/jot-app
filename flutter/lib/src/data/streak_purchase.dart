@@ -15,8 +15,11 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 /// flow, and on a PURCHASED update POST the token to the server's
 /// verify endpoint. The freeze is adopted ONLY from the server's
 /// returned `purchasedFreezes` count (Juno §5b) — never from the
-/// Play callback alone. Any failure or cancellation surfaces Juno
-/// §5c; an unreachable product surfaces Juno §5a.
+/// Play callback alone. A cancellation/error surfaces Juno §5c;
+/// a paid purchase whose verify has not landed surfaces Juno §1b
+/// (streak-bugs package — §1b is the sole message for that state);
+/// an already-held answer surfaces Juno §1c; an unreachable
+/// product surfaces Juno §5a.
 ///
 /// The store and backend are injectable seams (the billing module's
 /// test idiom) so the whole flow is unit-testable without Play.
@@ -61,13 +64,16 @@ abstract class StreakFreezeStore {
 }
 
 /// Purchase-flow copy ruled by Juno (streak-bugs package,
-/// Nov 19, 2026; JUNO-COPY.md §§1a/1b — ship exactly, casing and
+/// Nov 19, 2026; JUNO-COPY.md §§1a/1b/1c — ship exactly, casing and
 /// punctuation included). These constants are the ONE place this
 /// copy lives; no other file hardcodes it. Each value is Juno's
 /// ruled title over her ruled body, newline-joined for this
-/// single-string slot. The already-ruled §5b/§5c strings (the
-/// screen's formatSuccess and the service's failure string)
-/// predate this package and are unchanged.
+/// single-string slot. (§1a is THE purchase confirmation surface
+/// as of the A2 fix: the streak screen no longer supplies the
+/// pre-existing §5b count formatter, so a grant — first-try or
+/// recovered — renders §1a exactly once. The §5c failure string
+/// still covers cancellations/errors, but never the verify-
+/// pending state §1b rules.)
 abstract final class StreakPurchaseCopy {
   /// Juno §1a success — shown when a freeze grant lands and the
   /// caller supplied no count-formatted success string.
@@ -85,6 +91,13 @@ abstract final class StreakPurchaseCopy {
   /// meantime; the app re-checks automatically on the next open).
   static const String verifyPending =
       'freeze not added yet\nyour payment went through, but we couldn\'t add your freeze yet. your purchase is safe with google play — the app checks again automatically next time you open it. please don\'t buy it again.';
+
+  /// Juno §1c — one line, rendered inline on the purchase card
+  /// when the already-held state is known (including a verify
+  /// answered 409 `purchased_already_held`): the account already
+  /// holds the purchased freeze, so no purchase is launched.
+  static const String alreadyHeld =
+      'you\'ve already got a freeze — it covers one missed day.';
 }
 
 /// The real store: `in_app_purchase` over Google Play.
@@ -174,13 +187,34 @@ typedef StreakFreezeVerify = Future<int?> Function({
   required String orderId,
 });
 
+/// The detailed verify outcome (A2 fix): a grant count, an
+/// already-held answer, or a failure. The server's real 409 shape
+/// (jot-server PR #40, streak.js) is `{error:
+/// 'purchased_already_held'}` with NO count field, so already-held
+/// cannot ride the int? seam — it needs its own signal, and the
+/// held count is resolved separately from the authoritative
+/// profile state (never from the 409 body).
+typedef StreakFreezeVerifyDetailed = Future<
+    ({int? count, bool alreadyHeld})> Function({
+  required String productId,
+  required String purchaseToken,
+  required String orderId,
+});
+
+/// Resolves the authoritative held purchased-freeze count from
+/// the streak store / profile state (A2 fix): used when a verify
+/// is answered 409 `purchased_already_held`, whose body carries
+/// no count.
+typedef StreakHeldCountResolver = Future<int?> Function();
+
 enum StreakFreezeBuyState { unknown, available, unavailable, buying }
 
 class StreakFreezePurchaseService extends ChangeNotifier {
   static const String productId = 'streak_freeze_099';
 
   final StreakFreezeStore _store;
-  final StreakFreezeVerify _verify;
+  final StreakFreezeVerifyDetailed _verifyDetailed;
+  final StreakHeldCountResolver? _resolveHeldCount;
   StreamSubscription<List<StreakFreezePurchaseUpdate>>? _sub;
 
   StreakFreezeBuyState state = StreakFreezeBuyState.unknown;
@@ -208,13 +242,54 @@ class StreakFreezePurchaseService extends ChangeNotifier {
   StreakFreezePurchaseService({
     StreakFreezeStore? store,
     StreakFreezeVerify? verify,
+    StreakFreezeVerifyDetailed? verifyDetailed,
+    StreakHeldCountResolver? resolveHeldCount,
     TabsBackend? backend,
     this.onAdopted,
     this.formatSuccess,
   })  : _store = store ?? PlayStreakFreezeStore(),
-        _verify = verify ?? _backendVerify(backend ?? TabsBackend());
+        _resolveHeldCount = resolveHeldCount ??
+            (verify == null && verifyDetailed == null
+                ? _backendHeldCountResolver(backend ?? TabsBackend())
+                : null),
+        _verifyDetailed = verifyDetailed ??
+            (verify != null
+                ? _wrapVerify(verify)
+                : _backendVerifyDetailed(backend ?? TabsBackend()));
 
-  static StreakFreezeVerify _backendVerify(TabsBackend backend) {
+  /// Adapts the int? verify seam (tests / simple fakes) to the
+  /// detailed outcome: a count is a grant, null is a failure; the
+  /// int? shape cannot express already-held.
+  static StreakFreezeVerifyDetailed _wrapVerify(StreakFreezeVerify verify) {
+    return ({
+      required String productId,
+      required String purchaseToken,
+      required String orderId,
+    }) async {
+      final count = await verify(
+        productId: productId,
+        purchaseToken: purchaseToken,
+        orderId: orderId,
+      );
+      return (count: count, alreadyHeld: false);
+    };
+  }
+
+  /// The default held-count resolver for the backend path: the
+  /// authoritative count is the profile's purchased-freeze column
+  /// from /api/sync/pull (the same record the streak store adopts).
+  static StreakHeldCountResolver _backendHeldCountResolver(
+    TabsBackend backend,
+  ) {
+    return () async {
+      final rec = await backend.fetchStreakRecord();
+      return rec.succeeded ? rec.purchasedFreezes : null;
+    };
+  }
+
+  static StreakFreezeVerifyDetailed _backendVerifyDetailed(
+    TabsBackend backend,
+  ) {
     return ({
       required String productId,
       required String purchaseToken,
@@ -225,20 +300,28 @@ class StreakFreezePurchaseService extends ChangeNotifier {
         purchaseToken: purchaseToken,
         orderId: orderId,
       );
-      if (r.body == null) return null;
-      final count = r.body!['purchasedFreezes'];
-      if (count is! int) return null;
-      if (r.statusCode == 200) return count;
-      // A server alreadyGranted / already-held answer is a grant,
-      // not a failure: the freeze is held server-side for this
-      // purchase, so adopting the count (and completing the Play
-      // purchase) is correct and can never double-grant.
+      // A2 fix — the already-held check runs BEFORE any count is
+      // demanded: jot-server PR #40's only 409 is
+      // {error: 'purchased_already_held'} with NO purchasedFreezes
+      // field, so the old order (count first) returned null here
+      // and the 409 branch could never fire — a genuine
+      // already-held answer was parked as a verify failure.
       if (r.statusCode == 409 &&
-          (r.body!['alreadyGranted'] == true ||
-              r.body!['error'] == 'purchased_already_held')) {
-        return count;
+          r.body?['error'] == 'purchased_already_held') {
+        return (count: null, alreadyHeld: true);
       }
-      return null;
+      if (r.body == null) return (count: null, alreadyHeld: false);
+      final count = r.body!['purchasedFreezes'];
+      if (count is! int) return (count: null, alreadyHeld: false);
+      if (r.statusCode == 200) return (count: count, alreadyHeld: false);
+      // A server alreadyGranted answer is a grant, not a failure:
+      // the freeze is held server-side for this purchase, so
+      // adopting the count (and completing the Play purchase) is
+      // correct and can never double-grant.
+      if (r.statusCode == 409 && r.body!['alreadyGranted'] == true) {
+        return (count: count, alreadyHeld: false);
+      }
+      return (count: null, alreadyHeld: false);
     };
   }
 
@@ -259,6 +342,16 @@ class StreakFreezePurchaseService extends ChangeNotifier {
   /// Juno-placeholder surface while a paid purchase awaits verify
   /// (see [StreakPurchaseCopy.verifyPending]).
   String? pendingMessage;
+
+  /// Juno §1c surface (A2 fix): set when the already-held state is
+  /// known — a verify answered 409 `purchased_already_held`, whose
+  /// held count is adopted from the profile state via the held-
+  /// count resolver. An already-held answer is NOT a failure: the
+  /// purchase is never parked in [_pendingUpdate] for it.
+  String? alreadyHeldMessage;
+
+  /// True when the already-held state is known this session.
+  bool get alreadyHeld => alreadyHeldMessage != null;
 
   Future<void> initialize() async {
     _sub ??= _store.purchaseUpdates.listen(
@@ -317,6 +410,8 @@ class StreakFreezePurchaseService extends ChangeNotifier {
     successMessage = null;
     failureMessage = null;
     restoredMessage = null;
+    pendingMessage = null;
+    alreadyHeldMessage = null;
     state = StreakFreezeBuyState.buying;
     notifyListeners();
     try {
@@ -366,19 +461,63 @@ class StreakFreezePurchaseService extends ChangeNotifier {
     StreakFreezePurchaseUpdate u, {
     required bool isRestore,
   }) async {
-    final count = await _verify(
+    final result = await _verifyDetailed(
       productId: u.productId,
       purchaseToken: u.purchaseToken,
       orderId: u.orderId,
     );
+    if (result.alreadyHeld) {
+      // A2 fix — 409 purchased_already_held: the account already
+      // holds the purchased freeze. Adopt the held state
+      // truthfully: the authoritative count comes from the streak
+      // store / profile state via the held-count resolver, NEVER
+      // from the 409 body (which carries no count). This is not a
+      // failure and is NOT parked as pending: §1c is the surface.
+      _pendingUpdate = null;
+      pendingMessage = null;
+      failureMessage = null;
+      successMessage = null;
+      restoredMessage = null;
+      alreadyHeldMessage = StreakPurchaseCopy.alreadyHeld;
+      int? held;
+      try {
+        held = await _resolveHeldCount?.call();
+      } catch (_) {
+        held = null;
+      }
+      if (held != null) {
+        adoptedPurchasedFreezes = held.clamp(0, 1);
+        onAdopted?.call(adoptedPurchasedFreezes!);
+      }
+      state = StreakFreezeBuyState.available;
+      notifyListeners();
+      try {
+        await _store.completePurchase(u);
+      } catch (_) {}
+      return;
+    }
+    final count = result.count;
     if (count == null) {
+      // Verify-pending (Juno §1b): the purchase stays parked —
+      // unconsumed — for automatic recovery. §1b is THE message
+      // for this event: the generic §5c failure string must not
+      // also be set for it (the two contradict: "try again" next
+      // to "please don't buy it again").
       _pendingUpdate = u;
       pendingMessage = StreakPurchaseCopy.verifyPending;
-      _fail();
+      failureMessage = null;
+      successMessage = null;
+      restoredMessage = null;
+      alreadyHeldMessage = null;
+      state = product == null
+          ? StreakFreezeBuyState.unavailable
+          : StreakFreezeBuyState.available;
+      notifyListeners();
       return;
     }
     _pendingUpdate = null;
     pendingMessage = null;
+    alreadyHeldMessage = null;
     adoptedPurchasedFreezes = count;
     onAdopted?.call(count);
     if (isRestore) restoredMessage = StreakPurchaseCopy.freezeRestored;

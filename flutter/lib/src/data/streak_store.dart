@@ -256,23 +256,40 @@ class StreakStore {
         // never resurrect a day a strict evaluation broke the run
         // on (the Nov 18 flip-flop: strip → 0 on the streak
         // screen, union-merge → 27 pushed back to the profile).
-        // The one exemption is a genuine summary completion: a
-        // day in the merged summaryCompletedDays is legitimate
-        // wherever it was completed, tombstone or not.
+        // The exemptions are a genuine summary completion (a day
+        // in the merged summaryCompletedDays is legitimate
+        // wherever it was completed, tombstone or not) and freeze
+        // cover (a day in the merged restoredDays was bridged by
+        // a freeze — A1 fix below).
         final mergedCompleted = {
           ...server.summaryCompletedDays,
           ...s.summaryCompletedDays,
         };
+        // A1 fix (Vera blocker, Nov 19, 2026): a freeze-bridged day
+        // is legitimized the same way a completion legitimizes it.
+        // The merged restored set is the freeze-cover evidence —
+        // a tombstoned day that either record holds as restored
+        // was covered by a freeze, so its tombstone clears and it
+        // survives every later merge. A tombstoned day with NO
+        // completion and NO freeze cover (not in either restored
+        // set) stays excluded: the Bug 2 guarantee is unchanged.
+        final mergedRestored = {
+          ...server.restoredDays,
+          ...s.restoredDays,
+        };
         final mergedInvalidated = {
           ...server.invalidatedDays,
           ...s.invalidatedDays,
-        }..removeAll(mergedCompleted);
+        }
+          ..removeAll(mergedCompleted)
+          ..removeAll(mergedRestored);
         bool live(String d) =>
-            !mergedInvalidated.contains(d) || mergedCompleted.contains(d);
+            !mergedInvalidated.contains(d) ||
+            mergedCompleted.contains(d) ||
+            mergedRestored.contains(d);
         s = server.copyWith(
           countedDays: {...server.countedDays, ...s.countedDays}.where(live).toSet(),
-          restoredDays:
-              {...server.restoredDays, ...s.restoredDays}.where(live).toSet(),
+          restoredDays: mergedRestored.where(live).toSet(),
           consumedSaveMonths: {
             ...server.consumedSaveMonths,
             ...s.consumedSaveMonths,
