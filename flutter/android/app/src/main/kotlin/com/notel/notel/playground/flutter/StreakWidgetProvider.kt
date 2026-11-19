@@ -5,6 +5,7 @@ import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.os.Bundle
 import android.view.View
 import android.widget.RemoteViews
 import es.antonborri.home_widget.HomeWidgetProvider
@@ -26,9 +27,26 @@ import es.antonborri.home_widget.HomeWidgetProvider
 /// edge, the cheer peek only in the done state when the payload
 /// pose says so.
 ///
+/// SIZE BUCKETS (Nov 19, 2026, founder: "Make it as small as the
+/// Duolingo widget"): ONE provider, ONE picker entry. Each placed
+/// instance renders the COMPACT face (~2x1 cells: flame + count,
+/// the greeting, a small Bandit peek — and NO subline, per Juno's
+/// compact ruling in JUNO-COMPACT-COPY.md) or the BANNER face
+/// (the original wide card, subline included) according to its
+/// OWN placed size, read from AppWidgetOptions in onUpdate and
+/// re-read on every onAppWidgetOptionsChanged — so resizing an
+/// existing placed widget between the two sizes re-renders it in
+/// place, with no second provider and no picker duplication.
+/// Compact when the placed height is under 100dp or the placed
+/// width is under 220dp (the banner's text + subline cannot fit
+/// below either floor); when a launcher reports no size options
+/// the compact face renders — it is the provider's offered
+/// default (targetCell 2x1 in streak_widget_info.xml).
+///
 /// Signed-out / unseeded payload (signed-in flag not a real true,
-/// or no count published): the neutral face — no numbers, ever,
-/// mirroring the vitals widget's signed-out discipline.
+/// or no count published): the neutral face at the instance's own
+/// size — no numbers, ever, mirroring the vitals widget's
+/// signed-out discipline.
 ///
 /// Tap opens the app (plain MainActivity launch): the app has no
 /// widget-click / deep-link mechanism (no HomeWidget.widgetClicked
@@ -37,7 +55,8 @@ import es.antonborri.home_widget.HomeWidgetProvider
 ///
 /// Failure discipline mirrors VitalsWidgetProvider: onUpdate can
 /// never throw into the launcher; any failure falls back to the
-/// signed-out face, then to a minimal hardcoded face.
+/// signed-out face (at the instance's size), then to a minimal
+/// hardcoded face.
 class StreakWidgetProvider : HomeWidgetProvider() {
 
     companion object {
@@ -48,7 +67,14 @@ class StreakWidgetProvider : HomeWidgetProvider() {
         const val KEY_STREAK_GREETING = "widget_streak_greeting"
         const val KEY_STREAK_SUBLINE = "widget_streak_subline"
         const val FALLBACK_TEXT = "Open Tabs to sign in"
+
+        // Size-bucket floors (dp): below either, the compact face.
+        const val COMPACT_MAX_HEIGHT_DP = 100
+        const val COMPACT_MAX_WIDTH_DP = 220
     }
+
+    /// The size bucket one placed instance renders in.
+    enum class Bucket { COMPACT, BANNER }
 
     override fun onUpdate(
         context: Context,
@@ -57,11 +83,12 @@ class StreakWidgetProvider : HomeWidgetProvider() {
         widgetData: SharedPreferences,
     ) {
         appWidgetIds.forEach { appWidgetId ->
+            val bucket = bucketFor(appWidgetManager, appWidgetId)
             val views = try {
-                buildViews(context, widgetData)
+                buildViews(context, widgetData, bucket)
             } catch (_: Exception) {
                 try {
-                    signedOutViews(context)
+                    signedOutViews(context, bucket)
                 } catch (_: Exception) {
                     fallbackViews(context)
                 }
@@ -80,9 +107,59 @@ class StreakWidgetProvider : HomeWidgetProvider() {
         }
     }
 
+    /// A resize re-renders the resized instance in its new bucket.
+    /// Delegates to the plugin's 3-arg onUpdate, which re-reads
+    /// the widget store and calls the 4-arg onUpdate above (where
+    /// the bucket is re-read from the now-current options).
+    override fun onAppWidgetOptionsChanged(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetId: Int,
+        newOptions: Bundle,
+    ) {
+        super.onAppWidgetOptionsChanged(
+            context,
+            appWidgetManager,
+            appWidgetId,
+            newOptions,
+        )
+        onUpdate(context, appWidgetManager, intArrayOf(appWidgetId))
+    }
+
+    /// Bucket for one instance from its AppWidgetOptions: the
+    /// launcher-reported minimum width/height in dp. Missing or
+    /// zero dimensions read as "no size reported" and fall to the
+    /// compact default (the provider's offered 2x1 form).
+    private fun bucketFor(
+        appWidgetManager: AppWidgetManager,
+        appWidgetId: Int,
+    ): Bucket {
+        val options = try {
+            appWidgetManager.getAppWidgetOptions(appWidgetId)
+        } catch (_: Exception) {
+            null
+        } ?: return Bucket.COMPACT
+        val minWidth = options.getInt(
+            AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0,
+        )
+        val minHeight = options.getInt(
+            AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0,
+        )
+        if (minWidth <= 0 && minHeight <= 0) return Bucket.COMPACT
+        return if (
+            (minHeight in 1 until COMPACT_MAX_HEIGHT_DP) ||
+            (minWidth in 1 until COMPACT_MAX_WIDTH_DP)
+        ) {
+            Bucket.COMPACT
+        } else {
+            Bucket.BANNER
+        }
+    }
+
     private fun buildViews(
         context: Context,
         widgetData: SharedPreferences,
+        bucket: Bucket,
     ): RemoteViews {
         val all = widgetData.all
         // Type-tolerant flag read: only a Boolean true counts
@@ -90,10 +167,68 @@ class StreakWidgetProvider : HomeWidgetProvider() {
         val signedIn = (all[KEY_SIGNED_IN] as? Boolean) ?: false
         val count = (all[KEY_STREAK_COUNT] as? String) ?: ""
         if (!signedIn || count.isEmpty()) {
-            return signedOutViews(context)
+            return signedOutViews(context, bucket)
         }
+        return when (bucket) {
+            Bucket.COMPACT -> compactViews(context, all, count)
+            Bucket.BANNER -> bannerViews(context, all, count)
+        }
+    }
+
+    /// The banner face: flame + count, greeting, subline verbatim,
+    /// Bandit peek — the shipped Nov 18 face, unchanged in binding.
+    private fun bannerViews(
+        context: Context,
+        all: Map<String, *>,
+        count: String,
+    ): RemoteViews {
         val todayDone = (all[KEY_STREAK_TODAY_DONE] as? Boolean) ?: false
         val views = RemoteViews(context.packageName, R.layout.streak_widget)
+        bindFlameCountPose(views, all, count, todayDone)
+        bindGreeting(views, all)
+        views.setTextViewText(
+            R.id.streak_widget_subline,
+            (all[KEY_STREAK_SUBLINE] as? String) ?: "",
+        )
+        views.setOnClickPendingIntent(
+            R.id.streak_widget_root,
+            launchIntent(context),
+        )
+        return views
+    }
+
+    /// The compact face (Juno ruling, JUNO-COMPACT-COPY.md):
+    /// flame + count and the greeting ONLY. The subline key is
+    /// deliberately NEVER read or bound here — no truncation path
+    /// for the §9b string may exist at this size, in either state.
+    private fun compactViews(
+        context: Context,
+        all: Map<String, *>,
+        count: String,
+    ): RemoteViews {
+        val todayDone = (all[KEY_STREAK_TODAY_DONE] as? Boolean) ?: false
+        val views = RemoteViews(
+            context.packageName,
+            R.layout.streak_widget_compact,
+        )
+        bindFlameCountPose(views, all, count, todayDone)
+        bindGreeting(views, all)
+        views.setOnClickPendingIntent(
+            R.id.streak_widget_root,
+            launchIntent(context),
+        )
+        return views
+    }
+
+    /// Bindings shared by both faces (both layouts carry these
+    /// view ids): the count with its state color, the flame by
+    /// state, and the Bandit peek bitmap by payload pose.
+    private fun bindFlameCountPose(
+        views: RemoteViews,
+        all: Map<String, *>,
+        count: String,
+        todayDone: Boolean,
+    ) {
         views.setTextViewText(R.id.streak_widget_count, count)
         views.setTextColor(
             R.id.streak_widget_count,
@@ -118,7 +253,11 @@ class StreakWidgetProvider : HomeWidgetProvider() {
                 R.drawable.bandit_peek
             },
         )
-        // Greeting slot collapses entirely when empty (Juno §9d).
+    }
+
+    /// Greeting slot collapses entirely when empty (Juno §9d) —
+    /// same semantics on both faces.
+    private fun bindGreeting(views: RemoteViews, all: Map<String, *>) {
         val greeting = (all[KEY_STREAK_GREETING] as? String) ?: ""
         if (greeting.isEmpty()) {
             views.setViewVisibility(R.id.streak_widget_greeting, View.GONE)
@@ -126,21 +265,18 @@ class StreakWidgetProvider : HomeWidgetProvider() {
             views.setViewVisibility(R.id.streak_widget_greeting, View.VISIBLE)
             views.setTextViewText(R.id.streak_widget_greeting, greeting)
         }
-        views.setTextViewText(
-            R.id.streak_widget_subline,
-            (all[KEY_STREAK_SUBLINE] as? String) ?: "",
-        )
-        views.setOnClickPendingIntent(
-            R.id.streak_widget_root,
-            launchIntent(context),
-        )
-        return views
     }
 
-    private fun signedOutViews(context: Context): RemoteViews {
+    private fun signedOutViews(
+        context: Context,
+        bucket: Bucket,
+    ): RemoteViews {
         val views = RemoteViews(
             context.packageName,
-            R.layout.streak_widget_signed_out,
+            when (bucket) {
+                Bucket.COMPACT -> R.layout.streak_widget_compact_signed_out
+                Bucket.BANNER -> R.layout.streak_widget_signed_out
+            },
         )
         views.setOnClickPendingIntent(
             R.id.streak_widget_root,
