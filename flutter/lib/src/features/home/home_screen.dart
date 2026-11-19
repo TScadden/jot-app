@@ -558,6 +558,9 @@ class _HomeScreenState extends State<HomeScreen>
       SummaryCompletionWatcher(
         onCompletion: (result, state) {
           if (!mounted) return;
+          // A completion IS a settlement: from here the settled
+          // state owns the pills (Bug 3 unification).
+          _streakSettleLanded = true;
           final data = StreakCelebrationData.fromCompletion(
             result: result,
             state: state,
@@ -1947,8 +1950,19 @@ class _HomeScreenState extends State<HomeScreen>
     // Only a successful pull — including a confirmed-empty one —
     // applies. The engine settle may still swap in seeded values.
     final streakOk = streak.succeeded;
+    // Streak-bugs fix (Bug 3): the pulled counters are
+    // PROVISIONAL. They seed the pills only until this mount's
+    // engine settlement lands; from then on the settled state is
+    // the ONLY writer of the pills and the cache, so Home can
+    // never sit on raw profile counters (27/68) that the streak
+    // screen's settled evaluation disagrees with (0). One settled
+    // state, read by Home, the streak screen, the celebration,
+    // and the widget, refreshed at the same moments: app-open
+    // settlement, summary completion, purchase grant, restore.
     final changed = cache.applyVitals(vitals) |
-        (streakOk ? cache.applyStreak(streak.current, streak.best) : false);
+        (streakOk && !_streakSettleLanded
+            ? cache.applyStreak(streak.current, streak.best)
+            : false);
     // Persist in the background; never block the UI on storage.
     unawaited(cache.persist());
     // Round 60 — launch milestone: the background refresh has landed
@@ -1965,7 +1979,9 @@ class _HomeScreenState extends State<HomeScreen>
       setState(() {
         _vitals = vitals;
         // C-02a — on a failed streak pull the seeded pills stand.
-        if (streakOk) {
+        // Bug 3 — and once the settlement has landed, the settled
+        // values stand: provisional counters never overwrite them.
+        if (streakOk && !_streakSettleLanded) {
           _currentStreak = streak.current;
           _bestStreak = streak.best;
         }
@@ -1988,6 +2004,13 @@ class _HomeScreenState extends State<HomeScreen>
   /// The streak screen's tap target awaits this future — it never
   /// evaluates the engine itself (VC 100115 anti-fabrication rule).
   Future<StreakState?>? _streakSettle;
+
+  /// True once a settled streak state (app-open settlement or a
+  /// summary completion) has landed on this mount. From then on
+  /// the settled state is the only writer of the streak pills and
+  /// cache (Bug 3 unification); raw pulled counters are
+  /// provisional seed values only.
+  bool _streakSettleLanded = false;
 
   /// Settle the streak engine for this app open against the
   /// authoritative server record, off the load's critical path.
@@ -2015,6 +2038,7 @@ class _HomeScreenState extends State<HomeScreen>
         push: _healthRepo.pushStreakRecord,
       );
       if (!engineState.seeded || !mounted) return engineState;
+      _streakSettleLanded = true;
       // A7: Home display reads anchor on the Tabs day, never raw
       // wall-clock now.
       final engineCurrent =

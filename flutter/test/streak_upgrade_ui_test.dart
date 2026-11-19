@@ -1076,4 +1076,7 @@ class _FakeStore implements StreakFreezeStore {
   Future<void> completePurchase(StreakFreezePurchaseUpdate update) async {
     completed = true;
   }
+
+  @override
+  Future<void> restorePurchases() async {}
 }

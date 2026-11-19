@@ -52,6 +52,35 @@ abstract class StreakFreezeStore {
   Future<StreakFreezeProduct?> queryProduct(String productId);
   Future<bool> buyConsumable(StreakFreezeProduct product);
   Future<void> completePurchase(StreakFreezePurchaseUpdate update);
+
+  /// Asks Play to re-deliver any purchases it still holds for
+  /// this product (the recovery path for a purchase whose server
+  /// verify failed after payment — the purchase was never
+  /// completed/consumed, so Play replays it on the stream).
+  Future<void> restorePurchases();
+}
+
+/// Purchase-flow copy that Juno rules (streak-bugs package,
+/// Nov 19, 2026). PLACEHOLDERS — Juno's ruled strings replace
+/// these constants in ONE place (this class) when her copy lands;
+/// no other file hardcodes this copy. The already-ruled §5b/§5c
+/// strings (the screen's formatSuccess and the service's failure
+/// string) predate this package and are unchanged.
+abstract final class StreakPurchaseCopy {
+  /// Shown when a freeze grant lands and the caller supplied no
+  /// count-formatted success string.
+  static const String freezeGranted =
+      'PLACEHOLDER (Juno to rule): your freeze was added.';
+
+  /// Shown when a restored (replayed) purchase verifies and the
+  /// freeze lands.
+  static const String freezeRestored =
+      'PLACEHOLDER (Juno to rule): your earlier freeze purchase was restored.';
+
+  /// Shown while a paid purchase is still awaiting a successful
+  /// server verify (never completed/consumed in the meantime).
+  static const String verifyPending =
+      'PLACEHOLDER (Juno to rule): we got your purchase and are still confirming it — your freeze is not lost.';
 }
 
 /// The real store: `in_app_purchase` over Google Play.
@@ -112,6 +141,9 @@ class PlayStreakFreezeStore implements StreakFreezeStore {
       purchaseParam: PurchaseParam(productDetails: details),
     );
   }
+
+  @override
+  Future<void> restorePurchases() => _iap.restorePurchases();
 
   @override
   Future<void> completePurchase(StreakFreezePurchaseUpdate update) async {
@@ -189,11 +221,40 @@ class StreakFreezePurchaseService extends ChangeNotifier {
         purchaseToken: purchaseToken,
         orderId: orderId,
       );
-      if (r.statusCode != 200 || r.body == null) return null;
+      if (r.body == null) return null;
       final count = r.body!['purchasedFreezes'];
-      return count is int ? count : null;
+      if (count is! int) return null;
+      if (r.statusCode == 200) return count;
+      // A server alreadyGranted / already-held answer is a grant,
+      // not a failure: the freeze is held server-side for this
+      // purchase, so adopting the count (and completing the Play
+      // purchase) is correct and can never double-grant.
+      if (r.statusCode == 409 &&
+          (r.body!['alreadyGranted'] == true ||
+              r.body!['error'] == 'purchased_already_held')) {
+        return count;
+      }
+      return null;
     };
   }
+
+  /// A purchase Play delivered that has NOT yet verified with the
+  /// server. It is deliberately never completed/consumed while it
+  /// sits here (streak-bugs fix): completing a consumable on a
+  /// failed verify consumed the founder's paid purchase with no
+  /// grant and no way back. Recovery re-runs its verify.
+  StreakFreezePurchaseUpdate? _pendingUpdate;
+
+  StreakFreezePurchaseUpdate? get pendingVerification => _pendingUpdate;
+  bool get hasPendingVerification => _pendingUpdate != null;
+
+  /// Juno-placeholder surface for a restored purchase that landed
+  /// (see [StreakPurchaseCopy.freezeRestored]).
+  String? restoredMessage;
+
+  /// Juno-placeholder surface while a paid purchase awaits verify
+  /// (see [StreakPurchaseCopy.verifyPending]).
+  String? pendingMessage;
 
   Future<void> initialize() async {
     _sub ??= _store.purchaseUpdates.listen(
@@ -201,6 +262,28 @@ class StreakFreezePurchaseService extends ChangeNotifier {
       onError: (_) {},
     );
     await refreshProduct();
+    // Recovery (streak-bugs fix): replay anything Play still
+    // holds and re-verify any purchase whose verify failed in a
+    // previous session — a paid freeze can never silently vanish.
+    await recoverPendingPurchases();
+  }
+
+  /// Re-runs recovery: asks the store to re-deliver held
+  /// purchases (their stream updates re-verify through
+  /// [_onUpdates]) and directly re-verifies the in-memory pending
+  /// purchase, if any. Safe to call on app start and on streak
+  /// screen entry (initialize calls it).
+  Future<void> recoverPendingPurchases() async {
+    try {
+      await _store.restorePurchases();
+    } catch (_) {
+      // Play unreachable: the in-memory retry below still runs,
+      // and the next initialize retries the replay.
+    }
+    final pending = _pendingUpdate;
+    if (pending != null) {
+      await _verifyAndAdopt(pending, isRestore: pending.status == 'restored');
+    }
   }
 
   /// (Re)queries the Play listing. An unreachable product puts the
@@ -229,6 +312,7 @@ class StreakFreezePurchaseService extends ChangeNotifier {
     if (p == null || state == StreakFreezeBuyState.buying) return;
     successMessage = null;
     failureMessage = null;
+    restoredMessage = null;
     state = StreakFreezeBuyState.buying;
     notifyListeners();
     try {
@@ -253,30 +337,54 @@ class StreakFreezePurchaseService extends ChangeNotifier {
       if (u.productId != productId) continue;
       switch (u.status) {
         case 'purchased':
-          final count = await _verify(
-            productId: u.productId,
-            purchaseToken: u.purchaseToken,
-            orderId: u.orderId,
-          );
-          if (count == null) {
-            _fail();
-          } else {
-            adoptedPurchasedFreezes = count;
-            onAdopted?.call(count);
-            successMessage = formatSuccess?.call(count);
-            state = StreakFreezeBuyState.available;
-            notifyListeners();
-          }
-          try {
-            await _store.completePurchase(u);
-          } catch (_) {}
+          await _verifyAndAdopt(u, isRestore: false);
+        case 'restored':
+          // Streak-bugs fix: a restored update for this product is
+          // a real paid purchase Play is replaying — verify it
+          // through the same path instead of ignoring it.
+          await _verifyAndAdopt(u, isRestore: true);
         case 'canceled':
         case 'error':
           _fail();
         default:
-          break; // pending/restored: nothing to surface yet.
+          break; // pending: nothing to surface yet.
       }
     }
+  }
+
+  /// Verify one delivered purchase and adopt the grant. The Play
+  /// purchase is completed (consumed) ONLY after a successful
+  /// server verify (or an alreadyGranted answer, which the verify
+  /// seam returns as a count): on failure the purchase stays
+  /// pending — unconsumed in Play, recorded in [_pendingUpdate] —
+  /// so recovery can re-verify it and the freeze can still land.
+  Future<void> _verifyAndAdopt(
+    StreakFreezePurchaseUpdate u, {
+    required bool isRestore,
+  }) async {
+    final count = await _verify(
+      productId: u.productId,
+      purchaseToken: u.purchaseToken,
+      orderId: u.orderId,
+    );
+    if (count == null) {
+      _pendingUpdate = u;
+      pendingMessage = StreakPurchaseCopy.verifyPending;
+      _fail();
+      return;
+    }
+    _pendingUpdate = null;
+    pendingMessage = null;
+    adoptedPurchasedFreezes = count;
+    onAdopted?.call(count);
+    if (isRestore) restoredMessage = StreakPurchaseCopy.freezeRestored;
+    successMessage = formatSuccess?.call(count) ?? StreakPurchaseCopy.freezeGranted;
+    failureMessage = null;
+    state = StreakFreezeBuyState.available;
+    notifyListeners();
+    try {
+      await _store.completePurchase(u);
+    } catch (_) {}
   }
 
   @override

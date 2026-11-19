@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'package:tabs_lab/src/data/streak_engine.dart';
 import 'package:tabs_lab/src/data/streak_purchase.dart';
+import 'package:tabs_lab/src/data/streak_store.dart';
 import 'package:tabs_lab/src/features/home/streak_flame.dart';
 import 'package:tabs_lab/src/features/home/streak_share_card.dart';
 import 'package:tabs_lab/src/theme/lab_black_colors.dart';
@@ -121,6 +122,11 @@ class _StreakScreenState extends State<StreakScreen> {
       _ownsPurchase = true;
       _purchase = StreakFreezePurchaseService(
         onAdopted: (count) {
+          // Streak-bugs fix: the grant also lands in the streak
+          // store, so every surface reading the settled state
+          // (Home, widget, a reopened streak screen) sees the held
+          // freeze immediately — not just this screen's override.
+          unawaited(StreakStore.instance.adoptPurchasedFreezes(count));
           if (mounted) setState(() => _adoptedPurchased = count);
         },
         formatSuccess: (count) {
@@ -691,6 +697,35 @@ class _StreakScreenState extends State<StreakScreen> {
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
                 color: LabBlackColors.textSecondary,
+              ),
+            ),
+          ],
+          // Streak-bugs fix — recovery feedback surfaces (copy is
+          // Juno-placeholder, ruled in StreakPurchaseCopy): a paid
+          // purchase still being confirmed, and a restored
+          // purchase that landed, are both VISIBLE here instead of
+          // the founder's silent no-feedback purchase.
+          if (purchase?.pendingMessage != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              purchase!.pendingMessage!,
+              key: const Key('streakPurchasePending'),
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: LabBlackColors.textSecondary,
+              ),
+            ),
+          ],
+          if (purchase?.restoredMessage != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              purchase!.restoredMessage!,
+              key: const Key('streakPurchaseRestored'),
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: LabBlackColors.textPrimary,
               ),
             ),
           ],
