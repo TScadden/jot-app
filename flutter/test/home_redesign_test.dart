@@ -27,6 +27,7 @@ import 'package:tabs_lab/src/features/home/today_summary_card.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/features/home/weekly_snapshot_card.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
+import 'package:tabs_lab/src/features/tools/community_screen.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 import 'test_helpers.dart';
@@ -302,11 +303,14 @@ void main() {
     );
   });
 
-  group('drawer deep-links (AI Advocate + Event Counters)', () {
+  group('drawer deep-links (AI Advocate + Event Counters + Community)',
+      () {
     // Round 5 (founder, Nov 10, 2026) supersedes the Nov 9
     // redesign's "drawer holds exactly one entry" rule: the
-    // drawer now holds AI Advocate AND Event Counters, and
-    // neither has a Settings menu row anymore.
+    // drawer holds AI Advocate AND Event Counters, and neither
+    // has a Settings menu row anymore. Added scope #7 (founder,
+    // Nov 20, 2026) adds a third row UNDER Event Counters:
+    // Community, moved out of Tools.
     Future<void> openDrawer(WidgetTester tester) async {
       await tester.tap(find.byKey(const ValueKey('home_drawer_button')));
       await tester.pump();
@@ -317,12 +321,14 @@ void main() {
       expect(find.byIcon(Icons.auto_awesome), findsOneWidget);
       expect(find.text('Event Counters'), findsOneWidget);
       expect(find.byIcon(Icons.timer), findsOneWidget);
-      // Exactly two rows: two tappables inside the drawer, AI
-      // Advocate above Event Counters.
+      expect(find.text('Community'), findsOneWidget);
+      expect(find.byIcon(Icons.people), findsOneWidget);
+      // Exactly three rows: three tappables inside the drawer,
+      // AI Advocate above Event Counters above Community.
       expect(
         find.descendant(
             of: find.byType(Drawer), matching: find.byType(InkWell)),
-        findsNWidgets(2),
+        findsNWidgets(3),
       );
       expect(
         tester
@@ -332,6 +338,16 @@ void main() {
         lessThan(tester
             .getTopLeft(
                 find.byKey(const ValueKey('home_drawer_event_counters')))
+            .dy),
+      );
+      expect(
+        tester
+            .getTopLeft(
+                find.byKey(const ValueKey('home_drawer_event_counters')))
+            .dy,
+        lessThan(tester
+            .getTopLeft(
+                find.byKey(const ValueKey('home_drawer_community')))
             .dy),
       );
     }
@@ -401,6 +417,40 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
       await tester.pump();
       expect(find.byType(SettingsScreen), findsNothing);
+      expect(find.byType(HomeScreen), findsOneWidget);
+      await _drainScoreChain(tester);
+    });
+
+    testWidgets(
+        'tapping "Community" pushes the Community screen (the same '
+        'screen the Tools tile opened), and back exits to Home',
+        (tester) async {
+      await _pumpHome(
+        tester,
+        physicalSize: const Size(1080, 2400),
+        entries: [_entry(id: 41, categoryId: 1, body: 'headache')],
+      );
+
+      await openDrawer(tester);
+
+      await tester.tap(find.byKey(const ValueKey('home_drawer_community')));
+      await _bridge(tester);
+
+      // The SAME Community screen: same widget, same AppBar title.
+      expect(find.byType(CommunityToolScreen), findsOneWidget);
+      expect(
+        find.descendant(
+            of: find.byType(AppBar),
+            matching: find.text('Community')),
+        findsOneWidget,
+      );
+
+      // Back from Community exits to Home.
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+      expect(find.byType(CommunityToolScreen), findsNothing);
       expect(find.byType(HomeScreen), findsOneWidget);
       await _drainScoreChain(tester);
     });

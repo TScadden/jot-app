@@ -49,6 +49,7 @@ import 'package:tabs_lab/src/features/home/intake_logging.dart';
 import 'package:tabs_lab/src/features/home/good_day_logging.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
+import 'package:tabs_lab/src/features/tools/community_screen.dart';
 import 'package:tabs_lab/src/features/home/health_connect_banner.dart';
 import 'package:tabs_lab/src/features/home/home_checkin_strip.dart';
 import 'package:tabs_lab/src/features/home/migraine_block.dart';
@@ -2389,6 +2390,22 @@ class _HomeScreenState extends State<HomeScreen>
     await _openEventCounters();
   }
 
+  /// Added scope #7 (founder, Nov 20, 2026) — pushes the Community
+  /// screen, the drawer's third entry (Community moved here from
+  /// Tools). The destination is the SAME screen the Tools tile
+  /// opened — [CommunityToolScreen] via the app-wide slide
+  /// transition — forwarding Home's backend like the other drawer
+  /// pushes forward theirs.
+  Future<void> _openCommunityFromDrawer() async {
+    Navigator.of(context).pop(); // close the drawer first
+    await Navigator.of(context).push(
+      SlidePageRoute(
+        reducedMotion: animationsDisabled(context),
+        builder: (_) => CommunityToolScreen(backend: _backend),
+      ),
+    );
+  }
+
   /// Home redesign — the check-in section the Today Summary sheet
   /// hosts. ALL state and commits stay here in _HomeScreenState; the
   /// builder re-reads them on every outbox change (the commit path's
@@ -2530,8 +2547,11 @@ class _HomeScreenState extends State<HomeScreen>
       // Home redesign — the drawer: surface panel ~300dp, modeled
       // on Settings' _menuRow construction. Round 5 (founder,
       // Nov 10, 2026) supersedes the redesign's one-entry rule:
-      // the drawer now holds TWO rows — AI Advocate and Event
-      // Counters — stacked in the identical row style, no divider.
+      // the drawer holds AI Advocate and Event Counters, stacked
+      // in the identical row style, no divider. Added scope #7
+      // (founder, Nov 20, 2026) adds a third row in the same
+      // construction UNDER Event Counters: Community (moved out
+      // of Tools).
       drawer: Drawer(
         backgroundColor: NotelColors.surface,
         width: 300,
@@ -2578,6 +2598,32 @@ class _HomeScreenState extends State<HomeScreen>
                       Expanded(
                         child: Text(
                           'Event Counters',
+                          style: TextStyle(
+                            color: NotelColors.textPrimary,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                      Icon(Icons.chevron_right,
+                          size: 20, color: NotelColors.textSecondary),
+                    ],
+                  ),
+                ),
+              ),
+              InkWell(
+                key: const ValueKey('home_drawer_community'),
+                onTap: () => unawaited(_openCommunityFromDrawer()),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  child: Row(
+                    children: [
+                      Icon(Icons.people,
+                          color: NotelColors.textSecondary, size: 22),
+                      SizedBox(width: 16),
+                      Expanded(
+                        child: Text(
+                          'Community',
                           style: TextStyle(
                             color: NotelColors.textPrimary,
                             fontWeight: FontWeight.w500,
