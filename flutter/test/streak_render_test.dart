@@ -19,6 +19,7 @@ import 'package:tabs_lab/src/data/streak_engine.dart';
 import 'package:tabs_lab/src/data/streak_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
+import 'package:tabs_lab/src/features/badges/badges_screen.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/home/streak_screen.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
@@ -312,6 +313,19 @@ void main() {
     await tester.pump();
     await _bridge(tester);
     await tester.pump(const Duration(seconds: 3));
+    // BADGES package (Nov 20, 2026): the settlement hook raises
+    // the one-time badge unlock dialog over Home — the seeded
+    // 68-day best streak backfills many rungs, exactly the
+    // production case. Dismiss it (its 'Done' button) before the
+    // capture and the streak-screen navigation, as a user would.
+    if (find.byType(BadgeUnlockDialog).evaluate().isNotEmpty) {
+      await tester.tap(find.descendant(
+          of: find.byType(BadgeUnlockDialog),
+          matching: find.text('Done')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+    }
     // The streak pills carry the engine's seeded values.
     expect(find.byKey(const Key('homeStreakPills')), findsOneWidget);
     await _capture(tester, homeBoundary, outDir, 'tabs_home_streak_vc100115_2026-11-05.png');
