@@ -29,8 +29,12 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// An UNINITIALIZED boundary (no cutover loaded — every unit test
 /// that never calls [TabsDayBoundary.load]) derives LEGACY
 /// everywhere: the existing suite was written against the 04:00
-/// rule and stays green untouched. Production always loads at
-/// bootstrap (main.dart, pre-runApp).
+/// rule and stays green untouched. Production loads in BOTH
+/// isolates before any derivation: at foreground bootstrap
+/// (main.dart, pre-runApp) and at the top of the workmanager
+/// background task handler (daily_score_background.dart — that
+/// isolate's singleton starts fresh, and its correlation refresh
+/// persists day labels; Vera condition 1).
 ///
 /// Persistence follows the app's SettingsStore pattern
 /// (flutter_secure_storage — Android Keystore-backed
@@ -135,15 +139,27 @@ class TabsDayBoundary {
 
   /// Loads the cutover from storage; when no value is stored,
   /// stamps the first midnight strictly after the load instant
-  /// and persists it. Never throws: an unreadable store reads as
-  /// absent (the house pattern), and a failed persist still
-  /// leaves the in-memory stamp for this session.
+  /// and persists it. Never throws.
+  ///
+  /// Read FAILURE is distinguished from read ABSENCE (Vera
+  /// condition 2): when the read itself throws, the cutover is
+  /// left null — legacy derivation for this session — and NOTHING
+  /// is stamped or written. Stamping on a failed read would
+  /// overwrite a possibly-good persisted cutover with a later
+  /// one, and the instants between the two stamps would silently
+  /// re-derive legacy, re-labeling history. Only a successful
+  /// read that returns absent/unparseable may stamp-and-persist.
+  /// A failed persist after a genuine-absence stamp still leaves
+  /// the in-memory stamp governing this session.
   Future<void> load() async {
     String? raw;
     try {
       raw = await _read(cutoverStorageKey);
     } catch (_) {
-      raw = null;
+      // Read failure: NOT absence. Leave _cutoverAt null and do
+      // not write — a previously persisted good cutover must
+      // survive a transient storage hiccup untouched.
+      return;
     }
     final storedMs = raw == null ? null : int.tryParse(raw);
     if (storedMs != null) {

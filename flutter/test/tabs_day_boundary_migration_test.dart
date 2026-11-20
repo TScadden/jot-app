@@ -679,6 +679,109 @@ void main() {
       expect(nextBoundaryFor(at(5, 12), null), DateTime(2026, 11, 6, 4));
     });
   });
+
+  group('(j) load() failure semantics — Vera condition 2', () {
+    test('a THROWING read leaves the cutover null, stamps '
+        'nothing, writes nothing, and derivations stay legacy '
+        'for the session', () async {
+      var writeCalls = 0;
+      final boundary = TabsDayBoundary(
+        read: (k) async => throw StateError('storage unavailable'),
+        write: (k, v) async => writeCalls++,
+        clock: () => at(5, 15),
+      );
+      await boundary.load(); // never throws
+      expect(boundary.cutoverAt, isNull);
+      expect(writeCalls, 0);
+      // Legacy derivation for the session: (C+1) 01:30 is still
+      // day C under the 04:00 rule (a stamped cutover would make
+      // it C+1 under the calendar rule).
+      expect(boundary.key(at(6, 1, 30)), '2026-11-05');
+      expect(boundary.key(at(5, 2)), '2026-11-04');
+    });
+
+    test('a THROWING read never overwrites a stored good '
+        'cutover: storage contents are unchanged after load()',
+        () async {
+      final disk = <String, String>{
+        TabsDayBoundary.cutoverStorageKey: '${m.millisecondsSinceEpoch}',
+      };
+      var writeCalls = 0;
+      final boundary = TabsDayBoundary(
+        read: (k) async => throw StateError('transient read failure'),
+        write: (k, v) async {
+          writeCalls++;
+          disk[k] = v;
+        },
+        clock: () => at(20, 15), // a much later cold start
+      );
+      await boundary.load();
+      expect(writeCalls, 0);
+      expect(disk[TabsDayBoundary.cutoverStorageKey],
+          '${m.millisecondsSinceEpoch}',
+          reason: 'the persisted good cutover survives the '
+              'hiccup — no later stamp re-labels [M, M1) history');
+      expect(boundary.cutoverAt, isNull,
+          reason: 'this session derives legacy; the NEXT healthy '
+              'load reads the good value back');
+    });
+
+    test('a successful EMPTY read stamps first-midnight-'
+        'strictly-after and persists it (exactly one write)',
+        () async {
+      final disk = <String, String>{};
+      var writeCalls = 0;
+      final boundary = TabsDayBoundary(
+        read: (k) async => disk[k],
+        write: (k, v) async {
+          writeCalls++;
+          disk[k] = v;
+        },
+        clock: () => at(5, 15),
+      );
+      await boundary.load();
+      expect(boundary.cutoverAt, m);
+      expect(writeCalls, 1,
+          reason: 'the write/no-write distinction is pinned: a '
+              'genuine-absence stamp persists exactly once');
+      expect(disk[TabsDayBoundary.cutoverStorageKey],
+          '${m.millisecondsSinceEpoch}');
+    });
+
+    test('an unparseable stored value reads as absence (a '
+        'successful read, not a failure): stamp + persist',
+        () async {
+      final disk = <String, String>{
+        TabsDayBoundary.cutoverStorageKey: 'not-a-number',
+      };
+      final boundary = TabsDayBoundary(
+        read: (k) async => disk[k],
+        write: (k, v) async => disk[k] = v,
+        clock: () => at(5, 15),
+      );
+      await boundary.load();
+      expect(boundary.cutoverAt, m);
+      expect(disk[TabsDayBoundary.cutoverStorageKey],
+          '${m.millisecondsSinceEpoch}');
+    });
+
+    test('a THROWING write on genuine absence still leaves the '
+        'in-memory stamp governing the session (nothing '
+        'persisted)', () async {
+      final boundary = TabsDayBoundary(
+        read: (k) async => null,
+        write: (k, v) async => throw StateError('write failed'),
+        clock: () => at(5, 15),
+      );
+      await boundary.load(); // never throws
+      expect(boundary.cutoverAt, m);
+      // The session derives under the stamp: the small-hours
+      // instant after M is C+1 under the calendar rule, and a
+      // pre-cutover instant keeps its legacy label.
+      expect(boundary.key(at(6, 1, 30)), '2026-11-06');
+      expect(boundary.key(at(5, 12)), '2026-11-05');
+    });
+  });
 }
 
 /// Minimal fake gem server (mirrors gems_service_test's): server-
