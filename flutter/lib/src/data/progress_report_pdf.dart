@@ -416,7 +416,12 @@ pw.Widget _dotRow(String text, {required double width}) {
 /// for it (renders a notdef box), so the separator here is the
 /// Latin-1 middot — visually identical at 9pt.
 String reportMetaLine(ReportSnapshot snapshot) {
-  final rangeLabel = snapshot.last30Days ? '30-Day Audit' : 'Full Audit';
+  // Weekly Report Package 1: the weekly Mon–Sun range is labeled
+  // as what it is — never the standard ranges' labels (Juno §d
+  // Flag 4) and never a weekday/"closed week" claim (§d Flag 2).
+  final rangeLabel = snapshot.isWeekly
+      ? 'Weekly'
+      : (snapshot.last30Days ? '30-Day Audit' : 'Full Audit');
   // Native ReportGenerator renders the day-count parenthetical
   // UNCONDITIONALLY: "30-Day Audit (30 Days)" included.
   return 'Report Range: $rangeLabel (${snapshot.durationDays} Days) '
@@ -438,6 +443,14 @@ Future<List<int>> buildReportPdfBytes(
   /// the no-choice failure pair — a choice is never claimed that
   /// was not recorded at ship time.
   RawReportBanner rawBanner = RawReportBanner.noChoiceFailure,
+
+  /// Weekly Report Package 1: the ONE weekly line the PDF
+  /// carries (Juno §c rows 1.18–1.20, chosen by the completeness
+  /// evaluator in weekly_report.dart): the receipt sentence, the
+  /// low-data framing, or the blocked completeness line. Rendered
+  /// directly under the meta line. Null for standard reports and
+  /// for complete weeks with no receipt.
+  String? weeklyLine,
 }) async {
   final doc = pw.Document();
   final blocks = parseSummaryBlocks(effectiveSummaryText(snapshot,
@@ -484,6 +497,10 @@ Future<List<int>> buildReportPdfBytes(
     ),
     25,
   );
+
+  if (weeklyLine != null) {
+    place(pw.Text(weeklyLine, style: _bodyStyle), 22);
+  }
 
   if (isRawFallback) {
     // Native's banner leads with ⚠️, which the core font cannot
