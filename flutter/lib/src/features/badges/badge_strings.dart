@@ -148,7 +148,7 @@ abstract final class BadgeStrings {
           : '$v weeks with all 7 nights tracked',
       'early_to_bed' =>
         n == 1 ? '1 night in bed by 10 PM' : '$v nights in bed by 10 PM',
-      _ => '$v',
+      _ => v,
     };
   }
 
