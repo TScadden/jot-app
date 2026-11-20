@@ -49,9 +49,11 @@ import 'package:tabs_lab/src/features/home/intake_logging.dart';
 import 'package:tabs_lab/src/features/home/good_day_logging.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
+import 'package:tabs_lab/src/features/tools/community_screen.dart';
 import 'package:tabs_lab/src/features/home/health_connect_banner.dart';
 import 'package:tabs_lab/src/features/home/home_checkin_strip.dart';
 import 'package:tabs_lab/src/features/home/migraine_block.dart';
+import 'package:tabs_lab/src/features/home/gems_sheet.dart';
 import 'package:tabs_lab/src/features/home/streak_screen.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
@@ -276,6 +278,16 @@ class _HomeScreenState extends State<HomeScreen>
   TodayVitals? _vitals;
   int? _currentStreak;
   int? _bestStreak;
+
+  /// Added scope (Nov 19, 2026) — whether today is complete per
+  /// the SETTLED streak state (its countedDays contain today, the
+  /// streak screen's todayDone rule). Written ONLY where the
+  /// settled state writes [_currentStreak]/[_bestStreak] (app-open
+  /// settlement, summary completion, streak-screen return), from
+  /// that same state — the pill flame's lit source. False until a
+  /// settled state lands: the flame renders grey, never lit on the
+  /// provisional pulled counters or the cache seed.
+  bool _streakTodayComplete = false;
 
   // ── Round 23: Health Connect status (enum, not just a bool) ────────────
   /// Null until the first live status check lands — the banner never
@@ -591,6 +603,13 @@ class _HomeScreenState extends State<HomeScreen>
     // A completion IS a settlement: from here the settled
     // state owns the pills (Bug 3 unification).
     _streakSettleLanded = true;
+    // Settlement hook (Community Added Scope #2): the day just
+    // resolved, so re-project the evening nudges NOW — the
+    // sync's cancel sweep takes down today's pending countdown
+    // one-shot AND a countdown already posted at 20:00 (the
+    // plugin cancels posted notifications by id), and the
+    // completed day never re-arms.
+    _syncCheckInReminderAfterSave(streakState: state);
     final now = DateTime.now();
     final summaryTabsDay = tabsDayStr(now);
     // Gems bound discipline (Vera server review, Nov 19, 2026):
@@ -635,6 +654,9 @@ class _HomeScreenState extends State<HomeScreen>
     setState(() {
       _currentStreak = result.newCount;
       _bestStreak = streakBest(state);
+      // The completion IS today's counted day in this settled
+      // state — the pill flame lights from the same state.
+      _streakTodayComplete = state.countedDays.contains(summaryTabsDay);
     });
     unawaited(WidgetSync.pushStreak(
       state,
@@ -1596,6 +1618,15 @@ class _HomeScreenState extends State<HomeScreen>
   /// never sees. Execution is serialized through
   /// [_checkInNotifSyncChain].
   ///
+  /// Community Added Scope #2 — the same chain is the evening
+  /// re-projection for the streak countdown: it also runs from
+  /// the two settlement points (summary completion in
+  /// [_presentCompletion], app-open settlement in
+  /// [_settleStreakWithEngine]) with the freshly settled state,
+  /// so a resolved day's countdown — pending or already
+  /// posted — is cancelled at settlement, not at the next
+  /// Settings visit.
+  ///
   /// The checked-in labels derive from the LOCAL merged entry
   /// view ([_mergedEntries] — pulled entries overlaid with the
   /// outbox), NOT a fresh pull: a just-staged check-in counts
@@ -1611,7 +1642,7 @@ class _HomeScreenState extends State<HomeScreen>
   /// code and swallowed — never a reason to fail a save the
   /// outbox already accepted. A transient failure self-heals at
   /// the next sync.
-  void _syncCheckInReminderAfterSave() {
+  void _syncCheckInReminderAfterSave({StreakState? streakState}) {
     _checkInNotifSyncChain = _checkInNotifSyncChain.then((_) async {
       try {
         final enabled = await _settingsStore.getCheckInReminderEnabled();
@@ -1627,6 +1658,12 @@ class _HomeScreenState extends State<HomeScreen>
         await ReminderSync(_checkInNotifs).syncCheckInOnly(
           checkInEnabled: enabled,
           checkedInDayLabels: labels,
+          // The evening projection also carries the streak
+          // countdown (Community Added Scope #2): the settled
+          // state comes from the caller when it just landed
+          // (summary completion, app-open settlement), else
+          // from the streak store's current settled state.
+          streakState: streakState ?? StreakStore.instance.state,
         );
       } on NotificationServiceException catch (e) {
         debugPrint('CheckInReminderSync failed: $e');
@@ -2105,6 +2142,13 @@ class _HomeScreenState extends State<HomeScreen>
       );
       if (!engineState.seeded || !mounted) return engineState;
       _streakSettleLanded = true;
+      // App-open settlement hook (Community Added Scope #2):
+      // recordOpen IS the settlement point — freeze bridges for
+      // missed days land here — so re-project the evening
+      // nudges from the freshly settled state on every app
+      // open (a day that gained freeze cover, completed, or
+      // broke its streak re-projects accordingly).
+      _syncCheckInReminderAfterSave(streakState: engineState);
       // Gems — app-open sync: adopt the pull's server balance
       // (the pill's and buy surface's one source), retry any
       // queued grants, and settle-check the perfect week. Runs
@@ -2124,7 +2168,16 @@ class _HomeScreenState extends State<HomeScreen>
       ));
       // Home load is a D11 completion trigger.
       _queueSummaryCompletionEvaluation();
+      // Added scope (Nov 19, 2026) — the pill flame's lit state
+      // comes from THIS settled state (today counted in its
+      // countedDays — the streak screen's todayDone rule), the
+      // same source as the pill counts below.
+      final engineTodayComplete =
+          engineState.countedDays.contains(tabsDayStr(DateTime.now()));
       if (engineCurrent == _currentStreak && engineBest == _bestStreak) {
+        if (engineTodayComplete != _streakTodayComplete) {
+          setState(() => _streakTodayComplete = engineTodayComplete);
+        }
         return engineState;
       }
       final cache = HomeDataCache.instance;
@@ -2134,6 +2187,7 @@ class _HomeScreenState extends State<HomeScreen>
       setState(() {
         _currentStreak = engineCurrent;
         _bestStreak = engineBest;
+        _streakTodayComplete = engineTodayComplete;
       });
       return engineState;
     } catch (_) {
@@ -2195,8 +2249,28 @@ class _HomeScreenState extends State<HomeScreen>
         _currentStreak =
             streakCurrent(settled, tabsDayAnchor(DateTime.now()));
         _bestStreak = streakBest(settled);
+        _streakTodayComplete =
+            settled.countedDays.contains(tabsDayStr(DateTime.now()));
       });
     }
+  }
+
+  /// Gem pill tap (added scope #6, Nov 20, 2026): open the Gems
+  /// sheet — the moved About-gems explainer, the current balance,
+  /// and the buy-a-freeze-with-gems action. The sheet reads the
+  /// SAME [GemService.instance] balance the pill displays and the
+  /// settled streak record for its cap rule; a spend there moves
+  /// the shared service balance, which this screen's listener
+  /// already mirrors into the pill (plus the re-pull on close,
+  /// mirroring [_openStreakScreen]'s return path).
+  Future<void> _openGemsSheet() async {
+    await showGemsSheet(
+      context: context,
+      streakState: StreakStore.instance.state,
+      nickname: _nickname,
+    );
+    if (!mounted) return;
+    unawaited(GemService.instance.refreshBalance());
   }
 
   /// Opens the data-connections screen — the one destination/flow
@@ -2364,6 +2438,22 @@ class _HomeScreenState extends State<HomeScreen>
     await _openEventCounters();
   }
 
+  /// Added scope #7 (founder, Nov 20, 2026) — pushes the Community
+  /// screen, the drawer's third entry (Community moved here from
+  /// Tools). The destination is the SAME screen the Tools tile
+  /// opened — [CommunityToolScreen] via the app-wide slide
+  /// transition — forwarding Home's backend like the other drawer
+  /// pushes forward theirs.
+  Future<void> _openCommunityFromDrawer() async {
+    Navigator.of(context).pop(); // close the drawer first
+    await Navigator.of(context).push(
+      SlidePageRoute(
+        reducedMotion: animationsDisabled(context),
+        builder: (_) => CommunityToolScreen(backend: _backend),
+      ),
+    );
+  }
+
   /// Home redesign — the check-in section the Today Summary sheet
   /// hosts. ALL state and commits stay here in _HomeScreenState; the
   /// builder re-reads them on every outbox change (the commit path's
@@ -2505,8 +2595,11 @@ class _HomeScreenState extends State<HomeScreen>
       // Home redesign — the drawer: surface panel ~300dp, modeled
       // on Settings' _menuRow construction. Round 5 (founder,
       // Nov 10, 2026) supersedes the redesign's one-entry rule:
-      // the drawer now holds TWO rows — AI Advocate and Event
-      // Counters — stacked in the identical row style, no divider.
+      // the drawer holds AI Advocate and Event Counters, stacked
+      // in the identical row style, no divider. Added scope #7
+      // (founder, Nov 20, 2026) adds a third row in the same
+      // construction UNDER Event Counters: Community (moved out
+      // of Tools).
       drawer: Drawer(
         backgroundColor: NotelColors.surface,
         width: 300,
@@ -2553,6 +2646,32 @@ class _HomeScreenState extends State<HomeScreen>
                       Expanded(
                         child: Text(
                           'Event Counters',
+                          style: TextStyle(
+                            color: NotelColors.textPrimary,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                      Icon(Icons.chevron_right,
+                          size: 20, color: NotelColors.textSecondary),
+                    ],
+                  ),
+                ),
+              ),
+              InkWell(
+                key: const ValueKey('home_drawer_community'),
+                onTap: () => unawaited(_openCommunityFromDrawer()),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  child: Row(
+                    children: [
+                      Icon(Icons.people,
+                          color: NotelColors.textSecondary, size: 22),
+                      SizedBox(width: 16),
+                      Expanded(
+                        child: Text(
+                          'Community',
                           style: TextStyle(
                             color: NotelColors.textPrimary,
                             fontWeight: FontWeight.w500,
@@ -2741,11 +2860,12 @@ class _HomeScreenState extends State<HomeScreen>
                       width: 62,
                       child: HomeStreakStack(
                         currentStreak: _currentStreak,
-                        bestStreak: _bestStreak,
                         animateCountUps: _countUpsAnimate,
                         onStreakTap: () => unawaited(_openStreakScreen()),
+                        onGemTap: () => unawaited(_openGemsSheet()),
                         crossAxisAlignment: CrossAxisAlignment.center,
                         gemBalance: _gemBalance,
+                        streakTodayComplete: _streakTodayComplete,
                       ),
                     ),
                     Expanded(

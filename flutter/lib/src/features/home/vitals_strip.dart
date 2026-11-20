@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/gem_service.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/features/home/event_counter_rotator.dart';
+import 'package:tabs_lab/src/features/home/streak_flame.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
@@ -187,7 +188,17 @@ class VitalsStrip extends StatelessWidget {
 /// used (height 34, radius 8, surfaceHigh @ 15% fill, white @ 8% border,
 /// glyph 12sp + value 12sp bold), shared by the row and the redesign's
 /// vertical stack so the two never drift.
-Widget streakPill({required String glyph, required Widget value}) {
+///
+/// The leading slot is the [leading] widget (the current-streak
+/// flame, [StreakPillFlame]).
+///
+/// Added scope #5 (Nov 20, 2026, founder direction): the trophy /
+/// best-streak pill is removed from Home entirely — Home shows only
+/// the current streak and the gems. The best/record streak still
+/// lives on the streak screen; its data and computation are
+/// untouched. With the trophy gone, the old text-`glyph` leading
+/// slot had no remaining caller and was removed with it.
+Widget streakPill({required Widget leading, required Widget value}) {
   return Container(
     height: 34,
     decoration: BoxDecoration(
@@ -203,7 +214,7 @@ Widget streakPill({required String glyph, required Widget value}) {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text(glyph, style: const TextStyle(fontSize: 12)),
+        leading,
         const SizedBox(width: 4),
         value,
       ],
@@ -211,26 +222,100 @@ Widget streakPill({required String glyph, required Widget value}) {
   );
 }
 
+/// The current-streak pill's flame (added scope, Nov 19, 2026 —
+/// founder direction: the Home pill carries the streak screen's
+/// flame presentation, not the Unicode 🔥 emoji).
+///
+/// The presentation is [StreakFlame]'s, rendered statically at pill
+/// scale: `Icons.local_fire_department`, lit #FF6A3D when today is
+/// complete; while today is incomplete, StreakFlame's grey
+/// treatment verbatim — icon #8E97B8 under its desaturation matrix
+/// at 45% opacity. [lit] is the streak screen's todayDone rule
+/// (today counted in the SETTLED streak state), derived by the
+/// caller from the same settled state that feeds the pill counts —
+/// never a parallel read, and never lit on a guess.
+///
+/// StreakFlame itself is not reused here: its lit branch runs a
+/// perpetual 1600ms flicker controller, and this pill is an
+/// always-visible Home surface — a perpetual ticker there keeps
+/// repaint boundaries dirty (the capture harnesses freeze tickers
+/// for exactly this) and adds motion beyond the directed glyph
+/// swap. No second animation is hand-rolled either: the pill flame
+/// is static in both states.
+///
+/// Icon size 15 matches the replaced emoji glyph's measured
+/// footprint (the 12sp emoji text measured 15.2 wide in the test
+/// harness with Roboto + Noto Color Emoji loaded). 16 was tried
+/// first and overflowed the pill by 0.500px inside Home's
+/// founder-fixed 62dp corner slot (the baseline pill fit with
+/// under 0.5px of headroom) — the slot geometry does not move
+/// for this swap, so the icon sits 0.2dp under the emoji's
+/// measured width instead.
+class StreakPillFlame extends StatelessWidget {
+  final bool lit;
+
+  const StreakPillFlame({super.key, required this.lit});
+
+  /// StreakFlame's lit color.
+  static const Color litColor = Color(0xFFFF6A3D);
+
+  /// StreakFlame's unlit icon color (before desaturation).
+  static const Color unlitColor = Color(0xFF8E97B8);
+
+  /// StreakFlame's unlit opacity.
+  static const double unlitOpacity = 0.45;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = Icon(
+      Icons.local_fire_department,
+      size: 15,
+      color: lit ? litColor : unlitColor,
+    );
+    if (lit) return icon;
+    // Grey state: StreakFlame's desaturation matrix + opacity,
+    // verbatim from streak_flame.dart.
+    return Opacity(
+      opacity: unlitOpacity,
+      child: ColorFiltered(
+        colorFilter: const ColorFilter.matrix(<double>[
+          0.2126, 0.7152, 0.0722, 0, 0,
+          0.2126, 0.7152, 0.0722, 0, 0,
+          0.2126, 0.7152, 0.0722, 0, 0,
+          0, 0, 0, 1, 0,
+        ]),
+        child: icon,
+      ),
+    );
+  }
+}
+
 /// The gem pill's count color (founder-approved mock, Nov 19,
 /// 2026): lavender, following the streak pills' per-pill accent
-/// pattern (gold for the trophy, orange for the flame).
+/// pattern (orange for the flame).
 const Color kGemCountColor = Color(0xFFB9AFFF);
 
 /// The Home gem pill (gems feature, Nov 19, 2026): directly under
-/// the two streak pills, same pill construction as [streakPill]
+/// the current-streak pill, same pill construction as [streakPill]
 /// (height 34, radius 8, same fill/border/padding), founder-
 /// approved gem icon v1 + the SERVER balance in lavender, plain
 /// digits (no thousands separator). The pill hugs its content, so
 /// it widens as the count grows. Its semantics label is Juno §1
 /// (`{count} gems` / `1 gem`) via [GemCopy.pillLabel].
+///
+/// Added scope #6 (Nov 20, 2026): the pill is TAPPABLE — [onTap]
+/// opens the Gems sheet. The tap target is the pill itself only;
+/// its geometry and content are unchanged (the wrapper adds no
+/// size). Null [onTap] keeps the pill inert, as before.
 class HomeGemPill extends StatelessWidget {
   final int gemBalance;
+  final VoidCallback? onTap;
 
-  const HomeGemPill({super.key, required this.gemBalance});
+  const HomeGemPill({super.key, required this.gemBalance, this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
+    final pill = Semantics(
       container: true,
       label: GemCopy.pillLabel(gemBalance),
       child: ExcludeSemantics(
@@ -271,24 +356,53 @@ class HomeGemPill extends StatelessWidget {
         ),
       ),
     );
+    if (onTap == null) return pill;
+    return GestureDetector(
+      key: const Key('homeGemPillTap'),
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: pill,
+    );
   }
 }
 
-/// Home redesign — the streak pills as a vertical stack for the corner
-/// band: 🏆 BEST on TOP, 🔥 CURRENT under it (tweak 5), 8dp gap, hug
-/// content width, left aligned. The pair is ONE combined tap target,
-/// exactly as in [HomeStreakRow]; null values render `--` via CountUp.
+/// Home redesign — the streak pill as a vertical stack for the corner
+/// band: flame CURRENT on top (tweak 5), 8dp gaps, hug content width,
+/// left aligned; null values render `--` via CountUp.
+///
+/// Added scope #5 (Nov 20, 2026, founder direction): the 🏆
+/// best-streak pill no longer renders here — the stack is exactly
+/// the current-streak pill plus, when a balance has landed, the gem
+/// pill. The best/record streak is still computed and still shown
+/// on the streak screen.
 ///
 /// Gems (Nov 19, 2026): when [gemBalance] is non-null (a server
 /// balance has landed), the gem pill renders DIRECTLY UNDER the
-/// two streak pills in the same stack and the same tap target.
-/// Null keeps the pre-gems stack exactly — no pill is rendered on
-/// a guess.
+/// current-streak pill in the same stack. Null keeps the pre-gems
+/// stack exactly — no pill is rendered on a guess.
+///
+/// Added scope #6 (Nov 20, 2026): the two pills are now SEPARATE
+/// tap targets — the streak pill keeps [onStreakTap] (the streak
+/// screen), and the gem pill carries [onGemTap] (the Gems sheet).
+/// Before this scope the stack was one combined tap target; the
+/// split changes no geometry (stack height stays 34 + 8 + 34 when
+/// the gem pill renders).
 class HomeStreakStack extends StatelessWidget {
   final int? currentStreak;
-  final int? bestStreak;
   final bool animateCountUps;
   final VoidCallback? onStreakTap;
+
+  /// Added scope #6 — tap on the gem pill (opens the Gems sheet).
+  /// Null leaves the gem pill inert.
+  final VoidCallback? onGemTap;
+
+  /// Whether today is complete per the SETTLED streak state — the
+  /// streak screen's todayDone rule (today counted in the settled
+  /// state's countedDays). Home derives this from the same settled
+  /// state that writes [currentStreak]; false until a
+  /// settled state lands, so the pill flame is grey, never lit on a
+  /// guess. Drives [StreakPillFlame].
+  final bool streakTodayComplete;
 
   /// The server gem balance for the gem pill under the streak
   /// pills; null hides the pill (no server value yet).
@@ -304,38 +418,26 @@ class HomeStreakStack extends StatelessWidget {
   const HomeStreakStack({
     super.key,
     this.currentStreak,
-    this.bestStreak,
     this.animateCountUps = true,
     this.onStreakTap,
+    this.onGemTap,
     this.crossAxisAlignment = CrossAxisAlignment.start,
     this.gemBalance,
+    this.streakTodayComplete = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      key: const Key('homeStreakPills'),
-      behavior: HitTestBehavior.opaque,
-      onTap: onStreakTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: crossAxisAlignment,
-        children: [
-          streakPill(
-            glyph: '🏆',
-            value: CountUp(
-              value: bestStreak,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: NotelColors.streakGold,
-              ),
-              animate: animateCountUps,
-            ),
-          ),
-          const SizedBox(height: 8),
-          streakPill(
-            glyph: '🔥',
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: crossAxisAlignment,
+      children: [
+        GestureDetector(
+          key: const Key('homeStreakPills'),
+          behavior: HitTestBehavior.opaque,
+          onTap: onStreakTap,
+          child: streakPill(
+            leading: StreakPillFlame(lit: streakTodayComplete),
             value: CountUp(
               value: currentStreak,
               style: const TextStyle(
@@ -346,12 +448,12 @@ class HomeStreakStack extends StatelessWidget {
               animate: animateCountUps,
             ),
           ),
-          if (gemBalance != null) ...[
-            const SizedBox(height: 8),
-            HomeGemPill(gemBalance: gemBalance!),
-          ],
+        ),
+        if (gemBalance != null) ...[
+          const SizedBox(height: 8),
+          HomeGemPill(gemBalance: gemBalance!, onTap: onGemTap),
         ],
-      ),
+      ],
     );
   }
 }
@@ -359,10 +461,15 @@ class HomeStreakStack extends StatelessWidget {
 /// Round 7 — the streak boxes + event-counter row (native `TodayScreen.kt`
 /// "Compact Streak Boxes & Rotating Event Counters Row").
 ///
-/// Left: current-streak pill (🔥) and best-streak pill (🏆). Right: the
-/// rotating event-counter slot ("Until X … N Days").
+/// Left: current-streak pill (flame). Right:
+/// the rotating event-counter slot ("Until X … N Days").
 ///
-/// Round 13 — [currentStreak]/[bestStreak] carry the real streaks from the
+/// Added scope #5 (Nov 20, 2026, founder direction): the 🏆
+/// best-streak pill no longer renders here either — the row carries
+/// only the current streak. The best/record streak is still
+/// computed and still shown on the streak screen.
+///
+/// Round 13 — [currentStreak] carries the real streak from the
 /// backend sync pull; null renders "--".
 ///
 /// Round 34 — [counters] carries the real ACTIVE event counters
@@ -375,7 +482,6 @@ class HomeStreakStack extends StatelessWidget {
 /// founder's round-34 spec rules out an empty placeholder here).
 class HomeStreakRow extends StatelessWidget {
   final int? currentStreak;
-  final int? bestStreak;
 
   /// Round 15c — false on later home views the same day (the once-per-day
   /// count-up gate already fired): numbers render instantly.
@@ -389,19 +495,37 @@ class HomeStreakRow extends StatelessWidget {
   final VoidCallback? onCountersTap;
 
   /// Lab (streak screen package, Nov 4, 2026) — tap on the streak
-  /// pills (opens the Streak detail screen). Null disables the tap.
-  /// The pills' visuals are unchanged; the two pills together form
-  /// one tap target.
+  /// pill (opens the Streak detail screen). Null disables the tap.
+  /// The pill's visuals are unchanged; it is the tap target.
   final VoidCallback? onStreakTap;
+
+  /// Whether today is complete per the SETTLED streak state (the
+  /// streak screen's todayDone rule) — same source and default as
+  /// [HomeStreakStack.streakTodayComplete]. Drives the
+  /// current-streak pill's [StreakPillFlame].
+  final bool streakTodayComplete;
+
+  /// The server gem balance for the gem pill beside the streak
+  /// pill; null hides the pill (no server value yet — the same
+  /// show/hide rule as [HomeStreakStack]). This layout carries no
+  /// production caller today and renders no gem pill unless a
+  /// balance is passed; added scope #6 covers both pill layouts.
+  final int? gemBalance;
+
+  /// Added scope #6 — tap on the gem pill (opens the Gems sheet).
+  /// Null leaves the gem pill inert.
+  final VoidCallback? onGemTap;
 
   const HomeStreakRow(
       {super.key,
       this.currentStreak,
-      this.bestStreak,
       this.animateCountUps = true,
       this.counters = const [],
       this.onCountersTap,
-      this.onStreakTap});
+      this.onStreakTap,
+      this.gemBalance,
+      this.onGemTap,
+      this.streakTodayComplete = false});
 
   @override
   Widget build(BuildContext context) {
@@ -411,18 +535,18 @@ class HomeStreakRow extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Left: streak pills. Lab (streak screen package) — the
-          // pair is one tap target for the Streak detail screen
-          // when [onStreakTap] is provided; visuals unchanged.
-          GestureDetector(
-            key: const Key('homeStreakPills'),
-            behavior: HitTestBehavior.opaque,
-            onTap: onStreakTap,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _streakPill(
-                  glyph: '🔥',
+          // Left: the current-streak pill. Lab (streak screen
+          // package) — it is the tap target for the Streak detail
+          // screen when [onStreakTap] is provided; visuals unchanged.
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                key: const Key('homeStreakPills'),
+                behavior: HitTestBehavior.opaque,
+                onTap: onStreakTap,
+                child: _streakPill(
+                  leading: StreakPillFlame(lit: streakTodayComplete),
                   // Round 14 — counts up to the real streak on load.
                   value: CountUp(
                     value: currentStreak,
@@ -434,21 +558,16 @@ class HomeStreakRow extends StatelessWidget {
                     animate: animateCountUps,
                   ),
                 ),
+              ),
+              // Added scope #6 — the gem pill, when a server
+              // balance has landed, beside the streak pill with its
+              // OWN tap target (the Gems sheet), separate from the
+              // streak pill's.
+              if (gemBalance != null) ...[
                 const SizedBox(width: 8),
-                _streakPill(
-                  glyph: '🏆',
-                  value: CountUp(
-                    value: bestStreak,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: NotelColors.streakGold,
-                    ),
-                    animate: animateCountUps,
-                  ),
-                ),
+                HomeGemPill(gemBalance: gemBalance!, onTap: onGemTap),
               ],
-            ),
+            ],
           ),
           // Right: event-counter slot (round 34) — the native rotating
           // pager. Zero active counters render NOTHING here (the row
@@ -469,8 +588,8 @@ class HomeStreakRow extends StatelessWidget {
   }
 
   Widget _streakPill({
-    required String glyph,
+    required Widget leading,
     required Widget value,
   }) =>
-      streakPill(glyph: glyph, value: value);
+      streakPill(leading: leading, value: value);
 }

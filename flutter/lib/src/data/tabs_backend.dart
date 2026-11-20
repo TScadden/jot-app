@@ -2444,12 +2444,23 @@ class FriendDto {
   final String status;
   final int level;
 
+  /// Community revamp (Option A, Nov 19, 2026): GAME stats from
+  /// `GET /api/friends/list` — the server change is additive
+  /// (`gemBalance` / `currentStreak` aliases on the joined profile
+  /// row), so both default to 0 when the deployed server does not
+  /// send them yet. Streak and gems are visible to confirmed
+  /// friends; they are NOT gated by the health-data sharing opt-in.
+  final int gemBalance;
+  final int currentStreak;
+
   const FriendDto({
     required this.id,
     required this.nickname,
     required this.tag,
     required this.status,
     required this.level,
+    this.gemBalance = 0,
+    this.currentStreak = 0,
   });
 
   factory FriendDto.fromJson(Map<String, dynamic> json) {
@@ -2460,6 +2471,22 @@ class FriendDto {
       status: '${json['status'] ?? ''}',
       // Tolerant: server numbers may arrive as strings.
       level: TabsBackend._asInt(json['level']) ?? 0,
+      gemBalance:
+          TabsBackend._asInt(json['gemBalance'] ?? json['gem_balance']) ??
+              0,
+      currentStreak: TabsBackend._asInt(json['currentStreak']) ?? 0,
+    );
+  }
+
+  FriendDto copyWith({int? gemBalance, int? currentStreak, int? level}) {
+    return FriendDto(
+      id: id,
+      nickname: nickname,
+      tag: tag,
+      status: status,
+      level: level ?? this.level,
+      gemBalance: gemBalance ?? this.gemBalance,
+      currentStreak: currentStreak ?? this.currentStreak,
     );
   }
 }
@@ -2537,6 +2564,14 @@ class FriendDetail {
   final int? todaySpikes;
   final int? todaySleepDebt;
 
+  /// Community revamp (Option A, Nov 19, 2026): GAME stats, shown
+  /// to confirmed friends even when [sharingEnabled] is false —
+  /// only the health stats above sit behind the sharing gate.
+  /// Non-nullable with an honest 0 default: 0 streak / 0 gems are
+  /// real values, unlike the nullable health stats' "·" rendering.
+  final int gemBalance;
+  final int currentStreak;
+
   const FriendDetail({
     required this.friendId,
     required this.nickname,
@@ -2547,6 +2582,8 @@ class FriendDetail {
     this.todayScore,
     this.todaySpikes,
     this.todaySleepDebt,
+    this.gemBalance = 0,
+    this.currentStreak = 0,
   });
 
   /// Parses the `data` object of a `FriendDetailResponse`. Null when
@@ -2564,6 +2601,10 @@ class FriendDetail {
         todayScore: TabsBackend._asInt(raw['todayScore']),
         todaySpikes: TabsBackend._asInt(raw['todaySpikes']),
         todaySleepDebt: TabsBackend._asInt(raw['todaySleepDebt']),
+        gemBalance:
+            TabsBackend._asInt(raw['gemBalance'] ?? raw['gem_balance']) ??
+                0,
+        currentStreak: TabsBackend._asInt(raw['currentStreak']) ?? 0,
       );
     } catch (_) {
       return null;

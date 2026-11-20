@@ -21,12 +21,12 @@ class SplashScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       // VC 100116 follow-up: the hard-coded 0xFF080E1A is tokenized
       // to NotelColors.background (the token's ported black-glass
       // value now governs the splash like every other surface).
       backgroundColor: NotelColors.background,
-      body: Center(
+      body: const Center(
         child: _SplashContent(),
       ),
     );

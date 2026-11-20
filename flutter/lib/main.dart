@@ -52,6 +52,7 @@ import 'package:tabs_lab/src/features/onboarding/post_onboarding_notification_ca
 import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
 import 'package:tabs_lab/src/features/splash/splash_screen.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
+import 'package:tabs_lab/src/theme/app_background.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/notel_theme.dart';
 import 'package:sentry_flutter/sentry_flutter.dart'
@@ -123,6 +124,18 @@ Future<void> _bootstrap() async {
     LogEntryOutbox.instance.warmFromDisk(currentEmail: sessionEmail),
   ]);
   LaunchTrace.instance.mark(LaunchTrace.cachesWarmed);
+  // Dev-only app background override (Nov 19, 2026): load the
+  // persisted device-local hex into the background token BEFORE
+  // the first frame, so a device a dev re-skinned starts on the
+  // chosen color with no flash of the default. Local prefs only
+  // (SettingsStore) — never synced. Never throws: an unreadable
+  // store resolves to the shipped default.
+  try {
+    await AppBackgroundController.instance.load();
+  } catch (_) {
+    // Keep the default already in the token; the app must start
+    // identically without the override.
+  }
   // V-1 correction — the ONE app-level notification bootstrap:
   // plugin.initialize for the foreground isolate happens here,
   // once, with the dispatching response callback (score payloads
@@ -170,18 +183,27 @@ class TabsLabApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Tabs Lab',
-      debugShowCheckedModeBanner: false,
-      // Round 22 — the app's first theme carried only the slide
-      // pageTransitionsTheme (navigation flash fix) and the scaffold
-      // background backstop. Round 28 — notelDarkTheme() (see
-      // notel_theme.dart) keeps both and adds the full dark
-      // ColorScheme + stock-surface sub-themes from the Notel
-      // palette, so built-in Material surfaces (date picker, dialogs,
-      // menus, snackbars) render dark instead of falling back to the
-      // default light theme. Screen colors stay per-widget literals.
-      theme: notelDarkTheme(),
+    // Dev-only background override (Nov 19, 2026): the app rebuilds
+    // its theme when AppBackgroundController notifies, so a change
+    // in the Developer Terminal re-skins the base background
+    // app-wide immediately, with no restart. With no override the
+    // controller's color IS the shipped default and the theme is
+    // byte-identical to before.
+    return ListenableBuilder(
+      listenable: AppBackgroundController.instance,
+      builder: (context, _) => MaterialApp(
+        title: 'Tabs Lab',
+        debugShowCheckedModeBanner: false,
+        // Round 22 — the app's first theme carried only the slide
+        // pageTransitionsTheme (navigation flash fix) and the scaffold
+        // background backstop. Round 28 — notelDarkTheme() (see
+        // notel_theme.dart) keeps both and adds the full dark
+        // ColorScheme + stock-surface sub-themes from the Notel
+        // palette, so built-in Material surfaces (date picker, dialogs,
+        // menus, snackbars) render dark instead of falling back to the
+        // default light theme. Screen colors stay per-widget literals.
+        theme: notelDarkTheme(
+            background: AppBackgroundController.instance.color),
       // The root presenter's presentation channel (see
       // reportPresentationNavigatorKey): its dialogs must land
       // on THIS navigator.
@@ -196,7 +218,8 @@ class TabsLabApp extends StatelessWidget {
         service: ReportGenerationService.instance,
         child: child ?? const SizedBox.shrink(),
       ),
-      home: const AppFlow(),
+        home: const AppFlow(),
+      ),
     );
   }
 }
@@ -1675,9 +1698,9 @@ class _AppFlowState extends State<AppFlow>
           // (see _resolveLoginRoute). A plain loading screen, on
           // purpose: the login form is unmounted so nothing on it
           // (back, a second submit) can race the routing decision.
-          const Scaffold(
+          Scaffold(
             backgroundColor: NotelColors.background,
-            body: Center(
+            body: const Center(
               child: CircularProgressIndicator(color: NotelColors.primary),
             ),
           )

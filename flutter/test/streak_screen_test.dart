@@ -166,7 +166,6 @@ void main() {
         home: Scaffold(
           body: HomeStreakRow(
             currentStreak: 7,
-            bestStreak: 8,
             animateCountUps: false,
             onStreakTap: () => taps++,
           ),
@@ -208,7 +207,6 @@ void main() {
           body: Builder(
             builder: (context) => HomeStreakRow(
               currentStreak: 6,
-              bestStreak: 12,
               animateCountUps: false,
               onStreakTap: () =>
                   StreakScreen.openWith(context, state: settled),
