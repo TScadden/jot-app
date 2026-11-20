@@ -1,5 +1,3 @@
-import 'package:tabs_lab/src/data/streak_engine.dart';
-
 /// The badge engine (BADGES package, Nov 20, 2026) — pure logic:
 /// the 12 metrics × 15 rungs of `~/workspace/badge-design/
 /// BADGE-LADDER.md` (the spec of record), the metric derivations
@@ -30,6 +28,8 @@ import 'package:tabs_lab/src/data/streak_engine.dart';
 /// the same rule every existing reader applies); the derivations
 /// here additionally ignore any non-positive value they are given.
 library;
+
+import 'package:tabs_lab/src/data/streak_engine.dart';
 
 /// The five metals, low to high (index = rungIndex ~/ 3).
 enum BadgeMetal { bronze, silver, gold, platinum, diamond }
