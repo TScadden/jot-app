@@ -246,9 +246,12 @@ void main() {
 
       // The fresh vitals landed…
       expect(find.text('75'), findsOneWidget);
-      // …but the failed streak pull did not blank the pills.
+      // …but the failed streak pull did not blank the pill.
       expect(find.text('12'), findsOneWidget);
-      expect(find.text('30'), findsOneWidget);
+      // Scope #5 (Nov 20, 2026): the best streak (30) no longer
+      // renders on Home — the trophy pill is gone. It survives in
+      // memory and on disk (asserted below), not on screen.
+      expect(find.text('30'), findsNothing);
 
       final s = cache.snapshot;
       expect(s.streakLoaded, isTrue);

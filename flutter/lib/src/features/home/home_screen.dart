@@ -2766,7 +2766,6 @@ class _HomeScreenState extends State<HomeScreen>
                       width: 62,
                       child: HomeStreakStack(
                         currentStreak: _currentStreak,
-                        bestStreak: _bestStreak,
                         animateCountUps: _countUpsAnimate,
                         onStreakTap: () => unawaited(_openStreakScreen()),
                         crossAxisAlignment: CrossAxisAlignment.center,

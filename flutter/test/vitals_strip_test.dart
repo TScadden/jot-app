@@ -80,22 +80,24 @@ void main() {
   });
 
   group('HomeStreakRow', () {
-    testWidgets('renders both streak pills', (tester) async {
+    testWidgets('renders only the current-streak pill', (tester) async {
       await _pumpStreakRow(tester);
       // Added scope (Nov 19, 2026): the current pill's flame is
-      // the streak screen's icon, never the 🔥 emoji text; the
-      // best pill keeps its trophy glyph.
+      // the streak screen's icon, never the 🔥 emoji text.
+      // Added scope #5 (Nov 20, 2026): the 🏆 best-streak pill is
+      // removed from Home — the row carries the current streak only.
       expect(find.text('🔥'), findsNothing);
       expect(find.byIcon(Icons.local_fire_department), findsOneWidget);
-      expect(find.text('🏆'), findsOneWidget);
+      expect(find.text('🏆'), findsNothing);
     });
 
     testWidgets('unwired streaks show "--", never invented numbers',
         (tester) async {
       await _pumpStreakRow(tester);
-      // Two streak pills. Round 34: with zero active counters the
+      // One streak pill (the current streak; scope #5 removed the
+      // best-streak pill). Round 34: with zero active counters the
       // counter slot renders NOTHING (no placeholder label/count).
-      expect(find.text('--'), findsNWidgets(2));
+      expect(find.text('--'), findsNWidgets(1));
       expect(find.text('Days'), findsNothing);
     });
   });
@@ -166,7 +168,6 @@ void main() {
             backgroundColor: NotelColors.background,
             body: HomeStreakStack(
               currentStreak: 18,
-              bestStreak: 68,
               animateCountUps: false,
               streakTodayComplete: lit,
             ),
@@ -183,7 +184,6 @@ void main() {
             backgroundColor: NotelColors.background,
             body: HomeStreakRow(
               currentStreak: 18,
-              bestStreak: 68,
               animateCountUps: false,
               streakTodayComplete: lit,
             ),
@@ -196,33 +196,127 @@ void main() {
     testWidgets('stack: lit flame when today is complete', (tester) async {
       await pumpStack(tester, lit: true);
       expectLit(tester, find.byType(HomeStreakStack));
-      // The trophy pill is untouched by the swap.
-      expect(find.text('🏆'), findsOneWidget);
+      // Scope #5 (Nov 20, 2026): no trophy pill in the stack.
+      expect(find.text('🏆'), findsNothing);
     });
 
     testWidgets('stack: grey flame while today is incomplete',
         (tester) async {
       await pumpStack(tester, lit: false);
       expectUnlit(tester, find.byType(HomeStreakStack));
-      expect(find.text('🏆'), findsOneWidget);
+      expect(find.text('🏆'), findsNothing);
     });
 
     testWidgets('row: lit flame when today is complete', (tester) async {
       await pumpRow(tester, lit: true);
       expectLit(tester, find.byType(HomeStreakRow));
-      expect(find.text('🏆'), findsOneWidget);
+      expect(find.text('🏆'), findsNothing);
     });
 
     testWidgets('row: grey flame while today is incomplete', (tester) async {
       await pumpRow(tester, lit: false);
       expectUnlit(tester, find.byType(HomeStreakRow));
-      expect(find.text('🏆'), findsOneWidget);
+      expect(find.text('🏆'), findsNothing);
     });
 
     testWidgets('default (no settled state passed) renders the grey flame',
         (tester) async {
       await _pumpStreakRow(tester);
       expectUnlit(tester, find.byType(HomeStreakRow));
+    });
+  });
+
+  group('Home pill stack — trophy removed (added scope #5, Nov 20, 2026)',
+      () {
+    // Founder direction: Home shows only what the streak is NOW
+    // and the gems. The stack is exactly two pills — flame +
+    // current streak, gem + balance — with NO trophy / best-streak
+    // pill anywhere in the subtree, and no orphaned gap where the
+    // trophy pill was (stack height = pill 34 + gap 8 + pill 34).
+    testWidgets(
+        'stack renders flame pill + gem pill and NO trophy/best pill',
+        (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            backgroundColor: NotelColors.background,
+            body: HomeStreakStack(
+              currentStreak: 18,
+              animateCountUps: false,
+              streakTodayComplete: true,
+              gemBalance: 500,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final stack = find.byType(HomeStreakStack);
+      // No trophy icon / best-streak pill in the stack subtree.
+      expect(
+        find.descendant(of: stack, matching: find.text('🏆')),
+        findsNothing,
+      );
+      // The flame pill renders with the current-streak value.
+      expect(
+        find.descendant(
+          of: stack,
+          matching: find.byIcon(Icons.local_fire_department),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: stack, matching: find.text('18')),
+        findsOneWidget,
+      );
+      // The gem pill renders with the balance.
+      expect(
+        find.descendant(
+          of: stack,
+          matching: find.byKey(const Key('homeGemPill')),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: stack, matching: find.text('500')),
+        findsOneWidget,
+      );
+      // Exactly two pills, closed up: 34 + 8 + 34, no trophy gap.
+      expect(tester.getSize(stack).height, 76);
+    });
+
+    testWidgets('row renders the flame pill and NO trophy/best pill',
+        (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            backgroundColor: NotelColors.background,
+            body: HomeStreakRow(
+              currentStreak: 18,
+              animateCountUps: false,
+              streakTodayComplete: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final row = find.byType(HomeStreakRow);
+      expect(
+        find.descendant(of: row, matching: find.text('🏆')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.byIcon(Icons.local_fire_department),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: row, matching: find.text('18')),
+        findsOneWidget,
+      );
     });
   });
 

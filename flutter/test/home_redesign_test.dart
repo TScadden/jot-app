@@ -558,9 +558,11 @@ void main() {
             tester.getRect(find.byKey(const ValueKey('vitalsStripCompact')));
         final face = tester.getRect(find.byType(DailyScoreFace));
 
-        // The streak stack's axis: the two pills are equal-width
-        // house pills sharing one center axis (the stack centers
-        // them in its 62dp slot).
+        // The streak stack's axis: the stack's one house pill
+        // (scope #5, Nov 20, 2026: the trophy pill is gone; no gem
+        // balance in this harness, so the current-streak pill is
+        // the only pill) sits on the stack's center axis (the stack
+        // centers it in its 62dp slot).
         final stack = find.byType(HomeStreakStack);
         final pillContainers = find.descendant(
           of: stack,
@@ -575,8 +577,7 @@ void main() {
                 0.6)
               tester.getRect(pillContainers.at(i)),
         ];
-        expect(pillRects, hasLength(2));
-        expect(pillRects[0].center.dx, closeTo(pillRects[1].center.dx, 1.0));
+        expect(pillRects, hasLength(1));
 
         // Ruling A: shared center axes within ~1dp.
         expect(pillRects[0].center.dx, closeTo(drawer.center.dx, 1.0),
@@ -599,8 +600,9 @@ void main() {
   });
 
   group('corner band', () {
-    testWidgets('streak stack: BEST (🏆 68) sits above CURRENT (flame 18)',
-        (tester) async {
+    testWidgets(
+        'streak stack: CURRENT (flame 18) only — no trophy/best pill '
+        '(scope #5)', (tester) async {
       await _pumpHome(
         tester,
         physicalSize: const Size(1080, 2400),
@@ -609,8 +611,16 @@ void main() {
 
       final stack = find.byType(HomeStreakStack);
       expect(stack, findsOneWidget);
-      final trophy = tester.getRect(find.descendant(
-          of: stack, matching: find.text('🏆')));
+      // Scope #5 (Nov 20, 2026, founder direction): the 🏆
+      // best-streak pill is removed from Home. The best value (68
+      // in this harness's profile) no longer renders in the stack
+      // at all — the record lives on the streak screen.
+      expect(
+          find.descendant(of: stack, matching: find.text('🏆')),
+          findsNothing);
+      expect(
+          find.descendant(of: stack, matching: find.text('68')),
+          findsNothing);
       // Added scope (Nov 19, 2026): CURRENT's flame is the streak
       // icon, not the 🔥 emoji text.
       expect(
@@ -618,16 +628,11 @@ void main() {
           findsNothing);
       final flame = tester.getRect(find.descendant(
           of: stack, matching: find.byIcon(Icons.local_fire_department)));
-      expect(trophy.top, lessThan(flame.top));
-      // Values ride their own pills: 68 beside the trophy,
-      // 18 beside the flame (same row band, ± a few dp).
-      final best = tester.getRect(
-          find.descendant(of: stack, matching: find.text('68')));
+      // The current value rides its pill: 18 beside the flame
+      // (same row band, ± a few dp).
       final current = tester.getRect(
           find.descendant(of: stack, matching: find.text('18')));
-      expect(best.center.dy, closeTo(trophy.center.dy, 6));
       expect(current.center.dy, closeTo(flame.center.dy, 6));
-      expect(best.top, lessThan(current.top));
     });
   });
 

@@ -71,7 +71,6 @@ void main() {
             body: Center(
               child: HomeStreakStack(
                 currentStreak: 7,
-                bestStreak: 30,
                 animateCountUps: false,
                 gemBalance: gems,
               ),

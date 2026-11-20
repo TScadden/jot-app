@@ -174,7 +174,6 @@ void main() {
                   width: 200,
                   child: HomeStreakStack(
                     currentStreak: 18,
-                    bestStreak: 68,
                     animateCountUps: false,
                     crossAxisAlignment: CrossAxisAlignment.center,
                     gemBalance: 1000,
