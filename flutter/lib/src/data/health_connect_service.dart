@@ -30,6 +30,7 @@ class HealthConnectService {
   static const Set<String> requiredPermissions = {
     'android.permission.health.READ_HEART_RATE',
     'android.permission.health.READ_SLEEP',
+    'android.permission.health.READ_EXERCISE',
     'android.permission.health.READ_STEPS',
     'android.permission.health.READ_ACTIVE_CALORIES_BURNED',
     'android.permission.health.READ_TOTAL_CALORIES_BURNED',
@@ -52,6 +53,7 @@ class HealthConnectService {
   static const Map<String, String> permissionLabels = {
     'android.permission.health.READ_HEART_RATE': 'Heart rate',
     'android.permission.health.READ_SLEEP': 'Sleep',
+    'android.permission.health.READ_EXERCISE': 'Exercise',
     'android.permission.health.READ_STEPS': 'Steps',
     'android.permission.health.READ_ACTIVE_CALORIES_BURNED':
         'Active calories burned',
@@ -574,6 +576,8 @@ class HealthConnectService {
   static final Object _hrvOutcomeZoneKey = Object();
   static final Object _caloriesOutcomeZoneKey = Object();
   static final Object _spikesOutcomeZoneKey = Object();
+  static final Object _stepsOutcomeZoneKey = Object();
+  static final Object _totalCaloriesOutcomeZoneKey = Object();
 
   /// VC 100133 (Phase 5 follow-up) — the gate serializing
   /// UNPROVEN reads in [_outcomeOf] (see there). Chained-future
@@ -903,6 +907,89 @@ class HealthConnectService {
     }
   }
 
+  /// Per-day step totals `[{date: "YYYY-MM-DD", count}]` over the
+  /// last [days] days (bridge aggregate read; BADGES package).
+  /// Raw values pass through — callers apply the founder zero
+  /// rule. Empty when unreadable.
+  Future<List<({String date, int count})>> readStepsHistory(
+      int days) async =>
+      (await readStepsHistoryWithOutcome(days)).value;
+
+  /// Outcome-carrying variant of [readStepsHistory].
+  Future<HcReadOutcome<List<({String date, int count})>>>
+      readStepsHistoryWithOutcome(int days) => _outcomeOf(
+            _stepsOutcomeZoneKey,
+            () => readStepsHistory(days),
+            () => _readStepsHistoryCore(days),
+          );
+
+  Future<HcReadOutcome<List<({String date, int count})>>>
+      _readStepsHistoryCore(int days) async {
+    try {
+      final raw = await _channel
+          .invokeMethod<List>('readStepsHistory', {'days': days});
+      final out = <({String date, int count})>[];
+      for (final item in raw ?? const []) {
+        if (item is Map) {
+          final d = item['date'];
+          final v = item['count'];
+          if (d is String && v is num) out.add((date: d, count: v.toInt()));
+        }
+      }
+      return HcReadOutcome(value: out);
+    } on PlatformException catch (e) {
+      _notePlatformError(e);
+      return HcReadOutcome(
+          value: const [], errorCode: e.code, errorDetails: _detailsOf(e));
+    } on MissingPluginException {
+      _noteReadError('NO_CHANNEL');
+      return HcReadOutcome(value: const [], errorCode: 'NO_CHANNEL');
+    }
+  }
+
+  /// Per-day TOTAL calories `[{date: "YYYY-MM-DD", kcal}]` over
+  /// the last [days] days — the TotalCaloriesBurnedRecord energy
+  /// total ONLY (resting + active), NOT the active-preferred
+  /// figure [readCaloriesHistory] returns (BADGES package: the
+  /// Monthly calories ladder is calibrated on totals, per the
+  /// spec of record). Raw values pass through — callers apply
+  /// the founder zero rule. Empty when unreadable.
+  Future<List<({String date, int kcal})>> readTotalCaloriesHistory(
+      int days) async =>
+      (await readTotalCaloriesHistoryWithOutcome(days)).value;
+
+  /// Outcome-carrying variant of [readTotalCaloriesHistory].
+  Future<HcReadOutcome<List<({String date, int kcal})>>>
+      readTotalCaloriesHistoryWithOutcome(int days) => _outcomeOf(
+            _totalCaloriesOutcomeZoneKey,
+            () => readTotalCaloriesHistory(days),
+            () => _readTotalCaloriesHistoryCore(days),
+          );
+
+  Future<HcReadOutcome<List<({String date, int kcal})>>>
+      _readTotalCaloriesHistoryCore(int days) async {
+    try {
+      final raw = await _channel.invokeMethod<List>(
+          'readTotalCaloriesHistory', {'days': days});
+      final out = <({String date, int kcal})>[];
+      for (final item in raw ?? const []) {
+        if (item is Map) {
+          final d = item['date'];
+          final v = item['kcal'];
+          if (d is String && v is num) out.add((date: d, kcal: v.toInt()));
+        }
+      }
+      return HcReadOutcome(value: out);
+    } on PlatformException catch (e) {
+      _notePlatformError(e);
+      return HcReadOutcome(
+          value: const [], errorCode: e.code, errorDetails: _detailsOf(e));
+    } on MissingPluginException {
+      _noteReadError('NO_CHANNEL');
+      return HcReadOutcome(value: const [], errorCode: 'NO_CHANNEL');
+    }
+  }
+
   /// Blood pressure records `[{t, sys, dia}]` over `[now - days, now)`,
   /// sorted desc. Empty when unreadable.
   Future<List<BpRecord>> readBloodPressure(int days) async {
@@ -1129,6 +1216,86 @@ class HealthConnectService {
     } on MissingPluginException {
       _noteReadError('NO_CHANNEL');
       return HcReadOutcome(value: const [], errorCode: 'NO_CHANNEL');
+    }
+  }
+
+  /// Raw sleep sessions over the last [days] days (BADGES
+  /// package): the same `readSleepHistory` bridge payload
+  /// [readSleepHistory] summarizes, kept per-session — each
+  /// session's span plus its genuinely-asleep minutes (the
+  /// session interval minus its merged awake stages, the
+  /// founder's summed-bouts rule computed per session via
+  /// [_asleepPieces]). The badges engine needs session onsets
+  /// (Early to bed), which the per-day totals discard. Fail-closed:
+  /// empty when unreadable; raw values pass through and callers
+  /// apply the founder zero rule.
+  Future<List<({int startMs, int endMs, int asleepMinutes})>>
+      readSleepSessions(int days) async {
+    try {
+      final raw = await _channel
+          .invokeMethod<dynamic>('readSleepHistory', {'days': days});
+      List<dynamic> items = const [];
+      if (raw is List) {
+        items = raw;
+      } else if (raw is Map) {
+        final s = raw['items'];
+        if (s is List) items = s;
+        final partial = raw['partialError'];
+        if (partial is String && partial.isNotEmpty) {
+          lastPartialErrorCode = 'SLEEP_HISTORY_PARTIAL';
+          lastReadErrorDetails = partial;
+        }
+      }
+      final out = <({int startMs, int endMs, int asleepMinutes})>[];
+      for (final item in items) {
+        final session = _parseSleepSession(item);
+        if (session == null) continue;
+        var asleepMs = 0;
+        for (final iv in _mergeSleepIntervals(_asleepPieces(session))) {
+          asleepMs += iv.endMs - iv.startMs;
+        }
+        out.add((
+          startMs: session.startMs,
+          endMs: session.endMs,
+          asleepMinutes: asleepMs ~/ 60000,
+        ));
+      }
+      return out;
+    } on PlatformException catch (e) {
+      _notePlatformError(e);
+      return const [];
+    } on MissingPluginException {
+      _noteReadError('NO_CHANNEL');
+      return const [];
+    }
+  }
+
+  /// Raw exercise sessions `[{startMs, endMs}]` over the last
+  /// [days] days (BADGES package: the Active week metric's
+  /// active/exercise minutes). Fail-closed: empty when
+  /// unreadable.
+  Future<List<({int startMs, int endMs})>> readExerciseSessions(
+      int days) async {
+    try {
+      final raw = await _channel
+          .invokeMethod<List>('readExerciseSessions', {'days': days});
+      final out = <({int startMs, int endMs})>[];
+      for (final item in raw ?? const []) {
+        if (item is Map) {
+          final st = item['startMs'];
+          final en = item['endMs'];
+          if (st is num && en is num) {
+            out.add((startMs: st.toInt(), endMs: en.toInt()));
+          }
+        }
+      }
+      return out;
+    } on PlatformException catch (e) {
+      _notePlatformError(e);
+      return const [];
+    } on MissingPluginException {
+      _noteReadError('NO_CHANNEL');
+      return const [];
     }
   }
 
