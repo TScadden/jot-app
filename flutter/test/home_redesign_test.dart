@@ -22,6 +22,7 @@ import 'package:tabs_lab/src/features/home/daily_score_circle.dart';
 import 'package:tabs_lab/src/features/home/home_checkin_strip.dart';
 import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
+import 'package:tabs_lab/src/features/badges/badges_screen.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
@@ -312,6 +313,19 @@ void main() {
     // Nov 20, 2026) adds a third row UNDER Event Counters:
     // Community, moved out of Tools.
     Future<void> openDrawer(WidgetTester tester) async {
+      // BADGES package (Nov 20, 2026): Home's settlement hook may
+      // have raised the one-time badge unlock dialog over Home —
+      // the seeded history crosses badge rungs, exactly the
+      // production backfill case. Dismiss it (its 'Done' button)
+      // before opening the drawer, as a user would.
+      if (find.byType(BadgeUnlockDialog).evaluate().isNotEmpty) {
+        await tester.tap(find.descendant(
+            of: find.byType(BadgeUnlockDialog),
+            matching: find.text('Done')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pump();
+      }
       await tester.tap(find.byKey(const ValueKey('home_drawer_button')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
@@ -323,12 +337,15 @@ void main() {
       expect(find.byIcon(Icons.timer), findsOneWidget);
       expect(find.text('Community'), findsOneWidget);
       expect(find.byIcon(Icons.people), findsOneWidget);
-      // Exactly three rows: three tappables inside the drawer,
-      // AI Advocate above Event Counters above Community.
+      expect(find.text('Badges'), findsOneWidget);
+      // Exactly four rows: four tappables inside the drawer, AI
+      // Advocate above Event Counters above Community above
+      // Badges (BADGES package, Nov 20, 2026 — founder's final
+      // drawer order).
       expect(
         find.descendant(
             of: find.byType(Drawer), matching: find.byType(InkWell)),
-        findsNWidgets(3),
+        findsNWidgets(4),
       );
       expect(
         tester
@@ -348,6 +365,15 @@ void main() {
         lessThan(tester
             .getTopLeft(
                 find.byKey(const ValueKey('home_drawer_community')))
+            .dy),
+      );
+      expect(
+        tester
+            .getTopLeft(
+                find.byKey(const ValueKey('home_drawer_community')))
+            .dy,
+        lessThan(tester
+            .getTopLeft(find.byKey(const ValueKey('home_drawer_badges')))
             .dy),
       );
     }
