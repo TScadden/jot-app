@@ -482,10 +482,9 @@ class WeeklyReportStore {
             const FlutterSecureStorage().write(key: key, value: value));
 
   WeeklyReportStore.withStorage({
-    required Future<String?> Function(String key) read,
-    required Future<void> Function(String key, String value) write,
-  })  : _read = read,
-        _write = write;
+    required this._read,
+    required this._write,
+  });
 
   factory WeeklyReportStore.inMemory(Map<String, String> mem) =>
       WeeklyReportStore.withStorage(

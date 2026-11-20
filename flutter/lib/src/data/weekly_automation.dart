@@ -162,14 +162,11 @@ class WeeklyAutoOutcome {
 ///   replaces rather than duplicates the entry.
 class WeeklyAutomationCoordinator {
   WeeklyAutomationCoordinator({
-    required Future<WeeklyEntitlement> Function() checkEntitlement,
-    required WeeklyReportStore store,
-    required WeeklyGenerateFn generate,
-    required WeeklyNotifier notifier,
-  })  : _checkEntitlement = checkEntitlement,
-        _store = store,
-        _generate = generate,
-        _notifier = notifier;
+    required this._checkEntitlement,
+    required this._store,
+    required this._generate,
+    required this._notifier,
+  });
 
   final Future<WeeklyEntitlement> Function() _checkEntitlement;
   final WeeklyReportStore _store;

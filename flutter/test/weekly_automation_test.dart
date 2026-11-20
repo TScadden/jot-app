@@ -83,14 +83,11 @@ WeeklyArchiveRecord _record(WeeklyWeekWindow w,
 
 class _Harness {
   _Harness({
-    WeeklyEntitlement entitlement = WeeklyEntitlement.premium,
-    bool entitlementThrows = false,
+    this._entitlement = WeeklyEntitlement.premium,
+    this._entitlementThrows = false,
     ReportSnapshot Function(WeeklyWeekWindow week)? snapshotFor,
-    Completer<void>? generateGate,
-  })  : _entitlement = entitlement,
-        _entitlementThrows = entitlementThrows,
-        _snapshotFor = snapshotFor ?? _goodSnap,
-        _generateGate = generateGate;
+    this._generateGate,
+  })  : _snapshotFor = snapshotFor ?? _goodSnap;
 
   final mem = <String, String>{};
   final sink = _Sink();
