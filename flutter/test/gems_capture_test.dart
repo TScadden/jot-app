@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/gem_service.dart';
 import 'package:tabs_lab/src/data/streak_engine.dart';
 import 'package:tabs_lab/src/data/streak_purchase.dart';
+import 'package:tabs_lab/src/features/home/gems_sheet.dart';
 import 'package:tabs_lab/src/features/home/streak_screen.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
@@ -19,6 +20,12 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///   Juno §4 explainer) at a 35-gem balance.
 /// - home_gem_pill_360: the Home streak stack with the gem pill
 ///   under the two streak pills at a 1000-gem balance (widening).
+/// - streak_no_explainer_360 (added scope #6): the streak screen's
+///   gems area AFTER the explainer moved — buy row present, no
+///   explainer.
+/// - gems_sheet_360 (added scope #6): the Gems sheet open over a
+///   Home stack at a 150-gem balance (title, balance, moved
+///   explainer, enabled buy button).
 ///
 /// Output dir: $GEM_CAPTURE_OUT, default
 /// ~/workspace/build-gems/captures.
@@ -138,16 +145,10 @@ void main() {
     );
     // Let the server balance land in the service, then scroll
     // the section into the built region (the ListView builds it
-    // lazily) and anchor the frame on the section top so the
-    // whole gem section + explainer is in frame.
+    // lazily) and anchor the frame on the section top.
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('gemExplainerLine4')),
-      120,
-    );
-    await tester.pump();
     await tester.scrollUntilVisible(
       find.byKey(const Key('gemBalanceLine')),
       120,
@@ -155,8 +156,11 @@ void main() {
     await tester.pump();
     expect(find.byKey(const Key('gemBalanceLine')), findsOneWidget);
     expect(find.byKey(const Key('gemBuySection')), findsOneWidget);
-    expect(find.byKey(const Key('gemExplainerLine4')), findsOneWidget);
+    // Scope #6: the explainer no longer renders on this screen.
+    expect(find.byKey(const Key('gemExplainerHeading')), findsNothing);
+    expect(find.text('About gems'), findsNothing);
     await capture('streak_gem_section_360');
+    await capture('streak_no_explainer_360');
 
     // FRAME 2 — Home streak stack with the gem pill (1000).
     await tester.pumpWidget(
@@ -189,6 +193,65 @@ void main() {
     expect(find.byKey(const Key('homeGemPill')), findsOneWidget);
     await precacheGemIcon();
     await capture('home_gem_pill_360');
+
+    // FRAME 3 — the Gems sheet (scope #6), opened by tapping the
+    // gem pill on a Home stack at a 150-gem balance.
+    await tester.pumpWidget(
+      RepaintBoundary(
+        key: rootKey,
+        child: MaterialApp(
+          theme: ThemeData(fontFamily: 'Roboto'),
+          home: TickerMode(
+            enabled: false,
+            child: Scaffold(
+              backgroundColor: NotelColors.background,
+              body: Builder(
+                builder: (context) => Padding(
+                  padding: const EdgeInsets.fromLTRB(0, 12, 0, 0),
+                  child: Align(
+                    alignment: Alignment.topLeft,
+                    child: SizedBox(
+                      width: 200,
+                      child: HomeStreakStack(
+                        currentStreak: 18,
+                        animateCountUps: false,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        gemBalance: 150,
+                        onGemTap: () => showGemsSheet(
+                          context: context,
+                          gemService: fakeGems(150),
+                          streakState: state,
+                          streakPush: (current, best, json,
+                                  {int? purchasedFreezes}) async =>
+                              true,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await precacheGemIcon();
+    await tester.tap(find.byKey(const Key('homeGemPill')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(find.byKey(const Key('gemsSheet')), findsOneWidget);
+    expect(find.text('About gems'), findsOneWidget);
+    expect(find.text('You have 150 gems.'), findsOneWidget);
+    expect(
+      find.text('100 gems buys one streak freeze.'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('gemsSheetBuyButton')), findsOneWidget);
+    await capture('gems_sheet_360');
   });
 }
 

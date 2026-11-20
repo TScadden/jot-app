@@ -52,6 +52,7 @@ import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 import 'package:tabs_lab/src/features/home/health_connect_banner.dart';
 import 'package:tabs_lab/src/features/home/home_checkin_strip.dart';
 import 'package:tabs_lab/src/features/home/migraine_block.dart';
+import 'package:tabs_lab/src/features/home/gems_sheet.dart';
 import 'package:tabs_lab/src/features/home/streak_screen.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
@@ -2224,6 +2225,24 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
+  /// Gem pill tap (added scope #6, Nov 20, 2026): open the Gems
+  /// sheet — the moved About-gems explainer, the current balance,
+  /// and the buy-a-freeze-with-gems action. The sheet reads the
+  /// SAME [GemService.instance] balance the pill displays and the
+  /// settled streak record for its cap rule; a spend there moves
+  /// the shared service balance, which this screen's listener
+  /// already mirrors into the pill (plus the re-pull on close,
+  /// mirroring [_openStreakScreen]'s return path).
+  Future<void> _openGemsSheet() async {
+    await showGemsSheet(
+      context: context,
+      streakState: StreakStore.instance.state,
+      nickname: _nickname,
+    );
+    if (!mounted) return;
+    unawaited(GemService.instance.refreshBalance());
+  }
+
   /// Opens the data-connections screen — the one destination/flow
   /// shared by the header watch icon and the round-23 Health Connect
   /// banner. On return, Home quietly re-checks the status + vitals in
@@ -2768,6 +2787,7 @@ class _HomeScreenState extends State<HomeScreen>
                         currentStreak: _currentStreak,
                         animateCountUps: _countUpsAnimate,
                         onStreakTap: () => unawaited(_openStreakScreen()),
+                        onGemTap: () => unawaited(_openGemsSheet()),
                         crossAxisAlignment: CrossAxisAlignment.center,
                         gemBalance: _gemBalance,
                         streakTodayComplete: _streakTodayComplete,

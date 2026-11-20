@@ -73,7 +73,17 @@ abstract final class GemCopy {
 
   static const String weekEarnLine = '+20 gems — perfect week bonus';
 
-  // ── §4 Streak-screen explainer (verbatim block) ───────────────
+  // ── §4 Explainer (verbatim block) ─────────────────────────────
+  // Added scope #6 (Nov 20, 2026): the explainer MOVED off the
+  // streak screen into the Gems sheet (opened from the Home gem
+  // pill). The heading serves as the sheet title (used once);
+  // lines 1–4 move verbatim. Line 5 as written for the streak
+  // screen ("— the freeze on this screen") cannot move verbatim —
+  // its referent breaks in the sheet — so the sheet renders
+  // [sheetExplainerLines]: lines 1–4 verbatim plus the
+  // coordinator-approved replacement (GEMS-MOVE-COPY §1.3
+  // Proposal A, ruled in the stage log). [explainerLines] keeps
+  // the original streak-screen block as the copy record.
   static const String explainerHeading = 'About gems';
   static const List<String> explainerLines = [
     "Gems are earned in Tabs. You can't buy them, and they have no cash value.",
@@ -82,6 +92,19 @@ abstract final class GemCopy {
     'Perfect week: +20 gems when you finish your Daily Summary all 7 days of a Monday–Sunday week.',
     '100 gems buys one streak freeze — the freeze on this screen.',
   ];
+
+  /// The sheet's line 5 (GEMS-MOVE-COPY §1.3 Proposal A, approved):
+  /// the original line with only the broken streak-screen referent
+  /// dropped — no amount, term, or claim changed.
+  static const String sheetExplainerLine5 =
+      '100 gems buys one streak freeze.';
+
+  /// The explainer lines as rendered in the Gems sheet: lines 1–4
+  /// verbatim from [explainerLines], then [sheetExplainerLine5].
+  static List<String> get sheetExplainerLines => [
+        ...explainerLines.take(4),
+        sheetExplainerLine5,
+      ];
 }
 
 /// The gem milestone ladder (server-derived amounts, Mason PR #41):
