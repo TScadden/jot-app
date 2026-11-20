@@ -6075,7 +6075,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _card([
         _toggleRow(
           'Share data with friends',
-          'Allow mutual friends to see your daily sleep, heart rate, and score',
+          // Juno condition C1 (community revamp, Nov 19, 2026):
+          // the subtitle must disclose that streak + gems — game
+          // stats — are always visible to confirmed friends; only
+          // the health stats sit behind this toggle. Exact string
+          // per JUNO-REVIEW §1.4; do not paraphrase.
+          'Allow mutual friends to see your daily sleep, heart rate, and score. Your streak and gems are always visible to friends.',
           d.shareDataWithFriends,
           (v) async {
             setState(

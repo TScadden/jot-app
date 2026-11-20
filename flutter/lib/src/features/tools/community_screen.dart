@@ -1,8 +1,62 @@
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/data/gem_service.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/skeleton.dart';
+
+/// The app's streak orange — the lit color of the streak hero's
+/// flame (`StreakFlame.litColor`, streak_flame.dart ruling).
+const Color _kStreakOrange = Color(0xFFFF6A3D);
+
+/// The friend row's points label. Juno §2.1 conditional hold
+/// (Nov 19, 2026) — RESOLVED: Mason's server audit (jot-server
+/// PR #42, coordinator-verified) proved `weekly_score` has NO
+/// live writer and NO defined weekly window in the current
+/// stack, so the mock's "pts this week" would claim a freshness
+/// the data does not deliver. Coordinator ruling: ship bare
+/// "pts" (current production copy), matching the leaderboard.
+/// Kept in exactly ONE place — do not duplicate this string.
+String friendWeeklyPointsLabel(int level) => '$level pts';
+
+/// Avatar background palette for the Option A rich rows
+/// (founder-approved mock, Nov 19, 2026): purple / blue / green /
+/// pink / orange family. The purple is the brand [NotelColors.primary].
+const List<Color> _kAvatarPalette = [
+  NotelColors.primary,
+  Color(0xFF4E8FD0),
+  Color(0xFF5FAE7E),
+  Color(0xFFD478A8),
+  Color(0xFFE79B4B),
+];
+
+/// Deterministic avatar color for a friend: FNV-1a hash of the
+/// friend's id into [_kAvatarPalette] (String.hashCode is not
+/// stable enough to pin a friend's color across runs).
+Color friendAvatarColor(String id) {
+  var hash = 0x811C9DC5;
+  for (final unit in id.codeUnits) {
+    hash ^= unit;
+    hash = (hash * 0x01000193) & 0xFFFFFFFF;
+  }
+  return _kAvatarPalette[hash % _kAvatarPalette.length];
+}
+
+/// Avatar initials: the first two alphabetic characters of the
+/// nickname, uppercased ("Boston" → "BO", "You" → "YO"). Falls
+/// back to "?" when the nickname carries no letters at all.
+String friendAvatarInitials(String nickname) {
+  final letter = RegExp(r'\p{L}', unicode: true);
+  final letters = <String>[];
+  for (final ch in nickname.split('')) {
+    if (letter.hasMatch(ch)) {
+      letters.add(ch);
+      if (letters.length == 2) break;
+    }
+  }
+  if (letters.isEmpty) return '?';
+  return letters.join().toUpperCase();
+}
 
 /// Leaderboard order: friends sorted by weekly level, highest first.
 /// Pure and unit-testable.
@@ -22,10 +76,15 @@ List<FriendDto> buildLeaderboardWithSelf(
 
 /// The local user's leaderboard row, mirroring native: blank
 /// nickname → "You", blank tag → "00000", level = weeklyScore.
+/// Community revamp: the self row also carries MY streak + gems
+/// (from the sync pull profile) so it renders the same game stats
+/// as every friend row.
 FriendDto selfLeaderboardEntry({
   required String nickname,
   required String tag,
   required int weeklyScore,
+  int currentStreak = 0,
+  int gemBalance = 0,
 }) {
   return FriendDto(
     id: 'me',
@@ -33,6 +92,8 @@ FriendDto selfLeaderboardEntry({
     tag: tag.trim().isEmpty ? '00000' : tag,
     status: '',
     level: weeklyScore,
+    currentStreak: currentStreak,
+    gemBalance: gemBalance,
   );
 }
 
@@ -105,6 +166,8 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
   String _selfNickname = '';
   String _selfTag = '';
   int _weeklyScore = 0;
+  int _selfStreak = 0;
+  int _selfGems = 0;
   String? _error;
 
   @override
@@ -123,15 +186,24 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
       if (!mounted) return;
       final pull = results[2] as Map<String, dynamic>?;
       final profile = pull?['profile'];
+      // Sync-pull profile keys, verified against the pull parsing
+      // in tabs_backend.dart (fetchStreak / fetchStreakRecord):
+      // current_streak arrives as `currentStreak`, gem_balance as
+      // `gem_balance` (the camelCase twin accepted, same as the
+      // streak record's parsing).
+      final profileMap =
+          profile is Map<String, dynamic> ? profile : null;
+      int pullInt(dynamic v) =>
+          v is num ? v.toInt() : int.tryParse('$v') ?? 0;
       setState(() {
         _friends = results[0] as List<FriendDto>;
         _notifications = results[1] as List<FriendNotificationDto>;
         _selfNickname = '${pull?['nickname'] ?? ''}';
         _selfTag = '${pull?['tag'] ?? ''}';
-        final score =
-            profile is Map<String, dynamic> ? profile['weeklyScore'] : null;
-        _weeklyScore =
-            score is num ? score.toInt() : int.tryParse('$score') ?? 0;
+        _weeklyScore = pullInt(profileMap?['weeklyScore']);
+        _selfStreak = pullInt(profileMap?['currentStreak']);
+        _selfGems = pullInt(
+            profileMap?['gem_balance'] ?? profileMap?['gemBalance']);
         _loading = false;
       });
     } catch (_) {
@@ -150,6 +222,8 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
         nickname: _selfNickname,
         tag: _selfTag,
         weeklyScore: _weeklyScore,
+        currentStreak: _selfStreak,
+        gemBalance: _selfGems,
       );
 
   void _openNotifications() {
@@ -447,32 +521,50 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
       onTap: () => _openFriendDetail(friend),
       borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(friend.nickname,
-                        style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: NotelColors.textPrimary)),
-                    const SizedBox(width: 4),
-                    Text('#${friend.tag}',
-                        style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                            color: NotelColors.textSecondary)),
-                  ],
-                ),
-                Text('${friend.level} pts',
-                    style: const TextStyle(
-                        fontSize: 12, color: NotelColors.textSecondary)),
-              ],
+            _FriendAvatar(friend: friend),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(friend.nickname,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: NotelColors.textPrimary)),
+                      ),
+                      const SizedBox(width: 4),
+                      Text('#${friend.tag}',
+                          style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: NotelColors.textSecondary)),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  // Option A stats subline: streak (flame, orange),
+                  // gems (icon, lavender), points (muted).
+                  Row(
+                    children: [
+                      _StreakStat(streak: friend.currentStreak),
+                      const SizedBox(width: 14),
+                      _GemStat(gems: friend.gemBalance),
+                      const SizedBox(width: 14),
+                      Text(friendWeeklyPointsLabel(friend.level),
+                          style: const TextStyle(
+                              fontSize: 12,
+                              color: NotelColors.textSecondary)),
+                    ],
+                  ),
+                ],
+              ),
             ),
             // No status/presence badge and no last-active timestamp:
             // native renders neither (the server's `status` field is
@@ -498,41 +590,45 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              SizedBox(
-                width: 32,
-                child: Text('#$rank',
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: rank == 1
-                            ? NotelColors.streakGold
-                            : NotelColors.textSecondary)),
-              ),
-              Text(person.nickname,
-                  style: TextStyle(
-                      fontSize: 15,
-                      fontWeight:
-                          isSelf ? FontWeight.bold : FontWeight.normal,
-                      color: NotelColors.textPrimary)),
-              if (person.tag.isNotEmpty && person.tag != '00000') ...[
-                const SizedBox(width: 4),
-                Text('#${person.tag}',
-                    style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        color: NotelColors.textSecondary)),
-              ],
-            ],
+          SizedBox(
+            width: 32,
+            child: Text('#$rank',
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: rank == 1
+                        ? NotelColors.streakGold
+                        : NotelColors.textSecondary)),
           ),
-          Text('${person.level} pts',
-              style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: NotelColors.textPrimary)),
+          // No #tag on leaderboard rows: the approved Option A
+          // mock omits it here (it stays on the friend rows and
+          // the detail dialog), and at 360px the tag + the new
+          // streak/gem stats crush the nickname column to zero
+          // (verified in the 360 capture: "Mom" vanished, "You"
+          // and "Boston" truncated). Nickname only, per the mock.
+          Expanded(
+            child: Text(person.nickname,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight:
+                        isSelf ? FontWeight.bold : FontWeight.normal,
+                    color: NotelColors.textPrimary)),
+          ),
+          _StreakStat(streak: person.currentStreak),
+          const SizedBox(width: 16),
+          _GemStat(gems: person.gemBalance),
+          const SizedBox(width: 16),
+          SizedBox(
+            width: 72,
+            child: Text('${person.level} pts',
+                textAlign: TextAlign.right,
+                style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: NotelColors.textPrimary)),
+          ),
         ],
       ),
     );
@@ -856,17 +952,15 @@ class _FriendDetailDialogState extends State<_FriendDetailDialog> {
           ),
         ],
       ),
-      content: Column(
+      // Scrollable: the game-stat cards added a row to this
+      // dialog (community revamp), and on short viewports the
+      // full content no longer fits the dialog's max height —
+      // scrolling beats clipping the last health card.
+      content: SingleChildScrollView(
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('TODAY',
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1,
-                  color: NotelColors.textSecondary)),
-          const SizedBox(height: 12),
           if (_loading)
             const Center(
               child: Padding(
@@ -879,32 +973,78 @@ class _FriendDetailDialogState extends State<_FriendDetailDialog> {
             Text(_error!,
                 style: const TextStyle(
                     fontSize: 13, color: NotelColors.error))
-          else if (_detail != null && !_detail!.sharingEnabled)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: NotelColors.surfaceHigh.withValues(alpha: 0.6),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Column(
-                children: [
-                  const Icon(Icons.lock_outline,
-                      size: 32, color: NotelColors.textSecondary),
-                  const SizedBox(height: 8),
-                  Text(
-                    '${friend.nickname} has turned off data sharing',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: NotelColors.textSecondary),
+          else if (_detail != null) ...[
+            // Game stats (community revamp, Option A): streak and
+            // gems are shown to confirmed friends and are NOT gated
+            // by the health-data sharing opt-in — they render in
+            // both sharing states (Juno condition C2a). They sit
+            // ABOVE the TODAY header: neither is a today stat
+            // (Juno §2.3 placement rule). The TODAY health stats
+            // below keep the existing sharing gate exactly.
+            Row(
+              children: [
+                Expanded(
+                  child: _FriendStatCard(
+                    icon: Icons.local_fire_department,
+                    label: 'Current Streak',
+                    value: '${_detail!.currentStreak}',
+                    accent: _kStreakOrange,
                   ),
-                ],
-              ),
-            )
-          else if (_detail != null)
-            Column(
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _FriendStatCard(
+                    iconWidget: Image.asset(
+                      GemCopy.iconAsset,
+                      width: 20,
+                      height: 20,
+                      fit: BoxFit.contain,
+                    ),
+                    label: 'Gems',
+                    value: '${_detail!.gemBalance}',
+                    accent: kGemCountColor,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Text('TODAY',
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1,
+                    color: NotelColors.textSecondary)),
+            const SizedBox(height: 12),
+            if (!_detail!.sharingEnabled)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: NotelColors.surfaceHigh.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Column(
+                  children: [
+                    const Icon(Icons.lock_outline,
+                        size: 32, color: NotelColors.textSecondary),
+                    const SizedBox(height: 8),
+                    Text(
+                      // Juno condition C2(b): health-qualified —
+                      // the game stats above still show, so the
+                      // unqualified "data sharing" wording would
+                      // be false on its face.
+                      '${friend.nickname} has turned off health data sharing',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: NotelColors.textSecondary),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Column(
               children: [
                 Row(
                   children: [
@@ -964,25 +1104,32 @@ class _FriendDetailDialogState extends State<_FriendDetailDialog> {
                   accent: NotelColors.primary,
                 ),
               ],
-            )
+              ),
+          ]
           else
             const Text('No data available yet',
                 style: TextStyle(
                     fontSize: 13, color: NotelColors.textSecondary)),
         ],
+        ),
       ),
     );
   }
 }
 
 class _FriendStatCard extends StatelessWidget {
-  final IconData icon;
+  final IconData? icon;
+
+  /// Rendered instead of [icon] when set (the Gems card carries
+  /// the bundled gem image, which has no IconData form).
+  final Widget? iconWidget;
   final String label;
   final String value;
   final Color accent;
 
   const _FriendStatCard({
-    required this.icon,
+    this.icon,
+    this.iconWidget,
     required this.label,
     required this.value,
     this.accent = NotelColors.textSecondary,
@@ -1000,7 +1147,7 @@ class _FriendStatCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 20, color: accent),
+          iconWidget ?? Icon(icon, size: 20, color: accent),
           const SizedBox(height: 6),
           Text(value,
               style: const TextStyle(
@@ -1013,6 +1160,108 @@ class _FriendStatCard extends StatelessWidget {
                   fontWeight: FontWeight.w500,
                   color: NotelColors.textSecondary)),
         ],
+      ),
+    );
+  }
+}
+
+/// Option A friend-row avatar: initials on a deterministic
+/// palette color hashed from the friend's id.
+class _FriendAvatar extends StatelessWidget {
+  final FriendDto friend;
+
+  const _FriendAvatar({required this.friend});
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 40.0;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: friendAvatarColor(friend.id),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        friendAvatarInitials(friend.nickname),
+        style: const TextStyle(
+          fontSize: 14.4,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+}
+
+/// The streak stat used by the friend rows and the leaderboard:
+/// the app's streak flame glyph (Icons.local_fire_department —
+/// streak_flame.dart ruling; no new asset, no emoji) + the count
+/// in streak orange, bold. Semantics label per Juno condition C3:
+/// "{days} day streak" (streak hero precedent).
+class _StreakStat extends StatelessWidget {
+  final int streak;
+
+  const _StreakStat({required this.streak});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      label: '$streak day streak',
+      child: ExcludeSemantics(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.local_fire_department,
+                size: 16, color: _kStreakOrange),
+            const SizedBox(width: 4),
+            Text('$streak',
+                style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: _kStreakOrange)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The gem stat used by the friend rows and the leaderboard: the
+/// bundled gem icon (GemCopy.iconAsset) at 16dp + the count in
+/// lavender (kGemCountColor, the Home gem pill's color), bold.
+/// Semantics label per Juno condition C3: "{count} gems" /
+/// "1 gem" — GemCopy.pillLabel, the Home gem pill precedent.
+class _GemStat extends StatelessWidget {
+  final int gems;
+
+  const _GemStat({required this.gems});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      label: GemCopy.pillLabel(gems),
+      child: ExcludeSemantics(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset(
+              GemCopy.iconAsset,
+              width: 16,
+              height: 16,
+              fit: BoxFit.contain,
+            ),
+            const SizedBox(width: 4),
+            Text('$gems',
+                style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: kGemCountColor)),
+          ],
+        ),
       ),
     );
   }
