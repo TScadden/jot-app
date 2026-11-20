@@ -101,13 +101,23 @@ class WeeklyWeekWindow {
 
   const WeeklyWeekWindow(this.start, this.end);
 
-  DateTime get endExclusive => end.add(const Duration(days: 1));
+  /// [d] shifted by [days] CALENDAR days, rebuilt from calendar
+  /// components so the result is always true local midnight —
+  /// including across a DST transition, where Duration
+  /// arithmetic (absolute time) lands at 01:00 on fall-back
+  /// weeks and 23:00/01:00 at the far edge (Vera MINOR 2: the
+  /// week spanning Nov 1, 2026 used to start/end at 01:00,
+  /// excluding Monday 00:00–01:00 log entries from the report).
+  static DateTime _calendarDayPlus(DateTime d, int days) =>
+      DateTime(d.year, d.month, d.day + days);
+
+  DateTime get endExclusive => _calendarDayPlus(end, 1);
   int get startMs => start.millisecondsSinceEpoch;
   int get endExclusiveMs => endExclusive.millisecondsSinceEpoch;
 
   /// The 7 calendar dates of the week, Monday first.
   List<DateTime> get days =>
-      [for (var i = 0; i < 7; i++) start.add(Duration(days: i))];
+      [for (var i = 0; i < 7; i++) _calendarDayPlus(start, i)];
 
   /// The most recent CLOSED Mon–Sun week relative to [now]: if
   /// today is Monday, the week that ended yesterday; on any
@@ -115,23 +125,22 @@ class WeeklyWeekWindow {
   static WeeklyWeekWindow mostRecentClosed(DateTime now) {
     final today = DateTime(now.year, now.month, now.day);
     final mondayThisWeek =
-        today.subtract(Duration(days: today.weekday - DateTime.monday));
-    final end = mondayThisWeek.subtract(const Duration(days: 1));
-    final start = end.subtract(const Duration(days: 6));
+        _calendarDayPlus(today, -(today.weekday - DateTime.monday));
+    final end = _calendarDayPlus(mondayThisWeek, -1);
+    final start = _calendarDayPlus(end, -6);
     return WeeklyWeekWindow(start, end);
   }
 
   /// The window containing [day] (its Monday..Sunday).
   static WeeklyWeekWindow containing(DateTime day) {
     final d = DateTime(day.year, day.month, day.day);
-    final monday = d.subtract(Duration(days: d.weekday - DateTime.monday));
-    return WeeklyWeekWindow(monday, monday.add(const Duration(days: 6)));
+    final monday = _calendarDayPlus(d, -(d.weekday - DateTime.monday));
+    return WeeklyWeekWindow(monday, _calendarDayPlus(monday, 6));
   }
 
   /// The window immediately before this one.
-  WeeklyWeekWindow get previous =>
-      WeeklyWeekWindow(start.subtract(const Duration(days: 7)),
-          end.subtract(const Duration(days: 7)));
+  WeeklyWeekWindow get previous => WeeklyWeekWindow(
+      _calendarDayPlus(start, -7), _calendarDayPlus(end, -7));
 
   String get startKey => dateStrOf(start);
   String get endKey => dateStrOf(end);

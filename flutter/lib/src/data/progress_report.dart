@@ -258,6 +258,15 @@ String _amPm(int h) => h < 12 ? 'AM' : 'PM';
 String dateStrOf(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+/// [d] shifted by [days] CALENDAR days at true local midnight
+/// (component arithmetic). Weekly-range boundaries must use
+/// this, never Duration arithmetic: across a DST transition a
+/// Duration shift lands an hour off midnight and the weekly
+/// window would swallow or drop an hour of log entries at its
+/// edges (Vera MINOR 2 on the Weekly Report package).
+DateTime _calendarDayPlus(DateTime d, int days) =>
+    DateTime(d.year, d.month, d.day + days);
+
 // ── Snapshot model (ClinicalReportData.kt) ────────────────────────
 
 enum DataSourceStatus {
@@ -1456,11 +1465,11 @@ class ReportDataCollector {
     final n = now ?? DateTime.now();
     final nowMs = n.millisecondsSinceEpoch;
     final weekly = weekStart != null;
-    final weekEndDate = weekEnd ??
-        (weekly ? weekStart.add(const Duration(days: 6)) : null);
+    final weekEndDate =
+        weekEnd ?? (weekly ? _calendarDayPlus(weekStart, 6) : null);
     final weekStartMs = weekly ? weekStart.millisecondsSinceEpoch : 0;
     final weekEndExclusiveMs = weekly
-        ? weekEndDate!.add(const Duration(days: 1)).millisecondsSinceEpoch
+        ? _calendarDayPlus(weekEndDate!, 1).millisecondsSinceEpoch
         : 0;
     final daysToFetch = last30Days ? 31 : 180;
     final cutoff = last30Days ? nowMs - 30 * 24 * 60 * 60 * 1000 : 0;
@@ -1523,7 +1532,7 @@ class ReportDataCollector {
     if (weekly) {
       // Weekly mode: exactly the week's 7 calendar days.
       for (var i = 0; i < 7; i++) {
-        final key = dateStrOf(weekStart.add(Duration(days: i)));
+        final key = dateStrOf(_calendarDayPlus(weekStart, i));
         final value = storedScores[key];
         if (value != null && value > 0) dailyScoreSeries.add((key, value));
       }

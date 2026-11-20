@@ -132,6 +132,101 @@ void main() {
     });
   });
 
+  group('DST boundary weeks (Vera MINOR 2)', () {
+    // Boundaries must be built from calendar components so every
+    // edge is TRUE local midnight in both DST directions. These
+    // tests only bite in a DST-observing zone — the package suite
+    // is run under TZ=America/Denver for them (fall-back:
+    // Sun Nov 1, 2026; spring-forward: Sun Mar 8, 2026).
+    QuickLogEntry entryAt(int id, DateTime at) => QuickLogEntry(
+          id: id,
+          categoryId: 1,
+          body: 'entry $id',
+          chips: '',
+          manualText: '',
+          timestamp: at.millisecondsSinceEpoch,
+        );
+
+    test('fall-back week (Mon Oct 26 – Sun Nov 1, 2026): boundaries '
+        'are exactly 00:00 local at both ends', () {
+      final w = WeeklyWeekWindow.containing(DateTime(2026, 10, 29));
+      expect(w.start, DateTime(2026, 10, 26));
+      expect(w.end, DateTime(2026, 11, 1));
+      expect(w.start.hour, 0);
+      expect(w.start.minute, 0);
+      expect(w.end.hour, 0);
+      expect(w.end.minute, 0);
+      expect(w.endExclusive, DateTime(2026, 11, 2));
+      expect(w.endExclusive.hour, 0);
+      expect(w.days.first, DateTime(2026, 10, 26));
+      expect(w.days.last, DateTime(2026, 11, 1));
+      for (final d in w.days) {
+        expect(d.hour, 0, reason: 'every day of the week at midnight');
+        expect(d.minute, 0);
+      }
+      // mostRecentClosed from the following Wednesday agrees.
+      final closed =
+          WeeklyWeekWindow.mostRecentClosed(DateTime(2026, 11, 4, 12));
+      expect(closed, w);
+      // previous steps back across the transition at midnight too.
+      expect(w.previous.start, DateTime(2026, 10, 19));
+      expect(w.previous.end, DateTime(2026, 10, 25));
+      expect(w.previous.start.hour, 0);
+      expect(w.previous.end.hour, 0);
+    });
+
+    test('fall-back week: a Monday 00:30 log entry falls inside '
+        'the window (and the edges stop exactly at midnight)', () {
+      final w = WeeklyWeekWindow.containing(DateTime(2026, 10, 29));
+      final monday0030 = entryAt(1, DateTime(2026, 10, 26, 0, 30));
+      expect(monday0030.timestamp, greaterThanOrEqualTo(w.startMs));
+      expect(monday0030.timestamp, lessThan(w.endExclusiveMs));
+      // The evaluator counts that Monday as a logged day.
+      final ev = evaluateWeeklyCompleteness(
+        snapshot: _snap(week: w, entries: [monday0030]),
+        week: w,
+        generationCompleted: true,
+      );
+      expect(ev.loggedDays, 1);
+      // Sunday's last hour is inside; next Monday 00:30 is not.
+      final sunday2330 = entryAt(2, DateTime(2026, 11, 1, 23, 30));
+      expect(sunday2330.timestamp, lessThan(w.endExclusiveMs));
+      final nextMonday0030 = entryAt(3, DateTime(2026, 11, 2, 0, 30));
+      expect(nextMonday0030.timestamp,
+          greaterThanOrEqualTo(w.endExclusiveMs));
+    });
+
+    test('spring-forward week (Mon Mar 2 – Sun Mar 8, 2026): '
+        'boundaries are exactly 00:00 local at both ends', () {
+      final w = WeeklyWeekWindow.containing(DateTime(2026, 3, 5));
+      expect(w.start, DateTime(2026, 3, 2));
+      expect(w.end, DateTime(2026, 3, 8));
+      expect(w.start.hour, 0);
+      expect(w.start.minute, 0);
+      expect(w.end.hour, 0);
+      expect(w.end.minute, 0);
+      expect(w.endExclusive, DateTime(2026, 3, 9));
+      expect(w.endExclusive.hour, 0);
+      for (final d in w.days) {
+        expect(d.hour, 0, reason: 'every day of the week at midnight');
+        expect(d.minute, 0);
+      }
+      final closed =
+          WeeklyWeekWindow.mostRecentClosed(DateTime(2026, 3, 11, 12));
+      expect(closed, w);
+      // A Monday 00:30 log entry falls inside this window too.
+      final monday0030 = entryAt(1, DateTime(2026, 3, 2, 0, 30));
+      expect(monday0030.timestamp, greaterThanOrEqualTo(w.startMs));
+      expect(monday0030.timestamp, lessThan(w.endExclusiveMs));
+      final ev = evaluateWeeklyCompleteness(
+        snapshot: _snap(week: w, entries: [monday0030]),
+        week: w,
+        generationCompleted: true,
+      );
+      expect(ev.loggedDays, 1);
+    });
+  });
+
   group('archive labels (Juno §c rows 1.4–1.5)', () {
     test('same-year week label: date names only, no weekday names', () {
       expect(weeklyWeekLabel(_week), 'Nov 9 – Nov 15, 2026');

@@ -70,6 +70,36 @@ class _Backend extends TabsBackend {
       ];
 }
 
+QuickLogEntry _entryAt(int id, DateTime at) => QuickLogEntry(
+      id: id,
+      categoryId: 1,
+      body: 'entry $id',
+      chips: '',
+      manualText: '',
+      timestamp: at.millisecondsSinceEpoch,
+    );
+
+/// Boundary-instant entries for the fall-back DST week
+/// (Mon Oct 26 – Sun Nov 1, 2026, America/Denver).
+class _DstBackend extends TabsBackend {
+  _DstBackend() : super(sessionStore: FakeSessionStore());
+
+  @override
+  Future<Map<String, dynamic>?> fetchSyncPull() async =>
+      <String, dynamic>{};
+
+  @override
+  Future<List<QuickLogEntry>> fetchLogEntryDtos() async => [
+        _entryAt(10, DateTime(2026, 10, 25, 23, 30)), // before — out
+        _entryAt(11, DateTime(2026, 10, 26, 0, 30)), // Mon 00:30 — in
+        _entryAt(12, DateTime(2026, 11, 1, 23, 30)), // Sun last hr — in
+        _entryAt(13, DateTime(2026, 11, 2, 0, 30)), // next Mon — out
+      ];
+
+  @override
+  Future<List<BpRecord>> fetchManualBpLogs() async => const [];
+}
+
 enum _ReadMode { healthy, failGeneric, failSecurity }
 
 /// Fake HC in the real service's fail-closed shape (mirrors the
@@ -212,6 +242,37 @@ void main() {
       ]);
       expect(snap.sectionMetadata['sleep']!.status, DataSourceStatus.success);
       expect(snap.sectionMetadata['sleep']!.recordCount, 2);
+    });
+
+    test('fall-back DST week: the collector range stops exactly at '
+        'true local midnights (Mon Oct 26 – Sun Nov 1, 2026)', () async {
+      // Bites only in a DST zone — run under TZ=America/Denver.
+      // Pre-fix, the exclusive end was Sunday 00:00 + 24h of
+      // absolute time = Sunday 23:00 local on the 25-hour day,
+      // dropping Sunday's last hour (Vera MINOR 2).
+      final snap = await ReportDataCollector(
+        backend: _DstBackend(),
+        hc: hc,
+        historyQueries: HealthHistoryQueries(hc: hc, store: store),
+        insightsLoader: () async => const [],
+        scoreLoader: () async => {
+          '2026-10-26': 61,
+          '2026-11-01': 63,
+          '2026-11-02': 99, // next Monday — outside, must not appear
+        },
+      ).collect(
+        selectedCategories: [_cat(1, 'Symptoms')],
+        last30Days: false,
+        profile: const ReportProfileInput(),
+        now: DateTime(2026, 11, 4, 12),
+        weekStart: DateTime(2026, 10, 26),
+        weekEnd: DateTime(2026, 11, 1),
+      );
+      expect(snap.logEntries.map((e) => e.id), [11, 12]);
+      expect(snap.dailyScoreSeries, [
+        ('2026-10-26', 61),
+        ('2026-11-01', 63),
+      ]);
     });
 
     test('a standard range is untouched by weekly mode', () async {
