@@ -245,6 +245,9 @@ void main() {
           metric: BadgeMetrics.byId(id),
           rungIndex: rung,
           paid: paid,
+          // These scenarios model fresh payouts (the store fake
+          // answers alreadyGranted: false).
+          paidFresh: paid,
         );
 
     Future<void> pumpDialog(
@@ -287,6 +290,36 @@ void main() {
       expect(find.text('Badges unlocked'), findsOneWidget);
       expect(find.text('+5 gems'), findsNWidgets(3));
       expect(find.text('Total: +15 gems'), findsOneWidget);
+      expect(
+          find.text('Some gems will be added after sync.'), findsNothing);
+    });
+
+    testWidgets('alreadyGranted rungs: no gems element, no total '
+        '(Vera C2 reinstall presentation)', (tester) async {
+      await pumpDialog(
+        tester,
+        BadgeUnlockBatch(
+          isBackfill: true,
+          grants: [
+            BadgeGrant(
+              metric: BadgeMetrics.byId('total_logs'),
+              rungIndex: 0,
+              paid: true,
+              paidFresh: false,
+            ),
+            BadgeGrant(
+              metric: BadgeMetrics.byId('total_logs'),
+              rungIndex: 1,
+              paid: true,
+              paidFresh: false,
+            ),
+          ],
+        ),
+      );
+      expect(find.text('Badges unlocked'), findsOneWidget);
+      expect(find.text('Total logs — Bronze III'), findsOneWidget);
+      expect(find.text('+5 gems'), findsNothing);
+      expect(find.textContaining('Total:'), findsNothing);
       expect(
           find.text('Some gems will be added after sync.'), findsNothing);
     });

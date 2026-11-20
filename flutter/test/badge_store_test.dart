@@ -153,6 +153,23 @@ void main() {
     );
     expect(batch!.grants.single.paid, isTrue);
     expect(svc.debugPaid, {'badge:total_logs:bronze_3'});
+    // Vera C2: ledger-confirmed, but NOT a fresh payout — the
+    // unlock dialog must not present it as one.
+    expect(batch.grants.single.paidFresh, isFalse);
+    expect(batch.freshPaidCount, 0);
+    expect(batch.anyPending, isFalse);
+  });
+
+  test('a fresh grant is paidFresh (dialog may show +5)', () async {
+    final svc = makeService(grant: (key) async => ok());
+    final batch = await svc.evaluate(
+      inputs: logsOnly(5),
+      blockedMetrics: const {},
+      now: now,
+    );
+    expect(batch!.grants.single.paid, isTrue);
+    expect(batch.grants.single.paidFresh, isTrue);
+    expect(batch.freshPaidCount, 1);
   });
 
   test('a non-200 grant stays queued for the next settlement', () async {

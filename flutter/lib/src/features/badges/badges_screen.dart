@@ -952,7 +952,10 @@ class BadgeUnlockDialog extends StatelessWidget {
           g.rungIndex,
         ),
       ));
-      if (g.paid) {
+      // Vera C2: only a FRESH grant shows the +5 line — an
+      // alreadyGranted rung was paid in a previous install and
+      // the dialog must not suggest it paid again.
+      if (g.paidFresh) {
         lines.add(const Padding(
           padding: EdgeInsets.only(left: 52, top: 2),
           child: Text(
@@ -962,11 +965,11 @@ class BadgeUnlockDialog extends StatelessWidget {
         ));
       }
     }
-    if (batch.grants.length >= 2 && batch.paidCount >= 1) {
+    if (batch.grants.length >= 2 && batch.freshPaidCount >= 1) {
       lines.add(const SizedBox(height: 8));
       lines.add(Text(
         BadgeStrings.unlockTotalLine(
-          batch.paidCount * badgeRungGemAmount,
+          batch.freshPaidCount * badgeRungGemAmount,
         ),
         style: const TextStyle(
           fontSize: 13,
@@ -1034,11 +1037,11 @@ class BadgeUnlockDialog extends StatelessWidget {
               ),
       ));
     }
-    if (batch.paidCount >= 1) {
+    if (batch.freshPaidCount >= 1) {
       lines.add(const SizedBox(height: 8));
       lines.add(Text(
         BadgeStrings.unlockTotalLine(
-          batch.paidCount * badgeRungGemAmount,
+          batch.freshPaidCount * badgeRungGemAmount,
         ),
         style: const TextStyle(
           fontSize: 13,

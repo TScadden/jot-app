@@ -27,9 +27,12 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 ///   (`badge:{metric}:{metal}_{n}`) is the payout backstop: a
 ///   replayed key answers alreadyGranted and can never double-pay.
 /// - A rung's payout state is tracked per grant key: pending vs
-///   paid. Only paid rungs may show a gems element in the unlock
-///   dialog (Juno §13) — a 200 counts as paid whether the grant
-///   was fresh or alreadyGranted.
+///   paid. A 200 counts as paid (ledger-confirmed) whether the
+///   grant was fresh or alreadyGranted — but only a FRESH grant
+///   may present a gems element in the unlock dialog (Juno §13
+///   rule 4, Vera condition C2): an alreadyGranted answer means
+///   the ledger paid in a previous install, the balance does not
+///   move, and the dialog must not suggest it paid again.
 /// - Evaluation is RETROACTIVE and IDEMPOTENT: the first run
 ///   computes from full history (the launch backfill, which pays
 ///   like any other unlock); re-evaluation with unchanged inputs
@@ -42,10 +45,18 @@ class BadgeGrant {
   /// (fresh or alreadyGranted) by the time the batch is reported.
   final bool paid;
 
+  /// True only when the confirming 200 was a FRESH grant — the
+  /// ledger paid in this install, in this batch's flush. An
+  /// alreadyGranted confirmation (reinstall / second device) sets
+  /// [paid] but never this, so the unlock dialog shows no +5 line
+  /// and excludes the rung from its Total (Vera C2).
+  final bool paidFresh;
+
   const BadgeGrant({
     required this.metric,
     required this.rungIndex,
     required this.paid,
+    this.paidFresh = false,
   });
 }
 
@@ -62,6 +73,10 @@ class BadgeUnlockBatch {
 
   bool get anyPending => grants.any((g) => !g.paid);
   int get paidCount => grants.where((g) => g.paid).length;
+
+  /// Grants the ledger paid FRESH in this batch — the only count
+  /// the unlock dialog's Total may use (Vera C2).
+  int get freshPaidCount => grants.where((g) => g.paidFresh).length;
 
   /// Whether any granted badge is Health Connect-backed (drives
   /// the backfill intro variant, Juno §8).
@@ -156,6 +171,7 @@ class BadgeService extends ChangeNotifier {
     _loaded = false;
     _granted = {};
     _paid = {};
+    _freshPaid = {};
     _pending = [];
     _values = {};
     _grantedAtMs = {};
@@ -169,6 +185,12 @@ class BadgeService extends ChangeNotifier {
   bool _loaded = false;
   Map<String, Set<int>> _granted = {};
   Set<String> _paid = {};
+
+  /// Keys whose confirming 200 in this process was a FRESH grant
+  /// (not alreadyGranted). Session-only presentation state for the
+  /// unlock dialog (Vera C2); never persisted — a batch is built
+  /// by the same evaluation that flushed its grants.
+  Set<String> _freshPaid = {};
   List<String> _pending = [];
   Map<String, int> _values = {};
   Map<String, int> _grantedAtMs = {};
@@ -351,6 +373,10 @@ class BadgeService extends ChangeNotifier {
       if (r.statusCode != 200 || r.body == null) continue;
       _pending.remove(key);
       _paid.add(key);
+      // Vera C2: an alreadyGranted 200 confirms the ledger paid in
+      // a previous install — it must never present as a fresh
+      // payout in this batch's unlock dialog.
+      if (r.body!['alreadyGranted'] != true) _freshPaid.add(key);
       changed = true;
       final bal = r.body!['gemBalance'];
       if (bal is int) _onBalance?.call(bal);
@@ -455,6 +481,8 @@ class BadgeService extends ChangeNotifier {
                 metric: g.metric,
                 rungIndex: g.rungIndex,
                 paid: _paid.contains(
+                    badgeGrantKey(g.metric.id, g.rungIndex)),
+                paidFresh: _freshPaid.contains(
                     badgeGrantKey(g.metric.id, g.rungIndex)),
               ),
           ],

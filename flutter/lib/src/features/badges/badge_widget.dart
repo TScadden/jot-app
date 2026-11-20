@@ -107,7 +107,14 @@ class BadgeWidget extends StatelessWidget {
                 blendMode: BlendMode.srcIn,
                 child: Icon(
                   icon,
-                  size: size * 0.42,
+                  // The approved renderer grows the center icon per
+                  // level within the metal (make_badges.py star_scale
+                  // I 0.27 / II 0.305 / III 0.34 — III largest), as a
+                  // secondary cue under the bars. Ratios to the III
+                  // size: I ≈ 0.79, II ≈ 0.90, III = 1.0 (Vera C1).
+                  size: size *
+                      0.42 *
+                      (bars == 3 ? 1.0 : bars == 2 ? 0.90 : 0.79),
                   color: Colors.white,
                 ),
               ),
