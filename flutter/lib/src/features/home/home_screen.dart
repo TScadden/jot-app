@@ -233,6 +233,15 @@ class HomeScreen extends StatefulWidget {
   /// (see [_HomeScreenState._syncCheckInReminderAfterSave]).
   final ReminderNotificationService? notificationService;
 
+  /// Drawer nav fade (founder, Nov 20, 2026) — reports this
+  /// screen's drawer opening/closing to the shell, which owns the
+  /// bottom nav dock: the dock fades out while the drawer is open
+  /// and back in when it closes. The dock is a shell-level overlay
+  /// sibling ABOVE this Scaffold, so it cannot hear the drawer on
+  /// its own. Optional: standalone hosts (tests, pushed routes)
+  /// have no dock to fade and simply pass nothing.
+  final ValueChanged<bool>? onDrawerOpenChanged;
+
   const HomeScreen(
       {super.key,
       this.email,
@@ -249,7 +258,8 @@ class HomeScreen extends StatefulWidget {
       this.billingService,
       this.migraineController,
       this.logEntryOutbox,
-      this.notificationService});
+      this.notificationService,
+      this.onDrawerOpenChanged});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -2663,6 +2673,11 @@ class _HomeScreenState extends State<HomeScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: NotelColors.background,
+      // Drawer nav fade (founder, Nov 20, 2026): forward the
+      // drawer's open/close state to the shell so its nav dock can
+      // fade (see [HomeScreen.onDrawerOpenChanged]).
+      onDrawerChanged: (isOpened) =>
+          widget.onDrawerOpenChanged?.call(isOpened),
       // Home redesign — the drawer: surface panel ~300dp, modeled
       // on Settings' _menuRow construction. Round 5 (founder,
       // Nov 10, 2026) supersedes the redesign's one-entry rule:
