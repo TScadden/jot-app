@@ -15,8 +15,11 @@
 /// Day-key rule (spec §2.2, binding): biometric/score series keep
 /// their calendar date keys (`DailyBiometrics.date`); entry-derived
 /// series (feeling, flare, migraine, intake) assign each entry to
-/// its ENERGY day (04:00 local start) labeled by the calendar date
-/// of its 04:00 start. Every family joins on that label only.
+/// its ENERGY day — the Tabs day of the shared definition in
+/// tabs_day.dart (legacy 04:00 local start for instants before
+/// the persisted cutover, calendar-midnight from the cutover on)
+/// — labeled by the calendar date of its start. Every family
+/// joins on that label only.
 ///
 /// Zero rule: a stored biometric 0 (sleep/hrv/hr) is an absent
 /// day — never grouped, never averaged. A null score is an absent
@@ -32,6 +35,7 @@ import 'medication_timeline.dart';
 import 'medications.dart' show MedicationEntry, parseMedicationDate;
 import 'quick_log_models.dart';
 import 'sleep_need.dart';
+import 'tabs_day.dart';
 import 'today_summary.dart' show dateStrOf;
 
 // ── Constants (spec §3.3/§3.4/§4 — golden-tested, §8 A5) ──────────
@@ -794,17 +798,16 @@ String addDaysToDayKey(String dayKey, int days) {
   return formatDayKey(parsed.add(Duration(days: days)));
 }
 
-/// The energy-day label for an entry timestamp: the calendar date
-/// of the energy day's 04:00 local start (the feelingDayStart
-/// rule — an entry at 03:59 belongs to the prior labeled day, one
-/// at 04:00 to the new one).
-String energyDayLabel(int timestampMs) {
-  final dt = DateTime.fromMillisecondsSinceEpoch(timestampMs);
-  final startDate = dt.hour < 4
-      ? DateTime(dt.year, dt.month, dt.day - 1)
-      : DateTime(dt.year, dt.month, dt.day);
-  return _fmtDay(startDate.year, startDate.month, startDate.day);
-}
+/// The energy-day label for an entry timestamp: the Tabs-day key
+/// of the shared definition (tabs_day.dart), delegating to it —
+/// under the legacy rule an entry at 03:59 belongs to the prior
+/// labeled day and one at 04:00 to the new one; from the
+/// persisted cutover instant on, the label is the entry's
+/// calendar date (an entry at 00:00–03:59 after the cutover
+/// belongs to the calendar day on the clock, while the same
+/// clock time before the cutover keeps its legacy label).
+String energyDayLabel(int timestampMs) =>
+    TabsDayBoundary.instance.keyForMs(timestampMs);
 
 /// Category resolution with resolveSummaryCategoryId's semantics
 /// (today_summary.dart): exact name first (case-insensitive),

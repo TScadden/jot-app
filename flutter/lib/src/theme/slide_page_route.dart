@@ -28,7 +28,9 @@ import 'package:tabs_lab/src/theme/animations.dart';
 ///
 /// Opacity guarantees: this route is `opaque: true` (PageRouteBuilder's
 /// default, now explicit), every pushed screen's Scaffold paints
-/// `NotelColors.background` (0xFF080E1A, fully opaque), and the app
+/// `NotelColors.background` (fully opaque; the resolved token —
+/// default 0xFF0A0A0B, or the dev-only override when one is set
+/// on this device), and the app
 /// theme sets `scaffoldBackgroundColor` to the same color as a backstop.
 ///
 /// Reduced motion: when the OS asks for reduced motion, pushes are

@@ -249,6 +249,22 @@ void main() {
       expect(f.lengthSync(), greaterThan(0));
     });
 
+    test('vitals v2 banner flame (added scope, Nov 19, 2026): the '
+        'bundled drawable on an ImageView, not the 🔥 emoji text; '
+        'the provider swaps it on the todayDone flag', () {
+      final v2 = read('$androidMain/res/layout/vitals_widget_v2.xml');
+      expect(v2, isNot(contains('android:text="🔥"')));
+      expect(v2, contains('@+id/widget_streak_flame'));
+      expect(v2, contains('android:src="@drawable/ic_widget_flame_grey"'));
+      final kt = read(
+        '$androidMain/kotlin/com/notel/notel/playground/flutter/'
+        'VitalsWidgetProvider.kt',
+      );
+      expect(kt, contains('R.id.widget_streak_flame'));
+      expect(kt, contains('R.drawable.ic_widget_flame'));
+      expect(kt, contains('R.drawable.ic_widget_flame_grey'));
+    });
+
     test('the pre-rendered peek bitmaps exist in drawable-nodpi',
         () {
       for (final name in [

@@ -73,9 +73,11 @@ class EmptyMedicationListProvider implements MedicationListProvider {
 /// the shared [SettingsStore] (`intake_targets_v1`, device-local)
 /// — and adapts each [IntakeTargetVersion] to the engine's
 /// contract shape. A version's stored `effectiveFromDayMs` IS an
-/// energy-day start (04:00 local, the feelingDayStart rule), so
-/// its engine day key is `energyDayLabel` of that instant — the
-/// same label the engine stamps on entry days.
+/// energy-day start — the start of a Tabs day under the shared
+/// definition (tabs_day.dart: 04:00 local for pre-cutover days,
+/// local midnight from the cutover on; the feelingDayStart rule),
+/// so its engine day key is `energyDayLabel` of that instant —
+/// the same label the engine stamps on entry days.
 ///
 /// D-T01 failure semantics: the production loader is the
 /// failure-distinguishing [IntakeSettings.loadTargetsOrNull], so

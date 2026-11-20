@@ -47,7 +47,16 @@ class FirstRunReminderResync {
   /// upgraded devices must re-run the resync once so the stale
   /// daily alarm is cancelled (and the 8 PM projection armed)
   /// without the user opening Settings.
-  static const String doneKey = 'first_run_reminder_resync_v3';
+  /// v4: the streak countdown notification joined the evening
+  /// projection — upgraded devices must re-run the resync once
+  /// so the countdown arms (and any same-evening check-in
+  /// one-shot it replaces is dropped) without the user opening
+  /// Settings.
+  /// v5: the Tabs day boundary moved from 04:00 to midnight —
+  /// upgraded devices must re-run the resync once so check-in
+  /// reminders re-project under the new day-label semantics
+  /// without the user opening Settings.
+  static const String doneKey = 'first_run_reminder_resync_v5';
   static const String doneValue = 'done';
 
   final SecureStore _store;
@@ -90,7 +99,9 @@ class FirstRunReminderResync {
 ///   decoded focus tests (the Project Focus reminder gate, via
 ///   `SettingsProfileData.focusTests`), the pull's checked-in
 ///   Tabs-day labels (the check-in reminder gate, via
-///   `SettingsProfileData.checkedInDayLabels`) and the LOCAL
+///   `SettingsProfileData.checkedInDayLabels`), the pull's
+///   settled streak state (the streak-countdown gate, via
+///   `SettingsProfileData.streakState`) and the LOCAL
 ///   check-in toggle from [SettingsStore] — after a migration
 ///   import that toggle is the imported value, which is why the
 ///   import action runs this too.
@@ -119,6 +130,7 @@ Future<void> performReminderResync({
     eventEnabled: data.eventReminderEnabled,
     focusTests: data.focusTests,
     checkedInDayLabels: data.checkedInDayLabels,
+    streakState: data.streakState,
     events: data.eventCounters
         .map(EventCounterItem.fromMap)
         .map((c) => EventReminderRequest(

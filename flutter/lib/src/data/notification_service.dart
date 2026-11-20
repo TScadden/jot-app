@@ -6,6 +6,7 @@ import 'package:timezone/timezone.dart' as tz;
 
 import 'daily_score_background.dart' show LocalDailyScoreReadyNotifier;
 import 'focus_test.dart';
+import 'streak_engine.dart';
 import 'habit_time.dart';
 import 'health_data.dart' show HabitDto;
 import 'migraine_notification.dart' show LocalMigraineNotifier;
@@ -304,6 +305,26 @@ abstract class ReminderNotificationService {
     required int minute,
     required bool highImportance,
   });
+
+  /// Streak countdown one-shot (Community Added Scope #2): like
+  /// [scheduleOnce], but the Android details carry a LIVE
+  /// chronometer counting down to [countdownTo] (the next Tabs
+  /// day boundary — see [nextTabsDayBoundary]) and a timeout at
+  /// that same instant, so the system removes the notification
+  /// at rollover even if the app never runs again. [when] is the
+  /// 20:00 fire time; the chronometer target and the timeout are
+  /// both derived from [countdownTo] by the implementation.
+  Future<void> scheduleStreakCountdownOnce({
+    required int id,
+    required String title,
+    required String body,
+    required String channelId,
+    required String channelName,
+    required String channelDescription,
+    required DateTime when,
+    required DateTime countdownTo,
+    required bool highImportance,
+  });
   Future<void> cancel(int id);
 }
 
@@ -583,14 +604,17 @@ Iterable<int> checkInReminderCancelIds(DateTime now) sync* {
 ///
 /// Attribution: [checkedInDayLabels] holds Tabs-day labels in
 /// `energyDayLabel`'s `yyyy-MM-dd` format (the Daily Ranking
-/// attribution — a check-in at 03:59 on calendar date D belongs
-/// to Tabs day D−1; at 04:00+ it belongs to D). At 20:00 on
-/// calendar date D the current Tabs day's label is D itself
-/// (20:00 is past the 04:00 reset), so D's label is compared
-/// directly — [focusLogDateKey] formats the same `yyyy-MM-dd`
-/// shape. Dates are built by calendar-day arithmetic (never
-/// 24-hour durations), so DST transitions cannot skip or repeat
-/// a date.
+/// attribution under the shared Tabs-day definition in
+/// tabs_day.dart — under the legacy rule a check-in at 03:59 on
+/// calendar date D belongs to Tabs day D−1 and at 04:00+ to D;
+/// from the persisted cutover on, a check-in on calendar date D
+/// belongs to Tabs day D at every hour). At 20:00 on calendar
+/// date D the current Tabs day's label is D itself under either
+/// rule (20:00 is on the same side of both day boundaries), so
+/// D's label is compared directly — [focusLogDateKey] formats
+/// the same `yyyy-MM-dd` shape. Dates are built by calendar-day
+/// arithmetic (never 24-hour durations), so DST transitions
+/// cannot skip or repeat a date.
 List<DateTime> checkInReminderFireTimes({
   required DateTime now,
   required Set<String> checkedInDayLabels,
@@ -601,6 +625,185 @@ List<DateTime> checkInReminderFireTimes({
     if (checkedInDayLabels.contains(focusLogDateKey(date))) continue;
     final fire = DateTime(date.year, date.month, date.day, 20);
     if (!fire.isAfter(now)) continue;
+    out.add(fire);
+  }
+  return out;
+}
+
+/// Streak countdown one-shot projection horizon: [ReminderSync]
+/// looks this many local days ahead (today included) when
+/// projecting streak-countdown one-shots, and cancels this many
+/// days either side of today when sweeping stale ones (see
+/// [streakCountdownCancelIds]). The same 35-day bound as the
+/// check-in and Project Focus projections.
+const int streakCountdownHorizonDays = 35;
+
+/// Base of the projected streak-countdown one-shot id block:
+/// `820000 + (epochDay % 10000)` → 820000–829999.
+///
+/// Disjointness (verified against every other id owner in the
+/// app, by grepping the whole lib/ tree):
+/// - Fixed ids 1003 / 1004 / 770001 / 7301 / 7303 / 7304: all lie
+///   below the block (770001 is the largest of them).
+/// - Event-counter ids ([eventNotificationId]): 700000–799998 —
+///   strictly below the block.
+/// - User-reminder blocks (`reminder_alarm_sync.dart`):
+///   101500–699999 — strictly below the block.
+/// - Project Focus projection ids: 800000–809999 — strictly
+///   below the block.
+/// - Check-in projection ids: 810000–819999 — strictly below
+///   the block.
+/// - Habit scheduled-time ids: 900000–1899999 — strictly above
+///   the block.
+/// Inside the block, distinct dates can share an id only when
+/// their epoch days differ by a multiple of 10000 (~27 years);
+/// the projection horizon and the cancellable window are both
+/// 71 days wide at most, so two dates that could ever be pending
+/// at once never collide.
+const int streakCountdownIdBase = 820000;
+
+/// Span of the projected streak-countdown one-shot id block (see
+/// [streakCountdownIdBase]).
+const int streakCountdownIdSpan = 10000;
+
+/// Plugin notification id for the streak-countdown one-shot on
+/// the local calendar date of [date] (see
+/// [streakCountdownIdBase] for the disjointness proof).
+int streakCountdownIdForDate(DateTime date) {
+  final epochDay = DateTime.utc(date.year, date.month, date.day)
+          .millisecondsSinceEpoch ~/
+      Duration.millisecondsPerDay;
+  return streakCountdownIdBase + (epochDay % streakCountdownIdSpan);
+}
+
+/// Every projected streak-countdown id a previous sync could
+/// have left pending around [now]: the ids for local dates from
+/// `today - [streakCountdownHorizonDays]` through
+/// `today + [streakCountdownHorizonDays]`. Cancelling an id also
+/// removes a POSTED notification carrying it (the plugin's
+/// cancel covers both), so this sweep is what takes down a
+/// live countdown when its day resolves.
+Iterable<int> streakCountdownCancelIds(DateTime now) sync* {
+  for (var offset = -streakCountdownHorizonDays;
+      offset <= streakCountdownHorizonDays;
+      offset++) {
+    yield streakCountdownIdForDate(
+        DateTime(now.year, now.month, now.day + offset));
+  }
+}
+
+/// The streak countdown channel (Community Added Scope #2,
+/// founder-named; description ruled by Juno, NOTIF-COPY.md §2 —
+/// ship byte-for-byte).
+const String streakCountdownChannelId = 'streak_reminders';
+const String streakCountdownChannelName = 'Streak reminders';
+const String streakCountdownChannelDescription =
+    'Shows in the evening when you have a streak going and '
+    'today\'s Daily Summary is not finished, with the time left '
+    'to extend your streak.';
+
+/// The streak countdown title (Juno, NOTIF-COPY.md §1.1 — ship
+/// byte-for-byte; sentence case, no terminal punctuation).
+const String streakCountdownTitle =
+    'Finish today\'s Daily Summary when you\'re ready';
+
+/// The streak countdown body (Juno, NOTIF-COPY.md §1.2 — ship
+/// byte-for-byte): [streak] is the settled current streak at
+/// projection time; the lowercase `t` and the absent terminal
+/// punctuation are intentional (the body is a continuation
+/// clause composed with the live chronometer), and `day` never
+/// pluralizes (§1.4 — only the numeral changes).
+String streakCountdownBody(int streak) =>
+    'to extend your $streak day streak';
+
+/// The next Tabs day boundary strictly after [now], derived
+/// ONLY from the streak engine's shared day definition
+/// ([tabsDayStr], which routes through [tabsDayAnchor]): the
+/// first whole second at which the Tabs-day label changes.
+/// No boundary hour is named anywhere in this derivation, so
+/// when the shared definition moves (Added Scope #3), this
+/// target moves with it untouched. The search window is 48
+/// hours — wider than any Tabs day (a boundary-shifted calendar
+/// day is 23–25 hours across DST) — and the resolution is one
+/// second, the precision of the boundary itself.
+DateTime nextTabsDayBoundary(DateTime now) {
+  final today = tabsDayStr(now);
+  var lo = DateTime(now.year, now.month, now.day, now.hour,
+      now.minute, now.second);
+  var hi = lo.add(const Duration(hours: 48));
+  // Invariants: tabsDayStr(lo) == today, tabsDayStr(hi) != today.
+  while (hi.difference(lo) > const Duration(seconds: 1)) {
+    final mid = lo
+        .add(Duration(seconds: hi.difference(lo).inSeconds ~/ 2));
+    if (tabsDayStr(mid) == today) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+  return hi;
+}
+
+/// The settled current streak the countdown gate and body read:
+/// [streakCurrent] over the settled [state], anchored on the
+/// Tabs day of [now] via [tabsDayAnchor] (the Home display
+/// convention — streakCurrent takes the anchor, not the wall
+/// clock).
+int settledStreakForCountdown(StreakState state, DateTime now) =>
+    streakCurrent(state, tabsDayAnchor(now));
+
+/// Whether the Tabs day [tabsDay] qualifies for the streak
+/// countdown under the settled [state]: the day's Daily Summary
+/// is NOT complete (not in [StreakState.summaryCompletedDays]),
+/// the day is NOT freeze-covered (not in
+/// [StreakState.restoredDays] — the engine's record of a day a
+/// freeze bridged), and the settled current streak is at least
+/// 1 ([settledStreak] — computed once per projection by
+/// [settledStreakForCountdown]).
+bool streakCountdownDayQualifies({
+  required StreakState state,
+  required String tabsDay,
+  required int settledStreak,
+}) =>
+    settledStreak >= 1 &&
+    !state.summaryCompletedDays.contains(tabsDay) &&
+    !state.restoredDays.contains(tabsDay);
+
+/// The bounded streak-countdown projection (Community Added
+/// Scope #2; the Nov 11 fire-time-gates lesson, check-in
+/// precedent): the 20:00-local fire times [ReminderSync] arms as
+/// chronometer one-shots. For each local date D from today
+/// through today + [streakCountdownHorizonDays] days, D's 20:00
+/// fire time qualifies iff it is strictly after [now] AND D's
+/// Tabs day (via [tabsDayStr] of the fire moment) qualifies
+/// under [streakCountdownDayQualifies] with the settled streak
+/// at [now]. A null [state] (no settled streak record available
+/// at the call site) projects nothing — the countdown is never
+/// armed on a guess. Future days carry no completion or freeze
+/// marks yet, so they project on the current settled streak;
+/// every re-sync (app open, settlement, freeze events, any
+/// [ReminderSync] run) re-projects, and a day that completes
+/// drops out at that sync. Dates are built by calendar-day
+/// arithmetic, so DST cannot skip or repeat one.
+List<DateTime> streakCountdownFireTimes({
+  required DateTime now,
+  required StreakState? state,
+}) {
+  if (state == null) return const [];
+  final streak = settledStreakForCountdown(state, now);
+  if (streak < 1) return const [];
+  final out = <DateTime>[];
+  for (var offset = 0; offset <= streakCountdownHorizonDays; offset++) {
+    final date = DateTime(now.year, now.month, now.day + offset);
+    final fire = DateTime(date.year, date.month, date.day, 20);
+    if (!fire.isAfter(now)) continue;
+    if (!streakCountdownDayQualifies(
+      state: state,
+      tabsDay: tabsDayStr(fire),
+      settledStreak: streak,
+    )) {
+      continue;
+    }
     out.add(fire);
   }
   return out;
@@ -805,14 +1008,58 @@ class ReminderSync {
     }
   }
 
-  /// Arms the bounded check-in one-shot projection (see
-  /// [checkInReminderFireTimes]): one one-shot per projected
-  /// 20:00 fire time, with the SAME title/body/channel/
-  /// importance as the retired daily schedule.
-  Future<void> _armCheckInProjection(
-      DateTime n, Set<String> checkedInDayLabels) async {
+  /// Cancels EVERY streak-countdown schedule a previous sync
+  /// could have left pending — and any POSTED countdown in the
+  /// window (the plugin's cancel removes posted notifications
+  /// by id too). Runs on every [syncAll] and every
+  /// [syncCheckInOnly] — before any re-arm, and on the paths
+  /// that arm nothing — so a countdown whose day has resolved
+  /// (summary settled, freeze-covered) is taken down at the
+  /// settlement sync and can never survive into a state where
+  /// its message stopped being true.
+  Future<void> _cancelStreakCountdownSchedules(DateTime n) async {
+    for (final id in streakCountdownCancelIds(n)) {
+      await service.cancel(id);
+    }
+  }
+
+  /// Arms the unified evening projection: the streak countdown
+  /// (see [streakCountdownFireTimes]) and the bounded check-in
+  /// one-shot projection (see [checkInReminderFireTimes]),
+  /// reconciled to ONE nudge per evening — on a date where the
+  /// countdown is armed, that date's plain check-in one-shot is
+  /// suppressed (not stacked). The check-in one-shots keep the
+  /// SAME title/body/channel/importance as the retired daily
+  /// schedule.
+  Future<void> _armEveningProjection(DateTime n,
+      Set<String> checkedInDayLabels, StreakState? streakState) async {
+    final countdownFires =
+        streakCountdownFireTimes(now: n, state: streakState);
+    final countdownDates = <DateTime>{
+      for (final f in countdownFires) DateTime(f.year, f.month, f.day),
+    };
+    if (streakState != null && countdownFires.isNotEmpty) {
+      final streak = settledStreakForCountdown(streakState, n);
+      for (final fire in countdownFires) {
+        await service.scheduleStreakCountdownOnce(
+          id: streakCountdownIdForDate(fire),
+          title: streakCountdownTitle,
+          body: streakCountdownBody(streak),
+          channelId: streakCountdownChannelId,
+          channelName: streakCountdownChannelName,
+          channelDescription: streakCountdownChannelDescription,
+          when: fire,
+          countdownTo: nextTabsDayBoundary(fire),
+          highImportance: true,
+        );
+      }
+    }
     for (final fire in checkInReminderFireTimes(
         now: n, checkedInDayLabels: checkedInDayLabels)) {
+      if (countdownDates.contains(
+          DateTime(fire.year, fire.month, fire.day))) {
+        continue;
+      }
       await service.scheduleOnce(
         id: checkInReminderIdForDate(fire),
         title: 'how are you feeling?',
@@ -825,29 +1072,38 @@ class ReminderSync {
     }
   }
 
-  /// Re-projects ONLY the check-in reminder (VC 100138) — the
+  /// Re-projects ONLY the evening nudges (VC 100138; streak
+  /// countdown added by Community Added Scope #2) — the
   /// check-in save path's re-sync, mirroring the habits
   /// completion re-sync ([HabitTimeReminderSync.syncHabits]):
   /// after a feeling check-in is saved, today's pending 20:00
   /// one-shot must drop without waiting for the next full
-  /// [syncAll]. The legacy daily id and the whole projected
-  /// window are cancelled first, on EVERY path (toggle off and
+  /// [syncAll]. The legacy daily id and both projected windows
+  /// (check-in AND streak countdown — the countdown sweep also
+  /// takes down a POSTED countdown, which is the settlement
+  /// hook when this runs from a summary completion) are
+  /// cancelled first, on EVERY path (toggle off and
   /// OS-permission off included); then, only when the toggle is
-  /// on and notifications are enabled, the projection is
-  /// re-armed from [checkedInDayLabels] — which the caller
-  /// derives from its LOCAL merged entry view, so a just-saved
-  /// check-in counts even before its server push lands.
+  /// on and notifications are enabled, the unified evening
+  /// projection is re-armed from [checkedInDayLabels] — which
+  /// the caller derives from its LOCAL merged entry view, so a
+  /// just-saved check-in counts even before its server push
+  /// lands — and from [streakState], the caller's settled
+  /// streak state (null = no settled record; no countdown is
+  /// armed on a guess).
   Future<void> syncCheckInOnly({
     required bool checkInEnabled,
     required Set<String> checkedInDayLabels,
+    StreakState? streakState,
     DateTime? now,
   }) async {
     final n = now ?? DateTime.now();
     await service.initialize();
     final enabled = await service.areNotificationsEnabled();
     await _cancelCheckInSchedules(n);
+    await _cancelStreakCountdownSchedules(n);
     if (!enabled || !checkInEnabled) return;
-    await _armCheckInProjection(n, checkedInDayLabels);
+    await _armEveningProjection(n, checkedInDayLabels, streakState);
   }
 
   Future<void> syncAll({
@@ -858,6 +1114,7 @@ class ReminderSync {
     required List<EventReminderRequest> events,
     List<FocusTest> focusTests = const [],
     Set<String> checkedInDayLabels = const {},
+    StreakState? streakState,
     DateTime? now,
   }) async {
     final n = now ?? DateTime.now();
@@ -869,6 +1126,7 @@ class ReminderSync {
       await service.cancel(ReminderIds.habit);
       await _cancelProjectSchedules(n);
       await _cancelCheckInSchedules(n);
+      await _cancelStreakCountdownSchedules(n);
       for (final e in events) {
         await service.cancel(eventNotificationId(e.counterId));
       }
@@ -920,8 +1178,9 @@ class ReminderSync {
     // schedule; only the fire time (20:00, not 04:00) and the
     // gate changed.
     await _cancelCheckInSchedules(n);
+    await _cancelStreakCountdownSchedules(n);
     if (checkInEnabled) {
-      await _armCheckInProjection(n, checkedInDayLabels);
+      await _armEveningProjection(n, checkedInDayLabels, streakState);
     }
     for (final e in events) {
       final id = eventNotificationId(e.counterId);
@@ -1156,6 +1415,62 @@ class LocalReminderNotificationService implements ReminderNotificationService {
             ? AndroidScheduleMode.exactAllowWhileIdle
             : AndroidScheduleMode.inexactAllowWhileIdle,
         matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+        payload: channelId,
+      );
+    } on NotificationServiceException {
+      rethrow;
+    } catch (_) {
+      throw const NotificationServiceException('SCHEDULE_FAILED');
+    }
+  }
+
+  @override
+  Future<void> scheduleStreakCountdownOnce({
+    required int id,
+    required String title,
+    required String body,
+    required String channelId,
+    required String channelName,
+    required String channelDescription,
+    required DateTime when,
+    required DateTime countdownTo,
+    required bool highImportance,
+  }) async {
+    try {
+      await initialize();
+      final exact = await _android?.canScheduleExactNotifications() ?? false;
+      await _plugin.zonedSchedule(
+        id,
+        title,
+        body,
+        _zoned(when),
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            channelId,
+            channelName,
+            channelDescription: channelDescription,
+            importance: highImportance
+                ? Importance.high
+                : Importance.defaultImportance,
+            priority:
+                highImportance ? Priority.high : Priority.defaultPriority,
+            icon: '@mipmap/ic_launcher',
+            // Juno NOTIF-COPY.md §1.3 — chronometer configuration:
+            // `when` is the boundary instant, shown as a LIVE
+            // count-down; subText stays unset; no static time
+            // text anywhere. timeoutAfter removes the posted
+            // notification at the boundary even if the app
+            // never runs again.
+            showWhen: true,
+            when: countdownTo.millisecondsSinceEpoch,
+            usesChronometer: true,
+            chronometerCountDown: true,
+            timeoutAfter: countdownTo.difference(when).inMilliseconds,
+          ),
+        ),
+        androidScheduleMode: exact
+            ? AndroidScheduleMode.exactAllowWhileIdle
+            : AndroidScheduleMode.inexactAllowWhileIdle,
         payload: channelId,
       );
     } on NotificationServiceException {

@@ -258,6 +258,15 @@ String _amPm(int h) => h < 12 ? 'AM' : 'PM';
 String dateStrOf(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+/// [d] shifted by [days] CALENDAR days at true local midnight
+/// (component arithmetic). Weekly-range boundaries must use
+/// this, never Duration arithmetic: across a DST transition a
+/// Duration shift lands an hour off midnight and the weekly
+/// window would swallow or drop an hour of log entries at its
+/// edges (Vera MINOR 2 on the Weekly Report package).
+DateTime _calendarDayPlus(DateTime d, int days) =>
+    DateTime(d.year, d.month, d.day + days);
+
 // ── Snapshot model (ClinicalReportData.kt) ────────────────────────
 
 enum DataSourceStatus {
@@ -354,11 +363,23 @@ class ReportBpRecord {
 class ReportSnapshot {
   final bool last30Days;
 
-  /// Range duration in days: native `ClinicalReportRange.durationDays`
-  /// — 30 for LAST_30_DAYS, 180 for FULL (its start is now−180d).
-  int get durationDays => last30Days ? 30 : 180;
+  /// Weekly Report Package 1: the fixed calendar Mon–Sun range
+  /// (local-midnight dates) when this snapshot was collected in
+  /// weekly range mode; null for the standard ranges. The weekly
+  /// range is a FIXED range — it is never described by the page's
+  /// "This Month" / "All Time" picker labels (Juno §d Flag 4).
+  final DateTime? weekStart;
+  final DateTime? weekEnd;
 
-  String get rangeTypeName => last30Days ? 'LAST_30_DAYS' : 'FULL';
+  bool get isWeekly => weekStart != null;
+
+  /// Range duration in days: native `ClinicalReportRange.durationDays`
+  /// — 30 for LAST_30_DAYS, 180 for FULL (its start is now−180d);
+  /// 7 for the weekly Mon–Sun range.
+  int get durationDays => isWeekly ? 7 : (last30Days ? 30 : 180);
+
+  String get rangeTypeName =>
+      isWeekly ? 'WEEKLY' : (last30Days ? 'LAST_30_DAYS' : 'FULL');
 
   final int generationTimestampMs;
   final List<QuickLogEntry> logEntries;
@@ -414,6 +435,8 @@ class ReportSnapshot {
 
   const ReportSnapshot({
     required this.last30Days,
+    this.weekStart,
+    this.weekEnd,
     required this.generationTimestampMs,
     required this.logEntries,
     required this.categoriesMap,
@@ -478,6 +501,8 @@ class ReportSnapshot {
     }
     return ReportSnapshot(
       last30Days: last30Days,
+      weekStart: weekStart,
+      weekEnd: weekEnd,
       generationTimestampMs: generationTimestampMs,
       logEntries: logEntries,
       categoriesMap: categoriesMap,
@@ -1388,6 +1413,16 @@ class ReportDataCollector {
     void Function(String stage)? onStage,
     bool Function()? isCancelled,
     DateTime? now,
+
+    /// Weekly Report Package 1 — weekly range mode: a fixed
+    /// closed calendar Mon–Sun range (local-midnight Monday /
+    /// Sunday dates). When [weekStart] is set, every section is
+    /// collected over exactly that range (entries, BP, stored
+    /// scores, and the HC union via loadRange), reusing the same
+    /// availability derivation and metadata as the standard
+    /// ranges. [last30Days] is ignored in weekly mode.
+    DateTime? weekStart,
+    DateTime? weekEnd,
   }) {
     // R-1 F4: the whole collection runs under one deadline; a
     // timeout surfaces as the named [ReportCollectionTimeout],
@@ -1399,6 +1434,8 @@ class ReportDataCollector {
       onStage: onStage,
       isCancelled: isCancelled,
       now: now,
+      weekStart: weekStart,
+      weekEnd: weekEnd,
     ).timeout(collectTimeout,
         onTimeout: () => throw const ReportCollectionTimeout());
   }
@@ -1410,6 +1447,8 @@ class ReportDataCollector {
     void Function(String stage)? onStage,
     bool Function()? isCancelled,
     DateTime? now,
+    DateTime? weekStart,
+    DateTime? weekEnd,
   }) async {
     // Cancellation is honored at the collection's stage
     // boundaries: on entry, before the documents stage, and
@@ -1425,6 +1464,13 @@ class ReportDataCollector {
 
     final n = now ?? DateTime.now();
     final nowMs = n.millisecondsSinceEpoch;
+    final weekly = weekStart != null;
+    final weekEndDate =
+        weekEnd ?? (weekly ? _calendarDayPlus(weekStart, 6) : null);
+    final weekStartMs = weekly ? weekStart.millisecondsSinceEpoch : 0;
+    final weekEndExclusiveMs = weekly
+        ? _calendarDayPlus(weekEndDate!, 1).millisecondsSinceEpoch
+        : 0;
     final daysToFetch = last30Days ? 31 : 180;
     final cutoff = last30Days ? nowMs - 30 * 24 * 60 * 60 * 1000 : 0;
     final metadata = <String, SectionMetadata>{};
@@ -1446,7 +1492,12 @@ class ReportDataCollector {
     // range query has no category filter; the selection restricts
     // only the categories map sent to the AI).
     var entries = await backend.fetchLogEntryDtos();
-    if (last30Days) {
+    if (weekly) {
+      entries = entries
+          .where((e) =>
+              e.timestamp >= weekStartMs && e.timestamp < weekEndExclusiveMs)
+          .toList();
+    } else if (last30Days) {
       entries = entries.where((e) => e.timestamp >= cutoff).toList();
     } else {
       entries = entries.toList()
@@ -1477,13 +1528,22 @@ class ReportDataCollector {
       scoreLoadFailed = true;
       storedScores = const {};
     }
-    final scoreRangeDays = last30Days ? 30 : 180;
-    final scoreEndDay = DateTime(n.year, n.month, n.day);
     final dailyScoreSeries = <(String, int)>[];
-    for (var i = scoreRangeDays - 1; i >= 0; i--) {
-      final key = dateStrOf(scoreEndDay.subtract(Duration(days: i)));
-      final value = storedScores[key];
-      if (value != null && value > 0) dailyScoreSeries.add((key, value));
+    if (weekly) {
+      // Weekly mode: exactly the week's 7 calendar days.
+      for (var i = 0; i < 7; i++) {
+        final key = dateStrOf(_calendarDayPlus(weekStart, i));
+        final value = storedScores[key];
+        if (value != null && value > 0) dailyScoreSeries.add((key, value));
+      }
+    } else {
+      final scoreRangeDays = last30Days ? 30 : 180;
+      final scoreEndDay = DateTime(n.year, n.month, n.day);
+      for (var i = scoreRangeDays - 1; i >= 0; i--) {
+        final key = dateStrOf(scoreEndDay.subtract(Duration(days: i)));
+        final value = storedScores[key];
+        if (value != null && value > 0) dailyScoreSeries.add((key, value));
+      }
     }
     meta(
         'dailyScore',
@@ -1576,7 +1636,10 @@ class ReportDataCollector {
     //   that signal empty stays a retrieval statement.
     final allBp = await backend.fetchManualBpLogs();
     final bp = allBp
-        .where((r) => !last30Days || r.timeEpochMs >= cutoff)
+        .where((r) => weekly
+            ? (r.timeEpochMs >= weekStartMs &&
+                r.timeEpochMs < weekEndExclusiveMs)
+            : (!last30Days || r.timeEpochMs >= cutoff))
         .map((r) => ReportBpRecord(r.systolic, r.diastolic, r.timeEpochMs))
         .toList();
     final DataSourceStatus bpStatus;
@@ -1652,14 +1715,23 @@ class ReportDataCollector {
     // cost one 30 s read bound in parallel instead of returning
     // by the 90 s budget; the budget remains as the launch gate +
     // completion cap behind them.
-    final union = await historyQueries.loadDays(
-      daysToFetch,
-      end: n,
-      metrics: HistoryMetric.values.toSet(),
-      readTimeout: HealthConnectService.readTimeout,
-      unionBudget: const Duration(seconds: 90),
-      maxFetchDays: 42,
-    );
+    final union = weekly
+        ? await historyQueries.loadRange(
+            startDate: dateStrOf(weekStart),
+            endDate: dateStrOf(weekEndDate!),
+            metrics: HistoryMetric.values.toSet(),
+            readTimeout: HealthConnectService.readTimeout,
+            unionBudget: const Duration(seconds: 90),
+            maxFetchDays: 42,
+          )
+        : await historyQueries.loadDays(
+            daysToFetch,
+            end: n,
+            metrics: HistoryMetric.values.toSet(),
+            readTimeout: HealthConnectService.readTimeout,
+            unionBudget: const Duration(seconds: 90),
+            maxFetchDays: 42,
+          );
 
     // Phase 2 (§2/§3): the per-metric grant evidence comes from
     // ONE probeAvailability() snapshot per collect — fetched
@@ -1800,6 +1872,8 @@ class ReportDataCollector {
 
     return ReportSnapshot(
       last30Days: last30Days,
+      weekStart: weekly ? weekStart : null,
+      weekEnd: weekly ? weekEndDate : null,
       generationTimestampMs: nowMs,
       logEntries: entries,
       categoriesMap: {for (final c in selectedCategories) c.id: c.name},
@@ -2295,6 +2369,12 @@ class ReportGenerationPipeline {
     String? reportGenerationId,
     bool? checkPickupFirst,
     String? pickupCheckGenerationId,
+
+    /// Weekly Report Package 1: weekly range mode (see
+    /// [ReportDataCollector.collect]); the weekly caller also
+    /// passes forceRawFallback so no AI narrative is generated.
+    DateTime? weekStart,
+    DateTime? weekEnd,
   }) async {
     bool cancelled() => isCancelled?.call() ?? false;
 
@@ -2309,6 +2389,8 @@ class ReportGenerationPipeline {
         last30Days: last30Days,
         profile: profile,
         now: now,
+        weekStart: weekStart,
+        weekEnd: weekEnd,
         onStage: (s) {
           lastCollectStage =
               s == 'syncing' ? ReportStage.syncing : ReportStage.collecting;
@@ -2330,7 +2412,16 @@ class ReportGenerationPipeline {
     }
     if (cancelled()) return const ReportFailed('Cancelled');
 
-    if (!snapshot.hasAnyData) {
+    // Weekly Report Package 1: a weekly snapshot skips the
+    // no-data failure. A permission-blocked or fully empty week
+    // still ships its PDF — the availability block and the
+    // weekly completeness line carry the truth — and archives
+    // as Blocked / Incomplete (Session #2 behavior matrix);
+    // failing here would leave no artifact, no archive entry,
+    // and no permission-needed state for exactly the weeks
+    // that need them. The standard ranges keep the native
+    // no-data failure unchanged.
+    if (!snapshot.hasAnyData && !snapshot.isWeekly) {
       return const ReportFailed(
           'No patient logs or health data found in selected range.');
     }

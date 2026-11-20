@@ -659,6 +659,19 @@ void main() {
         '100 gems buys one streak freeze — the freeze on this screen.',
       ]);
     });
+
+    test('scope #6 sheet explainer: lines 1–4 verbatim + the '
+        'approved line 5 (GEMS-MOVE-COPY §1.3 Proposal A)', () {
+      expect(GemCopy.sheetExplainerLine5,
+          '100 gems buys one streak freeze.');
+      expect(GemCopy.sheetExplainerLines, [
+        "Gems are earned in Tabs. You can't buy them, and they have no cash value.",
+        'Finish your Daily Summary: +5 gems.',
+        'Streak bonuses pay when you reach them: +25 gems at 7 days, +50 at 30 days, +100 at 100 days, and +100 at each 100 days after that.',
+        'Perfect week: +20 gems when you finish your Daily Summary all 7 days of a Monday–Sunday week.',
+        '100 gems buys one streak freeze.',
+      ]);
+    });
   });
 }
 

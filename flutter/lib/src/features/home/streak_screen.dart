@@ -973,8 +973,9 @@ class _StreakScreenState extends State<StreakScreen> {
               ),
             ],
           ],
-          // Gems — the buy-with-gems section (Juno §2) + the
-          // founder-addition explainer (§4), inside this card.
+          // Gems — the buy-with-gems section (Juno §2), inside
+          // this card. (The §4 explainer moved to the Gems sheet —
+          // added scope #6; the buy row stays.)
           _gemSection(
             heldPurchased: heldPurchased,
             available: available,
@@ -985,7 +986,7 @@ class _StreakScreenState extends State<StreakScreen> {
     );
   }
 
-  /// The gem-buy section of the Streak Freeze card (Juno §2 + §4).
+  /// The gem-buy section of the Streak Freeze card (Juno §2).
   ///
   /// Buy rows (balance line §2b, button §2a, insufficient line
   /// §2d) render only while the buy affordance is live: hidden in
@@ -994,9 +995,8 @@ class _StreakScreenState extends State<StreakScreen> {
   /// and only once a server balance exists. Under 100 gems the
   /// button is present but DISABLED with the §2d line under it.
   /// The §2c success feedback renders only on a verified server
-  /// spend. The §4 explainer is text-only and always renders as
-  /// part of this section, under the buy rows: the screen stays
-  /// information-only apart from the buy affordances.
+  /// spend. The §4 About-gems explainer is NOT here anymore — it
+  /// moved to the Gems sheet (added scope #6, Nov 20, 2026).
   Widget _gemSection({
     required bool heldPurchased,
     required int available,
@@ -1085,32 +1085,12 @@ class _StreakScreenState extends State<StreakScreen> {
           ],
           const SizedBox(height: 12),
         ],
-        // Juno §4 explainer — verbatim, text only, no buttons or
-        // flows. Understandable from this block alone.
-        const Text(
-          GemCopy.explainerHeading,
-          key: Key('gemExplainerHeading'),
-          style: TextStyle(
-            fontSize: 14.5,
-            fontWeight: FontWeight.w700,
-            color: LabBlackColors.textPrimary,
-          ),
-        ),
-        const SizedBox(height: 6),
-        for (var i = 0; i < GemCopy.explainerLines.length; i++) ...[
-          Text(
-            GemCopy.explainerLines[i],
-            key: Key('gemExplainerLine$i'),
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              height: 1.45,
-              color: Color(0xFFAAB3D0),
-            ),
-          ),
-          if (i < GemCopy.explainerLines.length - 1)
-            const SizedBox(height: 6),
-        ],
+        // Added scope #6 (Nov 20, 2026, founder direction as
+        // amended): the Juno §4 About-gems explainer no longer
+        // renders here — it MOVED to the Gems sheet opened from
+        // the Home gem pill (gems_sheet.dart). The buy-with-gems
+        // row above stays exactly as-is. No pointer line replaces
+        // the explainer (GEMS-MOVE-COPY §4 ruling: none needed).
       ],
     );
   }

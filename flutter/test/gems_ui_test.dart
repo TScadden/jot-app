@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -5,14 +6,38 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/gem_service.dart';
 import 'package:tabs_lab/src/data/streak_engine.dart';
 import 'package:tabs_lab/src/data/streak_purchase.dart';
+import 'package:tabs_lab/src/features/home/gems_sheet.dart';
 import 'package:tabs_lab/src/features/home/streak_celebration_screen.dart';
 import 'package:tabs_lab/src/features/home/streak_screen.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/features/settings/streak_sim.dart';
 
+/// Opens the Gems sheet the way Home does, with the test's fake
+/// service/state and a no-op settled-record push.
+Future<void> unawaitedShowGemsSheet(
+  BuildContext context, {
+  required GemService gems,
+  required StreakState state,
+}) =>
+    showGemsSheet(
+      context: context,
+      gemService: gems,
+      streakState: state,
+      streakPush: (current, best, json, {int? purchasedFreezes}) async =>
+          true,
+    );
+
 /// Gems UI (Nov 19, 2026) — Home pill rendering/widening, the
-/// streak screen's buy-with-gems surface + Juno §4 explainer, the
-/// celebration earn lines, and the SIM/dev fence.
+/// streak screen's buy-with-gems surface, the celebration earn
+/// lines, and the SIM/dev fence.
+///
+/// Added scope #6 (Nov 20, 2026): the Juno §4 explainer MOVED off
+/// the streak screen into the Gems sheet (opened by tapping the
+/// Home gem pill) — the streak-screen tests below now pin its
+/// ABSENCE there while the buy-with-gems row stays, and the new
+/// Gems sheet group pins the sheet's balance + explainer (lines
+/// 1–4 verbatim, line 5 = the coordinator-approved Proposal A) +
+/// buy action.
 void main() {
   DateTime at(int y, int m, int d) => DateTime(y, m, d, 12);
 
@@ -71,7 +96,6 @@ void main() {
             body: Center(
               child: HomeStreakStack(
                 currentStreak: 7,
-                bestStreak: 30,
                 animateCountUps: false,
                 gemBalance: gems,
               ),
@@ -128,7 +152,7 @@ void main() {
     });
   });
 
-  // ── Streak screen: buy-with-gems + explainer ─────────────────
+  // ── Streak screen: buy-with-gems (explainer moved, scope #6) ─
 
   group('Streak screen gem section', () {
     StreakState baseState({
@@ -188,28 +212,27 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('explainer renders Juno §4 verbatim', (tester) async {
+    testWidgets('scope #6: NO explainer on the streak screen, but '
+        'the gem-buy row still renders', (tester) async {
       await pumpScreen(tester, baseState(), fakeGems(balance: 35));
       await scrollToGemSection(tester);
-      expect(
-        tester
-            .widget<Text>(find.byKey(const Key('gemExplainerHeading')))
-            .data,
-        'About gems',
-      );
-      const lines = [
-        "Gems are earned in Tabs. You can't buy them, and they have no cash value.",
-        'Finish your Daily Summary: +5 gems.',
-        'Streak bonuses pay when you reach them: +25 gems at 7 days, +50 at 30 days, +100 at 100 days, and +100 at each 100 days after that.',
-        'Perfect week: +20 gems when you finish your Daily Summary all 7 days of a Monday–Sunday week.',
-        '100 gems buys one streak freeze — the freeze on this screen.',
-      ];
-      for (var i = 0; i < lines.length; i++) {
-        expect(
-          tester.widget<Text>(find.byKey(Key('gemExplainerLine$i'))).data,
-          lines[i],
-        );
+      // The About-gems explainer is gone from this screen — no
+      // heading, no lines, no moved-copy text anywhere.
+      expect(find.byKey(const Key('gemExplainerHeading')), findsNothing);
+      for (var i = 0; i < 5; i++) {
+        expect(find.byKey(Key('gemExplainerLine$i')), findsNothing);
       }
+      expect(find.text('About gems'), findsNothing);
+      expect(
+        find.text("Gems are earned in Tabs. You can't buy them, and "
+            'they have no cash value.'),
+        findsNothing,
+      );
+      // The buy-with-gems row STAYS exactly where it was.
+      expect(find.byKey(const Key('gemBuySection')), findsOneWidget);
+      expect(find.text('You have 35 gems.'), findsOneWidget);
+      expect(find.byKey(const Key('gemBuyButton')), findsOneWidget);
+      expect(find.text('GET ONE MORE FREEZE · 100 GEMS'), findsOneWidget);
     });
 
     testWidgets('insufficient balance: balance line, DISABLED '
@@ -324,12 +347,11 @@ void main() {
       expect(find.textContaining('purchased_already_held'),
           findsNothing);
       // The 409's adopted held state IS the surface: the buy
-      // rows hide exactly as when a freeze was already held,
-      // and the §4 explainer stays.
+      // rows hide exactly as when a freeze was already held.
+      // (Scope #6: no explainer on this screen anymore.)
       expect(find.byKey(const Key('gemBuyButton')), findsNothing);
       expect(find.byKey(const Key('gemBalanceLine')), findsNothing);
-      expect(find.byKey(const Key('gemExplainerHeading')),
-          findsOneWidget);
+      expect(find.byKey(const Key('gemExplainerHeading')), findsNothing);
     });
 
     testWidgets('spend answered capReached (409): no success '
@@ -360,12 +382,11 @@ void main() {
         find.byKey(const Key('gemBuyButton')),
       );
       expect(button.onPressed, isNotNull);
-      expect(find.byKey(const Key('gemExplainerHeading')),
-          findsOneWidget);
+      expect(find.byKey(const Key('gemExplainerHeading')), findsNothing);
     });
 
-    testWidgets('buy rows hidden when a purchased freeze is held; '
-        'explainer still present', (tester) async {
+    testWidgets('buy rows hidden when a purchased freeze is held '
+        '(and no explainer — scope #6)', (tester) async {
       await pumpScreen(
         tester,
         baseState(purchased: 1),
@@ -374,7 +395,7 @@ void main() {
       await scrollToGemSection(tester);
       expect(find.byKey(const Key('gemBuyButton')), findsNothing);
       expect(find.byKey(const Key('gemBalanceLine')), findsNothing);
-      expect(find.byKey(const Key('gemExplainerHeading')), findsOneWidget);
+      expect(find.byKey(const Key('gemExplainerHeading')), findsNothing);
     });
 
     testWidgets('buy rows hidden at cap (monthly + earned = 2/2)',
@@ -386,7 +407,261 @@ void main() {
       );
       await scrollToGemSection(tester);
       expect(find.byKey(const Key('gemBuyButton')), findsNothing);
-      expect(find.byKey(const Key('gemExplainerHeading')), findsOneWidget);
+      expect(find.byKey(const Key('gemExplainerHeading')), findsNothing);
+    });
+  });
+
+  // ── Gems sheet (added scope #6) ──────────────────────────────
+
+  group('Gems sheet (scope #6)', () {
+    StreakState sheetState({int earned = 0, int purchased = 0}) {
+      final today = at(2026, 11, 19);
+      var s = streakSeedForAdoption(
+        current: 5,
+        best: 12,
+        now: today,
+        purchasedFreezes: purchased,
+      );
+      s = s.copyWith(earnedFreezes: earned);
+      return s;
+    }
+
+    /// Pump a Home stack whose gem pill opens the sheet with the
+    /// fake service + state (the production wiring shape), then tap
+    /// the pill.
+    Future<void> pumpHostAndTapPill(
+      WidgetTester tester, {
+      required GemService gems,
+      required StreakState state,
+      int pillBalance = 150,
+    }) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => Center(
+                child: HomeStreakStack(
+                  currentStreak: 5,
+                  animateCountUps: false,
+                  gemBalance: pillBalance,
+                  onGemTap: () => unawaitedShowGemsSheet(
+                    context,
+                    gems: gems,
+                    state: state,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('homeGemPill')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+    }
+
+    testWidgets('tapping the gem pill opens the sheet: title once, '
+        'balance, explainer lines 1–4 verbatim + approved line 5',
+        (tester) async {
+      await pumpHostAndTapPill(
+        tester,
+        gems: fakeGems(balance: 150),
+        state: sheetState(),
+      );
+      expect(find.byKey(const Key('gemsSheet')), findsOneWidget);
+      // Title = the moved heading, used ONCE in the whole sheet.
+      expect(find.text('About gems'), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(const Key('gemsSheetTitle'))).data,
+        'About gems',
+      );
+      // Balance — the server value, in the §3.1 wording.
+      expect(find.text('You have 150 gems.'), findsOneWidget);
+      // Explainer: lines 1–4 verbatim.
+      const lines = [
+        "Gems are earned in Tabs. You can't buy them, and they have no cash value.",
+        'Finish your Daily Summary: +5 gems.',
+        'Streak bonuses pay when you reach them: +25 gems at 7 days, +50 at 30 days, +100 at 100 days, and +100 at each 100 days after that.',
+        'Perfect week: +20 gems when you finish your Daily Summary all 7 days of a Monday–Sunday week.',
+      ];
+      for (var i = 0; i < lines.length; i++) {
+        expect(
+          tester
+              .widget<Text>(find.byKey(Key('gemsSheetExplainerLine$i')))
+              .data,
+          lines[i],
+        );
+      }
+      // Line 5 = coordinator-approved Proposal A, exactly; the old
+      // streak-screen line 5 never appears.
+      expect(
+        tester
+            .widget<Text>(find.byKey(const Key('gemsSheetExplainerLine4')))
+            .data,
+        '100 gems buys one streak freeze.',
+      );
+      expect(
+        find.text('100 gems buys one streak freeze — the freeze on '
+            'this screen.'),
+        findsNothing,
+      );
+    });
+
+    testWidgets('buy-with-gems from the sheet succeeds at ≥100: '
+        '§2c copy, service balance moves, buy control then absent',
+        (tester) async {
+      final spendIds = <String>[];
+      final gems = fakeGems(
+        balance: 150,
+        spendIds: spendIds,
+        onSpend: () => const GemSpendResult(
+          status: GemSpendStatus.success,
+          balance: 50,
+          purchasedFreezes: 1,
+        ),
+      );
+      await pumpHostAndTapPill(tester, gems: gems, state: sheetState());
+      final button = tester.widget<ElevatedButton>(
+        find.byKey(const Key('gemsSheetBuyButton')),
+      );
+      expect(button.onPressed, isNotNull);
+      expect(find.text('GET ONE MORE FREEZE · 100 GEMS'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('gemsSheetBuyButton')));
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(spendIds, isNotEmpty, reason: 'the spend path ran');
+      expect(find.text('freeze added'), findsOneWidget);
+      expect(
+        find.text("you've got a freeze now. it covers one missed day. "
+            'you have 50 gems left.'),
+        findsOneWidget,
+      );
+      // The shared service balance moved (the pill reads the same
+      // service) and the held state hides the buy control — the
+      // §3.3 absence rule, no invented held string.
+      expect(gems.balance, 50);
+      expect(find.text('You have 50 gems.'), findsOneWidget);
+      expect(find.byKey(const Key('gemsSheetBuyButton')), findsNothing);
+      expect(
+        find.text("you've already got a freeze — it covers one "
+            'missed day.'),
+        findsNothing,
+      );
+    });
+
+    testWidgets('below 100: button present but DISABLED with the '
+        '§2d line under it', (tester) async {
+      await pumpHostAndTapPill(
+        tester,
+        gems: fakeGems(balance: 35),
+        state: sheetState(),
+        pillBalance: 35,
+      );
+      expect(find.text('You have 35 gems.'), findsOneWidget);
+      final button = tester.widget<ElevatedButton>(
+        find.byKey(const Key('gemsSheetBuyButton')),
+      );
+      expect(button.onPressed, isNull, reason: 'disabled under 100');
+      expect(find.text('GET ONE MORE FREEZE · 100 GEMS'), findsOneWidget);
+      expect(
+        find.text('you need 65 more gems for a freeze — you earn 5 gems '
+            'each time you finish your daily summary.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('at-cap state: buy control ABSENT (no string '
+        'invented), balance + explainer still render', (tester) async {
+      await pumpHostAndTapPill(
+        tester,
+        gems: fakeGems(balance: 500),
+        state: sheetState(earned: 1),
+        pillBalance: 500,
+      );
+      expect(find.byKey(const Key('gemsSheetBuyButton')), findsNothing);
+      expect(
+          find.byKey(const Key('gemsSheetInsufficientLine')), findsNothing);
+      expect(find.text('You have 500 gems.'), findsOneWidget);
+      expect(find.text('About gems'), findsOneWidget);
+      expect(
+        find.text("you've already got a freeze — it covers one "
+            'missed day.'),
+        findsNothing,
+      );
+    });
+
+    testWidgets('already-held state: buy control ABSENT',
+        (tester) async {
+      await pumpHostAndTapPill(
+        tester,
+        gems: fakeGems(balance: 500),
+        state: sheetState(purchased: 1),
+        pillBalance: 500,
+      );
+      expect(find.byKey(const Key('gemsSheetBuyButton')), findsNothing);
+      expect(find.text('You have 500 gems.'), findsOneWidget);
+    });
+
+    testWidgets('the Row layout gem pill is tappable too',
+        (tester) async {
+      var taps = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: HomeStreakRow(
+              currentStreak: 5,
+              animateCountUps: false,
+              gemBalance: 42,
+              onGemTap: () => taps++,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.byKey(const Key('homeGemPill')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('homeGemPill')));
+      await tester.pump();
+      expect(taps, 1);
+    });
+
+    testWidgets('streak pill tap does NOT open the sheet (separate '
+        'targets)', (tester) async {
+      var streakTaps = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => Center(
+                child: HomeStreakStack(
+                  currentStreak: 5,
+                  animateCountUps: false,
+                  gemBalance: 150,
+                  onStreakTap: () => streakTaps++,
+                  onGemTap: () => unawaitedShowGemsSheet(
+                    context,
+                    gems: fakeGems(balance: 150),
+                    state: sheetState(),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('homeStreakPills')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(streakTaps, 1);
+      expect(find.byKey(const Key('gemsSheet')), findsNothing);
     });
   });
 

@@ -6,7 +6,6 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:tabs_lab/src/data/billing_service.dart';
 import 'package:tabs_lab/src/features/tools/blood_pressure_tool_screen.dart';
 import 'package:tabs_lab/src/features/tools/body_info_screen.dart';
-import 'package:tabs_lab/src/features/tools/community_screen.dart';
 import 'package:tabs_lab/src/features/tools/food_screen.dart';
 import 'package:tabs_lab/src/features/tools/habits_screen.dart';
 import 'package:tabs_lab/src/features/tools/health_coach_screen.dart';
@@ -54,7 +53,11 @@ class ToolTile {
   const ToolTile(this.id, this.title, this.icon, this.description);
 }
 
-/// The native `DEFAULT_INFO_TILES` order, verbatim.
+/// The native `DEFAULT_INFO_TILES` order, verbatim — minus
+/// Community, which moved to the Home drawer (added scope #7,
+/// founder direction Nov 20, 2026). A stale saved order can still
+/// carry the 'community' id; [applyTileOrder] drops unknown ids,
+/// so it can never resurrect the tile here.
 const List<ToolTile> defaultToolTiles = [
   ToolTile('habits', 'Habits', Icons.check_circle, 'Daily routine tracking'),
   ToolTile('reminders', 'Reminders', Icons.notifications, 'Scheduled alerts'),
@@ -71,7 +74,6 @@ const List<ToolTile> defaultToolTiles = [
   ToolTile('blood_pressure', 'Blood Pressure', Icons.favorite, 'Systolic & Diastolic'),
   ToolTile('food', 'Food', Icons.restaurant, 'Sensitivity Checker'),
   ToolTile('research', 'Research', Icons.menu_book, 'Health research library'),
-  ToolTile('community', 'Community', Icons.people, 'Friends & Leaderboard'),
 ];
 
 /// Pure reorder helper: moves [draggedId] to [targetId]'s position.
@@ -234,7 +236,6 @@ class _ToolsScreenState extends State<ToolsScreen>
       'blood_pressure' => const BloodPressureToolScreen(),
       'food' => const FoodToolScreen(),
       'research' => ResearchToolScreen(billingService: widget.billingService),
-      'community' => const CommunityToolScreen(),
       _ => ToolPlaceholderScreen(tile: tile),
     };
     Navigator.of(context).push(

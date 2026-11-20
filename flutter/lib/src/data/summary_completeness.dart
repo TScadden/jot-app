@@ -28,16 +28,19 @@ import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
 /// (c) the 1–5 feeling check-in exists for that feeling day
 ///     ([hasFeelingCheckIn]).
 ///
-/// Evidence window = the feeling day [04:00, +24h); the plan is
-/// the plan of the calendar date the feeling day starts on.
+/// Evidence window = the feeling day [feelingDayStart, +24h)
+/// (the feeling day's start is the shared Tabs-day definition in
+/// tabs_day.dart — 04:00 local under the legacy rule, midnight
+/// from the persisted cutover on); the plan is the plan of the
+/// calendar date the feeling day starts on.
 ///
 /// Firing (the watcher below) is OPEN-DAY ONLY (Vera condition 2 /
 /// A8): re-evaluation happens on check-in commit, log-entry commit,
 /// Home load, and app resume, but [SummaryCompletionWatcher] only
 /// ever fires [StreakStore.recordSummaryComplete] for the
 /// currently open feeling day, exactly once per feeling day.
-/// Evidence backfilled into a closed day's window after the 04:00
-/// close never retro-fires it.
+/// Evidence backfilled into a closed day's window after the
+/// feeling day closes never retro-fires it.
 
 /// Authoritative plan attestation (P0 fix, Defect A2 — Vera D11
 /// condition 1 in substance). The pre-fix Home attested
@@ -161,7 +164,7 @@ bool isSummaryComplete({
 
 /// Builds the feeling day's plan via the existing [buildTodayPlan]
 /// with the D11 window semantics: evidence is restricted to the
-/// feeling-day window [04:00, +24h) FIRST, and the plan date is
+/// feeling-day window [feelingDayStart, +24h) FIRST, and the plan date is
 /// the calendar date the feeling day starts on.
 ///
 /// [buildTodayPlan] filters evidence by calendar date, so an

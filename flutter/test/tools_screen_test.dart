@@ -23,7 +23,7 @@ Future<void> _pumpTools(WidgetTester tester, ToolOrderStore store) async {
 
 void main() {
   group('default tile list (native DEFAULT_INFO_TILES)', () {
-    test('has all 16 tiles in native order', () {
+    test('has all 15 tiles in native order', () {
       final ids = defaultToolTiles.map((t) => t.id).toList();
       expect(ids, [
         'habits',
@@ -41,8 +41,14 @@ void main() {
         'blood_pressure',
         'food',
         'research',
-        'community',
       ]);
+    });
+
+    // Added scope #7 (founder, Nov 20, 2026): Community moved out
+    // of Tools into the Home drawer — no tile carries it here.
+    test('carries no Community tile', () {
+      expect(defaultToolTiles.any((t) => t.id == 'community'), isFalse);
+      expect(defaultToolTiles.any((t) => t.title == 'Community'), isFalse);
     });
 
     test('titles and subtitles match native copy', () {
@@ -59,7 +65,6 @@ void main() {
       expect(byId['blood_pressure']!.description, 'Systolic & Diastolic');
       expect(byId['food']!.description, 'Sensitivity Checker');
       expect(byId['research']!.description, 'Health research library');
-      expect(byId['community']!.description, 'Friends & Leaderboard');
       expect(byId['tips_and_tricks']!.description, 'Master your data');
       expect(byId['health_coach']!.description, 'Personalized Advice');
       expect(byId['key_metrics']!.description, 'Your Body Data');
@@ -72,14 +77,24 @@ void main() {
       final ordered = applyTileOrder(defaultToolTiles, ['medications', 'habits']);
       expect(ordered.first.id, 'medications');
       expect(ordered[1].id, 'habits');
-      expect(ordered.length, 16);
+      expect(ordered.length, 15);
     });
 
     test('unknown ids are dropped', () {
       final ordered = applyTileOrder(defaultToolTiles, ['nope', 'habits']);
-      expect(ordered.length, 16);
+      expect(ordered.length, 15);
       expect(ordered.first.id, 'habits');
       expect(ordered.any((t) => t.id == 'nope'), isFalse);
+    });
+
+    // Added scope #7: a stale saved order from before the move can
+    // still carry 'community'; it is dropped like any unknown id.
+    test('a stale saved community id is dropped', () {
+      final ordered =
+          applyTileOrder(defaultToolTiles, ['community', 'habits']);
+      expect(ordered.length, 15);
+      expect(ordered.any((t) => t.id == 'community'), isFalse);
+      expect(ordered.first.id, 'habits');
     });
 
     test('tiles missing from saved order are appended in default order', () {
@@ -163,6 +178,28 @@ void main() {
         expect(find.text(tile.title), findsWidgets);
         expect(find.text(tile.description), findsWidgets);
       }
+    });
+
+    // Added scope #7 (founder, Nov 20, 2026): the Tools grid
+    // renders NO Community entry anywhere — the whole lazy grid is
+    // visited before the absence is asserted.
+    testWidgets('renders no Community entry anywhere in the grid',
+        (tester) async {
+      await _pumpTools(tester, _memoryStore());
+      final scrollable = find.descendant(
+        of: find.byType(GridView),
+        matching: find.byType(Scrollable),
+      );
+      for (final tile in defaultToolTiles) {
+        await tester.scrollUntilVisible(
+          find.text(tile.title),
+          300,
+          scrollable: scrollable,
+        );
+      }
+      expect(find.text('Community'), findsNothing);
+      expect(find.text('Friends & Leaderboard'), findsNothing);
+      expect(find.byIcon(Icons.people), findsNothing);
     });
 
     testWidgets('applies a saved order on load', (tester) async {
