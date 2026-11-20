@@ -163,6 +163,18 @@ class _MainShellState extends State<MainShell>
   bool _showNavLabels = true;
   late final SettingsStore _settingsStore;
 
+  // Drawer nav fade (founder, Nov 20, 2026) — true while the Home
+  // drawer is open. The dock below is an overlay sibling ABOVE the
+  // tab bodies, so it paints over the drawer's scrim and would sit
+  // lit on top of the dimmed screen; while this is true the dock
+  // fades out and stops taking touches. Reported by HomeScreen's
+  // Scaffold.onDrawerChanged through the callback wired in
+  // [_screenFor]. Only Home has a drawer and the drawer is modal,
+  // so this can only be true while Home is mounted; [_selectTab]
+  // also clears it defensively so no stale fade can leak onto
+  // another tab.
+  bool _homeDrawerOpen = false;
+
   @override
   void initState() {
     super.initState();
@@ -233,11 +245,25 @@ class _MainShellState extends State<MainShell>
     }
   }
 
+  /// Drawer nav fade: Home's drawer reported a state change. A
+  /// plain rebuild flips the dock's fade target and its
+  /// IgnorePointer gate together (see the dock mount in [build]).
+  void _onHomeDrawerOpenChanged(bool open) {
+    if (!mounted || open == _homeDrawerOpen) return;
+    setState(() => _homeDrawerOpen = open);
+  }
+
   /// Round 40 — a dock tap. Same-tab is a no-op; reduced motion swaps
   /// instantly; otherwise the paired directional slide starts (or
   /// retargets, if one is already in flight — nothing ever queues).
   void _selectTab(DockTab tab) {
     if (tab == _tab) return; // Tapping the active tab: no transition.
+    // Drawer nav fade: leaving Home always restores the dock. The
+    // modal drawer makes this unreachable in practice (its scrim
+    // blocks dock taps), but a stale true here would strand the
+    // dock invisible on the next tab. Both paths below setState,
+    // so this plain mutation rides along.
+    _homeDrawerOpen = false;
     if (animationsDisabled(context)) {
       // Instant swap, as before Round 40. Land the new tab in the
       // slot the current (or in-flight target) screen occupies so no
@@ -296,6 +322,9 @@ class _MainShellState extends State<MainShell>
           weatherApi: widget.weatherApi,
           locationService: widget.locationService,
           healthConnectService: widget.healthConnectService,
+          // Drawer nav fade (founder, Nov 20, 2026): Home reports
+          // its drawer's open/close so the dock can fade.
+          onDrawerOpenChanged: _onHomeDrawerOpenChanged,
           // The shell's shared instance: Home forwards it into
           // every Settings surface it opens (the Event Counters
           // push and the header-gear settings tray), so a
@@ -398,17 +427,39 @@ class _MainShellState extends State<MainShell>
           ),
         ),
         // Dock floats above every tab.
+        //
+        // Drawer nav fade (founder, Nov 20, 2026): while the Home
+        // drawer is open, the dock fades out over 200ms (the app's
+        // easeOut family; the drawer's own slide is 250ms) and is
+        // removed from the hit path — it paints ABOVE the drawer
+        // scrim in this Stack, so left alone it would stay lit over
+        // the dimmed screen and swallow the scrim taps that close
+        // the drawer along the bottom edge. IgnorePointer flips
+        // with the same state change that starts the fade, so the
+        // dock is inert for the whole fade-out and live again the
+        // moment the drawer starts closing. The Positioned slot is
+        // unchanged, so nothing shifts layout in either state.
         Positioned(
           left: 0,
           right: 0,
           bottom: 0,
-          child: NavDock(
-            selected: _tab,
-            showLabels: _showNavLabels,
-            onSelect: (tab) {
-              _selectTab(tab);
-              _refreshNavLabels();
-            },
+          child: IgnorePointer(
+            key: const ValueKey('nav_dock_drawer_ignore_pointer'),
+            ignoring: _homeDrawerOpen,
+            child: AnimatedOpacity(
+              key: const ValueKey('nav_dock_drawer_fade'),
+              opacity: _homeDrawerOpen ? 0.0 : 1.0,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              child: NavDock(
+                selected: _tab,
+                showLabels: _showNavLabels,
+                onSelect: (tab) {
+                  _selectTab(tab);
+                  _refreshNavLabels();
+                },
+              ),
+            ),
           ),
         ),
       ],
