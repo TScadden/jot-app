@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import 'tabs_day.dart';
+
 /// The streak engine (Lab streak package Nov 4, 2026; release
 /// line VC 100115). Pure logic — the day rule and the monthly
 /// Restore; persistence and sync live in streak_store.dart.
@@ -28,7 +30,9 @@ import 'package:flutter/foundation.dart';
 /// the streak alive earns an extra freeze under the A1 cap
 /// accounting (total available cover vs cap 2, or 3 while a
 /// purchased freeze is held). All day keys derive from the Tabs
-/// anchor ([tabsDayAnchor], 04:00 boundary).
+/// anchor ([tabsDayAnchor] — the shared Tabs-day definition in
+/// tabs_day.dart: the legacy 04:00 rule for instants before the
+/// persisted cutover instant, calendar-midnight from it on).
 ///
 /// Named interpretations (STREAK_SPEC.md, founder can flip any):
 /// - No rollover: the grant is derived per month — a month has a
@@ -42,7 +46,9 @@ import 'package:flutter/foundation.dart';
 /// - All dates are device-local calendar days.
 ///
 /// This file is pure logic: no I/O, no clocks except the `now`
-/// passed in. Persistence lives in streak_store.dart.
+/// passed in. Persistence lives in streak_store.dart (the Tabs-day
+/// cutover's persistence lives in tabs_day.dart; the derivations
+/// here only read its loaded in-memory value).
 
 /// One calendar day in local time, as an ISO `yyyy-MM-dd` string.
 String streakDayStr(DateTime d) =>
@@ -57,16 +63,21 @@ String streakMonthKey(DateTime d) =>
 
 /// The Tabs-day anchor (design A7, streak upgrade Nov 18, 2026):
 /// the ONE day derivation every streak read and write path uses.
-/// A Tabs day starts at 04:00 local, so the anchor is [now] shifted
-/// back 4 hours; the Tabs day a wall-clock moment belongs to is the
-/// calendar day of its anchor. Between 00:00–03:59 the anchor still
-/// belongs to the previous calendar day — the still-open Tabs day.
-DateTime tabsDayAnchor(DateTime now) => now.subtract(const Duration(hours: 4));
+/// Delegates to the shared Tabs-day definition (tabs_day.dart):
+/// before the persisted cutover instant the anchor is [now]
+/// shifted back 4 hours (a Tabs day started at 04:00 local, so
+/// between 00:00–03:59 the anchor still belongs to the previous
+/// calendar day — the still-open Tabs day); from the cutover on
+/// the Tabs day is the calendar day and the anchor is [now]
+/// itself. The Tabs day a wall-clock moment belongs to is the
+/// calendar day of its anchor.
+DateTime tabsDayAnchor(DateTime now) => TabsDayBoundary.instance.anchor(now);
 
-/// The Tabs day (ISO `yyyy-MM-dd`) containing [now], via
-/// [tabsDayAnchor]. All day keys in the v2 engine derive from this,
-/// never from raw wall-clock `now`.
-String tabsDayStr(DateTime now) => streakDayStr(tabsDayAnchor(now));
+/// The Tabs day (ISO `yyyy-MM-dd`) containing [now], via the
+/// shared Tabs-day definition (tabs_day.dart). All day keys in
+/// the v2 engine derive from this, never from raw wall-clock
+/// `now` formatted directly.
+String tabsDayStr(DateTime now) => TabsDayBoundary.instance.key(now);
 
 /// The `yyyy-MM` key of the month containing an ISO day string.
 String _monthOfDay(String day) => day.substring(0, 7);

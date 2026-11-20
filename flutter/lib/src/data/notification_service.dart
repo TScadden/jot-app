@@ -604,14 +604,17 @@ Iterable<int> checkInReminderCancelIds(DateTime now) sync* {
 ///
 /// Attribution: [checkedInDayLabels] holds Tabs-day labels in
 /// `energyDayLabel`'s `yyyy-MM-dd` format (the Daily Ranking
-/// attribution — a check-in at 03:59 on calendar date D belongs
-/// to Tabs day D−1; at 04:00+ it belongs to D). At 20:00 on
-/// calendar date D the current Tabs day's label is D itself
-/// (20:00 is past the 04:00 reset), so D's label is compared
-/// directly — [focusLogDateKey] formats the same `yyyy-MM-dd`
-/// shape. Dates are built by calendar-day arithmetic (never
-/// 24-hour durations), so DST transitions cannot skip or repeat
-/// a date.
+/// attribution under the shared Tabs-day definition in
+/// tabs_day.dart — under the legacy rule a check-in at 03:59 on
+/// calendar date D belongs to Tabs day D−1 and at 04:00+ to D;
+/// from the persisted cutover on, a check-in on calendar date D
+/// belongs to Tabs day D at every hour). At 20:00 on calendar
+/// date D the current Tabs day's label is D itself under either
+/// rule (20:00 is on the same side of both day boundaries), so
+/// D's label is compared directly — [focusLogDateKey] formats
+/// the same `yyyy-MM-dd` shape. Dates are built by calendar-day
+/// arithmetic (never 24-hour durations), so DST transitions
+/// cannot skip or repeat a date.
 List<DateTime> checkInReminderFireTimes({
   required DateTime now,
   required Set<String> checkedInDayLabels,

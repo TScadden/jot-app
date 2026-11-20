@@ -8,6 +8,7 @@ import 'package:tabs_lab/src/data/migraine_controller.dart'
     show categoryIdByName;
 import 'package:tabs_lab/src/data/progress_report.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
+import 'package:tabs_lab/src/data/tabs_day.dart';
 import 'package:tabs_lab/src/data/today_summary.dart' hide dateStrOf;
 import 'package:tabs_lab/src/features/home/vitals_strip.dart'
     show formatSleepMinutes;
@@ -569,15 +570,16 @@ List<String> parseClinicianChips(String chips) {
   ];
 }
 
-/// The energy day (04:00 local boundary, item 1's rule) a
-/// timestamp belongs to, as a `yyyy-MM-dd` key.
-String clinicianEnergyDayKey(int timestampMs) {
-  final d = DateTime.fromMillisecondsSinceEpoch(timestampMs);
-  final shifted = d.hour < 4
-      ? DateTime(d.year, d.month, d.day - 1)
-      : DateTime(d.year, d.month, d.day);
-  return _dayKey(shifted);
-}
+/// The energy day a timestamp belongs to, as a `yyyy-MM-dd`
+/// key: the Tabs-day key of the shared definition
+/// (tabs_day.dart), delegating to it — the legacy 04:00 local
+/// boundary (item 1's rule) for instants before the persisted
+/// cutover, calendar-midnight from the cutover on. (This also
+/// removes the pre-migration inconsistency the boundary audit
+/// found: post-cutover this key space coincides with the
+/// report's calendar range keys.)
+String clinicianEnergyDayKey(int timestampMs) =>
+    TabsDayBoundary.instance.keyForMs(timestampMs);
 
 /// Z4 flare summary: distinct energy-days carrying the reserved
 /// tag (in the resolved Symptoms category when it resolves),

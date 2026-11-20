@@ -37,6 +37,7 @@ import 'package:tabs_lab/src/data/onboarding_sync_outbox.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/data/tabs_day.dart';
 import 'package:tabs_lab/src/data/today_plan_store.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
@@ -135,6 +136,22 @@ Future<void> _bootstrap() async {
   } catch (_) {
     // Keep the default already in the token; the app must start
     // identically without the override.
+  }
+  // Boundary migration (Nov 19, 2026 founder decision): load the
+  // persisted Tabs-day cutover BEFORE the first frame, next to
+  // the background load above and in the same pattern — every
+  // Tabs-day derivation in the app reads this singleton, so it
+  // must be settled before any of them runs. On first load under
+  // the new build it stamps the first midnight strictly after
+  // now (the seam: instants before it keep the legacy 04:00 rule,
+  // from it on the Tabs day is the calendar day). Never throws;
+  // a failure leaves the legacy derivation, exactly the pre-
+  // migration behavior.
+  try {
+    await TabsDayBoundary.instance.load();
+  } catch (_) {
+    // Keep the uninitialized (legacy) derivation; the app must
+    // start identically without the cutover.
   }
   // V-1 correction — the ONE app-level notification bootstrap:
   // plugin.initialize for the foreground isolate happens here,
