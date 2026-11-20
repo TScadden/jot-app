@@ -126,6 +126,120 @@ class _OnboardingConnectionsScreenState
     }
   }
 
+  /// Flow3 skip warning (mock flow3_05_connections_skip_warning):
+  /// tapping "Skip for now" shows this FIRST. "Connect instead"
+  /// (primary) dismisses and stays; "Skip anyway" proceeds.
+  /// Bullets are DRAWN dot markers, not "•" text glyphs (Juno
+  /// ruling — harness tofu risk). The "So there is no Daily
+  /// Score…" line is founder-dictated verbatim and ships as-is.
+  Future<void> _onSkipTap() async {
+    final skip = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const ValueKey('connections_skip_warning'),
+        backgroundColor: NotelColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+        ),
+        title: const Text(
+          'Skip Health Connect?',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: NotelColors.textPrimary,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              "Without it, Tabs can't sync in your:",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: NotelColors.textSecondary,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 10),
+            for (final item in const ['Heart rate', 'Sleep', 'HRV'])
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: NotelColors.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      item,
+                      style: const TextStyle(
+                        color: NotelColors.textPrimary,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 12),
+            const Text(
+              'So there is no Daily Score, and your trends and AI '
+              'insights only use what you log by hand. You can '
+              'connect anytime in Settings.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: NotelColors.textSecondary,
+                fontSize: 14,
+                height: 20 / 14,
+              ),
+            ),
+          ],
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                height: 48,
+                child: FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: NotelColors.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                  ),
+                  child: const Text(
+                    'Connect instead',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text(
+                  'Skip anyway',
+                  style: TextStyle(
+                    color: NotelColors.textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    if (skip == true && mounted) widget.onNavigateNext();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -139,28 +253,88 @@ class _OnboardingConnectionsScreenState
                 padding: const EdgeInsets.only(top: 8),
                 child: OnboardingHeader(onBack: widget.onBack),
               ),
-              const SizedBox(height: 24),
-              const Text(
-                'Connect Health Data',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
-                  color: NotelColors.textPrimary,
-                ),
-              ),
               const SizedBox(height: 12),
-              const Text(
-                'Sync your heart rate and sleep data so AI can '
-                'personalize your insights.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: NotelColors.textSecondary,
-                  height: 22 / 15,
-                ),
-              ),
-              const SizedBox(height: 32),
+              const OnboardingProgressBar(currentSegment: 4),
+              // Flow3: content vertically centered; "Skip for now"
+              // stays pinned at the bottom.
+              Expanded(
+                child: SingleChildScrollView(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight:
+                          MediaQuery.of(context).size.height * 0.62,
+                    ),
+                    child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const SizedBox(height: 32),
+                      // Three icon discs over a soft purple glow.
+                      Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              NotelColors.primary.withValues(alpha: 0.30),
+                              Colors.transparent,
+                            ],
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _IconDisc(
+                              icon: Icons.favorite,
+                              color: Color(0xFFEC407A),
+                            ),
+                            SizedBox(width: 16),
+                            _IconDisc(
+                              icon: Icons.nightlight_round,
+                              color: Color(0xFF5C6BC0),
+                            ),
+                            SizedBox(width: 16),
+                            _IconDisc(
+                              icon: Icons.monitor_heart,
+                              color: NotelColors.primary,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Connect Health Data',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
+                          color: NotelColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      // Juno ruling (fix): the "so AI can personalize
+                      // your insights" clause is DROPPED. Shipped
+                      // body is the short line + the separate Daily
+                      // Score line.
+                      const Text(
+                        'Sync your heart rate and sleep data.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: NotelColors.textSecondary,
+                          height: 22 / 15,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'This is what powers your Daily Score.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: NotelColors.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
               if (_connected)
                 Container(
                   width: double.infinity,
@@ -189,7 +363,7 @@ class _OnboardingConnectionsScreenState
                 TextButton(
                   onPressed: _onManageInSettings,
                   child: const Text(
-                    'Manage access in settings',
+                    'Manage access in Settings',
                     style: TextStyle(
                       color: NotelColors.textSecondary,
                       fontSize: 12,
@@ -197,26 +371,58 @@ class _OnboardingConnectionsScreenState
                   ),
                 ),
               ],
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  _error!,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: NotelColors.error,
-                    fontSize: 13,
+                      if (_error != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          _error!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: NotelColors.error,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 32),
+                    ],
+                    ),
                   ),
                 ),
-              ],
-              const Spacer(),
-              OnboardingPrimaryButton(
-                label: _connected ? 'Next' : 'Skip for now',
-                onPressed: widget.onNavigateNext,
+              ),
+              Padding(
+                padding:
+                    const EdgeInsets.only(bottom: kOnboardingBottomPadding),
+                child: OnboardingPrimaryButton(
+                  label: _connected ? 'Next' : 'Skip for now',
+                  // Connected → advance directly. Not connected →
+                  // the skip-warning dialog FIRST.
+                  onPressed: _connected
+                      ? widget.onNavigateNext
+                      : _onSkipTap,
+                ),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+/// One of the three Health Connect icon discs (heart rate / sleep
+/// / HRV) over the connections glow.
+class _IconDisc extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+
+  const _IconDisc({required this.icon, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+      child: Icon(icon, color: Colors.white, size: 28),
     );
   }
 }

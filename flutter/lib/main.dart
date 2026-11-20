@@ -46,7 +46,9 @@ import 'package:tabs_lab/src/features/auth/login_screen.dart';
 import 'package:tabs_lab/src/features/settings/report_generation_presenter.dart';
 import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
+import 'package:tabs_lab/src/data/onboarding_resume_gate.dart';
 import 'package:tabs_lab/src/features/onboarding/onboarding_flow.dart';
+import 'package:tabs_lab/src/features/onboarding/post_onboarding_notification_card.dart';
 import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
 import 'package:tabs_lab/src/features/splash/splash_screen.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
@@ -296,6 +298,11 @@ class _AppFlowState extends State<AppFlow>
   late final TabsBackend _tabsBackend;
   OnboardingStep _onboardingStep = OnboardingStep.consent;
 
+  /// Flow3 — the current session's email-verification state,
+  /// captured at login/register success and forwarded to the
+  /// membership step's billing gate (defaults verified).
+  bool _sessionEmailVerified = true;
+
   /// VC 100134 — set by whichever path entered the verifyEmail
   /// stage; consumed (and cleared) by the verify-success handler.
   _VerifyOrigin? _verifyOrigin;
@@ -416,13 +423,29 @@ class _AppFlowState extends State<AppFlow>
         _onboardingStore.getIntroConsultationSeen(),
         _onboardingStore.getOnboardingComplete(),
       ]);
-      final OnboardingStep? resumeStep = !flags[0]
-          ? OnboardingStep.consent
-          : !flags[1]
-              ? OnboardingStep.consultationIntro
-              : !flags[2]
-                  ? OnboardingStep.profileSetup
-                  : null;
+      // Flow3: the intro step is cut, so consented + incomplete
+      // resumes at the persisted step marker when one exists,
+      // else at Profile. (The intro-seen flag is still written by
+      // the consent step for state coherence.)
+      OnboardingStep? resumeStep;
+      if (!flags[0]) {
+        resumeStep = OnboardingStep.consent;
+      } else if (!flags[2]) {
+        final marker = await _onboardingStore.getStepMarker();
+        if (marker != null && marker >= 0 && marker < OnboardingStep.values.length) {
+          var step = OnboardingStep.values[marker];
+          // m1 clamp: never resume past Profile without profile text.
+          if (step.index > OnboardingStep.profileSetup.index) {
+            final context = await _onboardingStore.getUserContext();
+            if (context.trim().isEmpty) {
+              step = OnboardingStep.profileSetup;
+            }
+          }
+          resumeStep = step;
+        } else {
+          resumeStep = OnboardingStep.profileSetup;
+        }
+      }
       return (hasState: true, resumeStep: resumeStep);
     } catch (_) {
       // Unreadable flags → Round 31 behavior (home).
@@ -727,6 +750,7 @@ class _AppFlowState extends State<AppFlow>
   // fix). Both calls also bind the new account, so subsequent loads
   // stamp their cache blobs with this owner.
   void _onLoginSuccess(String email, bool emailVerified) {
+    _sessionEmailVerified = emailVerified;
     // Billing account-switch hygiene: a new account signing in
     // clears ONLY the previous account's billing error message.
     _billingSync?.service.resetErrorMessageForAccountChange();
@@ -920,6 +944,35 @@ class _AppFlowState extends State<AppFlow>
         await _onboardingClaim;
         await _stampFreshAccountOnboarding();
       }());
+      // Flow3 one-shot resume (self-check caution a): a returning
+      // user who left mid-flow resumes ONCE at the step they
+      // left, via the session-scoped coordinator. If the marker
+      // exists but this session's advance was already consumed
+      // (the user backed out to Welcome and logged in again in
+      // the same session), there is NO second auto-advance —
+      // Welcome stays. With no marker this is a fresh start at
+      // consent, as before.
+      final marker = await _onboardingStore.getStepMarker();
+      if (!mounted || _stage != _FlowStage.resolving) return;
+      if (marker != null) {
+        final resumeIndex =
+            await OnboardingResumeCoordinator(_onboardingStore)
+                .advanceOnLogin();
+        if (!mounted || _stage != _FlowStage.resolving) return;
+        if (resumeIndex == null) {
+          setState(() {
+            _loggedInEmail = email;
+            _stage = _FlowStage.welcome;
+          });
+          return;
+        }
+        setState(() {
+          _loggedInEmail = email;
+          _onboardingStep = OnboardingStep.values[resumeIndex];
+          _stage = _FlowStage.onboarding;
+        });
+        return;
+      }
       setState(() {
         _loggedInEmail = email;
         _onboardingStep = OnboardingStep.consent;
@@ -1103,6 +1156,7 @@ class _AppFlowState extends State<AppFlow>
   // taking the legacy-session home path — then enter the flow at
   // the consent step.
   void _onRegisterSuccess(String email, bool emailVerified) {
+    _sessionEmailVerified = emailVerified;
     // Billing account-switch hygiene: as on login, a fresh
     // account clears ONLY the prior billing error message.
     _billingSync?.service.resetErrorMessageForAccountChange();
@@ -1273,6 +1327,44 @@ class _AppFlowState extends State<AppFlow>
     _kickFirstRunResync();
     // App-open sync: landing home from onboarding is an app open.
     _triggerAppOpenCapture();
+    // Flow3: the notification ask moved from a flow step to a
+    // one-time card over this first post-onboarding Home landing.
+    unawaited(_maybeShowPostOnboardingNotificationCard());
+  }
+
+  /// Flow3 — shows the notification card exactly once, only for a
+  /// user who completed the NEW flow (the flow3-completion flag
+  /// the flow stamps at setup loading) and has not been shown it
+  /// before. Existing users from older flows never carry the
+  /// flag, so they are never nagged. "Allow" fires the real OS
+  /// permission request through the existing notification
+  /// service; the shown flag is stamped BEFORE the dialog opens
+  /// so no path can show it twice.
+  Future<void> _maybeShowPostOnboardingNotificationCard() async {
+    try {
+      if (!await shouldShowPostOnboardingNotificationCard(
+          _onboardingStore)) {
+        return;
+      }
+      await _onboardingStore.setFlow3NotifPromptShown(true);
+    } catch (_) {
+      return;
+    }
+    if (!mounted || _stage != _FlowStage.home) return;
+    final service =
+        widget.notificationService ?? LocalReminderNotificationService();
+    await showPostOnboardingNotificationCard(
+      context,
+      onAllow: () => unawaited(() async {
+        try {
+          await service.requestNotificationsPermission();
+        } catch (_) {
+          // The OS prompt failing must never wedge Home; the user
+          // can enable notifications later in Settings.
+        }
+      }()),
+      onDontAllow: () {},
+    );
   }
 
   // Round 32 — consent declined (the decline dialog's "Log Out").
@@ -1591,6 +1683,13 @@ class _AppFlowState extends State<AppFlow>
             healthConnectService: widget.healthConnectService,
             notificationService: widget.notificationService,
             billingService: _billingSync?.service,
+            emailVerified: _sessionEmailVerified,
+            onVerifyEmail: () {
+              setState(() {
+                _verifyOrigin = _VerifyOrigin.login;
+                _stage = _FlowStage.verifyEmail;
+              });
+            },
             onComplete: _onOnboardingComplete,
             onDeclineConsent: () => unawaited(_onConsentDecline()),
           )

@@ -9,9 +9,7 @@ import 'package:tabs_lab/src/features/auth/email_verification_screen.dart';
 import 'package:tabs_lab/src/features/auth/login_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/conditions_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/consent_screen.dart';
-import 'package:tabs_lab/src/features/onboarding/consultation_intro_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/membership_onboarding_screen.dart';
-import 'package:tabs_lab/src/features/onboarding/notification_onboarding_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/onboarding_connections_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/onboarding_flow.dart';
 import 'package:tabs_lab/src/features/onboarding/profile_setup_screen.dart';
@@ -161,33 +159,28 @@ void expectAppFlowAlive(WidgetTester tester) {
 void main() {
   group('Onboarding system back (Oct 27, 2026 founder fix)', () {
     testWidgets(
-        'profile setup: system back steps back to consultation intro, '
+        'profile setup: system back steps back to consent, '
         'exactly like the arrow', (tester) async {
+      // flow3: the consultation-intro interstitial is cut, so
+      // Profile's previous step is Consent.
       await pumpPushedFlow(tester, initialStep: OnboardingStep.profileSetup);
       expect(find.byType(ProfileSetupScreen), findsOneWidget);
 
       await systemBack(tester);
 
       expectFlowAlive(tester);
-      expect(find.byType(ConsultationIntroScreen), findsOneWidget);
-      expect(find.text("Let's get you set up!"), findsOneWidget);
-      // ProfileSetupScreen's 3s prompt-rotation loop is suspended in
-      // a Future.delayed when the step is disposed by the step back;
-      // run fake time past it so it observes disposal and exits
-      // instead of tripping the pending-timer invariant at test end.
-      await tester.pump(const Duration(seconds: 4));
+      expect(find.byType(OnboardingConsentScreen), findsOneWidget);
+      expect(find.text('Privacy & Data Consent'), findsOneWidget);
     });
 
     testWidgets(
-        'connections: system back walks notifications, then conditions',
+        'connections: system back steps back to conditions',
         (tester) async {
+      // flow3: the notifications step is removed from the flow, so
+      // Connections' previous step is Conditions.
       await pumpPushedFlow(tester, initialStep: OnboardingStep.connections);
       expect(find.byType(OnboardingConnectionsScreen), findsOneWidget);
       expect(find.text('Connect Health Data'), findsWidgets);
-
-      await systemBack(tester);
-      expectFlowAlive(tester);
-      expect(find.byType(NotificationOnboardingScreen), findsOneWidget);
 
       await systemBack(tester);
       expectFlowAlive(tester);
