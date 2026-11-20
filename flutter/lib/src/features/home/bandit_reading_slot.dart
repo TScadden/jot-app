@@ -54,10 +54,13 @@ bool _slotMotionEnabled(BuildContext context) {
 /// mp4 could not carry transparency, which is why its background
 /// was baked in). Encoded lossless with libwebp; the blink-only
 /// frames store as small eye-band sub-rectangles, so the 14 s
-/// loop is 451,744 bytes — smaller than the 2.06 MB mp4 it
-/// replaces. Playback is a plain [Image] — no video player, so
+/// loop is 451,744 bytes. Playback is a plain [Image] — no
+/// video player, so
 /// the VC 100137 audio-focus concern is gone structurally: there
-/// is no player to take focus.
+/// is no player to take focus. (Size honesty: the shipped v8
+/// video file was 241,518 bytes; the two WebPs together add
+/// about 2.0 MB net — the cost of real alpha, which H.264
+/// cannot carry, and of the second animation.)
 ///
 /// Tap reaction (Nov 20, 2026) — tapping Bandit plays a short
 /// one-shot drawn animation ("he notices you": gaze lifts off the
