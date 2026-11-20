@@ -237,7 +237,7 @@ void main() {
         'stack renders flame pill + gem pill and NO trophy/best pill',
         (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(
+        MaterialApp(
           home: Scaffold(
             backgroundColor: NotelColors.background,
             body: HomeStreakStack(
@@ -288,7 +288,7 @@ void main() {
     testWidgets('row renders the flame pill and NO trophy/best pill',
         (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(
+        MaterialApp(
           home: Scaffold(
             backgroundColor: NotelColors.background,
             body: HomeStreakRow(
