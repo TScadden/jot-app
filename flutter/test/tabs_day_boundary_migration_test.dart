@@ -11,7 +11,6 @@ import 'package:tabs_lab/src/data/streak_store.dart';
 import 'package:tabs_lab/src/data/summary_completeness.dart';
 import 'package:tabs_lab/src/data/tabs_day.dart';
 import 'package:tabs_lab/src/data/today_plan_store.dart';
-import 'package:tabs_lab/src/data/today_summary.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
 
 /// Boundary migration seam battery (Tabs day 04:00 → midnight,
