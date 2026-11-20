@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
@@ -7,7 +8,7 @@ import 'package:tabs_lab/src/theme/animations.dart';
 /// Test seam for the slot motion gate (the debugMascotMotionOverride
 /// precedent in coach_mascot.dart). Widget tests run under
 /// FLUTTER_TEST, where motion is hard-off, so a test may set this to
-/// true to exercise the animated path. Reduced motion still wins,
+/// true to exercise the tap interaction. Reduced motion still wins,
 /// and production code never sets it.
 @visibleForTesting
 bool? debugBanditSlotMotionOverride;
@@ -57,6 +58,16 @@ bool _slotMotionEnabled(BuildContext context) {
 /// replaces. Playback is a plain [Image] — no video player, so
 /// the VC 100137 audio-focus concern is gone structurally: there
 /// is no player to take focus.
+///
+/// Tap reaction (Nov 20, 2026) — tapping Bandit plays a short
+/// one-shot drawn animation ("he notices you": gaze lifts off the
+/// book in two steps, a drawn grin opens, one happy blink at the
+/// peak with a small rigid hop, then he settles back). Its first
+/// and last frames are the loop's base frame byte-for-byte, so
+/// the swap loop → tap → loop has no seam, flash, or layout
+/// shift. Taps during playback are ignored. The reaction is
+/// built from drawn frames and whole-layer rigid translates
+/// only — no warping anywhere (see the package audit).
 class BanditReadingSlot extends StatefulWidget {
   const BanditReadingSlot({super.key});
 
@@ -64,16 +75,24 @@ class BanditReadingSlot extends StatefulWidget {
   // the new versioned filenames together; the previous version's
   // files are removed in the same change.
   static const String loopAsset = 'assets/images/bandit_reading_loop_v9.webp';
+  static const String tapAsset = 'assets/images/bandit_reading_tap_v1.webp';
   static const String posterAsset =
       'assets/images/bandit_reading_poster_v8.png';
+
+  /// The tap animation's full length: 30 drawn frames at 24 fps.
+  /// A [Timer] of this length returns the slot to the loop, so the
+  /// return does not depend on the image codec's loop-count
+  /// handling; the asset's own total duration is pinned to this
+  /// by bandit_animation_v9_test.dart.
+  static const Duration tapDuration = Duration(milliseconds: 1250);
 
   /// Round 4 slot width: 240 × 1.175 = 282dp. At 360dp wide this
   /// still leaves 39dp of page margin on each side.
   static const double slotWidth = 282;
 
   /// The reading frame's aspect (width / height): the poster PNG
-  /// and the loop WebP are 832×992, the same frame the v3–v8
-  /// assets were built to.
+  /// and both WebP animations are 832×992, the same frame the
+  /// v3–v8 assets were built to.
   static const double frameAspect = 832 / 992;
 
   /// The slot's exact rendered height at [slotWidth]:
@@ -86,6 +105,10 @@ class BanditReadingSlot extends StatefulWidget {
 }
 
 class _BanditReadingSlotState extends State<BanditReadingSlot> {
+  bool _tapPlaying = false;
+  int _loopEpoch = 0;
+  int _tapEpoch = 0;
+  Timer? _tapTimer;
   bool _precached = false;
 
   @override
@@ -94,11 +117,36 @@ class _BanditReadingSlotState extends State<BanditReadingSlot> {
     if (_precached) return;
     _precached = true;
     if (!_slotMotionEnabled(context)) return;
-    // Decode the animation up front so the first frame paints
-    // instantly. The display-time errorBuilder covers a failed
-    // asset.
+    // Decode both animations up front so the loop's first frame
+    // and the tap's first frame paint instantly — no flash on the
+    // first tap. Display-time errorBuilders cover a failed asset.
     precacheImage(const AssetImage(BanditReadingSlot.loopAsset), context)
         .catchError((_) {});
+    precacheImage(const AssetImage(BanditReadingSlot.tapAsset), context)
+        .catchError((_) {});
+  }
+
+  void _onTap() {
+    if (_tapPlaying) return; // taps during playback are ignored
+    if (!_slotMotionEnabled(context)) return;
+    setState(() {
+      _tapPlaying = true;
+      _tapEpoch++;
+    });
+    _tapTimer?.cancel();
+    _tapTimer = Timer(BanditReadingSlot.tapDuration, () {
+      if (!mounted) return;
+      setState(() {
+        _tapPlaying = false;
+        _loopEpoch++; // restart the loop from its base frame
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _tapTimer?.cancel();
+    super.dispose();
   }
 
   Widget _still() => Image.asset(
@@ -110,22 +158,40 @@ class _BanditReadingSlotState extends State<BanditReadingSlot> {
 
   @override
   Widget build(BuildContext context) {
-    final figure = _slotMotionEnabled(context)
-        ? Image.asset(
-            BanditReadingSlot.loopAsset,
-            fit: BoxFit.contain,
-            semanticLabel: kCoachName,
-            errorBuilder: (_, _, _) => _still(),
-          )
-        : _still();
+    final stillOnly = !_slotMotionEnabled(context);
+    final Widget figure;
+    if (stillOnly) {
+      figure = _still();
+    } else if (_tapPlaying) {
+      figure = Image.asset(
+        BanditReadingSlot.tapAsset,
+        key: ValueKey('bandit_tap_$_tapEpoch'),
+        fit: BoxFit.contain,
+        semanticLabel: kCoachName,
+        errorBuilder: (_, _, _) => _still(),
+      );
+    } else {
+      figure = Image.asset(
+        BanditReadingSlot.loopAsset,
+        key: ValueKey('bandit_loop_$_loopEpoch'),
+        fit: BoxFit.contain,
+        semanticLabel: kCoachName,
+        errorBuilder: (_, _, _) => _still(),
+      );
+    }
     return Align(
       key: const ValueKey('bandit_reading_slot'),
       alignment: Alignment.topCenter,
       heightFactor: 1,
-      child: SizedBox(
-        width: BanditReadingSlot.slotWidth,
-        height: BanditReadingSlot.slotHeight,
-        child: figure,
+      child: GestureDetector(
+        key: const ValueKey('bandit_reading_tap_target'),
+        behavior: HitTestBehavior.opaque,
+        onTap: _onTap,
+        child: SizedBox(
+          width: BanditReadingSlot.slotWidth,
+          height: BanditReadingSlot.slotHeight,
+          child: figure,
+        ),
       ),
     );
   }

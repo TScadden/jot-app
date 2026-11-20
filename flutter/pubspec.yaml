@@ -140,9 +140,10 @@ flutter:
     # Bandit v9 (Nov 20, 2026) — the reading loop remade as discrete
     # drawn frames in animated WebP with real alpha (replaces the
     # v8 mp4, whose baked background and breathing warp the founder
-    # rejected). Frame-diff audited: zero pixel changes outside
-    # the eye band.
+    # rejected), plus the tap-reaction one-shot. Frame-diff audited:
+    # zero pixel changes outside the eye band.
     - assets/images/bandit_reading_loop_v9.webp
+    - assets/images/bandit_reading_tap_v1.webp
     # Streak upgrade — Bandit cheer art for the share card (copied
     # verbatim from the signed mock source; do not recut).
     - assets/images/bandit_cheer_cut_v3.png

@@ -22,6 +22,8 @@ import 'package:tabs_lab/src/features/home/bandit_reading_slot.dart';
 ///  * blink-bottom frames have fully closed eyes (no white left
 ///    inside the eye ellipses);
 ///  * both animations keep transparent corners in every frame;
+///  * the tap animation starts and ends on the poster frame
+///    exactly, and its length matches the slot's return timer;
 ///  * VC 100137's audio-focus fix is structural now: the slot has
 ///    no video player at all, so nothing can take audio focus.
 const _eyeBand = (x0: 270, x1: 560, y0: 264, y1: 378);
@@ -160,26 +162,130 @@ void main() {
         reason: 'the loop is 14 s (encoder rounding may cost 1 ms)');
   });
 
+  test('tap WebP: starts and ends on the poster frame, 1.25 s', () async {
+    final posterData = await rootBundle.load(BanditReadingSlot.posterAsset);
+    final posterCodec = await ui.instantiateImageCodec(
+        posterData.buffer.asUint8List());
+    final poster = await _rgba((await posterCodec.getNextFrame()).image);
 
-  testWidgets('default test environment shows the poster only',
-      (tester) async {
-    await tester.pumpWidget(const MaterialApp(
-      home: Scaffold(body: BanditReadingSlot()),
-    ));
-    final image = tester.widget<Image>(find.descendant(
-      of: find.byType(BanditReadingSlot),
-      matching: find.byType(Image),
-    ));
-    expect((image.image as AssetImage).assetName,
-        BanditReadingSlot.posterAsset);
-    // Geometry is measured on the figure's rect (the convention
-    // home_redesign_test uses): the slot widget itself spans the
-    // column width, the figure inside it is the slot size.
-    final figure = tester.getRect(find.descendant(
-      of: find.byType(BanditReadingSlot),
-      matching: find.byType(Image),
-    ));
-    expect(figure.width, BanditReadingSlot.slotWidth);
-    expect(figure.height, closeTo(BanditReadingSlot.slotHeight, 0.6));
+    final data = await rootBundle.load(BanditReadingSlot.tapAsset);
+    final codec =
+        await ui.instantiateImageCodec(data.buffer.asUint8List());
+    expect(codec.frameCount, 15,
+        reason: 'the 30-frame tap timeline stores as 15 frames '
+            '(holds merged); a different count means the asset '
+            'was re-encoded or swapped.');
+    var totalMs = 0;
+    Uint8List? first;
+    Uint8List? last;
+    for (var f = 0; f < codec.frameCount; f++) {
+      final info = await codec.getNextFrame();
+      totalMs += info.duration.inMilliseconds;
+      final px = await _rgba(info.image);
+      expect(_cornerAlphas(px, 832, 992), 0,
+          reason: 'tap frame $f has a non-transparent corner');
+      first ??= px;
+      last = px;
+    }
+    expect(totalMs, inInclusiveRange(1240, 1260));
+    expect(totalMs - BanditReadingSlot.tapDuration.inMilliseconds,
+        inInclusiveRange(-10, 10),
+        reason: 'the slot returns to the loop on a Timer of '
+            'tapDuration; the asset must match it');
+    _expectSameDecode(first!, poster, 832, 992,
+        reason: 'the tap animation must enter seamlessly from the '
+            'loop base frame');
+    _expectSameDecode(last!, poster, 832, 992,
+        reason: 'the tap animation must exit seamlessly back to '
+            'the loop base frame');
+  });
+
+  group('tap interaction', () {
+    tearDown(() => debugBanditSlotMotionOverride = null);
+
+    String assetOf(WidgetTester tester) {
+      final image = tester.widget<Image>(find.descendant(
+        of: find.byType(BanditReadingSlot),
+        matching: find.byType(Image),
+      ));
+      return (image.image as AssetImage).assetName;
+    }
+
+    testWidgets('tap plays the reaction, ignores re-taps, returns',
+        (tester) async {
+      debugBanditSlotMotionOverride = true;
+      await tester.pumpWidget(const MaterialApp(
+        home: Scaffold(body: BanditReadingSlot()),
+      ));
+      expect(assetOf(tester), BanditReadingSlot.loopAsset);
+
+      await tester.tap(
+          find.byKey(const ValueKey('bandit_reading_tap_target')));
+      await tester.pump();
+      expect(assetOf(tester), BanditReadingSlot.tapAsset);
+      final playing = tester.widget<Image>(find.descendant(
+        of: find.byType(BanditReadingSlot),
+        matching: find.byType(Image),
+      ));
+      expect(playing.key, const ValueKey('bandit_tap_1'));
+
+      // A second tap mid-playback is ignored — no restart.
+      await tester.tap(
+          find.byKey(const ValueKey('bandit_reading_tap_target')));
+      await tester.pump();
+      final stillPlaying = tester.widget<Image>(find.descendant(
+        of: find.byType(BanditReadingSlot),
+        matching: find.byType(Image),
+      ));
+      expect(stillPlaying.key, const ValueKey('bandit_tap_1'));
+
+      // After the full tap duration the slot is back on the loop,
+      // restarted from its base frame.
+      await tester.pump(BanditReadingSlot.tapDuration);
+      await tester.pump();
+      expect(assetOf(tester), BanditReadingSlot.loopAsset);
+      final looped = tester.widget<Image>(find.descendant(
+        of: find.byType(BanditReadingSlot),
+        matching: find.byType(Image),
+      ));
+      expect(looped.key, const ValueKey('bandit_loop_1'));
+
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    });
+
+    testWidgets('reduced motion wins over the test override',
+        (tester) async {
+      debugBanditSlotMotionOverride = true;
+      await tester.pumpWidget(const MaterialApp(
+        home: MediaQuery(
+          data: MediaQueryData(disableAnimations: true),
+          child: Scaffold(body: BanditReadingSlot()),
+        ),
+      ));
+      expect(assetOf(tester), BanditReadingSlot.posterAsset);
+      await tester.tap(
+          find.byKey(const ValueKey('bandit_reading_tap_target')));
+      await tester.pump();
+      expect(assetOf(tester), BanditReadingSlot.posterAsset,
+          reason: 'reduced motion: poster only, taps do nothing');
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    });
+
+    testWidgets('default test environment shows the poster only',
+        (tester) async {
+      await tester.pumpWidget(const MaterialApp(
+        home: Scaffold(body: BanditReadingSlot()),
+      ));
+      expect(assetOf(tester), BanditReadingSlot.posterAsset);
+      // Geometry is measured on the figure's rect (the convention
+      // home_redesign_test uses): the slot widget itself spans the
+      // column width, the figure inside it is the slot size.
+      final figure = tester.getRect(find.descendant(
+        of: find.byType(BanditReadingSlot),
+        matching: find.byType(Image),
+      ));
+      expect(figure.width, BanditReadingSlot.slotWidth);
+      expect(figure.height, closeTo(BanditReadingSlot.slotHeight, 0.6));
+    });
   });
 }
