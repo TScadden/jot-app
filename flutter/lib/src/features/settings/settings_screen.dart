@@ -746,6 +746,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         eventEnabled: _data.eventReminderEnabled,
         focusTests: _data.focusTests,
         checkedInDayLabels: _data.checkedInDayLabels,
+        streakState: _data.streakState,
         events: _counters
             .map((c) => EventReminderRequest(
                   counterId: c.id,
