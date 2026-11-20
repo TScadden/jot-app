@@ -45,7 +45,13 @@ void main() {
     BadgeService svc, {
     double width = 360,
   }) async {
-    tester.view.physicalSize = Size(width * 3, 800 * 3);
+    // Tall viewport: the screen is a ListView, which only builds
+    // children inside the viewport + cache extent. At a phone-height
+    // viewport the later sections (and the detail ladder's lower
+    // rungs) are never built, so text finders miss them. 2600dp
+    // builds the whole list; layout at phone WIDTH (the dimension
+    // that governs tile overflow) is unchanged.
+    tester.view.physicalSize = Size(width * 3, 2600 * 3);
     tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(MaterialApp(

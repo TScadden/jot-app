@@ -406,7 +406,7 @@ class _BadgesScreenState extends State<BadgesScreen> {
         crossAxisCount: 3,
         crossAxisSpacing: 8,
         mainAxisSpacing: 8,
-        childAspectRatio: 0.66,
+        childAspectRatio: 0.55,
       ),
       itemCount: metrics.length,
       itemBuilder: (context, i) => _tile(context, snap, metrics[i]),
@@ -439,7 +439,7 @@ class _BadgesScreenState extends State<BadgesScreen> {
         borderRadius: BorderRadius.circular(16),
         onTap: () => _openDetail(context, metric),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
           decoration: BoxDecoration(
             color: NotelColors.surface,
             borderRadius: BorderRadius.circular(16),
