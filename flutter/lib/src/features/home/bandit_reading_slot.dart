@@ -3,14 +3,31 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/features/tools/coach_mascot.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
-import 'package:video_player/video_player.dart';
+
+/// Test seam for the slot motion gate (the debugMascotMotionOverride
+/// precedent in coach_mascot.dart). Widget tests run under
+/// FLUTTER_TEST, where motion is hard-off, so a test may set this to
+/// true to exercise the animated path. Reduced motion still wins,
+/// and production code never sets it.
+@visibleForTesting
+bool? debugBanditSlotMotionOverride;
+
+/// Bandit slot motion runs only on a real device with animations
+/// allowed: reduced motion and widget tests get the poster still.
+bool _slotMotionEnabled(BuildContext context) {
+  final override = debugBanditSlotMotionOverride;
+  if (override != null) {
+    return override && !animationsDisabled(context);
+  }
+  if (Platform.environment.containsKey('FLUTTER_TEST')) return false;
+  return !animationsDisabled(context);
+}
 
 /// Home redesign — the Bandit reading slot in the Home body column:
-/// centered. Plays the approved reading-loop video (muted, looping,
-/// no controls, auto-play on build) when motion is allowed; under
-/// reduced motion it shows the poster still and never starts
-/// playback. The still path reuses [CoachMascotFigure] — the mascot
-/// widgets are reused, never forked.
+/// centered. Plays the reading animation when motion is allowed;
+/// under reduced motion (and in widget tests) it shows the poster
+/// still only. The still path reuses [CoachMascotFigure] — the
+/// mascot widgets are reused, never forked.
 ///
 /// Home polish round 4 (Part B) — the slot steps up from the
 /// redesign's 240dp wide to [slotWidth] 282dp (×1.175, inside the
@@ -21,59 +38,42 @@ import 'package:video_player/video_player.dart';
 /// plain [Center] would expand to the stack's full height and
 /// push Bandit down.
 ///
-/// Home polish round 5 — the loop asset is v5: same deterministic
-/// pipeline, same frame/timing/gaze as v4, except the page-side
-/// paw now REACHES to the turning page's corner before the curl
-/// starts, follows the leaf through the first ~60% of the flip,
-/// then returns home (frames 146–186 of 336). Geometry and slot
-/// size are unchanged from round 4.
+/// Bandit v9 (Nov 20, 2026) — the loop is REMADE as a genuine
+/// animation of discrete drawn frames, replacing the v8 video.
+/// The founder rejected v8 because its breathing was a chest-only
+/// pixel warp (the belly band visibly morphs); v9's frames are the
+/// transparent reading poster (PR #123) with drawn eyelid frames
+/// composited over the eye band and NOTHING else moving — the
+/// frame-diff audit proves zero pixel differences outside the eye
+/// band across all 336 timeline frames, transparent corners in
+/// every frame, and an exact loop seam. Breathing stays removed
+/// (founder decision Nov 12, 2026): blink only.
 ///
-/// Home polish round 6 — the loop asset is v6: same frame,
-/// turn choreography and timings (reach 146, contact 157,
-/// follow to 169, home by 186), gaze, and geometry as v5, with
-/// two founder fixes. The paw patch is now the mitten only —
-/// v5's patch carried a forearm bulge whose artificial wrist
-/// cut read as a cut-off hand mid-turn; the forearm never
-/// moves in v6. Breathing is rebuilt as a chest-only in/out
-/// warp on the belly crescent — v5's warp field moved the
-/// whole body (legs sliding on the chair); v6's field is
-/// exactly zero at legs/head/book/paws/chair.
-///
-/// Bandit v8 — the loop asset is v8: same frame, gaze, and
-/// geometry as v6, with the page turn removed entirely per
-/// the founder's decision after the v5/v6 turns. The loop is
-/// breathing and blinks only: the chest-only warp on the
-/// belly crescent (field exactly zero at legs/head/book/
-/// paws/chair), and drawn lids that close fully at each
-/// blink. Paw, forearm, book, and pages hold the rest pose
-/// for all 336 frames.
+/// The asset is an animated WebP with REAL alpha (the v8 H.264
+/// mp4 could not carry transparency, which is why its background
+/// was baked in). Encoded lossless with libwebp; the blink-only
+/// frames store as small eye-band sub-rectangles, so the 14 s
+/// loop is 451,744 bytes — smaller than the 2.06 MB mp4 it
+/// replaces. Playback is a plain [Image] — no video player, so
+/// the VC 100137 audio-focus concern is gone structurally: there
+/// is no player to take focus.
 class BanditReadingSlot extends StatefulWidget {
   const BanditReadingSlot({super.key});
 
   // Asset swap pattern (PR #82 precedent): code + pubspec move to
   // the new versioned filenames together; the previous version's
   // files are removed in the same change.
-  static const String videoAsset = 'assets/videos/bandit_reading_loop_v8.mp4';
+  static const String loopAsset = 'assets/images/bandit_reading_loop_v9.webp';
   static const String posterAsset =
       'assets/images/bandit_reading_poster_v8.png';
-
-  /// VC 100137 — the options the reading loop is constructed with.
-  /// The loop is muted (volume 0), but without `mixWithOthers` the
-  /// player's default audio focus still pauses the user's music or
-  /// video in other apps when Home builds (founder-reported).
-  /// Mixing means the silent loop never takes audio focus. Pinned
-  /// as a named field so a test can assert the construction site
-  /// keeps passing it (see bandit_audio_100137_test.dart).
-  static final VideoPlayerOptions videoPlayerOptions =
-      VideoPlayerOptions(mixWithOthers: true);
 
   /// Round 4 slot width: 240 × 1.175 = 282dp. At 360dp wide this
   /// still leaves 39dp of page margin on each side.
   static const double slotWidth = 282;
 
-  /// The reading frame's aspect (width / height): the v3 frame —
-  /// poster PNG and loop MP4 alike — is 832×992, and v4–v8 are
-  /// built to the same frame.
+  /// The reading frame's aspect (width / height): the poster PNG
+  /// and the loop WebP are 832×992, the same frame the v3–v8
+  /// assets were built to.
   static const double frameAspect = 832 / 992;
 
   /// The slot's exact rendered height at [slotWidth]:
@@ -86,82 +86,46 @@ class BanditReadingSlot extends StatefulWidget {
 }
 
 class _BanditReadingSlotState extends State<BanditReadingSlot> {
-  VideoPlayerController? _controller;
-  bool _videoReady = false;
-  bool _started = false;
+  bool _precached = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_started) return;
-    _started = true;
-    // Reduced motion: poster still only — playback never starts.
-    if (animationsDisabled(context)) return;
-    // Widget tests (FLUTTER_TEST) never start playback either: the
-    // platform video channel is absent there (the CoachMascotFigure
-    // motion gate's precedent).
-    if (Platform.environment.containsKey('FLUTTER_TEST')) return;
-    _initVideo();
+    if (_precached) return;
+    _precached = true;
+    if (!_slotMotionEnabled(context)) return;
+    // Decode the animation up front so the first frame paints
+    // instantly. The display-time errorBuilder covers a failed
+    // asset.
+    precacheImage(const AssetImage(BanditReadingSlot.loopAsset), context)
+        .catchError((_) {});
   }
 
-  Future<void> _initVideo() async {
-    try {
-      final controller = VideoPlayerController.asset(
-          BanditReadingSlot.videoAsset,
-          videoPlayerOptions: BanditReadingSlot.videoPlayerOptions);
-      _controller = controller;
-      await controller.initialize();
-      if (!mounted) {
-        await controller.dispose();
-        return;
-      }
-      await controller.setLooping(true);
-      await controller.setVolume(0);
-      await controller.play();
-      setState(() => _videoReady = true);
-    } catch (_) {
-      // Asset or platform unavailable: the poster/still path stands.
-      if (mounted) setState(() => _videoReady = false);
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
-  }
+  Widget _still() => Image.asset(
+        BanditReadingSlot.posterAsset,
+        fit: BoxFit.contain,
+        semanticLabel: kCoachName,
+        errorBuilder: (_, _, _) => const CoachMascotFigure(height: 210),
+      );
 
   @override
   Widget build(BuildContext context) {
-    final reduced = animationsDisabled(context);
+    final figure = _slotMotionEnabled(context)
+        ? Image.asset(
+            BanditReadingSlot.loopAsset,
+            fit: BoxFit.contain,
+            semanticLabel: kCoachName,
+            errorBuilder: (_, _, _) => _still(),
+          )
+        : _still();
     return Align(
       key: const ValueKey('bandit_reading_slot'),
       alignment: Alignment.topCenter,
       heightFactor: 1,
       child: SizedBox(
         width: BanditReadingSlot.slotWidth,
-        child: reduced
-            ? Image.asset(
-                BanditReadingSlot.posterAsset,
-                fit: BoxFit.contain,
-                semanticLabel: kCoachName,
-                errorBuilder: (_, _, _) =>
-                    const CoachMascotFigure(height: 210),
-              )
-            : (_videoReady && _controller != null
-                ? AspectRatio(
-                    aspectRatio: _controller!.value.aspectRatio == 0
-                        ? 1
-                        : _controller!.value.aspectRatio,
-                    child: VideoPlayer(_controller!),
-                  )
-                : Image.asset(
-                    BanditReadingSlot.posterAsset,
-                    fit: BoxFit.contain,
-                    semanticLabel: kCoachName,
-                    errorBuilder: (_, _, _) =>
-                        const CoachMascotFigure(height: 210),
-                  )),
+        height: BanditReadingSlot.slotHeight,
+        child: figure,
       ),
     );
   }
