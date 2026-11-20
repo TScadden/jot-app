@@ -16,10 +16,9 @@ import 'notification_service.dart';
 /// POST_NOTIFICATIONS permission, a failed post is silent), but
 /// it posts ONLY on its own channel:
 ///
-/// - The `report_ready` channel's description ("Shows when a
-///   report you requested has finished generating.") and its
-///   title/body (`Your report is ready` / `Tap to return to the
-///   report and share it.`) describe a REQUESTED report. Using
+/// - The `report_ready` channel's description and its
+///   title/body describe a REQUESTED report (see
+///   report_ready_notification.dart for those strings). Using
 ///   any of them for this unrequested send would be false
 ///   (Juno §d Flag 5 — channel separation is a truth issue, not
 ///   a naming preference), so none of those strings appear here.
@@ -28,10 +27,10 @@ import 'notification_service.dart';
 /// EXACTLY Juno's ruled rows 2.3–2.4 — no health content of any
 /// kind (no scores, no sleep figures, no section names), and the
 /// visibility is private, so both are hidden on a secure lock
-/// screen. Bearable's "see how your health has changed over the
-/// last week" and any paraphrase of it are banned anywhere in
-/// this package; there is deliberately no other title/body
-/// variant in this file, live or dormant.
+/// screen. Bearable's health-change sentence (quoted in the
+/// Session #2 decision record) and any paraphrase of it are
+/// banned anywhere in this package; there is deliberately no
+/// other title/body variant in this file, live or dormant.
 abstract class WeeklyNotifier {
   Future<void> initialize();
 

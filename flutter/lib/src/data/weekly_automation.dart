@@ -229,7 +229,16 @@ class WeeklyAutomationCoordinator {
         return WeeklyAutoOutcome(WeeklyAutoKind.notDue, week: week);
       }
 
-      final result = await _generate(week, now);
+      WeeklyGenerationResult? result;
+      try {
+        result = await _generate(week, now);
+      } catch (_) {
+        // A throwing generation seam is a failed generation:
+        // nothing archived, nothing notified, the week stays
+        // due for a later open (the finally below re-arms the
+        // guard).
+        result = null;
+      }
       if (result == null) {
         return WeeklyAutoOutcome(WeeklyAutoKind.generationFailed,
             week: week);
