@@ -11,6 +11,7 @@ import 'package:tabs_lab/src/data/daily_score.dart';
 import 'package:tabs_lab/src/data/daily_score_refresh.dart'
     show ScoreCapture;
 import 'package:tabs_lab/src/data/daily_score_sync.dart';
+import 'package:tabs_lab/src/data/badge_store.dart';
 import 'package:tabs_lab/src/data/gem_service.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart'
@@ -35,6 +36,9 @@ import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/data/widget_sync.dart';
+import 'package:tabs_lab/src/features/badges/badge_strings.dart';
+import 'package:tabs_lab/src/features/badges/badge_widget.dart';
+import 'package:tabs_lab/src/features/badges/badges_screen.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
 import 'package:tabs_lab/src/features/home/bandit_reading_slot.dart';
 import 'package:tabs_lab/src/features/home/daily_score_circle.dart';
@@ -2154,6 +2158,7 @@ class _HomeScreenState extends State<HomeScreen>
       // queued grants, and settle-check the perfect week. Runs
       // off the critical path; failures keep the last value.
       unawaited(_syncGemsOnOpen(engineState));
+      unawaited(_syncBadgesOnOpen(engineState));
       // A7: Home display reads anchor on the Tabs day, never raw
       // wall-clock now.
       final engineCurrent =
@@ -2222,6 +2227,72 @@ class _HomeScreenState extends State<HomeScreen>
     } catch (_) {
       // The last server balance stands; the next open retries.
     }
+  }
+
+  /// Badges — settlement sync (BADGES package): the badge
+  /// evaluation runs at the SAME app-open settlement point as the
+  /// streak engine (this settle), never on a timer. The full
+  /// inputs load (log pull + HC history scan) is day-gated inside
+  /// the service hook below, so it costs once a day; queued gem
+  /// grants retry at every settle. Newly granted rungs surface as
+  /// ONE unlock dialog (Juno §8). Fail-soft throughout: a badge
+  /// failure never touches the streak/gems flows.
+  Future<void> _syncBadgesOnOpen(StreakState engineState) async {
+    try {
+      final svc = BadgeService.instance;
+      if (!await svc.needsEvaluation(DateTime.now())) {
+        await svc.retryPending();
+        return;
+      }
+      final loaded = await loadBadgeInputs(
+        backend: _backend,
+        hc: _healthRepo.hc,
+        streakState: engineState,
+      );
+      final batch = await svc.evaluate(
+        inputs: loaded.inputs,
+        blockedMetrics: loaded.blockedMetrics,
+        now: DateTime.now(),
+      );
+      if (batch != null && mounted) {
+        await showDialog<void>(
+          context: context,
+          builder: (_) => BadgeUnlockDialog(batch: batch),
+        );
+      }
+    } catch (_) {
+      // The next settle retries; nothing is fabricated.
+    }
+  }
+
+  /// Badges screen refresh (its onRefresh): a forced evaluation
+  /// against the store's current settled state. Grants made here
+  /// render on the screen itself — no dialog from this path.
+  Future<void> _refreshBadges() async {
+    try {
+      final loaded = await loadBadgeInputs(
+        backend: _backend,
+        hc: _healthRepo.hc,
+        streakState: StreakStore.instance.state,
+      );
+      await BadgeService.instance.evaluate(
+        inputs: loaded.inputs,
+        blockedMetrics: loaded.blockedMetrics,
+        now: DateTime.now(),
+        force: true,
+      );
+    } catch (_) {}
+  }
+
+  /// Drawer entry destination: the Badges collection screen.
+  Future<void> _openBadgesFromDrawer() async {
+    Navigator.of(context).pop(); // close the drawer first
+    await Navigator.of(context).push(
+      SlidePageRoute(
+        reducedMotion: animationsDisabled(context),
+        builder: (_) => BadgesScreen(onRefresh: _refreshBadges),
+      ),
+    );
   }
 
   /// Streak pills tap: open the Streak screen with the settled
@@ -2599,7 +2670,10 @@ class _HomeScreenState extends State<HomeScreen>
       // in the identical row style, no divider. Added scope #7
       // (founder, Nov 20, 2026) adds a third row in the same
       // construction UNDER Event Counters: Community (moved out
-      // of Tools).
+      // of Tools). BADGES package (Nov 20, 2026): a fourth row,
+      // Badges, is appended LAST in the identical row style —
+      // founder's final drawer order: AI Advocate, Event
+      // Counters, Community, Badges.
       drawer: Drawer(
         backgroundColor: NotelColors.surface,
         width: 300,
@@ -2684,6 +2758,49 @@ class _HomeScreenState extends State<HomeScreen>
                     ],
                   ),
                 ),
+              ),
+              AnimatedBuilder(
+                animation: BadgeService.instance,
+                builder: (context, _) {
+                  final snap = BadgeService.instance.snapshot;
+                  return Semantics(
+                    label: snap.loaded
+                        ? BadgeStrings.drawerSemantics(
+                            snap.earnedBadgeCount)
+                        : BadgeStrings.drawerLabel,
+                    child: InkWell(
+                      key: const ValueKey('home_drawer_badges'),
+                      onTap: () => unawaited(_openBadgesFromDrawer()),
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 16),
+                        child: Row(
+                          children: [
+                            BadgeWidget(
+                              rungIndex: 6,
+                              icon: Icons.star,
+                              size: 28,
+                            ),
+                            SizedBox(width: 16),
+                            Expanded(
+                              child: Text(
+                                BadgeStrings.drawerLabel,
+                                style: TextStyle(
+                                  color: NotelColors.textPrimary,
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ),
+                            Icon(Icons.chevron_right,
+                                size: 20,
+                                color: NotelColors.textSecondary),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
             ],
           ),

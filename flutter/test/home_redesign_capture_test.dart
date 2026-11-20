@@ -18,6 +18,7 @@ import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
+import 'package:tabs_lab/src/features/badges/badges_screen.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 
 import 'test_helpers.dart';
@@ -371,6 +372,18 @@ void main() {
     tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.reset);
     await pumpHome(checked: false);
+    // BADGES package (Nov 20, 2026): the settlement hook may have
+    // raised the one-time badge unlock dialog over Home (seeded
+    // history crosses badge rungs — the production backfill
+    // case). Dismiss it before capturing, as a user would.
+    if (find.byType(BadgeUnlockDialog).evaluate().isNotEmpty) {
+      await tester.tap(find.descendant(
+          of: find.byType(BadgeUnlockDialog),
+          matching: find.text('Done')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+    }
     await capture('home_360', 1080, 2400);
 
     // FRAME 2 — home_390.
