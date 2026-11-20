@@ -602,6 +602,13 @@ class _HomeScreenState extends State<HomeScreen>
     // A completion IS a settlement: from here the settled
     // state owns the pills (Bug 3 unification).
     _streakSettleLanded = true;
+    // Settlement hook (Community Added Scope #2): the day just
+    // resolved, so re-project the evening nudges NOW — the
+    // sync's cancel sweep takes down today's pending countdown
+    // one-shot AND a countdown already posted at 20:00 (the
+    // plugin cancels posted notifications by id), and the
+    // completed day never re-arms.
+    _syncCheckInReminderAfterSave(streakState: state);
     final now = DateTime.now();
     final summaryTabsDay = tabsDayStr(now);
     // Gems bound discipline (Vera server review, Nov 19, 2026):
@@ -1610,6 +1617,15 @@ class _HomeScreenState extends State<HomeScreen>
   /// never sees. Execution is serialized through
   /// [_checkInNotifSyncChain].
   ///
+  /// Community Added Scope #2 — the same chain is the evening
+  /// re-projection for the streak countdown: it also runs from
+  /// the two settlement points (summary completion in
+  /// [_presentCompletion], app-open settlement in
+  /// [_settleStreakWithEngine]) with the freshly settled state,
+  /// so a resolved day's countdown — pending or already
+  /// posted — is cancelled at settlement, not at the next
+  /// Settings visit.
+  ///
   /// The checked-in labels derive from the LOCAL merged entry
   /// view ([_mergedEntries] — pulled entries overlaid with the
   /// outbox), NOT a fresh pull: a just-staged check-in counts
@@ -1625,7 +1641,7 @@ class _HomeScreenState extends State<HomeScreen>
   /// code and swallowed — never a reason to fail a save the
   /// outbox already accepted. A transient failure self-heals at
   /// the next sync.
-  void _syncCheckInReminderAfterSave() {
+  void _syncCheckInReminderAfterSave({StreakState? streakState}) {
     _checkInNotifSyncChain = _checkInNotifSyncChain.then((_) async {
       try {
         final enabled = await _settingsStore.getCheckInReminderEnabled();
@@ -1641,6 +1657,12 @@ class _HomeScreenState extends State<HomeScreen>
         await ReminderSync(_checkInNotifs).syncCheckInOnly(
           checkInEnabled: enabled,
           checkedInDayLabels: labels,
+          // The evening projection also carries the streak
+          // countdown (Community Added Scope #2): the settled
+          // state comes from the caller when it just landed
+          // (summary completion, app-open settlement), else
+          // from the streak store's current settled state.
+          streakState: streakState ?? StreakStore.instance.state,
         );
       } on NotificationServiceException catch (e) {
         debugPrint('CheckInReminderSync failed: $e');
@@ -2119,6 +2141,13 @@ class _HomeScreenState extends State<HomeScreen>
       );
       if (!engineState.seeded || !mounted) return engineState;
       _streakSettleLanded = true;
+      // App-open settlement hook (Community Added Scope #2):
+      // recordOpen IS the settlement point — freeze bridges for
+      // missed days land here — so re-project the evening
+      // nudges from the freshly settled state on every app
+      // open (a day that gained freeze cover, completed, or
+      // broke its streak re-projects accordingly).
+      _syncCheckInReminderAfterSave(streakState: engineState);
       // Gems — app-open sync: adopt the pull's server balance
       // (the pill's and buy surface's one source), retry any
       // queued grants, and settle-check the perfect week. Runs

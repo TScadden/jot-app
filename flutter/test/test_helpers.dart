@@ -86,6 +86,23 @@ class FakeReminderNotificationService implements ReminderNotificationService {
       dailyDetails = {};
   final Map<int, DateTime> once = {};
   final Map<int, String> weekly = {};
+
+  /// Per-id record of [scheduleStreakCountdownOnce] calls (fire
+  /// time, chronometer target, and the exact copy/channel), so
+  /// tests can assert the countdown's configuration without a
+  /// platform plugin.
+  final Map<
+      int,
+      ({
+        DateTime when,
+        DateTime countdownTo,
+        String title,
+        String body,
+        String channelId,
+        String channelName,
+        String channelDescription,
+        bool highImportance,
+      })> countdown = {};
   final List<int> cancelled = [];
 
   FakeReminderNotificationService(
@@ -164,11 +181,36 @@ class FakeReminderNotificationService implements ReminderNotificationService {
   }
 
   @override
+  Future<void> scheduleStreakCountdownOnce({
+    required int id,
+    required String title,
+    required String body,
+    required String channelId,
+    required String channelName,
+    required String channelDescription,
+    required DateTime when,
+    required DateTime countdownTo,
+    required bool highImportance,
+  }) async {
+    countdown[id] = (
+      when: when,
+      countdownTo: countdownTo,
+      title: title,
+      body: body,
+      channelId: channelId,
+      channelName: channelName,
+      channelDescription: channelDescription,
+      highImportance: highImportance,
+    );
+  }
+
+  @override
   Future<void> cancel(int id) async {
     cancelled.add(id);
     daily.remove(id);
     dailyDetails.remove(id);
     once.remove(id);
     weekly.remove(id);
+    countdown.remove(id);
   }
 }
