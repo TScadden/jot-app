@@ -1244,6 +1244,12 @@ class _AppFlowState extends State<AppFlow>
     try {
       await _sessionStore.saveEmailVerified(true);
     } catch (_) {}
+    // Keep the in-memory session flag in step with the persisted
+    // one: Membership's billing gate reads _sessionEmailVerified
+    // (forwarded to OnboardingFlow below), so persisting alone
+    // left a just-verified Register user gated at VerifyEmailGate
+    // for the rest of the session.
+    _sessionEmailVerified = true;
     if (!mounted || _stage != _FlowStage.verifyEmail) return;
     final origin = _verifyOrigin;
     _verifyOrigin = null;

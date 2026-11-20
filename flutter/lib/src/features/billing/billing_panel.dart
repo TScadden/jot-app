@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// The billing gate states the membership surfaces resolve before
-/// rendering (flow3 fix round 1, Vera B2).
+/// rendering.
 enum BillingGateState {
   /// Signed in but email not yet verified. EVERY fresh Register
   /// signup lands here until verification completes.
@@ -21,14 +21,14 @@ enum BillingGateState {
 
 /// Branch selection for the membership billing area.
 ///
-/// BRANCH ORDER IS LOAD-BEARING (Vera B2): [BillingGateState
+/// BRANCH ORDER IS LOAD-BEARING: [BillingGateState
 /// .needsVerification] is checked FIRST, before the
-/// active-subscriber branch. An earlier extraction inverted this:
-/// a signed-in email-unverified user (every fresh Register
-/// signup) was shown the active-subscriber panel ("You're
-/// Premium" + Manage Subscription) and could never reach the
+/// active-subscriber branch. Inverting this would show a
+/// signed-in email-unverified user (every fresh Register
+/// signup) the active-subscriber panel ("You're Premium" +
+/// Manage Subscription), and they could never reach the
 /// purchase panel or start the trial from onboarding. The
-/// branch-pinning tests in `billing_panel_gate_test.dart` reach
+/// branch-pinning tests in `onboarding_flow3_test.dart` reach
 /// this real selection for every state; do not reorder.
 class BillingPanel extends StatelessWidget {
   final BillingGateState state;
@@ -54,7 +54,7 @@ class BillingPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // B2: needsVerification FIRST — before activeSubscriber.
+    // needsVerification FIRST — before activeSubscriber.
     if (state == BillingGateState.needsVerification) {
       return VerifyEmailGate(onVerifyEmail: onVerifyEmail);
     }

@@ -1,6 +1,6 @@
 import 'package:tabs_lab/src/data/onboarding_store.dart';
 
-/// Flow3 resume — ONE-SHOT per login session (Vera B1 fix round 1).
+/// Flow3 resume — ONE-SHOT per login session.
 ///
 /// The ruled behavior: a returning user who logs in mid-flow
 /// resumes ONCE at the step they left. The failure this guards
@@ -36,8 +36,8 @@ class OnboardingResumeGate {
 }
 
 /// The login-routing resume decision, factored out of AppFlow so
-/// widget/unit tests drive the REAL logic (Vera B1: the regression
-/// test must fail if the advance is deleted OR if it re-fires).
+/// widget/unit tests drive the REAL logic — the regression tests
+/// fail if the advance is deleted OR if it re-fires.
 class OnboardingResumeCoordinator {
   final OnboardingStore store;
 
@@ -47,7 +47,7 @@ class OnboardingResumeCoordinator {
   /// when no advance should happen: no marker, the marker was
   /// already consumed this session, or onboarding is complete.
   ///
-  /// Vera m1 hardening: a marker at/past the Profile step is only
+  /// Hardening: a marker at/past the Profile step is only
   /// trusted when the profile text actually exists locally — a
   /// marker can outlive the context write (e.g. marker=5 with no
   /// profile), and resuming past Profile would skip the one

@@ -10,6 +10,7 @@ import 'package:tabs_lab/src/data/onboarding_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/auth/email_verification_screen.dart';
+import 'package:tabs_lab/src/features/billing/billing_panel.dart';
 import 'package:tabs_lab/src/features/onboarding/onboarding_flow.dart';
 import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
@@ -220,6 +221,69 @@ void main() {
     // The all-false flags stamped at register time are intact.
     expect(map['has_consented'], 'false');
     expect(map['onboarding_complete'], 'false');
+  });
+
+  testWidgets('B1 regression: register unverified → verify success '
+      '→ walk to Membership shows the purchase/trial panel, NOT '
+      'VerifyEmailGate', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final session = FakeSessionStore();
+    final map = <String, String>{};
+    await pumpFlow(
+      tester,
+      session: session,
+      onboardingMap: map,
+      authApi: _authApi(registerBody: _authBody(verified: false)),
+    );
+    await driveRegister(tester);
+    expect(find.byType(EmailVerificationScreen), findsOneWidget);
+    await submitCode(tester);
+    expect(find.byType(OnboardingFlow), findsOneWidget);
+    expect(session.emailVerified, isTrue);
+
+    // Consent.
+    await tester.tap(find.widgetWithText(FilledButton, 'I consent'));
+    await tester.pumpAndSettle();
+    // Profile (unskippable; Next is gated at 10 words).
+    expect(find.text("Let's get you set up!"), findsOneWidget);
+    await tester.enterText(
+      find.byType(TextField),
+      'one two three four five six seven eight nine ten eleven',
+    );
+    await tester.pump();
+    await tester.ensureVisible(find.text('Next Step'));
+    await tester.tap(find.text('Next Step'));
+    await tester.pumpAndSettle();
+    // Conditions (selection optional; step is skippable).
+    expect(find.text('Add conditions'), findsOneWidget);
+    await tester.tap(find.text('Next'));
+    await tester.pumpAndSettle();
+    // Connections: skip goes through the warning dialog first.
+    await tester.tap(find.text('Skip for now'));
+    await tester.pumpAndSettle();
+    expect(find.text('Skip Health Connect?'), findsOneWidget);
+    await tester.tap(find.text('Skip anyway'));
+    await tester.pumpAndSettle();
+    // Gems.
+    expect(find.text('STREAKS, FREEZES & GEMS'), findsOneWidget);
+    await tester.tap(find.text('Got it'));
+    await tester.pumpAndSettle();
+
+    // Membership: the user who verified when prompted must reach
+    // the purchase/trial panel in THIS session. Before the fix,
+    // _onVerificationSuccess persisted the verified flag but never
+    // updated the in-memory session field the gate reads, so
+    // VerifyEmailGate reappeared here and tapping through it
+    // looped (verify → resume at Membership → gate again).
+    expect(find.text('Unlock Tabs Premium'), findsOneWidget);
+    expect(find.byType(VerifyEmailGate), findsNothing);
+    expect(
+        find.byKey(const ValueKey('verify_email_gate')), findsNothing);
+    expect(find.text('Monthly Plan'), findsOneWidget);
+    expect(find.text(r'$5.99 / month'), findsOneWidget);
+    expect(find.text('Start 7-Day Free Trial'), findsOneWidget);
   });
 
   testWidgets('login with emailVerified:false → verify stage → '

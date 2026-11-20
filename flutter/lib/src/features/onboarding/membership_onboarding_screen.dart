@@ -49,8 +49,8 @@ class MembershipOnboardingScreen extends StatefulWidget {
   /// the step then keeps its honest cannot-purchase state.
   final BillingService? billingService;
 
-  /// Flow3 / Vera B2 self-check: the account's email-verification
-  /// state, threaded from AppFlow. False routes the billing area
+  /// Flow3: the account's email-verification state, threaded
+  /// from AppFlow. False routes the billing area
   /// to the VerifyEmailGate (BillingPanel's FIRST branch) — never
   /// to the active-subscriber panel. Defaults true (verified /
   /// legacy) so existing callers keep their behavior.
@@ -147,7 +147,7 @@ class _MembershipOnboardingScreenState
     );
   }
 
-  /// Billing gate state for [BillingPanel]. Order matters (B2):
+  /// Billing gate state for [BillingPanel]. Order matters:
   /// needsVerification is resolved FIRST in the panel; here an
   /// unlimited account auto-advances (native parity) before this
   /// matters, so the panel states reachable in onboarding are
