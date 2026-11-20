@@ -57,6 +57,12 @@ class SettingsStore extends ChangeNotifier {
   static const googleAccountConnectedKey =
       'settings_google_account_connected';
   static const googleAccountEmailKey = 'settings_google_account_email';
+  // Dev-only app background override (founder direction Nov 19,
+  // 2026): a '#RRGGBB' hex string set from the Developer Terminal
+  // by `dev_access` accounts only. Device-only like every key in
+  // this store — it is absent from the sync/profile payloads by
+  // construction (this store is never serialized into a push).
+  static const appBackgroundColorKey = 'settings_app_background_color';
   // Round 66 — Progress Reports prefs (native NotelPreferences:
   // LAST_REPORT_TYPE / LAST_REPORT_RANGE_30D / LAST_REPORT_EXPORT_TIME
   // / APPOINTMENT_DATE / APPOINTMENT_REPORT_TYPE, DataStore-only).
@@ -149,6 +155,24 @@ class SettingsStore extends ChangeNotifier {
   }
 
   Future<void> setThemeMode(String v) => _write(themeModeKey, v);
+
+  /// The dev-only app background override as a '#RRGGBB' string,
+  /// or null when unset (the resolved background is then the
+  /// shipped default). Never throws — an unreadable store reads
+  /// as unset, exactly like the other keys in this store.
+  Future<String?> getAppBackgroundColorHex() async {
+    try {
+      final v = await _read(appBackgroundColorKey);
+      if (v != null && v.isNotEmpty) return v;
+    } catch (_) {}
+    return null;
+  }
+
+  /// Persists the override hex; null DELETES the key, returning
+  /// the device to the unset/default state.
+  Future<void> setAppBackgroundColorHex(String? hex) => hex == null
+      ? _delete(appBackgroundColorKey)
+      : _write(appBackgroundColorKey, hex);
 
   /// Native default true (NotelPreferences.kt:619, `?: true`).
   Future<bool> getUserContextHidden() =>

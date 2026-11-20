@@ -11,6 +11,7 @@ import 'package:tabs_lab/src/features/quicklog/quick_log_screen.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
 import 'package:tabs_lab/src/features/tools/tools_screen.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
+import 'package:tabs_lab/src/theme/app_background.dart';
 
 /// Round 9 — the post-login shell: tab state, the bottom nav dock, and
 /// placeholder screens.
@@ -167,6 +168,15 @@ class _MainShellState extends State<MainShell>
     super.initState();
     _settingsStore = widget.settingsStore ?? SettingsStore();
     _settingsStore.addListener(_onSettingsStoreChanged);
+    // Dev-only app background (Nov 19, 2026): when the background
+    // controller notifies, repaint the shell so the ACTIVE tab
+    // body re-reads the resolved NotelColors.background token on
+    // this same frame — the change applies app-wide immediately,
+    // no tab switch, no restart. Inert for non-dev users: the
+    // controller only ever notifies on a dev-screen change or the
+    // bootstrap load (which lands before the shell exists).
+    AppBackgroundController.instance
+        .addListener(_onAppBackgroundChanged);
     // Round 40 — one controller for the paired slide; Round 22's
     // 300ms duration and easeOut curve.
     _slideController = AnimationController(
@@ -185,6 +195,8 @@ class _MainShellState extends State<MainShell>
     // disposes stores anywhere in this codebase — only the
     // listener registration is the shell's to undo.
     _settingsStore.removeListener(_onSettingsStoreChanged);
+    AppBackgroundController.instance
+        .removeListener(_onAppBackgroundChanged);
     _slideController.dispose();
     super.dispose();
   }
@@ -193,6 +205,14 @@ class _MainShellState extends State<MainShell>
   /// already landed in storage, so a plain re-read is the refresh.
   void _onSettingsStoreChanged() {
     _refreshNavLabels();
+  }
+
+  /// Background-change callback: the token already holds the new
+  /// color; a bare setState re-runs the shell build (and with it
+  /// the active tab's build) so the new base background paints
+  /// immediately.
+  void _onAppBackgroundChanged() {
+    if (mounted) setState(() {});
   }
 
   void _onSlideStatus(AnimationStatus status) {

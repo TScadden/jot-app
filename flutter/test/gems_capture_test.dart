@@ -164,7 +164,7 @@ void main() {
         key: rootKey,
         child: MaterialApp(
           theme: ThemeData(fontFamily: 'Roboto'),
-          home: const Scaffold(
+          home: Scaffold(
             backgroundColor: NotelColors.background,
             body: Padding(
               padding: EdgeInsets.fromLTRB(0, 12, 0, 0),
