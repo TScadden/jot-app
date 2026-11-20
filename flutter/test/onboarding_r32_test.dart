@@ -939,10 +939,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(map['has_consented'], 'true');
 
-      // Consultation intro.
+      // flow3: the consultation-intro interstitial is cut — its
+      // "Let's get you set up!" is now the Profile step's heading,
+      // so consent lands directly on Profile setup.
       expect(find.text("Let's get you set up!"), findsOneWidget);
-      await tester.tap(find.text('Continue'));
-      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsOneWidget);
       expect(map['intro_consultation_seen'], 'true');
 
       // Profile setup: Next is gated at 10 words (native rule).
@@ -967,24 +968,23 @@ void main() {
             'one two three four five six seven eight nine ten eleven'),
         isTrue,
       );
-      // Drain the placeholder rotation loop (screen disposed).
-      await tester.pump(const Duration(seconds: 4));
-
       // Conditions (skip selection; step is skippable).
       expect(find.text('Add conditions'), findsOneWidget);
       await tester.tap(find.text('Next'));
       await tester.pumpAndSettle();
 
-      // Notifications.
-      expect(
-          find.text('Allow Tabs to send you\nnotifications?'),
-          findsOneWidget);
-      await tester.tap(find.text("Don't Allow"));
-      await tester.pumpAndSettle();
-
-      // Connections.
+      // Connections (flow3: the notifications step is gone; skip
+      // goes through the warning dialog first).
       expect(find.text('Connect Health Data'), findsWidgets);
       await tester.tap(find.text('Skip for now'));
+      await tester.pumpAndSettle();
+      expect(find.text('Skip Health Connect?'), findsOneWidget);
+      await tester.tap(find.text('Skip anyway'));
+      await tester.pumpAndSettle();
+
+      // Gems (new flow3 step between Connections and Membership).
+      expect(find.text('STREAKS, FREEZES & GEMS'), findsOneWidget);
+      await tester.tap(find.text('Got it'));
       await tester.pumpAndSettle();
 
       // Membership.

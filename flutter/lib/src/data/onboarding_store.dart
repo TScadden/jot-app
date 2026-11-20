@@ -50,6 +50,24 @@ class OnboardingStore {
   static const userConditionsKey = 'user_conditions';
   static const ownerEmailKey = 'onboarding_owner_email';
 
+  /// Flow3 (Nov 19, 2026) — resume marker: the index (into the
+  /// flow3 step order consent=0, profileSetup=1, conditions=2,
+  /// connections=3, gems=4, membership=5, setupLoading=6) of the
+  /// step a mid-flow user left at, written as each step completes.
+  /// Absent = no flow3 resume pending.
+  static const stepMarkerKey = 'onboarding_step_v1';
+
+  /// Flow3 — set true only when the NEW flow's setup-loading step
+  /// completes. Gates the one-time post-onboarding notification
+  /// card on Home: users who completed onboarding under older
+  /// flows never carry this key, so they are never nagged.
+  static const flow3CompletedKey = 'onboarding_flow3_completed';
+
+  /// Flow3 — set once the post-onboarding notification card has
+  /// been shown (whichever button the user picked).
+  static const flow3NotifPromptShownKey =
+      'onboarding_flow3_notif_prompt_shown';
+
   Future<String?> Function(String key) _read =
       (key) => const FlutterSecureStorage().read(key: key);
   Future<void> Function(String key, String value) _write =
@@ -106,6 +124,34 @@ class OnboardingStore {
   /// existing accounts complete (login and pull both set the flag),
   /// and the startup resolver does the same instead of dropping an
   /// existing user into onboarding.
+  /// Flow3 resume marker (see [stepMarkerKey]). Null when absent
+  /// or malformed.
+  Future<int?> getStepMarker() async {
+    try {
+      final v = await _read(stepMarkerKey);
+      return v == null ? null : int.tryParse(v);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> setStepMarker(int stepIndex) =>
+      _write(stepMarkerKey, '$stepIndex');
+
+  Future<void> clearStepMarker() async {
+    try {
+      await _delete(stepMarkerKey);
+    } catch (_) {}
+  }
+
+  Future<bool> getFlow3Completed() => _readBool(flow3CompletedKey, false);
+  Future<void> setFlow3Completed(bool v) => _writeBool(flow3CompletedKey, v);
+
+  Future<bool> getFlow3NotifPromptShown() =>
+      _readBool(flow3NotifPromptShownKey, false);
+  Future<void> setFlow3NotifPromptShown(bool v) =>
+      _writeBool(flow3NotifPromptShownKey, v);
+
   Future<bool> hasAnyState() async {
     for (final k in const [
       onboardingCompleteKey,
@@ -114,6 +160,9 @@ class OnboardingStore {
       userContextKey,
       userConditionsKey,
       ownerEmailKey,
+      stepMarkerKey,
+      flow3CompletedKey,
+      flow3NotifPromptShownKey,
     ]) {
       try {
         if (await _read(k) != null) return true;
@@ -174,6 +223,9 @@ class OnboardingStore {
       userContextKey,
       userConditionsKey,
       ownerEmailKey,
+      stepMarkerKey,
+      flow3CompletedKey,
+      flow3NotifPromptShownKey,
     ]) {
       try {
         await _delete(k);

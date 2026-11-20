@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'package:tabs_lab/src/data/billing_service.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/features/billing/billing_panel.dart';
 import 'package:tabs_lab/src/features/billing/billing_plans_panel.dart';
 import 'package:tabs_lab/src/features/onboarding/onboarding_header.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
@@ -48,12 +49,24 @@ class MembershipOnboardingScreen extends StatefulWidget {
   /// the step then keeps its honest cannot-purchase state.
   final BillingService? billingService;
 
+  /// Flow3: the account's email-verification state, threaded
+  /// from AppFlow. False routes the billing area
+  /// to the VerifyEmailGate (BillingPanel's FIRST branch) — never
+  /// to the active-subscriber panel. Defaults true (verified /
+  /// legacy) so existing callers keep their behavior.
+  final bool emailVerified;
+
+  /// Fired when the VerifyEmailGate's button is tapped.
+  final VoidCallback? onVerifyEmail;
+
   const MembershipOnboardingScreen({
     super.key,
     required this.onBack,
     required this.onSkip,
     this.backend,
     this.billingService,
+    this.emailVerified = true,
+    this.onVerifyEmail,
   });
 
   @override
@@ -134,12 +147,21 @@ class _MembershipOnboardingScreenState
     );
   }
 
+  /// Billing gate state for [BillingPanel]. Order matters:
+  /// needsVerification is resolved FIRST in the panel; here an
+  /// unlimited account auto-advances (native parity) before this
+  /// matters, so the panel states reachable in onboarding are
+  /// needsVerification and purchasable.
+  BillingGateState get _gateState => !widget.emailVerified
+      ? BillingGateState.needsVerification
+      : BillingGateState.purchasable;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: NotelColors.background,
       body: SafeArea(
-        child: SingleChildScrollView(
+        child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           child: Column(
             children: [
@@ -147,144 +169,101 @@ class _MembershipOnboardingScreenState
                 padding: const EdgeInsets.only(top: 8),
                 child: OnboardingHeader(onBack: widget.onBack),
               ),
-              const SizedBox(height: 16),
-              Container(
-                width: 88,
-                height: 88,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(24),
-                  gradient: RadialGradient(
-                    colors: [
-                      NotelColors.primary.withValues(alpha: 0.6),
-                      NotelColors.surface,
+              const SizedBox(height: 12),
+              const OnboardingProgressBar(currentSegment: 6),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 16),
+                      Container(
+                        width: 88,
+                        height: 88,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(24),
+                          gradient: RadialGradient(
+                            colors: [
+                              NotelColors.primary.withValues(alpha: 0.6),
+                              NotelColors.surface,
+                            ],
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.workspace_premium,
+                          color: Colors.white,
+                          size: 48,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'Unlock Tabs Premium',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
+                          color: NotelColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Everything you need to understand your body and reach '
+                        'your goals.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: NotelColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      const _FeatureRow(
+                        icon: Icons.auto_awesome,
+                        title: 'AI Clinical Advocate',
+                        description:
+                            'Get a personalized AI coach that understands your '
+                            'health history, goals, and biometric data.',
+                      ),
+                      const _FeatureRow(
+                        icon: Icons.insights,
+                        title: 'Smart Tiles & Trends',
+                        description:
+                            'Intelligent tiles that analyze your logs and surface '
+                            "patterns you didn't know existed.",
+                      ),
+                      const SizedBox(height: 24),
+                      // Flow3: Free vs Premium compare table (mock
+                      // flow3_07_membership_v6). Check marks are
+                      // drawn icons, never emoji.
+                      const _CompareTable(),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'Tabs Premium is for education and personal self '
+                        'tracking only. It does not provide medical advice, '
+                        'diagnosis, or treatment. Talk to a qualified health '
+                        'professional about any health decisions.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: NotelColors.textSecondary,
+                          fontSize: 11,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      BillingPanel(
+                        state: _gateState,
+                        onVerifyEmail: widget.onVerifyEmail,
+                        purchasableChild: _billing != null
+                            ? BillingPlansPanel(
+                                service: _billing!,
+                                onUnlimited: _onBillingUnlimited,
+                              )
+                            : _fallbackPlans(),
+                      ),
+                      const SizedBox(height: 16),
                     ],
                   ),
                 ),
-                child: const Icon(
-                  Icons.workspace_premium,
-                  color: Colors.white,
-                  size: 48,
-                ),
               ),
-              const SizedBox(height: 24),
-              const Text(
-                'Unlock Tabs Premium',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
-                  color: NotelColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Everything you need to understand your body and reach '
-                'your goals.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: NotelColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 32),
-              const _FeatureRow(
-                icon: Icons.auto_awesome,
-                title: 'AI Clinical Advocate',
-                description:
-                    'Get a personalized AI coach that understands your '
-                    'health history, goals, and biometric data.',
-              ),
-              const _FeatureRow(
-                icon: Icons.insights,
-                title: 'Smart Tiles & Trends',
-                description:
-                    'Intelligent tiles that analyze your logs and surface '
-                    "patterns you didn't know existed.",
-              ),
-              const SizedBox(height: 32),
-              const Text(
-                'Tabs Premium is for education and personal self '
-                'tracking only. It does not provide medical advice, '
-                'diagnosis, or treatment. Talk to a qualified health '
-                'professional about any health decisions.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: NotelColors.textSecondary,
-                  fontSize: 11,
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (_billing != null) ...[
-                // Takeover Phase 2 — production build: the real
-                // Play flow (live catalog, user-picked offer,
-                // server-verified purchase).
-                BillingPlansPanel(
-                  service: _billing!,
-                  onUnlimited: _onBillingUnlimited,
-                ),
-              ] else ...[
-                // Lab build — honest state: no price and NO trial
-                // is claimed without a live catalog (the hardcoded
-                // "Start 7-day free trial" label is removed).
-                _PlanCard(
-                  selected: _selectedPlan == 'monthly',
-                  title: 'Monthly Plan',
-                  chip: '',
-                  chipColor: NotelColors.primary,
-                  onTap: () => setState(() => _selectedPlan = 'monthly'),
-                ),
-                const SizedBox(height: 12),
-                _PlanCard(
-                  selected: _selectedPlan == 'yearly',
-                  title: 'Yearly Plan',
-                  // Takeover review fix (Juno): no "BEST VALUE" chip
-                  // in the Lab — no catalog price data exists here to
-                  // compute savings from, so it would be unbacked.
-                  chip: '',
-                  chipColor: NotelColors.success,
-                  onTap: () => setState(() => _selectedPlan = 'yearly'),
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  height: 54,
-                  child: FilledButton(
-                    onPressed: _showPurchaseUnavailable,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: NotelColors.primary,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.workspace_premium,
-                            color: Colors.white, size: 20),
-                        SizedBox(width: 8),
-                        Text(
-                          'Subscribe with Google Play',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 17,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  'Auto-renews until canceled. Billed by Google Play.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Color(0xBF7A8FAF),
-                    fontSize: 11,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 12),
+              // Flow3 pinned bottom: "Use free account for now"
+              // above the primary button, at the shared baseline.
               TextButton(
                 onPressed: widget.onSkip,
                 child: const Text(
@@ -296,10 +275,198 @@ class _MembershipOnboardingScreenState
                   ),
                 ),
               ),
-              const SizedBox(height: 32),
+              if (_billing == null &&
+                  _gateState == BillingGateState.purchasable)
+                Padding(
+                  padding: const EdgeInsets.only(
+                      bottom: kOnboardingBottomPadding),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: FilledButton(
+                      onPressed: _showPurchaseUnavailable,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: NotelColors.primary,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.workspace_premium,
+                              color: Colors.white, size: 20),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                            // Founder ruling: the button label
+                            // follows the selected plan — monthly
+                            // (the trial plan) names the trial;
+                            // yearly keeps the pre-flow3 subscribe
+                            // label (flagged in BRAM-REPORT).
+                            _selectedPlan == 'monthly'
+                                ? 'Start 7-Day Free Trial'
+                                : 'Subscribe with Google Play',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 17,
+                            ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// The no-catalog (Lab) plan cards, with the founder-ruled
+  /// prices and badges (flow3 amendment: prices SHOW on the
+  /// cards, replacing "Pricing shown in Google Play").
+  Widget _fallbackPlans() {
+    return Column(
+      children: [
+        _PlanCard(
+          selected: _selectedPlan == 'monthly',
+          title: 'Monthly Plan',
+          price: r'$5.99 / month',
+          chip: '7-DAY FREE TRIAL',
+          chipColor: NotelColors.primary,
+          onTap: () => setState(() => _selectedPlan = 'monthly'),
+        ),
+        const SizedBox(height: 12),
+        _PlanCard(
+          selected: _selectedPlan == 'yearly',
+          title: 'Yearly Plan',
+          price: r'$39.99 / year',
+          chip: 'SAVE 44% \u00B7 BEST VALUE',
+          chipColor: NotelColors.success,
+          onTap: () => setState(() => _selectedPlan = 'yearly'),
+        ),
+        const SizedBox(height: 10),
+        const Text(
+          'Auto-renews until canceled. Billed by Google Play.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Color(0xBF7A8FAF),
+            fontSize: 11,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Flow3 compare table: header "Compare | Free | Premium" and the
+/// four ruled rows. Included = a drawn check icon; not included =
+/// a drawn dash (a short line), never emoji/text glyphs.
+class _CompareTable extends StatelessWidget {
+  const _CompareTable();
+
+  static const _rows = <(String, bool, bool)>[
+    ('Daily tracking, streaks & gems', true, true),
+    ('AI Clinical Advocate', false, true),
+    ('Smart Tiles & Trends', false, true),
+    ('Progress reports', false, true),
+  ];
+
+  Widget _mark(bool included) {
+    if (included) {
+      return const Icon(Icons.check, color: Color(0xFF4CAF50), size: 20);
+    }
+    return Container(
+      width: 14,
+      height: 2,
+      color: NotelColors.textSecondary,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const ValueKey('membership_compare_table'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: NotelColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: NotelColors.primary.withValues(alpha: 0.15),
+        ),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Compare',
+                  style: TextStyle(
+                    color: NotelColors.textPrimary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              const SizedBox(
+                width: 56,
+                child: Text(
+                  'Free',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: NotelColors.textSecondary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              const SizedBox(
+                width: 72,
+                child: Text(
+                  'Premium',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: NotelColors.primary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          for (final row in _rows)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      row.$1,
+                      style: const TextStyle(
+                        color: NotelColors.textPrimary,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 56,
+                    child: Center(child: _mark(row.$2)),
+                  ),
+                  SizedBox(
+                    width: 72,
+                    child: Center(child: _mark(row.$3)),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -374,6 +541,7 @@ class _FeatureRow extends StatelessWidget {
 class _PlanCard extends StatelessWidget {
   final bool selected;
   final String title;
+  final String price;
   final String chip;
   final Color chipColor;
   final VoidCallback onTap;
@@ -381,6 +549,7 @@ class _PlanCard extends StatelessWidget {
   const _PlanCard({
     required this.selected,
     required this.title,
+    required this.price,
     required this.chip,
     required this.chipColor,
     required this.onTap,
@@ -429,11 +598,11 @@ class _PlanCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  // Native's own no-catalog fallback line (see the
-                  // class doc) — the Lab has no Play catalog.
-                  const Text(
-                    'Pricing shown in Google Play',
-                    style: TextStyle(
+                  // Flow3 amendment (founder, Nov 19): the price
+                  // SHOWS on the card.
+                  Text(
+                    price,
+                    style: const TextStyle(
                       color: NotelColors.textSecondary,
                       fontSize: 13,
                     ),
@@ -444,7 +613,8 @@ class _PlanCard extends StatelessWidget {
             // Empty chip renders nothing (Takeover Phase 2: no
             // unverified FREE TRIAL claim in the Lab).
             if (chip.isNotEmpty)
-              Container(
+              Flexible(
+                child: Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
@@ -453,11 +623,13 @@ class _PlanCard extends StatelessWidget {
                 ),
                 child: Text(
                   chip,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: chipColor,
                     fontSize: 9,
                     fontWeight: FontWeight.bold,
                   ),
+                ),
                 ),
               ),
           ],

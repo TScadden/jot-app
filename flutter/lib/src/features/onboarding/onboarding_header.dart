@@ -18,80 +18,173 @@ class OnboardingHeader extends StatelessWidget {
   final VoidCallback? onBack;
   final VoidCallback? onSkip;
 
-  const OnboardingHeader({super.key, this.onBack, this.onSkip});
+  /// Flow3 (Nov 19, 2026) — a muted, NON-interactive label rendered
+  /// in the trailing slot instead of a Skip button (the Profile
+  /// step's "Can't skip"). Wider than the 40dp button slot, so the
+  /// header is laid out as a Stack: the logo row is centered on the
+  /// FULL header width and the side slots overlay it, which keeps
+  /// the logo at the exact center whether the trailing slot holds
+  /// the 40dp Skip button, this label, or nothing.
+  final String? trailingLabel;
+
+  const OnboardingHeader({
+    super.key,
+    this.onBack,
+    this.onSkip,
+    this.trailingLabel,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        SizedBox(
-          width: 40,
-          height: 40,
-          child: onBack == null
-              ? null
-              : Material(
-                  color: NotelColors.surfaceHigh,
-                  shape: const CircleBorder(),
-                  child: InkWell(
-                    customBorder: const CircleBorder(),
-                    onTap: onBack,
-                    child: const Icon(
-                      Icons.arrow_back,
-                      color: NotelColors.textPrimary,
-                      size: 20,
-                    ),
-                  ),
-                ),
-        ),
-        Expanded(
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Image.asset(
-                'assets/images/ic_tabs_note.png',
-                width: 28,
-                height: 28,
-              ),
-              const SizedBox(width: 8),
-              const Text(
-                'Tabs',
-                style: TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w900,
-                  color: NotelColors.primary,
-                  letterSpacing: 1,
-                ),
-              ),
-            ],
+    return SizedBox(
+      height: 40,
+      child: Stack(
+        children: [
+          const Center(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _TabsLogoMark(),
+              ],
+            ),
           ),
-        ),
-        SizedBox(
-          width: 40,
-          height: 40,
-          child: onSkip == null
-              ? null
-              : TextButton(
-                  onPressed: onSkip,
-                  style: TextButton.styleFrom(
-                    padding: EdgeInsets.zero,
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: const Text(
-                    'Skip',
-                    style: TextStyle(
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: onBack == null
+                  ? null
+                  : Material(
+                      color: NotelColors.surfaceHigh,
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: onBack,
+                        child: const Icon(
+                          Icons.arrow_back,
+                          color: NotelColors.textPrimary,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: trailingLabel != null
+                ? Text(
+                    trailingLabel!,
+                    key: const ValueKey('onboarding_header_trailing_label'),
+                    style: const TextStyle(
                       color: NotelColors.textSecondary,
                       fontSize: 15,
                       fontWeight: FontWeight.w500,
                     ),
+                  )
+                : SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: onSkip == null
+                        ? null
+                        : TextButton(
+                            onPressed: onSkip,
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: Size.zero,
+                              tapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: const Text(
+                              'Skip',
+                              style: TextStyle(
+                                color: NotelColors.textSecondary,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
                   ),
-                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The centered 28dp logo + "Tabs" wordmark, factored out so the
+/// Stack-based header centers the identical mark.
+class _TabsLogoMark extends StatelessWidget {
+  const _TabsLogoMark();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Image.asset(
+          'assets/images/ic_tabs_note.png',
+          width: 28,
+          height: 28,
+        ),
+        const SizedBox(width: 8),
+        const Text(
+          'Tabs',
+          style: TextStyle(
+            fontSize: 26,
+            fontWeight: FontWeight.w900,
+            color: NotelColors.primary,
+            letterSpacing: 1,
+          ),
         ),
       ],
     );
   }
 }
+
+/// Flow3 (Nov 19, 2026) — the pinned 6-segment progress bar shown
+/// directly under [OnboardingHeader] on every SETUP step (never on
+/// the sign-up/log-in screen). Segments, in order: Consent 1,
+/// Profile 2, Conditions 3, Connections 4, Gems 5, Membership 6.
+/// [currentSegment] is 1-based; segments up to and including it
+/// render filled.
+class OnboardingProgressBar extends StatelessWidget {
+  static const int totalSegments = 6;
+
+  final int currentSegment;
+
+  const OnboardingProgressBar({super.key, required this.currentSegment});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      key: const ValueKey('onboarding_progress_bar'),
+      children: [
+        for (var i = 1; i <= totalSegments; i++) ...[
+          if (i > 1) const SizedBox(width: 6),
+          Expanded(
+            child: Container(
+              key: ValueKey('onboarding_progress_segment_$i'),
+              height: 6,
+              decoration: BoxDecoration(
+                color: i <= currentSegment
+                    ? NotelColors.primary
+                    : NotelColors.surfaceHigh,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Flow3 pinned bottom inset: every setup screen's primary button
+/// sits at this same bottom position (24dp page padding + 12dp
+/// below the button area is the app standard used by the screens).
+const double kOnboardingBottomPadding = 12;
 
 /// The onboarding steps' shared primary button: full width, 54dp,
 /// 24dp radius, NotelPrimary fill, white 16sp Bold label — the shape
@@ -122,12 +215,21 @@ class OnboardingPrimaryButton extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
           ),
-          textStyle: const TextStyle(
+        ),
+        // The label carries its own style (the pattern the app's
+        // other filled buttons use): a textStyle passed through
+        // styleFrom resolves with inherit:false, which in the
+        // capture harness drops the label to the test font —
+        // child-carried style renders identically on device and
+        // legibly in harness captures.
+        child: Text(
+          label,
+          style: const TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
+            color: Colors.white,
           ),
         ),
-        child: Text(label),
       ),
     );
   }
