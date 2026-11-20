@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:printing/printing.dart';
 
 import 'package:tabs_lab/src/data/clinician_report.dart';
 import 'package:tabs_lab/src/data/clinician_report_pdf.dart';
@@ -17,6 +19,7 @@ import 'package:tabs_lab/src/data/progress_report_pdf.dart';
 import 'package:tabs_lab/src/data/report_generation_journal.dart';
 import 'package:tabs_lab/src/data/report_generation_service.dart';
 import 'package:tabs_lab/src/data/report_ready_notification.dart';
+import 'package:tabs_lab/src/data/weekly_report.dart';
 import 'package:tabs_lab/src/features/settings/report_share_flow.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
@@ -91,6 +94,30 @@ class ProgressReportsPage extends StatefulWidget {
   /// the pre-service isolation those tests were written against.
   final ReportGenerationService? generationService;
 
+  // ── Weekly Report Package 1 seams ─────────────────────────────
+
+  /// Test seam for the weekly entitlement check (production
+  /// defaults to the SAME source as the clinician gate —
+  /// [TabsBackend.fetchMembership]'s `isUnlimited` — fail-closed,
+  /// with the lapsed state derived from a non-empty archive).
+  final Future<WeeklyEntitlement> Function()? weeklyEntitlementCheck;
+
+  /// Test seam for the weekly archive store.
+  final WeeklyReportStore? weeklyStore;
+
+  /// Test seam for the weekly generation service. Production
+  /// builds a dedicated service whose ONLY notifier is a
+  /// [WeeklySilentNotifier] — PR #55's report-ready notifier is
+  /// never used on the weekly path (zero notifications).
+  final ReportGenerationService? weeklyGenerationService;
+
+  /// The silent notifier for the production weekly service
+  /// (test seam so the recording sink can be asserted).
+  final WeeklySilentNotifier? weeklyNotifier;
+
+  /// Clock seam for the weekly closed-week computation.
+  final DateTime Function()? weeklyClock;
+
   const ProgressReportsPage({
     super.key,
     required this.profileData,
@@ -107,6 +134,11 @@ class ProgressReportsPage extends StatefulWidget {
     this.clinicianPremiumCheck,
     this.reportReadyNotifier,
     this.generationService,
+    this.weeklyEntitlementCheck,
+    this.weeklyStore,
+    this.weeklyGenerationService,
+    this.weeklyNotifier,
+    this.weeklyClock,
   });
 
   @override
@@ -195,6 +227,34 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
 
   TabsBackend get _backend => widget.backend;
 
+  // ── Weekly Report Package 1 state ─────────────────────────────
+
+  /// The weekly generation's dedicated service: same run-closure
+  /// / hold-until-seen / share pop-up behavior as the standard
+  /// flow, but a SEPARATE instance with a silent notifier and an
+  /// in-memory journal (the durable weekly record is the archive
+  /// store; the standard service's journal key stays singleton-
+  /// owned and is never written by weekly runs).
+  late final ReportGenerationService _weeklyService;
+  late final ReportCompletionPresenter _weeklyPresenter;
+  late final WeeklyReportStore _weeklyStore;
+
+  /// Null while the entitlement check is running (fail-closed:
+  /// no weekly surface offers generation until it resolves).
+  WeeklyEntitlement? _weeklyEntitlement;
+  List<WeeklyArchiveRecord> _weeklyRecords = const [];
+
+  /// The saved path of the weekly ready outcome already archived
+  /// (the service listener fires repeatedly; archiving is once
+  /// per outcome).
+  String? _weeklyArchivedPath;
+
+  /// Juno §a permission-needed state: the blocked generation's
+  /// evaluation + record, shown in-app until dismissed with
+  /// "Not now" (the archive entry stays, labeled Blocked).
+  WeeklyEvaluation? _permissionEval;
+  bool _permissionDismissed = false;
+
   /// Item 3 Q7 premium gate state: null = check still running;
   /// true = the one-page clinician report is unlocked. Fail-closed:
   /// an unknown or failed check reads as locked, so the premium
@@ -232,15 +292,39 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
     };
     _service.addListener(_onServiceChanged);
     _service.registerPagePresenter(_pagePresenter);
+    // Weekly Report Package 1: the dedicated weekly service.
+    _weeklyStore = widget.weeklyStore ?? WeeklyReportStore();
+    _weeklyService = widget.weeklyGenerationService ??
+        ReportGenerationService(
+          notifier: widget.weeklyNotifier ?? WeeklySilentNotifier(),
+          journal: ReportGenerationJournal.inMemory({}),
+        );
+    _weeklyPresenter = () {
+      if (!mounted) {
+        _weeklyService.presentPendingShare();
+        return;
+      }
+      presentReportShareConfirmation(
+        context: context,
+        service: _weeklyService,
+        store: widget.store,
+        sharePdf: widget.sharePdf,
+      );
+    };
+    _weeklyService.addListener(_onWeeklyServiceChanged);
+    _weeklyService.registerPagePresenter(_weeklyPresenter);
     WidgetsBinding.instance.addObserver(this);
     _load();
     _resolveClinicianGate();
+    _loadWeekly();
   }
 
   @override
   void dispose() {
     _service.unregisterPagePresenter(_pagePresenter);
     _service.removeListener(_onServiceChanged);
+    _weeklyService.unregisterPagePresenter(_weeklyPresenter);
+    _weeklyService.removeListener(_onWeeklyServiceChanged);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -260,7 +344,14 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _service.handleResumed();
+    if (state == AppLifecycleState.resumed) {
+      _service.handleResumed();
+      // Weekly Report Package 1: the weekly service holds its
+      // own completions the same way — an away completion's
+      // share confirmation presents on return, exactly as the
+      // standard flow's does.
+      _weeklyService.handleResumed();
+    }
   }
 
   Future<void> _resolveClinicianGate() async {
@@ -539,6 +630,191 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
     );
   }
 
+  // ── Weekly Report Package 1 ───────────────────────────────────
+
+  Future<void> _loadWeekly() async {
+    final records = await _weeklyStore.readAll();
+    if (!mounted) return;
+    setState(() => _weeklyRecords = records);
+    final entitlement = await _resolveWeeklyEntitlement();
+    if (!mounted) return;
+    setState(() => _weeklyEntitlement = entitlement);
+  }
+
+  /// The weekly entitlement resolution. The entitlement SOURCE is
+  /// the app's existing one — the server membership's
+  /// `isUnlimited` (the clinician gate's source; a running trial
+  /// counts as Premium while the trial runs, per the server's own
+  /// computation) — no second gate is invented. Fail-closed: an
+  /// unverified check never reads as Premium. A non-Premium user
+  /// WITH archive entries is lapsed (their reports stay readable
+  /// forever); without entries, free.
+  Future<WeeklyEntitlement> _resolveWeeklyEntitlement() async {
+    try {
+      if (widget.weeklyEntitlementCheck != null) {
+        return await widget.weeklyEntitlementCheck!();
+      }
+      final membership = await _backend.fetchMembership();
+      if (membership.isUnlimited) return WeeklyEntitlement.premium;
+    } catch (_) {
+      // Fail-closed: an unknown entitlement is never Premium.
+    }
+    return _weeklyRecords.isNotEmpty
+        ? WeeklyEntitlement.lapsed
+        : WeeklyEntitlement.free;
+  }
+
+  void _onWeeklyServiceChanged() {
+    if (!mounted) return;
+    final ready = _weeklyService.pendingShare;
+    if (ready != null && _weeklyArchivedPath != ready.savedPath) {
+      _weeklyArchivedPath = ready.savedPath;
+      unawaited(_archiveWeekly(ready));
+    }
+    setState(() {});
+  }
+
+  /// Archives a finished weekly generation: evaluates the
+  /// completeness bar over its snapshot and persists the PDF's
+  /// record (the PDF itself was saved by the pipeline's save
+  /// step). A blocked outcome raises the Juno §a
+  /// permission-needed state.
+  Future<void> _archiveWeekly(ReportReady ready) async {
+    final snapshot = ready.snapshot;
+    if (snapshot.weekStart == null || snapshot.weekEnd == null) return;
+    final window = WeeklyWeekWindow(snapshot.weekStart!, snapshot.weekEnd!);
+    final previous = WeeklyReportStore.previousOf(_weeklyRecords, window);
+    final evaluation = evaluateWeeklyCompleteness(
+      snapshot: snapshot,
+      week: window,
+      generationCompleted: true,
+      previousWeek: previous,
+    );
+    final record = WeeklyArchiveRecord(
+      weekStartKey: window.startKey,
+      weekEndKey: window.endKey,
+      generatedAtMs: snapshot.generationTimestampMs,
+      fileName: ready.fileName,
+      savedPath: ready.savedPath,
+      label: evaluation.label,
+      blockedSections: evaluation.blockedSections,
+      dailyScoreDays: evaluation.dailyScoreDays,
+      sleepNights: evaluation.sleepNights,
+      loggedDays: evaluation.loggedDays,
+      completeDays: evaluation.completeDays,
+      avgScoreCompleteDays: evaluation.avgScoreCompleteDays,
+    );
+    final records = await _weeklyStore.upsert(record);
+    if (!mounted) return;
+    setState(() {
+      _weeklyRecords = records;
+      // Juno §d Flag 3: the permission-needed state fires ONLY
+      // on a verified permissionDenied outcome — never on an
+      // availability contradiction, whose denial claim the
+      // week's own data refutes (its archive entry still
+      // labels Blocked; the state and its "permission wasn't
+      // granted" body stay unfired).
+      if (evaluation.blockedSections.isNotEmpty &&
+          !evaluation.contradiction) {
+        _permissionEval = evaluation;
+        _permissionDismissed = false;
+      }
+    });
+  }
+
+  /// Manual weekly generation. The entitlement gate is
+  /// PRE-GENERATION (founder clarification): verified again here,
+  /// before any generation work begins — no-entitlement and
+  /// expired alike produce no PDF, no archive entry, nothing.
+  /// The run drives the dedicated weekly [ReportGenerationService]
+  /// with forceRawFallback (data pipeline only — NO AI narrative,
+  /// zero Gemini cost) over the most recent CLOSED Mon–Sun week.
+  Future<void> _generateWeekly() async {
+    if (_weeklyService.isGenerating || _service.isGenerating) return;
+    final entitlement = await _resolveWeeklyEntitlement();
+    if (!mounted) return;
+    setState(() => _weeklyEntitlement = entitlement);
+    if (entitlement != WeeklyEntitlement.premium) return;
+    final now = widget.weeklyClock?.call() ?? DateTime.now();
+    final window = WeeklyWeekWindow.mostRecentClosed(now);
+    final weeklyCategories =
+        resolveReportCategories(_categories, ReportFocus.health, {});
+    final selected = weeklyCategories.isNotEmpty ? weeklyCategories : _selected;
+    final pipeline = _standardPipeline();
+    await _weeklyService.start(
+      ({required onStage, required isCancelled}) => pipeline.generate(
+        selectedCategories: selected,
+        last30Days: false,
+        weekStart: window.start,
+        weekEnd: window.end,
+        profile: _profileInput,
+        forceRawFallback: true,
+        forceRawBanner: RawReportBanner.explicitChoice,
+        onStage: onStage,
+        isCancelled: isCancelled,
+        now: now,
+        renderPdf: (snapshot, aiSummary,
+                {required bool isRawFallback, RawReportBanner? rawBanner}) {
+          // The PDF's ONE weekly line, from the same evaluator
+          // the archive record uses (identical inputs at render
+          // time and at archive time).
+          final previous =
+              WeeklyReportStore.previousOf(_weeklyRecords, window);
+          final evaluation = evaluateWeeklyCompleteness(
+            snapshot: snapshot,
+            week: window,
+            generationCompleted: true,
+            previousWeek: previous,
+          );
+          return buildReportPdfBytes(snapshot,
+              aiSummary: aiSummary,
+              isRawFallback: isRawFallback,
+              rawBanner: rawBanner ?? RawReportBanner.explicitChoice,
+              weeklyLine: evaluation.pdfLine);
+        },
+        savePdf: widget.savePdf ?? _defaultSave,
+        saveToDownloads: widget.saveToDownloads ?? _defaultSaveToDownloads,
+      ),
+      request: ReportRequestIdentity(
+        kind: 'weekly',
+        focusKey: ReportFocus.health.key,
+        last30Days: false,
+        categoryIds: selected.map((c) => c.id).toList(),
+        forceRaw: true,
+      ),
+    );
+  }
+
+  /// Tapping an archive entry opens/shares the stored PDF (the
+  /// existing share flow's share function; production defaults
+  /// to Printing.sharePdf, exactly as the share confirmation).
+  Future<void> _openWeeklyRecord(WeeklyArchiveRecord record) async {
+    try {
+      final bytes = await File(record.savedPath).readAsBytes();
+      final shareFn = widget.sharePdf ??
+          (b, name) =>
+              Printing.sharePdf(bytes: Uint8List.fromList(b), filename: name);
+      await shareFn(bytes, record.fileName);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Could not open this weekly report.')));
+      }
+    }
+  }
+
+  Future<void> _openHealthConnectSettings() async {
+    try {
+      await (widget.healthConnectService ?? HealthConnectService())
+          .openHealthConnectSettings();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Could not open Health Connect Settings.')));
+      }
+    }
+  }
+
   // Completion handling lives in ReportGenerationService (the
   // run's owner) and report_share_flow.dart (the share
   // confirmation, presented by whichever presenter the service
@@ -644,6 +920,8 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
         _overviewCard(selected, inRange),
         const SizedBox(height: 16),
         _previewCard(inRange, selected, hasAnyLogs, generating),
+        const SizedBox(height: 16),
+        _weeklyCard(),
         if (selected.isNotEmpty) ...[
           const SizedBox(height: 16),
           _detailsCard(selected, inRange),
@@ -819,6 +1097,183 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
         ),
       ),
     ]);
+  }
+
+  /// Weekly Report Package 1 card (Juno §c rows 1.1–1.17):
+  /// header, the manual generate action (Premium only), the
+  /// archive list, the free user's ONE locked row, the lapsed
+  /// line, and the permission-needed state. No new screen.
+  Widget _weeklyCard() {
+    final entitlement = _weeklyEntitlement;
+    final generating = _weeklyService.isGenerating;
+    return _card([
+      _sectionLabel(weeklyArchiveHeader),
+      const SizedBox(height: 8),
+      if (entitlement == WeeklyEntitlement.free) ...[
+        // Exactly ONE locked row; no generate action (row 1.9/1.10).
+        Row(children: [
+          const Icon(Icons.lock_outline, size: 18, color: NotelColors.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(weeklyLockedTitle,
+                    style: TextStyle(
+                        color: NotelColors.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500)),
+                const Text(weeklyLockedBody,
+                    style: TextStyle(
+                        color: NotelColors.textSecondary, fontSize: 12)),
+              ],
+            ),
+          ),
+        ]),
+      ] else if (entitlement == WeeklyEntitlement.lapsed) ...[
+        const Text(weeklyLapsedLine,
+            style: TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
+        if (_weeklyRecords.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          for (final r in _weeklyRecords) _weeklyEntryRow(r),
+        ],
+      ] else if (entitlement == WeeklyEntitlement.premium) ...[
+        SizedBox(
+          width: double.infinity,
+          height: 44,
+          child: OutlinedButton(
+            onPressed: generating ? null : () => _generateWeekly(),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: NotelColors.primary),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            child: generating
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: NotelColors.primary))
+                : const Text(weeklyGenerateLabel,
+                    style: TextStyle(
+                        color: NotelColors.primary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold)),
+          ),
+        ),
+        if (_weeklyService.pendingFailure != null && !generating) ...[
+          const SizedBox(height: 8),
+          Text(_weeklyService.pendingFailure!.message,
+              style: const TextStyle(color: NotelColors.error, fontSize: 12)),
+        ],
+        const SizedBox(height: 8),
+        if (_weeklyRecords.isEmpty)
+          const Text(weeklyArchiveEmpty,
+              style: TextStyle(color: NotelColors.textSecondary, fontSize: 12))
+        else
+          for (final r in _weeklyRecords) _weeklyEntryRow(r),
+        if (_permissionEval != null && !_permissionDismissed) ...[
+          const SizedBox(height: 12),
+          _permissionNeededState(_permissionEval!),
+        ],
+      ],
+    ]);
+  }
+
+  Widget _weeklyEntryRow(WeeklyArchiveRecord r) {
+    return InkWell(
+      onTap: () => _openWeeklyRecord(r),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(children: [
+          const Icon(Icons.picture_as_pdf,
+              size: 18, color: NotelColors.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(weeklyWeekLabel(r.window),
+                    style: const TextStyle(
+                        color: NotelColors.textPrimary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500)),
+                Text(weeklyGeneratedLine(r.generatedAtMs),
+                    style: const TextStyle(
+                        color: NotelColors.textSecondary, fontSize: 11)),
+              ],
+            ),
+          ),
+          Text(r.label.label,
+              style: const TextStyle(
+                  color: NotelColors.textSecondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600)),
+        ]),
+      ),
+    );
+  }
+
+  /// Juno §a — the permission-needed state: in-app, attached to
+  /// the blocked week's outcome; not a modal, not a banner, not
+  /// a notification. Fires ONLY on a verified permissionDenied
+  /// outcome (the evaluator's blocked label derives from the
+  /// unified probe's per-section statuses).
+  Widget _permissionNeededState(WeeklyEvaluation evaluation) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: NotelColors.surfaceHigh,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(weeklyPermissionTitle,
+              style: TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 6),
+          const Text(weeklyPermissionBody,
+              style: TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
+          const SizedBox(height: 8),
+          const Text(weeklyPermissionSectionsLabel,
+              style: TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500)),
+          for (final section in evaluation.blockedSections)
+            Text(section,
+                style: const TextStyle(
+                    color: NotelColors.textSecondary, fontSize: 12)),
+          const SizedBox(height: 8),
+          const Text(weeklyPermissionGuidance,
+              style: TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
+          const SizedBox(height: 8),
+          Row(children: [
+            TextButton(
+              // The SAME Health Connect settings destination the
+              // Settings surface's button of this name opens; no
+              // auto-regenerate on return (Juno §a.3).
+              onPressed: () => _openHealthConnectSettings(),
+              child: const Text(weeklyPermissionPrimaryAction,
+                  style: TextStyle(
+                      color: NotelColors.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold)),
+            ),
+            TextButton(
+              onPressed: () => setState(() => _permissionDismissed = true),
+              child: const Text(weeklyPermissionSecondaryAction,
+                  style: TextStyle(
+                      color: NotelColors.textSecondary, fontSize: 12)),
+            ),
+          ]),
+        ],
+      ),
+    );
   }
 
   Widget _stat(String value, String label) => Expanded(
