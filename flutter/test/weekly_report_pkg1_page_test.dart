@@ -263,6 +263,29 @@ void main() {
         gate: gate,
       );
 
+  /// Package 2 note: at this file's page clock (Wed Nov 18) the
+  /// fixture week is the automation's DUE week, so an ungenerated
+  /// archive would auto-generate on page open and the manual tap
+  /// would no longer be the actor under test. Manual-path tests
+  /// seed the week as already generated — automation is then
+  /// inert by its own idempotency rule, and the manual run below
+  /// (which replaces the seeded entry) is what every assertion
+  /// measures.
+  Future<void> seedFixtureWeek() => weeklyStore.upsert(WeeklyArchiveRecord(
+        weekStartKey: _week.startKey,
+        weekEndKey: _week.endKey,
+        generatedAtMs: DateTime(2026, 11, 16, 9).millisecondsSinceEpoch,
+        fileName: 'seed.pdf',
+        savedPath: '/tmp/seed.pdf',
+        label: WeeklyCompleteness.incomplete,
+        blockedSections: const [],
+        dailyScoreDays: 3,
+        sleepNights: 3,
+        loggedDays: 3,
+        completeDays: 3,
+        avgScoreCompleteDays: null,
+      ));
+
   group('entitlement surfaces', () {
     testWidgets('free user: exactly ONE locked row, nothing else weekly',
         (tester) async {
@@ -358,12 +381,21 @@ void main() {
     testWidgets(
         'premium generation archives the week labeled Complete and '
         'posts zero notifications', (tester) async {
+      await seedFixtureWeek();
       final pipeline = fakePipeline(_snap());
       await pumpPage(tester,
           entitlement: () async => WeeklyEntitlement.premium,
           pipeline: pipeline);
       await tester.tap(find.text('Generate Weekly Report'));
-      await _pumpUntil(tester, () => weeklyMem.isNotEmpty);
+      // The seed already made the store non-empty (see
+      // seedFixtureWeek), so wait for the MANUAL run's own
+      // outcome: the pipeline ran and the entry relabeled
+      // Complete (the seed was Incomplete).
+      await _pumpUntil(
+          tester,
+          () =>
+              pipeline.generateCalls > 0 &&
+              find.text('Complete').evaluate().isNotEmpty);
       final records = await weeklyStore.readAll();
       expect(records.length, 1);
       expect(records.single.weekStartKey, '2026-11-09');
@@ -380,6 +412,7 @@ void main() {
         'away completion: the weekly service\u2019s only notifier is '
         'the recording sink — attempts are counted, sends are zero',
         (tester) async {
+      await seedFixtureWeek();
       final gate = Completer<void>();
       final pipeline = fakePipeline(_snap(), gate: gate);
       await pumpPage(tester,
@@ -406,6 +439,7 @@ void main() {
         'permission-blocked week: Juno §a state verbatim, sections '
         'named, settings action wired, Not now dismisses and the '
         'Blocked entry stays', (tester) async {
+      await seedFixtureWeek();
       // A verified-denial snapshot the real collector can
       // actually produce: the denied sections' series are
       // EMPTY (the derivation only derives permissionDenied
@@ -473,6 +507,7 @@ void main() {
         'fully blocked week through the REAL pipeline: an empty '
         'weekly snapshot still ships, archives Blocked, and raises '
         'the permission state (no no-data failure)', (tester) async {
+      await seedFixtureWeek();
       final emptyBlocked = ReportSnapshot(
         last30Days: false,
         weekStart: _week.start,
