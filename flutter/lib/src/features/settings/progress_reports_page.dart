@@ -19,6 +19,8 @@ import 'package:tabs_lab/src/data/progress_report_pdf.dart';
 import 'package:tabs_lab/src/data/report_generation_journal.dart';
 import 'package:tabs_lab/src/data/report_generation_service.dart';
 import 'package:tabs_lab/src/data/report_ready_notification.dart';
+import 'package:tabs_lab/src/data/weekly_automation.dart';
+import 'package:tabs_lab/src/data/weekly_notification.dart';
 import 'package:tabs_lab/src/data/weekly_report.dart';
 import 'package:tabs_lab/src/features/settings/report_share_flow.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
@@ -115,6 +117,15 @@ class ProgressReportsPage extends StatefulWidget {
   /// (test seam so the recording sink can be asserted).
   final WeeklySilentNotifier? weeklyNotifier;
 
+  /// Weekly Report Package 2: the AUTOMATIC weekly notification
+  /// seam. Production builds a [LocalWeeklyNotifier] (the new
+  /// `Weekly reports` channel — never the report-ready channel).
+  /// This is separate from the weekly service's silent notifier:
+  /// the service's hold-until-seen machinery never posts for a
+  /// weekly run; the automation coordinator posts through THIS
+  /// notifier, and only when the completeness bar passes.
+  final WeeklyNotifier? weeklyAutoNotifier;
+
   /// Clock seam for the weekly closed-week computation.
   final DateTime Function()? weeklyClock;
 
@@ -138,6 +149,7 @@ class ProgressReportsPage extends StatefulWidget {
     this.weeklyStore,
     this.weeklyGenerationService,
     this.weeklyNotifier,
+    this.weeklyAutoNotifier,
     this.weeklyClock,
   });
 
@@ -239,6 +251,13 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
   late final ReportCompletionPresenter _weeklyPresenter;
   late final WeeklyReportStore _weeklyStore;
 
+  /// Weekly Report Package 2: the first-open automation
+  /// coordinator (trigger / idempotency / fail-closed entitlement
+  /// / evaluate / archive / conditional notify). Built in
+  /// initState after the weekly service; nullable only so the
+  /// service listener can read it before construction settles.
+  WeeklyAutomationCoordinator? _weeklyAutomation;
+
   /// Null while the entitlement check is running (fail-closed:
   /// no weekly surface offers generation until it resolves).
   WeeklyEntitlement? _weeklyEntitlement;
@@ -313,6 +332,16 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
     };
     _weeklyService.addListener(_onWeeklyServiceChanged);
     _weeklyService.registerPagePresenter(_weeklyPresenter);
+    // Weekly Report Package 2: the automation coordinator. Its
+    // generation seam drives THIS page's weekly service (below),
+    // and it — not the service listener — archives automatic
+    // runs and owns the bar-gated weekly notification.
+    _weeklyAutomation = WeeklyAutomationCoordinator(
+      checkEntitlement: _resolveWeeklyEntitlement,
+      store: _weeklyStore,
+      generate: _runAutoGeneration,
+      notifier: widget.weeklyAutoNotifier ?? LocalWeeklyNotifier(),
+    );
     WidgetsBinding.instance.addObserver(this);
     _load();
     _resolveClinicianGate();
@@ -351,6 +380,10 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
       // share confirmation presents on return, exactly as the
       // standard flow's does.
       _weeklyService.handleResumed();
+      // Weekly Report Package 2: returning to the app with this
+      // surface mounted is an app open — re-run the automation
+      // check (a pure read unless a week is due and ungenerated).
+      unawaited(_maybeAutoWeekly());
     }
   }
 
@@ -400,6 +433,11 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
       unawaited(
           _service.autoRestoreInterrupted(_buildRun(interrupted.request)));
     }
+    // Weekly Report Package 2: the automation check needs the
+    // loaded categories (its generation run is built from them);
+    // _loadWeekly fires the same check, and whichever lands
+    // second finds the coordinator's guards already settled.
+    unawaited(_maybeAutoWeekly());
   }
 
   /// Builds the service run for a persisted request identity
@@ -639,6 +677,9 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
     final entitlement = await _resolveWeeklyEntitlement();
     if (!mounted) return;
     setState(() => _weeklyEntitlement = entitlement);
+    // Weekly Report Package 2: opening this surface is the
+    // first-open automation check point.
+    unawaited(_maybeAutoWeekly());
   }
 
   /// The weekly entitlement resolution. The entitlement SOURCE is
@@ -666,6 +707,15 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
 
   void _onWeeklyServiceChanged() {
     if (!mounted) return;
+    // Weekly Report Package 2: while an AUTOMATIC run is in
+    // flight, the coordinator is the archiver for its completion
+    // (it evaluates with the automation's Flag 1 bound and owns
+    // the notification gate) — this listener must not archive
+    // the same outcome a second time under the manual rules.
+    if (_weeklyAutomation?.inFlight ?? false) {
+      setState(() {});
+      return;
+    }
     final ready = _weeklyService.pendingShare;
     if (ready != null && _weeklyArchivedPath != ready.savedPath) {
       _weeklyArchivedPath = ready.savedPath;
@@ -737,6 +787,82 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
     if (entitlement != WeeklyEntitlement.premium) return;
     final now = widget.weeklyClock?.call() ?? DateTime.now();
     final window = WeeklyWeekWindow.mostRecentClosed(now);
+    await _startWeeklyGeneration(window, now);
+  }
+
+  /// Weekly Report Package 2 — the automation check, fired when
+  /// this surface opens and again on lifecycle resume. The
+  /// coordinator owns the decision (due week, archive
+  /// idempotency, fail-closed entitlement, evaluation, archive,
+  /// bar-gated notification); this method only reflects a
+  /// generated outcome into the page: the refreshed archive and,
+  /// for a verified-denial block, the Juno §a permission-needed
+  /// state (Flag 3 — never on a contradiction).
+  Future<void> _maybeAutoWeekly() async {
+    final automation = _weeklyAutomation;
+    if (automation == null || !_loaded) return;
+    final now = widget.weeklyClock?.call() ?? DateTime.now();
+    final outcome = await automation.maybeGenerate(now: now);
+    if (!mounted || outcome.record == null) return;
+    // The coordinator archived this outcome; keep the service
+    // listener's once-guard in step so a later service change
+    // cannot archive the same completion a second time.
+    _weeklyArchivedPath = outcome.record!.savedPath;
+    final records = await _weeklyStore.readAll();
+    if (!mounted) return;
+    setState(() {
+      _weeklyRecords = records;
+      final evaluation = outcome.evaluation;
+      if (evaluation != null &&
+          evaluation.blockedSections.isNotEmpty &&
+          !evaluation.contradiction) {
+        _permissionEval = evaluation;
+        _permissionDismissed = false;
+      }
+    });
+  }
+
+  /// The coordinator's generation seam: drives the weekly
+  /// service for the DUE week (Package 2's window — the current
+  /// Mon–Sun week on a Sunday-night trigger, not Package 1's
+  /// most recently completed week) and hands back the held ready
+  /// outcome. A failed/cancelled run — or a held outcome for a
+  /// DIFFERENT week (a stale manual completion) — returns null:
+  /// nothing is archived and the week stays due.
+  Future<WeeklyGenerationResult?> _runAutoGeneration(
+      WeeklyWeekWindow week, DateTime now) async {
+    if (_weeklyService.isGenerating || _service.isGenerating) return null;
+    await _startWeeklyGeneration(week, now,
+        closedBefore: weeklyClosedBefore(week, now));
+    final ready = _weeklyService.pendingShare;
+    if (ready == null) return null;
+    final start = ready.snapshot.weekStart;
+    final end = ready.snapshot.weekEnd;
+    if (start == null || end == null) return null;
+    if (WeeklyWeekWindow(start, end).startKey != week.startKey) return null;
+    return WeeklyGenerationResult(
+      snapshot: ready.snapshot,
+      fileName: ready.fileName,
+      savedPath: ready.savedPath,
+    );
+  }
+
+  /// One weekly generation run through the dedicated weekly
+  /// service, shared by the manual action (Package 1) and the
+  /// automation (Package 2): forceRawFallback (data pipeline
+  /// only — NO AI narrative, zero Gemini cost) over the fixed
+  /// Mon–Sun [window]. [closedBefore] is the evaluator's Flag 1
+  /// bound for the PDF line; null keeps Package 1's manual
+  /// default (the whole finished week counts), while the
+  /// automation passes [weeklyClosedBefore] so a still-running
+  /// Sunday never counts as a complete day in the PDF either —
+  /// the render evaluation and the coordinator's archive
+  /// evaluation then run on identical inputs.
+  Future<void> _startWeeklyGeneration(
+    WeeklyWeekWindow window,
+    DateTime now, {
+    DateTime? closedBefore,
+  }) async {
     final weeklyCategories =
         resolveReportCategories(_categories, ReportFocus.health, {});
     final selected = weeklyCategories.isNotEmpty ? weeklyCategories : _selected;
@@ -764,6 +890,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
             snapshot: snapshot,
             week: window,
             generationCompleted: true,
+            closedBefore: closedBefore,
             previousWeek: previous,
           );
           return buildReportPdfBytes(snapshot,
