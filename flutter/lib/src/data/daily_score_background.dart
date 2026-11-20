@@ -85,6 +85,7 @@ import 'health_history_store.dart';
 import 'health_history_sync.dart';
 import 'notification_service.dart';
 import 'session_store.dart';
+import 'tabs_day.dart';
 
 /// yyyy-MM-dd in local time — the store's date format (same shape
 /// as health_history_sync's private formatter).
@@ -188,6 +189,22 @@ class DailyScoreBackgroundScheduler {
 void dailyScoreBackgroundDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     if (task == DailyScoreBackgroundScheduler.taskName) {
+      // Boundary migration (Vera condition 1): this background
+      // isolate starts with a FRESH TabsDayBoundary singleton —
+      // the foreground bootstrap's load() never ran here. Load
+      // the persisted cutover BEFORE anything in this isolate
+      // derives a Tabs day: the correlation refresh piggybacked
+      // below is this isolate's delegate consumer, and it
+      // PERSISTS day labels, so running it unloaded would label
+      // every post-cutover 00:00–04:00 entry under the legacy
+      // 04:00 rule forever. load() never throws by construction
+      // and a failed storage read leaves the cutover null
+      // (legacy for the session, nothing overwritten); the guard
+      // is belt-and-braces so a load failure can never kill the
+      // background task.
+      try {
+        await TabsDayBoundary.instance.load();
+      } catch (_) {}
       await DailyScoreBackgroundRunner.production().run();
       // Phase 1, item 5 (spec §6): the correlation refresh
       // piggybacks on this completion — after capture/scoring

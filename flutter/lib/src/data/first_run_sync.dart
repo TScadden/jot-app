@@ -52,7 +52,11 @@ class FirstRunReminderResync {
   /// so the countdown arms (and any same-evening check-in
   /// one-shot it replaces is dropped) without the user opening
   /// Settings.
-  static const String doneKey = 'first_run_reminder_resync_v4';
+  /// v5: the Tabs day boundary moved from 04:00 to midnight —
+  /// upgraded devices must re-run the resync once so check-in
+  /// reminders re-project under the new day-label semantics
+  /// without the user opening Settings.
+  static const String doneKey = 'first_run_reminder_resync_v5';
   static const String doneValue = 'done';
 
   final SecureStore _store;
