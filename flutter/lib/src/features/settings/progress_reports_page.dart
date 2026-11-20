@@ -810,7 +810,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Could not open Health Connect Settings.')));
+            content: Text('Could not open Health Connect settings')));
       }
     }
   }
