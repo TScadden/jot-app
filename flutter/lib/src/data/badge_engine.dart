@@ -231,21 +231,31 @@ String badgeGrantKey(String metricId, int rungIndex) =>
 /// The gems one rung pays (founder ruling, Nov 20, 2026).
 const int badgeRungGemAmount = 5;
 
+/// Parses a `yyyy-MM-dd` day key into a UTC-midnight [DateTime].
+/// Split-parse instead of [DateTime.parse]: DateTime.parse rejects
+/// non-zero-padded keys (e.g. `2026-11-9`), and a day-key set that
+/// contains one must never crash week arithmetic. Canonical keys
+/// from [streakDayStr] are always padded, so this is identical for
+/// well-formed keys and tolerant of legacy ones.
+DateTime _badgeDayKeyUtc(String dayKey) {
+  final parts = dayKey.split('-');
+  return DateTime.utc(
+      int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+}
+
 /// The Monday (day key) of the Mon–Sun week containing [dayKey].
 /// Day-key arithmetic in the gem_service.dart pattern: parse the
 /// key, step on UTC midnights so DST never skews a calendar-day
 /// step, and format back through [streakDayStr].
 String badgeWeekMonday(String dayKey) {
-  final d = DateTime.parse(dayKey);
-  final monday =
-      DateTime.utc(d.year, d.month, d.day).subtract(Duration(days: d.weekday - 1));
+  final d = _badgeDayKeyUtc(dayKey);
+  final monday = d.subtract(Duration(days: d.weekday - 1));
   return streakDayStr(monday);
 }
 
 /// The seven day keys of the Mon–Sun week starting [monday].
 List<String> badgeWeekDays(String monday) {
-  final d = DateTime.parse(monday);
-  final base = DateTime.utc(d.year, d.month, d.day);
+  final base = _badgeDayKeyUtc(monday);
   return [for (var i = 0; i < 7; i++) streakDayStr(base.add(Duration(days: i)))];
 }
 
