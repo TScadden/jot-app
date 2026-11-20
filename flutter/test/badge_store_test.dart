@@ -1,12 +1,18 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:tabs_lab/src/data/badge_engine.dart';
 import 'package:tabs_lab/src/data/badge_store.dart';
 import 'package:tabs_lab/src/data/gem_service.dart';
+import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/data/tabs_backend.dart';
 
 /// BadgeService pins (BADGES package): retroactive backfill,
 /// idempotent re-evaluation, the offline grant queue + retry,
 /// alreadyGranted = paid, monotonic grants, and the day gate.
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   final now = DateTime(2026, 11, 20, 12);
 
   BadgeService makeService({
@@ -275,5 +281,101 @@ void main() {
       force: true,
     );
     expect(svc.snapshot.blockedMetrics, isEmpty);
+  });
+
+  group('loader: Juno B-ruling fixtures (exercise is badges-scoped)',
+      () {
+    const exercisePermission = 'android.permission.health.READ_EXERCISE';
+    const channel = MethodChannel('badges_fixture_hc');
+
+    TabsBackend deadBackend() => TabsBackend(
+          client: MockClient((_) async => http.Response('x', 500)),
+        );
+
+    Future<({BadgeInputs inputs, Set<String> blockedMetrics})> loadWith(
+      Set<String> liveGranted, {
+      List<Object?> exerciseRows = const [],
+    }) async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        switch (call.method) {
+          case 'isAvailable':
+            return true;
+          case 'getGrantedPermissions':
+            return liveGranted.toList();
+          case 'probeReadAccess':
+            return true;
+          case 'readStepsHistory':
+            return [
+              {'date': '2026-11-16', 'count': 9000},
+            ];
+          case 'readTotalCaloriesHistory':
+            return [
+              {'date': '2026-11-16', 'kcal': 2500},
+            ];
+          case 'readSleepHistory':
+            return <Object?>[];
+          case 'readExerciseSessions':
+            return exerciseRows;
+          default:
+            return null;
+        }
+      });
+      addTearDown(() =>
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+              .setMockMethodCallHandler(channel, null));
+      return loadBadgeInputs(
+        backend: deadBackend(),
+        hc: HealthConnectService(channel: channel),
+        streakState: null,
+      );
+    }
+
+    test('condition 2: READ_EXERCISE is not in the required set', () {
+      expect(
+        HealthConnectService.requiredPermissions,
+        isNot(contains(exercisePermission)),
+      );
+      // Juno said the Exercise label "may stay", but the pinned
+      // label test (hrv_grant_visibility_test) requires the label
+      // map's keys to equal the required set exactly, and her
+      // condition 5 requires that test to pass UNMODIFIED — so
+      // the label goes too. It was dead weight under B anyway:
+      // Exercise can never be a missing required permission.
+      expect(
+        HealthConnectService.permissionLabels,
+        isNot(contains(exercisePermission)),
+      );
+    });
+
+    test('(i) main set granted + Exercise granted via settings: '
+        'Active week computes', () async {
+      final start = DateTime(2026, 11, 16, 7);
+      final result = await loadWith(
+        {...HealthConnectService.requiredPermissions, exercisePermission},
+        exerciseRows: [
+          {
+            'startMs': start.millisecondsSinceEpoch,
+            'endMs': start
+                .add(const Duration(minutes: 90))
+                .millisecondsSinceEpoch,
+          },
+        ],
+      );
+      expect(result.blockedMetrics, isEmpty);
+      expect(result.inputs.exerciseSessions, hasLength(1));
+      expect(computeBadgeValues(result.inputs)['active_week'], 90);
+    });
+
+    test('(ii) main set granted, Exercise absent: Active week is '
+        'blocked, nothing else is', () async {
+      final result = await loadWith(
+        {...HealthConnectService.requiredPermissions},
+      );
+      expect(result.blockedMetrics, {BadgeMetrics.activeWeek.id});
+      expect(result.inputs.exerciseSessions, isNull);
+      expect(result.inputs.dailySteps, isNotNull);
+      expect(result.inputs.dailyTotalCalories, isNotNull);
+    });
   });
 }

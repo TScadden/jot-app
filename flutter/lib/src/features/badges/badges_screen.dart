@@ -90,10 +90,17 @@ class _BadgesScreenState extends State<BadgesScreen> {
           animation: _svc,
           builder: (context, _) {
             final snap = _svc.snapshot;
+            // Juno B-ruling condition 6: an exercise-only blockage
+            // (Active week, the badges-scoped optional permission)
+            // stays scoped to that tile — it must not promote to a
+            // whole-section permission block while the section's
+            // other badges read granted data. A section counts here
+            // only when a non-exercise metric in it is blocked.
             final blockedSections = <String>[
               for (final section in BadgeSections.order)
-                if (BadgeMetrics.inSection(section)
-                    .any((m) => snap.blockedMetrics.contains(m.id)))
+                if (BadgeMetrics.inSection(section).any((m) =>
+                    snap.blockedMetrics.contains(m.id) &&
+                    m.id != BadgeMetrics.activeWeek.id))
                   section,
             ];
             return ListView(

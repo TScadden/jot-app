@@ -30,7 +30,6 @@ class HealthConnectService {
   static const Set<String> requiredPermissions = {
     'android.permission.health.READ_HEART_RATE',
     'android.permission.health.READ_SLEEP',
-    'android.permission.health.READ_EXERCISE',
     'android.permission.health.READ_STEPS',
     'android.permission.health.READ_ACTIVE_CALORIES_BURNED',
     'android.permission.health.READ_TOTAL_CALORIES_BURNED',
@@ -53,7 +52,6 @@ class HealthConnectService {
   static const Map<String, String> permissionLabels = {
     'android.permission.health.READ_HEART_RATE': 'Heart rate',
     'android.permission.health.READ_SLEEP': 'Sleep',
-    'android.permission.health.READ_EXERCISE': 'Exercise',
     'android.permission.health.READ_STEPS': 'Steps',
     'android.permission.health.READ_ACTIVE_CALORIES_BURNED':
         'Active calories burned',

@@ -550,8 +550,22 @@ Future<({BadgeInputs inputs, Set<String> blockedMetrics})> loadBadgeInputs({
       final stepsBlocked = !has('android.permission.health.READ_STEPS');
       final caloriesBlocked =
           !has('android.permission.health.READ_TOTAL_CALORIES_BURNED');
-      final exerciseBlocked =
-          !has('android.permission.health.READ_EXERCISE');
+      // Juno B-ruling (Nov 20, 2026), condition 4: READ_EXERCISE is
+      // a badges-scoped OPTIONAL permission — declared in the
+      // manifest, granted by the user in Health Connect settings,
+      // never in requiredPermissions — so the probe snapshot
+      // (derived from the required set) can never contain it. The
+      // exercise check reads the LIVE granted set. A failed live
+      // read leaves Active week UNKNOWN this run, never blocked
+      // (§9 rule 1: only a verified denial blocks).
+      bool? exerciseGranted;
+      try {
+        exerciseGranted = (await hc.getGrantedPermissions())
+            .contains('android.permission.health.READ_EXERCISE');
+      } catch (_) {
+        exerciseGranted = null;
+      }
+      final exerciseBlocked = exerciseGranted == false;
       final sleepBlocked = !has('android.permission.health.READ_SLEEP');
       if (stepsBlocked) blocked.add(BadgeMetrics.stepsDay.id);
       if (caloriesBlocked) blocked.add(BadgeMetrics.caloriesMonth.id);
@@ -575,7 +589,7 @@ Future<({BadgeInputs inputs, Set<String> blockedMetrics})> loadBadgeInputs({
             if (r.kcal > 0) r.date: r.kcal,
         };
       }
-      if (!exerciseBlocked) {
+      if (exerciseGranted == true) {
         exercise = await hc.readExerciseSessions(400);
       }
       if (!sleepBlocked) {
