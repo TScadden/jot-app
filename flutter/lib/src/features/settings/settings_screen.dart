@@ -33,8 +33,10 @@ import 'package:tabs_lab/src/data/streak_store.dart';
 import 'package:tabs_lab/src/features/settings/crash_test_hook.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/widget_sync.dart';
+import 'package:tabs_lab/src/features/settings/app_background_section.dart';
 import 'package:tabs_lab/src/features/settings/streak_restore.dart';
 import 'package:tabs_lab/src/features/settings/streak_sim.dart';
+import 'package:tabs_lab/src/theme/app_background.dart';
 import 'package:tabs_lab/src/features/settings/progress_reports_page.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
@@ -1325,9 +1327,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _card([
           StreakRestoreEntry(onRestore: _runStreakRestore),
         ]),
+        const SizedBox(height: 16),
+        _card([
+          AppBackgroundSection(
+            activeColor: AppBackgroundController.instance.color,
+            onPresetSelected: (c) =>
+                unawaited(_applyAppBackground(c)),
+            onApplyHex: _applyAppBackgroundHex,
+            onReset: _resetAppBackground,
+          ),
+        ]),
       ]);
     }
     return widgets;
+  }
+
+  /// The dev App background actions (founder direction Nov 19,
+  /// 2026): route through the app-wide background controller,
+  /// which resolves the token, persists to local prefs only
+  /// (never synced), and notifies the theme + shell listeners so
+  /// the new base background paints immediately. The local
+  /// setState re-renders this section's active indication.
+  /// Rendered only inside the dev_access gate above.
+  Future<void> _applyAppBackground(Color color) async {
+    await AppBackgroundController.instance.setColor(color);
+    if (mounted) setState(() {});
+  }
+
+  Future<bool> _applyAppBackgroundHex(String hex) async {
+    final ok = await AppBackgroundController.instance.applyHex(hex);
+    if (ok && mounted) setState(() {});
+    return ok;
+  }
+
+  void _resetAppBackground() {
+    unawaited(() async {
+      await AppBackgroundController.instance.reset();
+      if (mounted) setState(() {});
+    }());
   }
 
   /// The dev Restore Streak action (founder ask, Nov 19, 2026):

@@ -9,7 +9,31 @@ abstract final class NotelColors {
   // theme with zero geometry/string/behavior change. Contrast:
   // textPrimary on background 18.18:1, textSecondary on surface
   // 6.70:1 (AA, v3-verified values re-checked for this palette).
-  static const background = Color(0xFF0A0A0B); // Near-black — page background
+  /// The shipped default page background (BlackGlass v4 near-black).
+  /// This is the value every device resolves when no dev override
+  /// is set, and the value Reset returns to.
+  static const defaultBackground = Color(0xFF0A0A0B);
+
+  static Color _backgroundOverride = defaultBackground;
+
+  /// The resolved page background: [defaultBackground] unless the
+  /// dev-only background changer (Developer Terminal, `dev_access`
+  /// accounts only) set an override on this device. The override
+  /// lives ONLY in local prefs (see `AppBackgroundController` in
+  /// app_background.dart) — it is never synced and never part of
+  /// the profile payload, so non-dev users always resolve the
+  /// default. Every scaffold/app-bar that paints the page
+  /// background reads this getter, and the app theme's
+  /// `scaffoldBackgroundColor` resolves from the same value, so
+  /// one override re-skins the base background app-wide. Card /
+  /// surface tokens ([surface], [surfaceHigh]) never follow it.
+  static Color get background => _backgroundOverride;
+
+  /// Sets the resolved [background] override. App-facing writes go
+  /// through `AppBackgroundController` (which persists + notifies);
+  /// this setter is the token-level seam it drives.
+  static set backgroundOverride(Color value) =>
+      _backgroundOverride = value;
   // Settings-fidelity round (audit P2/P3): surface #1A1A1E ->
   // #101013 (card-over-background step +16.3 -> +6.5, the DNA's
   // +5-10 band); surfaceHigh #121215 -> #0C0C0F (nested one step

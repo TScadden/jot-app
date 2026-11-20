@@ -19,8 +19,16 @@ import 'slide_page_route.dart';
 /// not read these values, so their look is unchanged — only widgets
 /// that ask the theme for a color (stock Material surfaces) change,
 /// from light-fallback to the app's dark tokens.
-ThemeData notelDarkTheme() {
-  const colorScheme = ColorScheme.dark(
+/// [background] is the resolved base background the theme is
+/// built around (scaffold background + the scheme's background
+/// slots). It defaults to the resolved [NotelColors.background]
+/// token; the dev-only background changer passes the active
+/// override explicitly so a change rebuilds the theme — and with
+/// it every theme-driven surface — without a restart. Surface
+/// tokens are never affected.
+ThemeData notelDarkTheme({Color? background}) {
+  final resolvedBackground = background ?? NotelColors.background;
+  final colorScheme = ColorScheme.dark(
     primary: NotelColors.primary,
     onPrimary: NotelColors.textPrimary,
     primaryContainer: NotelColors.surfaceHigh,
@@ -34,15 +42,15 @@ ThemeData notelDarkTheme() {
     surface: NotelColors.surface,
     onSurface: NotelColors.textPrimary,
     onSurfaceVariant: NotelColors.textSecondary,
-    surfaceContainerLowest: NotelColors.background,
+    surfaceContainerLowest: resolvedBackground,
     surfaceContainerLow: NotelColors.surface,
     surfaceContainer: NotelColors.surface,
     surfaceContainerHigh: NotelColors.surfaceHigh,
     surfaceContainerHighest: NotelColors.surfaceHigh,
-    surfaceDim: NotelColors.background,
+    surfaceDim: resolvedBackground,
     surfaceBright: NotelColors.surfaceHigh,
     inverseSurface: NotelColors.textPrimary,
-    onInverseSurface: NotelColors.background,
+    onInverseSurface: resolvedBackground,
     inversePrimary: NotelColors.primary,
     error: NotelColors.error,
     onError: NotelColors.textPrimary,
@@ -162,7 +170,7 @@ ThemeData notelDarkTheme() {
   return ThemeData(
     brightness: Brightness.dark,
     colorScheme: colorScheme,
-    scaffoldBackgroundColor: NotelColors.background,
+    scaffoldBackgroundColor: resolvedBackground,
     pageTransitionsTheme: slidePageTransitionsTheme(),
     textTheme: textTheme,
     elevatedButtonTheme: const ElevatedButtonThemeData(

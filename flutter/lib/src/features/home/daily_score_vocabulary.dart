@@ -54,28 +54,28 @@ class ScoreChip {
 }
 
 const ScoreChip _chipGood =
-    ScoreChip('Good', NotelColors.success, NotelColors.background);
+    ScoreChip('Good', NotelColors.success, NotelColors.defaultBackground);
 const ScoreChip _chipNormal =
     ScoreChip('Normal', NotelColors.primary, NotelColors.onPrimary);
 // Juno C2 — the sleep 60–79 tier is "Fair" (info fill), NOT
 // "Normal": after this change "Normal" means only "within ±2% of
 // your own baseline" (the direction chips below).
 const ScoreChip _chipFair =
-    ScoreChip('Fair', NotelColors.info, NotelColors.background);
+    ScoreChip('Fair', NotelColors.info, NotelColors.defaultBackground);
 const ScoreChip _chipAbove =
-    ScoreChip('Above', NotelColors.info, NotelColors.background);
+    ScoreChip('Above', NotelColors.info, NotelColors.defaultBackground);
 const ScoreChip _chipBelow =
-    ScoreChip('Below', NotelColors.warning, NotelColors.background);
+    ScoreChip('Below', NotelColors.warning, NotelColors.defaultBackground);
 // Juno C3 — resting-HR "Below" is direction-neutral (info fill,
 // identical in color to "Above"): below-baseline resting HR
 // RAISES that component's score, so the warning fill contradicted
 // the scoring. HRV "Below" keeps _chipBelow's warning fill.
 const ScoreChip _chipBelowInfo =
-    ScoreChip('Below', NotelColors.info, NotelColors.background);
+    ScoreChip('Below', NotelColors.info, NotelColors.defaultBackground);
 const ScoreChip _chipLow =
-    ScoreChip('Low', NotelColors.warning, NotelColors.background);
+    ScoreChip('Low', NotelColors.warning, NotelColors.defaultBackground);
 const ScoreChip _chipVeryLow =
-    ScoreChip('Very low', NotelColors.error, NotelColors.background);
+    ScoreChip('Very low', NotelColors.error, NotelColors.defaultBackground);
 
 /// Sleep chip, from the day's sleep component score (100 × the
 /// share of personal need met, capped): the quality-word system.

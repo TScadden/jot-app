@@ -6,7 +6,7 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 Future<void> _pumpStrip(WidgetTester tester) async {
   await tester.pumpWidget(
-    const MaterialApp(
+    MaterialApp(
       home: Scaffold(
         backgroundColor: NotelColors.background,
         body: VitalsStrip(),
@@ -17,7 +17,7 @@ Future<void> _pumpStrip(WidgetTester tester) async {
 
 Future<void> _pumpStreakRow(WidgetTester tester) async {
   await tester.pumpWidget(
-    const MaterialApp(
+    MaterialApp(
       home: Scaffold(
         backgroundColor: NotelColors.background,
         body: HomeStreakRow(),

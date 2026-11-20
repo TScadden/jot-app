@@ -623,7 +623,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                       height: 22,
                       child: CircularProgressIndicator(
                         strokeWidth: 2.5,
-                        color: NotelColors.background,
+                        color: NotelColors.defaultBackground,
                       ),
                     )
                   : const Text(
