@@ -173,6 +173,11 @@ class VitalsWidgetProvider : HomeWidgetProvider() {
     /// restyle superseded the purple-gradient celebrate face.
     /// The only state differences are the flame-row count color
     /// (grey while today is open, orange #FF7A50 once done), the
+    /// flame drawable (added scope, Nov 19, 2026: the bundled
+    /// ic_widget_flame_grey / ic_widget_flame pair, swapped on the
+    /// same todayDone flag — the exact assets and ImageView swap
+    /// StreakWidgetProvider binds; the banner's old emoji
+    /// TextView is gone), the
     /// headline/sub-line strings (preformatted verbatim by Dart:
     /// "Hey {name}." + the projected line, or the founder's
     /// "See you tomorrow!" + "Day {N} is locked in."), and the
@@ -193,6 +198,14 @@ class VitalsWidgetProvider : HomeWidgetProvider() {
         views.setTextColor(
             R.id.widget_streak_flame_count,
             if (todayDone) 0xFFFF7A50.toInt() else 0xFF8E97B8.toInt(),
+        )
+        views.setImageViewResource(
+            R.id.widget_streak_flame,
+            if (todayDone) {
+                R.drawable.ic_widget_flame
+            } else {
+                R.drawable.ic_widget_flame_grey
+            },
         )
         val pose = (all[KEY_STREAK_POSE] as? String) ?: "peek"
         val poseRes = when (pose) {

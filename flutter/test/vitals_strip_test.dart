@@ -82,7 +82,11 @@ void main() {
   group('HomeStreakRow', () {
     testWidgets('renders both streak pills', (tester) async {
       await _pumpStreakRow(tester);
-      expect(find.text('🔥'), findsOneWidget);
+      // Added scope (Nov 19, 2026): the current pill's flame is
+      // the streak screen's icon, never the 🔥 emoji text; the
+      // best pill keeps its trophy glyph.
+      expect(find.text('🔥'), findsNothing);
+      expect(find.byIcon(Icons.local_fire_department), findsOneWidget);
       expect(find.text('🏆'), findsOneWidget);
     });
 
@@ -93,6 +97,132 @@ void main() {
       // counter slot renders NOTHING (no placeholder label/count).
       expect(find.text('--'), findsNWidgets(2));
       expect(find.text('Days'), findsNothing);
+    });
+  });
+
+  group('current-streak pill flame (added scope, Nov 19, 2026)', () {
+    // The pill flame in both layouts (HomeStreakStack +
+    // HomeStreakRow): no 🔥 text glyph anywhere in the subtree,
+    // the streak screen's fire icon present, and its treatment
+    // driven by the settled today-complete flag — lit #FF6A3D with
+    // no dimming wrappers, grey #8E97B8 desaturated at 45% opacity
+    // while today is incomplete (StreakFlame's exact treatment).
+
+    Finder flameIn(Finder host) => find.descendant(
+          of: host,
+          matching: find.byIcon(Icons.local_fire_department),
+        );
+
+    void expectLit(WidgetTester tester, Finder host) {
+      final flame = flameIn(host);
+      expect(flame, findsOneWidget);
+      expect(
+        find.descendant(of: host, matching: find.text('🔥')),
+        findsNothing,
+      );
+      final icon = tester.widget<Icon>(flame);
+      expect(icon.icon, Icons.local_fire_department);
+      expect(icon.color, StreakPillFlame.litColor,
+          reason: 'lit flame is StreakFlame orange #FF6A3D');
+      expect(icon.size, 15);
+      // Lit: no opacity / desaturation wrappers around the icon.
+      expect(
+        find.ancestor(of: flame, matching: find.byType(Opacity)),
+        findsNothing,
+      );
+      expect(
+        find.ancestor(of: flame, matching: find.byType(ColorFiltered)),
+        findsNothing,
+      );
+    }
+
+    void expectUnlit(WidgetTester tester, Finder host) {
+      final flame = flameIn(host);
+      expect(flame, findsOneWidget);
+      expect(
+        find.descendant(of: host, matching: find.text('🔥')),
+        findsNothing,
+      );
+      final icon = tester.widget<Icon>(flame);
+      expect(icon.color, StreakPillFlame.unlitColor,
+          reason: 'unlit flame icon is StreakFlame grey #8E97B8');
+      final opacity = tester.widget<Opacity>(
+        find.ancestor(of: flame, matching: find.byType(Opacity)),
+      );
+      expect(opacity.opacity, StreakPillFlame.unlitOpacity,
+          reason: 'unlit flame is dimmed to 45% opacity');
+      expect(opacity.opacity, 0.45);
+      expect(
+        find.ancestor(of: flame, matching: find.byType(ColorFiltered)),
+        findsOneWidget,
+        reason: 'unlit flame is desaturated (StreakFlame grey matrix)',
+      );
+    }
+
+    Future<void> pumpStack(WidgetTester tester, {required bool lit}) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            backgroundColor: NotelColors.background,
+            body: HomeStreakStack(
+              currentStreak: 18,
+              bestStreak: 68,
+              animateCountUps: false,
+              streakTodayComplete: lit,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    Future<void> pumpRow(WidgetTester tester, {required bool lit}) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            backgroundColor: NotelColors.background,
+            body: HomeStreakRow(
+              currentStreak: 18,
+              bestStreak: 68,
+              animateCountUps: false,
+              streakTodayComplete: lit,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    testWidgets('stack: lit flame when today is complete', (tester) async {
+      await pumpStack(tester, lit: true);
+      expectLit(tester, find.byType(HomeStreakStack));
+      // The trophy pill is untouched by the swap.
+      expect(find.text('🏆'), findsOneWidget);
+    });
+
+    testWidgets('stack: grey flame while today is incomplete',
+        (tester) async {
+      await pumpStack(tester, lit: false);
+      expectUnlit(tester, find.byType(HomeStreakStack));
+      expect(find.text('🏆'), findsOneWidget);
+    });
+
+    testWidgets('row: lit flame when today is complete', (tester) async {
+      await pumpRow(tester, lit: true);
+      expectLit(tester, find.byType(HomeStreakRow));
+      expect(find.text('🏆'), findsOneWidget);
+    });
+
+    testWidgets('row: grey flame while today is incomplete', (tester) async {
+      await pumpRow(tester, lit: false);
+      expectUnlit(tester, find.byType(HomeStreakRow));
+      expect(find.text('🏆'), findsOneWidget);
+    });
+
+    testWidgets('default (no settled state passed) renders the grey flame',
+        (tester) async {
+      await _pumpStreakRow(tester);
+      expectUnlit(tester, find.byType(HomeStreakRow));
     });
   });
 

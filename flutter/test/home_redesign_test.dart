@@ -599,7 +599,7 @@ void main() {
   });
 
   group('corner band', () {
-    testWidgets('streak stack: BEST (🏆 68) sits above CURRENT (🔥 18)',
+    testWidgets('streak stack: BEST (🏆 68) sits above CURRENT (flame 18)',
         (tester) async {
       await _pumpHome(
         tester,
@@ -611,8 +611,13 @@ void main() {
       expect(stack, findsOneWidget);
       final trophy = tester.getRect(find.descendant(
           of: stack, matching: find.text('🏆')));
+      // Added scope (Nov 19, 2026): CURRENT's flame is the streak
+      // icon, not the 🔥 emoji text.
+      expect(
+          find.descendant(of: stack, matching: find.text('🔥')),
+          findsNothing);
       final flame = tester.getRect(find.descendant(
-          of: stack, matching: find.text('🔥')));
+          of: stack, matching: find.byIcon(Icons.local_fire_department)));
       expect(trophy.top, lessThan(flame.top));
       // Values ride their own pills: 68 beside the trophy,
       // 18 beside the flame (same row band, ± a few dp).

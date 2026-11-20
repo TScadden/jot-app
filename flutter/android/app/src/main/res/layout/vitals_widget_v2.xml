@@ -60,12 +60,19 @@
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:includeFontPadding="false"
-                    android:text="🔥"
-                    android:textSize="20sp" />
+                <!-- Flame (added scope, Nov 19, 2026): the bundled
+                     streak flame drawable, NOT the old emoji text —
+                     the same asset pair + ImageView swap the
+                     standalone streak widget binds (grey while
+                     today is open, lit once done; the provider
+                     rebinds by the payload's todayDone flag). 20dp
+                     matches the replaced 20sp emoji's footprint. -->
+                <ImageView
+                    android:id="@+id/widget_streak_flame"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:contentDescription="Streak flame"
+                    android:src="@drawable/ic_widget_flame_grey" />
 
                 <TextView
                     android:id="@+id/widget_streak_flame_count"

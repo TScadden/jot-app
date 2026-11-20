@@ -277,6 +277,16 @@ class _HomeScreenState extends State<HomeScreen>
   int? _currentStreak;
   int? _bestStreak;
 
+  /// Added scope (Nov 19, 2026) — whether today is complete per
+  /// the SETTLED streak state (its countedDays contain today, the
+  /// streak screen's todayDone rule). Written ONLY where the
+  /// settled state writes [_currentStreak]/[_bestStreak] (app-open
+  /// settlement, summary completion, streak-screen return), from
+  /// that same state — the pill flame's lit source. False until a
+  /// settled state lands: the flame renders grey, never lit on the
+  /// provisional pulled counters or the cache seed.
+  bool _streakTodayComplete = false;
+
   // ── Round 23: Health Connect status (enum, not just a bool) ────────────
   /// Null until the first live status check lands — the banner never
   /// shows on a guess, and cached vitals render first regardless.
@@ -635,6 +645,9 @@ class _HomeScreenState extends State<HomeScreen>
     setState(() {
       _currentStreak = result.newCount;
       _bestStreak = streakBest(state);
+      // The completion IS today's counted day in this settled
+      // state — the pill flame lights from the same state.
+      _streakTodayComplete = state.countedDays.contains(summaryTabsDay);
     });
     unawaited(WidgetSync.pushStreak(
       state,
@@ -2124,7 +2137,16 @@ class _HomeScreenState extends State<HomeScreen>
       ));
       // Home load is a D11 completion trigger.
       _queueSummaryCompletionEvaluation();
+      // Added scope (Nov 19, 2026) — the pill flame's lit state
+      // comes from THIS settled state (today counted in its
+      // countedDays — the streak screen's todayDone rule), the
+      // same source as the pill counts below.
+      final engineTodayComplete =
+          engineState.countedDays.contains(tabsDayStr(DateTime.now()));
       if (engineCurrent == _currentStreak && engineBest == _bestStreak) {
+        if (engineTodayComplete != _streakTodayComplete) {
+          setState(() => _streakTodayComplete = engineTodayComplete);
+        }
         return engineState;
       }
       final cache = HomeDataCache.instance;
@@ -2134,6 +2156,7 @@ class _HomeScreenState extends State<HomeScreen>
       setState(() {
         _currentStreak = engineCurrent;
         _bestStreak = engineBest;
+        _streakTodayComplete = engineTodayComplete;
       });
       return engineState;
     } catch (_) {
@@ -2195,6 +2218,8 @@ class _HomeScreenState extends State<HomeScreen>
         _currentStreak =
             streakCurrent(settled, tabsDayAnchor(DateTime.now()));
         _bestStreak = streakBest(settled);
+        _streakTodayComplete =
+            settled.countedDays.contains(tabsDayStr(DateTime.now()));
       });
     }
   }
@@ -2746,6 +2771,7 @@ class _HomeScreenState extends State<HomeScreen>
                         onStreakTap: () => unawaited(_openStreakScreen()),
                         crossAxisAlignment: CrossAxisAlignment.center,
                         gemBalance: _gemBalance,
+                        streakTodayComplete: _streakTodayComplete,
                       ),
                     ),
                     Expanded(

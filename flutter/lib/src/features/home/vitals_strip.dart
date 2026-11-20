@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/gem_service.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/features/home/event_counter_rotator.dart';
+import 'package:tabs_lab/src/features/home/streak_flame.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
@@ -187,7 +188,11 @@ class VitalsStrip extends StatelessWidget {
 /// used (height 34, radius 8, surfaceHigh @ 15% fill, white @ 8% border,
 /// glyph 12sp + value 12sp bold), shared by the row and the redesign's
 /// vertical stack so the two never drift.
-Widget streakPill({required String glyph, required Widget value}) {
+///
+/// The leading slot is a text [glyph] (the best-streak trophy) or a
+/// [leading] widget (the current-streak flame, [StreakPillFlame]) —
+/// exactly one of the two.
+Widget streakPill({String? glyph, Widget? leading, required Widget value}) {
   return Container(
     height: 34,
     decoration: BoxDecoration(
@@ -203,12 +208,80 @@ Widget streakPill({required String glyph, required Widget value}) {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text(glyph, style: const TextStyle(fontSize: 12)),
+        leading ?? Text(glyph!, style: const TextStyle(fontSize: 12)),
         const SizedBox(width: 4),
         value,
       ],
     ),
   );
+}
+
+/// The current-streak pill's flame (added scope, Nov 19, 2026 —
+/// founder direction: the Home pill carries the streak screen's
+/// flame presentation, not the Unicode 🔥 emoji).
+///
+/// The presentation is [StreakFlame]'s, rendered statically at pill
+/// scale: `Icons.local_fire_department`, lit #FF6A3D when today is
+/// complete; while today is incomplete, StreakFlame's grey
+/// treatment verbatim — icon #8E97B8 under its desaturation matrix
+/// at 45% opacity. [lit] is the streak screen's todayDone rule
+/// (today counted in the SETTLED streak state), derived by the
+/// caller from the same settled state that feeds the pill counts —
+/// never a parallel read, and never lit on a guess.
+///
+/// StreakFlame itself is not reused here: its lit branch runs a
+/// perpetual 1600ms flicker controller, and this pill is an
+/// always-visible Home surface — a perpetual ticker there keeps
+/// repaint boundaries dirty (the capture harnesses freeze tickers
+/// for exactly this) and adds motion beyond the directed glyph
+/// swap. No second animation is hand-rolled either: the pill flame
+/// is static in both states.
+///
+/// Icon size 15 matches the replaced emoji glyph's measured
+/// footprint (the 12sp emoji text measured 15.2 wide in the test
+/// harness with Roboto + Noto Color Emoji loaded). 16 was tried
+/// first and overflowed the pill by 0.500px inside Home's
+/// founder-fixed 62dp corner slot (the baseline pill fit with
+/// under 0.5px of headroom) — the slot geometry does not move
+/// for this swap, so the icon sits 0.2dp under the emoji's
+/// measured width instead.
+class StreakPillFlame extends StatelessWidget {
+  final bool lit;
+
+  const StreakPillFlame({super.key, required this.lit});
+
+  /// StreakFlame's lit color.
+  static const Color litColor = Color(0xFFFF6A3D);
+
+  /// StreakFlame's unlit icon color (before desaturation).
+  static const Color unlitColor = Color(0xFF8E97B8);
+
+  /// StreakFlame's unlit opacity.
+  static const double unlitOpacity = 0.45;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = Icon(
+      Icons.local_fire_department,
+      size: 15,
+      color: lit ? litColor : unlitColor,
+    );
+    if (lit) return icon;
+    // Grey state: StreakFlame's desaturation matrix + opacity,
+    // verbatim from streak_flame.dart.
+    return Opacity(
+      opacity: unlitOpacity,
+      child: ColorFiltered(
+        colorFilter: const ColorFilter.matrix(<double>[
+          0.2126, 0.7152, 0.0722, 0, 0,
+          0.2126, 0.7152, 0.0722, 0, 0,
+          0.2126, 0.7152, 0.0722, 0, 0,
+          0, 0, 0, 1, 0,
+        ]),
+        child: icon,
+      ),
+    );
+  }
 }
 
 /// The gem pill's count color (founder-approved mock, Nov 19,
@@ -275,7 +348,7 @@ class HomeGemPill extends StatelessWidget {
 }
 
 /// Home redesign — the streak pills as a vertical stack for the corner
-/// band: 🏆 BEST on TOP, 🔥 CURRENT under it (tweak 5), 8dp gap, hug
+/// band: 🏆 BEST on TOP, flame CURRENT under it (tweak 5), 8dp gap, hug
 /// content width, left aligned. The pair is ONE combined tap target,
 /// exactly as in [HomeStreakRow]; null values render `--` via CountUp.
 ///
@@ -289,6 +362,14 @@ class HomeStreakStack extends StatelessWidget {
   final int? bestStreak;
   final bool animateCountUps;
   final VoidCallback? onStreakTap;
+
+  /// Whether today is complete per the SETTLED streak state — the
+  /// streak screen's todayDone rule (today counted in the settled
+  /// state's countedDays). Home derives this from the same settled
+  /// state that writes [currentStreak]/[bestStreak]; false until a
+  /// settled state lands, so the pill flame is grey, never lit on a
+  /// guess. Drives [StreakPillFlame].
+  final bool streakTodayComplete;
 
   /// The server gem balance for the gem pill under the streak
   /// pills; null hides the pill (no server value yet).
@@ -309,6 +390,7 @@ class HomeStreakStack extends StatelessWidget {
     this.onStreakTap,
     this.crossAxisAlignment = CrossAxisAlignment.start,
     this.gemBalance,
+    this.streakTodayComplete = false,
   });
 
   @override
@@ -335,7 +417,7 @@ class HomeStreakStack extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           streakPill(
-            glyph: '🔥',
+            leading: StreakPillFlame(lit: streakTodayComplete),
             value: CountUp(
               value: currentStreak,
               style: const TextStyle(
@@ -359,8 +441,8 @@ class HomeStreakStack extends StatelessWidget {
 /// Round 7 — the streak boxes + event-counter row (native `TodayScreen.kt`
 /// "Compact Streak Boxes & Rotating Event Counters Row").
 ///
-/// Left: current-streak pill (🔥) and best-streak pill (🏆). Right: the
-/// rotating event-counter slot ("Until X … N Days").
+/// Left: current-streak pill (flame) and best-streak pill (🏆). Right:
+/// the rotating event-counter slot ("Until X … N Days").
 ///
 /// Round 13 — [currentStreak]/[bestStreak] carry the real streaks from the
 /// backend sync pull; null renders "--".
@@ -394,6 +476,12 @@ class HomeStreakRow extends StatelessWidget {
   /// one tap target.
   final VoidCallback? onStreakTap;
 
+  /// Whether today is complete per the SETTLED streak state (the
+  /// streak screen's todayDone rule) — same source and default as
+  /// [HomeStreakStack.streakTodayComplete]. Drives the
+  /// current-streak pill's [StreakPillFlame].
+  final bool streakTodayComplete;
+
   const HomeStreakRow(
       {super.key,
       this.currentStreak,
@@ -401,7 +489,8 @@ class HomeStreakRow extends StatelessWidget {
       this.animateCountUps = true,
       this.counters = const [],
       this.onCountersTap,
-      this.onStreakTap});
+      this.onStreakTap,
+      this.streakTodayComplete = false});
 
   @override
   Widget build(BuildContext context) {
@@ -422,7 +511,7 @@ class HomeStreakRow extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 _streakPill(
-                  glyph: '🔥',
+                  leading: StreakPillFlame(lit: streakTodayComplete),
                   // Round 14 — counts up to the real streak on load.
                   value: CountUp(
                     value: currentStreak,
@@ -469,8 +558,9 @@ class HomeStreakRow extends StatelessWidget {
   }
 
   Widget _streakPill({
-    required String glyph,
+    String? glyph,
+    Widget? leading,
     required Widget value,
   }) =>
-      streakPill(glyph: glyph, value: value);
+      streakPill(glyph: glyph, leading: leading, value: value);
 }
