@@ -252,6 +252,53 @@ void main() {
       expect(controller.isActive, isFalse);
       expect(ended, [GraceEndReason.completed]);
     });
+
+    test('Vera C1 race C: settlementDeferred holds WHILE a crossing '
+        'evaluation is in flight (no window exists yet), and a '
+        'no-window resolution lifts it', () async {
+      final gate = Completer<bool>();
+      controller.closingDayIncompleteEvaluator =
+          (start, dl) => gate.future;
+      fakeNow = DateTime(2026, 11, 6, 0, 0, 5);
+      final crossing = controller.handleCrossingTimerFired();
+      // Let the crossing reach the evaluator await.
+      await Future<void>.delayed(Duration.zero);
+      // No window exists yet — but the crossing is unresolved, so
+      // the settlement gate must already hold (pre-fix it read
+      // false here, and a Home remount in this interval settled
+      // the closing day ungated).
+      expect(controller.isActive, isFalse);
+      expect(controller.settlementDeferred, isTrue);
+
+      gate.complete(false); // day was complete → no window opens
+      await crossing;
+      expect(controller.isActive, isFalse);
+      expect(controller.settlementDeferred, isFalse);
+      expect(ended, isEmpty);
+    });
+
+    test('Vera C1 race C: an evaluation that opens the window keeps '
+        'settlement deferred for the window\'s whole life',
+        () async {
+      final gate = Completer<bool>();
+      controller.closingDayIncompleteEvaluator =
+          (start, dl) => gate.future;
+      fakeNow = DateTime(2026, 11, 6, 0, 0, 5);
+      final crossing = controller.handleCrossingTimerFired();
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.settlementDeferred, isTrue);
+
+      gate.complete(true); // incomplete → the window opens
+      await crossing;
+      expect(controller.isActive, isTrue);
+      expect(controller.settlementDeferred, isTrue);
+
+      fakeNow = DateTime(2026, 11, 6, 0, 1, 30);
+      scheduler.fireActive(); // tick at the deadline → expiry
+      expect(controller.isActive, isFalse);
+      expect(controller.settlementDeferred, isFalse);
+      expect(ended, [GraceEndReason.expired]);
+    });
   });
 
   group('grace completion path (watcher + store)', () {
@@ -674,6 +721,7 @@ void main() {
   });
 
   _registerBandWidgetTests();
+  _registerVeraRaceWidgetTests();
 }
 
 // ── Widget-level pins: the band element and Home's tenancy ─────
@@ -967,6 +1015,498 @@ void _registerBandWidgetTests() {
       final stripY =
           tester.getCenter(find.byType(HomeCheckInStrip)).dy;
       expect(bandY, lessThan(stripY));
+    });
+  });
+}
+
+// ── Vera condition races (Nov 21, 2026 delta) ──────────────────
+//
+// C1 and C2 are TOCTOU races: the production code paths are
+// Home's settle and Home's completion evaluation, so these tests
+// drive real HomeScreen instances with a HealthRepository whose
+// streak-record pull can be parked on a completer — the delayed
+// pull / delayed resolution IS the race, and on the pre-fix head
+// every test below fails (the ungated recordOpen lands, or the
+// stale evaluation fires the closing day after its window ended).
+
+/// A HealthRepository whose streak-record pull parks while the
+/// gate is closed. Every other repository behavior is the real
+/// one (vitals, streak counters, gem balance ride the mock
+/// backend); only loadStreakRecord is gated, and pushes count.
+class _GatedHealthRepository extends HealthRepository {
+  _GatedHealthRepository({required super.hc, required super.backend});
+
+  Completer<void>? _gate;
+  int pushCalls = 0;
+
+  void closeGate() => _gate = Completer<void>();
+
+  void openGate() {
+    final gate = _gate;
+    _gate = null;
+    if (gate != null && !gate.isCompleted) gate.complete();
+  }
+
+  @override
+  Future<
+      ({
+        bool succeeded,
+        int? current,
+        int? best,
+        String? stateJson,
+        int? purchasedFreezes
+      })> loadStreakRecord() async {
+    final gate = _gate;
+    if (gate != null) await gate.future;
+    return (
+      succeeded: true,
+      current: 2,
+      best: 2,
+      stateJson: null,
+      purchasedFreezes: null,
+    );
+  }
+
+  @override
+  Future<bool> pushStreakRecord(int current, int best, String stateJson,
+      {int? purchasedFreezes}) async {
+    pushCalls++;
+    return true;
+  }
+}
+
+/// The C2 fixture backend: an ATTESTED plan-free profile
+/// (medications/reminders present and empty) and the closing
+/// day's feeling check-in already logged — so the closing day IS
+/// complete the moment an evaluation resolves its inputs, and any
+/// evaluation that fires under the grace overrides counts
+/// '2026-11-05'.
+MockClient _mockGraceFireBackend() {
+  final entries = <Map<String, dynamic>>[
+    {
+      'id': 200,
+      'categoryId': 6,
+      'body': 'Feeling: 3/5 Today',
+      'chips': '["Daily Ranking"]',
+      'manualText': '',
+      'timestamp': DateTime(2026, 11, 5, 21).millisecondsSinceEpoch,
+    },
+  ];
+  return MockClient((request) async {
+    if (request.url.path == '/api/sync/pull') {
+      return http.Response(
+        jsonEncode({
+          'entries': entries,
+          'categories': [
+            {'id': 1, 'name': 'Symptoms'},
+            {'id': 4, 'name': 'Goals & Habits'},
+            {'id': 6, 'name': 'Mood & Energy'},
+            {'id': 8, 'name': 'Medication'},
+          ],
+          'profile': {
+            'currentStreak': 2,
+            'bestStreak': 2,
+            'medications': <dynamic>[],
+            'reminders': <dynamic>[],
+          },
+          'isUnlimited': true,
+          'isAdmin': false,
+        }),
+        200,
+      );
+    }
+    if (request.url.path == '/api/habits') {
+      return http.Response('{"habits":[]}', 200);
+    }
+    if (request.url.path == '/api/sync/entries') {
+      return http.Response('{}', 200);
+    }
+    return http.Response('not found', 404);
+  });
+}
+
+TabsBackend _backendFor(MockClient client) => TabsBackend(
+      client: client,
+      sessionStore: FakeSessionStore()..token = 'tok',
+    );
+
+/// Let real-async work (mock HTTP, storage, the gated pull's
+/// release) progress between widget pumps.
+Future<void> _pumpReal(WidgetTester tester, {int rounds = 15}) async {
+  for (var i = 0; i < rounds; i++) {
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 60)));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+}
+
+void _registerVeraRaceWidgetTests() {
+  group('Vera condition races (Home level)', () {
+    late Map<String, String> streakDisk;
+
+    setUp(() {
+      TabsDayBoundary.instance.debugCutoverAt = DateTime(2026, 11, 1);
+      TabsBackend.debugResetSharedCaches();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('plugins.it_nomads.com/flutter_secure_storage'),
+        (call) async => call.method == 'readAll' ? <String, String>{} : null,
+      );
+      final disk = <String, String>{};
+      LogEntryOutbox.instance.debugSetStore(
+        read: (k) async => disk[k],
+        write: (k, v) async {
+          disk[k] = v;
+        },
+        delete: (k) async {
+          disk.remove(k);
+        },
+      );
+      LogEntryOutbox.instance.debugReset();
+      streakDisk = <String, String>{};
+      StreakStore.instance.debugReset();
+      StreakStore.instance.debugSetStore(
+        read: (k) async => streakDisk[k],
+        write: (k, v) async {
+          streakDisk[k] = v;
+        },
+        delete: (k) async {
+          streakDisk.remove(k);
+        },
+      );
+    });
+    tearDown(() {
+      TabsDayBoundary.instance.debugCutoverAt = null;
+      StreakStore.instance.debugReset();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('plugins.it_nomads.com/flutter_secure_storage'),
+        null,
+      );
+    });
+
+    Future<void> pumpRaceHome(
+      WidgetTester tester, {
+      required Key key,
+      required MidnightGraceController controller,
+      required TabsBackend backend,
+      required HealthRepository repo,
+    }) async {
+      final scoreStore = HealthHistoryStore.testInstance();
+      final disk = <String, String>{};
+      scoreStore.debugSetStore(
+        read: (k) async => disk[k],
+        write: (k, v) async {
+          disk[k] = v;
+        },
+        delete: (k) async {
+          disk.remove(k);
+        },
+      );
+      scoreStore.debugReset();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(disableAnimations: true),
+            child: HomeScreen(
+              key: key,
+              weatherApi: WeatherApiClient(client: _mockWeather()),
+              tabsBackend: backend,
+              logEntryOutbox: LogEntryOutbox.instance,
+              healthConnectService: _FakeHc(),
+              healthRepository: repo,
+              healthHistoryStore: scoreStore,
+              dailyScoreSnapshotCapture: ({bool force = false}) async =>
+                  true,
+              graceController: controller,
+            ),
+          ),
+        ),
+      );
+      await _bridgeHome(tester);
+    }
+
+    testWidgets(
+        'Vera C1 race A: a settle whose streak-record pull is '
+        'delayed across the boundary does NOT recordOpen while '
+        'grace is active — and settles normally once grace ends',
+        (tester) async {
+      var fakeNow = DateTime(2026, 11, 5, 23, 59, 50);
+      final scheduler = _FakeScheduler();
+      final controller = MidnightGraceController(
+        clock: () => fakeNow,
+        scheduleOnce: scheduler.schedule,
+      );
+      addTearDown(controller.dispose);
+      final backend = _backendFor(
+          _mockBandBackend(closingDayCheckedIn: true));
+      final repo =
+          _GatedHealthRepository(hc: _FakeHc(), backend: backend);
+      repo.closeGate();
+
+      // Home loads BEFORE midnight; its settle starts and parks
+      // on the gated pull (gate check passed: no window yet).
+      await pumpRaceHome(
+        tester,
+        key: const ValueKey('c1a'),
+        controller: controller,
+        backend: backend,
+        repo: repo,
+      );
+      expect(StreakStore.instance.state, isNull);
+
+      // Midnight crosses; the controller's crossing evaluation
+      // (Home's own evaluator) also parks on the gated pull.
+      fakeNow = DateTime(2026, 11, 6, 0, 0, 5);
+      final crossing = controller.handleCrossingTimerFired();
+      await _pumpReal(tester, rounds: 3);
+
+      // The pull lands AFTER midnight — the window opens around
+      // the in-flight settle.
+      repo.openGate();
+      await crossing;
+      await _pumpReal(tester);
+      expect(controller.isActive, isTrue);
+      // The in-flight settle must NOT have run recordOpen: the
+      // store is still uninstalled (pre-fix it settled here,
+      // freeze-bridging the closing day mid-grace).
+      expect(StreakStore.instance.state, isNull);
+
+      // Grace expires: the grace-end handler re-runs the settle
+      // and recordOpen lands normally.
+      fakeNow = DateTime(2026, 11, 6, 0, 1, 30);
+      scheduler.fireActive();
+      expect(controller.isActive, isFalse);
+      await _pumpReal(tester);
+      expect(StreakStore.instance.state, isNotNull);
+      expect(StreakStore.instance.state!.seeded, isTrue);
+    });
+
+    testWidgets(
+        'Vera C1 race C: a Home remount DURING crossing evaluation '
+        'defers its settle, which then proceeds when the crossing '
+        'resolves with NO window (day was complete)',
+        (tester) async {
+      var fakeNow = DateTime(2026, 11, 5, 23, 59);
+      final scheduler = _FakeScheduler();
+      final controller = MidnightGraceController(
+        clock: () => fakeNow,
+        scheduleOnce: scheduler.schedule,
+      );
+      addTearDown(controller.dispose);
+      final backend = _backendFor(
+          _mockBandBackend(closingDayCheckedIn: true));
+      final repo =
+          _GatedHealthRepository(hc: _FakeHc(), backend: backend);
+
+      // First Home: its load settle lands (baseline).
+      await pumpRaceHome(
+        tester,
+        key: const ValueKey('c1c-first'),
+        controller: controller,
+        backend: backend,
+        repo: repo,
+      );
+      expect(StreakStore.instance.state, isNotNull);
+
+      // Reset the store so the REMOUNT's settle is observable,
+      // then start a crossing whose evaluator parks.
+      StreakStore.instance.debugReset();
+      streakDisk.clear();
+      final evaluatorGate = Completer<bool>();
+      controller.closingDayIncompleteEvaluator =
+          (start, dl) => evaluatorGate.future;
+      fakeNow = DateTime(2026, 11, 6, 0, 0, 5);
+      final crossing = controller.handleCrossingTimerFired();
+      await _pumpReal(tester, rounds: 3);
+      expect(controller.isActive, isFalse);
+      expect(controller.settlementDeferred, isTrue);
+
+      // The remount (the spec-5 user switching to Home at
+      // midnight): its load settle runs DURING the evaluation.
+      final backend2 = _backendFor(
+          _mockBandBackend(closingDayCheckedIn: true));
+      await pumpRaceHome(
+        tester,
+        key: const ValueKey('c1c-second'),
+        controller: controller,
+        backend: backend2,
+        repo: repo,
+      );
+      // Deferred — NOT settled ungated in the evaluation interval
+      // (pre-fix, recordOpen landed here).
+      expect(StreakStore.instance.state, isNull);
+
+      // The crossing resolves: day was complete, no window opens.
+      // The deferred settle must self-heal and land.
+      evaluatorGate.complete(false);
+      await crossing;
+      expect(controller.isActive, isFalse);
+      await _pumpReal(tester);
+      expect(StreakStore.instance.state, isNotNull);
+      expect(StreakStore.instance.state!.seeded, isTrue);
+    });
+
+    testWidgets(
+        'Vera C1 race C: a Home remount DURING crossing evaluation '
+        'defers its settle; when the evaluation OPENs the window '
+        'the settle stays deferred until grace ends, then lands',
+        (tester) async {
+      var fakeNow = DateTime(2026, 11, 5, 23, 59);
+      final scheduler = _FakeScheduler();
+      final controller = MidnightGraceController(
+        clock: () => fakeNow,
+        scheduleOnce: scheduler.schedule,
+      );
+      addTearDown(controller.dispose);
+      final backend = _backendFor(
+          _mockBandBackend(closingDayCheckedIn: true));
+      final repo =
+          _GatedHealthRepository(hc: _FakeHc(), backend: backend);
+
+      await pumpRaceHome(
+        tester,
+        key: const ValueKey('c1c2-first'),
+        controller: controller,
+        backend: backend,
+        repo: repo,
+      );
+      expect(StreakStore.instance.state, isNotNull);
+
+      StreakStore.instance.debugReset();
+      streakDisk.clear();
+      final evaluatorGate = Completer<bool>();
+      controller.closingDayIncompleteEvaluator =
+          (start, dl) => evaluatorGate.future;
+      fakeNow = DateTime(2026, 11, 6, 0, 0, 5);
+      final crossing = controller.handleCrossingTimerFired();
+      await _pumpReal(tester, rounds: 3);
+      expect(controller.settlementDeferred, isTrue);
+
+      final backend2 = _backendFor(
+          _mockBandBackend(closingDayCheckedIn: true));
+      await pumpRaceHome(
+        tester,
+        key: const ValueKey('c1c2-second'),
+        controller: controller,
+        backend: backend2,
+        repo: repo,
+      );
+      expect(StreakStore.instance.state, isNull);
+
+      // The evaluation opens the window: the waiting settle
+      // observes the live window and stays deferred.
+      evaluatorGate.complete(true);
+      await crossing;
+      await _pumpReal(tester);
+      expect(controller.isActive, isTrue);
+      expect(StreakStore.instance.state, isNull);
+
+      // Grace expires → the grace-end settle lands normally.
+      fakeNow = DateTime(2026, 11, 6, 0, 1, 30);
+      scheduler.fireActive();
+      expect(controller.isActive, isFalse);
+      await _pumpReal(tester);
+      expect(StreakStore.instance.state, isNotNull);
+      expect(StreakStore.instance.state!.seeded, isTrue);
+    });
+
+    testWidgets(
+        'Vera C2: an evaluation whose input resolution lands AFTER '
+        'expiry does NOT fire the closing day (no counted day, no '
+        'summary-completed mark)', (tester) async {
+      var fakeNow = DateTime(2026, 11, 6, 0, 0, 10);
+      final scheduler = _FakeScheduler();
+      final controller = MidnightGraceController(
+        clock: () => fakeNow,
+        scheduleOnce: scheduler.schedule,
+      );
+      addTearDown(controller.dispose);
+      // No evaluator mounted yet → the window opens provisionally.
+      await controller.handleCrossingTimerFired();
+      expect(controller.isActive, isTrue);
+
+      final backend = _backendFor(_mockGraceFireBackend());
+      final repo =
+          _GatedHealthRepository(hc: _FakeHc(), backend: backend);
+      repo.closeGate();
+      await pumpRaceHome(
+        tester,
+        key: const ValueKey('c2-expiry'),
+        controller: controller,
+        backend: backend,
+        repo: repo,
+      );
+
+      // Trigger the firing evaluation (the app-resume trigger):
+      // it captures the live window, then its input resolution
+      // parks on the gated pull.
+      tester.binding
+          .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await _pumpReal(tester, rounds: 5);
+
+      // The window EXPIRES while resolution is in flight; the
+      // grace-end handler re-runs settlement (also parked on the
+      // gate).
+      fakeNow = DateTime(2026, 11, 6, 0, 1, 30);
+      scheduler.fireActive();
+      expect(controller.isActive, isFalse);
+
+      // Resolution lands — after the window ended. The stale
+      // evaluation must NOT fire the closing day (pre-fix it did:
+      // a completion created after the window).
+      repo.openGate();
+      await _pumpReal(tester, rounds: 20);
+      final state = StreakStore.instance.state;
+      expect(state?.countedDays ?? const <String>{},
+          isNot(contains('2026-11-05')));
+      expect(state?.summaryCompletedDays ?? const <String>{},
+          isNot(contains('2026-11-05')));
+    });
+
+    testWidgets(
+        'Vera C2: an evaluation whose input resolution lands AFTER '
+        'a background-end does NOT fire the closing day',
+        (tester) async {
+      final fakeNow = DateTime(2026, 11, 6, 0, 0, 10);
+      final scheduler = _FakeScheduler();
+      final controller = MidnightGraceController(
+        clock: () => fakeNow,
+        scheduleOnce: scheduler.schedule,
+      );
+      addTearDown(controller.dispose);
+      await controller.handleCrossingTimerFired();
+      expect(controller.isActive, isTrue);
+
+      final backend = _backendFor(_mockGraceFireBackend());
+      final repo =
+          _GatedHealthRepository(hc: _FakeHc(), backend: backend);
+      repo.closeGate();
+      await pumpRaceHome(
+        tester,
+        key: const ValueKey('c2-background'),
+        controller: controller,
+        backend: backend,
+        repo: repo,
+      );
+
+      tester.binding
+          .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await _pumpReal(tester, rounds: 5);
+
+      // Backgrounding ends the window mid-resolution.
+      controller
+          .didChangeAppLifecycleState(AppLifecycleState.paused);
+      expect(controller.isActive, isFalse);
+
+      repo.openGate();
+      await _pumpReal(tester, rounds: 20);
+      final state = StreakStore.instance.state;
+      expect(state?.countedDays ?? const <String>{},
+          isNot(contains('2026-11-05')));
+      expect(state?.summaryCompletedDays ?? const <String>{},
+          isNot(contains('2026-11-05')));
     });
   });
 }

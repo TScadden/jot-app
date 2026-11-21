@@ -330,6 +330,17 @@ class SummaryCompletionWatcher {
   /// active window, and the completeness test only credits
   /// evidence inside [closing start, deadline). Both default null,
   /// which is byte-identical to the shipped A8 behavior.
+  ///
+  /// Vera C2 (binding): [graceStillActive] is the liveness probe
+  /// for that window, consulted at the fire point below. The
+  /// caller resolves its inputs across awaits, and the window can
+  /// end (expiry, backgrounding, any reason) while resolution is
+  /// in flight; a fire that lands after the window ended would
+  /// create a completion after the window, which the founder spec
+  /// forbids. When the probe reports the window gone, this call
+  /// fires nothing and writes NO fired-day marker — the day simply
+  /// settles through the normal post-window paths. Null (every
+  /// non-grace call) = no probe, shipped behavior.
   Future<bool> maybeFireSummaryCompletion({
     required SummaryCompletionContext context,
     required bool pullSucceeded,
@@ -341,6 +352,7 @@ class SummaryCompletionWatcher {
     DateTime? now,
     DateTime? fireableDayStartOverride,
     DateTime? evidenceWindowEnd,
+    bool Function()? graceStillActive,
   }) async {
     if (_firing) return false;
     final at = now ?? DateTime.now();
@@ -366,6 +378,15 @@ class SummaryCompletionWatcher {
       moodCategoryId: context.moodCategoryId,
       evidenceWindowEnd: evidenceWindowEnd,
     )) {
+      return false;
+    }
+
+    // Vera C2: the last-moment liveness check — the grace window
+    // this fire was evaluated under must still be live NOW, at
+    // the fire point. A window that ended during the caller's
+    // input resolution (or during the marker read above) refuses
+    // the fire entirely: no counted day, no marker.
+    if (graceStillActive != null && !graceStillActive()) {
       return false;
     }
 

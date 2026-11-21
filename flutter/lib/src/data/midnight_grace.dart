@@ -114,6 +114,13 @@ class MidnightGraceController extends ChangeNotifier
   bool _disposed = false;
   bool _evaluatingCrossing = false;
 
+  /// Completed when the in-flight crossing evaluation resolves
+  /// (window opened or not). Lets a settlement that arrived
+  /// mid-evaluation wait for the answer instead of either settling
+  /// ungated or being stranded when no window opens (Vera C1,
+  /// race C). Null whenever no evaluation is running.
+  Completer<void>? _crossingEvaluationCompleter;
+
   /// Last known lifecycle state. The shell is created in the
   /// foreground, so the honest initial value is resumed; every
   /// transition updates it through [didChangeAppLifecycleState].
@@ -130,7 +137,32 @@ class MidnightGraceController extends ChangeNotifier
   /// day as missed — Home's recordOpen gate reads this. The gate
   /// lifts the moment the window ends (any reason), and the normal
   /// settlement then runs.
-  bool get settlementDeferred => isActive;
+  ///
+  /// Vera C1 (race C): the gate ALSO holds while a crossing
+  /// evaluation is in flight — between the boundary and the
+  /// evaluator's answer there is no window yet, but the crossing
+  /// is unresolved, and a settle in that interval would
+  /// freeze-bridge the closing day before grace could open. The
+  /// invariant is: no recordOpen for the closing day at any moment
+  /// in [boundary, deadline) while the crossing is unresolved OR
+  /// a window is active.
+  bool get settlementDeferred => isActive || _evaluatingCrossing;
+
+  /// Whether a crossing evaluation is currently in flight (the
+  /// evaluator has been called and has not yet answered).
+  bool get isEvaluatingCrossing => _evaluatingCrossing;
+
+  /// Resolves when the in-flight crossing evaluation resolves —
+  /// immediately when none is running. A settlement deferred ONLY
+  /// by an unresolved crossing awaits this, then re-reads
+  /// [settlementDeferred]: if a window opened it stays deferred
+  /// (the grace-end handler re-runs the settle); if the crossing
+  /// resolved with no window, the settle proceeds — a skipped
+  /// settle self-heals here and is never silently stranded.
+  Future<void> waitForCrossingEvaluation() {
+    if (!_evaluatingCrossing) return Future<void>.value();
+    return _crossingEvaluationCompleter?.future ?? Future<void>.value();
+  }
 
   /// Time left in the live window (zero when none / at expiry).
   Duration get remaining {
@@ -165,6 +197,12 @@ class MidnightGraceController extends ChangeNotifier
     if (_started) WidgetsBinding.instance.removeObserver(this);
     _crossingTimer?.cancel();
     _tickTimer?.cancel();
+    // Never leave a settlement parked on a dead controller.
+    final completer = _crossingEvaluationCompleter;
+    _crossingEvaluationCompleter = null;
+    if (completer != null && !completer.isCompleted) {
+      completer.complete();
+    }
     super.dispose();
   }
 
@@ -221,6 +259,7 @@ class MidnightGraceController extends ChangeNotifier
     final evaluator = closingDayIncompleteEvaluator;
     if (evaluator != null) {
       _evaluatingCrossing = true;
+      _crossingEvaluationCompleter = Completer<void>();
       bool incomplete;
       try {
         incomplete = await evaluator(closingDayStart, deadline);
@@ -231,6 +270,16 @@ class MidnightGraceController extends ChangeNotifier
         incomplete = false;
       } finally {
         _evaluatingCrossing = false;
+        // Wake any settlement waiting on this crossing BEFORE the
+        // window-open checks below run: those checks and
+        // _openWindow are synchronous from here, so a woken
+        // settle's re-check always observes the final outcome
+        // (window active, or crossing resolved with no window).
+        final completer = _crossingEvaluationCompleter;
+        _crossingEvaluationCompleter = null;
+        if (completer != null && !completer.isCompleted) {
+          completer.complete();
+        }
       }
       // The world may have moved during the evaluation: the app
       // backgrounded, the deadline passed, or a window opened by

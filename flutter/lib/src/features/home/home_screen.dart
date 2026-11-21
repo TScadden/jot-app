@@ -886,6 +886,24 @@ class _HomeScreenState extends State<HomeScreen>
         dayStart: dayStart,
         evidenceWindowEnd: graceWindow?.deadline,
       );
+      // Vera C2 (binding): the resolution above is awaited, and
+      // the grace window can END while it is in flight — expiry at
+      // the deadline, a backgrounding, any end reason — after
+      // which _onGraceEnded has already re-run settlement for the
+      // closing day. A fire from THIS stale evaluation would
+      // create a completion after the window, which founder spec
+      // §3 forbids ("Grace never creates a completion after the
+      // window"). So re-check the window's identity here: a grace
+      // evaluation may only fire while the exact window it was
+      // captured under is still the controller's active window.
+      // Dropping the fire loses nothing: the grace-end settle
+      // queues a fresh evaluation for the now-open day. (The
+      // watcher re-checks once more at the fire point via
+      // graceStillActive — the same invariant at the last moment.)
+      if (graceWindow != null &&
+          !identical(_grace?.activeWindow, graceWindow)) {
+        return;
+      }
       // The watcher's onCompletion runs synchronously inside the
       // call below: publish the firing day first so
       // _presentCompletion attributes the celebration + gem grants
@@ -903,6 +921,9 @@ class _HomeScreenState extends State<HomeScreen>
           now: now,
           fireableDayStartOverride: graceWindow?.closingDayStart,
           evidenceWindowEnd: graceWindow?.deadline,
+          graceStillActive: graceWindow == null
+              ? null
+              : () => identical(_grace?.activeWindow, graceWindow),
         );
         if (fired && graceWindow != null) {
           _grace?.resolveCompleted();
@@ -2397,6 +2418,47 @@ class _HomeScreenState extends State<HomeScreen>
   /// provisional seed values only.
   bool _streakSettleLanded = false;
 
+  /// The streak-record pull for [_settleStreakWithEngine], taken
+  /// under the Midnight Grace gate (Vera C1): returns the pulled
+  /// record only when settlement is not deferred at the moment
+  /// the pull LANDS, and null when a live grace window defers the
+  /// settle (the grace-end handler re-runs it). When the only
+  /// deferral is an unresolved crossing evaluation, this waits
+  /// for the evaluation and loops — re-checking, then re-pulling
+  /// fresh — so the settle proceeds in this same call when the
+  /// crossing resolves with no window, and defers (null) when a
+  /// window opened. The loop is bounded by the crossing itself:
+  /// evaluations resolve in seconds and happen once per boundary.
+  Future<
+      ({
+        bool succeeded,
+        int? current,
+        int? best,
+        String? stateJson,
+        int? purchasedFreezes
+      })?> _pullStreakRecordGated() async {
+    while (true) {
+      final grace = _grace;
+      if (grace?.settlementDeferred ?? false) {
+        if (grace!.isActive) return null;
+        await grace.waitForCrossingEvaluation();
+        continue;
+      }
+      final pulled = await _healthRepo.loadStreakRecord();
+      // TOCTOU re-check: the boundary may have been crossed while
+      // this pull was in flight (a window opened, or a crossing
+      // evaluation started). Never hand a record to recordOpen
+      // while the gate has since closed.
+      final graceAfter = _grace;
+      if (graceAfter?.settlementDeferred ?? false) {
+        if (graceAfter!.isActive) return null;
+        await graceAfter.waitForCrossingEvaluation();
+        continue;
+      }
+      return pulled;
+    }
+  }
+
   /// Settle the streak engine for this app open against the
   /// authoritative server record, off the load's critical path.
   /// The engine records today (consuming the monthly save for a
@@ -2419,10 +2481,29 @@ class _HomeScreenState extends State<HomeScreen>
       // grace-end handler re-runs this settle the moment the
       // window resolves, and the normal rollover then proceeds
       // exactly as if grace never existed.
-      if (_grace?.settlementDeferred ?? false) {
+      //
+      // Vera C1 (binding): the gate is NOT check-once. The streak
+      // pull below is awaited, and the world can cross the
+      // boundary while it is in flight — race A: a settle starting
+      // at 23:59:59.x passes an early check, its pull lands after
+      // midnight, and an unrechecked recordOpen freeze-bridges the
+      // closing day mid-grace; race C: a settle arriving while the
+      // controller's crossing evaluation is still unresolved (no
+      // window exists yet) settles ungated in the same way. So the
+      // gate is re-checked IMMEDIATELY before recordOpen, after
+      // the awaited pull; a settle deferred only by an unresolved
+      // crossing WAITS for the evaluation and loops (the crossing
+      // resolving with no window lets this settle proceed — it is
+      // never silently stranded — and a window opening defers it
+      // to the grace-end re-run). Invariant: no recordOpen for the
+      // closing day at any moment in [boundary, deadline) while
+      // the crossing is unresolved OR a window is active.
+      final rec = await _pullStreakRecordGated();
+      if (rec == null) {
+        // Deferred by a live grace window: the grace-end handler
+        // re-runs this settle when the window resolves.
         return StreakStore.instance.state;
       }
-      final rec = await _healthRepo.loadStreakRecord();
       final engineState = await StreakStore.instance.recordOpen(
         pullSucceeded: rec.succeeded,
         seedCurrent: rec.current,
