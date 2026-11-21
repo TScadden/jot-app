@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'package:tabs_lab/src/data/badge_engine.dart';
+import 'package:tabs_lab/src/data/crash_reporting.dart';
 import 'package:tabs_lab/src/data/gem_service.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/streak_engine.dart';
@@ -180,9 +181,15 @@ class BadgeService extends ChangeNotifier {
     _blockedMetrics = {};
     _ownerEmail = null;
     _claimedOwner = null;
+    _loadFailures = 0;
+    _recoveredLoad = false;
+    _lastError = null;
   }
 
   bool _loaded = false;
+  int _loadFailures = 0;
+  bool _recoveredLoad = false;
+  String? _lastError;
   Map<String, Set<int>> _granted = {};
   Set<String> _paid = {};
 
@@ -204,6 +211,49 @@ class BadgeService extends ChangeNotifier {
   List<String> get debugPending => List.unmodifiable(_pending);
   @visibleForTesting
   Set<String> get debugPaid => Set.unmodifiable(_paid);
+
+  // ── Diagnostics (Developer Terminal grants card) ──────────────
+  // Mirrors GemService's: before the Nov 20, 2026 fix, every
+  // failure on this path was swallowed by a catch-all and nothing
+  // recorded it anywhere.
+  bool get diagLoaded => _loaded;
+  int get diagPendingCount => _pending.length;
+
+  /// Rungs the server ledger has confirmed paid.
+  int get diagPaidCount => _paid.length;
+
+  /// Rungs granted locally (the collection's own record).
+  int get diagGrantedRungs =>
+      _granted.values.fold(0, (a, rungs) => a + rungs.length);
+
+  /// True when this session recovered from a wedged storage
+  /// entry (see [ensureLoaded]).
+  bool get diagRecoveredLoad => _recoveredLoad;
+
+  /// The most recent load / grant / sync failure on this path,
+  /// rendered `source: error`. Null when nothing has failed.
+  String? get diagLastError => _lastError;
+
+  void _noteError(String source, Object error) {
+    _lastError = '$source: $error';
+  }
+
+  /// Record an error that escaped an app-open sync wrapper (the
+  /// Home settle hooks are fail-soft by design) into this
+  /// service's diagnostics state, so the wrapper's catch can never
+  /// swallow a failure invisibly.
+  void recordSyncError(Object error) => _noteError('sync', error);
+
+  /// One storage read with a single immediate retry (GemService
+  /// parity): a transient hiccup is absorbed inside the same call
+  /// instead of costing an entry point.
+  Future<String?> _readWithRetry() async {
+    try {
+      return await _read(storageKey);
+    } catch (_) {
+      return _read(storageKey);
+    }
+  }
 
   BadgeSnapshot get snapshot => BadgeSnapshot(
         loaded: _loaded,
@@ -239,10 +289,41 @@ class BadgeService extends ChangeNotifier {
     if (_loaded) return;
     final String? raw;
     try {
-      raw = await _read(storageKey);
-    } catch (_) {
-      return; // Retry on the next call; nothing is fabricated.
+      raw = await _readWithRetry();
+    } catch (e, st) {
+      // GemService parity (Nov 20, 2026 fix): a first read
+      // failure only records the error and leaves [_loaded]
+      // false for the next call's retry (a read failure is not
+      // an empty disk); a SECOND consecutive failure means the
+      // entry is wedged — an undecryptable secure-storage value
+      // fails every read until cleared — so recover by clearing
+      // it and starting clean. Nothing recoverable is destroyed
+      // (the entry was already unreadable), and this service's
+      // state is re-derivable: evaluation recomputes every rung
+      // from full history, and the server ledger's idempotency
+      // keys make a re-requested rung a replay, never a
+      // double-pay. Before this fix, a wedged entry disabled
+      // every badge grant silently and forever.
+      _loadFailures++;
+      _noteError('load', e);
+      CrashReporting.captureError(
+        e,
+        stackTrace: st,
+        staticMessage: 'badges storage load failed',
+      );
+      if (_loadFailures < 2) return;
+      try {
+        await _delete(storageKey);
+      } catch (_) {
+        // Even with the store fully broken, the clean in-memory
+        // start below keeps grants flowing this session.
+      }
+      _recoveredLoad = true;
+      if (_claimedOwner != null) _ownerEmail = _claimedOwner;
+      _loaded = true;
+      return;
     }
+    _loadFailures = 0;
     _loaded = true;
     if (raw == null || raw.isEmpty) return;
     try {
@@ -367,10 +448,23 @@ class BadgeService extends ChangeNotifier {
       GemRequestResult r;
       try {
         r = await _grantFn(key);
-      } catch (_) {
+      } catch (e, st) {
+        // Never silent (Nov 20, 2026 fix): recorded for the
+        // diagnostics card and reported; the key stays queued.
+        _noteError('grant', e);
+        CrashReporting.captureError(
+          e,
+          stackTrace: st,
+          staticMessage: 'badges grant request failed',
+        );
         continue;
       }
-      if (r.statusCode != 200 || r.body == null) continue;
+      if (r.statusCode != 200 || r.body == null) {
+        if (r.statusCode != null) {
+          _noteError('grant', 'HTTP ${r.statusCode} for $key');
+        }
+        continue;
+      }
       _pending.remove(key);
       _paid.add(key);
       // Vera C2: an alreadyGranted 200 confirms the ledger paid in

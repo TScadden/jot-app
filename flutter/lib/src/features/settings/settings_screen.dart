@@ -34,6 +34,7 @@ import 'package:tabs_lab/src/features/settings/crash_test_hook.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/widget_sync.dart';
 import 'package:tabs_lab/src/features/settings/app_background_section.dart';
+import 'package:tabs_lab/src/features/settings/grant_diagnostics.dart';
 import 'package:tabs_lab/src/features/settings/streak_restore.dart';
 import 'package:tabs_lab/src/features/settings/streak_sim.dart';
 import 'package:tabs_lab/src/theme/app_background.dart';
@@ -1336,6 +1337,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onApplyHex: _applyAppBackgroundHex,
             onReset: _resetAppBackground,
           ),
+        ]),
+        const SizedBox(height: 24),
+        _sectionLabel('GEMS & BADGES'),
+        _card([
+          const GrantDiagnosticsCard(),
         ]),
       ]);
     }
