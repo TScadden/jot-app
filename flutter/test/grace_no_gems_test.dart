@@ -427,6 +427,67 @@ void main() {
       expect(out.state.graceCompletedDays, {'2026-11-05'});
     });
 
+    test('C1: a viaGrace re-fire does NOT re-mark a day already '
+        'in summaryCompletedDays, while the counters-only seed '
+        'case (counted, summaryCompletedDays empty) IS marked',
+        () async {
+      // Genuine case: Nov 5 completes normally, in its own day.
+      final genuine = await store.recordSummaryComplete(
+        pullSucceeded: true,
+        seedCurrent: null,
+        seedBest: null,
+        seedStateJson: null,
+        now: DateTime(2026, 11, 5, 12),
+        summaryDay: DateTime(2026, 11, 5),
+        push: push,
+      );
+      expect(genuine.state.summaryCompletedDays, contains('2026-11-05'));
+      expect(genuine.state.graceCompletedDays, isEmpty);
+      // The Vera hole, at store level: the same day re-fires
+      // under grace (fired-marker write failed + cold restart
+      // inside the same 90s window, per her review). The day was
+      // already summary-completed before this call, so the grace
+      // ensure must NOT mark it.
+      final refire = await store.recordSummaryComplete(
+        pullSucceeded: false,
+        seedCurrent: null,
+        seedBest: null,
+        seedStateJson: null,
+        now: DateTime(2026, 11, 6, 0, 0, 45),
+        summaryDay: DateTime(2026, 11, 5),
+        push: push,
+        viaGrace: true,
+      );
+      expect(refire.state.summaryCompletedDays, contains('2026-11-05'));
+      expect(refire.state.graceCompletedDays, isEmpty,
+          reason: 'C1: a genuinely completed day must never gain '
+              'the grace marker on a re-fire');
+
+      // Seed case, on a fresh store: a counters-only completion
+      // seed anchors the attested run ENDING at the summary day
+      // (countedDays contains it) but leaves summaryCompletedDays
+      // EMPTY, so this grace fire is the day\'s first summary
+      // completion and the marker MUST land — the guard must not
+      // close the case the ensure exists for.
+      disk.clear();
+      store.debugReset();
+      final seeded = await store.recordSummaryComplete(
+        pullSucceeded: true,
+        seedCurrent: 3,
+        seedBest: 3,
+        seedStateJson: null,
+        now: DateTime(2026, 11, 6, 0, 0, 45),
+        summaryDay: DateTime(2026, 11, 5),
+        push: push,
+        viaGrace: true,
+      );
+      expect(seeded.state.countedDays, hasLength(3));
+      expect(seeded.state.countedDays, contains('2026-11-05'));
+      expect(seeded.state.graceCompletedDays, {'2026-11-05'},
+          reason: 'C1: the counters-only seed case must still '
+              'gain the grace marker');
+    });
+
     tearDown(() {
       TabsDayBoundary.instance.debugCutoverAt = null;
     });

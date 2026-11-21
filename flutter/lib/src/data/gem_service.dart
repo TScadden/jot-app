@@ -575,9 +575,20 @@ class GemService extends ChangeNotifier {
   /// Whether a queued grant [key] is attributable to grace days
   /// this service has adopted: a `daily:` key for a grace day, or
   /// a `week:` key whose week contains any grace day. Milestone
-  /// keys carry no day and are never queued for a grace completion
-  /// in the first place (processCompletion queues nothing), so no
-  /// stale milestone key can exist.
+  /// keys are deliberately left alone here: they carry no day and
+  /// cannot be attributed to a grace day, and retiring by number
+  /// would be unsafe (the same `milestone:<n>` is the legitimate
+  /// key for whichever completion crossed n). This build never
+  /// queues a milestone key for a grace completion
+  /// (processCompletion queues nothing), but the shipped
+  /// VC 100157 build DID queue `milestone:<n>` for grace
+  /// completions, so a milestone key left pending from that build
+  /// (offline / retryable refusal at completion) can survive the
+  /// upgrade and WILL be requested by this flush — an accepted,
+  /// bounded residual (C2, PR #135): it requires a 100157 grace
+  /// completion that exactly crossed a milestone with the grant
+  /// still pending at upgrade, and Mason's production survey
+  /// found 0 milestone rows and 0 grace payments ever.
   bool _isGraceKey(String key) {
     if (_graceDays.isEmpty) return false;
     if (key.startsWith('daily:')) {

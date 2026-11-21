@@ -615,6 +615,12 @@ class StreakStore {
     // completed — the mark that protects the counted day from
     // every future adoption's open-day revalidation.
     var nextState = done.state;
+    // C1 guard (Vera condition on PR #135, Nov 21, 2026): whether
+    // the day was ALREADY summary-completed before this call's
+    // ensures. [completeDay] never touches summaryCompletedDays,
+    // so [done.state] carries that pre-ensure state exactly.
+    final wasAlreadySummaryCompleted =
+        nextState.summaryCompletedDays.contains(summaryTabsDay);
     if (!nextState.summaryCompletedDays.contains(summaryTabsDay)) {
       nextState = nextState.copyWith(
         summaryCompletedDays: {
@@ -628,11 +634,20 @@ class StreakStore {
     // ensured here alongside the completion record above because
     // a counters-only completion seed can leave the day already
     // counted before [completeDay] runs (its newly-counted mark
-    // then never lands). The watcher's fired-day marker already
-    // guarantees a genuinely completed day never re-fires under
-    // grace, so this ensure cannot re-mark a genuine completion.
+    // then never lands). The ensure applies ONLY when the day
+    // was not already summary-completed before this call (the C1
+    // guard above): the watcher's fired-day marker is best-effort,
+    // so a failed marker write plus a cold restart inside the
+    // same grace window could otherwise re-fire a genuinely
+    // completed day under grace and re-mark it here. With the
+    // guard, re-marking a genuine completion is structurally
+    // impossible, while every legitimate first completion —
+    // including the counters-only seed case, whose
+    // summaryCompletedDays is empty — still gains the marker.
     // The dev SIM / Restore paths never pass the flag.
-    if (viaGrace && !nextState.graceCompletedDays.contains(summaryTabsDay)) {
+    if (viaGrace &&
+        !wasAlreadySummaryCompleted &&
+        !nextState.graceCompletedDays.contains(summaryTabsDay)) {
       nextState = nextState.copyWith(
         graceCompletedDays: {
           ...nextState.graceCompletedDays,
