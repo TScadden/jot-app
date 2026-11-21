@@ -1146,6 +1146,31 @@ class TodaySummaryLoader {
   /// re-saves the cache with plan + fresh trends together.
   TodayPlanData? _lastPlan;
 
+  /// Daily Summary race (Nov 20, 2026) — serializes the entry-write
+  /// critical section (fetch snapshot → allocate id → post) across
+  /// ALL of this loader's actions. The card serializes its own
+  /// taps, but the loader is the shared write path: two actions
+  /// overlapping here (rapid completions the card chain has not
+  /// sequenced, a med action racing a reminder check-off) each
+  /// computed maxId + 1 from the same pulled snapshot and allocated
+  /// the SAME entry id, so the second POST upserted over the
+  /// first's server row and the first completion was destroyed.
+  /// One shared chain for [_postCompletionEntry] and the med
+  /// entry delivery means two allocations can never interleave.
+  /// The streak settled-state pipeline remains the single writer
+  /// for streak state; this chain guards only the entry writes.
+  Future<void> _entryWriteChain = Future<void>.value();
+
+  /// Runs [section] after every previously queued entry write has
+  /// fully landed, in call order. The section's own result/error
+  /// flows back to its caller; the chain itself never wedges on a
+  /// failed section.
+  Future<T> _runEntryWrite<T>(Future<T> Function() section) {
+    final result = _entryWriteChain.then((_) => section());
+    _entryWriteChain = result.then<void>((_) {}, onError: (_) {});
+    return result;
+  }
+
   /// Plan-phase load: subtitle + plan items from the sync pull (+
   /// local plan state), WITHOUT touching Health Connect. Native's
   /// plan and trends are independent flows (the plan combine never
@@ -1360,7 +1385,13 @@ class TodaySummaryLoader {
   /// that already stands is not duplicated. False when the category
   /// cannot be resolved or the post fails — the caller then treats
   /// the check-off as NOT landed (no phantom completion).
-  Future<bool> _postCompletionEntry(String body, DateTime at) async {
+  Future<bool> _postCompletionEntry(String body, DateTime at) =>
+      _runEntryWrite(() => _postCompletionEntryLocked(body, at));
+
+  /// The body of [_postCompletionEntry], run inside
+  /// [_runEntryWrite]'s serialized section: its fetch → allocate →
+  /// post can never interleave with another entry write.
+  Future<bool> _postCompletionEntryLocked(String body, DateTime at) async {
     backend.invalidateSyncPull();
     final entries = await backend.fetchLogEntryDtos();
     final categories = await backend.fetchLogCategories();
@@ -1500,80 +1531,88 @@ class TodaySummaryLoader {
     if (status != DoseStatus.taken && status != DoseStatus.skipped) {
       return;
     }
-    backend.invalidateSyncPull();
-    var entries = const <QuickLogEntry>[];
-    var categories = const <QuickLogCategory>[];
-    try {
-      entries = await backend.fetchLogEntryDtos();
-      categories = await backend.fetchLogCategories();
-    } catch (_) {
-      // The production reads degrade to [] on pull failure rather
-      // than throwing; a throwing read lands in the same place —
-      // no entries, no categories — and the null-category staging
-      // path below handles it.
-      entries = const <QuickLogEntry>[];
-      categories = const <QuickLogCategory>[];
-    }
-    final dose = item.dose.trim();
-    final doseSuffix = dose.isNotEmpty ? ' $dose' : '';
-    final body = status == DoseStatus.taken
-        ? 'Took ${item.title}$doseSuffix'
-        : '[Corrected to Skipped] Took ${item.title}$doseSuffix';
-    final medCategoryId = resolveSummaryCategoryId(categories,
-        name: 'Medication', fallbackId: 8);
-    if (medCategoryId == null) {
-      // The pull failed (or carries no Medication category), so the
-      // post cannot even be attempted and any standing "Took …" row
-      // is unknowable. Stage the entry the action would have created
-      // (the skip-from-pending shape for a skip) under the native
-      // seeded Medication id — the same fallback
-      // [resolveSummaryCategoryId] matches when the category row
-      // exists — so the log is recovered on the next flush instead
-      // of being silently dropped.
-      await _stageNewMedEntry(
-        categoryId: 8,
-        body: body,
-        timestamp: at.millisecondsSinceEpoch,
-        serverMaxId: _maxEntryId(entries),
-      );
+    // The fetch → allocate → deliver section runs inside the
+    // loader's serialized entry-write chain (see [_runEntryWrite]):
+    // its snapshot, its maxId allocation, and the outbox staging
+    // that inherits both can never interleave with another
+    // completion's. The device-local record above stays OUTSIDE
+    // the chain — it must land even when the entry write fails.
+    await _runEntryWrite(() async {
       backend.invalidateSyncPull();
-      return;
-    }
-    final took = _findTookEntry(item.title, entries, medCategoryId, at);
-    if (status == DoseStatus.taken && took != null) {
-      // Already logged — exactly one entry stands (idempotent).
+      var entries = const <QuickLogEntry>[];
+      var categories = const <QuickLogCategory>[];
+      try {
+        entries = await backend.fetchLogEntryDtos();
+        categories = await backend.fetchLogCategories();
+      } catch (_) {
+        // The production reads degrade to [] on pull failure rather
+        // than throwing; a throwing read lands in the same place —
+        // no entries, no categories — and the null-category staging
+        // path below handles it.
+        entries = const <QuickLogEntry>[];
+        categories = const <QuickLogCategory>[];
+      }
+      final dose = item.dose.trim();
+      final doseSuffix = dose.isNotEmpty ? ' $dose' : '';
+      final body = status == DoseStatus.taken
+          ? 'Took ${item.title}$doseSuffix'
+          : '[Corrected to Skipped] Took ${item.title}$doseSuffix';
+      final medCategoryId = resolveSummaryCategoryId(categories,
+          name: 'Medication', fallbackId: 8);
+      if (medCategoryId == null) {
+        // The pull failed (or carries no Medication category), so the
+        // post cannot even be attempted and any standing "Took …" row
+        // is unknowable. Stage the entry the action would have created
+        // (the skip-from-pending shape for a skip) under the native
+        // seeded Medication id — the same fallback
+        // [resolveSummaryCategoryId] matches when the category row
+        // exists — so the log is recovered on the next flush instead
+        // of being silently dropped.
+        await _stageNewMedEntry(
+          categoryId: 8,
+          body: body,
+          timestamp: at.millisecondsSinceEpoch,
+          serverMaxId: _maxEntryId(entries),
+        );
+        backend.invalidateSyncPull();
+        return;
+      }
+      final took = _findTookEntry(item.title, entries, medCategoryId, at);
+      if (status == DoseStatus.taken && took != null) {
+        // Already logged — exactly one entry stands (idempotent).
+        backend.invalidateSyncPull();
+        return;
+      }
+      final QuickLogEntry entry;
+      final bool serverKnown;
+      if (status == DoseStatus.skipped && took != null) {
+        entry = QuickLogEntry(
+          id: took.id,
+          categoryId: took.categoryId,
+          body: '[Corrected to Skipped] ${took.body}',
+          chips: took.chips,
+          manualText: took.manualText,
+          timestamp: took.timestamp,
+        );
+        serverKnown = true;
+      } else {
+        // A take with no standing entry, or a Round 41 skip from
+        // pending (logged directly in the corrected shape — see the
+        // method doc).
+        entry = QuickLogEntry(
+          id: _maxEntryId(entries) + 1,
+          categoryId: medCategoryId,
+          body: body,
+          chips: '[]',
+          manualText: '',
+          timestamp: at.millisecondsSinceEpoch,
+        );
+        serverKnown = false;
+      }
+      await _deliverMedEntry(entry,
+          serverKnown: serverKnown, serverMaxId: _maxEntryId(entries));
       backend.invalidateSyncPull();
-      return;
-    }
-    final QuickLogEntry entry;
-    final bool serverKnown;
-    if (status == DoseStatus.skipped && took != null) {
-      entry = QuickLogEntry(
-        id: took.id,
-        categoryId: took.categoryId,
-        body: '[Corrected to Skipped] ${took.body}',
-        chips: took.chips,
-        manualText: took.manualText,
-        timestamp: took.timestamp,
-      );
-      serverKnown = true;
-    } else {
-      // A take with no standing entry, or a Round 41 skip from
-      // pending (logged directly in the corrected shape — see the
-      // method doc).
-      entry = QuickLogEntry(
-        id: _maxEntryId(entries) + 1,
-        categoryId: medCategoryId,
-        body: body,
-        chips: '[]',
-        manualText: '',
-        timestamp: at.millisecondsSinceEpoch,
-      );
-      serverKnown = false;
-    }
-    await _deliverMedEntry(entry,
-        serverKnown: serverKnown, serverMaxId: _maxEntryId(entries));
-    backend.invalidateSyncPull();
+    });
   }
 
   static int _maxEntryId(List<QuickLogEntry> entries) {
