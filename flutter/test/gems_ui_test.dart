@@ -58,7 +58,6 @@ void main() {
             GemSpendStatus.success => 200,
             GemSpendStatus.replay => 200,
             GemSpendStatus.insufficient => 409,
-            GemSpendStatus.alreadyHeld => 409,
             GemSpendStatus.capReached => 409,
             GemSpendStatus.failed => null,
           },
@@ -69,8 +68,6 @@ void main() {
             if (r.status == GemSpendStatus.replay) 'alreadyGranted': true,
             if (r.status == GemSpendStatus.insufficient)
               'error': 'insufficient_gems',
-            if (r.status == GemSpendStatus.alreadyHeld)
-              'error': 'purchased_already_held',
             if (r.status == GemSpendStatus.capReached)
               'error': 'freeze_cap_reached',
           },
@@ -293,8 +290,19 @@ void main() {
             'you have 50 gems left.'),
         findsOneWidget,
       );
-      // The freeze is now held → the buy rows hide (ruled state).
-      expect(find.byKey(const Key('gemBuyButton')), findsNothing);
+      // Gem-buy rule change (Nov 21, 2026): holding the freeze no
+      // longer hides the buy rows — at 2 of 3 with a 50-gem
+      // balance the button stays, DISABLED, with the §2d line.
+      final afterButton = tester.widget<ElevatedButton>(
+        find.byKey(const Key('gemBuyButton')),
+      );
+      expect(afterButton.onPressed, isNull,
+          reason: 'visible but disabled under 100 after the spend');
+      expect(
+        find.text('you need 50 more gems for a freeze — you earn 5 gems '
+            'each time you finish your daily summary.'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('spend answered insufficient (balance moved): no '
@@ -324,13 +332,16 @@ void main() {
       expect(find.textContaining('insufficient_gems'), findsNothing);
     });
 
-    testWidgets('spend answered alreadyHeld (409): the adopted '
-        'held state lands — buy rows hide, no success copy, no '
-        'raw error', (tester) async {
+    testWidgets('spend answered with a no-grant 409 carrying a '
+        'held count (the legacy purchased_already_held shape, '
+        'which GemService now maps to capReached): the adopted '
+        'state lands silently — no success copy, no raw error, '
+        'and the buy rows re-derive under the new rule (2 of 3, '
+        'balance ≥ 100 → still offered)', (tester) async {
       final gems = fakeGems(
         balance: 500,
         onSpend: () => const GemSpendResult(
-          status: GemSpendStatus.alreadyHeld,
+          status: GemSpendStatus.capReached,
           balance: 500,
           purchasedFreezes: 1,
         ),
@@ -346,11 +357,14 @@ void main() {
       expect(find.text('freeze added'), findsNothing);
       expect(find.textContaining('purchased_already_held'),
           findsNothing);
-      // The 409's adopted held state IS the surface: the buy
-      // rows hide exactly as when a freeze was already held.
-      // (Scope #6: no explainer on this screen anymore.)
-      expect(find.byKey(const Key('gemBuyButton')), findsNothing);
-      expect(find.byKey(const Key('gemBalanceLine')), findsNothing);
+      // The 409's adopted held state IS the surface: 1 monthly +
+      // 1 purchased-class = 2 of 3, so under the Nov 21, 2026
+      // rule the buy stays visible and enabled.
+      final button = tester.widget<ElevatedButton>(
+        find.byKey(const Key('gemBuyButton')),
+      );
+      expect(button.onPressed, isNotNull);
+      expect(find.byKey(const Key('gemBalanceLine')), findsOneWidget);
       expect(find.byKey(const Key('gemExplainerHeading')), findsNothing);
     });
 
@@ -385,17 +399,59 @@ void main() {
       expect(find.byKey(const Key('gemExplainerHeading')), findsNothing);
     });
 
-    testWidgets('buy rows hidden when a purchased freeze is held '
-        '(and no explainer — scope #6)', (tester) async {
+    testWidgets('gem-buy rule change: a held purchased freeze '
+        '(1 of 3) with balance ≥ 100 — the gem buy is VISIBLE and '
+        'ENABLED, while the \$0.99 affordance stays hidden behind '
+        'its §1c already-held line', (tester) async {
       await pumpScreen(
         tester,
-        baseState(purchased: 1),
+        baseState(purchased: 1, monthlyUsed: true),
         fakeGems(balance: 500),
       );
       await scrollToGemSection(tester);
-      expect(find.byKey(const Key('gemBuyButton')), findsNothing);
-      expect(find.byKey(const Key('gemBalanceLine')), findsNothing);
+      // The founder's exact state: 1 of 3, the one held freeze
+      // being the purchased-class one.
+      expect(
+        find.textContaining('You have 1 of 3 freezes available.'),
+        findsOneWidget,
+      );
+      expect(find.text('You have 500 gems.'), findsOneWidget);
+      final button = tester.widget<ElevatedButton>(
+        find.byKey(const Key('gemBuyButton')),
+      );
+      expect(button.onPressed, isNotNull,
+          reason: 'gem buy enabled while a purchased freeze is held');
+      expect(find.text('GET ONE MORE FREEZE · 100 GEMS'),
+          findsOneWidget);
+      // The $0.99 money buy keeps its own rule (unchanged): hidden
+      // while a purchased freeze is held, §1c line in its place.
+      expect(find.byKey(const Key('streakBuyButton')), findsNothing);
+      expect(
+        find.byKey(const Key('streakPurchaseAlreadyHeld')),
+        findsOneWidget,
+      );
       expect(find.byKey(const Key('gemExplainerHeading')), findsNothing);
+    });
+
+    testWidgets('gem-buy rule change: held purchased freeze with '
+        'balance < 100 — button present but DISABLED with the '
+        '§2d shortfall line', (tester) async {
+      await pumpScreen(
+        tester,
+        baseState(purchased: 1, monthlyUsed: true),
+        fakeGems(balance: 35),
+      );
+      await scrollToGemSection(tester);
+      expect(find.text('You have 35 gems.'), findsOneWidget);
+      final button = tester.widget<ElevatedButton>(
+        find.byKey(const Key('gemBuyButton')),
+      );
+      expect(button.onPressed, isNull, reason: 'disabled under 100');
+      expect(
+        find.text('you need 65 more gems for a freeze — you earn 5 gems '
+            'each time you finish your daily summary.'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('buy rows hidden at cap (monthly + earned = 2/2)',
@@ -408,6 +464,23 @@ void main() {
       await scrollToGemSection(tester);
       expect(find.byKey(const Key('gemBuyButton')), findsNothing);
       expect(find.byKey(const Key('gemExplainerHeading')), findsNothing);
+    });
+
+    testWidgets('gem-buy rule change: at cap 3 of 3 (three '
+        'purchased-class freezes held, monthly used) the gem buy '
+        'is hidden', (tester) async {
+      await pumpScreen(
+        tester,
+        baseState(purchased: 3, monthlyUsed: true),
+        fakeGems(balance: 500),
+      );
+      await scrollToGemSection(tester);
+      expect(
+        find.textContaining('You have 3 of 3 freezes available.'),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('gemBuyButton')), findsNothing);
+      expect(find.byKey(const Key('gemBalanceLine')), findsNothing);
     });
   });
 
@@ -515,7 +588,8 @@ void main() {
     });
 
     testWidgets('buy-with-gems from the sheet succeeds at ≥100: '
-        '§2c copy, service balance moves, buy control then absent',
+        '§2c copy, service balance moves, buy control then stays '
+        '— disabled under 100 with the §2d line (rule change)',
         (tester) async {
       final spendIds = <String>[];
       final gems = fakeGems(
@@ -545,11 +619,22 @@ void main() {
         findsOneWidget,
       );
       // The shared service balance moved (the pill reads the same
-      // service) and the held state hides the buy control — the
-      // §3.3 absence rule, no invented held string.
+      // service). Gem-buy rule change (Nov 21, 2026): the held
+      // freeze no longer hides the buy control — at 2 of 3 with a
+      // 50-gem balance it stays, DISABLED, with the §2d line. No
+      // invented held string either way.
       expect(gems.balance, 50);
       expect(find.text('You have 50 gems.'), findsOneWidget);
-      expect(find.byKey(const Key('gemsSheetBuyButton')), findsNothing);
+      final afterButton = tester.widget<ElevatedButton>(
+        find.byKey(const Key('gemsSheetBuyButton')),
+      );
+      expect(afterButton.onPressed, isNull,
+          reason: 'visible but disabled under 100 after the spend');
+      expect(
+        find.text('you need 50 more gems for a freeze — you earn 5 gems '
+            'each time you finish your daily summary.'),
+        findsOneWidget,
+      );
       expect(
         find.text("you've already got a freeze — it covers one "
             'missed day.'),
@@ -598,15 +683,55 @@ void main() {
       );
     });
 
-    testWidgets('already-held state: buy control ABSENT',
-        (tester) async {
+    testWidgets('gem-buy rule change: held purchased freeze '
+        '(1 held, 2 of 3 cover) with balance ≥ 100 — buy control '
+        'PRESENT and ENABLED', (tester) async {
       await pumpHostAndTapPill(
         tester,
         gems: fakeGems(balance: 500),
         state: sheetState(purchased: 1),
         pillBalance: 500,
       );
+      final button = tester.widget<ElevatedButton>(
+        find.byKey(const Key('gemsSheetBuyButton')),
+      );
+      expect(button.onPressed, isNotNull,
+          reason: 'gem buy enabled while a purchased freeze is held');
+      expect(find.text('You have 500 gems.'), findsOneWidget);
+    });
+
+    testWidgets('gem-buy rule change: held purchased freeze with '
+        'balance < 100 — buy control present but DISABLED with '
+        'the §2d line', (tester) async {
+      await pumpHostAndTapPill(
+        tester,
+        gems: fakeGems(balance: 35),
+        state: sheetState(purchased: 1),
+        pillBalance: 35,
+      );
+      final button = tester.widget<ElevatedButton>(
+        find.byKey(const Key('gemsSheetBuyButton')),
+      );
+      expect(button.onPressed, isNull, reason: 'disabled under 100');
+      expect(
+        find.text('you need 65 more gems for a freeze — you earn 5 gems '
+            'each time you finish your daily summary.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('gem-buy rule change: at cap 3 of 3 (monthly + '
+        'earned + purchased-class) the buy control is ABSENT',
+        (tester) async {
+      await pumpHostAndTapPill(
+        tester,
+        gems: fakeGems(balance: 500),
+        state: sheetState(earned: 1, purchased: 1),
+        pillBalance: 500,
+      );
       expect(find.byKey(const Key('gemsSheetBuyButton')), findsNothing);
+      expect(
+          find.byKey(const Key('gemsSheetInsufficientLine')), findsNothing);
       expect(find.text('You have 500 gems.'), findsOneWidget);
     });
 
