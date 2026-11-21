@@ -86,6 +86,38 @@ class _StallingNotificationService extends FakeReminderNotificationService {
   }
 }
 
+/// A notification service whose NEXT cancel() (one shot only)
+/// parks until the test releases it — models Vera's round-2
+/// scenario precisely: ONE stalled plugin call inside a reconcile,
+/// while every later cancel (e.g. a superseding task's) flows
+/// freely.
+class _OneShotStallNotificationService
+    extends FakeReminderNotificationService {
+  Completer<void>? _stallGate;
+  bool _stallArmed = false;
+  int cancelCalls = 0;
+
+  /// Parks the next cancel() call until [releaseStall].
+  void stallNextCancel() {
+    _stallGate = Completer<void>();
+    _stallArmed = true;
+  }
+
+  void releaseStall() {
+    _stallGate?.complete();
+  }
+
+  @override
+  Future<void> cancel(int id) async {
+    cancelCalls++;
+    if (_stallArmed) {
+      _stallArmed = false;
+      await _stallGate!.future;
+    }
+    await super.cancel(id);
+  }
+}
+
 /// A notification service where every cancel/schedule costs async
 /// time — models the 1500 serial platform round trips of a full
 /// alarm reconcile on a healthy but slow device.
@@ -387,6 +419,90 @@ void main() {
       expect(notifs.daily[113500], '10:0');
       expect(tester.widget<Switch>(find.byType(Switch).first).onChanged,
           isNotNull);
+    });
+
+    testWidgets(
+        '(h) detached-timeout resurrection: a superseded ON reconcile '
+        'finishing last must not reschedule after toggle OFF',
+        (tester) async {
+      final server = _ReminderServer([_tysonRow(enabled: false)]);
+      final notifs = _OneShotStallNotificationService();
+      await _pump(
+          tester,
+          RemindersScreen(
+            backend: _backendWith(server.client(), token: 'tok'),
+            notificationService: notifs,
+          ));
+      expect(
+          tester.widget<Switch>(find.byType(Switch).first).value, isFalse);
+      // The load reconcile (disabled: cancel-only) has run its
+      // 1500 cancels by now.
+      expect(notifs.cancelCalls, 1500);
+
+      // Arm the one-shot stall and toggle ON: the push lands and
+      // task A starts reconciling its [enabled] snapshot, parking
+      // on the first cancel of its cancel loop.
+      notifs.stallNextCancel();
+      await tester.tap(find.byType(Switch).first);
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(server.pushes, hasLength(1));
+      expect(server.rows.single['isEnabled'], isTrue);
+      expect(notifs.cancelCalls, greaterThan(1500),
+          reason: 'task A must be inside its cancel loop, parked on '
+              'the stalled cancel');
+
+      // Let task A stall past the 60s alarm-sync timeout: the
+      // queue frees and the honest note surfaces, but A's plugin
+      // work is now DETACHED — Future.timeout does not cancel it.
+      for (var i = 0;
+          i < 30 &&
+              find
+                  .textContaining('alarm could not be scheduled')
+                  .evaluate()
+                  .isEmpty;
+          i++) {
+        await tester.pump(const Duration(seconds: 5));
+      }
+      expect(
+          find.text(
+              'Saved. The alarm could not be scheduled — check notification permissions.'),
+          findsOneWidget,
+          reason: 'the ON task must time out before the OFF toggle, '
+              'so its reconcile is detached when the stall releases');
+      // Let the note dismiss so it cannot absorb the next tap.
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(seconds: 5));
+      }
+
+      // Toggle OFF: the push lands and the saved state is OFF.
+      await tester.tap(find.byType(Switch).first);
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(server.pushes, hasLength(2));
+      expect(server.rows.single['isEnabled'], isFalse);
+      expect(notifs.daily.containsKey(113500), isFalse,
+          reason: 'nothing has scheduled slot 113500 yet');
+
+      // Release the stall: detached A finishes its cancels and
+      // reaches its schedule step holding a stale ENABLED
+      // snapshot. Drain WITHOUT re-entry — no fresh-screen load
+      // reconcile may mask the in-session result (that masking is
+      // exactly what test (f) does and why it missed this).
+      notifs.releaseStall();
+      for (var i = 0; i < 40; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(notifs.daily.containsKey(113500), isFalse,
+          reason: 'a superseded reconcile must never schedule: the '
+              'saved state is OFF, so slot 113500 must stay absent '
+              'even though the stalled ON task finished last');
+      final sw = tester.widget<Switch>(find.byType(Switch).first);
+      expect(sw.value, isFalse);
+      expect(sw.onChanged, isNotNull);
     });
   });
 }
