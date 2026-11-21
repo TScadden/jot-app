@@ -220,6 +220,16 @@ class HealthConnectService {
   Future<HcAvailability> probeAvailability() =>
       _probeAvailability(readPersisted: true);
 
+  /// HC Grant Hardening — the same snapshot WITHOUT the
+  /// persisted-flag storage read, for consumers that gate reads
+  /// per type and never read the snapshot's persisted flag (the
+  /// BP / Sleep / Key Metrics / Coach read gates): a slow or
+  /// absent storage layer can never stall their grant verdict
+  /// behind it. The snapshot's `persistedConnected` is false;
+  /// every other field is the probe's.
+  Future<HcAvailability> probeGrantState() =>
+      _probeAvailability(readPersisted: false);
+
   /// The probe core. [readPersisted] controls only the
   /// first-paint hint: [getStatus] runs the same probe WITHOUT
   /// the storage read, because its legacy contract is exactly the
@@ -297,11 +307,19 @@ class HealthConnectService {
       bridgeErrorCode ??= grantError.code;
       granted = null;
     }
-    // The Steps read probe runs ONLY on a full grant (the legacy
-    // getStatus rule): it is the stale/wedged evidence, and on a
-    // partial or absent grant it could prove nothing.
+    // The Steps read probe runs whenever READ_STEPS itself is
+    // granted (HC Grant Hardening §3.2): it is the stale/wedged
+    // evidence for the Steps type. The legacy rule ran it ONLY on
+    // a full grant, so a wedged Steps grant inside a partial grant
+    // was invisible; now any grant containing Steps is probed. The
+    // legacy [HealthConnectService.getStatus] contract is
+    // unaffected: its stale throw keys on [HcAvailability
+    // .staleWedged], which still requires a FULL grant — a partial
+    // grant's probe outcome lands in the snapshot as data
+    // ([HcAvailability.wedgedPermissions]) and never throws.
     HcReadProbeOutcome? stepsProbe;
-    if (granted != null && granted.containsAll(requiredPermissions)) {
+    if (granted != null &&
+        granted.contains('android.permission.health.READ_STEPS')) {
       stepsProbe = await probeReadAccess();
     }
     return HcAvailability(
@@ -1662,8 +1680,9 @@ class HcAvailability {
   /// after it.
   final HealthConnectException? grantError;
 
-  /// The Steps read probe's outcome; null when not run (the
-  /// grant was not full, so the probe could prove nothing).
+  /// The Steps read probe's outcome; null when not run
+  /// (READ_STEPS not in the granted set, so the probe could
+  /// prove nothing).
   final HcReadProbeOutcome? stepsProbe;
 
   /// The persisted-connection flag — first-paint hint ONLY.
@@ -1687,6 +1706,29 @@ class HcAvailability {
   Set<String> get missingPermissions => grantKnown
       ? HealthConnectService.missingPermissions(grantedPermissions!)
       : const {};
+
+  /// The missing set when the grant layer is known; null when it
+  /// is unknown. The exact input the grant-state derivations in
+  /// hc_availability.dart consume (`hcGrantStateFor` /
+  /// `hcShouldAttemptRead`): null keeps every derivation at
+  /// `unknown` instead of letting an unread grant layer pose as a
+  /// full grant.
+  Set<String>? get missingIfKnown => grantKnown ? missingPermissions : null;
+
+  /// HC Grant Hardening §3.2 — the permissions with positive wedge
+  /// evidence in THIS snapshot: the probe's own type (Steps) when
+  /// the probe read was blocked with a SecurityException while
+  /// its grant reports present. Per-type wedge evidence for OTHER
+  /// types comes from the reads themselves (an outcome's
+  /// `failedWithSecurityException` while that type is granted) and
+  /// is derived by the consuming surface, not stored here.
+  Set<String> get wedgedPermissions =>
+      stepsProbe == HcReadProbeOutcome.securityFailure &&
+              (grantedPermissions
+                      ?.contains('android.permission.health.READ_STEPS') ??
+                  false)
+          ? const {'android.permission.health.READ_STEPS'}
+          : const {};
 
   bool get fullGrant =>
       grantKnown &&

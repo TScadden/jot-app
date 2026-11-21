@@ -203,6 +203,21 @@ class _BpDisconnectedHc extends HealthConnectService {
   @override
   Future<bool> isConnected() async => false;
 
+  // HC Grant Hardening — the BP screen gates on the grant-state
+  // probe: an empty grant (nothing shared) keeps the plain
+  // not-connected notice and skips the read.
+  @override
+  Future<HcAvailability> probeAvailability() => probeGrantState();
+
+  @override
+  Future<HcAvailability> probeGrantState() async => const HcAvailability(
+        serviceAvailable: true,
+        grantedPermissions: {},
+        bridgeErrorCode: null,
+        stepsProbe: null,
+        persistedConnected: false,
+      );
+
   @override
   Future<List<BpRecord>> readBloodPressure(int days) async => const [];
 }

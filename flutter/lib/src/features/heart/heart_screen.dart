@@ -2,12 +2,14 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/data/hc_availability.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/heart_data.dart';
 import 'package:tabs_lab/src/data/heart_data_cache.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
 import 'package:tabs_lab/src/features/connections/health_connect_disclosure.dart';
+import 'package:tabs_lab/src/features/home/hc_repair_card.dart';
 import 'package:tabs_lab/src/features/heart/heart_spike_review_screen.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
@@ -73,6 +75,41 @@ class _HeartScreenState extends State<HeartScreen> {
   HeartDayData? _data;
   DateTime? _lastSyncAt;
 
+  /// HC Grant Hardening §3.4 — the availability snapshot the last
+  /// connection check probed; the wedge derivation and the repair
+  /// card read from it (plus [_hrReadBlocked]).
+  HcAvailability? _lastSnapshot;
+
+  /// This screen's HR-read wedge evidence from the most recent
+  /// load: true when the HR read failed with a SecurityException,
+  /// false when it completed (data or honest empty), null when no
+  /// load has run since the last check — the snapshot's probe
+  /// evidence decides then (see [_hrWedged]).
+  bool? _hrReadBlocked;
+
+  /// The repair card's second step (remove-access directions) —
+  /// set when an in-place repair attempt did not clear the wedge.
+  bool _repairSecondStep = false;
+  bool _repairing = false;
+
+  /// HC Grant Hardening §3.2 — this screen's wedged state: HR is
+  /// granted (verified, from the snapshot) AND the HR read path is
+  /// blocked — proven either by this screen's own read outcome or,
+  /// before any load has run, by the snapshot's stale-wedged probe
+  /// evidence. A completed HR read (data or honest empty) clears
+  /// it: dismissal is derived from the state, never latched.
+  bool get _hrWedged {
+    final snapshot = _lastSnapshot;
+    if (snapshot == null || !snapshot.grantKnown) return false;
+    if (snapshot.missingPermissions
+        .contains('android.permission.health.READ_HEART_RATE')) {
+      return false;
+    }
+    final blocked = _hrReadBlocked;
+    if (blocked != null) return blocked;
+    return snapshot.staleWedged;
+  }
+
   String get _dateStr => _fmtDate(_selectedDate);
   String get _todayStr => _fmtDate(DateTime.now());
 
@@ -110,24 +147,54 @@ class _HeartScreenState extends State<HeartScreen> {
   }
 
   Future<void> _checkConnectionAndLoad({bool forceLoad = false}) async {
-    var connected = false;
+    // HC Grant Hardening §3.4 — the layout gate is the grant state
+    // for HEART's permission set alone (READ_HEART_RATE), derived
+    // from ONE availability probe — never the global
+    // all-15-required verdict the old isConnected() check imposed:
+    // a missing unrelated permission (Weight, say) no longer
+    // paints this screen "not connected", and a granted HR with an
+    // unknown grant layer still attempts its read.
+    // Bounded (same defect class as the BP screen's check and the
+    // Heart read wedge): a stalled HC platform call used to leave
+    // _connected null forever — no date pill, no load, all "--".
+    // The bound uses the shared readTimeout; expiry synthesizes
+    // an unknown snapshot, which falls through to the persisted
+    // fallback exactly like any other failure.
+    HcAvailability snapshot;
     try {
-      // Bounded (same defect class as the BP screen's check and the
-      // Heart read wedge): a stalled HC platform call used to leave
-      // _connected null forever — no date pill, no load, all "--".
-      // The bound uses the shared readTimeout; expiry throws
-      // TimeoutException into the catch below, which falls through
-      // to the persisted fallback exactly like any other failure.
-      connected = await _service
-          .isConnected()
+      snapshot = await _service
+          .probeAvailability()
           .timeout(HealthConnectService.readTimeout);
     } catch (_) {
-      // Fall back to persisted state, like the connections screen.
-      // The fallback only PAINTS the connected layout: the load
-      // below is the real proof, and its error surfaces even over
-      // cached data (see _load) — persisted state can no longer
-      // silently mask dead reads (hardening #6, Vera F8: the
-      // behavior lives in _load's error path, no separate flag).
+      // Timeout or throw: an unknown snapshot, which falls
+      // through to the persisted fallback exactly like the old
+      // check's catch-all did. (The real probe never throws by
+      // contract; the catch-all keeps that parity for any
+      // platform-channel surprise underneath it.)
+      snapshot = const HcAvailability(
+        serviceAvailable: false,
+        grantedPermissions: null,
+        bridgeErrorCode: 'PROBE_TIMEOUT',
+        stepsProbe: null,
+        persistedConnected: false,
+      );
+    }
+    bool connected;
+    if (snapshot.status == HealthConnectStatus.unavailable) {
+      connected = false;
+    } else if (snapshot.grantKnown) {
+      // Verified-missing HR → the Link layout; granted HR → body.
+      connected =
+          hcGrantStateFor(heartPermissions, snapshot.missingIfKnown) !=
+              HcGrantState.none;
+    } else {
+      // Grant layer unknown (bridge error): fall back to persisted
+      // state, like the connections screen. The fallback only
+      // PAINTS the connected layout: the load below is the real
+      // proof, and its error surfaces even over cached data (see
+      // _load) — persisted state can no longer silently mask dead
+      // reads (hardening #6, Vera F8: the behavior lives in _load's
+      // error path, no separate flag).
       try {
         connected = await _service.hasPersistedConnection();
       } catch (_) {
@@ -135,7 +202,14 @@ class _HeartScreenState extends State<HeartScreen> {
       }
     }
     if (!mounted) return;
-    setState(() => _connected = connected);
+    setState(() {
+      _connected = connected;
+      _lastSnapshot = snapshot;
+      // A fresh check re-derives the wedge from the probe; the
+      // load below replaces the read evidence for this check.
+      _hrReadBlocked = null;
+      if (!_hrWedged) _repairSecondStep = false;
+    });
     if (connected) await _load(force: forceLoad);
   }
 
@@ -213,6 +287,15 @@ class _HeartScreenState extends State<HeartScreen> {
         _data = data;
         _lastSyncAt = _cache.lastSyncAt;
         _loading = false;
+        // HC Grant Hardening §3.2 — this load's own wedge
+        // evidence: a hard failure whose native exception class
+        // is a SecurityException is the granted-but-blocked
+        // signature for THIS screen's type; any completed read
+        // (data, honest empty, or partial) clears it.
+        _hrReadBlocked = failed &&
+            (_service.lastReadErrorDetails?.contains('SecurityException') ??
+                false);
+        if (!_hrWedged) _repairSecondStep = false;
         if (failed) {
           _error = 'Could not read heart rate data.';
         } else if (partialCode != null) {
@@ -270,8 +353,11 @@ class _HeartScreenState extends State<HeartScreen> {
     try {
       final granted = await _service.requestPermissions();
       if (!mounted) return;
-      final connected =
-          granted.containsAll(HealthConnectService.requiredPermissions);
+      // HC Grant Hardening §3.4 — the post-request verdict judges
+      // THIS screen's permission alone: a grant that includes
+      // heart rate connects the Heart screen even when some other
+      // type was declined.
+      final connected = granted.containsAll(heartPermissions);
       setState(() {
         _requesting = false;
         _connected = connected;
@@ -287,6 +373,37 @@ class _HeartScreenState extends State<HeartScreen> {
           _error = e.message;
         });
       }
+    }
+  }
+
+  /// HC Grant Hardening §3.3 — the repair card's tap: runs the
+  /// shared in-place repair flow (MF-3 disclosure first, then the
+  /// permission request; see [runHcRepairFlow]). A cleared flow
+  /// force-reloads through a fresh check; if the wedge survives
+  /// the reload, the card swaps to its second step (the
+  /// remove-access directions). A failed request surfaces its
+  /// message through the screen's existing error line, exactly
+  /// like the link flow's failures.
+  Future<void> _onRepairTap() async {
+    if (_repairing) return;
+    setState(() => _repairing = true);
+    final result = await runHcRepairFlow(context, _service);
+    if (!mounted) return;
+    setState(() => _repairing = false);
+    switch (result.outcome) {
+      case HcRepairOutcome.aborted:
+        break;
+      case HcRepairOutcome.failed:
+        setState(() {
+          _error = result.errorMessage ?? 'Health Connect request failed.';
+        });
+      case HcRepairOutcome.stillWedged:
+        setState(() => _repairSecondStep = true);
+      case HcRepairOutcome.cleared:
+        await _checkConnectionAndLoad(forceLoad: true);
+        if (mounted && _hrWedged) {
+          setState(() => _repairSecondStep = true);
+        }
     }
   }
 
@@ -569,6 +686,18 @@ class _HeartScreenState extends State<HeartScreen> {
             const SizedBox(height: 16),
           ],
           _summaryCard(data),
+          // HC Grant Hardening §3.3 — the repair card sits above
+          // the pattern card, visible without scrolling (the
+          // Nov 20 wedge error line sat below the fold; that must
+          // not recur for the wedge state).
+          if (_hrWedged) ...[
+            const SizedBox(height: 16),
+            HcRepairCard(
+              secondStep: _repairSecondStep,
+              requesting: _repairing,
+              onRepairTap: _repairing ? null : () => unawaited(_onRepairTap()),
+            ),
+          ],
           const SizedBox(height: 16),
           _patternCard(data),
           const SizedBox(height: 16),

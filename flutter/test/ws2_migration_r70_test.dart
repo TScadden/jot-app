@@ -67,6 +67,11 @@ class _FakeHc extends HealthConnectService {
         stepsProbe: connected ? HcReadProbeOutcome.ok : null,
         persistedConnected: connected,
       );
+
+  // HC Grant Hardening — the Key Metrics gate probes grant
+  // state via probeGrantState(); same canned snapshot.
+  @override
+  Future<HcAvailability> probeGrantState() => probeAvailability();
   @override
   Future<List<({String date, int bpm})>> readRestingHrHistory(
           int days) async =>

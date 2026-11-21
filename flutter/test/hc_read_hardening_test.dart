@@ -68,11 +68,34 @@ int todayMs(int hour) {
   return DateTime(now.year, now.month, now.day, hour).millisecondsSinceEpoch;
 }
 
+/// HC Grant Hardening — canned probe snapshots for the Heart
+/// widget fakes below (the screen gates on probeAvailability()
+/// now, not isConnected()): a full grant for the "connected"
+/// fakes, an empty grant for the disconnected fake.
+HcAvailability fullGrantSnapshot() => HcAvailability(
+      serviceAvailable: true,
+      grantedPermissions: HealthConnectService.requiredPermissions,
+      bridgeErrorCode: null,
+      stepsProbe: null,
+      persistedConnected: true,
+    );
+
+HcAvailability emptyGrantSnapshot() => const HcAvailability(
+      serviceAvailable: true,
+      grantedPermissions: {},
+      bridgeErrorCode: null,
+      stepsProbe: null,
+      persistedConnected: false,
+    );
+
 /// Fake service for the J4 partial-copy widget test: returns real
 /// samples and records a partial (some chunks failed).
 class PartialFakeHc extends HealthConnectService {
   @override
   Future<bool> isConnected() async => true;
+
+  @override
+  Future<HcAvailability> probeAvailability() async => fullGrantSnapshot();
 
   @override
   Future<List<HrSample>> readHeartRateSamples(String dateStr) async {
@@ -88,6 +111,9 @@ class PartialFakeHc extends HealthConnectService {
 class PartialEmptyFakeHc extends HealthConnectService {
   @override
   Future<bool> isConnected() async => true;
+
+  @override
+  Future<HcAvailability> probeAvailability() async => fullGrantSnapshot();
 
   @override
   Future<List<HrSample>> readHeartRateSamples(String dateStr) async {
@@ -121,6 +147,9 @@ class WedgedFakeHc extends HealthConnectService {
   Future<bool> isConnected() async => true;
 
   @override
+  Future<HcAvailability> probeAvailability() async => fullGrantSnapshot();
+
+  @override
   Future<List<HrSample>> readHeartRateSamples(String dateStr) =>
       Completer<List<HrSample>>().future;
 }
@@ -131,12 +160,21 @@ class WedgedFakeHc extends HealthConnectService {
 class PendingCheckFakeHc extends HealthConnectService {
   @override
   Future<bool> isConnected() => Completer<bool>().future;
+
+  // HC Grant Hardening — the bounded check is the probe now:
+  // it stalls the same way.
+  @override
+  Future<HcAvailability> probeAvailability() =>
+      Completer<HcAvailability>().future;
 }
 
 /// Fake service that reports disconnected.
 class DisconnectedFakeHc extends HealthConnectService {
   @override
   Future<bool> isConnected() async => false;
+
+  @override
+  Future<HcAvailability> probeAvailability() async => emptyGrantSnapshot();
 }
 
 /// Fake service whose connection check stalls forever, but whose
@@ -146,6 +184,12 @@ class DisconnectedFakeHc extends HealthConnectService {
 class StalledCheckFallbackFakeHc extends HealthConnectService {
   @override
   Future<bool> isConnected() => Completer<bool>().future;
+
+  // HC Grant Hardening — the probe stalls the same way; the
+  // screen's bound turns it into the persisted fallback.
+  @override
+  Future<HcAvailability> probeAvailability() =>
+      Completer<HcAvailability>().future;
 
   @override
   Future<bool> hasPersistedConnection() async => true;
@@ -161,6 +205,12 @@ class StalledCheckFallbackFakeHc extends HealthConnectService {
 class ProvisionalFakeHc extends HealthConnectService {
   @override
   Future<bool> isConnected() async =>
+      throw const HealthConnectException('GRANTED_CHECK_FAILED', 'boom');
+
+  // HC Grant Hardening — the probe carries the same failure;
+  // the screen's catch-all turns it into the persisted fallback.
+  @override
+  Future<HcAvailability> probeAvailability() async =>
       throw const HealthConnectException('GRANTED_CHECK_FAILED', 'boom');
 
   @override

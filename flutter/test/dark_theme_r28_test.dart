@@ -21,6 +21,16 @@ class FakeHeartHc extends HealthConnectService {
   @override
   Future<bool> isConnected() async => true;
 
+  // HC Grant Hardening — the Heart screen gates on the probe.
+  @override
+  Future<HcAvailability> probeAvailability() async => HcAvailability(
+        serviceAvailable: true,
+        grantedPermissions: HealthConnectService.requiredPermissions,
+        bridgeErrorCode: null,
+        stepsProbe: null,
+        persistedConnected: true,
+      );
+
   @override
   Future<bool> hasPersistedConnection() async => true;
 
