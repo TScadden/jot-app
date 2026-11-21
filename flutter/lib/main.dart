@@ -46,6 +46,7 @@ import 'package:tabs_lab/src/data/widget_sync.dart';
 import 'package:tabs_lab/src/features/auth/email_verification_screen.dart';
 import 'package:tabs_lab/src/features/auth/login_screen.dart';
 import 'package:tabs_lab/src/features/settings/report_generation_presenter.dart';
+import 'package:tabs_lab/src/features/home/streak_celebration_presenter.dart';
 import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/data/onboarding_resume_gate.dart';
@@ -232,9 +233,19 @@ class TabsLabApp extends StatelessWidget {
       // user is on any other in-app screen presents its share
       // confirmation there (see ReportGenerationPresenter /
       // ReportGenerationService). It renders its child unchanged.
-      builder: (context, child) => ReportGenerationPresenter(
-        service: ReportGenerationService.instance,
-        child: child ?? const SizedBox.shrink(),
+      // Streak-celebration root presenter (founder bug, Nov 21,
+      // 2026): wraps the app above its Navigator alongside the
+      // report presenter so a Daily Summary completion presents
+      // its celebration over whatever surface is current — the
+      // Today Summary sheet included — even when Home itself has
+      // unmounted, and holds it across a backgrounding until the
+      // next foreground (see StreakCelebrationPresenter /
+      // StreakCelebrationService). It renders its child unchanged.
+      builder: (context, child) => StreakCelebrationPresenter(
+        child: ReportGenerationPresenter(
+          service: ReportGenerationService.instance,
+          child: child ?? const SizedBox.shrink(),
+        ),
       ),
         home: const AppFlow(),
       ),

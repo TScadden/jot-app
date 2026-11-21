@@ -32,6 +32,7 @@ import 'package:tabs_lab/src/data/streak_store.dart';
 import 'package:tabs_lab/src/data/summary_completeness.dart';
 import 'package:tabs_lab/src/data/today_plan_store.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
+import 'package:tabs_lab/src/features/home/streak_celebration_presenter.dart';
 import 'package:tabs_lab/src/features/home/streak_celebration_screen.dart';
 import 'package:tabs_lab/src/data/launch_trace.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
@@ -670,8 +671,22 @@ class _HomeScreenState extends State<HomeScreen>
   /// and dev Restore paths never reach this): run the gem earn
   /// hooks FIRST (their grants are persisted before requesting,
   /// and a failure queues silently without breaking the flow),
-  /// then present the celebration with Juno §3's earn lines for
-  /// the grants the server confirmed.
+  /// then hand the celebration to the app-level celebration
+  /// service with Juno §3's earn lines for the grants the server
+  /// confirmed.
+  ///
+  /// Celebration presentation fix (Nov 21, 2026): the pill/cache
+  /// update below runs FIRST, synchronously, from the settled
+  /// (result, state) the watcher handed over — no network await
+  /// and no mounted guard can eat it (the founder's pill showed
+  /// the new count with the flame unlit because this update used
+  /// to sit behind the claim chain's `if (!mounted) return`).
+  /// The claim chain then runs WITHOUT any mounted gate: a Home
+  /// disposal mid-chain (tab switch) can no longer drop the
+  /// celebration either — the built celebration is HELD by
+  /// [StreakCelebrationService] and presented by the app-root
+  /// presenter over whatever surface is current (see
+  /// streak_celebration_presenter.dart).
   Future<void> _presentCompletion(
     StreakCompletionResult result,
     StreakState state,
@@ -695,6 +710,27 @@ class _HomeScreenState extends State<HomeScreen>
     final graceDayStart = _pendingCompletionDayStart;
     final summaryTabsDay =
         graceDayStart != null ? dateStrOf(graceDayStart) : tabsDayStr(now);
+    // The settled pill + cache update, FIRST (see the doc above):
+    // the completion IS today's counted day in this settled
+    // state — the pill flame lights from the same state, right
+    // away, whatever surface the user is on.
+    final cache = HomeDataCache.instance;
+    if (cache.applyStreak(result.newCount, streakBest(state))) {
+      unawaited(cache.persist());
+    }
+    if (mounted) {
+      setState(() {
+        _currentStreak = result.newCount;
+        _bestStreak = streakBest(state);
+        _streakTodayComplete = state.countedDays.contains(summaryTabsDay);
+      });
+    }
+    unawaited(WidgetSync.pushStreak(
+      state,
+      signedIn: true,
+      nickname: _nickname,
+      now: DateTime.now(),
+    ));
     // Gems bound discipline (Vera server review, Nov 19, 2026):
     // the server validates grants against the PUSHED streak_state
     // blob (the day must be in its summaryCompletedDays; milestone
@@ -720,8 +756,15 @@ class _HomeScreenState extends State<HomeScreen>
       settledState: state,
       now: now,
     );
-    if (!mounted) return;
-    if (gemResult.balance != null && gemResult.balance != _gemBalance) {
+    // NO mounted gate from here on (celebration fix, Nov 21,
+    // 2026): the claim has landed or queued on its own discipline
+    // above; what remains — building the celebration data and
+    // handing it to the celebration service — needs no Home
+    // State at all, and gating it on mounted is what ate the
+    // founder's celebration when Home unmounted mid-chain.
+    if (mounted &&
+        gemResult.balance != null &&
+        gemResult.balance != _gemBalance) {
       setState(() => _gemBalance = gemResult.balance);
     }
     final data = StreakCelebrationData.fromCompletion(
@@ -732,27 +775,10 @@ class _HomeScreenState extends State<HomeScreen>
       now: graceDayStart?.add(const Duration(hours: 2)) ?? now,
       gemLines: gemResult.lines,
     );
-    final cache = HomeDataCache.instance;
-    if (cache.applyStreak(result.newCount, streakBest(state))) {
-      unawaited(cache.persist());
-    }
-    setState(() {
-      _currentStreak = result.newCount;
-      _bestStreak = streakBest(state);
-      // The completion IS today's counted day in this settled
-      // state — the pill flame lights from the same state.
-      _streakTodayComplete = state.countedDays.contains(summaryTabsDay);
-    });
-    unawaited(WidgetSync.pushStreak(
-      state,
-      signedIn: true,
-      nickname: _nickname,
-      now: DateTime.now(),
-    ));
-    unawaited(StreakCelebrationScreen.show(
-      context,
+    StreakCelebrationService.instance.hold(PendingStreakCelebration(
       data: data,
       nickname: _nickname,
+      dayKey: summaryTabsDay,
     ));
   }
 
