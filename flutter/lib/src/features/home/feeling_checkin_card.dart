@@ -118,30 +118,42 @@ bool chipsContainFeelingTag(String chipsJson) {
 /// current energy day when an entry in the mood category carries the
 /// "Daily Ranking" tag with a timestamp inside
 /// [feelingDayStart, feelingDayStart + 1 day).
+///
+/// [windowEnd] (Midnight Grace, Nov 21, 2026) optionally extends the
+/// window's end past the day boundary — the grace deadline — so a
+/// check-in logged inside the grace window counts as evidence for
+/// the closing day. Null (every non-grace caller) keeps the shipped
+/// +24h end exactly.
 bool hasFeelingCheckIn(
   List<QuickLogEntry> entries, {
   required int moodCategoryId,
   DateTime? now,
+  DateTime? windowEnd,
 }) =>
     findFeelingCheckInEntry(
       entries,
       moodCategoryId: moodCategoryId,
       now: now,
+      windowEnd: windowEnd,
     ) !=
     null;
 
 /// The current energy day's check-in entry, or null — the entry
 /// [hasFeelingCheckIn] tests for, returned so the merged flow can
 /// read today's ranking value off it. Newest wins when several
-/// match (should not happen — one check-in per day).
+/// match (should not happen — one check-in per day). [windowEnd]
+/// is the Midnight Grace evidence-window override (see
+/// [hasFeelingCheckIn]); null = the day's own +24h end.
 QuickLogEntry? findFeelingCheckInEntry(
   List<QuickLogEntry> entries, {
   required int moodCategoryId,
   DateTime? now,
+  DateTime? windowEnd,
 }) {
   final start = feelingDayStart(now ?? DateTime.now());
   final startMs = start.millisecondsSinceEpoch;
-  final endMs = start.add(const Duration(days: 1)).millisecondsSinceEpoch;
+  final endMs = (windowEnd ?? start.add(const Duration(days: 1)))
+      .millisecondsSinceEpoch;
   QuickLogEntry? found;
   for (final e in entries) {
     if (e.categoryId != moodCategoryId) continue;

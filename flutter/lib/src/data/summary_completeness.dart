@@ -146,6 +146,7 @@ bool isSummaryComplete({
   required AttestedPlan? attestedPlan,
   required List<QuickLogEntry> entries,
   required int? moodCategoryId,
+  DateTime? evidenceWindowEnd,
 }) {
   if (attestedPlan == null || !attestedPlan.resolved) return false;
   final plan = attestedPlan.plan;
@@ -155,10 +156,16 @@ bool isSummaryComplete({
   }
   // hasFeelingCheckIn derives its window from feelingDayStart(now);
   // a moment safely inside the feeling day names the same window.
+  // [evidenceWindowEnd] is the Midnight Grace override: while grace
+  // runs, the closing day's evidence window extends to the grace
+  // deadline, so a check-in logged inside the window counts for the
+  // closing day. Null (every non-grace evaluation) = +24h, exactly
+  // the shipped rule.
   return hasFeelingCheckIn(
     entries,
     moodCategoryId: moodCategoryId,
     now: feelingDayStart.add(const Duration(hours: 2)),
+    windowEnd: evidenceWindowEnd,
   );
 }
 
@@ -187,6 +194,7 @@ TodayPlanData buildPlanForFeelingDay({
   required List<QuickLogEntry> entries,
   required int? medicationCategoryId,
   int? goalsCategoryId,
+  DateTime? evidenceWindowEnd,
 }) {
   final planDate = DateTime(
     feelingDayStart.year,
@@ -195,8 +203,13 @@ TodayPlanData buildPlanForFeelingDay({
   );
   final planDateStr = dateStrOf(planDate);
   final startMs = feelingDayStart.millisecondsSinceEpoch;
-  final endMs = feelingDayStart
-      .add(const Duration(days: 1))
+  // Midnight Grace: [evidenceWindowEnd] extends the evidence window
+  // to the grace deadline (entries logged inside grace, whose
+  // calendar date is the NEXT day, are re-stamped to the plan
+  // date's noon below — computation only, entries never mutated).
+  // Null = the shipped [feelingDayStart, +24h) window.
+  final endMs = (evidenceWindowEnd ??
+          feelingDayStart.add(const Duration(days: 1)))
       .millisecondsSinceEpoch;
   final noonMs = DateTime(
     planDate.year,
@@ -307,6 +320,27 @@ class SummaryCompletionWatcher {
   /// THIS call fired. [context] must be resolved for the open
   /// feeling day of [now] (defaults to the wall clock); the
   /// streak-record inputs mirror [StreakStore.recordSummaryComplete]'s.
+  ///
+  /// Midnight Grace (Nov 21, 2026): while a grace window is active,
+  /// Home passes [fireableDayStartOverride] = the CLOSING day's
+  /// start and [evidenceWindowEnd] = the grace deadline. The
+  /// fireable day is then the closing day — the one exception to
+  /// the A8 open-day rule, bounded by the live window: Home only
+  /// passes the override while MidnightGraceController reports an
+  /// active window, and the completeness test only credits
+  /// evidence inside [closing start, deadline). Both default null,
+  /// which is byte-identical to the shipped A8 behavior.
+  ///
+  /// Vera C2 (binding): [graceStillActive] is the liveness probe
+  /// for that window, consulted at the fire point below. The
+  /// caller resolves its inputs across awaits, and the window can
+  /// end (expiry, backgrounding, any reason) while resolution is
+  /// in flight; a fire that lands after the window ended would
+  /// create a completion after the window, which the founder spec
+  /// forbids. When the probe reports the window gone, this call
+  /// fires nothing and writes NO fired-day marker — the day simply
+  /// settles through the normal post-window paths. Null (every
+  /// non-grace call) = no probe, shipped behavior.
   Future<bool> maybeFireSummaryCompletion({
     required SummaryCompletionContext context,
     required bool pullSucceeded,
@@ -316,6 +350,9 @@ class SummaryCompletionWatcher {
     int? seedPurchasedFreezes,
     StreakSyncPush? push,
     DateTime? now,
+    DateTime? fireableDayStartOverride,
+    DateTime? evidenceWindowEnd,
+    bool Function()? graceStillActive,
   }) async {
     if (_firing) return false;
     final at = now ?? DateTime.now();
@@ -323,7 +360,9 @@ class SummaryCompletionWatcher {
     // can fire. The day is derived from [at] here — never taken
     // from the context — so a context resolved for a closed day
     // (stale load, backfilled evidence) cannot retro-fire it.
-    final openDayStart = feelingDayStart(at);
+    // Midnight Grace: the override substitutes the closing day
+    // while its window is live (see the doc above).
+    final openDayStart = fireableDayStartOverride ?? feelingDayStart(at);
     final openDayStr = dateStrOf(openDayStart);
 
     final fired = _firedDayMemory ?? await _readMarker(firedDayStorageKey);
@@ -337,7 +376,17 @@ class SummaryCompletionWatcher {
       attestedPlan: context.attestedPlan,
       entries: context.entries,
       moodCategoryId: context.moodCategoryId,
+      evidenceWindowEnd: evidenceWindowEnd,
     )) {
+      return false;
+    }
+
+    // Vera C2: the last-moment liveness check — the grace window
+    // this fire was evaluated under must still be live NOW, at
+    // the fire point. A window that ended during the caller's
+    // input resolution (or during the marker read above) refuses
+    // the fire entirely: no counted day, no marker.
+    if (graceStillActive != null && !graceStillActive()) {
       return false;
     }
 

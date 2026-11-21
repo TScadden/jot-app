@@ -22,6 +22,7 @@ import 'package:tabs_lab/src/data/health_history_sync.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
+import 'package:tabs_lab/src/data/midnight_grace.dart';
 import 'package:tabs_lab/src/data/migraine_controller.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
@@ -49,6 +50,7 @@ import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
 import 'package:tabs_lab/src/features/home/checkin_sheets.dart';
 import 'package:tabs_lab/src/features/home/checkin_summary_card.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
+import 'package:tabs_lab/src/features/home/grace_band.dart';
 import 'package:tabs_lab/src/features/home/flare_day_logging.dart';
 import 'package:tabs_lab/src/features/home/intake_logging.dart';
 import 'package:tabs_lab/src/features/home/good_day_logging.dart';
@@ -244,6 +246,14 @@ class HomeScreen extends StatefulWidget {
   /// have no dock to fade and simply pass nothing.
   final ValueChanged<bool>? onDrawerOpenChanged;
 
+  /// Midnight Grace (Nov 21, 2026) — the shell-owned grace
+  /// controller. Optional: standalone hosts (tests, pushed routes)
+  /// have no shell above them and simply never see grace. When
+  /// present, Home registers its closing-day completeness
+  /// evaluator with the controller, gates its app-open settlement
+  /// while a window is live, and renders the band element.
+  final MidnightGraceController? graceController;
+
   const HomeScreen(
       {super.key,
       this.email,
@@ -261,6 +271,7 @@ class HomeScreen extends StatefulWidget {
       this.migraineController,
       this.logEntryOutbox,
       this.notificationService,
+      this.graceController,
       this.onDrawerOpenChanged});
 
   @override
@@ -600,6 +611,31 @@ class _HomeScreenState extends State<HomeScreen>
   SummaryCompletionWatcher? _completionWatcher;
   String? _nickname;
 
+  // ── Midnight Grace (Nov 21, 2026) ─────────────────────────────
+  /// The shell-owned grace controller (widget.graceController),
+  /// resolved once at initState. Null on standalone hosts — every
+  /// grace touchpoint below is then inert and behavior is exactly
+  /// the shipped one.
+  MidnightGraceController? _grace;
+
+  /// The closing day of the completion the watcher is ABOUT to
+  /// present, set by the grace evaluation branch immediately
+  /// before it calls the watcher (whose onCompletion runs
+  /// synchronously inside that call, ahead of its first await, so
+  /// [_presentCompletion] can read this). [_presentCompletion]
+  /// otherwise derives the completed day from the wall clock —
+  /// which under grace is the NEW day, while the day that counted
+  /// is the closing one (the gem grants validate against the
+  /// counted day server-side). Null for every non-grace fire.
+  DateTime? _pendingCompletionDayStart;
+
+  /// This Home's evaluator registration on the controller (kept so
+  /// dispose can unregister exactly this closure).
+  Future<bool> Function(DateTime, DateTime)? _graceEvaluator;
+
+  /// The controller's previous onGraceEnded (restored on dispose).
+  void Function(GraceEndReason, GraceWindow)? _graceEndedBefore;
+
   /// Gems — the server gem balance for the Home gem pill. Null
   /// until a server payload lands (pull / grant / spend); the pill
   /// renders only on a real value, never a local guess. Kept in
@@ -643,7 +679,14 @@ class _HomeScreenState extends State<HomeScreen>
     // completed day never re-arms.
     _syncCheckInReminderAfterSave(streakState: state);
     final now = DateTime.now();
-    final summaryTabsDay = tabsDayStr(now);
+    // Midnight Grace: a completion fired inside the grace window
+    // counted the CLOSING day, not the wall-clock day — the firing
+    // evaluation published it in _pendingCompletionDayStart. The
+    // gem grants below validate against the counted day
+    // server-side, so this attribution must name the closing day.
+    final graceDayStart = _pendingCompletionDayStart;
+    final summaryTabsDay =
+        graceDayStart != null ? dateStrOf(graceDayStart) : tabsDayStr(now);
     // Gems bound discipline (Vera server review, Nov 19, 2026):
     // the server validates grants against the PUSHED streak_state
     // blob (the day must be in its summaryCompletedDays; milestone
@@ -676,7 +719,9 @@ class _HomeScreenState extends State<HomeScreen>
     final data = StreakCelebrationData.fromCompletion(
       result: result,
       state: state,
-      now: now,
+      // Under grace the celebration's week roll is anchored on the
+      // counted (closing) day: a moment safely inside it.
+      now: graceDayStart?.add(const Duration(hours: 2)) ?? now,
       gemLines: gemResult.lines,
     );
     final cache = HomeDataCache.instance;
@@ -718,32 +763,46 @@ class _HomeScreenState extends State<HomeScreen>
         _completionEvalChain.then((_) => _evaluateSummaryCompletion());
   }
 
-  /// One completeness re-evaluation for the currently open
-  /// feeling day. Fail-safe: any failure leaves the day un-fired
-  /// and a later trigger retries.
-  Future<void> _evaluateSummaryCompletion() async {
+  /// The resolved inputs of one completeness evaluation for the
+  /// feeling day starting at [dayStart]: the watcher context (the
+  /// day's attested plan + the merged entries + the mood category)
+  /// and the streak-record seeds the watcher call mirrors. Shared
+  /// by the D11 evaluation below and the Midnight Grace closing-day
+  /// evaluator — one resolution path, so a grace evaluation reads
+  /// exactly the evidence a normal evaluation would.
+  /// [evidenceWindowEnd] is the grace override (the deadline);
+  /// null keeps the day's own +24h evidence window.
+  Future<
+      ({
+        SummaryCompletionContext context,
+        bool pullSucceeded,
+        int? seedCurrent,
+        int? seedBest,
+        String? seedStateJson,
+        int? seedPurchasedFreezes,
+      })> _resolveCompletionInputs({
+    required DateTime dayStart,
+    DateTime? evidenceWindowEnd,
+  }) async {
+    final rec = await _healthRepo.loadStreakRecord();
+    final profile = await _backend.fetchProfile();
+    final categories = await _backend.fetchLogCategories();
+    // P0 fix (Defect A2): the NULLABLE habits fetch — a failed
+    // fetch (null) must not read as "no habits planned" in the
+    // attestation below (fetchHabits collapses failure to []).
+    final habits = await _backend.fetchHabitsOrNull();
+    String? email;
     try {
-      final now = DateTime.now();
-      final dayStart = feelingDayStart(now);
-      final rec = await _healthRepo.loadStreakRecord();
-      final profile = await _backend.fetchProfile();
-      final categories = await _backend.fetchLogCategories();
-      // P0 fix (Defect A2): the NULLABLE habits fetch — a failed
-      // fetch (null) must not read as "no habits planned" in the
-      // attestation below (fetchHabits collapses failure to []).
-      final habits = await _backend.fetchHabitsOrNull();
-      String? email;
-      try {
-        email = await _backend.readEmail();
-      } catch (_) {
-        email = null;
-      }
-      final localState = await TodayPlanStore.instance.load(
-        email: email,
-        todayStr: dateStrOf(dayStart),
-      );
-      AttestedPlan? attestedPlan;
-      if (profile != null) {
+      email = await _backend.readEmail();
+    } catch (_) {
+      email = null;
+    }
+    final localState = await TodayPlanStore.instance.load(
+      email: email,
+      todayStr: dateStrOf(dayStart),
+    );
+    AttestedPlan? attestedPlan;
+    if (profile != null) {
         final meds = <SummaryMedication>[];
         for (final row
             in TabsBackend.decodeProfileList(profile['medications'])) {
@@ -774,6 +833,7 @@ class _HomeScreenState extends State<HomeScreen>
             name: 'Goals & Habits',
             fallbackId: 4,
           ),
+          evidenceWindowEnd: evidenceWindowEnd,
         );
         // P0 fix (Defect A2): AUTHORITATIVE attestation — each
         // plan input attests ITSELF at the decode layer (field
@@ -791,24 +851,162 @@ class _HomeScreenState extends State<HomeScreen>
           ),
         );
       }
-      await _watcher.maybeFireSummaryCompletion(
-        context: SummaryCompletionContext(
-          attestedPlan: attestedPlan,
-          entries: _mergedEntries,
-          moodCategoryId:
-              resolveFeelingCategoryId(categories) ?? _feelingCategoryId,
-        ),
-        pullSucceeded: rec.succeeded,
-        seedCurrent: rec.current,
-        seedBest: rec.best,
-        seedStateJson: rec.stateJson,
-        seedPurchasedFreezes: rec.purchasedFreezes,
-        push: _healthRepo.pushStreakRecord,
-        now: now,
+    return (
+      context: SummaryCompletionContext(
+        attestedPlan: attestedPlan,
+        entries: _mergedEntries,
+        moodCategoryId:
+            resolveFeelingCategoryId(categories) ?? _feelingCategoryId,
+      ),
+      pullSucceeded: rec.succeeded,
+      seedCurrent: rec.current,
+      seedBest: rec.best,
+      seedStateJson: rec.stateJson,
+      seedPurchasedFreezes: rec.purchasedFreezes,
+    );
+  }
+
+  /// One completeness re-evaluation for the currently open
+  /// feeling day. Fail-safe: any failure leaves the day un-fired
+  /// and a later trigger retries.
+  ///
+  /// Midnight Grace: while a grace window is live, the operative
+  /// day is the CLOSING day — the evaluation resolves its context
+  /// for the closing day and passes the watcher the fireable-day +
+  /// evidence-window overrides, so a completion inside the window
+  /// counts for the closing day exactly once (the watcher's own
+  /// fired-day marker governs). When the fire lands, the window
+  /// resolves as completed.
+  Future<void> _evaluateSummaryCompletion() async {
+    try {
+      final now = DateTime.now();
+      final graceWindow = _grace?.activeWindow;
+      final dayStart = graceWindow?.closingDayStart ?? feelingDayStart(now);
+      final inputs = await _resolveCompletionInputs(
+        dayStart: dayStart,
+        evidenceWindowEnd: graceWindow?.deadline,
       );
+      // Vera C2 (binding): the resolution above is awaited, and
+      // the grace window can END while it is in flight — expiry at
+      // the deadline, a backgrounding, any end reason — after
+      // which _onGraceEnded has already re-run settlement for the
+      // closing day. A fire from THIS stale evaluation would
+      // create a completion after the window, which founder spec
+      // §3 forbids ("Grace never creates a completion after the
+      // window"). So re-check the window's identity here: a grace
+      // evaluation may only fire while the exact window it was
+      // captured under is still the controller's active window.
+      // Dropping the fire loses nothing: the grace-end settle
+      // queues a fresh evaluation for the now-open day. (The
+      // watcher re-checks once more at the fire point via
+      // graceStillActive — the same invariant at the last moment.)
+      if (graceWindow != null &&
+          !identical(_grace?.activeWindow, graceWindow)) {
+        return;
+      }
+      // The watcher's onCompletion runs synchronously inside the
+      // call below: publish the firing day first so
+      // _presentCompletion attributes the celebration + gem grants
+      // to the day that actually counted.
+      _pendingCompletionDayStart = graceWindow?.closingDayStart;
+      try {
+        final fired = await _watcher.maybeFireSummaryCompletion(
+          context: inputs.context,
+          pullSucceeded: inputs.pullSucceeded,
+          seedCurrent: inputs.seedCurrent,
+          seedBest: inputs.seedBest,
+          seedStateJson: inputs.seedStateJson,
+          seedPurchasedFreezes: inputs.seedPurchasedFreezes,
+          push: _healthRepo.pushStreakRecord,
+          now: now,
+          fireableDayStartOverride: graceWindow?.closingDayStart,
+          evidenceWindowEnd: graceWindow?.deadline,
+          graceStillActive: graceWindow == null
+              ? null
+              : () => identical(_grace?.activeWindow, graceWindow),
+        );
+        if (fired && graceWindow != null) {
+          _grace?.resolveCompleted();
+        }
+      } finally {
+        _pendingCompletionDayStart = null;
+      }
     } catch (_) {
       // A failed evaluation fires nothing; the next trigger
       // (commit / load / resume) re-evaluates.
+    }
+  }
+
+  /// The Midnight Grace evaluator the controller consults at the
+  /// crossing (and Home re-consults when it mounts into a
+  /// provisional window): is the closing day's Daily Summary
+  /// INCOMPLETE? Only a POSITIVELY complete day answers false —
+  /// an unattested/unresolvable plan cannot prove the day
+  /// complete, so grace opens (it fabricates nothing: settlement
+  /// stays gated by the store's own anti-fabrication rules, and
+  /// an uncompletable window simply expires into the normal
+  /// rollover).
+  Future<bool> _evaluateClosingDayIncomplete(
+    DateTime closingDayStart,
+    DateTime deadline,
+  ) async {
+    try {
+      final inputs = await _resolveCompletionInputs(
+        dayStart: closingDayStart,
+        evidenceWindowEnd: deadline,
+      );
+      final attested = inputs.context.attestedPlan;
+      if (attested == null || !attested.resolved) return true;
+      return !isSummaryComplete(
+        feelingDayStart: closingDayStart,
+        attestedPlan: attested,
+        entries: inputs.context.entries,
+        moodCategoryId: inputs.context.moodCategoryId,
+        evidenceWindowEnd: deadline,
+      );
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// The grace window this Home last reacted to (identity-compared)
+  /// — the controller notifies on every 250ms tick, and only the
+  /// open/close transitions concern Home's own state.
+  GraceWindow? _graceSeenWindow;
+
+  /// Whether the grace band element is mounted in the center slot.
+  /// True from the window's open until its fade-out completes (the
+  /// band reports that itself), so the counters return only after
+  /// the fade — never underneath it.
+  bool _graceBandMounted = false;
+
+  void _onGraceChanged() {
+    if (!mounted) return;
+    final active = _grace?.activeWindow;
+    if (identical(active, _graceSeenWindow)) return;
+    _graceSeenWindow = active;
+    if (active != null) _graceBandMounted = true;
+    // The operative day flipped (window opened or closed): the
+    // check-in derivation reads the closing day during grace and
+    // the wall-clock day otherwise, so re-derive and repaint.
+    _deriveFromMerged();
+    if (mounted) setState(() {});
+  }
+
+  /// The controller reports a window end (after it has cleared):
+  /// Home runs the normal post-window paths. Expiry / background /
+  /// already-complete → the ordinary app-open settlement (the gate
+  /// has lifted, so recordOpen settles the closing day exactly
+  /// like a no-grace rollover) plus a check-in reload so the band
+  /// and summary roll to the new day. Completion → the watcher
+  /// already counted the day and celebrated; only the day display
+  /// rolls.
+  void _onGraceEnded(GraceEndReason reason, GraceWindow window) {
+    if (!mounted) return;
+    unawaited(_loadCheckInState());
+    if (reason != GraceEndReason.completed) {
+      _streakSettle = _settleStreakWithEngine();
+      unawaited(_streakSettle!);
     }
   }
 
@@ -826,6 +1024,38 @@ class _HomeScreenState extends State<HomeScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Midnight Grace: register this Home's closing-day evaluator +
+    // end handler with the shell's controller. Home is the only
+    // surface that can answer "is the closing day incomplete?" —
+    // the controller owns the window, Home owns the evidence.
+    _grace = widget.graceController;
+    final grace = _grace;
+    if (grace != null) {
+      _graceEvaluator = _evaluateClosingDayIncomplete;
+      grace.closingDayIncompleteEvaluator = _graceEvaluator;
+      _graceEndedBefore = grace.onGraceEnded;
+      grace.onGraceEnded = _onGraceEnded;
+      grace.addListener(_onGraceChanged);
+      _graceSeenWindow = grace.activeWindow;
+      _graceBandMounted = grace.isActive;
+      // Provisional window (the crossing happened while Home was
+      // not mounted — e.g. the user was on another tab): resolve
+      // it against the real evidence now that Home is here. If the
+      // closing day is in fact complete, the window closes as
+      // alreadyComplete; if incomplete, it simply runs on.
+      final active = grace.activeWindow;
+      if (active != null) {
+        unawaited(() async {
+          final incomplete = await _evaluateClosingDayIncomplete(
+            active.closingDayStart,
+            active.deadline,
+          );
+          if (!incomplete && grace.activeWindow == active) {
+            grace.resolveAlreadyComplete();
+          }
+        }());
+      }
+    }
     GemService.instance.addListener(_onGemBalanceChanged);
     // A cached server balance from an earlier payload paints the
     // gem pill on the first frame; the settle below refreshes it.
@@ -925,6 +1155,17 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   void dispose() {
+    final grace = _grace;
+    if (grace != null) {
+      grace.removeListener(_onGraceChanged);
+      if (identical(
+          grace.closingDayIncompleteEvaluator, _graceEvaluator)) {
+        grace.closingDayIncompleteEvaluator = null;
+      }
+      if (grace.onGraceEnded == _onGraceEnded) {
+        grace.onGraceEnded = _graceEndedBefore;
+      }
+    }
     WidgetsBinding.instance.removeObserver(this);
     GemService.instance.removeListener(_onGemBalanceChanged);
     _completionWatcher?.dispose();
@@ -1518,9 +1759,27 @@ class _HomeScreenState extends State<HomeScreen>
   void _deriveFromMerged() {
     final feelingId = _feelingCategoryId;
     final flareId = _flareCategoryId;
+    // Midnight Grace: while a window is live, the band's check-in
+    // derivation reads the CLOSING day (a moment inside it names
+    // its window) with the evidence window extended to the grace
+    // deadline — the strip then shows whether the CLOSING day has
+    // its check-in, and a check-in tapped during grace (timestamped
+    // after midnight, inside the extended window) hides it. Only
+    // this band/check-in surface is grace-scoped; every other
+    // derivation keeps the wall-clock day.
+    final graceWindow = _grace?.activeWindow;
     final checkIn = feelingId == null
         ? null
-        : findFeelingCheckInEntry(_mergedEntries, moodCategoryId: feelingId);
+        : graceWindow != null
+            ? findFeelingCheckInEntry(
+                _mergedEntries,
+                moodCategoryId: feelingId,
+                now: graceWindow.closingDayStart
+                    .add(const Duration(hours: 2)),
+                windowEnd: graceWindow.deadline,
+              )
+            : findFeelingCheckInEntry(_mergedEntries,
+                moodCategoryId: feelingId);
     final flare = flareId == null
         ? null
         : findFlareRecord(_mergedEntries, symptomsCategoryId: flareId);
@@ -2159,6 +2418,47 @@ class _HomeScreenState extends State<HomeScreen>
   /// provisional seed values only.
   bool _streakSettleLanded = false;
 
+  /// The streak-record pull for [_settleStreakWithEngine], taken
+  /// under the Midnight Grace gate (Vera C1): returns the pulled
+  /// record only when settlement is not deferred at the moment
+  /// the pull LANDS, and null when a live grace window defers the
+  /// settle (the grace-end handler re-runs it). When the only
+  /// deferral is an unresolved crossing evaluation, this waits
+  /// for the evaluation and loops — re-checking, then re-pulling
+  /// fresh — so the settle proceeds in this same call when the
+  /// crossing resolves with no window, and defers (null) when a
+  /// window opened. The loop is bounded by the crossing itself:
+  /// evaluations resolve in seconds and happen once per boundary.
+  Future<
+      ({
+        bool succeeded,
+        int? current,
+        int? best,
+        String? stateJson,
+        int? purchasedFreezes
+      })?> _pullStreakRecordGated() async {
+    while (true) {
+      final grace = _grace;
+      if (grace?.settlementDeferred ?? false) {
+        if (grace!.isActive) return null;
+        await grace.waitForCrossingEvaluation();
+        continue;
+      }
+      final pulled = await _healthRepo.loadStreakRecord();
+      // TOCTOU re-check: the boundary may have been crossed while
+      // this pull was in flight (a window opened, or a crossing
+      // evaluation started). Never hand a record to recordOpen
+      // while the gate has since closed.
+      final graceAfter = _grace;
+      if (graceAfter?.settlementDeferred ?? false) {
+        if (graceAfter!.isActive) return null;
+        await graceAfter.waitForCrossingEvaluation();
+        continue;
+      }
+      return pulled;
+    }
+  }
+
   /// Settle the streak engine for this app open against the
   /// authoritative server record, off the load's critical path.
   /// The engine records today (consuming the monthly save for a
@@ -2174,7 +2474,36 @@ class _HomeScreenState extends State<HomeScreen>
   /// state on failure) for the streak screen's tap path.
   Future<StreakState?> _settleStreakWithEngine() async {
     try {
-      final rec = await _healthRepo.loadStreakRecord();
+      // Midnight Grace gate: while a grace window is live, the
+      // closing day's settlement is DEFERRED — a recordOpen here
+      // (Home load / resume) would settle the closing day as
+      // missed mid-window. Return the store's current state; the
+      // grace-end handler re-runs this settle the moment the
+      // window resolves, and the normal rollover then proceeds
+      // exactly as if grace never existed.
+      //
+      // Vera C1 (binding): the gate is NOT check-once. The streak
+      // pull below is awaited, and the world can cross the
+      // boundary while it is in flight — race A: a settle starting
+      // at 23:59:59.x passes an early check, its pull lands after
+      // midnight, and an unrechecked recordOpen freeze-bridges the
+      // closing day mid-grace; race C: a settle arriving while the
+      // controller's crossing evaluation is still unresolved (no
+      // window exists yet) settles ungated in the same way. So the
+      // gate is re-checked IMMEDIATELY before recordOpen, after
+      // the awaited pull; a settle deferred only by an unresolved
+      // crossing WAITS for the evaluation and loops (the crossing
+      // resolving with no window lets this settle proceed — it is
+      // never silently stranded — and a window opening defers it
+      // to the grace-end re-run). Invariant: no recordOpen for the
+      // closing day at any moment in [boundary, deadline) while
+      // the crossing is unresolved OR a window is active.
+      final rec = await _pullStreakRecordGated();
+      if (rec == null) {
+        // Deferred by a live grace window: the grace-end handler
+        // re-runs this settle when the window resolves.
+        return StreakStore.instance.state;
+      }
       final engineState = await StreakStore.instance.recordOpen(
         pullSucceeded: rec.succeeded,
         seedCurrent: rec.current,
@@ -3120,9 +3449,28 @@ class _HomeScreenState extends State<HomeScreen>
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          // Midnight Grace (Nov 21, 2026): while a
+                          // grace window is live, the grace element
+                          // takes this slot. Tenancy: with the
+                          // counters as tenant it REPLACES them
+                          // (the approved mock's state); with the
+                          // check-in strip as tenant it stacks
+                          // ABOVE the strip, so the check-in — the
+                          // control grace exists to save — stays
+                          // tappable for the whole window.
+                          if (_graceBandMounted && _grace != null)
+                            MidnightGraceBand(
+                              controller: _grace!,
+                              onFadeOutComplete: () {
+                                if (mounted) {
+                                  setState(() => _graceBandMounted = false);
+                                }
+                              },
+                            ),
                           if (_feelingVisible)
                             HomeCheckInStrip(onSelect: _onFeelingSelect)
-                          else if (_counters.isNotEmpty)
+                          else if (!_graceBandMounted &&
+                              _counters.isNotEmpty)
                             Padding(
                               padding:
                                   const EdgeInsets.symmetric(horizontal: 12),

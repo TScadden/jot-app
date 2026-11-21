@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/billing_service.dart';
+import 'package:tabs_lab/src/data/midnight_grace.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/migraine_controller.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
@@ -96,6 +97,12 @@ class MainShell extends StatefulWidget {
   /// main.dart), forwarded to Home.
   final MigraineController? migraineController;
 
+  /// Midnight Grace (Nov 21, 2026) — injectable for tests; when
+  /// null the shell creates, starts, and owns one. The controller
+  /// lives at shell level (above Home) so the midnight crossing is
+  /// detected wherever the user is in the app; Home consumes it.
+  final MidnightGraceController? graceController;
+
   const MainShell(
       {super.key,
       this.email,
@@ -105,6 +112,7 @@ class MainShell extends StatefulWidget {
       this.onLogout,
       this.settingsStore,
       this.billingService,
+      this.graceController,
       this.migraineController});
 
   @override
@@ -175,9 +183,18 @@ class _MainShellState extends State<MainShell>
   // another tab.
   bool _homeDrawerOpen = false;
 
+  /// Midnight Grace — the shell's grace controller (injected or
+  /// owned) and whether this shell created it (owned → disposed
+  /// here; injected → the caller owns its lifecycle).
+  late final MidnightGraceController _graceController;
+  late final bool _ownsGraceController;
+
   @override
   void initState() {
     super.initState();
+    _graceController = widget.graceController ?? MidnightGraceController();
+    _ownsGraceController = widget.graceController == null;
+    _graceController.start();
     _settingsStore = widget.settingsStore ?? SettingsStore();
     _settingsStore.addListener(_onSettingsStoreChanged);
     // Dev-only app background (Nov 19, 2026): when the background
@@ -202,6 +219,10 @@ class _MainShellState extends State<MainShell>
 
   @override
   void dispose() {
+    // The grace controller: an owned one is disposed (cancelling
+    // its crossing/tick timers and its lifecycle observation); an
+    // injected one belongs to the caller.
+    if (_ownsGraceController) _graceController.dispose();
     // The store is NOT disposed here: when it was injected the
     // caller owns it, and when the shell created it nothing else
     // disposes stores anywhere in this codebase — only the
@@ -331,6 +352,7 @@ class _MainShellState extends State<MainShell>
           // Customize change made there notifies this shell too.
           settingsStore: _settingsStore,
           billingService: widget.billingService,
+          graceController: _graceController,
           migraineController: widget.migraineController,
           // Round 34 — so a logout started in the Settings screen
           // pushed from Home's counter slot exits the shell too.
