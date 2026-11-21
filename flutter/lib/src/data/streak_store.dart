@@ -569,6 +569,7 @@ class StreakStore {
     required DateTime now,
     required DateTime summaryDay,
     StreakSyncPush? push,
+    bool viaGrace = false,
   }) async {
     await ensureLoaded();
     if (!_loaded) {
@@ -608,6 +609,7 @@ class StreakStore {
       effective,
       summaryTabsDay: summaryTabsDay,
       now: now,
+      viaGrace: viaGrace,
     );
     // The completion record (P0 fix): this day's summary really
     // completed — the mark that protects the counted day from
@@ -617,6 +619,23 @@ class StreakStore {
       nextState = nextState.copyWith(
         summaryCompletedDays: {
           ...nextState.summaryCompletedDays,
+          summaryTabsDay,
+        },
+      );
+    }
+    // Midnight Grace no-gems marker (Nov 21, 2026): when this
+    // completion fired under grace, the day is grace-completed —
+    // ensured here alongside the completion record above because
+    // a counters-only completion seed can leave the day already
+    // counted before [completeDay] runs (its newly-counted mark
+    // then never lands). The watcher's fired-day marker already
+    // guarantees a genuinely completed day never re-fires under
+    // grace, so this ensure cannot re-mark a genuine completion.
+    // The dev SIM / Restore paths never pass the flag.
+    if (viaGrace && !nextState.graceCompletedDays.contains(summaryTabsDay)) {
+      nextState = nextState.copyWith(
+        graceCompletedDays: {
+          ...nextState.graceCompletedDays,
           summaryTabsDay,
         },
       );

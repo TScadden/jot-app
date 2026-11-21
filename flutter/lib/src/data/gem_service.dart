@@ -31,6 +31,12 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 ///   marker starts at the pre-completion settled streak, so a
 ///   streak already past a milestone when the feature first runs
 ///   is never backfilled.
+/// - Midnight Grace completions earn NOTHING (founder, Nov 21,
+///   2026): a day in [StreakState.graceCompletedDays] queues no
+///   daily/milestone/week key, a week containing any grace day
+///   never pays the perfect-week bonus, and stale pending keys
+///   attributable to grace days are retired at flush time without
+///   ever being requested (see the no-gems section below).
 ///
 /// Copy: EVERY user-facing gems string lives in [GemCopy] below,
 /// verbatim from Juno's ruling (build-gems/JUNO-COPY.md §§1–4) —
@@ -258,6 +264,7 @@ class GemService extends ChangeNotifier {
     _balance = null;
     _pending = [];
     _granted = {};
+    _graceDays = {};
     _lastStreak = null;
     _activatedDay = null;
     _ownerEmail = null;
@@ -274,6 +281,13 @@ class GemService extends ChangeNotifier {
   int? _balance;
   List<String> _pending = [];
   Set<String> _granted = {};
+
+  /// Days completed via the Midnight Grace window, adopted from
+  /// every settled [StreakState] this service sees (no-gems fix,
+  /// Nov 21, 2026). Persisted in this service's own blob because
+  /// the flush entry points that receive NO state (retryPending)
+  /// must still retire stale grace keys without requesting them.
+  Set<String> _graceDays = {};
   int? _lastStreak;
   String? _activatedDay;
   String? _ownerEmail;
@@ -382,6 +396,7 @@ class GemService extends ChangeNotifier {
         _balance = null;
         _pending = [];
         _granted = {};
+        _graceDays = {};
         _lastStreak = null;
         _activatedDay = null;
         _ownerEmail = _claimedOwner;
@@ -396,6 +411,10 @@ class GemService extends ChangeNotifier {
       }
       final granted = decoded['granted'];
       if (granted is List) _granted = granted.whereType<String>().toSet();
+      final graceDays = decoded['graceDays'];
+      if (graceDays is List) {
+        _graceDays = graceDays.whereType<String>().toSet();
+      }
       final last = decoded['lastStreak'];
       _lastStreak = last is int ? last : null;
       final act = decoded['activatedDay'];
@@ -406,6 +425,7 @@ class GemService extends ChangeNotifier {
       _balance = null;
       _pending = [];
       _granted = {};
+      _graceDays = {};
       _lastStreak = null;
       _activatedDay = null;
     }
@@ -426,6 +446,7 @@ class GemService extends ChangeNotifier {
       _balance = null;
       _pending = [];
       _granted = {};
+      _graceDays = {};
       _lastStreak = null;
       _activatedDay = null;
       unawaited(_deleteQuietly());
@@ -443,6 +464,13 @@ class GemService extends ChangeNotifier {
       grantedList = grantedList.sublist(grantedList.length - 400);
       _granted = grantedList.toSet();
     }
+    // Same bound for the adopted grace days (ISO day strings sort
+    // chronologically, so the tail is the most recent).
+    var graceList = _graceDays.toList()..sort();
+    if (graceList.length > 400) {
+      graceList = graceList.sublist(graceList.length - 400);
+      _graceDays = graceList.toSet();
+    }
     try {
       await _write(
         storageKey,
@@ -451,6 +479,7 @@ class GemService extends ChangeNotifier {
           'balance': _balance,
           'pending': _pending,
           'granted': grantedList,
+          'graceDays': graceList,
           'lastStreak': _lastStreak,
           'activatedDay': _activatedDay,
         }),
@@ -515,6 +544,56 @@ class GemService extends ChangeNotifier {
     }
   }
 
+  // ── Midnight Grace no-gems (Nov 21, 2026) ─────────────────────
+  // Founder verbatim: "you shouldn't get gems for doing the grace
+  // period." A grace-completed day earns NO gems of any kind. The
+  // server cannot distinguish a grace day (it validates against
+  // summaryCompletedDays, which a grace day legitimately joins),
+  // so suppression is client-side and absolute: never queue the
+  // key, and retire without requesting any stale key the shipped
+  // gem-paying build (VC 100157) may have left pending.
+
+  /// Adopt [state]'s grace-completed days into this service's own
+  /// record (persisted by the caller's next [_persist]). Adoption
+  /// is what lets the state-less flush entry points (retryPending)
+  /// apply the same suppression as the state-carrying ones.
+  void _adoptGraceDays(StreakState state) {
+    if (state.graceCompletedDays.isEmpty) return;
+    _graceDays = {..._graceDays, ...state.graceCompletedDays};
+  }
+
+  /// The perfect-week STRICT predicate — the ONE localized check
+  /// both evaluation sites (processCompletion and onAppOpen) use:
+  /// a week pays +20 only when all 7 days summary-completed AND
+  /// none of them was grace-completed. (Flagged for Vera + Juno
+  /// concurrence at review: a single grace day anywhere in the
+  /// week forfeits that week's +20.)
+  bool _weekPays(StreakState state, List<String> days) =>
+      days.every(state.summaryCompletedDays.contains) &&
+      !days.any(state.graceCompletedDays.contains);
+
+  /// Whether a queued grant [key] is attributable to grace days
+  /// this service has adopted: a `daily:` key for a grace day, or
+  /// a `week:` key whose week contains any grace day. Milestone
+  /// keys carry no day and are never queued for a grace completion
+  /// in the first place (processCompletion queues nothing), so no
+  /// stale milestone key can exist.
+  bool _isGraceKey(String key) {
+    if (_graceDays.isEmpty) return false;
+    if (key.startsWith('daily:')) {
+      return _graceDays.contains(key.substring('daily:'.length));
+    }
+    if (key.startsWith('week:')) {
+      try {
+        return gemWeekDays(key.substring('week:'.length))
+            .any(_graceDays.contains);
+      } catch (_) {
+        return false;
+      }
+    }
+    return false;
+  }
+
   /// Whether a non-200 grant answer is a RETRY-LATER refusal:
   /// the key stays queued and is re-requested at the next
   /// app-open sync, exactly like a network failure, and is never
@@ -559,7 +638,20 @@ class GemService extends ChangeNotifier {
       _flushPending() async {
     final retired = <String>[];
     final fresh = <String>[];
+    var droppedGraceKeys = false;
     for (final key in List<String>.of(_pending)) {
+      // No-gems flush hardening: a pending key attributable to a
+      // grace day (queued by the shipped gem-paying build before
+      // this fix, e.g. while offline at the grace completion) is
+      // retired WITHOUT a request — it must never reach the
+      // server, where it would validate and pay. The key is NOT
+      // marked granted (it never was); the grace-day record is
+      // what keeps it from ever being re-queued.
+      if (_isGraceKey(key)) {
+        _pending.remove(key);
+        droppedGraceKeys = true;
+        continue;
+      }
       GemRequestResult r;
       try {
         r = await _grantFn(key);
@@ -590,7 +682,7 @@ class GemService extends ChangeNotifier {
       }
       if (bal is int) _setBalance(bal);
     }
-    if (retired.isNotEmpty) await _persist();
+    if (retired.isNotEmpty || droppedGraceKeys) await _persist();
     return (retired: retired, fresh: fresh);
   }
 
@@ -632,26 +724,42 @@ class GemService extends ChangeNotifier {
     try {
       await ensureLoaded();
       if (!_loaded) return GemEarnResult(lines: const [], balance: _balance);
+      _adoptGraceDays(settledState);
       _activateIfNeeded(summaryTabsDay, baselineStreak: previousStreak);
       final effectivePrev = _lastStreak ?? previousStreak;
 
+      // Midnight Grace no-gems: a completion whose day is marked
+      // grace-completed queues NO keys — no daily, no milestone,
+      // no week. The streak marker below STILL advances to
+      // [newStreak], so a milestone crossing on a grace day is
+      // consumed permanently, never re-evaluated (and never paid)
+      // by a later completion. The celebration still fires; only
+      // the gems are withheld. Suppression keys off the per-day
+      // marker only, never the window (C3): the new day's own
+      // genuine completion is unmarked and pays normally.
+      final isGraceCompletion =
+          settledState.graceCompletedDays.contains(summaryTabsDay);
+
       final keys = <String>[];
-      // Daily — exactly once per Tabs day (queue/granted dedupe;
-      // server idempotency is the backstop).
-      keys.add('daily:$summaryTabsDay');
-      // Milestones — real crossings only: prev < n <= new.
-      for (var n = effectivePrev + 1; n <= newStreak; n++) {
-        if (gemMilestoneBonus(n) != null) keys.add('milestone:$n');
-      }
-      // Perfect week — the summary day's own Mon–Sun week, all 7
-      // days summary-completed, and the week did not end before
-      // the feature activated (no backfill).
-      final monday = gemWeekMonday(summaryTabsDay);
-      final days = gemWeekDays(monday);
-      final sunday = days.last;
-      if ((_activatedDay == null || sunday.compareTo(_activatedDay!) >= 0) &&
-          days.every(settledState.summaryCompletedDays.contains)) {
-        keys.add('week:$monday');
+      if (!isGraceCompletion) {
+        // Daily — exactly once per Tabs day (queue/granted dedupe;
+        // server idempotency is the backstop).
+        keys.add('daily:$summaryTabsDay');
+        // Milestones — real crossings only: prev < n <= new.
+        for (var n = effectivePrev + 1; n <= newStreak; n++) {
+          if (gemMilestoneBonus(n) != null) keys.add('milestone:$n');
+        }
+        // Perfect week — the summary day's own Mon–Sun week, all
+        // 7 days summary-completed, none grace-completed (the
+        // strict predicate), and the week did not end before the
+        // feature activated (no backfill).
+        final monday = gemWeekMonday(summaryTabsDay);
+        final days = gemWeekDays(monday);
+        final sunday = days.last;
+        if ((_activatedDay == null || sunday.compareTo(_activatedDay!) >= 0) &&
+            _weekPays(settledState, days)) {
+          keys.add('week:$monday');
+        }
       }
 
       _queue(keys);
@@ -689,6 +797,7 @@ class GemService extends ChangeNotifier {
     try {
       await ensureLoaded();
       if (!_loaded) return _balance;
+      _adoptGraceDays(state);
       final today = tabsDayStr(now);
       final anchor = tabsDayAnchor(now);
       _activateIfNeeded(
@@ -697,7 +806,10 @@ class GemService extends ChangeNotifier {
       );
       // Perfect-week settle check for the current and previous
       // weeks (a week whose Sunday completion queued its grant
-      // already is deduped by _queue).
+      // already is deduped by _queue). The SAME strict grace
+      // predicate as the completion path applies here — this
+      // reconcile site must never re-queue a week the completion
+      // path suppressed.
       final keys = <String>[];
       for (final probe in [
         today,
@@ -709,7 +821,7 @@ class GemService extends ChangeNotifier {
             days.last.compareTo(_activatedDay!) < 0) {
           continue;
         }
-        if (days.every(state.summaryCompletedDays.contains)) {
+        if (_weekPays(state, days)) {
           keys.add('week:$monday');
         }
       }
