@@ -509,15 +509,42 @@ class _RemindersScreenState extends State<RemindersScreen> {
   /// never be poisoned.
   Future<void> _alarmQueue = Future<void>.value();
 
-  /// Upper bound on ONE alarm-sync task's plugin work. A healthy
-  /// reconcile is 1500 serial cancels per reminder (a few seconds
-  /// at most on device); a task that exceeds this is treated as a
-  /// scheduling failure — the alarm note surfaces and the queue
-  /// moves on instead of stalling behind it forever. The
-  /// underlying plugin calls are not cancelled (the plugin has no
-  /// cancellation); the next task's reconcile re-syncs from the
-  /// current list, so a late-finishing stall cannot leave the
-  /// alarms permanently behind the saved state.
+  /// Alarm-sync generation (round 2, Vera): bumped on every
+  /// successful push and every [_load] that replaces [_doc]. Each
+  /// alarm-sync task captures the generation when it runs and the
+  /// reconcile checks it immediately before every schedule call
+  /// (see [reconcileReminderAlarms]): once a task is superseded,
+  /// its late-finishing plugin work may still cancel, but it can
+  /// NEVER schedule from its stale snapshot — so a stalled ON
+  /// reconcile that finishes after a later OFF can no longer
+  /// resurrect the alarm.
+  int _alarmSyncGeneration = 0;
+
+  /// Tail of the plugin-work lock (round 2): the REAL alarm
+  /// plugin work of every task is chained onto this future, so
+  /// two tasks' plugin calls can never overlap — not even when a
+  /// task's [_alarmSyncTimeout] has fired and its work continues
+  /// detached. The timeout bounds the QUEUE's wait, never the
+  /// lock: a successor's plugin work starts only when its
+  /// predecessor's has actually finished. The tail itself never
+  /// completes with an error, so one task's failure cannot poison
+  /// the chain (the error still reaches that task's caller).
+  Future<void> _alarmPluginTail = Future<void>.value();
+
+  /// Upper bound on ONE alarm-sync task's whole turn: its
+  /// delete-cancel plus full reconcile together, including any
+  /// wait behind a timed-out predecessor whose plugin work still
+  /// holds [_alarmPluginTail]. A healthy reconcile is 1500 serial
+  /// cancels per reminder (a few seconds at most on device); a
+  /// task that exceeds this is treated as a scheduling failure —
+  /// the alarm note surfaces and the queue moves on instead of
+  /// stalling behind it forever. The timeout does NOT cancel the
+  /// underlying plugin calls (the plugin has no cancellation):
+  /// the detached work keeps the plugin lock until it actually
+  /// finishes, and the generation guard above is what makes its
+  /// late finish harmless — it can never schedule once
+  /// superseded, and the superseding task's reconcile re-syncs
+  /// from the current list.
   static const Duration _alarmSyncTimeout = Duration(seconds: 60);
 
   @override
@@ -547,6 +574,9 @@ class _RemindersScreenState extends State<RemindersScreen> {
       }
       final rows =
           TabsBackend.decodeProfileList(profile['reminders']);
+      // A load replaces the doc wholesale: any in-flight alarm
+      // reconcile is now working from a superseded snapshot.
+      _alarmSyncGeneration++;
       setState(() {
         _doc = ReminderDocument.fromRawRows(rows);
         _loading = false;
@@ -567,11 +597,30 @@ class _RemindersScreenState extends State<RemindersScreen> {
   /// [reconcileReminderAlarms]) — a scheduling problem must never
   /// break the screen; the next successful write reconciles again.
   /// Returns whether every reminder synced cleanly.
-  Future<bool> _reconcileAlarms() {
-    return reconcileReminderAlarms(_notifs, [
-      for (final i in _doc.visibleIndices)
-        if (_doc.modelAt(i) != null) _doc.modelAt(i)!,
-    ]);
+  ///
+  /// The snapshot is frozen from [_doc] NOW, paired with
+  /// [generation]: the currency closure handed to the reconcile
+  /// compares that generation against the live counter, so the
+  /// moment a newer push or load lands, this reconcile loses the
+  /// right to schedule (it aborts at the next check instead).
+  Future<bool> _reconcileAlarms(int generation) {
+    return reconcileReminderAlarms(
+      _notifs,
+      [
+        for (final i in _doc.visibleIndices)
+          if (_doc.modelAt(i) != null) _doc.modelAt(i)!,
+      ],
+      isStillCurrent: () => generation == _alarmSyncGeneration,
+    );
+  }
+
+  /// Runs [body] as the next holder of the plugin-work lock: it
+  /// starts only after every previously submitted task's REAL
+  /// plugin work has finished (see [_alarmPluginTail]).
+  Future<T> _runAlarmPluginWork<T>(Future<T> Function() body) {
+    final result = _alarmPluginTail.then((_) => body());
+    _alarmPluginTail = result.then<void>((_) {}, onError: (_) {});
+    return result;
   }
 
   /// Enqueues one alarm-sync task on [_alarmQueue]. For a delete,
@@ -594,17 +643,29 @@ class _RemindersScreenState extends State<RemindersScreen> {
 
   /// One queued alarm-sync task. Never throws: a notification
   /// failure never fails (or wedges) the save that queued it.
+  ///
+  /// The task captures the current alarm-sync generation, then
+  /// runs its plugin work (delete-cancel, then full reconcile)
+  /// under the plugin-work lock, with [_alarmSyncTimeout] applied
+  /// ONCE to the task's whole turn. On timeout the queue moves
+  /// on, but the detached work keeps the lock until it actually
+  /// finishes, and the captured generation forbids it from
+  /// scheduling if a newer push or load has superseded it
+  /// meanwhile — a late finish can never resurrect a stale alarm.
   Future<void> _runAlarmSync({
     int? cancelledReminderId,
     required bool notifyOnFailure,
   }) async {
+    final generation = _alarmSyncGeneration;
     var alarmsOk = true;
     try {
-      if (cancelledReminderId != null) {
-        await cancelReminderAlarms(_notifs, cancelledReminderId)
-            .timeout(_alarmSyncTimeout);
-      }
-      if (!await _reconcileAlarms().timeout(_alarmSyncTimeout)) {
+      final work = _runAlarmPluginWork(() async {
+        if (cancelledReminderId != null) {
+          await cancelReminderAlarms(_notifs, cancelledReminderId);
+        }
+        return _reconcileAlarms(generation);
+      });
+      if (!await work.timeout(_alarmSyncTimeout)) {
         alarmsOk = false;
       }
     } catch (_) {
@@ -656,6 +717,10 @@ class _RemindersScreenState extends State<RemindersScreen> {
       final ok = await _backend.postSyncProfile(
           {'reminders': jsonEncode(newDoc.encode())});
       if (ok) {
+        // The saved state just changed: every alarm reconcile
+        // still running from an older snapshot is superseded and
+        // loses the right to schedule (generation guard).
+        _alarmSyncGeneration++;
         _backend.invalidateSyncPull();
         // A notification failure NEVER fails the save — and a
         // slow or stalled one never wedges the screen: the alarm
