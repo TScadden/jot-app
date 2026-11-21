@@ -1574,11 +1574,14 @@ class TabsBackend {
 
   /// Gems spend (jot-server PR #41): `POST /api/gems/spend/freeze
   /// {spendId}` → 200 `{gemBalance, purchasedFreezes,
-  /// alreadyGranted}`; 409 `{error: purchased_already_held |
-  /// freeze_cap_reached | insufficient_gems, gemBalance,
-  /// purchasedFreezes}`. The spendId is client-generated, unique
-  /// per user intent; a replayed spendId is a replay, never a
-  /// double charge.
+  /// alreadyGranted}`; 409 `{error: freeze_cap_reached |
+  /// insufficient_gems, gemBalance, purchasedFreezes}`. (Before
+  /// the Nov 21, 2026 gem-buy rule change the server could also
+  /// answer `purchased_already_held`; it no longer returns that
+  /// code for gem spends, and [GemService.spendOnFreeze] maps a
+  /// legacy answer to a silent re-sync.) The spendId is
+  /// client-generated, unique per user intent; a replayed
+  /// spendId is a replay, never a double charge.
   Future<({int? statusCode, Map<String, dynamic>? body})> spendGemsOnFreeze(
     String spendId,
   ) =>

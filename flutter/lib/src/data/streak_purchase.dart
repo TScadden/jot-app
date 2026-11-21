@@ -486,7 +486,11 @@ class StreakFreezePurchaseService extends ChangeNotifier {
         held = null;
       }
       if (held != null) {
-        adoptedPurchasedFreezes = held.clamp(0, 1);
+        // 0..3 (gem-buy rule change, Nov 21, 2026): the held
+        // count this adopts is the account's whole purchased-
+        // class bucket, which gem buys can raise to 2–3; the
+        // $0.99 affordance rule itself is unchanged.
+        adoptedPurchasedFreezes = held.clamp(0, 3);
         onAdopted?.call(adoptedPurchasedFreezes!);
       }
       state = StreakFreezeBuyState.available;

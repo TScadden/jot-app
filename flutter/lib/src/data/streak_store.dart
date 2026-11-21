@@ -320,7 +320,10 @@ class StreakStore {
             : adoptedState.purchasedFreezes;
         if (adoptedState.purchasedFreezes != effectivePurchased) {
           s = adoptedState.copyWith(
-            purchasedFreezes: effectivePurchased.clamp(0, 1),
+            // 0..3 (gem-buy rule change, Nov 21, 2026): the
+            // server column can legitimately carry 2–3 once gem
+            // buys join the purchased-class bucket.
+            purchasedFreezes: effectivePurchased.clamp(0, 3),
           );
         }
       }
@@ -720,7 +723,9 @@ class StreakStore {
     if (!_loaded) return;
     final s = _state;
     if (s == null) return;
-    final clamped = count.clamp(0, 1);
+    // 0..3 (gem-buy rule change, Nov 21, 2026): a verified gem
+    // spend can return a purchased-class count of 2 or 3.
+    final clamped = count.clamp(0, 3);
     if (s.purchasedFreezes == clamped) return;
     _state = s.copyWith(purchasedFreezes: clamped);
     _dirty = true;

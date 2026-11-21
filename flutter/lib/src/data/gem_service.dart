@@ -157,7 +157,6 @@ enum GemSpendStatus {
   success,
   replay,
   insufficient,
-  alreadyHeld,
   capReached,
   failed,
 }
@@ -734,10 +733,14 @@ class GemService extends ChangeNotifier {
   /// Spend 100 gems on one streak freeze (POST /api/gems/spend/
   /// freeze). A unique spendId is generated per user intent; the
   /// server makes a replayed spendId a replay, never a double
-  /// charge. Every server answer (success AND the three 409s)
-  /// carries the authoritative balance, which is adopted here —
-  /// the caller refreshes its surfaces from it and never shows a
-  /// raw error code.
+  /// charge. Every server answer (success AND the 409s) carries
+  /// the authoritative balance, which is adopted here — the
+  /// caller refreshes its surfaces from it and never shows a raw
+  /// error code. The gem path's only refusal outcomes are
+  /// [GemSpendStatus.insufficient] and [GemSpendStatus.capReached]:
+  /// since the Nov 21, 2026 rule change there is no already-held
+  /// outcome for a gem spend (see the legacy-code mapping in the
+  /// 409 switch below).
   Future<GemSpendResult> spendOnFreeze({String? spendId}) async {
     await ensureLoaded();
     GemRequestResult r;
@@ -777,8 +780,18 @@ class GemService extends ChangeNotifier {
             purchasedFreezes: freezes,
           );
         case 'purchased_already_held':
+          // Gem-buy rule change (Nov 21, 2026): the server no
+          // longer returns this code for gem spends — holding a
+          // purchased-class freeze no longer blocks a gem buy.
+          // Only a pre-change server can still answer it. Map it
+          // to the capReached re-sync outcome so the legacy code
+          // can NEVER surface as a user-facing failure (or a
+          // success) on the gem-spend path: the answer's balance
+          // and freeze count are adopted above, both surfaces
+          // re-derive from that state, and the user can retry
+          // once the updated server is live.
           return GemSpendResult(
-            status: GemSpendStatus.alreadyHeld,
+            status: GemSpendStatus.capReached,
             balance: bal,
             purchasedFreezes: freezes,
           );

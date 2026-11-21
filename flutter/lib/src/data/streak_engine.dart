@@ -317,6 +317,15 @@ class StreakState {
 
     int heldOf(String key) => intOf(key).clamp(0, 1);
 
+    // Gem-buy rule change (Nov 21, 2026): the purchased-class
+    // bucket can legitimately hold up to the cap of 3 (a money
+    // purchase plus gem buys), so its persisted count parses
+    // against 0..3 — clamping it to 1 here would silently eat
+    // gem-bought freezes on every reload. The earned bucket
+    // keeps its 0..1 bound (at most one earned freeze is ever
+    // held; a further earned freeze waits pending).
+    int purchasedOf(String key) => intOf(key).clamp(0, 3);
+
     final last = json['lastEvaluatedDay'];
     final consumed = setOf('consumedSaveMonths');
     final version = json['v'];
@@ -331,7 +340,7 @@ class StreakState {
       consumedSaveMonths: consumed,
       lastEvaluatedDay: last is String ? last : null,
       earnedFreezes: isV2 ? heldOf('earnedFreezes') : 0,
-      purchasedFreezes: isV2 ? heldOf('purchasedFreezes') : 0,
+      purchasedFreezes: isV2 ? purchasedOf('purchasedFreezes') : 0,
       earnedPending: isV2 ? json['earnedPending'] == true : false,
       accrualMonth: isV2
           ? (accrualRaw is String ? accrualRaw : '')
@@ -926,7 +935,10 @@ StreakState _seedEndingAt({
     seededBest: best > 0 ? best : 0,
     countedDays: counted,
     lastEvaluatedDay: counted.isEmpty ? null : endDay,
-    purchasedFreezes: purchasedFreezes.clamp(0, 1),
+    // 0..3, not 0..1 (gem-buy rule change, Nov 21, 2026): the
+    // profile pull's purchased count can legitimately be 2–3
+    // once gem buys join the purchased-class bucket.
+    purchasedFreezes: purchasedFreezes.clamp(0, 3),
     accrualMonth: _monthOfDay(endDay),
   );
 }
