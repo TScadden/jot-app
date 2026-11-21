@@ -22,6 +22,29 @@ typedef FlareUpsertCommit = Future<bool> Function({
   String? type,
 });
 
+/// Dismiss THIS sheet's own route — and only this sheet's route
+/// (celebration fix, Nov 21, 2026). The commit flows in this file
+/// await a network commit and then dismiss; a bare
+/// `Navigator.of(context).pop()` removes the TOP route, whatever
+/// it is when the commit resolves. When the commit completes the
+/// Daily Summary, the streak celebration is pushed by the
+/// completion chain while the commit is still in flight — the
+/// sheet's late pop then removed the CELEBRATION instead of the
+/// sheet, in place, and the founder never saw it (reproduced in
+/// celebration_present_repro_test.dart (h)). So: when this
+/// sheet's route is current, pop it normally; when another route
+/// sits on top, remove this sheet's route from underneath and
+/// leave the top route untouched.
+void popOwnSheetRoute(BuildContext context) {
+  final route = ModalRoute.of(context);
+  final navigator = Navigator.of(context);
+  if (route != null && !route.isCurrent) {
+    navigator.removeRoute(route);
+  } else {
+    navigator.pop();
+  }
+}
+
 // ── Shared sheet pieces ─────────────────────────────────────────────
 
 /// One large sheet option (≥48dp; this flow uses 56dp minimum).
@@ -259,7 +282,7 @@ class _CheckInKindSheetState extends State<CheckInKindSheet> {
     }
     if (!mounted) return;
     if (ok) {
-      Navigator.of(context).pop();
+      popOwnSheetRoute(context);
     } else {
       setState(() {
         _committing = false;
@@ -353,7 +376,7 @@ class _CheckInGoodSheetState extends State<CheckInGoodSheet> {
     if (_selected.isEmpty) {
       // Item 5: empty Done creates no record and no announcement —
       // equivalent to dismissal.
-      Navigator.of(context).pop();
+      popOwnSheetRoute(context);
       return;
     }
     setState(() {
@@ -368,7 +391,7 @@ class _CheckInGoodSheetState extends State<CheckInGoodSheet> {
     }
     if (!mounted) return;
     if (ok) {
-      Navigator.of(context).pop();
+      popOwnSheetRoute(context);
     } else {
       setState(() {
         _committing = false;
@@ -511,7 +534,7 @@ class _CheckInAmendSheetState extends State<CheckInAmendSheet> {
     }
     if (!mounted) return;
     if (ok) {
-      Navigator.of(context).pop();
+      popOwnSheetRoute(context);
     } else {
       setState(() {
         _committing = false;
