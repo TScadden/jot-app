@@ -63,6 +63,23 @@ class FakeHealthConnect extends HealthConnectService {
   @override
   Future<bool> isConnected() async => connected;
 
+  // HC Grant Hardening — the Sleep screen gates on the
+  // grant-state probe: connected ⇒ full grant, disconnected ⇒
+  // empty grant.
+  @override
+  Future<HcAvailability> probeAvailability() => probeGrantState();
+
+  @override
+  Future<HcAvailability> probeGrantState() async => HcAvailability(
+        serviceAvailable: true,
+        grantedPermissions: connected
+            ? HealthConnectService.requiredPermissions
+            : const <String>{},
+        bridgeErrorCode: null,
+        stepsProbe: null,
+        persistedConnected: connected,
+      );
+
   @override
   Future<int?> readSleepMinutes(String dateStr) async =>
       minutes[dateStr];

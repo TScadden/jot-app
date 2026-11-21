@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/data/hc_availability.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart';
@@ -149,7 +150,8 @@ class SleepScreen extends StatefulWidget {
   /// Injectable for tests.
   final TabsBackend? backend;
 
-  /// Injectable for tests (a fake can override isConnected/readSleep*).
+  /// Injectable for tests (a fake can override
+  /// probeAvailability/readSleep*).
   final HealthConnectService? healthConnect;
 
   /// R70 WS2 — injectable union reader for the Sleep Need section.
@@ -269,7 +271,18 @@ class _SleepScreenState extends State<SleepScreen> {
         _loading = false;
       });
     }
-    final connected = await _guarded(() => _hc.isConnected()) ?? false;
+    // HC Grant Hardening §3.4 — the fresh-load gate judges
+    // SLEEP's permission set alone (READ_SLEEP): only a
+    // verified-missing sleep permission takes the not-connected
+    // path. An unknown grant layer (the guard flattened a bridge
+    // error or stall to a null snapshot) attempts the reads,
+    // which fail closed per metric behind the same guard.
+    final snapshot = await _guarded(() => _hc.probeGrantState());
+    // A confirmed-unavailable service is a KNOWN state: it takes
+    // the not-connected path, like a verified-missing permission.
+    final connected =
+        snapshot?.status != HealthConnectStatus.unavailable &&
+            hcShouldAttemptRead(sleepPermissions, snapshot?.missingIfKnown);
     if (!connected) {
       if (!mounted) return;
       setState(() {

@@ -1143,7 +1143,7 @@ class _Bug3Repository extends HealthRepository {
   _Bug3Repository({required this.stateJson}) : super();
 
   @override
-  Future<TodayVitals> loadTodayVitals({required bool connected}) async =>
+  Future<TodayVitals> loadTodayVitals({required HcAvailability snapshot}) async =>
       const TodayVitals(
         heartRate: 75,
         activeCalories: 460,

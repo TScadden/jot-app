@@ -55,6 +55,7 @@ import 'package:tabs_lab/src/features/home/good_day_logging.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 import 'package:tabs_lab/src/features/tools/community_screen.dart';
+import 'package:tabs_lab/src/features/home/hc_repair_card.dart';
 import 'package:tabs_lab/src/features/home/health_connect_banner.dart';
 import 'package:tabs_lab/src/features/home/home_checkin_strip.dart';
 import 'package:tabs_lab/src/features/home/migraine_block.dart';
@@ -318,6 +319,22 @@ class _HomeScreenState extends State<HomeScreen>
   /// stale copy. Stale is DATA in the snapshot, never a throw and
   /// never a rendered code (Juno ruling, condition 1).
   bool _hcStaleGrant = false;
+
+  /// HC Grant Hardening §3.2/§3.3 — the wedged state for the
+  /// repair card: the probe reports the stale wedge
+  /// ([HcAvailability.staleWedged]) OR this load's own core reads
+  /// failed with a SecurityException while granted
+  /// ([TodayVitals.coreReadWedged]). While true, the repair card
+  /// REPLACES the banner in its slot under the vitals strip; the
+  /// flag is re-derived on every load, so the card's dismissal is
+  /// state-derived (reads flowing again ⇒ gone), never latched.
+  bool _hcWedged = false;
+
+  /// The repair card's second step (remove-access directions),
+  /// set when an in-place repair attempt did not clear the wedge;
+  /// cleared whenever the wedge itself clears.
+  bool _hcRepairSecondStep = false;
+  bool _hcRepairing = false;
 
   /// Round 15c — once-per-day count-up gate. False until the gate
   /// resolves; true only on the first home view of the day. On later
@@ -2042,8 +2059,15 @@ class _HomeScreenState extends State<HomeScreen>
     } else {
       status = snapshot.status!;
     }
-    final connected = snapshot.status == HealthConnectStatus.connected;
-    final vitals = await _healthRepo.loadTodayVitals(connected: connected);
+    // HC Grant Hardening §3.4 — the vitals load gates PER TYPE
+    // off this same snapshot (no second probe, no global
+    // verdict): a missing or wedged permission degrades only its
+    // own type in the strip.
+    final vitals = await _healthRepo.loadTodayVitals(snapshot: snapshot);
+    // §3.2 — Home's wedged state: the snapshot's stale-wedged
+    // probe evidence, or this load's own core-read wedge
+    // evidence.
+    final wedged = staleGrant || vitals.coreReadWedged;
     final streak = await streakFuture;
     // Streak engine (Lab package Nov 4, 2026; authoritative
     // pipeline VC 100115) — the engine settles today against the
@@ -2091,8 +2115,9 @@ class _HomeScreenState extends State<HomeScreen>
     // Round 23 — a status-only change (e.g. the fresh load found the
     // same empty vitals the cache already held, but now we KNOW the
     // connection state) must also rebuild, or the banner never lands.
-    final statusChanged =
-        status != _hcStatus || staleGrant != _hcStaleGrant;
+    final statusChanged = status != _hcStatus ||
+        staleGrant != _hcStaleGrant ||
+        wedged != _hcWedged;
     if (changed || statusChanged) {
       setState(() {
         _vitals = vitals;
@@ -2105,6 +2130,10 @@ class _HomeScreenState extends State<HomeScreen>
         }
         _hcStatus = status;
         _hcStaleGrant = staleGrant;
+        _hcWedged = wedged;
+        // The repair card's second step belongs to its incident:
+        // a cleared wedge takes the second step with it.
+        if (!wedged) _hcRepairSecondStep = false;
       });
     }
     // R70 fix pass (Vera F2) — a completed health-data load re-runs
@@ -2394,6 +2423,35 @@ class _HomeScreenState extends State<HomeScreen>
     );
     if (!mounted) return;
     unawaited(_loadHealthData());
+  }
+
+  /// HC Grant Hardening §3.3 — the repair card's tap: runs the
+  /// shared in-place repair flow (MF-3 disclosure first, then the
+  /// permission request; see [runHcRepairFlow]). A cleared flow
+  /// reloads Home's health data; if the wedge survives the
+  /// reload, the card swaps to its second step (the remove-access
+  /// directions). A failed request is logged with its code —
+  /// Home has no error line and codes never render (Juno
+  /// condition 1).
+  Future<void> _onHcRepairTap() async {
+    if (_hcRepairing) return;
+    setState(() => _hcRepairing = true);
+    final result = await runHcRepairFlow(context, _healthRepo.hc);
+    if (!mounted) return;
+    setState(() => _hcRepairing = false);
+    switch (result.outcome) {
+      case HcRepairOutcome.aborted:
+        break;
+      case HcRepairOutcome.failed:
+        debugPrint('Home HC repair failed [${result.errorCode}]');
+      case HcRepairOutcome.stillWedged:
+        setState(() => _hcRepairSecondStep = true);
+      case HcRepairOutcome.cleared:
+        await _loadHealthData();
+        if (mounted && _hcWedged) {
+          setState(() => _hcRepairSecondStep = true);
+        }
+    }
   }
 
   Future<void> _loadWeather() async {
@@ -3092,7 +3150,23 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
             // Health Connect banner directly UNDER the band.
-            if (shouldShowHealthConnectBanner(
+            // HC Grant Hardening §3.3 — while wedged, the repair
+            // card REPLACES the banner in this slot; the
+            // not-connected and partial banner presentations are
+            // untouched.
+            if (_hcWedged)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16.0, vertical: 2.0),
+                child: HcRepairCard(
+                  secondStep: _hcRepairSecondStep,
+                  requesting: _hcRepairing,
+                  onRepairTap: _hcRepairing
+                      ? null
+                      : () => unawaited(_onHcRepairTap()),
+                ),
+              )
+            else if (shouldShowHealthConnectBanner(
                 status: _hcStatus, vitals: _vitals))
               HealthConnectBanner(
                 status: _hcStatus!,

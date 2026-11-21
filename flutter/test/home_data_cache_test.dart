@@ -68,7 +68,7 @@ class _StalledRepository extends HealthRepository {
   _StalledRepository() : super();
 
   @override
-  Future<TodayVitals> loadTodayVitals({required bool connected}) =>
+  Future<TodayVitals> loadTodayVitals({required HcAvailability snapshot}) =>
       Completer<TodayVitals>().future;
 
   @override
@@ -89,7 +89,7 @@ class _DelayedRepository extends HealthRepository {
   }) : super();
 
   @override
-  Future<TodayVitals> loadTodayVitals({required bool connected}) async {
+  Future<TodayVitals> loadTodayVitals({required HcAvailability snapshot}) async {
     await Future<void>.delayed(const Duration(milliseconds: 100));
     return vitals;
   }

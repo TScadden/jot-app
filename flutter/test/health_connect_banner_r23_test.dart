@@ -8,6 +8,7 @@ import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
+import 'package:tabs_lab/src/features/home/hc_repair_card.dart';
 import 'package:tabs_lab/src/features/home/health_connect_banner.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 
@@ -418,13 +419,16 @@ void main() {
     });
 
     testWidgets('stale grant (full grants, probe SecurityException) → '
-        'banner items 1–2 and NO [STALE_GRANT] anywhere', (tester) async {
+        'HC Grant Hardening §3.3: the repair card REPLACES the stale '
+        'banner, and NO [STALE_GRANT] anywhere', (tester) async {
       final granted = HealthConnectService.requiredPermissions.toList();
       await _pumpHome(
           tester,
           _service(granted: granted, probeSecurityFailure: true));
-      expect(find.text(_staleTitle), findsOneWidget);
-      expect(find.text(_staleBody), findsOneWidget);
+      expect(find.text(hcRepairCardTitle), findsOneWidget);
+      expect(find.text(hcRepairCardBody), findsOneWidget);
+      expect(find.text(hcRepairCardButton), findsOneWidget);
+      expect(find.text(_staleTitle), findsNothing);
       expect(find.text(_notConnectedTitle), findsNothing);
       expect(find.text('[STALE_GRANT]'), findsNothing);
       expectNoBracketedCode(tester);

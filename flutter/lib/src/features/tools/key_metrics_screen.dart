@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/data/hc_availability.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart';
@@ -108,6 +109,27 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
   String? _error;
   DateTime _selectedDate = DateTime.now();
 
+  /// HC Grant Hardening §3.4 — the availability snapshot probed
+  /// once per [_load]; every HC read on this screen gates on ITS
+  /// OWN permission set against it (see [_attempted]), and date
+  /// changes reuse the stored snapshot — no re-probe per date.
+  HcAvailability? _grantSnapshot;
+
+  /// Whether at least one of this screen's HC reads is attempted
+  /// under the stored snapshot — the value [_MetricsData.hcConnected]
+  /// carries now ("any HC read attempted", never the old global
+  /// all-15 verdict).
+  bool get _anyHcAttempt {
+    final missing = _grantSnapshot?.missingIfKnown;
+    return hcShouldAttemptRead(heartPermissions, missing) ||
+        hcShouldAttemptRead(
+            reportMetricPermissions[HistoryMetric.restingHr]!, missing) ||
+        hcShouldAttemptRead(weightPermissions, missing) ||
+        hcShouldAttemptRead(respiratoryRatePermissions, missing) ||
+        hcShouldAttemptRead(oxygenSaturationPermissions, missing) ||
+        hcShouldAttemptRead(hrvPermissions, missing);
+  }
+
   /// Dates (yyyy-MM-dd) known to have data, from the history reads —
   /// drives the day-selector / calendar selectability like native.
   Set<String> _datesWithData = const {};
@@ -184,12 +206,27 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
     }
   }
 
+  /// HC Grant Hardening §3.4 — a per-read gate over
+  /// [_readGuardedClaim]: when [permissions] is verified missing
+  /// under the stored snapshot, the read never starts and reports
+  /// its honest empty value as a clean (non-failed) result; an
+  /// unknown grant layer attempts, exactly like the claim read.
+  Future<({T? value, bool failed})> _attempted<T>(Set<String> permissions,
+      Future<T> Function() call, T emptyValue,
+      {bool anySufficient = false}) {
+    if (!hcShouldAttemptRead(permissions, _grantSnapshot?.missingIfKnown,
+        anySufficient: anySufficient)) {
+      return Future.value((value: emptyValue, failed: false));
+    }
+    return _readGuardedClaim(call);
+  }
+
   Future<void> _load() async {
     // Perf fix: the profile pull (network) and the Health Connect
-    // connection check (bridge) are independent — start both before
-    // awaiting either, instead of paying them serially.
+    // availability probe (bridge) are independent — start both
+    // before awaiting either, instead of paying them serially.
     final profileFuture = _backend.fetchProfile();
-    final connectedFuture = _guarded(() => _hc.isConnected());
+    final grantFuture = _guarded(() => _hc.probeGrantState());
     Map<String, dynamic>? profile;
     String? error;
     try {
@@ -204,17 +241,29 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
     }
     _profile = profile;
 
-    final hcConnected = await connectedFuture ?? false;
+    // HC Grant Hardening §3.4 — one probe per load; the snapshot
+    // is stored for this screen's per-read gates (date changes
+    // reuse it via [_loadDate]).
+    _grantSnapshot = await grantFuture;
+    final missing = _grantSnapshot?.missingIfKnown;
 
-    if (hcConnected) {
-      // History sets for the selector/picker selectability (native
-      // checks historical HR, sleep, and calories). R70 WS2: from
-      // the union — the maps only carry real (positive) values.
-      final union = await _guarded(() => _queries.loadDays(7, metrics: {
-            HistoryMetric.restingHr,
-            HistoryMetric.sleep,
-            HistoryMetric.calories,
-          }));
+    // History sets for the selector/picker selectability (native
+    // checks historical HR, sleep, and calories). R70 WS2: from
+    // the union — the maps only carry real (positive) values.
+    // HC Grant Hardening §3.4: the union load includes only the
+    // metrics whose own gates pass.
+    final unionMetrics = <HistoryMetric>{
+      if (hcShouldAttemptRead(
+          reportMetricPermissions[HistoryMetric.restingHr]!, missing))
+        HistoryMetric.restingHr,
+      if (hcShouldAttemptRead(sleepPermissions, missing)) HistoryMetric.sleep,
+      if (hcShouldAttemptRead(vitalsCaloriesPermissions, missing,
+          anySufficient: true))
+        HistoryMetric.calories,
+    };
+    if (unionMetrics.isNotEmpty) {
+      final union =
+          await _guarded(() => _queries.loadDays(7, metrics: unionMetrics));
       _datesWithData = {
         ...?union?.restingHr.keys,
         ...?union?.sleepMinutes.keys,
@@ -222,7 +271,8 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
       };
     }
 
-    final data = await _loadDate(_selectedDate, hcConnected: hcConnected);
+    final data =
+        await _loadDate(_selectedDate, hcConnected: _anyHcAttempt);
     if (!mounted) return;
     setState(() {
       _loading = false;
@@ -231,6 +281,9 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
     });
   }
 
+  /// [hcConnected] — HC Grant Hardening §3.4: "any HC read
+  /// attempted" under the stored grant snapshot (never the old
+  /// global verdict); the individual reads gate per type inside.
   Future<_MetricsData> _loadDate(DateTime date,
       {required bool hcConnected}) async {
     final key = _dateStr(date);
@@ -272,14 +325,22 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
       // earlier load can neither be mis-claimed by this batch nor
       // mask this batch's own signals.
       _hc.lastPartialErrorCode = null;
-      final hrFuture = _readGuardedClaim(() => _hc.readHeartRateSamples(key));
-      final restingFuture =
-          _readGuardedClaim(() => _hc.readRestingHeartRate(key));
-      final weightFuture = _readGuardedClaim(() => _hc.readLatestWeightKg());
-      final respFuture =
-          _readGuardedClaim(() => _hc.readRespiratoryRate(key));
-      final oxyFuture = _readGuardedClaim(() => _hc.readOxygenSaturation(key));
-      final hrvFuture = _readGuardedClaim(() => _hc.readHrvRmssd(key));
+      // HC Grant Hardening §3.4 — each read starts only behind
+      // ITS OWN permission gate (against the snapshot stored by
+      // [_load]); a gated-off read reports its honest empty value
+      // and never touches the bridge.
+      final hrFuture = _attempted(heartPermissions,
+          () => _hc.readHeartRateSamples(key), const <HrSample>[]);
+      final restingFuture = _attempted(restingHeartRatePermissions,
+          () => _hc.readRestingHeartRate(key), null);
+      final weightFuture = _attempted(
+          weightPermissions, () => _hc.readLatestWeightKg(), null);
+      final respFuture = _attempted(respiratoryRatePermissions,
+          () => _hc.readRespiratoryRate(key), null);
+      final oxyFuture = _attempted(oxygenSaturationPermissions,
+          () => _hc.readOxygenSaturation(key), null);
+      final hrvFuture =
+          _attempted(hrvPermissions, () => _hc.readHrvRmssd(key), null);
 
       final hr = await hrFuture;
       anyReadFailed = anyReadFailed || hr.failed;
@@ -290,10 +351,15 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
       final resting = await restingFuture;
       anyReadFailed = anyReadFailed || resting.failed;
       restingHr = nonZeroInt(resting.value);
-      if (restingHr == null) {
+      if (restingHr == null &&
+          hcShouldAttemptRead(
+              reportMetricPermissions[HistoryMetric.restingHr]!,
+              _grantSnapshot?.missingIfKnown)) {
         // R70 WS2 — the resting-HR history fallback reads the union
         // (store ∪ fresh HC); a failed union read marks the date
         // load failed exactly as a failed bridge read did (F5b).
+        // HC Grant Hardening §3.4: the fallback is gated on the
+        // report pair, the same set the union metric reads.
         final hist = await _unionGuarded(() =>
             _queries.loadDays(7, metrics: {HistoryMetric.restingHr}));
         anyReadFailed = anyReadFailed || hist.failed;
@@ -335,6 +401,8 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
       _selectedDate = date;
       _loading = true;
     });
+    // Date changes reuse the grant snapshot stored by [_load]
+    // (carried on the data) — no re-probe per date.
     final data = await _loadDate(date, hcConnected: _data.hcConnected);
     if (!mounted) return;
     setState(() {

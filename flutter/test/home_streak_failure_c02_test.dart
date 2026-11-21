@@ -63,7 +63,7 @@ class _FailedStreakRepository extends HealthRepository {
   _FailedStreakRepository() : super();
 
   @override
-  Future<TodayVitals> loadTodayVitals({required bool connected}) async =>
+  Future<TodayVitals> loadTodayVitals({required HcAvailability snapshot}) async =>
       const TodayVitals(
         heartRate: 75,
         activeCalories: 460,

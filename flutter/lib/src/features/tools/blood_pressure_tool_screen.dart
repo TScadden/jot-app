@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/csv_file_picker.dart';
+import 'package:tabs_lab/src/data/hc_availability.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -763,8 +764,8 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
       });
     }
     // Perf fix: the profile pull (network — its body carries the
-    // MANUAL logs) and the Health Connect chain (isConnected, then
-    // readBloodPressure(30), each bounded by the shared 30s
+    // MANUAL logs) and the Health Connect chain (availability
+    // probe, then readBloodPressure(30), each bounded by the shared 30s
     // readTimeout) used to run strictly serially, and the manual
     // logs were withheld in the same final setState — so a slow
     // bridge held already-downloaded manual readings behind up to
@@ -818,18 +819,39 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
         // its skeleton forever. The bound uses the shared
         // readTimeout; expiry throws into the catch below and fails
         // to the existing "query issue" notice.
-        final connected =
-            await _hc.isConnected().timeout(HealthConnectService.readTimeout);
-        if (connected) {
+        // HC Grant Hardening §3.4 — the gate judges BLOOD
+        // PRESSURE's permission alone (READ_BLOOD_PRESSURE), from
+        // one availability probe: only a verified-missing BP
+        // permission skips the read; an unknown grant layer
+        // attempts it (the read fails closed to the query-issue
+        // notice below).
+        final snapshot = await _hc
+            .probeGrantState()
+            .timeout(HealthConnectService.readTimeout);
+        // A confirmed-unavailable service is a KNOWN state, not
+        // an unknown grant layer: it takes the not-connected
+        // notice below without a read attempt.
+        if (snapshot.status != HealthConnectStatus.unavailable &&
+            hcShouldAttemptRead(
+                bloodPressurePermissions, snapshot.missingIfKnown)) {
           final records = await _hc
               .readBloodPressure(30)
               .timeout(HealthConnectService.readTimeout);
           return (records: records, notice: null);
         }
+        // Verified-missing blood pressure. When Health Connect is
+        // otherwise connected (any grant present), the notice is
+        // Juno's approved variant (JUNO-COPY.md item 2, verbatim);
+        // an empty grant or an unavailable service keeps the plain
+        // not-connected notice.
+        final anyGranted =
+            (snapshot.grantedPermissions?.isNotEmpty ?? false) &&
+                snapshot.status != HealthConnectStatus.unavailable;
         return (
           records: const <BpRecord>[],
-          notice:
-              'Health Connect is not connected. Showing manual readings only.'
+          notice: anyGranted
+              ? 'Health Connect is connected, but blood pressure sharing is off. Showing manual readings only.'
+              : 'Health Connect is not connected. Showing manual readings only.'
         );
       } catch (e) {
         // Channel failures surface as a visible notice; manual data still shows.

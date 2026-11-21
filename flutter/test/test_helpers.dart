@@ -1,5 +1,27 @@
+import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
+
+/// HC Grant Hardening — builds the availability snapshot a screen
+/// or repository load would have probed, for tests that used to
+/// pass a bare connected flag. [granted] defaults to the full
+/// required set (the old connected=true); pass an explicit set to
+/// model a partial grant, or the empty set for not-granted.
+HcAvailability fakeHcSnapshot({
+  Set<String>? granted,
+  bool serviceAvailable = true,
+  HcReadProbeOutcome? stepsProbe,
+  bool persistedConnected = true,
+}) {
+  final g = granted ?? HealthConnectService.requiredPermissions.toSet();
+  return HcAvailability(
+    serviceAvailable: serviceAvailable,
+    grantedPermissions: g,
+    bridgeErrorCode: null,
+    stepsProbe: stepsProbe,
+    persistedConnected: persistedConnected,
+  );
+}
 
 /// In-memory stand-in for [SessionStore] so widget tests never touch
 /// platform channels (flutter_secure_storage) or real credentials.

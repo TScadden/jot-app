@@ -65,6 +65,26 @@ class _PaintHc extends HealthConnectService {
   @override
   Future<bool> isConnected() => connectedGate.future;
 
+  // HC Grant Hardening — the Sleep screen gates on the probe
+  // now; the gate completer drives the probe's landing the same
+  // way it drove isConnected() (true ⇒ full grant snapshot).
+  @override
+  Future<HcAvailability> probeAvailability() => probeGrantState();
+
+  // HC Grant Hardening — the Sleep gate probes grant state via
+  // probeGrantState(); the gate drives both entry points.
+  @override
+  Future<HcAvailability> probeGrantState() =>
+      connectedGate.future.then((connected) => HcAvailability(
+            serviceAvailable: true,
+            grantedPermissions: connected
+                ? HealthConnectService.requiredPermissions
+                : const <String>{},
+            bridgeErrorCode: null,
+            stepsProbe: null,
+            persistedConnected: connected,
+          ));
+
   @override
   Future<int?> readSleepMinutes(String dateStr) async {
     minutesCalls++;
@@ -98,6 +118,16 @@ class _CountingHeartHc extends HealthConnectService {
 
   @override
   Future<bool> isConnected() async => true;
+
+  // HC Grant Hardening — the Heart screen gates on the probe.
+  @override
+  Future<HcAvailability> probeAvailability() async => HcAvailability(
+        serviceAvailable: true,
+        grantedPermissions: HealthConnectService.requiredPermissions,
+        bridgeErrorCode: null,
+        stepsProbe: null,
+        persistedConnected: true,
+      );
 
   @override
   Future<bool> hasPersistedConnection() async => true;
@@ -277,7 +307,7 @@ void main() {
         HrSample(timeMs: _todayMs(10), bpm: 70),
         HrSample(timeMs: _todayMs(12), bpm: 80),
       ]);
-      final vitals = await repoWith(hc).loadTodayVitals(connected: true);
+      final vitals = await repoWith(hc).loadTodayVitals(snapshot: fakeHcSnapshot());
       expect(vitals.heartRate, 75);
       final today = _key(DateTime.now());
       expect(HeartDataCache.instance.isFresh(today), isTrue);
@@ -286,7 +316,7 @@ void main() {
 
     test('a FAILED vitals read writes nothing through', () async {
       final hc = _RepoHc(samples: const [], fail: true);
-      final vitals = await repoWith(hc).loadTodayVitals(connected: true);
+      final vitals = await repoWith(hc).loadTodayVitals(snapshot: fakeHcSnapshot());
       expect(vitals.heartRate, isNull);
       final today = _key(DateTime.now());
       expect(HeartDataCache.instance.hasDate(today), isFalse);
@@ -306,7 +336,7 @@ void main() {
         ],
         partial: true,
       );
-      final vitals = await repoWith(hc).loadTodayVitals(connected: true);
+      final vitals = await repoWith(hc).loadTodayVitals(snapshot: fakeHcSnapshot());
       expect(vitals.heartRate, 75,
           reason: 'partial data still serves the Home vitals strip');
       final today = _key(DateTime.now());
@@ -433,6 +463,21 @@ class _FallbackHc extends HealthConnectService {
 
   @override
   Future<bool> isConnected() async => true;
+
+  // HC Grant Hardening — the Sleep screen gates on the probe.
+  @override
+  Future<HcAvailability> probeAvailability() async => HcAvailability(
+        serviceAvailable: true,
+        grantedPermissions: HealthConnectService.requiredPermissions,
+        bridgeErrorCode: null,
+        stepsProbe: null,
+        persistedConnected: true,
+      );
+
+  // HC Grant Hardening — the Sleep gate probes grant state via
+  // probeGrantState(); same full-grant snapshot.
+  @override
+  Future<HcAvailability> probeGrantState() => probeAvailability();
 
   @override
   Future<int?> readSleepMinutes(String dateStr) async {

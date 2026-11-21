@@ -7,6 +7,7 @@ import 'package:tabs_lab/src/features/tools/coach_mascot.dart';
 import 'package:tabs_lab/src/data/calendar_service.dart';
 import 'package:tabs_lab/src/data/coach_memory_store.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
+import 'package:tabs_lab/src/data/hc_availability.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart';
@@ -2593,8 +2594,18 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
       int? spikesTotal;
       int? spikesToday;
       var bpRecords = <BpRecord>[];
-      final connected = await _coachGuarded(() => hc.isConnected()) ?? false;
-      if (connected) {
+      // HC Grant Hardening §3.4 — the snapshot's reads gate PER
+      // TYPE on their own permission sets: a verified-missing
+      // type skips only its own section of the context. A probe
+      // that never landed (the guard flattened a timeout/throw to
+      // null) skips all HC reads — the legacy behavior for a dead
+      // channel; a landed snapshot with an unknown grant layer
+      // attempts everything, and each read still fails closed
+      // behind the guard.
+      final grantSnapshot = await _coachGuarded(() => hc.probeGrantState());
+      bool attempt(Set<String> permissions) => grantSnapshot != null &&
+          hcShouldAttemptRead(permissions, grantSnapshot.missingIfKnown);
+      if (grantSnapshot != null) {
         // R70 WS2 — the historical numbers come from the union
         // (store ∪ fresh HC): same context format, deeper data.
         // The sleep map spans 28 days so the debt computation
@@ -2605,16 +2616,27 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
         // exact 7-day windows, so their definitions do not move.
         final queries = widget.historyQueries ??
             HealthHistoryQueries(hc: hc);
-        final sleepUnion = await _coachGuarded(() =>
-            queries.loadDays(28, metrics: {HistoryMetric.sleep}));
-        final sleepMap = sleepUnion?.sleepMinutes ?? const <String, int>{};
-        sleepNights = [
-          for (final e in sleepMap.entries) (date: e.key, mins: e.value),
-        ];
-        final debt = sleepDebtMinsOrNull(sleepMap, todayStr);
-        if (debt != null && debt < 0) sleepDebt = -debt;
-        final hrUnion = await _coachGuarded(() => queries.loadDays(7,
-            metrics: {HistoryMetric.restingHr, HistoryMetric.spikes}));
+        if (attempt(sleepPermissions)) {
+          final sleepUnion = await _coachGuarded(() =>
+              queries.loadDays(28, metrics: {HistoryMetric.sleep}));
+          final sleepMap = sleepUnion?.sleepMinutes ?? const <String, int>{};
+          sleepNights = [
+            for (final e in sleepMap.entries) (date: e.key, mins: e.value),
+          ];
+          final debt = sleepDebtMinsOrNull(sleepMap, todayStr);
+          if (debt != null && debt < 0) sleepDebt = -debt;
+        }
+        // The resting/spikes union splits by gate: each metric
+        // joins the load only when its own set attempts.
+        final hrUnionMetrics = <HistoryMetric>{
+          if (attempt(reportMetricPermissions[HistoryMetric.restingHr]!))
+            HistoryMetric.restingHr,
+          if (attempt(heartPermissions)) HistoryMetric.spikes,
+        };
+        final hrUnion = hrUnionMetrics.isEmpty
+            ? null
+            : await _coachGuarded(
+                () => queries.loadDays(7, metrics: hrUnionMetrics));
         final restingMap = hrUnion?.restingHr ?? const <String, int>{};
         final restingDates = restingMap.keys.toList()..sort();
         if (restingDates.isNotEmpty) {
@@ -2623,23 +2645,29 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
           restingAvg = restingMap.values.fold<int>(0, (a, b) => a + b) /
               restingMap.length;
         }
-        final samples =
-            await _coachGuarded(() => hc.readHeartRateSamples(todayStr)) ??
-                const <HrSample>[];
-        daytimeHr = daytimeHeartRateAvg(samples);
-        for (var i = 0; i < 7 && hrv == null; i++) {
-          final d = _coachDateStr(now.subtract(Duration(days: i)));
-          final v = await _coachGuarded(() => hc.readHrvRmssd(d));
-          if (v != null && v > 0) hrv = v;
+        if (attempt(heartPermissions)) {
+          final samples =
+              await _coachGuarded(() => hc.readHeartRateSamples(todayStr)) ??
+                  const <HrSample>[];
+          daytimeHr = daytimeHeartRateAvg(samples);
+        }
+        if (attempt(hrvPermissions)) {
+          for (var i = 0; i < 7 && hrv == null; i++) {
+            final d = _coachDateStr(now.subtract(Duration(days: i)));
+            final v = await _coachGuarded(() => hc.readHrvRmssd(d));
+            if (v != null && v > 0) hrv = v;
+          }
         }
         final spikeMap = hrUnion?.spikes ?? const <String, int>{};
         if (spikeMap.isNotEmpty) {
           spikesTotal = spikeMap.values.fold<int>(0, (a, b) => a + b);
           spikesToday = spikeMap[todayStr];
         }
-        bpRecords = [
-          ...?await _coachGuarded(() => hc.readBloodPressure(7)),
-        ];
+        if (attempt(bloodPressurePermissions)) {
+          bpRecords = [
+            ...?await _coachGuarded(() => hc.readBloodPressure(7)),
+          ];
+        }
       }
       try {
         final manual = await _backend.fetchManualBpLogs();
