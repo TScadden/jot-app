@@ -105,6 +105,53 @@ void main() {
     });
   });
 
+  group('two-strike recovery threshold (Vera condition pin)', () {
+    test('ONE failed entry point does NOT recover: the service '
+        'stays unloaded and grants nothing', () async {
+      // Gems: a single onAppOpen against the wedged entry.
+      final gemCalls = <String>[];
+      final gems = GemService(
+        grant: (key) async {
+          gemCalls.add(key);
+          return (statusCode: 200, body: {'gemBalance': 5});
+        },
+        spend: (id) async => (statusCode: 200, body: null),
+        pullBalance: () async => 0,
+      );
+      gems.debugSetStore(
+        read: (k) async => throw StateError('keystore wedged'),
+        write: (k, v) async {},
+        delete: (k) async {},
+      );
+      await gems.onAppOpen(state: settledState(), now: now);
+      expect(gems.diagLoaded, isFalse,
+          reason: 'one strike must not trigger recovery');
+      expect(gems.diagRecoveredLoad, isFalse);
+      expect(gemCalls, isEmpty);
+      expect(gems.diagLastError, startsWith('load:'));
+
+      // Badges: a single needsEvaluation against the wedged entry.
+      final badgeCalls = <String>[];
+      final badges = BadgeService(
+        grant: (key) async {
+          badgeCalls.add(key);
+          return (statusCode: 200, body: {'gemBalance': 5});
+        },
+      );
+      badges.debugSetStore(
+        read: (k) async => throw StateError('keystore wedged'),
+        write: (k, v) async {},
+        delete: (k) async {},
+      );
+      expect(await badges.needsEvaluation(now), isFalse);
+      expect(badges.diagLoaded, isFalse,
+          reason: 'one strike must not trigger recovery');
+      expect(badges.diagRecoveredLoad, isFalse);
+      expect(badgeCalls, isEmpty);
+      expect(badges.diagLastError, startsWith('load:'));
+    });
+  });
+
   group('BadgeService storage load failure', () {
     BadgeInputs logsOnly(int count) => BadgeInputs(
           logTimestampsMs: [
