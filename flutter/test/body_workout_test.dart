@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -429,6 +430,91 @@ void main() {
       expect(posted.single['categoryId'], 3);
       expect(find.text('Workout logged — zones are lit.'), findsOneWidget);
       await scrollTo(tester, find.text('Legs — Workout'));
+    });
+
+    testWidgets(
+      'persisted figure override beats a slower profile load (race)',
+      (tester) async {
+        // Stored override: female. Profile gender: male. Storage is
+        // local and resolves first; the network pull is delayed —
+        // the override must still be the figure after the load
+        // lands (founder ruling: override > profile > man).
+        const channel = MethodChannel(
+          'plugins.it_nomads.com/flutter_secure_storage',
+        );
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, (call) async {
+              if (call.method == 'read') return 'female';
+              return null;
+            });
+        addTearDown(
+          () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+              .setMockMethodCallHandler(channel, null),
+        );
+        final store = FakeSessionStore()..token = 'tok';
+        final backend = TabsBackend(
+          client: MockClient((request) async {
+            await Future<void>.delayed(const Duration(seconds: 1));
+            if (request.url.path == '/api/ai/body-impacts') {
+              return http.Response('{"result":{"impacts":[]}}', 200);
+            }
+            return http.Response(
+              jsonEncode(<String, dynamic>{
+                'profile': {'conditions': '[]', 'gender': 'male'},
+                'entries': const [],
+                'categories': const [],
+              }),
+              200,
+            );
+          }),
+          sessionStore: store,
+        );
+        await tester.pumpWidget(
+          MaterialApp(home: BodyInfoScreen(backend: backend)),
+        );
+        await tester.pumpAndSettle();
+        Finder baseImage(String name) => find.byWidgetPredicate(
+          (w) =>
+              w is Image &&
+              w.image is AssetImage &&
+              (w.image as AssetImage).assetName == 'assets/body/$name',
+        );
+        expect(baseImage('female_front_base.png'), findsOneWidget);
+        expect(baseImage('male_front_base.png'), findsNothing);
+      },
+    );
+
+    testWidgets('chip tap with a failed sync pull aborts with no POST', (
+      tester,
+    ) async {
+      var posts = 0;
+      final store = FakeSessionStore()..token = 'tok';
+      final backend = TabsBackend(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/sync/entries' &&
+              request.method == 'POST') {
+            posts++;
+            return http.Response('{"ok":true}', 200);
+          }
+          // Every pull fails: the write path must abort visibly
+          // BEFORE any id math or POST (the settled entry-write
+          // invariant from the Daily Summary race package).
+          return http.Response('server error', 500);
+        }),
+        sessionStore: store,
+      );
+      await tester.pumpWidget(
+        MaterialApp(home: BodyInfoScreen(backend: backend)),
+      );
+      await tester.pumpAndSettle();
+      await scrollTo(tester, find.text('Legs'));
+      await tester.tap(find.text('Legs'));
+      await tester.pumpAndSettle();
+      expect(posts, 0);
+      await scrollTo(
+        tester,
+        find.text('Could not sync — check your connection and try again.'),
+      );
     });
   });
 }

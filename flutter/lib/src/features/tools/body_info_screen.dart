@@ -654,6 +654,18 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
   /// late-resolving stored override must never stomp a manual tap.
   bool _figureTouched = false;
 
+  /// The persisted manual override once storage resolves, retained
+  /// in state so _load's resolution can fold it in: storage is
+  /// local and commonly resolves BEFORE the network load finishes,
+  /// and a profile-only assignment in _load would clobber an
+  /// already-applied override for the whole session (Vera review
+  /// condition, Nov 20, 2026).
+  BodyFigureVariant? _figureOverride;
+
+  /// The profile gender string once _load has it, so an override
+  /// resolving after the load still resolves against the profile.
+  String? _profileGender;
+
   @override
   void initState() {
     super.initState();
@@ -665,8 +677,15 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
     // resolves it wins over the profile/default resolution —
     // unless the user already tapped the switch this session.
     _figureStore.loadOverride().then((override) {
-      if (override != null && mounted && !_figureTouched) {
-        setState(() => _figure = override);
+      if (override == null || !mounted) return;
+      _figureOverride = override;
+      if (!_figureTouched) {
+        setState(
+          () => _figure = resolveBodyFigure(
+            override: override,
+            profileGender: _profileGender,
+          ),
+        );
       }
     });
   }
@@ -690,11 +709,14 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
     } catch (_) {
       // Honest empty on any failure — nothing is invented.
     }
-    // Figure variant at first render: profile gender > male
-    // (founder ruling, Nov 20, 2026). The persisted manual
-    // override applies over this when it resolves (see initState).
+    // Figure variant: persisted manual override > profile gender >
+    // male default (founder ruling, Nov 20, 2026). The retained
+    // override is folded in here because it commonly resolved
+    // before this load finished (see initState).
+    _profileGender = profile?['gender']?.toString();
     final figure = resolveBodyFigure(
-      profileGender: profile?['gender']?.toString(),
+      override: _figureOverride,
+      profileGender: _profileGender,
     );
     // Workout table: a failed load degrades to no zone lighting —
     // entries and impacts are unaffected.
