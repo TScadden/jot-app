@@ -226,10 +226,10 @@ class TabsBackend {
   /// constructs ~29 [TabsBackend] instances over one session (several
   /// screens mint a new one on every property access), so nearly every
   /// navigation missed the cache and paid a full GET /api/sync/pull.
-  /// Each entry records the profile-mutation epoch at which its fetch
-  /// STARTED (see [_profileMutationEpoch]): a body whose fetch started
-  /// before the latest successful profile push is never served as
-  /// fresh, on ANY instance.
+  /// Each entry records the pull-mutation epoch at which its fetch
+  /// STARTED (see [_pullMutationEpoch]): a body whose fetch started
+  /// before the latest successful profile push or entry write is
+  /// never served as fresh, on ANY instance.
   static final Map<
       (String, String?),
       ({
@@ -258,13 +258,50 @@ class TabsBackend {
   /// and made the revert permanent.
   static int _profileMutationEpoch = 0;
 
+  /// Daily Summary race (Nov 20, 2026) — the ENTRIES twin of
+  /// [_profileMutationEpoch]. Every successful [postLogEntries] and
+  /// [deleteLogEntry] bumps it: both mutate the pull's `entries`
+  /// view exactly as a profile push mutates its `profile` view.
+  /// Before this counter existed, the entries path had NO epoch
+  /// protection: a pull that started before a completion's POST
+  /// could land after it and be stamped fresh for the full TTL,
+  /// and a rapid second completion whose fetch joined that
+  /// in-flight pull computed its entry id (maxId + 1) from the
+  /// pre-post snapshot — allocating the SAME id as the first
+  /// completion, whose server row its POST then upserted over.
+  /// The first completion was destroyed in the log itself (the
+  /// founder's "if I go too fast it doesn't even mark it done").
+  /// Habit log posts do NOT bump it: habits are not pull-visible
+  /// (separate /api/habits endpoint, own cache) — the habit
+  /// completion ENTRY goes through [postLogEntries] and bumps it
+  /// there.
+  static int _entriesMutationEpoch = 0;
+
+  /// The freshness epoch every sync-pull consumer checks: a pull
+  /// body is fresh only for the combined mutation state in which
+  /// its fetch started. Profile pushes and entry writes both move
+  /// it, so a body that predates EITHER is never served or cached
+  /// as fresh after the write lands.
+  static int get _pullMutationEpoch =>
+      _profileMutationEpoch + _entriesMutationEpoch;
+
   /// Round 19 — drops the cached sync pull so the next read hits the
   /// server. Called after local writes (log save/repeat/delete,
   /// category add/delete) so counts and lists refresh honestly.
   /// Oct 26, 2026: clears EVERY session entry — the cache is shared
   /// app-wide now, so one instance's write must invalidate for all.
+  /// Nov 20, 2026: also drops the IN-FLIGHT slot. Callers already
+  /// assume invalidation means the next read starts a NEW fetch;
+  /// before this, a pull already in flight (started by any of the
+  /// ~29 instances) was handed to the next reader as-is even when
+  /// it started before the write that prompted the invalidation.
+  /// Dropping the slot cannot strand its awaiters — they hold the
+  /// future itself, whose epoch check still guards what it
+  /// delivers — and the slot's completion cleanup is
+  /// identical()-guarded, so it never removes a newer fetch.
   void invalidateSyncPull() {
     _syncPullCacheBySession.clear();
+    _syncPullInFlight.clear();
   }
 
   /// The (baseUrl, token) key scoping the shared caches, or null when
@@ -646,36 +683,37 @@ class TabsBackend {
             int fetchEpoch,
           })>> _syncPullInFlight = {};
 
-  /// One epoch-checked sync-pull GET: records the profile-mutation
+  /// One epoch-checked sync-pull GET: records the pull-mutation
   /// epoch at start; when the body lands after a successful profile
-  /// push (epoch moved), the body predates that push — discard it
-  /// and re-issue the GET. The re-issue LOOPS while the epoch keeps
-  /// moving (bounded at [_maxPullReissues] re-issues): a second
-  /// push landing during the first re-issue must not let a body
-  /// that predates it be delivered as fresh (Vera F3 — bulk
-  /// archive in quick succession hit exactly that window).
+  /// push OR entry write (epoch moved), the body predates that
+  /// write — discard it and re-issue the GET. The re-issue LOOPS
+  /// while the epoch keeps moving (bounded at [_maxPullReissues]
+  /// re-issues): a second write landing during the first re-issue
+  /// must not let a body that predates it be delivered as fresh
+  /// (Vera F3 — bulk archive in quick succession hit exactly that
+  /// window).
   /// [fetchEpoch] is the epoch at which the fetch that produced
   /// [body] STARTED, so callers can refuse to cache a body that
-  /// predates the latest push. If the bound is exhausted with the
+  /// predates the latest write. If the bound is exhausted with the
   /// epoch STILL moving, delivery is refused outright (null body —
   /// the caller's ordinary failed-pull path) rather than handing
-  /// out a body known to predate the latest push: a non-null body
+  /// out a body known to predate the latest write: a non-null body
   /// from this method always started at the current epoch.
   static const int _maxPullReissues = 3;
 
   Future<({Map<String, dynamic>? body, int fetchEpoch})>
       _getSyncPullEpochChecked() async {
-    var fetchEpoch = _profileMutationEpoch;
+    var fetchEpoch = _pullMutationEpoch;
     var body = await _getJson('/api/sync/pull');
     var reissues = 0;
     while (body != null &&
-        _profileMutationEpoch != fetchEpoch &&
+        _pullMutationEpoch != fetchEpoch &&
         reissues < _maxPullReissues) {
       reissues++;
-      fetchEpoch = _profileMutationEpoch;
+      fetchEpoch = _pullMutationEpoch;
       body = await _getJson('/api/sync/pull');
     }
-    if (body != null && _profileMutationEpoch != fetchEpoch) {
+    if (body != null && _pullMutationEpoch != fetchEpoch) {
       return (body: null, fetchEpoch: fetchEpoch);
     }
     return (body: body, fetchEpoch: fetchEpoch);
@@ -711,16 +749,17 @@ class TabsBackend {
   ///
   /// Counter-mutation durability (Oct 2026): the cached body is
   /// served only while the epoch recorded when its fetch started
-  /// still equals the current profile-mutation epoch — a successful
-  /// profile push on ANY instance makes every older cached body
-  /// unservable, not just this instance's (the pre-fix per-instance
-  /// invalidation in `_pushProfile` could not see other instances).
+  /// still equals the current pull-mutation epoch — a successful
+  /// profile push OR entry write on ANY instance makes every older
+  /// cached body unservable, not just this instance's (the pre-fix
+  /// per-instance invalidation in `_pushProfile` could not see
+  /// other instances).
   Future<Map<String, dynamic>?> fetchSyncPull() async {
     final key = await _sessionKey();
     if (key != null) {
       final entry = _syncPullCacheBySession[key];
       if (entry != null &&
-          entry.epoch == _profileMutationEpoch &&
+          entry.epoch == _pullMutationEpoch &&
           DateTime.now().difference(entry.at) < syncPullTtl) {
         return entry.body;
       }
@@ -1665,6 +1704,7 @@ class TabsBackend {
   @visibleForTesting
   static void debugResetSharedCaches() {
     _syncPullCacheBySession.clear();
+    _syncPullInFlight.clear();
     _habitsCacheBySession.clear();
     _habitsInFlight.clear();
   }
@@ -1904,11 +1944,20 @@ class TabsBackend {
 
   /// Round 19 — `POST /api/sync/entries` `{entries: [...]}`.
   /// Returns true on 200.
-  Future<bool> postLogEntries(List<QuickLogEntry> entries) {
-    return _postJson(
+  ///
+  /// Daily Summary race (Nov 20, 2026): a successful post bumps
+  /// the entries-mutation epoch (see [_entriesMutationEpoch]) —
+  /// every sync pull that started before this post is discarded
+  /// on landing / never cached as fresh, on every instance, so
+  /// no reader can allocate an entry id or derive plan state
+  /// from a snapshot that predates this write.
+  Future<bool> postLogEntries(List<QuickLogEntry> entries) async {
+    final ok = await _postJson(
       '/api/sync/entries',
       {'entries': entries.map((e) => e.toSyncJson()).toList()},
     );
+    if (ok) _entriesMutationEpoch++;
+    return ok;
   }
 
   /// Round 19 — `POST /api/sync/categories` with the FULL category list.
@@ -1924,7 +1973,16 @@ class TabsBackend {
   }
 
   /// Round 19 — `DELETE /api/sync/entries/{localId}`.
-  Future<bool> deleteLogEntry(int id) => _delete('/api/sync/entries/$id');
+  ///
+  /// A successful delete mutates the pull's entries view exactly
+  /// as a post does, so it bumps the same entries-mutation epoch:
+  /// a pull that started before the delete must never resurrect
+  /// the deleted row as fresh state.
+  Future<bool> deleteLogEntry(int id) async {
+    final ok = await _delete('/api/sync/entries/$id');
+    if (ok) _entriesMutationEpoch++;
+    return ok;
+  }
 
   /// Round 19 — AI chip suggestions via the real backend endpoint.
   /// `category` and each recent entry are sent as the native DTO shapes;
