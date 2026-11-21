@@ -105,7 +105,17 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
         const val HC_CHANNEL = "com.notel.notel.playground.flutter/health_connect"
         const val HC_PROVIDER_PACKAGE = "com.google.android.apps.healthdata"
         const val SETTINGS_ACTION = "android.health.connect.action.HEALTH_HOME_SETTINGS"
-        private const val REQUEST_TIMEOUT_MS = 5 * 60 * 1000L
+        // Aligned with the Dart side's request timeout
+        // (HealthConnectService.requestTimeout, 4m30s): a pending
+        // request older than this has no live Dart caller left —
+        // Dart has already thrown REQUEST_TIMEOUT and attempted
+        // cancelRequest (which clears the pending natively). If
+        // that cancel never landed, the next launch SUPERSEDES the
+        // dead pending instead of answering IN_FLIGHT. A younger
+        // pending may still have a live caller at the HC UI, so it
+        // is never superseded early. (Was 5 minutes: up to 30s of
+        // IN_FLIGHT answers past the death of any possible caller.)
+        private const val REQUEST_TIMEOUT_MS = 4 * 60 * 1000L + 30 * 1000L
 
         // ── Activity-owned permission-launcher bridge ─────────────
         // MainActivity registers the HC permission launcher in its

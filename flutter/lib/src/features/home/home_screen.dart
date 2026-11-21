@@ -347,6 +347,14 @@ class _HomeScreenState extends State<HomeScreen>
   bool _hcRepairSecondStep = false;
   bool _hcRepairing = false;
 
+  /// The plain-language message of the last FAILED repair attempt
+  /// ([HcRepairOutcome.failed]), rendered under the repair card —
+  /// the Heart screen's error-line pattern (§3.3). The failure's
+  /// CODE never renders (Juno condition 1); it goes to the log
+  /// only. Cleared when a new attempt starts, when an attempt ends
+  /// in any other outcome, and whenever the wedge itself clears.
+  String? _hcRepairError;
+
   /// Round 15c — once-per-day count-up gate. False until the gate
   /// resolves; true only on the first home view of the day. On later
   /// views the numbers render instantly (watching them count up again
@@ -2392,7 +2400,12 @@ class _HomeScreenState extends State<HomeScreen>
         _hcWedged = wedged;
         // The repair card's second step belongs to its incident:
         // a cleared wedge takes the second step with it.
-        if (!wedged) _hcRepairSecondStep = false;
+        if (!wedged) {
+          _hcRepairSecondStep = false;
+          // A failed attempt's error line belongs to the same
+          // incident: reads flowing again takes it too.
+          _hcRepairError = null;
+        }
       });
     }
     // R70 fix pass (Vera F2) — a completed health-data load re-runs
@@ -2759,12 +2772,19 @@ class _HomeScreenState extends State<HomeScreen>
   /// permission request; see [runHcRepairFlow]). A cleared flow
   /// reloads Home's health data; if the wedge survives the
   /// reload, the card swaps to its second step (the remove-access
-  /// directions). A failed request is logged with its code —
-  /// Home has no error line and codes never render (Juno
-  /// condition 1).
+  /// directions). A failed request surfaces its plain-language
+  /// message under the card (the Heart screen's error-line
+  /// pattern) and is logged with its code — the code itself never
+  /// renders (Juno condition 1). Before this, the failed case was
+  /// a debugPrint only: the disclosure closed, the spinner
+  /// stopped, and nothing rendered — the founder's Nov 21, 2026
+  /// "Clicking this is doing nothing."
   Future<void> _onHcRepairTap() async {
     if (_hcRepairing) return;
-    setState(() => _hcRepairing = true);
+    setState(() {
+      _hcRepairing = true;
+      _hcRepairError = null;
+    });
     final result = await runHcRepairFlow(context, _healthRepo.hc);
     if (!mounted) return;
     setState(() => _hcRepairing = false);
@@ -2773,11 +2793,20 @@ class _HomeScreenState extends State<HomeScreen>
         break;
       case HcRepairOutcome.failed:
         debugPrint('Home HC repair failed [${result.errorCode}]');
+        setState(() {
+          _hcRepairError =
+              result.errorMessage ?? 'Health Connect request failed.';
+        });
       case HcRepairOutcome.stillWedged:
-        setState(() => _hcRepairSecondStep = true);
+        setState(() {
+          _hcRepairError = null;
+          _hcRepairSecondStep = true;
+        });
       case HcRepairOutcome.cleared:
         await _loadHealthData();
-        if (mounted && _hcWedged) {
+        if (!mounted) return;
+        setState(() => _hcRepairError = null);
+        if (_hcWedged) {
           setState(() => _hcRepairSecondStep = true);
         }
     }
@@ -3520,12 +3549,30 @@ class _HomeScreenState extends State<HomeScreen>
               Padding(
                 padding: const EdgeInsets.symmetric(
                     horizontal: 16.0, vertical: 2.0),
-                child: HcRepairCard(
-                  secondStep: _hcRepairSecondStep,
-                  requesting: _hcRepairing,
-                  onRepairTap: _hcRepairing
-                      ? null
-                      : () => unawaited(_onHcRepairTap()),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    HcRepairCard(
+                      secondStep: _hcRepairSecondStep,
+                      requesting: _hcRepairing,
+                      onRepairTap: _hcRepairing
+                          ? null
+                          : () => unawaited(_onHcRepairTap()),
+                    ),
+                    // A failed repair attempt's message, under the
+                    // card — the Heart screen's error line, same
+                    // styling. Message only: the failure's code
+                    // never renders (Juno condition 1).
+                    if (_hcRepairError != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _hcRepairError!,
+                        style: const TextStyle(
+                            color: NotelColors.error, fontSize: 12),
+                      ),
+                    ],
+                  ],
                 ),
               )
             else if (shouldShowHealthConnectBanner(
