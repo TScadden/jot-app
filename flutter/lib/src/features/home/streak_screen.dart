@@ -772,8 +772,8 @@ class _StreakScreenState extends State<StreakScreen> {
           const SizedBox(height: 8),
           Text(
             pending
-                ? "Your earned freeze is ready and waiting. It lands as soon as there's room for it: you aren't already holding an earned freeze, and your total freezes are under your max (2, or 3 while you hold a purchased freeze)."
-                : "If you finish $monthName with no freezes used, you earn one extra freeze. If you're at your max when it comes due, it waits — pending — until there's room for it. Max 2 freezes, or 3 while you hold a purchased freeze.",
+                ? "Your earned freeze is ready and waiting. It lands as soon as there's room for it: you aren't already holding an earned freeze, and your total freezes are under your max (2, or 3 while you hold a freeze you bought)."
+                : "If you finish $monthName with no freezes used, you earn one extra freeze. If you're at your max when it comes due, it waits — pending — until there's room for it. Max 2 freezes, or 3 while you hold a freeze you bought.",
             key: const Key('streakGoalPauseCopy'),
             style: const TextStyle(
               fontSize: 12.5,
@@ -964,7 +964,7 @@ class _StreakScreenState extends State<StreakScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                "Not a subscription — you pay once for this freeze. While you hold it, your max is 3. Once it's used, your max goes back to 2.",
+                "Not a subscription — you pay once for this freeze. While you hold a freeze you bought, your max is 3; otherwise it's 2.",
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12.5,

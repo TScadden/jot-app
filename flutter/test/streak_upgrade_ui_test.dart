@@ -114,7 +114,7 @@ void main() {
           "If you finish November with no freezes used, you "
           "earn one extra freeze. If you're at your max when it "
           'comes due, it waits — pending — until there\'s room for '
-          'it. Max 2 freezes, or 3 while you hold a purchased freeze.',
+          'it. Max 2 freezes, or 3 while you hold a freeze you bought.',
         ),
         findsOneWidget,
       );
@@ -172,8 +172,8 @@ void main() {
           "Your earned freeze is ready and waiting. It lands "
           "as soon as there's room for it: you aren't already "
           'holding an earned freeze, and your total freezes are '
-          'under your max (2, or 3 while you hold a purchased '
-          'freeze).',
+          'under your max (2, or 3 while you hold a freeze you '
+          'bought).',
         ),
         findsOneWidget,
       );
@@ -213,8 +213,8 @@ void main() {
       expect(
         find.text(
           "Not a subscription — you pay once for this freeze. "
-          "While you hold it, your max is 3. Once it's used, your "
-          'max goes back to 2.',
+          "While you hold a freeze you bought, your max is 3; "
+          "otherwise it's 2.",
         ),
         findsOneWidget,
       );
