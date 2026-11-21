@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:tabs_lab/src/data/billing_service.dart';
 import 'package:tabs_lab/src/data/correlation_engine.dart'
     show energyDayLabel;
+import 'package:tabs_lab/src/data/crash_reporting.dart';
 import 'package:tabs_lab/src/data/daily_score.dart';
 import 'package:tabs_lab/src/data/daily_score_refresh.dart'
     show ScoreCapture;
@@ -2234,8 +2235,18 @@ class _HomeScreenState extends State<HomeScreen>
         state: engineState,
         now: DateTime.now(),
       );
-    } catch (_) {
+    } catch (e, st) {
       // The last server balance stands; the next open retries.
+      // The failure is recorded in the service's diagnostics
+      // state and reported — never swallowed silently (the
+      // Nov 20, 2026 grants fix: this catch-all class hid the
+      // dead grant path).
+      GemService.instance.recordSyncError(e);
+      CrashReporting.captureError(
+        e,
+        stackTrace: st,
+        staticMessage: 'gems app-open sync failed',
+      );
     }
   }
 
@@ -2270,8 +2281,17 @@ class _HomeScreenState extends State<HomeScreen>
           builder: (_) => BadgeUnlockDialog(batch: batch),
         );
       }
-    } catch (_) {
-      // The next settle retries; nothing is fabricated.
+    } catch (e, st) {
+      // The next settle retries; nothing is fabricated. The
+      // failure is recorded in the service's diagnostics state
+      // and reported — never swallowed silently (Nov 20, 2026
+      // grants fix).
+      BadgeService.instance.recordSyncError(e);
+      CrashReporting.captureError(
+        e,
+        stackTrace: st,
+        staticMessage: 'badges app-open sync failed',
+      );
     }
   }
 
@@ -2291,7 +2311,10 @@ class _HomeScreenState extends State<HomeScreen>
         now: DateTime.now(),
         force: true,
       );
-    } catch (_) {}
+    } catch (e) {
+      // Recorded, never silent (Nov 20, 2026 grants fix).
+      BadgeService.instance.recordSyncError(e);
+    }
   }
 
   /// Drawer entry destination: the Badges collection screen.

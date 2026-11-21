@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'package:tabs_lab/src/data/crash_reporting.dart';
 import 'package:tabs_lab/src/data/streak_engine.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 
@@ -261,9 +262,15 @@ class GemService extends ChangeNotifier {
     _activatedDay = null;
     _ownerEmail = null;
     _claimedOwner = null;
+    _loadFailures = 0;
+    _recoveredLoad = false;
+    _lastError = null;
   }
 
   bool _loaded = false;
+  int _loadFailures = 0;
+  bool _recoveredLoad = false;
+  String? _lastError;
   int? _balance;
   List<String> _pending = [];
   Set<String> _granted = {};
@@ -284,14 +291,86 @@ class GemService extends ChangeNotifier {
   @visibleForTesting
   int? get debugLastStreak => _lastStreak;
 
+  // ── Diagnostics (Developer Terminal grants card) ──────────────
+  // The grant path's health at a glance. Before the Nov 20, 2026
+  // fix, every failure on this path was swallowed by a catch-all
+  // and NOTHING recorded it anywhere — the production ledger sat
+  // at 0 rows while the app looked fine. These getters are the
+  // visible surface that silence used to hide behind.
+  bool get diagLoaded => _loaded;
+  int get diagPendingCount => _pending.length;
+  int get diagGrantedCount => _granted.length;
+
+  /// True when this session recovered from a wedged storage entry
+  /// (see [ensureLoaded]): the service started clean because the
+  /// persisted entry could not be read at all.
+  bool get diagRecoveredLoad => _recoveredLoad;
+
+  /// The most recent load / grant / sync failure on this path,
+  /// rendered `source: error`. Null when nothing has failed.
+  String? get diagLastError => _lastError;
+
+  void _noteError(String source, Object error) {
+    _lastError = '$source: $error';
+  }
+
+  /// Record an error that escaped an app-open sync wrapper (the
+  /// Home settle hooks are fail-soft by design) into this
+  /// service's diagnostics state, so the wrapper's catch can never
+  /// swallow a failure invisibly.
+  void recordSyncError(Object error) => _noteError('sync', error);
+
+  /// One storage read with a single immediate retry: a transient
+  /// hiccup (keystore momentarily unavailable) is absorbed inside
+  /// the same call instead of costing an entry point.
+  Future<String?> _readWithRetry() async {
+    try {
+      return await _read(storageKey);
+    } catch (_) {
+      return _read(storageKey);
+    }
+  }
+
   Future<void> ensureLoaded() async {
     if (_loaded) return;
     final String? raw;
     try {
-      raw = await _read(storageKey);
-    } catch (_) {
-      return; // Retry on the next call; nothing is fabricated.
+      raw = await _readWithRetry();
+    } catch (e, st) {
+      // A read failure is NOT an empty disk (the streak store's
+      // C-04 doctrine): the blob may be valid but momentarily
+      // unreadable, so a first failure only records the error and
+      // leaves [_loaded] false for the next call's retry. A
+      // SECOND consecutive failure means the entry is wedged —
+      // an undecryptable secure-storage value fails every read
+      // until it is cleared — so recover: clear it and start
+      // clean. Nothing recoverable is destroyed (the entry was
+      // already unreadable), and this service's state is
+      // re-derivable: the balance is server-adopted, week keys
+      // re-derive at app open, milestones re-baseline without
+      // backfill, and the server ledger's idempotency keys make
+      // any re-requested grant a replay, never a double-pay —
+      // the same backstop the corrupt-blob path below relies on.
+      _loadFailures++;
+      _noteError('load', e);
+      CrashReporting.captureError(
+        e,
+        stackTrace: st,
+        staticMessage: 'gems storage load failed',
+      );
+      if (_loadFailures < 2) return;
+      try {
+        await _delete(storageKey);
+      } catch (_) {
+        // Even with the store fully broken, the clean in-memory
+        // start below keeps grants flowing this session.
+      }
+      _recoveredLoad = true;
+      if (_claimedOwner != null) _ownerEmail = _claimedOwner;
+      _loaded = true;
+      return;
     }
+    _loadFailures = 0;
     _loaded = true;
     if (raw == null || raw.isEmpty) return;
     try {
@@ -484,10 +563,24 @@ class GemService extends ChangeNotifier {
       GemRequestResult r;
       try {
         r = await _grantFn(key);
-      } catch (_) {
+      } catch (e, st) {
+        // Never silent (Nov 20, 2026 fix): a transport failure on
+        // a grant attempt is recorded for the diagnostics card and
+        // reported; the key stays queued for the next sync.
+        _noteError('grant', e);
+        CrashReporting.captureError(
+          e,
+          stackTrace: st,
+          staticMessage: 'gems grant request failed',
+        );
         continue;
       }
-      if (isRetryableRefusal(r) || r.body == null) continue;
+      if (isRetryableRefusal(r) || r.body == null) {
+        if (r.statusCode != null) {
+          _noteError('grant', 'HTTP ${r.statusCode} for $key');
+        }
+        continue;
+      }
       final bal = r.body!['gemBalance'];
       _pending.remove(key);
       _granted.add(key);
