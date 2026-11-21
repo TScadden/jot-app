@@ -33,12 +33,20 @@ import 'package:tabs_lab/src/theme/skeleton.dart';
 ///   delete first cancels the deleted reminder's whole block, then
 ///   the reconcile reschedules any surviving row that shared its
 ///   id — Vera B4); a notification failure never fails the save —
-///   it surfaces as a non-blocking note.
+///   it surfaces as a non-blocking note. Alarm work runs on its
+///   OWN serial queue, OFF the write path (toggle-wedge fix,
+///   Nov 21, 2026): a reconcile performs 1500 serial plugin
+///   cancels per reminder, and holding the write serializer
+///   across it let one slow or stalled plugin call silently
+///   disable every write control for the rest of the session
+///   even though the push had already landed on the server.
 /// - Writes are SERIALIZED (Vera B3): one push in flight at a
 ///   time; while a push is pending every write control (FAB, card
 ///   tap, Switch, ✕, sheet save path) is disabled or its tap is
 ///   dropped, and the failure-path reload runs inside the same
 ///   serialized section so it can never race an in-flight push.
+///   The serializer covers the push (and the failure reload)
+///   ONLY — never the alarm sync that follows a successful push.
 /// - On push failure: error SnackBar + reload from the server; the
 ///   UI never claims an unsaved state.
 
@@ -493,6 +501,25 @@ class _RemindersScreenState extends State<RemindersScreen> {
   bool _writing = false; // a whole-list push is in flight (Vera B3)
   ReminderDocument _doc = ReminderDocument.empty;
 
+  /// Toggle-wedge fix (Nov 21, 2026) — the serial queue all alarm
+  /// work runs on, separate from the write serializer: tasks run
+  /// one at a time in enqueue order, each reconciling the CURRENT
+  /// [_doc] when it runs, and a task can never block a push or a
+  /// control. [_runAlarmSync] never throws, so the chain can
+  /// never be poisoned.
+  Future<void> _alarmQueue = Future<void>.value();
+
+  /// Upper bound on ONE alarm-sync task's plugin work. A healthy
+  /// reconcile is 1500 serial cancels per reminder (a few seconds
+  /// at most on device); a task that exceeds this is treated as a
+  /// scheduling failure — the alarm note surfaces and the queue
+  /// moves on instead of stalling behind it forever. The
+  /// underlying plugin calls are not cancelled (the plugin has no
+  /// cancellation); the next task's reconcile re-syncs from the
+  /// current list, so a late-finishing stall cannot leave the
+  /// alarms permanently behind the saved state.
+  static const Duration _alarmSyncTimeout = Duration(seconds: 60);
+
   @override
   void initState() {
     super.initState();
@@ -524,7 +551,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
         _doc = ReminderDocument.fromRawRows(rows);
         _loading = false;
       });
-      if (reconcile) unawaited(_reconcileAlarms());
+      if (reconcile) _queueAlarmSync(notifyOnFailure: false);
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -547,6 +574,48 @@ class _RemindersScreenState extends State<RemindersScreen> {
     ]);
   }
 
+  /// Enqueues one alarm-sync task on [_alarmQueue]. For a delete,
+  /// [cancelledReminderId]'s whole block is cancelled first, then
+  /// a FULL reconcile across the reminders current when the task
+  /// RUNS reschedules every survivor (Vera B4 ordering, preserved
+  /// inside the task). [notifyOnFailure] is true on the mutation
+  /// path (the alarm note surfaces when scheduling fails or
+  /// stalls past [_alarmSyncTimeout]) and false on the load path,
+  /// whose failures stay silent by design.
+  void _queueAlarmSync({
+    int? cancelledReminderId,
+    bool notifyOnFailure = true,
+  }) {
+    _alarmQueue = _alarmQueue.then((_) => _runAlarmSync(
+          cancelledReminderId: cancelledReminderId,
+          notifyOnFailure: notifyOnFailure,
+        ));
+  }
+
+  /// One queued alarm-sync task. Never throws: a notification
+  /// failure never fails (or wedges) the save that queued it.
+  Future<void> _runAlarmSync({
+    int? cancelledReminderId,
+    required bool notifyOnFailure,
+  }) async {
+    var alarmsOk = true;
+    try {
+      if (cancelledReminderId != null) {
+        await cancelReminderAlarms(_notifs, cancelledReminderId)
+            .timeout(_alarmSyncTimeout);
+      }
+      if (!await _reconcileAlarms().timeout(_alarmSyncTimeout)) {
+        alarmsOk = false;
+      }
+    } catch (_) {
+      // Includes TimeoutException: a stalled plugin call is a
+      // scheduling failure, surfaced honestly below — never a
+      // silent wedge.
+      alarmsOk = false;
+    }
+    if (!alarmsOk && notifyOnFailure) _showAlarmNote();
+  }
+
   void _showSaveError() {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -562,18 +631,20 @@ class _RemindersScreenState extends State<RemindersScreen> {
   }
 
   /// Applies [newDoc] optimistically, pushes the WHOLE list, and —
-  /// after a successful push — runs the alarm side: for a delete,
-  /// [cancelledReminderId]'s whole block is cancelled first, then a
-  /// FULL reconcile across all current reminders reschedules every
-  /// survivor (including one that shared the deleted row's id,
-  /// Vera B4). On push failure: error SnackBar + reload from the
-  /// server (no phantom state).
+  /// after a successful push — enqueues the alarm side on
+  /// [_alarmQueue]: for a delete, [cancelledReminderId]'s whole
+  /// block is cancelled first, then a FULL reconcile across all
+  /// current reminders reschedules every survivor (including one
+  /// that shared the deleted row's id, Vera B4). On push failure:
+  /// error SnackBar + reload from the server (no phantom state).
   ///
   /// SERIALIZED (Vera B3): at most one call runs at a time. While
   /// [_writing] is set, the write controls are disabled and every
   /// entry point drops its tap; the flag is held across the
   /// failure-path reload, so the reload can never race a push that
-  /// is still in flight.
+  /// is still in flight. The flag is RELEASED as soon as the push
+  /// resolves — the alarm sync runs on its own queue and can
+  /// never hold the controls (toggle-wedge fix, Nov 21, 2026).
   Future<void> _applyAndPush(
     ReminderDocument newDoc, {
     int? cancelledReminderId,
@@ -586,17 +657,10 @@ class _RemindersScreenState extends State<RemindersScreen> {
           {'reminders': jsonEncode(newDoc.encode())});
       if (ok) {
         _backend.invalidateSyncPull();
-        var alarmsOk = true;
-        if (cancelledReminderId != null) {
-          try {
-            await cancelReminderAlarms(_notifs, cancelledReminderId);
-          } catch (_) {
-            alarmsOk = false;
-          }
-        }
-        // A notification failure NEVER fails the save.
-        if (!await _reconcileAlarms()) alarmsOk = false;
-        if (!alarmsOk) _showAlarmNote();
+        // A notification failure NEVER fails the save — and a
+        // slow or stalled one never wedges the screen: the alarm
+        // work is queued, not awaited (see [_queueAlarmSync]).
+        _queueAlarmSync(cancelledReminderId: cancelledReminderId);
         return;
       }
       _showSaveError();
