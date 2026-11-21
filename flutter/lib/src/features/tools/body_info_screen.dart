@@ -710,14 +710,12 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
       // Honest empty on any failure — nothing is invented.
     }
     // Figure variant: persisted manual override > profile gender >
-    // male default (founder ruling, Nov 20, 2026). The retained
-    // override is folded in here because it commonly resolved
-    // before this load finished (see initState).
+    // male default (founder ruling, Nov 20, 2026). The resolution
+    // itself happens inside the setState below, from the retained
+    // fields at apply time — a snapshot taken here would go stale
+    // if storage resolves during the table-load await (Vera delta
+    // re-review, Nov 20, 2026).
     _profileGender = profile?['gender']?.toString();
-    final figure = resolveBodyFigure(
-      override: _figureOverride,
-      profileGender: _profileGender,
-    );
     // Workout table: a failed load degrades to no zone lighting —
     // entries and impacts are unaffected.
     WorkoutTable? table;
@@ -733,7 +731,12 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
       _conditions = conditions;
       _impacts = local;
       _entries = entries;
-      _figure = figure;
+      if (!_figureTouched) {
+        _figure = resolveBodyFigure(
+          override: _figureOverride,
+          profileGender: _profileGender,
+        );
+      }
       _workoutTable = table;
       _workouts = table != null
           ? evaluateBodyWorkouts(entries, table, nowMs)
