@@ -2872,10 +2872,24 @@ class _HomeScreenState extends State<HomeScreen>
                             horizontal: 16, vertical: 16),
                         child: Row(
                           children: [
+                            // Drawer slot parity (founder, Nov 20,
+                            // 2026): the badge renders at 22 — the
+                            // SAME box as the plain Icon(size: 22)
+                            // leading the three rows above — so its
+                            // center sits on the shared icon column
+                            // (x = 27dp), the label starts at 54dp
+                            // like the others, and the row is 54dp
+                            // tall like the others. At 28 the box
+                            // center sat 3dp right, the label 6dp
+                            // right, and the ring's ink spanned
+                            // 26.3dp against the glyphs' ~17dp.
+                            // Drawer usage only: BadgeWidget and
+                            // the Badges screen's sizes are
+                            // untouched.
                             BadgeWidget(
                               rungIndex: 6,
                               icon: Icons.star,
-                              size: 28,
+                              size: 22,
                             ),
                             SizedBox(width: 16),
                             Expanded(
