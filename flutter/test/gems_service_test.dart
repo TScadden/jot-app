@@ -554,9 +554,26 @@ void main() {
       server.balance = 300;
       await gems.spendOnFreeze();
       await gems.spendOnFreeze();
-      // The fake 409s the second (a purchased freeze is now held)
-      // — what matters here is the two ids differ.
+      // Both spends succeed under the current server rule (a held
+      // purchased-class freeze no longer blocks a gem buy) — what
+      // matters here is the two ids differ.
       expect(server.spendIds.toSet().length, 2);
+    });
+
+    test('gem-buy rule change: a spend succeeds while a '
+        'purchased-class freeze is held — the count rises 1 → 2 '
+        '→ 3 in the same bucket', () async {
+      server.balance = 500;
+      server.purchasedFreezes = 1;
+      final r1 = await gems.spendOnFreeze();
+      expect(r1.status, GemSpendStatus.success);
+      expect(r1.purchasedFreezes, 2);
+      expect(r1.balance, 400);
+      final r2 = await gems.spendOnFreeze();
+      expect(r2.status, GemSpendStatus.success);
+      expect(r2.purchasedFreezes, 3);
+      expect(r2.balance, 300);
+      expect(server.purchasedFreezes, 3);
     });
 
     test('replay of the same spendId is a replay, never a double '
@@ -580,14 +597,22 @@ void main() {
       expect(server.purchasedFreezes, 0);
     });
 
-    test('already held: 409 purchased_already_held maps with the '
-        'held count', () async {
+    test('legacy already-held: a pre-change server answering 409 '
+        'purchased_already_held maps to the silent capReached '
+        're-sync — never a failure outcome — with the held count '
+        'and balance adopted', () async {
       server.balance = 500;
       server.purchasedFreezes = 1;
+      server.legacyAlreadyHeld = true;
       final r = await gems.spendOnFreeze();
-      expect(r.status, GemSpendStatus.alreadyHeld);
+      expect(r.status, GemSpendStatus.capReached);
+      expect(r.status, isNot(GemSpendStatus.failed));
       expect(r.purchasedFreezes, 1);
       expect(r.balance, 500);
+      expect(gems.balance, 500);
+      // No freeze was granted and no gems were charged.
+      expect(server.purchasedFreezes, 1);
+      expect(server.balance, 500);
     });
 
     test('cap reached: 409 freeze_cap_reached maps', () async {
@@ -685,6 +710,12 @@ class _FakeGemServer {
   bool capReached = false;
   bool failGrants = false;
   bool failSpends = false;
+
+  /// Models a PRE-rule-change server (Nov 21, 2026): one that
+  /// still rejects a gem spend with `purchased_already_held`
+  /// while a purchased-class freeze is held. The current server
+  /// never returns that code for gem spends.
+  bool legacyAlreadyHeld = false;
   final Set<String> ledger = {};
   final List<String> grantCalls = [];
   final List<String> spendIds = [];
@@ -740,7 +771,7 @@ class _FakeGemServer {
           'gemBalance': balance,
           'purchasedFreezes': purchasedFreezes,
         };
-    if (purchasedFreezes > 0) {
+    if (legacyAlreadyHeld && purchasedFreezes > 0) {
       return (statusCode: 409, body: refusal('purchased_already_held'));
     }
     if (capReached) {

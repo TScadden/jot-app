@@ -29,11 +29,13 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///   into [StreakStore] exactly as the streak screen does — so the
 ///   pill balance, this sheet, and every freeze surface reflect
 ///   the buy through the one shared state path.
-/// - Cap/held derivation reuses the streak screen's own rule and
-///   helpers: the buy control is ABSENT when a purchased freeze is
-///   held or total cover is at cap (`heldPurchased || available
-///   >= max`, via [totalAvailableCover] / [streakCap]). There is
-///   NO already-held/at-cap string for the gem buy (GEMS-MOVE-COPY
+/// - Cap derivation reuses the streak screen's own rule and
+///   helpers: the buy control is ABSENT when total cover is at
+///   cap (`available >= max`, via [totalAvailableCover] /
+///   [streakCap]). Since the gem-buy rule change (Nov 21, 2026)
+///   holding a purchased-class freeze no longer hides the gem
+///   buy — gem-bought freezes join that bucket up to the cap.
+///   There is NO at-cap string for the gem buy (GEMS-MOVE-COPY
 ///   §3.3) — none is invented here, and the $0.99 row's
 ///   already-held string is not borrowed.
 /// - Copy: every string is a [GemCopy] value shared with the
@@ -152,7 +154,7 @@ class _GemsSheetState extends State<GemsSheet> {
     if (base == null) return null;
     final adopted = _adoptedPurchased;
     if (adopted == null || adopted == base.purchasedFreezes) return base;
-    return base.copyWith(purchasedFreezes: adopted.clamp(0, 1));
+    return base.copyWith(purchasedFreezes: adopted.clamp(0, 3));
   }
 
   /// Push the settled streak record before a gem spend (the streak
@@ -183,8 +185,8 @@ class _GemsSheetState extends State<GemsSheet> {
   /// push settled record → [GemService.spendOnFreeze] (POST
   /// /api/gems/spend/freeze) → adopt the server freeze count into
   /// the streak store; §2c success copy only on a verified spend;
-  /// the three 409s land silently in the re-derived surface state
-  /// (held/cap hides the buy control, insufficient shows §2d) with
+  /// the 409s land silently in the re-derived surface state
+  /// (at-cap hides the buy control, insufficient shows §2d) with
   /// no raw error code.
   Future<void> _spendGems() async {
     if (_spendBusy) return;
@@ -196,7 +198,9 @@ class _GemsSheetState extends State<GemsSheet> {
       if (!mounted) return;
       final freezes = result.purchasedFreezes;
       if (freezes != null) {
-        _adoptedPurchased = freezes.clamp(0, 1);
+        // 0..3 (gem-buy rule change, Nov 21, 2026): a verified
+        // gem spend can return a purchased-class count of 2–3.
+        _adoptedPurchased = freezes.clamp(0, 3);
         unawaited(StreakStore.instance.adoptPurchasedFreezes(freezes));
       }
       switch (result.status) {
@@ -214,7 +218,7 @@ class _GemsSheetState extends State<GemsSheet> {
             unawaited(WidgetSync.pushStreak(
               adopted.copyWith(
                 purchasedFreezes: (freezes ?? adopted.purchasedFreezes)
-                    .clamp(0, 1),
+                    .clamp(0, 3),
               ),
               signedIn: true,
               nickname: widget.nickname,
@@ -224,7 +228,6 @@ class _GemsSheetState extends State<GemsSheet> {
         case GemSpendStatus.capReached:
           unawaited(_gems.refreshBalance());
         case GemSpendStatus.insufficient:
-        case GemSpendStatus.alreadyHeld:
         case GemSpendStatus.failed:
           break;
       }
@@ -238,14 +241,14 @@ class _GemsSheetState extends State<GemsSheet> {
   Widget build(BuildContext context) {
     final balance = _gems.balance;
     final effective = _effectiveState;
-    // The streak screen's absence rule (GEMS-MOVE-COPY §3.3): the
-    // buy control does not render at all while a purchased freeze
-    // is held or total cover is at cap. With no settled state to
-    // derive from, the control stays hidden rather than guessing —
-    // the server remains the authority and the balance + explainer
-    // still render.
+    // The streak screen's absence rule (GEMS-MOVE-COPY §3.3, as
+    // amended by the Nov 21, 2026 gem-buy rule change): the buy
+    // control does not render at all while total cover is at cap.
+    // Holding a purchased-class freeze no longer hides it. With
+    // no settled state to derive from, the control stays hidden
+    // rather than guessing — the server remains the authority and
+    // the balance + explainer still render.
     final buyHidden = effective == null ||
-        effective.purchasedFreezes > 0 ||
         totalAvailableCover(effective, DateTime.now()) >=
             streakCap(effective);
     final showBuy = !buyHidden && balance != null;
@@ -332,7 +335,7 @@ class _GemsSheetState extends State<GemsSheet> {
               // The buy-with-gems action — same GemCopy strings,
               // same spend path, same states as the streak screen:
               // enabled ≥ 100, disabled < 100 with the §2d line
-              // under it, ABSENT when held / at cap.
+              // under it, ABSENT only at cap.
               if (showBuy) ...[
                 const SizedBox(height: 16),
                 SizedBox(

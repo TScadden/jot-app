@@ -194,11 +194,11 @@ class _StreakScreenState extends State<StreakScreen> {
   /// generated inside the service. Success/replay adopts the
   /// server freeze count into the streak store (every surface —
   /// this screen, Home, the widget — then reads the held freeze)
-  /// and shows §2c ONLY on the verified spend. The three 409s
-  /// refresh state from the server body (balance + freeze count
-  /// ride along) and fall into the ruled surface state — held/cap
-  /// hides the buy rows, insufficient shows §2d — with no raw
-  /// error code and no dead end.
+  /// and shows §2c ONLY on the verified spend. The 409s refresh
+  /// state from the server body (balance + freeze count ride
+  /// along) and fall into the ruled surface state — at-cap hides
+  /// the buy rows, insufficient shows §2d — with no raw error
+  /// code and no dead end.
   /// Push the settled streak record before a gem spend (Vera
   /// §3 guidance, Nov 19, 2026): the server's freeze-cap check
   /// reads the pushed blob (its monthly-grant component is
@@ -236,7 +236,9 @@ class _StreakScreenState extends State<StreakScreen> {
       if (!mounted) return;
       final freezes = result.purchasedFreezes;
       if (freezes != null) {
-        _adoptedPurchased = freezes.clamp(0, 1);
+        // 0..3 (gem-buy rule change, Nov 21, 2026): a verified
+        // gem spend can return a purchased-class count of 2–3.
+        _adoptedPurchased = freezes.clamp(0, 3);
         unawaited(StreakStore.instance.adoptPurchasedFreezes(freezes));
       }
       switch (result.status) {
@@ -260,7 +262,7 @@ class _StreakScreenState extends State<StreakScreen> {
             unawaited(WidgetSync.pushStreak(
               adopted.copyWith(
                 purchasedFreezes: (freezes ?? adopted.purchasedFreezes)
-                    .clamp(0, 1),
+                    .clamp(0, 3),
               ),
               signedIn: true,
               nickname: widget.nickname,
@@ -275,7 +277,6 @@ class _StreakScreenState extends State<StreakScreen> {
           // as terminal.
           unawaited(_gems.refreshBalance());
         case GemSpendStatus.insufficient:
-        case GemSpendStatus.alreadyHeld:
         case GemSpendStatus.failed:
           // No success copy (Juno §2 ruling): the refreshed
           // balance / held state below IS the surface.
@@ -328,7 +329,7 @@ class _StreakScreenState extends State<StreakScreen> {
   StreakState _effectiveState() {
     final adopted = _adoptedPurchased ?? _purchase?.adoptedPurchasedFreezes;
     if (adopted == null || adopted == state.purchasedFreezes) return state;
-    return state.copyWith(purchasedFreezes: adopted.clamp(0, 1));
+    return state.copyWith(purchasedFreezes: adopted.clamp(0, 3));
   }
 
   String _rangeLabel(({String start, String end}) range) {
@@ -976,11 +977,7 @@ class _StreakScreenState extends State<StreakScreen> {
           // Gems — the buy-with-gems section (Juno §2), inside
           // this card. (The §4 explainer moved to the Gems sheet —
           // added scope #6; the buy row stays.)
-          _gemSection(
-            heldPurchased: heldPurchased,
-            available: available,
-            max: max,
-          ),
+          _gemSection(available: available, max: max),
         ],
       ),
     );
@@ -990,20 +987,20 @@ class _StreakScreenState extends State<StreakScreen> {
   ///
   /// Buy rows (balance line §2b, button §2a, insufficient line
   /// §2d) render only while the buy affordance is live: hidden in
-  /// exactly the ruled states — a purchased-class freeze held or
-  /// total cover at cap (the same rule as the $0.99 affordance) —
-  /// and only once a server balance exists. Under 100 gems the
-  /// button is present but DISABLED with the §2d line under it.
-  /// The §2c success feedback renders only on a verified server
-  /// spend. The §4 About-gems explainer is NOT here anymore — it
-  /// moved to the Gems sheet (added scope #6, Nov 20, 2026).
-  Widget _gemSection({
-    required bool heldPurchased,
-    required int available,
-    required int max,
-  }) {
+  /// exactly one ruled state — total cover at cap — and only once
+  /// a server balance exists. (Gem-buy rule change, Nov 21, 2026:
+  /// holding a purchased-class freeze no longer hides the gem
+  /// buy; gem-bought freezes join that same bucket, up to the
+  /// cap. The $0.99 affordance keeps its own held-hides rule —
+  /// it is NOT shared with this section anymore.) Under 100 gems
+  /// the button is present but DISABLED with the §2d line under
+  /// it. The §2c success feedback renders only on a verified
+  /// server spend. The §4 About-gems explainer is NOT here
+  /// anymore — it moved to the Gems sheet (added scope #6,
+  /// Nov 20, 2026).
+  Widget _gemSection({required int available, required int max}) {
     final balance = _gems.balance;
-    final buyHidden = heldPurchased || available >= max;
+    final buyHidden = available >= max;
     final showBuy = !buyHidden && balance != null;
     final insufficient = balance != null && balance < GemCopy.freezePrice;
     return Column(
