@@ -179,6 +179,20 @@ class StreakState {
   /// existed deserialize with it empty.
   final Set<String> summaryCompletedDays;
 
+  /// Days whose Daily Summary completed via the Midnight Grace
+  /// window (no-gems fix, Nov 21, 2026; founder verbatim: "you
+  /// shouldn't get gems for doing the grace period"). Written only
+  /// by the completion path when the fire ran under grace
+  /// ([completeDay] viaGrace / StreakStore.recordSummaryComplete):
+  /// a subset of [summaryCompletedDays] — the day still counts
+  /// for the streak and the celebration still fires, but the gem
+  /// service suppresses EVERY grant attributable to the day (no
+  /// daily, no milestone crossing, no perfect week containing it)
+  /// keyed off this per-day marker. Additive + JSON-tolerant:
+  /// states written before this field existed deserialize with it
+  /// empty.
+  final Set<String> graceCompletedDays;
+
   /// Days whose counted/restored marks revalidation STRIPPED
   /// (streak-bugs fix, Nov 19, 2026): a day counted under legacy
   /// app-open semantics with no summary completion and no freeze
@@ -210,6 +224,7 @@ class StreakState {
     this.spoiledMonths = const {},
     this.freezeFreeMonthsCompleted = 0,
     this.summaryCompletedDays = const {},
+    this.graceCompletedDays = const {},
     this.invalidatedDays = const {},
   });
 
@@ -246,6 +261,7 @@ class StreakState {
     Set<String>? spoiledMonths,
     int? freezeFreeMonthsCompleted,
     Set<String>? summaryCompletedDays,
+    Set<String>? graceCompletedDays,
     Set<String>? invalidatedDays,
   }) {
     return StreakState(
@@ -264,6 +280,7 @@ class StreakState {
       freezeFreeMonthsCompleted:
           freezeFreeMonthsCompleted ?? this.freezeFreeMonthsCompleted,
       summaryCompletedDays: summaryCompletedDays ?? this.summaryCompletedDays,
+      graceCompletedDays: graceCompletedDays ?? this.graceCompletedDays,
       invalidatedDays: invalidatedDays ?? this.invalidatedDays,
     );
   }
@@ -284,6 +301,7 @@ class StreakState {
     'spoiledMonths': spoiledMonths.toList()..sort(),
     'freezeFreeMonthsCompleted': freezeFreeMonthsCompleted,
     'summaryCompletedDays': summaryCompletedDays.toList()..sort(),
+    'graceCompletedDays': graceCompletedDays.toList()..sort(),
     'invalidatedDays': invalidatedDays.toList()..sort(),
   };
 
@@ -351,6 +369,9 @@ class StreakState {
       // setOf returns {} for a missing key, which is exactly the
       // legacy default the open-day revalidation relies on.
       summaryCompletedDays: setOf('summaryCompletedDays'),
+      // No-gems fix: absent on every pre-fix blob — {} is the
+      // correct default (nothing completed via grace yet).
+      graceCompletedDays: setOf('graceCompletedDays'),
       // Streak-bugs fix: absent on every pre-fix blob — {} is the
       // correct default (nothing tombstoned yet).
       invalidatedDays: setOf('invalidatedDays'),
@@ -374,6 +395,7 @@ class StreakState {
       setEquals(other.spoiledMonths, spoiledMonths) &&
       other.freezeFreeMonthsCompleted == freezeFreeMonthsCompleted &&
       setEquals(other.summaryCompletedDays, summaryCompletedDays) &&
+      setEquals(other.graceCompletedDays, graceCompletedDays) &&
       setEquals(other.invalidatedDays, invalidatedDays);
 
   @override
@@ -392,6 +414,7 @@ class StreakState {
     Object.hashAllUnordered(spoiledMonths),
     freezeFreeMonthsCompleted,
     Object.hashAllUnordered(summaryCompletedDays),
+    Object.hashAllUnordered(graceCompletedDays),
     Object.hashAllUnordered(invalidatedDays),
   );
 }
@@ -878,12 +901,27 @@ StreakSettleResult settleDetailed(StreakState s, DateTime now) =>
   StreakState s, {
   required String summaryTabsDay,
   required DateTime now,
+  bool viaGrace = false,
 }) {
   final settled = _settleDetailed(s, summaryTabsDay);
   var st = settled.state;
+  var newlyCounted = false;
   if (!st.countedDays.contains(summaryTabsDay)) {
+    newlyCounted = true;
     st = st.copyWith(
       countedDays: Set<String>.of(st.countedDays)..add(summaryTabsDay),
+    );
+  }
+  // Midnight Grace no-gems marker: a day NEWLY counted by a
+  // completion that fired under grace is recorded grace-completed
+  // (the gem service suppresses its grants off this marker). A
+  // day already counted keeps its original attribution — a
+  // genuine in-day completion can never be re-marked grace.
+  if (viaGrace &&
+      newlyCounted &&
+      !st.graceCompletedDays.contains(summaryTabsDay)) {
+    st = st.copyWith(
+      graceCompletedDays: {...st.graceCompletedDays, summaryTabsDay},
     );
   }
   // A genuine completion legitimizes the day: clear any

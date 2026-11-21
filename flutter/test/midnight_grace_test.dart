@@ -9,6 +9,7 @@ import 'package:http/testing.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
+import 'package:tabs_lab/src/data/gem_service.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/data/midnight_grace.dart';
@@ -578,6 +579,107 @@ void main() {
       );
       expect(later, isTrue);
       expect(events, hasLength(1));
+    });
+
+    test('(nogems) a grace fire marks the closing day '
+        'grace-completed in the settled state (founder, Nov 21, '
+        '2026: grace saves the streak, it does not pay)', () async {
+      final entries = [
+        entry(
+          id: 1,
+          cat: medCat,
+          body: 'Took MedA 5mg',
+          at: DateTime(2026, 11, 5, 20),
+        ),
+        checkIn(DateTime(2026, 11, 6, 0, 0, 30)),
+      ];
+      final fired = await watcher.maybeFireSummaryCompletion(
+        context: graceContext(entries),
+        pullSucceeded: true,
+        seedCurrent: null,
+        seedBest: null,
+        seedStateJson: null,
+        push: push,
+        now: DateTime(2026, 11, 6, 0, 0, 45),
+        fireableDayStartOverride: closingStart,
+        evidenceWindowEnd: deadline,
+      );
+      expect(fired, isTrue);
+      expect(store.state!.countedDays, {'2026-11-05'},
+          reason: 'the streak still counts the closing day');
+      expect(store.state!.summaryCompletedDays, {'2026-11-05'});
+      expect(store.state!.graceCompletedDays, {'2026-11-05'},
+          reason: 'the per-day grace marker the gem suppression '
+              'keys off — persisted in the streak blob, so it '
+              'survives restarts and sync');
+    });
+
+    test('(nogems, Home earn hook) the celebration fires under '
+        'grace with NO gem lines and zero grant calls', () async {
+      final entries = [
+        entry(
+          id: 1,
+          cat: medCat,
+          body: 'Took MedA 5mg',
+          at: DateTime(2026, 11, 5, 20),
+        ),
+        checkIn(DateTime(2026, 11, 6, 0, 0, 30)),
+      ];
+      final fired = await watcher.maybeFireSummaryCompletion(
+        context: graceContext(entries),
+        pullSucceeded: true,
+        seedCurrent: null,
+        seedBest: null,
+        seedStateJson: null,
+        push: push,
+        now: DateTime(2026, 11, 6, 0, 0, 45),
+        fireableDayStartOverride: closingStart,
+        evidenceWindowEnd: deadline,
+      );
+      expect(fired, isTrue);
+      expect(events, hasLength(1),
+          reason: 'the completion event — what Home presents the '
+              'celebration from — still fires under grace');
+
+      // Home._presentCompletion's earn hook, verbatim shape: the
+      // settled state + the counted (closing) day go into
+      // GemService.processCompletion; its lines are the
+      // celebration's gem lines.
+      final grantCalls = <String>[];
+      final gemDisk = <String, String>{};
+      final gems = GemService(
+        grant: (key) async {
+          grantCalls.add(key);
+          return (
+            statusCode: 200,
+            body: {'gemBalance': 5, 'amount': 5, 'alreadyGranted': false},
+          );
+        },
+        spend: (id) async => (statusCode: 400, body: {'error': 'unused'}),
+        pullBalance: () async => 0,
+      );
+      gems.debugSetStore(
+        read: (k) async => gemDisk[k],
+        write: (k, v) async => gemDisk[k] = v,
+        delete: (k) async => gemDisk.remove(k),
+      );
+      final settled = store.state!;
+      final gemResult = await gems.processCompletion(
+        summaryTabsDay: '2026-11-05',
+        previousStreak: gemSettledStreakBefore(settled, '2026-11-05'),
+        newStreak: events.single.newCount,
+        settledState: settled,
+        now: DateTime(2026, 11, 6, 0, 0, 45),
+      );
+      expect(grantCalls, isEmpty,
+          reason: 'no grant of any kind is requested for a grace '
+              'completion');
+      expect(gemResult.lines, isEmpty,
+          reason: 'the celebration renders gem lines only from '
+              'this result — empty means no +5 shows');
+      expect(events.single.newCount, 1,
+          reason: 'the streak count the celebration celebrates '
+              'is unaffected');
     });
   });
 

@@ -401,6 +401,13 @@ class SummaryCompletionWatcher {
         now: at,
         summaryDay: openDayStart,
         push: push,
+        // Midnight Grace no-gems (Nov 21, 2026): a fire that ran
+        // under the grace overrides (the closing day substituted
+        // for the open day, liveness-probed above) marks the day
+        // grace-completed — the streak counts, the gems do not
+        // pay. Every non-grace fire passes no override → false →
+        // byte-identical shipped behavior.
+        viaGrace: fireableDayStartOverride != null,
       );
       final completion = outcome.completion;
       if (!outcome.state.seeded || completion == null) {
