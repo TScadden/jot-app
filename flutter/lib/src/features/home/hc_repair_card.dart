@@ -50,7 +50,9 @@ enum HcRepairOutcome {
 /// The result of [runHcRepairFlow]: the outcome plus, for
 /// [HcRepairOutcome.failed], the request failure's code and
 /// message (the Heart screen surfaces the message through its
-/// existing error line, exactly like its link flow does).
+/// existing error line, exactly like its link flow does; Home
+/// surfaces it under its repair card the same way — the code
+/// itself never renders on either surface, Juno condition 1).
 class HcRepairFlowResult {
   final HcRepairOutcome outcome;
   final String? errorCode;
