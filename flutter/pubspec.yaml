@@ -150,6 +150,16 @@ flutter:
     # Gems — founder-approved gem icon v1 (Nov 19, 2026), copied
     # byte-identical from the design record; do not redraw/recolor.
     - assets/images/tabs_gem_icon_v1_20261119.png
+    # Body revamp (Nov 20, 2026) — anatomical figures + per-zone
+    # masks generated from the founder-approved mock art
+    # (~/workspace/build-body-workout/gen_body_assets.py), plus the
+    # on-device workout parsing table.
+    - assets/body/male_front_base.png
+    - assets/body/male_back_base.png
+    - assets/body/female_front_base.png
+    - assets/body/female_back_base.png
+    - assets/body/workout_table.json
+    - assets/body/zones/
     # Round 18b — bundled research library (mirrors native
     # app/src/main/assets/research/*.json).
     - assets/research/
