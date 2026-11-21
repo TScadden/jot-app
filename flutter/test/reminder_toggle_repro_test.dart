@@ -200,7 +200,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(server.rows.single['isEnabled'], isTrue);
 
-      // Fresh screen instance (new backend + new notifs) = re-entry.
+      // Fresh screen instance = re-entry. The interstitial pump
+      // forces the old State to dispose (same-type pumpWidget
+      // would reuse it and skip initState/_load entirely).
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await tester.pumpAndSettle();
       await _pump(tester, screen(server));
       final sw = tester.widget<Switch>(find.byType(Switch).first);
       expect(sw.value, isTrue, reason: 'pushed ON state must survive re-entry');
@@ -308,12 +312,35 @@ void main() {
           reason: 'a scheduling stall must surface the alarm note, '
               'not silent dead controls');
 
-      // Release the stall: the queued syncs run to completion and
-      // the final alarm state matches the final (disabled) state.
+      // Release the stall and re-enter: the load reconcile of a
+      // fresh screen re-syncs from the saved state, so the final
+      // alarm state matches the final (disabled) state even though
+      // the stalled tasks' plugin work could only finish late.
+      // (Explicit drain loop: pumpAndSettle returns once frames
+      // stop, which can leave alarm future chains mid-flight.)
       notifs.cancelGate!.complete();
       notifs.cancelGate = null;
+      // Interstitial pump: drains the released stalled chains and
+      // forces the old screen's State to dispose, so the next pump
+      // is a genuine re-entry (fresh initState/_load).
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await tester.pumpWidget(MaterialApp(
+        home: RemindersScreen(
+          backend: _backendWith(server.client(), token: 'tok'),
+          notificationService: notifs,
+        ),
+      ));
+      for (var i = 0;
+          i < 200 && notifs.daily.containsKey(113500);
+          i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(notifs.daily.containsKey(113500), isFalse,
+          reason: 'toggle OFF state must win the final reconcile');
       await tester.pumpAndSettle();
-      expect(notifs.daily.containsKey(113500), isFalse);
       sw = tester.widget<Switch>(find.byType(Switch).first);
       expect(sw.value, isFalse);
       expect(sw.onChanged, isNotNull);
@@ -350,7 +377,12 @@ void main() {
           reason: 'controls must release with the push, not after '
               '1500 serial alarm cancels');
 
-      await tester.pumpAndSettle();
+      // Drain the queued reconciles explicitly (pumpAndSettle
+      // returns once frames stop; the alarm crawl runs on timers):
+      // load crawl 15s + write crawl 15s of fake time, bounded.
+      for (var i = 0; i < 90 && notifs.daily[113500] != '10:0'; i++) {
+        await tester.pump(const Duration(seconds: 1));
+      }
       // After everything drains, the alarm matches the saved state.
       expect(notifs.daily[113500], '10:0');
       expect(tester.widget<Switch>(find.byType(Switch).first).onChanged,
