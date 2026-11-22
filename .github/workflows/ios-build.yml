@@ -24,6 +24,7 @@ on:
   pull_request:
     paths:
       - 'flutter/ios/**'
+      - 'flutter/plugins/**'
       - '.github/workflows/ios-build.yml'
 
 permissions:

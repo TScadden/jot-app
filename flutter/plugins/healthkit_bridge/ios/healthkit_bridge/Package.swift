@@ -9,7 +9,7 @@ let package = Package(
         .iOS("15.0")
     ],
     products: [
-        .library(name: "healthkit_bridge", targets: ["healthkit_bridge"])
+        .library(name: "healthkit-bridge", targets: ["healthkit_bridge"])
     ],
     dependencies: [
         .package(name: "FlutterFramework", path: "../FlutterFramework")
