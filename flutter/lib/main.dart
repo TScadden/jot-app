@@ -13,6 +13,8 @@ import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_history_sync.dart';
 import 'package:tabs_lab/src/data/heart_data_cache.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
+import 'package:tabs_lab/src/data/badge_store.dart';
+import 'package:tabs_lab/src/data/gem_service.dart';
 import 'package:tabs_lab/src/data/streak_store.dart';
 import 'package:tabs_lab/src/data/weekly_snapshot_cache.dart';
 import 'package:tabs_lab/src/data/launch_trace.dart';
@@ -36,6 +38,7 @@ import 'package:tabs_lab/src/data/onboarding_sync_outbox.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/data/tabs_day.dart';
 import 'package:tabs_lab/src/data/today_plan_store.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
@@ -43,12 +46,16 @@ import 'package:tabs_lab/src/data/widget_sync.dart';
 import 'package:tabs_lab/src/features/auth/email_verification_screen.dart';
 import 'package:tabs_lab/src/features/auth/login_screen.dart';
 import 'package:tabs_lab/src/features/settings/report_generation_presenter.dart';
+import 'package:tabs_lab/src/features/home/streak_celebration_presenter.dart';
 import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
+import 'package:tabs_lab/src/data/onboarding_resume_gate.dart';
 import 'package:tabs_lab/src/features/onboarding/onboarding_flow.dart';
+import 'package:tabs_lab/src/features/onboarding/post_onboarding_notification_card.dart';
 import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
 import 'package:tabs_lab/src/features/splash/splash_screen.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
+import 'package:tabs_lab/src/theme/app_background.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/notel_theme.dart';
 import 'package:sentry_flutter/sentry_flutter.dart'
@@ -120,6 +127,34 @@ Future<void> _bootstrap() async {
     LogEntryOutbox.instance.warmFromDisk(currentEmail: sessionEmail),
   ]);
   LaunchTrace.instance.mark(LaunchTrace.cachesWarmed);
+  // Dev-only app background override (Nov 19, 2026): load the
+  // persisted device-local hex into the background token BEFORE
+  // the first frame, so a device a dev re-skinned starts on the
+  // chosen color with no flash of the default. Local prefs only
+  // (SettingsStore) — never synced. Never throws: an unreadable
+  // store resolves to the shipped default.
+  try {
+    await AppBackgroundController.instance.load();
+  } catch (_) {
+    // Keep the default already in the token; the app must start
+    // identically without the override.
+  }
+  // Boundary migration (Nov 19, 2026 founder decision): load the
+  // persisted Tabs-day cutover BEFORE the first frame, next to
+  // the background load above and in the same pattern — every
+  // Tabs-day derivation in the app reads this singleton, so it
+  // must be settled before any of them runs. On first load under
+  // the new build it stamps the first midnight strictly after
+  // now (the seam: instants before it keep the legacy 04:00 rule,
+  // from it on the Tabs day is the calendar day). Never throws;
+  // a failure leaves the legacy derivation, exactly the pre-
+  // migration behavior.
+  try {
+    await TabsDayBoundary.instance.load();
+  } catch (_) {
+    // Keep the uninitialized (legacy) derivation; the app must
+    // start identically without the cutover.
+  }
   // V-1 correction — the ONE app-level notification bootstrap:
   // plugin.initialize for the foreground isolate happens here,
   // once, with the dispatching response callback (score payloads
@@ -167,18 +202,27 @@ class TabsLabApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Tabs Lab',
-      debugShowCheckedModeBanner: false,
-      // Round 22 — the app's first theme carried only the slide
-      // pageTransitionsTheme (navigation flash fix) and the scaffold
-      // background backstop. Round 28 — notelDarkTheme() (see
-      // notel_theme.dart) keeps both and adds the full dark
-      // ColorScheme + stock-surface sub-themes from the Notel
-      // palette, so built-in Material surfaces (date picker, dialogs,
-      // menus, snackbars) render dark instead of falling back to the
-      // default light theme. Screen colors stay per-widget literals.
-      theme: notelDarkTheme(),
+    // Dev-only background override (Nov 19, 2026): the app rebuilds
+    // its theme when AppBackgroundController notifies, so a change
+    // in the Developer Terminal re-skins the base background
+    // app-wide immediately, with no restart. With no override the
+    // controller's color IS the shipped default and the theme is
+    // byte-identical to before.
+    return ListenableBuilder(
+      listenable: AppBackgroundController.instance,
+      builder: (context, _) => MaterialApp(
+        title: 'Tabs Lab',
+        debugShowCheckedModeBanner: false,
+        // Round 22 — the app's first theme carried only the slide
+        // pageTransitionsTheme (navigation flash fix) and the scaffold
+        // background backstop. Round 28 — notelDarkTheme() (see
+        // notel_theme.dart) keeps both and adds the full dark
+        // ColorScheme + stock-surface sub-themes from the Notel
+        // palette, so built-in Material surfaces (date picker, dialogs,
+        // menus, snackbars) render dark instead of falling back to the
+        // default light theme. Screen colors stay per-widget literals.
+        theme: notelDarkTheme(
+            background: AppBackgroundController.instance.color),
       // The root presenter's presentation channel (see
       // reportPresentationNavigatorKey): its dialogs must land
       // on THIS navigator.
@@ -189,11 +233,22 @@ class TabsLabApp extends StatelessWidget {
       // user is on any other in-app screen presents its share
       // confirmation there (see ReportGenerationPresenter /
       // ReportGenerationService). It renders its child unchanged.
-      builder: (context, child) => ReportGenerationPresenter(
-        service: ReportGenerationService.instance,
-        child: child ?? const SizedBox.shrink(),
+      // Streak-celebration root presenter (founder bug, Nov 21,
+      // 2026): wraps the app above its Navigator alongside the
+      // report presenter so a Daily Summary completion presents
+      // its celebration over whatever surface is current — the
+      // Today Summary sheet included — even when Home itself has
+      // unmounted, and holds it across a backgrounding until the
+      // next foreground (see StreakCelebrationPresenter /
+      // StreakCelebrationService). It renders its child unchanged.
+      builder: (context, child) => StreakCelebrationPresenter(
+        child: ReportGenerationPresenter(
+          service: ReportGenerationService.instance,
+          child: child ?? const SizedBox.shrink(),
+        ),
       ),
-      home: const AppFlow(),
+        home: const AppFlow(),
+      ),
     );
   }
 }
@@ -294,6 +349,11 @@ class _AppFlowState extends State<AppFlow>
   Future<bool>? _onboardingClaim;
   late final TabsBackend _tabsBackend;
   OnboardingStep _onboardingStep = OnboardingStep.consent;
+
+  /// Flow3 — the current session's email-verification state,
+  /// captured at login/register success and forwarded to the
+  /// membership step's billing gate (defaults verified).
+  bool _sessionEmailVerified = true;
 
   /// VC 100134 — set by whichever path entered the verifyEmail
   /// stage; consumed (and cleared) by the verify-success handler.
@@ -415,13 +475,29 @@ class _AppFlowState extends State<AppFlow>
         _onboardingStore.getIntroConsultationSeen(),
         _onboardingStore.getOnboardingComplete(),
       ]);
-      final OnboardingStep? resumeStep = !flags[0]
-          ? OnboardingStep.consent
-          : !flags[1]
-              ? OnboardingStep.consultationIntro
-              : !flags[2]
-                  ? OnboardingStep.profileSetup
-                  : null;
+      // Flow3: the intro step is cut, so consented + incomplete
+      // resumes at the persisted step marker when one exists,
+      // else at Profile. (The intro-seen flag is still written by
+      // the consent step for state coherence.)
+      OnboardingStep? resumeStep;
+      if (!flags[0]) {
+        resumeStep = OnboardingStep.consent;
+      } else if (!flags[2]) {
+        final marker = await _onboardingStore.getStepMarker();
+        if (marker != null && marker >= 0 && marker < OnboardingStep.values.length) {
+          var step = OnboardingStep.values[marker];
+          // m1 clamp: never resume past Profile without profile text.
+          if (step.index > OnboardingStep.profileSetup.index) {
+            final context = await _onboardingStore.getUserContext();
+            if (context.trim().isEmpty) {
+              step = OnboardingStep.profileSetup;
+            }
+          }
+          resumeStep = step;
+        } else {
+          resumeStep = OnboardingStep.profileSetup;
+        }
+      }
       return (hasState: true, resumeStep: resumeStep);
     } catch (_) {
       // Unreadable flags → Round 31 behavior (home).
@@ -480,6 +556,8 @@ class _AppFlowState extends State<AppFlow>
       // channel must never be awaited in this funnel (it stalls
       // fake-async-driven flows; the harness deadlock lesson).
       unawaited(StreakStore.instance.clearIfOwnerMismatch(email));
+      unawaited(GemService.instance.clearIfOwnerMismatch(email));
+      unawaited(BadgeService.instance.clearIfOwnerMismatch(email));
       unawaited(MedicationChangeEventOutbox.instance.clearIfOwnerMismatch(email));
       // C-08: same restore-claim enforcement for the pending
       // onboarding-sync outbox — a previous account's staged
@@ -725,6 +803,7 @@ class _AppFlowState extends State<AppFlow>
   // fix). Both calls also bind the new account, so subsequent loads
   // stamp their cache blobs with this owner.
   void _onLoginSuccess(String email, bool emailVerified) {
+    _sessionEmailVerified = emailVerified;
     // Billing account-switch hygiene: a new account signing in
     // clears ONLY the previous account's billing error message.
     _billingSync?.service.resetErrorMessageForAccountChange();
@@ -733,6 +812,8 @@ class _AppFlowState extends State<AppFlow>
     // Lab (streak screen package, Nov 4, 2026): same enforcement
     // for the local streak record.
     unawaited(StreakStore.instance.clearIfOwnerMismatch(email));
+    unawaited(GemService.instance.clearIfOwnerMismatch(email));
+      unawaited(BadgeService.instance.clearIfOwnerMismatch(email));
     // Optimistic logging: a previous account's unconfirmed entries
     // must never render under, or push into, the new account.
     unawaited(LogEntryOutbox.instance.clearIfOwnerMismatch(email));
@@ -917,6 +998,35 @@ class _AppFlowState extends State<AppFlow>
         await _onboardingClaim;
         await _stampFreshAccountOnboarding();
       }());
+      // Flow3 one-shot resume (self-check caution a): a returning
+      // user who left mid-flow resumes ONCE at the step they
+      // left, via the session-scoped coordinator. If the marker
+      // exists but this session's advance was already consumed
+      // (the user backed out to Welcome and logged in again in
+      // the same session), there is NO second auto-advance —
+      // Welcome stays. With no marker this is a fresh start at
+      // consent, as before.
+      final marker = await _onboardingStore.getStepMarker();
+      if (!mounted || _stage != _FlowStage.resolving) return;
+      if (marker != null) {
+        final resumeIndex =
+            await OnboardingResumeCoordinator(_onboardingStore)
+                .advanceOnLogin();
+        if (!mounted || _stage != _FlowStage.resolving) return;
+        if (resumeIndex == null) {
+          setState(() {
+            _loggedInEmail = email;
+            _stage = _FlowStage.welcome;
+          });
+          return;
+        }
+        setState(() {
+          _loggedInEmail = email;
+          _onboardingStep = OnboardingStep.values[resumeIndex];
+          _stage = _FlowStage.onboarding;
+        });
+        return;
+      }
       setState(() {
         _loggedInEmail = email;
         _onboardingStep = OnboardingStep.consent;
@@ -1100,6 +1210,7 @@ class _AppFlowState extends State<AppFlow>
   // taking the legacy-session home path — then enter the flow at
   // the consent step.
   void _onRegisterSuccess(String email, bool emailVerified) {
+    _sessionEmailVerified = emailVerified;
     // Billing account-switch hygiene: as on login, a fresh
     // account clears ONLY the prior billing error message.
     _billingSync?.service.resetErrorMessageForAccountChange();
@@ -1108,6 +1219,8 @@ class _AppFlowState extends State<AppFlow>
     // Lab (streak screen package, Nov 4, 2026): same enforcement
     // for the local streak record.
     unawaited(StreakStore.instance.clearIfOwnerMismatch(email));
+    unawaited(GemService.instance.clearIfOwnerMismatch(email));
+      unawaited(BadgeService.instance.clearIfOwnerMismatch(email));
     unawaited(LogEntryOutbox.instance.clearIfOwnerMismatch(email));
     // R70 fix pass (Vera F1 / Juno C1) — same owner-mismatch
     // enforcement for the historical health store.
@@ -1186,6 +1299,12 @@ class _AppFlowState extends State<AppFlow>
     try {
       await _sessionStore.saveEmailVerified(true);
     } catch (_) {}
+    // Keep the in-memory session flag in step with the persisted
+    // one: Membership's billing gate reads _sessionEmailVerified
+    // (forwarded to OnboardingFlow below), so persisting alone
+    // left a just-verified Register user gated at VerifyEmailGate
+    // for the rest of the session.
+    _sessionEmailVerified = true;
     if (!mounted || _stage != _FlowStage.verifyEmail) return;
     final origin = _verifyOrigin;
     _verifyOrigin = null;
@@ -1269,6 +1388,44 @@ class _AppFlowState extends State<AppFlow>
     _kickFirstRunResync();
     // App-open sync: landing home from onboarding is an app open.
     _triggerAppOpenCapture();
+    // Flow3: the notification ask moved from a flow step to a
+    // one-time card over this first post-onboarding Home landing.
+    unawaited(_maybeShowPostOnboardingNotificationCard());
+  }
+
+  /// Flow3 — shows the notification card exactly once, only for a
+  /// user who completed the NEW flow (the flow3-completion flag
+  /// the flow stamps at setup loading) and has not been shown it
+  /// before. Existing users from older flows never carry the
+  /// flag, so they are never nagged. "Allow" fires the real OS
+  /// permission request through the existing notification
+  /// service; the shown flag is stamped BEFORE the dialog opens
+  /// so no path can show it twice.
+  Future<void> _maybeShowPostOnboardingNotificationCard() async {
+    try {
+      if (!await shouldShowPostOnboardingNotificationCard(
+          _onboardingStore)) {
+        return;
+      }
+      await _onboardingStore.setFlow3NotifPromptShown(true);
+    } catch (_) {
+      return;
+    }
+    if (!mounted || _stage != _FlowStage.home) return;
+    final service =
+        widget.notificationService ?? LocalReminderNotificationService();
+    await showPostOnboardingNotificationCard(
+      context,
+      onAllow: () => unawaited(() async {
+        try {
+          await service.requestNotificationsPermission();
+        } catch (_) {
+          // The OS prompt failing must never wedge Home; the user
+          // can enable notifications later in Settings.
+        }
+      }()),
+      onDontAllow: () {},
+    );
   }
 
   // Round 32 — consent declined (the decline dialog's "Log Out").
@@ -1573,9 +1730,9 @@ class _AppFlowState extends State<AppFlow>
           // (see _resolveLoginRoute). A plain loading screen, on
           // purpose: the login form is unmounted so nothing on it
           // (back, a second submit) can race the routing decision.
-          const Scaffold(
+          Scaffold(
             backgroundColor: NotelColors.background,
-            body: Center(
+            body: const Center(
               child: CircularProgressIndicator(color: NotelColors.primary),
             ),
           )
@@ -1587,6 +1744,13 @@ class _AppFlowState extends State<AppFlow>
             healthConnectService: widget.healthConnectService,
             notificationService: widget.notificationService,
             billingService: _billingSync?.service,
+            emailVerified: _sessionEmailVerified,
+            onVerifyEmail: () {
+              setState(() {
+                _verifyOrigin = _VerifyOrigin.login;
+                _stage = _FlowStage.verifyEmail;
+              });
+            },
             onComplete: _onOnboardingComplete,
             onDeclineConsent: () => unawaited(_onConsentDecline()),
           )

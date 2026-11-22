@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Standalone streak widget (Nov 18, 2026; size buckets Nov 19,
+     2026). ONE provider serving both sizes: the offered default
+     is now the COMPACT 2x1 form (the founder's Duolingo-size
+     direction, Nov 19, 2026), and StreakWidgetProvider renders
+     the compact or banner face per placed instance from its
+     AppWidgetOptions, re-rendering on resize.
+     minWidth/minHeight and minResizeWidth/minResizeHeight are
+     floored at the compact minimum (110x50dp) so launchers can
+     offer both sizes; the banner face renders at its original
+     250x110dp-and-up placements. updatePeriodMillis is the
+     platform minimum (30 min): it exists for the day-rollover
+     refresh; the primary refresh is the explicit WidgetSync
+     update on every streak push.
+     previewLayout is the compact layout (the offered default);
+     previewImage is a rendered capture of that same compact
+     layout for pre-API-31 launchers — NOT the vitals widget's
+     widget_preview.png, which depicts the vitals strip and would
+     misrepresent this widget. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp"
+    android:minHeight="50dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="50dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="1"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/streak_widget_compact"
+    android:previewLayout="@layout/streak_widget_compact"
+    android:previewImage="@drawable/streak_widget_preview"
+    android:description="@string/streak_widget_description"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen" />

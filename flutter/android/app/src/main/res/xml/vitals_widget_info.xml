@@ -1,11 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Round 50 — one wide 4x1 home-screen widget, refreshed by the
-     app on every Home load and by the system every 30 minutes. -->
+<!-- Round 50 — one wide home-screen widget, refreshed by the
+     app on every Home load and by the system every 30 minutes.
+     Streak upgrade (D14): the banner face needs a second row, so
+     the target height is 2 cells (minHeight covers banner + the
+     vitals row); already-placed 4x1 widgets keep the original
+     face until resized — the provider falls back to it whenever
+     no streak fields are published. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="250dp"
-    android:minHeight="56dp"
+    android:minHeight="110dp"
     android:targetCellWidth="4"
-    android:targetCellHeight="1"
+    android:targetCellHeight="2"
     android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/vitals_widget"
     android:previewLayout="@layout/vitals_widget"

@@ -28,7 +28,16 @@ import 'package:tabs_lab/src/features/billing/billing_plans_panel.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
 import 'package:tabs_lab/src/data/crash_reporting.dart';
 import 'package:tabs_lab/src/features/settings/account_actions.dart';
+import 'package:tabs_lab/src/data/streak_engine.dart';
+import 'package:tabs_lab/src/data/streak_store.dart';
 import 'package:tabs_lab/src/features/settings/crash_test_hook.dart';
+import 'package:tabs_lab/src/data/home_data_cache.dart';
+import 'package:tabs_lab/src/data/widget_sync.dart';
+import 'package:tabs_lab/src/features/settings/app_background_section.dart';
+import 'package:tabs_lab/src/features/settings/grant_diagnostics.dart';
+import 'package:tabs_lab/src/features/settings/streak_restore.dart';
+import 'package:tabs_lab/src/features/settings/streak_sim.dart';
+import 'package:tabs_lab/src/theme/app_background.dart';
 import 'package:tabs_lab/src/features/settings/progress_reports_page.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
@@ -740,6 +749,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         eventEnabled: _data.eventReminderEnabled,
         focusTests: _data.focusTests,
         checkedInDayLabels: _data.checkedInDayLabels,
+        streakState: _data.streakState,
         events: _counters
             .map((c) => EventReminderRequest(
                   counterId: c.id,
@@ -1136,8 +1146,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (_page == _Page.syncSettings) ..._syncPage(),
           if (_page == _Page.jotLive) ..._unavailablePage(
               'Tabs Live Beta streams live heart data from a connected band over Bluetooth. Bluetooth streaming is not available in the Flutter Lab yet.'),
-          if (_page == _Page.debug) ..._unavailablePage(
-              'The Developer Terminal fires test notifications from the native app. Test notifications are not available in the Flutter Lab yet.'),
+          if (_page == _Page.debug) ..._debugPage(),
           if (_page == _Page.progressReports)
             ProgressReportsPage(
               // Round 66 — the real Progress Reports page (native
@@ -1283,6 +1292,127 @@ class _SettingsScreenState extends State<SettingsScreen> {
           activeThumbColor: NotelColors.primary,
         ),
       ],
+    );
+  }
+
+  /// The Developer Terminal page. Founder ruling (Nov 18, 2026):
+  /// the whole dev area — this page and the streak SIM entry in
+  /// it — renders ONLY for the signed-in account whose pulled
+  /// `dev_access` flag is true (Tyson's account). The entry point
+  /// is gated on the same flag, and the SIM is gated here too, so
+  /// no path renders it for anyone else — not other admins, not
+  /// any build flavor. The SIM receives plain values — the
+  /// current settled count read here, and the nickname — and
+  /// builds its preview in memory (see streak_sim.dart's A10
+  /// fence: no store/backend/metrics references on that path).
+  List<Widget> _debugPage() {
+    final widgets = _unavailablePage(
+        'The Developer Terminal fires test notifications from the native app. Test notifications are not available in the Flutter Lab yet.');
+    if (_data.devAccess) {
+      final streakState = StreakStore.instance.state;
+      final now = DateTime.now();
+      final currentCount = streakState == null
+          ? 0
+          : streakCurrent(streakState, tabsDayAnchor(now));
+      widgets.addAll([
+        const SizedBox(height: 24),
+        _sectionLabel('STREAK'),
+        _card([
+          StreakSimEntry(
+            currentCount: currentCount,
+            nickname: _data.nickname,
+            now: now,
+          ),
+        ]),
+        const SizedBox(height: 16),
+        _card([
+          StreakRestoreEntry(onRestore: _runStreakRestore),
+        ]),
+        const SizedBox(height: 16),
+        _card([
+          AppBackgroundSection(
+            activeColor: AppBackgroundController.instance.color,
+            onPresetSelected: (c) =>
+                unawaited(_applyAppBackground(c)),
+            onApplyHex: _applyAppBackgroundHex,
+            onReset: _resetAppBackground,
+          ),
+        ]),
+        const SizedBox(height: 24),
+        _sectionLabel('GEMS & BADGES'),
+        _card([
+          const GrantDiagnosticsCard(),
+        ]),
+      ]);
+    }
+    return widgets;
+  }
+
+  /// The dev App background actions (founder direction Nov 19,
+  /// 2026): route through the app-wide background controller,
+  /// which resolves the token, persists to local prefs only
+  /// (never synced), and notifies the theme + shell listeners so
+  /// the new base background paints immediately. The local
+  /// setState re-renders this section's active indication.
+  /// Rendered only inside the dev_access gate above.
+  Future<void> _applyAppBackground(Color color) async {
+    await AppBackgroundController.instance.setColor(color);
+    if (mounted) setState(() {});
+  }
+
+  Future<bool> _applyAppBackgroundHex(String hex) async {
+    final ok = await AppBackgroundController.instance.applyHex(hex);
+    if (ok && mounted) setState(() {});
+    return ok;
+  }
+
+  void _resetAppBackground() {
+    unawaited(() async {
+      await AppBackgroundController.instance.reset();
+      if (mounted) setState(() {});
+    }());
+  }
+
+  /// The dev Restore Streak action (founder ask, Nov 19, 2026):
+  /// runs the restore through the streak store's authoritative
+  /// path (the same adoption / revalidation / settle / profile
+  /// push machinery as app-open), then refreshes the other
+  /// settled-state surfaces — the Home cache and the home-screen
+  /// widget — from the restored state so every surface agrees
+  /// immediately. Rendered only inside the dev_access gate above.
+  Future<StreakRestoreOutcome> _runStreakRestore() async {
+    final rec = await _backend.fetchStreakRecord();
+    final result = await StreakStore.instance.recordDevRestore(
+      pullSucceeded: rec.succeeded,
+      seedCurrent: rec.current,
+      seedBest: rec.best,
+      seedStateJson: rec.stateJson,
+      seedPurchasedFreezes: rec.purchasedFreezes,
+      now: DateTime.now(),
+      push: (current, best, stateJson, {int? purchasedFreezes}) =>
+          _backend.pushStreakRecord(
+        current,
+        best,
+        stateJson,
+        purchasedFreezes: purchasedFreezes,
+      ),
+    );
+    if (result.restoredDay != null) {
+      final cache = HomeDataCache.instance;
+      if (cache.applyStreak(result.current, result.best)) {
+        unawaited(cache.persist());
+      }
+      unawaited(WidgetSync.pushStreak(
+        result.state,
+        signedIn: true,
+        nickname: _data.nickname,
+        now: DateTime.now(),
+      ));
+    }
+    return StreakRestoreOutcome(
+      restoredDay: result.restoredDay,
+      current: result.current,
+      best: result.best,
     );
   }
 
@@ -1568,10 +1698,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         ),
       ),
-      if (_data.isAdmin) ...[
+      // Founder ruling (Nov 18, 2026) — the Developer Terminal is
+      // TYSON-ONLY: rendered iff the signed-in account's pulled
+      // dev_access flag is true. NOT the admin gate (Dad, Julee,
+      // and Boston are admins and must NOT see it) and NOT a build
+      // flavor gate.
+      if (_data.devAccess) ...[
         const SizedBox(height: 8),
         Center(
           child: TextButton(
+            key: const ValueKey('developer_terminal_entry'),
             onPressed: () => setState(() => _page = _Page.debug),
             child: const Text('Developer Terminal Options',
                 style: TextStyle(
@@ -5983,7 +6119,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _card([
         _toggleRow(
           'Share data with friends',
-          'Allow mutual friends to see your daily sleep, heart rate, and score',
+          // Juno condition C1 (community revamp, Nov 19, 2026):
+          // the subtitle must disclose that streak + gems — game
+          // stats — are always visible to confirmed friends; only
+          // the health stats sit behind this toggle. Exact string
+          // per JUNO-REVIEW §1.4; do not paraphrase.
+          'Allow mutual friends to see your daily sleep, heart rate, and score. Your streak and gems are always visible to friends.',
           d.shareDataWithFriends,
           (v) async {
             setState(

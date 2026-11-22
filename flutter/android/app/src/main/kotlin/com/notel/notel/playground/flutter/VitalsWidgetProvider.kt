@@ -48,6 +48,12 @@ class VitalsWidgetProvider : HomeWidgetProvider() {
         const val KEY_CALORIES = "widget_streak"
         const val KEY_LOGS = "widget_logs"
         const val KEY_SLEEP = "widget_sleep"
+        // Streak upgrade (D14) — banner keys, matching WidgetSync.
+        const val KEY_STREAK_COUNT = "widget_streak_count"
+        const val KEY_STREAK_TODAY_DONE = "widget_streak_today_done"
+        const val KEY_STREAK_POSE = "widget_streak_pose"
+        const val KEY_STREAK_GREETING = "widget_streak_greeting"
+        const val KEY_STREAK_SUBLINE = "widget_streak_subline"
         const val PLACEHOLDER = "--"
         const val FALLBACK_TEXT = "Open Tabs to sign in"
     }
@@ -95,7 +101,32 @@ class VitalsWidgetProvider : HomeWidgetProvider() {
         val all = widgetData.all
         // Type-tolerant flag read: only a Boolean true counts.
         val signedIn = (all[KEY_SIGNED_IN] as? Boolean) ?: false
-        val views = if (signedIn) {
+        // Streak upgrade (D14): when WidgetSync has published a
+        // streak banner (non-empty count), the v2 face renders —
+        // banner + the same vitals cells. Without streak fields
+        // the original face renders, unchanged.
+        val streakCount = (all[KEY_STREAK_COUNT] as? String) ?: ""
+        val views = if (signedIn && streakCount.isNotEmpty()) {
+            RemoteViews(context.packageName, R.layout.vitals_widget_v2).apply {
+                setTextViewText(
+                    R.id.widget_heart_rate,
+                    textValue(all, KEY_HEART_RATE),
+                )
+                setTextViewText(
+                    R.id.widget_streak,
+                    textValue(all, KEY_CALORIES),
+                )
+                setTextViewText(
+                    R.id.widget_logs,
+                    textValue(all, KEY_LOGS),
+                )
+                setTextViewText(
+                    R.id.widget_sleep,
+                    textValue(all, KEY_SLEEP),
+                )
+                bindStreakBanner(this, all)
+            }
+        } else if (signedIn) {
             RemoteViews(context.packageName, R.layout.vitals_widget).apply {
                 setTextViewText(
                     R.id.widget_heart_rate,
@@ -135,6 +166,70 @@ class VitalsWidgetProvider : HomeWidgetProvider() {
         )
         views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
         return views
+    }
+
+    /// Streak banner binding (D14 + FOUNDER WIDGET RESTYLE,
+    /// Nov 18, 2026). ONE dark navy card in both states — the
+    /// restyle superseded the purple-gradient celebrate face.
+    /// The only state differences are the flame-row count color
+    /// (grey while today is open, orange #FF7A50 once done), the
+    /// flame drawable (added scope, Nov 19, 2026: the bundled
+    /// ic_widget_flame_grey / ic_widget_flame pair, swapped on the
+    /// same todayDone flag — the exact assets and ImageView swap
+    /// StreakWidgetProvider binds; the banner's old emoji
+    /// TextView is gone), the
+    /// headline/sub-line strings (preformatted verbatim by Dart:
+    /// "Hey {name}." + the projected line, or the founder's
+    /// "See you tomorrow!" + "Day {N} is locked in."), and the
+    /// peek EXPRESSION drawable (bandit_full = peek, eyes open;
+    /// bandit_cheer = cheer peek, eyes closed/fists up — the done
+    /// rotation alternates them by day-of-year, chosen in Dart).
+    /// The greeting slot is GONE entirely when the greeting
+    /// string is empty (Juno §9d — collapsed, never left blank).
+    private fun bindStreakBanner(
+        views: RemoteViews,
+        all: Map<String, *>,
+    ) {
+        val todayDone = (all[KEY_STREAK_TODAY_DONE] as? Boolean) ?: false
+        views.setTextViewText(
+            R.id.widget_streak_flame_count,
+            (all[KEY_STREAK_COUNT] as? String) ?: "",
+        )
+        views.setTextColor(
+            R.id.widget_streak_flame_count,
+            if (todayDone) 0xFFFF7A50.toInt() else 0xFF8E97B8.toInt(),
+        )
+        views.setImageViewResource(
+            R.id.widget_streak_flame,
+            if (todayDone) {
+                R.drawable.ic_widget_flame
+            } else {
+                R.drawable.ic_widget_flame_grey
+            },
+        )
+        val pose = (all[KEY_STREAK_POSE] as? String) ?: "peek"
+        val poseRes = when (pose) {
+            "peek_cheer" -> R.drawable.bandit_cheer
+            else -> R.drawable.bandit_full
+        }
+        views.setImageViewResource(R.id.widget_bandit_pose, poseRes)
+        val greeting = (all[KEY_STREAK_GREETING] as? String) ?: ""
+        if (greeting.isEmpty()) {
+            views.setViewVisibility(
+                R.id.widget_streak_greeting,
+                android.view.View.GONE,
+            )
+        } else {
+            views.setViewVisibility(
+                R.id.widget_streak_greeting,
+                android.view.View.VISIBLE,
+            )
+            views.setTextViewText(R.id.widget_streak_greeting, greeting)
+        }
+        views.setTextViewText(
+            R.id.widget_streak_subline,
+            (all[KEY_STREAK_SUBLINE] as? String) ?: "",
+        )
     }
 
     /// Type-tolerant value read: any non-null stored value renders

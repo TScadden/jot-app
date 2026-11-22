@@ -63,6 +63,23 @@ class FakeHealthConnect extends HealthConnectService {
   @override
   Future<bool> isConnected() async => connected;
 
+  // HC Grant Hardening — the Sleep screen gates on the
+  // grant-state probe: connected ⇒ full grant, disconnected ⇒
+  // empty grant.
+  @override
+  Future<HcAvailability> probeAvailability() => probeGrantState();
+
+  @override
+  Future<HcAvailability> probeGrantState() async => HcAvailability(
+        serviceAvailable: true,
+        grantedPermissions: connected
+            ? HealthConnectService.requiredPermissions
+            : const <String>{},
+        bridgeErrorCode: null,
+        stepsProbe: null,
+        persistedConnected: connected,
+      );
+
   @override
   Future<int?> readSleepMinutes(String dateStr) async =>
       minutes[dateStr];
@@ -306,11 +323,16 @@ void main() {
       // sections; in the lazy ListView the cards sit outside the
       // initial build range at the default test surface — scroll
       // them into view like a real user would.
-      await tester.scrollUntilVisible(find.text('POTS'), 300);
+      // The Body screen's workout TextField adds a second
+      // Scrollable to the tree (Nov 20, 2026), so the scroll
+      // target is scoped to the outer (ListView) Scrollable.
+      await tester.scrollUntilVisible(find.text('POTS'), 300,
+          scrollable: find.byType(Scrollable).first);
       await tester.pumpAndSettle();
       expect(find.text('POTS'), findsOneWidget);
       expect(find.text('2 Active'), findsOneWidget);
-      await tester.scrollUntilVisible(find.text('MCAS'), 300);
+      await tester.scrollUntilVisible(find.text('MCAS'), 300,
+          scrollable: find.byType(Scrollable).first);
       await tester.pumpAndSettle();
       expect(find.text('MCAS'), findsOneWidget);
     });
@@ -321,8 +343,15 @@ void main() {
         tester,
         BodyInfoScreen(backend: _backendWithProfile({'conditions': '[]'})),
       );
-      expect(find.text('All Body Zones Normal'), findsOneWidget);
       expect(find.text('All body zones normal'), findsOneWidget);
+      // The Nov 20, 2026 revamp (anatomical figure + workout card)
+      // made the screen taller: the empty state now sits below
+      // the fold at the default test surface — scroll it into
+      // view like a real user would (same pattern as the
+      // conditions test above).
+      await tester.drag(find.byType(ListView), const Offset(0, -600));
+      await tester.pumpAndSettle();
+      expect(find.text('All Body Zones Normal'), findsOneWidget);
     });
 
     testWidgets('auth failure → honest empty, no crash', (tester) async {
@@ -330,6 +359,8 @@ void main() {
         tester,
         BodyInfoScreen(backend: _backendUnauthorized()),
       );
+      await tester.drag(find.byType(ListView), const Offset(0, -600));
+      await tester.pumpAndSettle();
       expect(find.text('All Body Zones Normal'), findsOneWidget);
     });
 
@@ -339,6 +370,8 @@ void main() {
         BodyInfoScreen(
             backend: _backendWithProfile({'conditions': '{{bad'})),
       );
+      await tester.drag(find.byType(ListView), const Offset(0, -600));
+      await tester.pumpAndSettle();
       expect(find.text('All Body Zones Normal'), findsOneWidget);
     });
 

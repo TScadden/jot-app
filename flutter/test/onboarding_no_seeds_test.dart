@@ -322,12 +322,9 @@ void main() {
       await driveRegister(tester, session: session, map: map,
           backend: backend);
 
-      // Consent → consultation intro → profile setup.
+      // Consent → profile setup (flow3: the consultation-intro
+      // interstitial is cut; Profile follows Consent directly).
       await tester.tap(find.widgetWithText(FilledButton, 'I consent'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-      await tester.pump();
-      await tester.tap(find.text('Continue'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump();
@@ -775,19 +772,16 @@ void main() {
       expect(map[OnboardingStore.userConditionsKey], isNull);
       expect(map[OnboardingStore.ownerEmailKey], 'second@tabs.app');
 
-      // Drive to the goal step: it opens EMPTY.
+      // Drive to the goal step: it opens EMPTY. (flow3: Profile
+      // follows Consent directly — no intro step to Continue past.)
       await tester.tap(find.widgetWithText(FilledButton, 'I consent'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-      await tester.pump();
-      await tester.tap(find.text('Continue'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump();
       final field = tester.widget<TextField>(find.byType(TextField));
       expect(field.controller!.text, '');
       expect(find.text('0 / 100 words'), findsOneWidget);
-      // Drain the profile step's prompt-loop timer before teardown.
+      // Unmount before teardown.
       await tester.pumpWidget(const MaterialApp(home: SizedBox()));
       await tester.pump(const Duration(seconds: 5));
     });

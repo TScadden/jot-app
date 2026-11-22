@@ -544,6 +544,12 @@ void main() {
       final allowedFiles = {
         'lib/main.dart',
         'lib/src/data/health_history_sync.dart',
+        // Grants fix (Nov 20, 2026): allowlist rows #4–#9 in
+        // CRASH_REPORTING_CALLSITES.md — the gem/badge grant
+        // path's previously silent catches.
+        'lib/src/data/gem_service.dart',
+        'lib/src/data/badge_store.dart',
+        'lib/src/features/home/home_screen.dart',
       };
       final libDir = Directory('lib');
       for (final entity in libDir.listSync(recursive: true)) {

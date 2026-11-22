@@ -298,6 +298,29 @@ Future<void> _pumpHome(
   await _bridge(tester);
 }
 
+/// Streak upgrade (Nov 2026): in this fixture the scored feeling
+/// entry completes the Daily Summary, and Home load is one of the
+/// completion triggers — so the celebration screen legitimately
+/// covers Home after load, leaving the band offstage. Dismiss it
+/// when shown so the band (the surface under test) is onstage
+/// for the assertions and the pixel measurement.
+Future<void> _dismissCelebrationIfShown(WidgetTester tester) async {
+  final yay = find.byKey(const Key('celebrationYay'));
+  if (yay.evaluate().isEmpty) return;
+  // Sequence adaptation (Nov 18, 2026): the celebration plays the
+  // ignition sequence and its buttons are not tappable during it —
+  // the first tap skips to the final state, the second dismisses.
+  await tester.tap(yay);
+  await tester.pump();
+  final yayAgain = find.byKey(const Key('celebrationYay'));
+  if (yayAgain.evaluate().isNotEmpty) {
+    await tester.tap(yayAgain);
+    await tester.pump();
+  }
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.pump();
+}
+
 /// The shown counter text rect for [text] inside the rotator:
 /// in the PageView path neighbor pages sit in the tree too, so
 /// only the element whose center lies inside the pager's
@@ -468,6 +491,7 @@ void main() {
             server: server,
             boundaryKey: boundaryKey,
           );
+          await _dismissCelebrationIfShown(tester);
 
           expect(find.byType(EventCounterRotator), findsOneWidget);
           expect(find.byType(PageView), multi ? findsOneWidget : findsNothing);

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:tabs_lab/src/data/correlation_engine.dart'
     show deriveFeelingByDay;
 import 'package:tabs_lab/src/data/focus_test.dart';
+import 'package:tabs_lab/src/data/streak_engine.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -23,6 +24,16 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 class SettingsProfileData {
   final bool isUnlimited;
   final bool isAdmin;
+
+  /// Founder ruling (Nov 18, 2026) — the Developer Terminal / dev
+  /// area is TYSON-ONLY: it renders iff the signed-in account's
+  /// pulled `dev_access` flag is true. This is NOT the admin flag
+  /// (other admins must not see the dev area) and NOT a build
+  /// flavor gate. The server sets it true only on Tyson's profile;
+  /// it arrives in /api/sync/pull's profile map (alongside
+  /// `purchased_freezes`); the top level is also accepted so either
+  /// serialization parses. Absent/false → no dev area, ever.
+  final bool devAccess;
   final String nickname;
   final String tag;
   final String userContext;
@@ -63,6 +74,18 @@ class SettingsProfileData {
   /// can never drift on what "checked in" means. Empty when the
   /// pull carried no check-in entries (or no entries at all).
   final Set<String> checkedInDayLabels;
+
+  /// The settled streak state parsed from the pull profile's
+  /// `streakState` blob — the streak-countdown reminder gate's
+  /// input (Community Added Scope #2). Parsed through the ONE
+  /// shared decode ([StreakState.fromJson], the same shape
+  /// `TabsBackend.fetchStreakRecord` hands the streak store),
+  /// so Settings and the first-run resync can never drift on
+  /// what the settled record says. Null when the pull carried
+  /// no decodable blob — the countdown is then never armed on
+  /// a guess (Home's live settled state, passed from the
+  /// streak store, is the fresher source when it exists).
+  final StreakState? streakState;
   final List<QuickLogInsight> insights;
 
   /// Round 65 — knowledge documents from the pull's top-level
@@ -74,6 +97,7 @@ class SettingsProfileData {
   const SettingsProfileData({
     this.isUnlimited = false,
     this.isAdmin = false,
+    this.devAccess = false,
     this.nickname = '',
     this.tag = '',
     this.userContext = '',
@@ -98,6 +122,7 @@ class SettingsProfileData {
     this.conditionsRaw = '',
     this.focusStateRaw = '',
     this.checkedInDayLabels = const {},
+    this.streakState,
     this.insights = const [],
     this.documents = const [],
   });
@@ -156,11 +181,13 @@ class SettingsProfileData {
     String? conditionsRaw,
     String? focusStateRaw,
     Set<String>? checkedInDayLabels,
+    StreakState? streakState,
     List<KnowledgeDocumentMeta>? documents,
   }) {
     return SettingsProfileData(
       isUnlimited: isUnlimited,
       isAdmin: isAdmin,
+      devAccess: devAccess,
       nickname: nickname ?? this.nickname,
       tag: tag ?? this.tag,
       userContext: userContext ?? this.userContext,
@@ -186,6 +213,7 @@ class SettingsProfileData {
       conditionsRaw: conditionsRaw ?? this.conditionsRaw,
       focusStateRaw: focusStateRaw ?? this.focusStateRaw,
       checkedInDayLabels: checkedInDayLabels ?? this.checkedInDayLabels,
+      streakState: streakState ?? this.streakState,
       documents: documents ?? this.documents,
       insights: insights,
     );
@@ -218,6 +246,7 @@ class SettingsProfileData {
     }
     return SettingsProfileData(
       isAdmin: isAdmin,
+      devAccess: body['dev_access'] == true || p['dev_access'] == true,
       isUnlimited: body['isUnlimited'] == true || isAdmin,
       nickname: _asString(body['nickname']),
       tag: _asString(body['tag']),
@@ -243,9 +272,30 @@ class SettingsProfileData {
       conditionsRaw: _asRaw(p['conditions']),
       focusStateRaw: _asRaw(p['focusState']),
       checkedInDayLabels: checkedInDayLabels,
+      streakState: _streakStateFromProfile(p),
       documents: KnowledgeDocumentMeta.listFromPull(body),
       insights: insights,
     );
+  }
+
+  /// Parses the profile's `streakState` blob (a JSON string, or
+  /// an already-decoded map) through [StreakState.fromJson].
+  /// Any failure yields null — never a fabricated state.
+  static StreakState? _streakStateFromProfile(
+      Map<String, dynamic> profile) {
+    final raw = profile['streakState'];
+    try {
+      if (raw is Map<String, dynamic>) return StreakState.fromJson(raw);
+      if (raw is String && raw.trim().isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, dynamic>) {
+          return StreakState.fromJson(decoded);
+        }
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
   }
 
   /// Parses the pull's `entries` / `categories` and derives the

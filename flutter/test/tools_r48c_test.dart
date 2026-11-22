@@ -205,6 +205,64 @@ void main() {
       expect(f.level, 77);
     });
 
+    test('FriendDto parses gemBalance/currentStreak, defaults 0 absent',
+        () {
+      final f = FriendDto.fromJson({
+        'id': 'f1',
+        'nickname': 'Sam',
+        'tag': '12345',
+        'status': '',
+        'level': 50,
+        'gemBalance': '145', // string tolerated
+        'currentStreak': 27,
+      });
+      expect(f.gemBalance, 145);
+      expect(f.currentStreak, 27);
+      // The server change is additive: a payload from a server
+      // that does not send the fields yet parses to honest zeros.
+      final bare = FriendDto.fromJson({
+        'id': 'f2',
+        'nickname': 'Kim',
+        'tag': '22222',
+        'status': '',
+        'level': 10,
+      });
+      expect(bare.gemBalance, 0);
+      expect(bare.currentStreak, 0);
+      // The snake_case gem twin is accepted, like the pull parsing.
+      final snake = FriendDto.fromJson({
+        'id': 'f3',
+        'nickname': 'Jo',
+        'tag': '33333',
+        'status': '',
+        'level': 1,
+        'gem_balance': 9,
+      });
+      expect(snake.gemBalance, 9);
+    });
+
+    test('FriendDetail parses gemBalance/currentStreak, defaults 0 absent',
+        () {
+      final d = FriendDetail.fromJson({
+        'friendId': 'f1',
+        'nickname': 'Sam',
+        'tag': '12345',
+        'sharingEnabled': false,
+        'gemBalance': 210,
+        'currentStreak': '31',
+      });
+      expect(d?.gemBalance, 210);
+      expect(d?.currentStreak, 31);
+      final bare = FriendDetail.fromJson({
+        'friendId': 'f1',
+        'nickname': 'Sam',
+        'tag': '12345',
+        'sharingEnabled': true,
+      });
+      expect(bare?.gemBalance, 0);
+      expect(bare?.currentStreak, 0);
+    });
+
     test('FriendNotificationDto parses friendRequestId (num or string)',
         () {
       final n = FriendNotificationDto.fromJson({
@@ -248,6 +306,41 @@ void main() {
       expect(self.tag, '00000');
       final board = buildLeaderboardWithSelf(friends, self);
       expect(board.map((f) => f.id), ['f2', 'me', 'f1']);
+    });
+
+    test('self leaderboard entry carries streak + gems', () {
+      final self = selfLeaderboardEntry(
+        nickname: 'You',
+        tag: '48210',
+        weeklyScore: 320,
+        currentStreak: 27,
+        gemBalance: 145,
+      );
+      expect(self.currentStreak, 27);
+      expect(self.gemBalance, 145);
+      expect(self.level, 320);
+    });
+
+    test('avatar initials + color are deterministic', () {
+      expect(friendAvatarInitials('Boston'), 'BO');
+      expect(friendAvatarInitials('You'), 'YO');
+      expect(friendAvatarInitials('Addy'), 'AD');
+      expect(friendAvatarInitials('dad'), 'DA');
+      expect(friendAvatarInitials('A'), 'A');
+      expect(friendAvatarInitials(''), '?');
+      expect(friendAvatarInitials('123'), '?');
+      // Same id → same color, every call.
+      expect(friendAvatarColor('f1'), friendAvatarColor('f1'));
+      expect(friendAvatarColor('me'), friendAvatarColor('me'));
+    });
+
+    test('points label is the single ruled string', () {
+      // Juno §2.1 hold — RESOLVED by coordinator ruling (Nov 19,
+      // 2026): Mason's audit proved weekly_score has no live
+      // writer and no weekly window, so the label ships bare
+      // "pts"; the flip lives in this one helper.
+      expect(friendWeeklyPointsLabel(320), '320 pts');
+      expect(friendWeeklyPointsLabel(0), '0 pts');
     });
 
     test('friend detail stat formatting mirrors native', () {
@@ -443,6 +536,175 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('User not found'), findsOneWidget);
       expect(find.text('Request sent successfully!'), findsNothing);
+    });
+  });
+
+  group('CommunityToolScreen revamp (Option A)', () {
+    MockClient revampClient() {
+      return MockClient((request) async {
+        switch (request.url.path) {
+          case '/api/friends/list':
+            return http.Response(
+                jsonEncode({
+                  'success': true,
+                  'friends': [
+                    {
+                      'id': 'f-boston',
+                      'nickname': 'Boston',
+                      'tag': '91304',
+                      'status': '',
+                      'level': 285,
+                      'gemBalance': 210,
+                      'currentStreak': 31,
+                    },
+                    {
+                      'id': 'f-addy',
+                      'nickname': 'Addy',
+                      'tag': '55198',
+                      'status': '',
+                      'level': 150,
+                      'gemBalance': 40,
+                      'currentStreak': 6,
+                    },
+                  ],
+                }),
+                200);
+          case '/api/friends/notifications':
+            return http.Response(
+                jsonEncode({'success': true, 'notifications': []}), 200);
+          case '/api/sync/pull':
+            return http.Response(
+                jsonEncode({
+                  'isUnlimited': true,
+                  'nickname': 'You',
+                  'tag': '48210',
+                  'profile': {
+                    'weeklyScore': 320,
+                    'currentStreak': 27,
+                    'gem_balance': 145,
+                  },
+                }),
+                200);
+          case '/api/friends/data/f-boston':
+            return http.Response(
+                jsonEncode({
+                  'success': true,
+                  'data': {
+                    'friendId': 'f-boston',
+                    'nickname': 'Boston',
+                    'tag': '91304',
+                    'sharingEnabled': true,
+                    'todaySleepMins': 420,
+                    'todayAvgHr': 88,
+                    'todayScore': 12,
+                    'todaySpikes': 1,
+                    'todaySleepDebt': 0,
+                    'gemBalance': 210,
+                    'currentStreak': 31,
+                  },
+                }),
+                200);
+          case '/api/friends/data/f-addy':
+            return http.Response(
+                jsonEncode({
+                  'success': true,
+                  'data': {
+                    'friendId': 'f-addy',
+                    'nickname': 'Addy',
+                    'tag': '55198',
+                    'sharingEnabled': false,
+                    'gemBalance': 40,
+                    'currentStreak': 6,
+                  },
+                }),
+                200);
+        }
+        return http.Response('{}', 404);
+      });
+    }
+
+    testWidgets(
+        'rows render avatar, streak, gems, pts; self only on leaderboard',
+        (tester) async {
+      final handle = tester.ensureSemantics();
+      await pumpScreen(
+          tester,
+          CommunityToolScreen(
+              backend: backendWith(revampClient())));
+      // Friend rows: avatar initials + rich stats subline. The
+      // points label is bare "pts" in both places (coordinator
+      // ruling on Juno's §2.1 hold — no live weekly window), so
+      // each friend value appears twice: row + leaderboard.
+      expect(find.text('BO'), findsOneWidget);
+      expect(find.text('AD'), findsOneWidget);
+      expect(find.text('285 pts'), findsNWidgets(2));
+      expect(find.text('150 pts'), findsNWidgets(2));
+      // Leaderboard self row: 320 pts, once (leaderboard only).
+      expect(find.text('320 pts'), findsOneWidget);
+      // Coordinator ruling: the friends list stays friends-only —
+      // "You" appears exactly once, on the leaderboard.
+      expect(find.text('You'), findsOneWidget);
+      // Juno C3 semantics labels on the icon+number stats.
+      expect(find.bySemanticsLabel('31 day streak'), findsWidgets);
+      expect(find.bySemanticsLabel('210 gems'), findsWidgets);
+      expect(find.bySemanticsLabel('6 day streak'), findsWidgets);
+      expect(find.bySemanticsLabel('40 gems'), findsWidgets);
+      expect(find.bySemanticsLabel('27 day streak'), findsWidgets);
+      expect(find.bySemanticsLabel('145 gems'), findsWidgets);
+      // The flame glyph is the Material icon, never an emoji.
+      expect(find.byIcon(Icons.local_fire_department), findsWidgets);
+      // Disposed in-body: the framework verifies handles before
+      // addTearDown callbacks run.
+      handle.dispose();
+    });
+
+    testWidgets('detail dialog (sharing on): game cards + health stats',
+        (tester) async {
+      await pumpScreen(
+          tester,
+          CommunityToolScreen(
+              backend: backendWith(revampClient())));
+      await tester.tap(find.text('Boston').first);
+      await tester.pumpAndSettle();
+      // Game cards sit above the TODAY health section (Juno §2.3
+      // placement rule) and carry the detail payload's values.
+      expect(find.text('Current Streak'), findsOneWidget);
+      expect(find.text('Gems'), findsOneWidget);
+      expect(find.text('31'), findsWidgets);
+      expect(find.text('210'), findsWidgets);
+      expect(find.text('TODAY'), findsOneWidget);
+      expect(
+          tester.getTopLeft(find.text('Current Streak')).dy,
+          lessThan(tester.getTopLeft(find.text('TODAY')).dy));
+      // Health stats render as before.
+      expect(find.text('7h0m'), findsOneWidget);
+      expect(find.text('88 bpm'), findsOneWidget);
+      expect(find.text('12 pts'), findsOneWidget);
+    });
+
+    testWidgets(
+        'detail dialog (sharing off): game cards show, health stays gated',
+        (tester) async {
+      await pumpScreen(
+          tester,
+          CommunityToolScreen(
+              backend: backendWith(revampClient())));
+      await tester.tap(find.text('Addy').first);
+      await tester.pumpAndSettle();
+      // Juno C2(a): streak + gems render regardless of sharing.
+      expect(find.text('Current Streak'), findsOneWidget);
+      expect(find.text('Gems'), findsOneWidget);
+      expect(find.text('6'), findsWidgets);
+      expect(find.text('40'), findsWidgets);
+      // Juno C2(b): the lock copy is health-qualified.
+      expect(find.text('Addy has turned off health data sharing'),
+          findsOneWidget);
+      expect(find.text('Addy has turned off data sharing'),
+          findsNothing);
+      // Health cards remain gated off.
+      expect(find.text('Sleep'), findsNothing);
+      expect(find.text('Avg HR'), findsNothing);
+      expect(find.text('Daily Score'), findsNothing);
     });
   });
 

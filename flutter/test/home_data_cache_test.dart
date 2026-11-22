@@ -68,7 +68,7 @@ class _StalledRepository extends HealthRepository {
   _StalledRepository() : super();
 
   @override
-  Future<TodayVitals> loadTodayVitals({required bool connected}) =>
+  Future<TodayVitals> loadTodayVitals({required HcAvailability snapshot}) =>
       Completer<TodayVitals>().future;
 
   @override
@@ -89,7 +89,7 @@ class _DelayedRepository extends HealthRepository {
   }) : super();
 
   @override
-  Future<TodayVitals> loadTodayVitals({required bool connected}) async {
+  Future<TodayVitals> loadTodayVitals({required HcAvailability snapshot}) async {
     await Future<void>.delayed(const Duration(milliseconds: 100));
     return vitals;
   }
@@ -503,7 +503,10 @@ void main() {
       expect(find.text('7h0m'), findsOneWidget);
       expect(find.text('3'), findsOneWidget);
       expect(find.text('12'), findsOneWidget);
-      expect(find.text('30'), findsOneWidget);
+      // Scope #5 (Nov 20, 2026): the cached best streak (30) is
+      // still seeded in the cache, but the trophy pill is gone from
+      // Home — it no longer renders on screen.
+      expect(find.text('30'), findsNothing);
 
       // Time passes with the background load stalled: values stay put,
       // no loading state ever appears.

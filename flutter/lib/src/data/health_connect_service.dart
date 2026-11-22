@@ -220,6 +220,16 @@ class HealthConnectService {
   Future<HcAvailability> probeAvailability() =>
       _probeAvailability(readPersisted: true);
 
+  /// HC Grant Hardening — the same snapshot WITHOUT the
+  /// persisted-flag storage read, for consumers that gate reads
+  /// per type and never read the snapshot's persisted flag (the
+  /// BP / Sleep / Key Metrics / Coach read gates): a slow or
+  /// absent storage layer can never stall their grant verdict
+  /// behind it. The snapshot's `persistedConnected` is false;
+  /// every other field is the probe's.
+  Future<HcAvailability> probeGrantState() =>
+      _probeAvailability(readPersisted: false);
+
   /// The probe core. [readPersisted] controls only the
   /// first-paint hint: [getStatus] runs the same probe WITHOUT
   /// the storage read, because its legacy contract is exactly the
@@ -297,11 +307,19 @@ class HealthConnectService {
       bridgeErrorCode ??= grantError.code;
       granted = null;
     }
-    // The Steps read probe runs ONLY on a full grant (the legacy
-    // getStatus rule): it is the stale/wedged evidence, and on a
-    // partial or absent grant it could prove nothing.
+    // The Steps read probe runs whenever READ_STEPS itself is
+    // granted (HC Grant Hardening §3.2): it is the stale/wedged
+    // evidence for the Steps type. The legacy rule ran it ONLY on
+    // a full grant, so a wedged Steps grant inside a partial grant
+    // was invisible; now any grant containing Steps is probed. The
+    // legacy [HealthConnectService.getStatus] contract is
+    // unaffected: its stale throw keys on [HcAvailability
+    // .staleWedged], which still requires a FULL grant — a partial
+    // grant's probe outcome lands in the snapshot as data
+    // ([HcAvailability.wedgedPermissions]) and never throws.
     HcReadProbeOutcome? stepsProbe;
-    if (granted != null && granted.containsAll(requiredPermissions)) {
+    if (granted != null &&
+        granted.contains('android.permission.health.READ_STEPS')) {
       stepsProbe = await probeReadAccess();
     }
     return HcAvailability(
@@ -574,6 +592,8 @@ class HealthConnectService {
   static final Object _hrvOutcomeZoneKey = Object();
   static final Object _caloriesOutcomeZoneKey = Object();
   static final Object _spikesOutcomeZoneKey = Object();
+  static final Object _stepsOutcomeZoneKey = Object();
+  static final Object _totalCaloriesOutcomeZoneKey = Object();
 
   /// VC 100133 (Phase 5 follow-up) — the gate serializing
   /// UNPROVEN reads in [_outcomeOf] (see there). Chained-future
@@ -903,6 +923,89 @@ class HealthConnectService {
     }
   }
 
+  /// Per-day step totals `[{date: "YYYY-MM-DD", count}]` over the
+  /// last [days] days (bridge aggregate read; BADGES package).
+  /// Raw values pass through — callers apply the founder zero
+  /// rule. Empty when unreadable.
+  Future<List<({String date, int count})>> readStepsHistory(
+      int days) async =>
+      (await readStepsHistoryWithOutcome(days)).value;
+
+  /// Outcome-carrying variant of [readStepsHistory].
+  Future<HcReadOutcome<List<({String date, int count})>>>
+      readStepsHistoryWithOutcome(int days) => _outcomeOf(
+            _stepsOutcomeZoneKey,
+            () => readStepsHistory(days),
+            () => _readStepsHistoryCore(days),
+          );
+
+  Future<HcReadOutcome<List<({String date, int count})>>>
+      _readStepsHistoryCore(int days) async {
+    try {
+      final raw = await _channel
+          .invokeMethod<List>('readStepsHistory', {'days': days});
+      final out = <({String date, int count})>[];
+      for (final item in raw ?? const []) {
+        if (item is Map) {
+          final d = item['date'];
+          final v = item['count'];
+          if (d is String && v is num) out.add((date: d, count: v.toInt()));
+        }
+      }
+      return HcReadOutcome(value: out);
+    } on PlatformException catch (e) {
+      _notePlatformError(e);
+      return HcReadOutcome(
+          value: const [], errorCode: e.code, errorDetails: _detailsOf(e));
+    } on MissingPluginException {
+      _noteReadError('NO_CHANNEL');
+      return HcReadOutcome(value: const [], errorCode: 'NO_CHANNEL');
+    }
+  }
+
+  /// Per-day TOTAL calories `[{date: "YYYY-MM-DD", kcal}]` over
+  /// the last [days] days — the TotalCaloriesBurnedRecord energy
+  /// total ONLY (resting + active), NOT the active-preferred
+  /// figure [readCaloriesHistory] returns (BADGES package: the
+  /// Monthly calories ladder is calibrated on totals, per the
+  /// spec of record). Raw values pass through — callers apply
+  /// the founder zero rule. Empty when unreadable.
+  Future<List<({String date, int kcal})>> readTotalCaloriesHistory(
+      int days) async =>
+      (await readTotalCaloriesHistoryWithOutcome(days)).value;
+
+  /// Outcome-carrying variant of [readTotalCaloriesHistory].
+  Future<HcReadOutcome<List<({String date, int kcal})>>>
+      readTotalCaloriesHistoryWithOutcome(int days) => _outcomeOf(
+            _totalCaloriesOutcomeZoneKey,
+            () => readTotalCaloriesHistory(days),
+            () => _readTotalCaloriesHistoryCore(days),
+          );
+
+  Future<HcReadOutcome<List<({String date, int kcal})>>>
+      _readTotalCaloriesHistoryCore(int days) async {
+    try {
+      final raw = await _channel.invokeMethod<List>(
+          'readTotalCaloriesHistory', {'days': days});
+      final out = <({String date, int kcal})>[];
+      for (final item in raw ?? const []) {
+        if (item is Map) {
+          final d = item['date'];
+          final v = item['kcal'];
+          if (d is String && v is num) out.add((date: d, kcal: v.toInt()));
+        }
+      }
+      return HcReadOutcome(value: out);
+    } on PlatformException catch (e) {
+      _notePlatformError(e);
+      return HcReadOutcome(
+          value: const [], errorCode: e.code, errorDetails: _detailsOf(e));
+    } on MissingPluginException {
+      _noteReadError('NO_CHANNEL');
+      return HcReadOutcome(value: const [], errorCode: 'NO_CHANNEL');
+    }
+  }
+
   /// Blood pressure records `[{t, sys, dia}]` over `[now - days, now)`,
   /// sorted desc. Empty when unreadable.
   Future<List<BpRecord>> readBloodPressure(int days) async {
@@ -1129,6 +1232,86 @@ class HealthConnectService {
     } on MissingPluginException {
       _noteReadError('NO_CHANNEL');
       return HcReadOutcome(value: const [], errorCode: 'NO_CHANNEL');
+    }
+  }
+
+  /// Raw sleep sessions over the last [days] days (BADGES
+  /// package): the same `readSleepHistory` bridge payload
+  /// [readSleepHistory] summarizes, kept per-session — each
+  /// session's span plus its genuinely-asleep minutes (the
+  /// session interval minus its merged awake stages, the
+  /// founder's summed-bouts rule computed per session via
+  /// [_asleepPieces]). The badges engine needs session onsets
+  /// (Early to bed), which the per-day totals discard. Fail-closed:
+  /// empty when unreadable; raw values pass through and callers
+  /// apply the founder zero rule.
+  Future<List<({int startMs, int endMs, int asleepMinutes})>>
+      readSleepSessions(int days) async {
+    try {
+      final raw = await _channel
+          .invokeMethod<dynamic>('readSleepHistory', {'days': days});
+      List<dynamic> items = const [];
+      if (raw is List) {
+        items = raw;
+      } else if (raw is Map) {
+        final s = raw['items'];
+        if (s is List) items = s;
+        final partial = raw['partialError'];
+        if (partial is String && partial.isNotEmpty) {
+          lastPartialErrorCode = 'SLEEP_HISTORY_PARTIAL';
+          lastReadErrorDetails = partial;
+        }
+      }
+      final out = <({int startMs, int endMs, int asleepMinutes})>[];
+      for (final item in items) {
+        final session = _parseSleepSession(item);
+        if (session == null) continue;
+        var asleepMs = 0;
+        for (final iv in _mergeSleepIntervals(_asleepPieces(session))) {
+          asleepMs += iv.endMs - iv.startMs;
+        }
+        out.add((
+          startMs: session.startMs,
+          endMs: session.endMs,
+          asleepMinutes: asleepMs ~/ 60000,
+        ));
+      }
+      return out;
+    } on PlatformException catch (e) {
+      _notePlatformError(e);
+      return const [];
+    } on MissingPluginException {
+      _noteReadError('NO_CHANNEL');
+      return const [];
+    }
+  }
+
+  /// Raw exercise sessions `[{startMs, endMs}]` over the last
+  /// [days] days (BADGES package: the Active week metric's
+  /// active/exercise minutes). Fail-closed: empty when
+  /// unreadable.
+  Future<List<({int startMs, int endMs})>> readExerciseSessions(
+      int days) async {
+    try {
+      final raw = await _channel
+          .invokeMethod<List>('readExerciseSessions', {'days': days});
+      final out = <({int startMs, int endMs})>[];
+      for (final item in raw ?? const []) {
+        if (item is Map) {
+          final st = item['startMs'];
+          final en = item['endMs'];
+          if (st is num && en is num) {
+            out.add((startMs: st.toInt(), endMs: en.toInt()));
+          }
+        }
+      }
+      return out;
+    } on PlatformException catch (e) {
+      _notePlatformError(e);
+      return const [];
+    } on MissingPluginException {
+      _noteReadError('NO_CHANNEL');
+      return const [];
     }
   }
 
@@ -1497,8 +1680,9 @@ class HcAvailability {
   /// after it.
   final HealthConnectException? grantError;
 
-  /// The Steps read probe's outcome; null when not run (the
-  /// grant was not full, so the probe could prove nothing).
+  /// The Steps read probe's outcome; null when not run
+  /// (READ_STEPS not in the granted set, so the probe could
+  /// prove nothing).
   final HcReadProbeOutcome? stepsProbe;
 
   /// The persisted-connection flag — first-paint hint ONLY.
@@ -1522,6 +1706,29 @@ class HcAvailability {
   Set<String> get missingPermissions => grantKnown
       ? HealthConnectService.missingPermissions(grantedPermissions!)
       : const {};
+
+  /// The missing set when the grant layer is known; null when it
+  /// is unknown. The exact input the grant-state derivations in
+  /// hc_availability.dart consume (`hcGrantStateFor` /
+  /// `hcShouldAttemptRead`): null keeps every derivation at
+  /// `unknown` instead of letting an unread grant layer pose as a
+  /// full grant.
+  Set<String>? get missingIfKnown => grantKnown ? missingPermissions : null;
+
+  /// HC Grant Hardening §3.2 — the permissions with positive wedge
+  /// evidence in THIS snapshot: the probe's own type (Steps) when
+  /// the probe read was blocked with a SecurityException while
+  /// its grant reports present. Per-type wedge evidence for OTHER
+  /// types comes from the reads themselves (an outcome's
+  /// `failedWithSecurityException` while that type is granted) and
+  /// is derived by the consuming surface, not stored here.
+  Set<String> get wedgedPermissions =>
+      stepsProbe == HcReadProbeOutcome.securityFailure &&
+              (grantedPermissions
+                      ?.contains('android.permission.health.READ_STEPS') ??
+                  false)
+          ? const {'android.permission.health.READ_STEPS'}
+          : const {};
 
   bool get fullGrant =>
       grantKnown &&

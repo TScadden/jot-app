@@ -30,6 +30,7 @@
     <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
     <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
     <uses-permission android:name="android.permission.health.READ_SLEEP" />
+    <uses-permission android:name="android.permission.health.READ_EXERCISE" />
     <uses-permission android:name="android.permission.health.READ_STEPS" />
     <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" />
     <uses-permission android:name="android.permission.health.READ_TOTAL_CALORIES_BURNED" />
@@ -136,6 +137,23 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/vitals_widget_info" />
+        </receiver>
+        <!-- Streak widget (Nov 18, 2026): the standalone streak
+             banner widget — same receiver pattern as the vitals
+             widget above (exported=false per the in-repo
+             precedent; updates are delivered by the system
+             AppWidgetService). Data arrives via the home_widget
+             bridge from Dart's WidgetSync.pushStreak. -->
+        <receiver
+            android:name=".StreakWidgetProvider"
+            android:exported="false"
+            android:label="Tabs streak">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/streak_widget_info" />
         </receiver>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

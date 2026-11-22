@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -6,10 +7,13 @@ import 'package:geolocator/geolocator.dart';
 import 'package:tabs_lab/src/data/billing_service.dart';
 import 'package:tabs_lab/src/data/correlation_engine.dart'
     show energyDayLabel;
+import 'package:tabs_lab/src/data/crash_reporting.dart';
 import 'package:tabs_lab/src/data/daily_score.dart';
 import 'package:tabs_lab/src/data/daily_score_refresh.dart'
     show ScoreCapture;
 import 'package:tabs_lab/src/data/daily_score_sync.dart';
+import 'package:tabs_lab/src/data/badge_store.dart';
+import 'package:tabs_lab/src/data/gem_service.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart'
     show historyDateStr;
@@ -18,17 +22,26 @@ import 'package:tabs_lab/src/data/health_history_sync.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
+import 'package:tabs_lab/src/data/midnight_grace.dart';
 import 'package:tabs_lab/src/data/migraine_controller.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/streak_engine.dart';
 import 'package:tabs_lab/src/data/streak_store.dart';
+import 'package:tabs_lab/src/data/summary_completeness.dart';
+import 'package:tabs_lab/src/data/today_plan_store.dart';
+import 'package:tabs_lab/src/data/today_summary.dart';
+import 'package:tabs_lab/src/features/home/streak_celebration_presenter.dart';
+import 'package:tabs_lab/src/features/home/streak_celebration_screen.dart';
 import 'package:tabs_lab/src/data/launch_trace.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/data/widget_sync.dart';
+import 'package:tabs_lab/src/features/badges/badge_strings.dart';
+import 'package:tabs_lab/src/features/badges/badge_widget.dart';
+import 'package:tabs_lab/src/features/badges/badges_screen.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
 import 'package:tabs_lab/src/features/home/bandit_reading_slot.dart';
 import 'package:tabs_lab/src/features/home/daily_score_circle.dart';
@@ -38,14 +51,18 @@ import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
 import 'package:tabs_lab/src/features/home/checkin_sheets.dart';
 import 'package:tabs_lab/src/features/home/checkin_summary_card.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
+import 'package:tabs_lab/src/features/home/grace_band.dart';
 import 'package:tabs_lab/src/features/home/flare_day_logging.dart';
 import 'package:tabs_lab/src/features/home/intake_logging.dart';
 import 'package:tabs_lab/src/features/home/good_day_logging.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
+import 'package:tabs_lab/src/features/tools/community_screen.dart';
+import 'package:tabs_lab/src/features/home/hc_repair_card.dart';
 import 'package:tabs_lab/src/features/home/health_connect_banner.dart';
 import 'package:tabs_lab/src/features/home/home_checkin_strip.dart';
 import 'package:tabs_lab/src/features/home/migraine_block.dart';
+import 'package:tabs_lab/src/features/home/gems_sheet.dart';
 import 'package:tabs_lab/src/features/home/streak_screen.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
@@ -221,6 +238,23 @@ class HomeScreen extends StatefulWidget {
   /// (see [_HomeScreenState._syncCheckInReminderAfterSave]).
   final ReminderNotificationService? notificationService;
 
+  /// Drawer nav fade (founder, Nov 20, 2026) — reports this
+  /// screen's drawer opening/closing to the shell, which owns the
+  /// bottom nav dock: the dock fades out while the drawer is open
+  /// and back in when it closes. The dock is a shell-level overlay
+  /// sibling ABOVE this Scaffold, so it cannot hear the drawer on
+  /// its own. Optional: standalone hosts (tests, pushed routes)
+  /// have no dock to fade and simply pass nothing.
+  final ValueChanged<bool>? onDrawerOpenChanged;
+
+  /// Midnight Grace (Nov 21, 2026) — the shell-owned grace
+  /// controller. Optional: standalone hosts (tests, pushed routes)
+  /// have no shell above them and simply never see grace. When
+  /// present, Home registers its closing-day completeness
+  /// evaluator with the controller, gates its app-open settlement
+  /// while a window is live, and renders the band element.
+  final MidnightGraceController? graceController;
+
   const HomeScreen(
       {super.key,
       this.email,
@@ -237,13 +271,16 @@ class HomeScreen extends StatefulWidget {
       this.billingService,
       this.migraineController,
       this.logEntryOutbox,
-      this.notificationService});
+      this.notificationService,
+      this.graceController,
+      this.onDrawerOpenChanged});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with WidgetsBindingObserver {
   int? _temp;
   bool _weatherLoaded = false;
 
@@ -270,6 +307,16 @@ class _HomeScreenState extends State<HomeScreen> {
   int? _currentStreak;
   int? _bestStreak;
 
+  /// Added scope (Nov 19, 2026) — whether today is complete per
+  /// the SETTLED streak state (its countedDays contain today, the
+  /// streak screen's todayDone rule). Written ONLY where the
+  /// settled state writes [_currentStreak]/[_bestStreak] (app-open
+  /// settlement, summary completion, streak-screen return), from
+  /// that same state — the pill flame's lit source. False until a
+  /// settled state lands: the flame renders grey, never lit on the
+  /// provisional pulled counters or the cache seed.
+  bool _streakTodayComplete = false;
+
   // ── Round 23: Health Connect status (enum, not just a bool) ────────────
   /// Null until the first live status check lands — the banner never
   /// shows on a guess, and cached vitals render first regardless.
@@ -284,6 +331,30 @@ class _HomeScreenState extends State<HomeScreen> {
   /// stale copy. Stale is DATA in the snapshot, never a throw and
   /// never a rendered code (Juno ruling, condition 1).
   bool _hcStaleGrant = false;
+
+  /// HC Grant Hardening §3.2/§3.3 — the wedged state for the
+  /// repair card: the probe reports the stale wedge
+  /// ([HcAvailability.staleWedged]) OR this load's own core reads
+  /// failed with a SecurityException while granted
+  /// ([TodayVitals.coreReadWedged]). While true, the repair card
+  /// REPLACES the banner in its slot under the vitals strip; the
+  /// flag is re-derived on every load, so the card's dismissal is
+  /// state-derived (reads flowing again ⇒ gone), never latched.
+  bool _hcWedged = false;
+
+  /// The repair card's second step (remove-access directions),
+  /// set when an in-place repair attempt did not clear the wedge;
+  /// cleared whenever the wedge itself clears.
+  bool _hcRepairSecondStep = false;
+  bool _hcRepairing = false;
+
+  /// The plain-language message of the last FAILED repair attempt
+  /// ([HcRepairOutcome.failed]), rendered under the repair card —
+  /// the Heart screen's error-line pattern (§3.3). The failure's
+  /// CODE never renders (Juno condition 1); it goes to the log
+  /// only. Cleared when a new attempt starts, when an attempt ends
+  /// in any other outcome, and whenever the wedge itself clears.
+  String? _hcRepairError;
 
   /// Round 15c — once-per-day count-up gate. False until the gate
   /// resolves; true only on the first home view of the day. On later
@@ -539,9 +610,490 @@ class _HomeScreenState extends State<HomeScreen> {
   /// error.
   Future<void> _checkInNotifSyncChain = Future<void>.value();
 
+  // ── Streak upgrade: Daily Summary completion → celebration ────
+  /// The completion watcher (D11): re-evaluated on check-in
+  /// commit, any log-entry commit (the outbox listener), Home
+  /// load, and app resume; fires recordSummaryComplete exactly
+  /// once per open feeling day and hands the result to the
+  /// celebration screen. The nickname (Juno §6a/§9a source) comes
+  /// from the pull's top level, loaded with the check-in state.
+  SummaryCompletionWatcher? _completionWatcher;
+  String? _nickname;
+
+  // ── Midnight Grace (Nov 21, 2026) ─────────────────────────────
+  /// The shell-owned grace controller (widget.graceController),
+  /// resolved once at initState. Null on standalone hosts — every
+  /// grace touchpoint below is then inert and behavior is exactly
+  /// the shipped one.
+  MidnightGraceController? _grace;
+
+  /// The closing day of the completion the watcher is ABOUT to
+  /// present, set by the grace evaluation branch immediately
+  /// before it calls the watcher (whose onCompletion runs
+  /// synchronously inside that call, ahead of its first await, so
+  /// [_presentCompletion] can read this). [_presentCompletion]
+  /// otherwise derives the completed day from the wall clock —
+  /// which under grace is the NEW day, while the day that counted
+  /// is the closing one (the gem grants validate against the
+  /// counted day server-side). Null for every non-grace fire.
+  DateTime? _pendingCompletionDayStart;
+
+  /// This Home's evaluator registration on the controller (kept so
+  /// dispose can unregister exactly this closure).
+  Future<bool> Function(DateTime, DateTime)? _graceEvaluator;
+
+  /// The controller's previous onGraceEnded (restored on dispose).
+  void Function(GraceEndReason, GraceWindow)? _graceEndedBefore;
+
+  /// Gems — the server gem balance for the Home gem pill. Null
+  /// until a server payload lands (pull / grant / spend); the pill
+  /// renders only on a real value, never a local guess. Kept in
+  /// step by the [GemService] listener (the service adopts every
+  /// server payload) plus the streak-record pulls below.
+  int? _gemBalance;
+
+  void _onGemBalanceChanged() {
+    final next = GemService.instance.balance;
+    if (!mounted || next == null || next == _gemBalance) return;
+    setState(() => _gemBalance = next);
+  }
+
+  SummaryCompletionWatcher get _watcher => _completionWatcher ??=
+      SummaryCompletionWatcher(
+        onCompletion: (result, state) {
+          if (!mounted) return;
+          unawaited(_presentCompletion(result, state));
+        },
+      );
+
+  /// One real Daily Summary completion (the post-PR-#115
+  /// deterministic path — the ONLY earn entry point; the dev SIM
+  /// and dev Restore paths never reach this): run the gem earn
+  /// hooks FIRST (their grants are persisted before requesting,
+  /// and a failure queues silently without breaking the flow),
+  /// then hand the celebration to the app-level celebration
+  /// service with Juno §3's earn lines for the grants the server
+  /// confirmed.
+  ///
+  /// Celebration presentation fix (Nov 21, 2026): the pill/cache
+  /// update below runs FIRST, synchronously, from the settled
+  /// (result, state) the watcher handed over — no network await
+  /// and no mounted guard can eat it (the founder's pill showed
+  /// the new count with the flame unlit because this update used
+  /// to sit behind the claim chain's `if (!mounted) return`).
+  /// The claim chain then runs WITHOUT any mounted gate: a Home
+  /// disposal mid-chain (tab switch) can no longer drop the
+  /// celebration either — the built celebration is HELD by
+  /// [StreakCelebrationService] and presented by the app-root
+  /// presenter over whatever surface is current (see
+  /// streak_celebration_presenter.dart).
+  Future<void> _presentCompletion(
+    StreakCompletionResult result,
+    StreakState state,
+  ) async {
+    // A completion IS a settlement: from here the settled
+    // state owns the pills (Bug 3 unification).
+    _streakSettleLanded = true;
+    // Settlement hook (Community Added Scope #2): the day just
+    // resolved, so re-project the evening nudges NOW — the
+    // sync's cancel sweep takes down today's pending countdown
+    // one-shot AND a countdown already posted at 20:00 (the
+    // plugin cancels posted notifications by id), and the
+    // completed day never re-arms.
+    _syncCheckInReminderAfterSave(streakState: state);
+    final now = DateTime.now();
+    // Midnight Grace: a completion fired inside the grace window
+    // counted the CLOSING day, not the wall-clock day — the firing
+    // evaluation published it in _pendingCompletionDayStart. The
+    // gem grants below validate against the counted day
+    // server-side, so this attribution must name the closing day.
+    final graceDayStart = _pendingCompletionDayStart;
+    final summaryTabsDay =
+        graceDayStart != null ? dateStrOf(graceDayStart) : tabsDayStr(now);
+    // The settled pill + cache update, FIRST (see the doc above):
+    // the completion IS today's counted day in this settled
+    // state — the pill flame lights from the same state, right
+    // away, whatever surface the user is on.
+    final cache = HomeDataCache.instance;
+    if (cache.applyStreak(result.newCount, streakBest(state))) {
+      unawaited(cache.persist());
+    }
+    if (mounted) {
+      setState(() {
+        _currentStreak = result.newCount;
+        _bestStreak = streakBest(state);
+        _streakTodayComplete = state.countedDays.contains(summaryTabsDay);
+      });
+    }
+    unawaited(WidgetSync.pushStreak(
+      state,
+      signedIn: true,
+      nickname: _nickname,
+      now: DateTime.now(),
+    ));
+    // Gems bound discipline (Vera server review, Nov 19, 2026):
+    // the server validates grants against the PUSHED streak_state
+    // blob (the day must be in its summaryCompletedDays; milestone
+    // n must not exceed best_streak). recordSummaryComplete's own
+    // push is fire-and-forget, so push the settled record
+    // EXPLICITLY here and await it before any grant is requested
+    // for this completion. A failed push does not block the flow:
+    // the grants then refuse retryably and land at the next
+    // app-open sync, after the record's re-push.
+    try {
+      await _healthRepo.pushStreakRecord(
+        result.newCount,
+        streakBest(state),
+        jsonEncode(state.toJson()),
+      );
+    } catch (_) {
+      // Grants queue/retry; the celebration is unaffected.
+    }
+    final gemResult = await GemService.instance.processCompletion(
+      summaryTabsDay: summaryTabsDay,
+      previousStreak: gemSettledStreakBefore(state, summaryTabsDay),
+      newStreak: result.newCount,
+      settledState: state,
+      now: now,
+    );
+    // NO mounted gate from here on (celebration fix, Nov 21,
+    // 2026): the claim has landed or queued on its own discipline
+    // above; what remains — building the celebration data and
+    // handing it to the celebration service — needs no Home
+    // State at all, and gating it on mounted is what ate the
+    // founder's celebration when Home unmounted mid-chain.
+    if (mounted &&
+        gemResult.balance != null &&
+        gemResult.balance != _gemBalance) {
+      setState(() => _gemBalance = gemResult.balance);
+    }
+    final data = StreakCelebrationData.fromCompletion(
+      result: result,
+      state: state,
+      // Under grace the celebration's week roll is anchored on the
+      // counted (closing) day: a moment safely inside it.
+      now: graceDayStart?.add(const Duration(hours: 2)) ?? now,
+      gemLines: gemResult.lines,
+    );
+    StreakCelebrationService.instance.hold(PendingStreakCelebration(
+      data: data,
+      nickname: _nickname,
+      dayKey: summaryTabsDay,
+    ));
+  }
+
+  /// Evaluations are SERIALIZED through this chain: Home's
+  /// triggers cluster (the load settle and the outbox listener
+  /// can land in the same microtask burst), and the watcher's
+  /// fired-marker guard is designed for one evaluation at a time
+  /// — two concurrent evaluations could both pass the
+  /// not-yet-fired check before either writes the marker and
+  /// double-fire the celebration. The evaluation body never
+  /// throws (fail-safe catch inside), so the chain never wedges.
+  Future<void> _completionEvalChain = Future<void>.value();
+
+  void _queueSummaryCompletionEvaluation() {
+    _completionEvalChain =
+        _completionEvalChain.then((_) => _evaluateSummaryCompletion());
+  }
+
+  /// The resolved inputs of one completeness evaluation for the
+  /// feeling day starting at [dayStart]: the watcher context (the
+  /// day's attested plan + the merged entries + the mood category)
+  /// and the streak-record seeds the watcher call mirrors. Shared
+  /// by the D11 evaluation below and the Midnight Grace closing-day
+  /// evaluator — one resolution path, so a grace evaluation reads
+  /// exactly the evidence a normal evaluation would.
+  /// [evidenceWindowEnd] is the grace override (the deadline);
+  /// null keeps the day's own +24h evidence window.
+  Future<
+      ({
+        SummaryCompletionContext context,
+        bool pullSucceeded,
+        int? seedCurrent,
+        int? seedBest,
+        String? seedStateJson,
+        int? seedPurchasedFreezes,
+      })> _resolveCompletionInputs({
+    required DateTime dayStart,
+    DateTime? evidenceWindowEnd,
+  }) async {
+    final rec = await _healthRepo.loadStreakRecord();
+    final profile = await _backend.fetchProfile();
+    final categories = await _backend.fetchLogCategories();
+    // P0 fix (Defect A2): the NULLABLE habits fetch — a failed
+    // fetch (null) must not read as "no habits planned" in the
+    // attestation below (fetchHabits collapses failure to []).
+    final habits = await _backend.fetchHabitsOrNull();
+    String? email;
+    try {
+      email = await _backend.readEmail();
+    } catch (_) {
+      email = null;
+    }
+    final localState = await TodayPlanStore.instance.load(
+      email: email,
+      todayStr: dateStrOf(dayStart),
+    );
+    AttestedPlan? attestedPlan;
+    if (profile != null) {
+        final meds = <SummaryMedication>[];
+        for (final row
+            in TabsBackend.decodeProfileList(profile['medications'])) {
+          final med = SummaryMedication.fromBlobRow(row);
+          if (med != null) meds.add(med);
+        }
+        final reminders = <SummaryReminder>[];
+        final rows = TabsBackend.decodeProfileList(profile['reminders']);
+        for (var i = 0; i < rows.length; i++) {
+          final rem =
+              SummaryReminder.fromBlobRow(rows[i], fallbackId: -(i + 1));
+          if (rem != null) reminders.add(rem);
+        }
+        final plan = buildPlanForFeelingDay(
+          feelingDayStart: dayStart,
+          medications: meds,
+          reminders: reminders,
+          habits: habits ?? const [],
+          localState: localState,
+          entries: _mergedEntries,
+          medicationCategoryId: resolveSummaryCategoryId(
+            categories,
+            name: 'Medication',
+            fallbackId: 8,
+          ),
+          goalsCategoryId: resolveSummaryCategoryId(
+            categories,
+            name: 'Goals & Habits',
+            fallbackId: 4,
+          ),
+          evidenceWindowEnd: evidenceWindowEnd,
+        );
+        // P0 fix (Defect A2): AUTHORITATIVE attestation — each
+        // plan input attests ITSELF at the decode layer (field
+        // present + decodable; habits fetch answered). The pre-fix
+        // proxy `profile != null` let an absent/partial payload
+        // read plannedCount == 0 and fire on the check-in alone.
+        attestedPlan = AttestedPlan(
+          plan: plan,
+          attestation: PlanAttestation(
+            medicationsResolved:
+                profileListFieldResolved(profile, 'medications'),
+            remindersResolved:
+                profileListFieldResolved(profile, 'reminders'),
+            habitsResolved: habits != null,
+          ),
+        );
+      }
+    return (
+      context: SummaryCompletionContext(
+        attestedPlan: attestedPlan,
+        entries: _mergedEntries,
+        moodCategoryId:
+            resolveFeelingCategoryId(categories) ?? _feelingCategoryId,
+      ),
+      pullSucceeded: rec.succeeded,
+      seedCurrent: rec.current,
+      seedBest: rec.best,
+      seedStateJson: rec.stateJson,
+      seedPurchasedFreezes: rec.purchasedFreezes,
+    );
+  }
+
+  /// One completeness re-evaluation for the currently open
+  /// feeling day. Fail-safe: any failure leaves the day un-fired
+  /// and a later trigger retries.
+  ///
+  /// Midnight Grace: while a grace window is live, the operative
+  /// day is the CLOSING day — the evaluation resolves its context
+  /// for the closing day and passes the watcher the fireable-day +
+  /// evidence-window overrides, so a completion inside the window
+  /// counts for the closing day exactly once (the watcher's own
+  /// fired-day marker governs). When the fire lands, the window
+  /// resolves as completed.
+  Future<void> _evaluateSummaryCompletion() async {
+    try {
+      final now = DateTime.now();
+      final graceWindow = _grace?.activeWindow;
+      final dayStart = graceWindow?.closingDayStart ?? feelingDayStart(now);
+      final inputs = await _resolveCompletionInputs(
+        dayStart: dayStart,
+        evidenceWindowEnd: graceWindow?.deadline,
+      );
+      // Vera C2 (binding): the resolution above is awaited, and
+      // the grace window can END while it is in flight — expiry at
+      // the deadline, a backgrounding, any end reason — after
+      // which _onGraceEnded has already re-run settlement for the
+      // closing day. A fire from THIS stale evaluation would
+      // create a completion after the window, which founder spec
+      // §3 forbids ("Grace never creates a completion after the
+      // window"). So re-check the window's identity here: a grace
+      // evaluation may only fire while the exact window it was
+      // captured under is still the controller's active window.
+      // Dropping the fire loses nothing: the grace-end settle
+      // queues a fresh evaluation for the now-open day. (The
+      // watcher re-checks once more at the fire point via
+      // graceStillActive — the same invariant at the last moment.)
+      if (graceWindow != null &&
+          !identical(_grace?.activeWindow, graceWindow)) {
+        return;
+      }
+      // The watcher's onCompletion runs synchronously inside the
+      // call below: publish the firing day first so
+      // _presentCompletion attributes the celebration + gem grants
+      // to the day that actually counted.
+      _pendingCompletionDayStart = graceWindow?.closingDayStart;
+      try {
+        final fired = await _watcher.maybeFireSummaryCompletion(
+          context: inputs.context,
+          pullSucceeded: inputs.pullSucceeded,
+          seedCurrent: inputs.seedCurrent,
+          seedBest: inputs.seedBest,
+          seedStateJson: inputs.seedStateJson,
+          seedPurchasedFreezes: inputs.seedPurchasedFreezes,
+          push: _healthRepo.pushStreakRecord,
+          now: now,
+          fireableDayStartOverride: graceWindow?.closingDayStart,
+          evidenceWindowEnd: graceWindow?.deadline,
+          graceStillActive: graceWindow == null
+              ? null
+              : () => identical(_grace?.activeWindow, graceWindow),
+        );
+        if (fired && graceWindow != null) {
+          _grace?.resolveCompleted();
+        }
+      } finally {
+        _pendingCompletionDayStart = null;
+      }
+    } catch (_) {
+      // A failed evaluation fires nothing; the next trigger
+      // (commit / load / resume) re-evaluates.
+    }
+  }
+
+  /// The Midnight Grace evaluator the controller consults at the
+  /// crossing (and Home re-consults when it mounts into a
+  /// provisional window): is the closing day's Daily Summary
+  /// INCOMPLETE? Only a POSITIVELY complete day answers false —
+  /// an unattested/unresolvable plan cannot prove the day
+  /// complete, so grace opens (it fabricates nothing: settlement
+  /// stays gated by the store's own anti-fabrication rules, and
+  /// an uncompletable window simply expires into the normal
+  /// rollover).
+  Future<bool> _evaluateClosingDayIncomplete(
+    DateTime closingDayStart,
+    DateTime deadline,
+  ) async {
+    try {
+      final inputs = await _resolveCompletionInputs(
+        dayStart: closingDayStart,
+        evidenceWindowEnd: deadline,
+      );
+      final attested = inputs.context.attestedPlan;
+      if (attested == null || !attested.resolved) return true;
+      return !isSummaryComplete(
+        feelingDayStart: closingDayStart,
+        attestedPlan: attested,
+        entries: inputs.context.entries,
+        moodCategoryId: inputs.context.moodCategoryId,
+        evidenceWindowEnd: deadline,
+      );
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// The grace window this Home last reacted to (identity-compared)
+  /// — the controller notifies on every 250ms tick, and only the
+  /// open/close transitions concern Home's own state.
+  GraceWindow? _graceSeenWindow;
+
+  /// Whether the grace band element is mounted in the center slot.
+  /// True from the window's open until its fade-out completes (the
+  /// band reports that itself), so the counters return only after
+  /// the fade — never underneath it.
+  bool _graceBandMounted = false;
+
+  void _onGraceChanged() {
+    if (!mounted) return;
+    final active = _grace?.activeWindow;
+    if (identical(active, _graceSeenWindow)) return;
+    _graceSeenWindow = active;
+    if (active != null) _graceBandMounted = true;
+    // The operative day flipped (window opened or closed): the
+    // check-in derivation reads the closing day during grace and
+    // the wall-clock day otherwise, so re-derive and repaint.
+    _deriveFromMerged();
+    if (mounted) setState(() {});
+  }
+
+  /// The controller reports a window end (after it has cleared):
+  /// Home runs the normal post-window paths. Expiry / background /
+  /// already-complete → the ordinary app-open settlement (the gate
+  /// has lifted, so recordOpen settles the closing day exactly
+  /// like a no-grace rollover) plus a check-in reload so the band
+  /// and summary roll to the new day. Completion → the watcher
+  /// already counted the day and celebrated; only the day display
+  /// rolls.
+  void _onGraceEnded(GraceEndReason reason, GraceWindow window) {
+    if (!mounted) return;
+    unawaited(_loadCheckInState());
+    if (reason != GraceEndReason.completed) {
+      _streakSettle = _settleStreakWithEngine();
+      unawaited(_streakSettle!);
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // App resume is a D11 re-evaluation trigger (and a widget
+    // re-sync point: the pose/state refresh at existing sync
+    // points is the recorded D14 contract).
+    if (state == AppLifecycleState.resumed && mounted) {
+      _queueSummaryCompletionEvaluation();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Midnight Grace: register this Home's closing-day evaluator +
+    // end handler with the shell's controller. Home is the only
+    // surface that can answer "is the closing day incomplete?" —
+    // the controller owns the window, Home owns the evidence.
+    _grace = widget.graceController;
+    final grace = _grace;
+    if (grace != null) {
+      _graceEvaluator = _evaluateClosingDayIncomplete;
+      grace.closingDayIncompleteEvaluator = _graceEvaluator;
+      _graceEndedBefore = grace.onGraceEnded;
+      grace.onGraceEnded = _onGraceEnded;
+      grace.addListener(_onGraceChanged);
+      _graceSeenWindow = grace.activeWindow;
+      _graceBandMounted = grace.isActive;
+      // Provisional window (the crossing happened while Home was
+      // not mounted — e.g. the user was on another tab): resolve
+      // it against the real evidence now that Home is here. If the
+      // closing day is in fact complete, the window closes as
+      // alreadyComplete; if incomplete, it simply runs on.
+      final active = grace.activeWindow;
+      if (active != null) {
+        unawaited(() async {
+          final incomplete = await _evaluateClosingDayIncomplete(
+            active.closingDayStart,
+            active.deadline,
+          );
+          if (!incomplete && grace.activeWindow == active) {
+            grace.resolveAlreadyComplete();
+          }
+        }());
+      }
+    }
+    GemService.instance.addListener(_onGemBalanceChanged);
+    // A cached server balance from an earlier payload paints the
+    // gem pill on the first frame; the settle below refreshes it.
+    _gemBalance = GemService.instance.balance;
     _checkInNotifs =
         widget.notificationService ?? LocalReminderNotificationService();
     _healthRepo = widget.healthRepository ??
@@ -637,6 +1189,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    final grace = _grace;
+    if (grace != null) {
+      grace.removeListener(_onGraceChanged);
+      if (identical(
+          grace.closingDayIncompleteEvaluator, _graceEvaluator)) {
+        grace.closingDayIncompleteEvaluator = null;
+      }
+      if (grace.onGraceEnded == _onGraceEnded) {
+        grace.onGraceEnded = _graceEndedBefore;
+      }
+    }
+    WidgetsBinding.instance.removeObserver(this);
+    GemService.instance.removeListener(_onGemBalanceChanged);
+    _completionWatcher?.dispose();
     widget.migraineController?.removeListener(_onMigraineChanged);
     _outbox.removeListener(_onCheckInOutboxChanged);
     _outbox.removeListener(_onIntakeOutboxChanged);
@@ -725,6 +1291,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _intakePresets = presets;
       final pull = await _backend.fetchSyncPull();
       if (pull == null) return;
+      final nicknameRaw = pull['nickname'];
+      if (nicknameRaw is String) _nickname = nicknameRaw;
       final entries = await _backend.fetchLogEntryDtos();
       final categories = await _backend.fetchLogCategories();
       final categoryId = resolveIntakeCategoryId(categories);
@@ -1191,6 +1759,8 @@ class _HomeScreenState extends State<HomeScreen> {
       await _outbox.load(ownerEmail: email);
       final pull = await _backend.fetchSyncPull();
       if (pull == null) return;
+      final nicknameRaw = pull['nickname'];
+      if (nicknameRaw is String) _nickname = nicknameRaw;
       final entries = await _backend.fetchLogEntryDtos();
       final categories = await _backend.fetchLogCategories();
       if (!mounted) return;
@@ -1223,9 +1793,27 @@ class _HomeScreenState extends State<HomeScreen> {
   void _deriveFromMerged() {
     final feelingId = _feelingCategoryId;
     final flareId = _flareCategoryId;
+    // Midnight Grace: while a window is live, the band's check-in
+    // derivation reads the CLOSING day (a moment inside it names
+    // its window) with the evidence window extended to the grace
+    // deadline — the strip then shows whether the CLOSING day has
+    // its check-in, and a check-in tapped during grace (timestamped
+    // after midnight, inside the extended window) hides it. Only
+    // this band/check-in surface is grace-scoped; every other
+    // derivation keeps the wall-clock day.
+    final graceWindow = _grace?.activeWindow;
     final checkIn = feelingId == null
         ? null
-        : findFeelingCheckInEntry(_mergedEntries, moodCategoryId: feelingId);
+        : graceWindow != null
+            ? findFeelingCheckInEntry(
+                _mergedEntries,
+                moodCategoryId: feelingId,
+                now: graceWindow.closingDayStart
+                    .add(const Duration(hours: 2)),
+                windowEnd: graceWindow.deadline,
+              )
+            : findFeelingCheckInEntry(_mergedEntries,
+                moodCategoryId: feelingId);
     final flare = flareId == null
         ? null
         : findFlareRecord(_mergedEntries, symptomsCategoryId: flareId);
@@ -1272,6 +1860,9 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onCheckInOutboxChanged() {
     if (!mounted) return;
     _deriveCheckInState(_mergedEntries);
+    // Any log-entry commit is a D11 completion trigger (the
+    // check-in commit rides this same listener).
+    _queueSummaryCompletionEvaluation();
   }
 
   /// Fresh-pull context for a commit: invalidates the pull,
@@ -1352,6 +1943,15 @@ class _HomeScreenState extends State<HomeScreen> {
   /// never sees. Execution is serialized through
   /// [_checkInNotifSyncChain].
   ///
+  /// Community Added Scope #2 — the same chain is the evening
+  /// re-projection for the streak countdown: it also runs from
+  /// the two settlement points (summary completion in
+  /// [_presentCompletion], app-open settlement in
+  /// [_settleStreakWithEngine]) with the freshly settled state,
+  /// so a resolved day's countdown — pending or already
+  /// posted — is cancelled at settlement, not at the next
+  /// Settings visit.
+  ///
   /// The checked-in labels derive from the LOCAL merged entry
   /// view ([_mergedEntries] — pulled entries overlaid with the
   /// outbox), NOT a fresh pull: a just-staged check-in counts
@@ -1367,7 +1967,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// code and swallowed — never a reason to fail a save the
   /// outbox already accepted. A transient failure self-heals at
   /// the next sync.
-  void _syncCheckInReminderAfterSave() {
+  void _syncCheckInReminderAfterSave({StreakState? streakState}) {
     _checkInNotifSyncChain = _checkInNotifSyncChain.then((_) async {
       try {
         final enabled = await _settingsStore.getCheckInReminderEnabled();
@@ -1383,6 +1983,12 @@ class _HomeScreenState extends State<HomeScreen> {
         await ReminderSync(_checkInNotifs).syncCheckInOnly(
           checkInEnabled: enabled,
           checkedInDayLabels: labels,
+          // The evening projection also carries the streak
+          // countdown (Community Added Scope #2): the settled
+          // state comes from the caller when it just landed
+          // (summary completion, app-open settlement), else
+          // from the streak store's current settled state.
+          streakState: streakState ?? StreakStore.instance.state,
         );
       } on NotificationServiceException catch (e) {
         debugPrint('CheckInReminderSync failed: $e');
@@ -1746,8 +2352,15 @@ class _HomeScreenState extends State<HomeScreen> {
     } else {
       status = snapshot.status!;
     }
-    final connected = snapshot.status == HealthConnectStatus.connected;
-    final vitals = await _healthRepo.loadTodayVitals(connected: connected);
+    // HC Grant Hardening §3.4 — the vitals load gates PER TYPE
+    // off this same snapshot (no second probe, no global
+    // verdict): a missing or wedged permission degrades only its
+    // own type in the strip.
+    final vitals = await _healthRepo.loadTodayVitals(snapshot: snapshot);
+    // §3.2 — Home's wedged state: the snapshot's stale-wedged
+    // probe evidence, or this load's own core-read wedge
+    // evidence.
+    final wedged = staleGrant || vitals.coreReadWedged;
     final streak = await streakFuture;
     // Streak engine (Lab package Nov 4, 2026; authoritative
     // pipeline VC 100115) — the engine settles today against the
@@ -1772,8 +2385,19 @@ class _HomeScreenState extends State<HomeScreen> {
     // Only a successful pull — including a confirmed-empty one —
     // applies. The engine settle may still swap in seeded values.
     final streakOk = streak.succeeded;
+    // Streak-bugs fix (Bug 3): the pulled counters are
+    // PROVISIONAL. They seed the pills only until this mount's
+    // engine settlement lands; from then on the settled state is
+    // the ONLY writer of the pills and the cache, so Home can
+    // never sit on raw profile counters (27/68) that the streak
+    // screen's settled evaluation disagrees with (0). One settled
+    // state, read by Home, the streak screen, the celebration,
+    // and the widget, refreshed at the same moments: app-open
+    // settlement, summary completion, purchase grant, restore.
     final changed = cache.applyVitals(vitals) |
-        (streakOk ? cache.applyStreak(streak.current, streak.best) : false);
+        (streakOk && !_streakSettleLanded
+            ? cache.applyStreak(streak.current, streak.best)
+            : false);
     // Persist in the background; never block the UI on storage.
     unawaited(cache.persist());
     // Round 60 — launch milestone: the background refresh has landed
@@ -1784,18 +2408,30 @@ class _HomeScreenState extends State<HomeScreen> {
     // Round 23 — a status-only change (e.g. the fresh load found the
     // same empty vitals the cache already held, but now we KNOW the
     // connection state) must also rebuild, or the banner never lands.
-    final statusChanged =
-        status != _hcStatus || staleGrant != _hcStaleGrant;
+    final statusChanged = status != _hcStatus ||
+        staleGrant != _hcStaleGrant ||
+        wedged != _hcWedged;
     if (changed || statusChanged) {
       setState(() {
         _vitals = vitals;
         // C-02a — on a failed streak pull the seeded pills stand.
-        if (streakOk) {
+        // Bug 3 — and once the settlement has landed, the settled
+        // values stand: provisional counters never overwrite them.
+        if (streakOk && !_streakSettleLanded) {
           _currentStreak = streak.current;
           _bestStreak = streak.best;
         }
         _hcStatus = status;
         _hcStaleGrant = staleGrant;
+        _hcWedged = wedged;
+        // The repair card's second step belongs to its incident:
+        // a cleared wedge takes the second step with it.
+        if (!wedged) {
+          _hcRepairSecondStep = false;
+          // A failed attempt's error line belongs to the same
+          // incident: reads flowing again takes it too.
+          _hcRepairError = null;
+        }
       });
     }
     // R70 fix pass (Vera F2) — a completed health-data load re-runs
@@ -1814,6 +2450,54 @@ class _HomeScreenState extends State<HomeScreen> {
   /// evaluates the engine itself (VC 100115 anti-fabrication rule).
   Future<StreakState?>? _streakSettle;
 
+  /// True once a settled streak state (app-open settlement or a
+  /// summary completion) has landed on this mount. From then on
+  /// the settled state is the only writer of the streak pills and
+  /// cache (Bug 3 unification); raw pulled counters are
+  /// provisional seed values only.
+  bool _streakSettleLanded = false;
+
+  /// The streak-record pull for [_settleStreakWithEngine], taken
+  /// under the Midnight Grace gate (Vera C1): returns the pulled
+  /// record only when settlement is not deferred at the moment
+  /// the pull LANDS, and null when a live grace window defers the
+  /// settle (the grace-end handler re-runs it). When the only
+  /// deferral is an unresolved crossing evaluation, this waits
+  /// for the evaluation and loops — re-checking, then re-pulling
+  /// fresh — so the settle proceeds in this same call when the
+  /// crossing resolves with no window, and defers (null) when a
+  /// window opened. The loop is bounded by the crossing itself:
+  /// evaluations resolve in seconds and happen once per boundary.
+  Future<
+      ({
+        bool succeeded,
+        int? current,
+        int? best,
+        String? stateJson,
+        int? purchasedFreezes
+      })?> _pullStreakRecordGated() async {
+    while (true) {
+      final grace = _grace;
+      if (grace?.settlementDeferred ?? false) {
+        if (grace!.isActive) return null;
+        await grace.waitForCrossingEvaluation();
+        continue;
+      }
+      final pulled = await _healthRepo.loadStreakRecord();
+      // TOCTOU re-check: the boundary may have been crossed while
+      // this pull was in flight (a window opened, or a crossing
+      // evaluation started). Never hand a record to recordOpen
+      // while the gate has since closed.
+      final graceAfter = _grace;
+      if (graceAfter?.settlementDeferred ?? false) {
+        if (graceAfter!.isActive) return null;
+        await graceAfter.waitForCrossingEvaluation();
+        continue;
+      }
+      return pulled;
+    }
+  }
+
   /// Settle the streak engine for this app open against the
   /// authoritative server record, off the load's critical path.
   /// The engine records today (consuming the monthly save for a
@@ -1829,19 +2513,84 @@ class _HomeScreenState extends State<HomeScreen> {
   /// state on failure) for the streak screen's tap path.
   Future<StreakState?> _settleStreakWithEngine() async {
     try {
-      final rec = await _healthRepo.loadStreakRecord();
+      // Midnight Grace gate: while a grace window is live, the
+      // closing day's settlement is DEFERRED — a recordOpen here
+      // (Home load / resume) would settle the closing day as
+      // missed mid-window. Return the store's current state; the
+      // grace-end handler re-runs this settle the moment the
+      // window resolves, and the normal rollover then proceeds
+      // exactly as if grace never existed.
+      //
+      // Vera C1 (binding): the gate is NOT check-once. The streak
+      // pull below is awaited, and the world can cross the
+      // boundary while it is in flight — race A: a settle starting
+      // at 23:59:59.x passes an early check, its pull lands after
+      // midnight, and an unrechecked recordOpen freeze-bridges the
+      // closing day mid-grace; race C: a settle arriving while the
+      // controller's crossing evaluation is still unresolved (no
+      // window exists yet) settles ungated in the same way. So the
+      // gate is re-checked IMMEDIATELY before recordOpen, after
+      // the awaited pull; a settle deferred only by an unresolved
+      // crossing WAITS for the evaluation and loops (the crossing
+      // resolving with no window lets this settle proceed — it is
+      // never silently stranded — and a window opening defers it
+      // to the grace-end re-run). Invariant: no recordOpen for the
+      // closing day at any moment in [boundary, deadline) while
+      // the crossing is unresolved OR a window is active.
+      final rec = await _pullStreakRecordGated();
+      if (rec == null) {
+        // Deferred by a live grace window: the grace-end handler
+        // re-runs this settle when the window resolves.
+        return StreakStore.instance.state;
+      }
       final engineState = await StreakStore.instance.recordOpen(
         pullSucceeded: rec.succeeded,
         seedCurrent: rec.current,
         seedBest: rec.best,
         seedStateJson: rec.stateJson,
+        seedPurchasedFreezes: rec.purchasedFreezes,
         now: DateTime.now(),
         push: _healthRepo.pushStreakRecord,
       );
       if (!engineState.seeded || !mounted) return engineState;
-      final engineCurrent = streakCurrent(engineState, DateTime.now());
+      _streakSettleLanded = true;
+      // App-open settlement hook (Community Added Scope #2):
+      // recordOpen IS the settlement point — freeze bridges for
+      // missed days land here — so re-project the evening
+      // nudges from the freshly settled state on every app
+      // open (a day that gained freeze cover, completed, or
+      // broke its streak re-projects accordingly).
+      _syncCheckInReminderAfterSave(streakState: engineState);
+      // Gems — app-open sync: adopt the pull's server balance
+      // (the pill's and buy surface's one source), retry any
+      // queued grants, and settle-check the perfect week. Runs
+      // off the critical path; failures keep the last value.
+      unawaited(_syncGemsOnOpen(engineState));
+      unawaited(_syncBadgesOnOpen(engineState));
+      // A7: Home display reads anchor on the Tabs day, never raw
+      // wall-clock now.
+      final engineCurrent =
+          streakCurrent(engineState, tabsDayAnchor(DateTime.now()));
       final engineBest = streakBest(engineState);
+      // D14: the widget's streak banner follows the settled state.
+      unawaited(WidgetSync.pushStreak(
+        engineState,
+        signedIn: true,
+        nickname: _nickname,
+        now: DateTime.now(),
+      ));
+      // Home load is a D11 completion trigger.
+      _queueSummaryCompletionEvaluation();
+      // Added scope (Nov 19, 2026) — the pill flame's lit state
+      // comes from THIS settled state (today counted in its
+      // countedDays — the streak screen's todayDone rule), the
+      // same source as the pill counts below.
+      final engineTodayComplete =
+          engineState.countedDays.contains(tabsDayStr(DateTime.now()));
       if (engineCurrent == _currentStreak && engineBest == _bestStreak) {
+        if (engineTodayComplete != _streakTodayComplete) {
+          setState(() => _streakTodayComplete = engineTodayComplete);
+        }
         return engineState;
       }
       final cache = HomeDataCache.instance;
@@ -1851,12 +2600,129 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _currentStreak = engineCurrent;
         _bestStreak = engineBest;
+        _streakTodayComplete = engineTodayComplete;
       });
       return engineState;
     } catch (_) {
       // The pulled counters stand; the engine retries next load.
       return StreakStore.instance.state;
     }
+  }
+
+  /// Gems app-open sync (see the settle call site): pull balance
+  /// in, queued grants retried, perfect week settle-checked. The
+  /// GemService listener mirrors any new balance into the pill.
+  Future<void> _syncGemsOnOpen(StreakState engineState) async {
+    try {
+      // Bound discipline (Vera server review): retried grants are
+      // validated against the pushed blob, so the settled record
+      // is pushed (awaited) BEFORE the retry flush runs.
+      try {
+        await _healthRepo.pushStreakRecord(
+          streakCurrent(engineState, tabsDayAnchor(DateTime.now())),
+          streakBest(engineState),
+          jsonEncode(engineState.toJson()),
+        );
+      } catch (_) {
+        // The flush below still runs; refusals stay queued.
+      }
+      final pulled = await _healthRepo.loadGemBalance();
+      GemService.instance.adoptServerBalance(pulled);
+      await GemService.instance.onAppOpen(
+        state: engineState,
+        now: DateTime.now(),
+      );
+    } catch (e, st) {
+      // The last server balance stands; the next open retries.
+      // The failure is recorded in the service's diagnostics
+      // state and reported — never swallowed silently (the
+      // Nov 20, 2026 grants fix: this catch-all class hid the
+      // dead grant path).
+      GemService.instance.recordSyncError(e);
+      CrashReporting.captureError(
+        e,
+        stackTrace: st,
+        staticMessage: 'gems app-open sync failed',
+      );
+    }
+  }
+
+  /// Badges — settlement sync (BADGES package): the badge
+  /// evaluation runs at the SAME app-open settlement point as the
+  /// streak engine (this settle), never on a timer. The full
+  /// inputs load (log pull + HC history scan) is day-gated inside
+  /// the service hook below, so it costs once a day; queued gem
+  /// grants retry at every settle. Newly granted rungs surface as
+  /// ONE unlock dialog (Juno §8). Fail-soft throughout: a badge
+  /// failure never touches the streak/gems flows.
+  Future<void> _syncBadgesOnOpen(StreakState engineState) async {
+    try {
+      final svc = BadgeService.instance;
+      if (!await svc.needsEvaluation(DateTime.now())) {
+        await svc.retryPending();
+        return;
+      }
+      final loaded = await loadBadgeInputs(
+        backend: _backend,
+        hc: _healthRepo.hc,
+        streakState: engineState,
+      );
+      final batch = await svc.evaluate(
+        inputs: loaded.inputs,
+        blockedMetrics: loaded.blockedMetrics,
+        now: DateTime.now(),
+      );
+      if (batch != null && mounted) {
+        await showDialog<void>(
+          context: context,
+          builder: (_) => BadgeUnlockDialog(batch: batch),
+        );
+      }
+    } catch (e, st) {
+      // The next settle retries; nothing is fabricated. The
+      // failure is recorded in the service's diagnostics state
+      // and reported — never swallowed silently (Nov 20, 2026
+      // grants fix).
+      BadgeService.instance.recordSyncError(e);
+      CrashReporting.captureError(
+        e,
+        stackTrace: st,
+        staticMessage: 'badges app-open sync failed',
+      );
+    }
+  }
+
+  /// Badges screen refresh (its onRefresh): a forced evaluation
+  /// against the store's current settled state. Grants made here
+  /// render on the screen itself — no dialog from this path.
+  Future<void> _refreshBadges() async {
+    try {
+      final loaded = await loadBadgeInputs(
+        backend: _backend,
+        hc: _healthRepo.hc,
+        streakState: StreakStore.instance.state,
+      );
+      await BadgeService.instance.evaluate(
+        inputs: loaded.inputs,
+        blockedMetrics: loaded.blockedMetrics,
+        now: DateTime.now(),
+        force: true,
+      );
+    } catch (e) {
+      // Recorded, never silent (Nov 20, 2026 grants fix).
+      BadgeService.instance.recordSyncError(e);
+    }
+  }
+
+  /// Drawer entry destination: the Badges collection screen.
+  Future<void> _openBadgesFromDrawer() async {
+    Navigator.of(context).pop(); // close the drawer first
+    await Navigator.of(context).push(
+      SlidePageRoute(
+        reducedMotion: animationsDisabled(context),
+        builder: (_) => BadgesScreen(onRefresh: _refreshBadges),
+      ),
+    );
   }
 
   /// Streak pills tap: open the Streak screen with the settled
@@ -1872,7 +2738,40 @@ class _HomeScreenState extends State<HomeScreen> {
       s = await _streakSettle;
     }
     if (!mounted || s == null || !s.seeded) return;
-    await StreakScreen.openWith(context, state: s);
+    await StreakScreen.openWith(context, state: s, nickname: _nickname);
+    // A gem spend on the streak screen moves the balance (the
+    // service listener already mirrors it); re-pull on return so
+    // the pill and the settled state agree with the server.
+    if (!mounted) return;
+    unawaited(GemService.instance.refreshBalance());
+    final settled = StreakStore.instance.state;
+    if (settled != null && settled.seeded) {
+      setState(() {
+        _currentStreak =
+            streakCurrent(settled, tabsDayAnchor(DateTime.now()));
+        _bestStreak = streakBest(settled);
+        _streakTodayComplete =
+            settled.countedDays.contains(tabsDayStr(DateTime.now()));
+      });
+    }
+  }
+
+  /// Gem pill tap (added scope #6, Nov 20, 2026): open the Gems
+  /// sheet — the moved About-gems explainer, the current balance,
+  /// and the buy-a-freeze-with-gems action. The sheet reads the
+  /// SAME [GemService.instance] balance the pill displays and the
+  /// settled streak record for its cap rule; a spend there moves
+  /// the shared service balance, which this screen's listener
+  /// already mirrors into the pill (plus the re-pull on close,
+  /// mirroring [_openStreakScreen]'s return path).
+  Future<void> _openGemsSheet() async {
+    await showGemsSheet(
+      context: context,
+      streakState: StreakStore.instance.state,
+      nickname: _nickname,
+    );
+    if (!mounted) return;
+    unawaited(GemService.instance.refreshBalance());
   }
 
   /// Opens the data-connections screen — the one destination/flow
@@ -1892,6 +2791,51 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     if (!mounted) return;
     unawaited(_loadHealthData());
+  }
+
+  /// HC Grant Hardening §3.3 — the repair card's tap: runs the
+  /// shared in-place repair flow (MF-3 disclosure first, then the
+  /// permission request; see [runHcRepairFlow]). A cleared flow
+  /// reloads Home's health data; if the wedge survives the
+  /// reload, the card swaps to its second step (the remove-access
+  /// directions). A failed request surfaces its plain-language
+  /// message under the card (the Heart screen's error-line
+  /// pattern) and is logged with its code — the code itself never
+  /// renders (Juno condition 1). Before this, the failed case was
+  /// a debugPrint only: the disclosure closed, the spinner
+  /// stopped, and nothing rendered — the founder's Nov 21, 2026
+  /// "Clicking this is doing nothing."
+  Future<void> _onHcRepairTap() async {
+    if (_hcRepairing) return;
+    setState(() {
+      _hcRepairing = true;
+      _hcRepairError = null;
+    });
+    final result = await runHcRepairFlow(context, _healthRepo.hc);
+    if (!mounted) return;
+    setState(() => _hcRepairing = false);
+    switch (result.outcome) {
+      case HcRepairOutcome.aborted:
+        break;
+      case HcRepairOutcome.failed:
+        debugPrint('Home HC repair failed [${result.errorCode}]');
+        setState(() {
+          _hcRepairError =
+              result.errorMessage ?? 'Health Connect request failed.';
+        });
+      case HcRepairOutcome.stillWedged:
+        setState(() {
+          _hcRepairError = null;
+          _hcRepairSecondStep = true;
+        });
+      case HcRepairOutcome.cleared:
+        await _loadHealthData();
+        if (!mounted) return;
+        setState(() => _hcRepairError = null);
+        if (_hcWedged) {
+          setState(() => _hcRepairSecondStep = true);
+        }
+    }
   }
 
   Future<void> _loadWeather() async {
@@ -2040,6 +2984,22 @@ class _HomeScreenState extends State<HomeScreen> {
     await _openEventCounters();
   }
 
+  /// Added scope #7 (founder, Nov 20, 2026) — pushes the Community
+  /// screen, the drawer's third entry (Community moved here from
+  /// Tools). The destination is the SAME screen the Tools tile
+  /// opened — [CommunityToolScreen] via the app-wide slide
+  /// transition — forwarding Home's backend like the other drawer
+  /// pushes forward theirs.
+  Future<void> _openCommunityFromDrawer() async {
+    Navigator.of(context).pop(); // close the drawer first
+    await Navigator.of(context).push(
+      SlidePageRoute(
+        reducedMotion: animationsDisabled(context),
+        builder: (_) => CommunityToolScreen(backend: _backend),
+      ),
+    );
+  }
+
   /// Home redesign — the check-in section the Today Summary sheet
   /// hosts. ALL state and commits stay here in _HomeScreenState; the
   /// builder re-reads them on every outbox change (the commit path's
@@ -2178,11 +3138,22 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: NotelColors.background,
+      // Drawer nav fade (founder, Nov 20, 2026): forward the
+      // drawer's open/close state to the shell so its nav dock can
+      // fade (see [HomeScreen.onDrawerOpenChanged]).
+      onDrawerChanged: (isOpened) =>
+          widget.onDrawerOpenChanged?.call(isOpened),
       // Home redesign — the drawer: surface panel ~300dp, modeled
       // on Settings' _menuRow construction. Round 5 (founder,
       // Nov 10, 2026) supersedes the redesign's one-entry rule:
-      // the drawer now holds TWO rows — AI Advocate and Event
-      // Counters — stacked in the identical row style, no divider.
+      // the drawer holds AI Advocate and Event Counters, stacked
+      // in the identical row style, no divider. Added scope #7
+      // (founder, Nov 20, 2026) adds a third row in the same
+      // construction UNDER Event Counters: Community (moved out
+      // of Tools). BADGES package (Nov 20, 2026): a fourth row,
+      // Badges, is appended LAST in the identical row style —
+      // founder's final drawer order: AI Advocate, Event
+      // Counters, Community, Badges.
       drawer: Drawer(
         backgroundColor: NotelColors.surface,
         width: 300,
@@ -2241,6 +3212,89 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                 ),
+              ),
+              InkWell(
+                key: const ValueKey('home_drawer_community'),
+                onTap: () => unawaited(_openCommunityFromDrawer()),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  child: Row(
+                    children: [
+                      Icon(Icons.people,
+                          color: NotelColors.textSecondary, size: 22),
+                      SizedBox(width: 16),
+                      Expanded(
+                        child: Text(
+                          'Community',
+                          style: TextStyle(
+                            color: NotelColors.textPrimary,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                      Icon(Icons.chevron_right,
+                          size: 20, color: NotelColors.textSecondary),
+                    ],
+                  ),
+                ),
+              ),
+              AnimatedBuilder(
+                animation: BadgeService.instance,
+                builder: (context, _) {
+                  final snap = BadgeService.instance.snapshot;
+                  return Semantics(
+                    label: snap.loaded
+                        ? BadgeStrings.drawerSemantics(
+                            snap.earnedBadgeCount)
+                        : BadgeStrings.drawerLabel,
+                    child: InkWell(
+                      key: const ValueKey('home_drawer_badges'),
+                      onTap: () => unawaited(_openBadgesFromDrawer()),
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 16),
+                        child: Row(
+                          children: [
+                            // Drawer slot parity (founder, Nov 20,
+                            // 2026): the badge renders at 22 — the
+                            // SAME box as the plain Icon(size: 22)
+                            // leading the three rows above — so its
+                            // center sits on the shared icon column
+                            // (x = 27dp), the label starts at 54dp
+                            // like the others, and the row is 54dp
+                            // tall like the others. At 28 the box
+                            // center sat 3dp right, the label 6dp
+                            // right, and the ring's ink spanned
+                            // 26.3dp against the glyphs' ~17dp.
+                            // Drawer usage only: BadgeWidget and
+                            // the Badges screen's sizes are
+                            // untouched.
+                            BadgeWidget(
+                              rungIndex: 6,
+                              icon: Icons.star,
+                              size: 22,
+                            ),
+                            SizedBox(width: 16),
+                            Expanded(
+                              child: Text(
+                                BadgeStrings.drawerLabel,
+                                style: TextStyle(
+                                  color: NotelColors.textPrimary,
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ),
+                            Icon(Icons.chevron_right,
+                                size: 20,
+                                color: NotelColors.textSecondary),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
             ],
           ),
@@ -2417,10 +3471,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       width: 62,
                       child: HomeStreakStack(
                         currentStreak: _currentStreak,
-                        bestStreak: _bestStreak,
                         animateCountUps: _countUpsAnimate,
                         onStreakTap: () => unawaited(_openStreakScreen()),
+                        onGemTap: () => unawaited(_openGemsSheet()),
                         crossAxisAlignment: CrossAxisAlignment.center,
+                        gemBalance: _gemBalance,
+                        streakTodayComplete: _streakTodayComplete,
                       ),
                     ),
                     Expanded(
@@ -2448,9 +3504,28 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          // Midnight Grace (Nov 21, 2026): while a
+                          // grace window is live, the grace element
+                          // takes this slot. Tenancy: with the
+                          // counters as tenant it REPLACES them
+                          // (the approved mock's state); with the
+                          // check-in strip as tenant it stacks
+                          // ABOVE the strip, so the check-in — the
+                          // control grace exists to save — stays
+                          // tappable for the whole window.
+                          if (_graceBandMounted && _grace != null)
+                            MidnightGraceBand(
+                              controller: _grace!,
+                              onFadeOutComplete: () {
+                                if (mounted) {
+                                  setState(() => _graceBandMounted = false);
+                                }
+                              },
+                            ),
                           if (_feelingVisible)
                             HomeCheckInStrip(onSelect: _onFeelingSelect)
-                          else if (_counters.isNotEmpty)
+                          else if (!_graceBandMounted &&
+                              _counters.isNotEmpty)
                             Padding(
                               padding:
                                   const EdgeInsets.symmetric(horizontal: 12),
@@ -2492,7 +3567,41 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             // Health Connect banner directly UNDER the band.
-            if (shouldShowHealthConnectBanner(
+            // HC Grant Hardening §3.3 — while wedged, the repair
+            // card REPLACES the banner in this slot; the
+            // not-connected and partial banner presentations are
+            // untouched.
+            if (_hcWedged)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16.0, vertical: 2.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    HcRepairCard(
+                      secondStep: _hcRepairSecondStep,
+                      requesting: _hcRepairing,
+                      onRepairTap: _hcRepairing
+                          ? null
+                          : () => unawaited(_onHcRepairTap()),
+                    ),
+                    // A failed repair attempt's message, under the
+                    // card — the Heart screen's error line, same
+                    // styling. Message only: the failure's code
+                    // never renders (Juno condition 1).
+                    if (_hcRepairError != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _hcRepairError!,
+                        style: const TextStyle(
+                            color: NotelColors.error, fontSize: 12),
+                      ),
+                    ],
+                  ],
+                ),
+              )
+            else if (shouldShowHealthConnectBanner(
                 status: _hcStatus, vitals: _vitals))
               HealthConnectBanner(
                 status: _hcStatus!,

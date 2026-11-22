@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
+import 'package:tabs_lab/src/data/tabs_day.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
@@ -30,7 +31,9 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///
 /// Behavior (native `EnergyCheckInViewModel`):
 /// - Visible ONLY while no check-in entry exists for the current
-///   "energy day" (the day starting 04:00 local). There is NO selected
+///   "energy day" (the Tabs day — see tabs_day.dart: starting
+///   04:00 local under the legacy rule, midnight local from the
+///   persisted cutover on). There is NO selected
 ///   state, NO locked card, NO edit affordance: one tap logs the entry
 ///   and the card slides away for the rest of the energy day. Deleting
 ///   the entry (History) makes the card reappear.
@@ -62,9 +65,6 @@ const String feelingCategoryName = 'Mood & Energy';
 /// Native `ENERGY_CATEGORY_FALLBACK_ID`.
 const int feelingCategoryFallbackId = 6;
 
-/// Native `ENERGY_DAY_START_HOUR` — the energy day starts 04:00 local.
-const int feelingDayStartHour = 4;
-
 /// Merged check-in flow (Juno ruling Oct 28, 2026, Item 1): the
 /// founder-pinned number meanings, in number order. These words are
 /// the visible captions under the buttons (Item 2 — every
@@ -88,14 +88,13 @@ String feelingButtonSemantics(int level) =>
 
 // ── Pure logic (ports of the native view model) ──────────────────────
 
-/// Port of native `energyDayStart()`: 04:00 local today, or 04:00
-/// yesterday when [now] is before 04:00.
-DateTime feelingDayStart(DateTime now) {
-  final date = now.hour < feelingDayStartHour
-      ? DateTime(now.year, now.month, now.day - 1)
-      : DateTime(now.year, now.month, now.day);
-  return DateTime(date.year, date.month, date.day, feelingDayStartHour);
-}
+/// Port of native `energyDayStart()`, now delegating to the ONE
+/// shared Tabs-day definition (tabs_day.dart): the start instant
+/// of the Tabs day containing [now] — 04:00 local under the
+/// legacy rule (04:00 yesterday when [now] is before 04:00), and
+/// local midnight from the persisted cutover instant on.
+DateTime feelingDayStart(DateTime now) =>
+    TabsDayBoundary.instance.dayStart(now);
 
 /// True when [chipsJson] (an entry's raw chips string) contains the
 /// reserved "Daily Ranking" tag. Tolerant of the shapes the pull
@@ -119,30 +118,42 @@ bool chipsContainFeelingTag(String chipsJson) {
 /// current energy day when an entry in the mood category carries the
 /// "Daily Ranking" tag with a timestamp inside
 /// [feelingDayStart, feelingDayStart + 1 day).
+///
+/// [windowEnd] (Midnight Grace, Nov 21, 2026) optionally extends the
+/// window's end past the day boundary — the grace deadline — so a
+/// check-in logged inside the grace window counts as evidence for
+/// the closing day. Null (every non-grace caller) keeps the shipped
+/// +24h end exactly.
 bool hasFeelingCheckIn(
   List<QuickLogEntry> entries, {
   required int moodCategoryId,
   DateTime? now,
+  DateTime? windowEnd,
 }) =>
     findFeelingCheckInEntry(
       entries,
       moodCategoryId: moodCategoryId,
       now: now,
+      windowEnd: windowEnd,
     ) !=
     null;
 
 /// The current energy day's check-in entry, or null — the entry
 /// [hasFeelingCheckIn] tests for, returned so the merged flow can
 /// read today's ranking value off it. Newest wins when several
-/// match (should not happen — one check-in per day).
+/// match (should not happen — one check-in per day). [windowEnd]
+/// is the Midnight Grace evidence-window override (see
+/// [hasFeelingCheckIn]); null = the day's own +24h end.
 QuickLogEntry? findFeelingCheckInEntry(
   List<QuickLogEntry> entries, {
   required int moodCategoryId,
   DateTime? now,
+  DateTime? windowEnd,
 }) {
   final start = feelingDayStart(now ?? DateTime.now());
   final startMs = start.millisecondsSinceEpoch;
-  final endMs = start.add(const Duration(days: 1)).millisecondsSinceEpoch;
+  final endMs = (windowEnd ?? start.add(const Duration(days: 1)))
+      .millisecondsSinceEpoch;
   QuickLogEntry? found;
   for (final e in entries) {
     if (e.categoryId != moodCategoryId) continue;

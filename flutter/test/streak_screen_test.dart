@@ -45,7 +45,7 @@ void main() {
     expect(find.byKey(const Key('streakHeroNumber')), findsOneWidget);
     expect((tester.widget<Text>(find.byKey(const Key('streakHeroNumber')))).data,
         '8');
-    expect(find.text('day streak'), findsOneWidget);
+    expect(find.text('day streak!'), findsOneWidget);
     expect(find.text('Best 12 days'), findsOneWidget);
     // Juno C6: the hero reads as one value. (Asserted now, while
     // the hero is in the ListView's built region — the scroll below
@@ -58,14 +58,36 @@ void main() {
     expect(find.text('Longest Streak'), findsOneWidget);
     expect(find.text('12 days'), findsOneWidget);
 
-    // Restore: November's save is used.
-    expect(find.byKey(const Key('streakRestoreStatus')), findsOneWidget);
-    expect(find.text('No restores left this month'), findsOneWidget);
+    // Streak Goal (§3a spoiled variant) — scroll it into the lazy
+    // ListView's built region first.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('streakGoalCopy')),
+      120,
+    );
+    await tester.pump();
+    // Streak Goal (§3a spoiled variant): a freeze was used in
+    // November, so the goal copy is the spoiled-month form and the
+    // §3b progress row is hidden. (Asserted NOW, while the goal
+    // card is in the built region — scrolling on disposes it.)
     expect(
-      find.text('One restore a month. Streaks count days you open '
-          'Tabs. If you miss a day, your restore is used automatically '
-          'and that day counts toward your streak. It does not add '
-          'steps or other health data for that day.'),
+      find.text("A freeze was used in November, so there's no extra "
+          'freeze to earn this month. Your next chance starts in '
+          'December.'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('streakGoalProgress')), findsNothing);
+    // Streak Freeze (Juno §4a, used variant): November's monthly
+    // freeze is used; total available cover is 0 of 2.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('streakFreezeStatus')),
+      120,
+    );
+    await tester.pump();
+    expect(find.byKey(const Key('streakFreezeStatus')), findsOneWidget);
+    expect(
+      find.text('Your free monthly freeze for November has been used. '
+          'You have 0 of 2 freezes available. A freeze can cover one '
+          'missed day automatically when you have one available.'),
       findsOneWidget,
     );
 
@@ -86,25 +108,38 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.text('A day with a purple ring was restored.'),
+      find.text('A day with a snowflake was covered by a freeze.'),
       findsOneWidget,
     );
-    // Juno C6: the restored day is identifiable without color.
-    expect(find.bySemanticsLabel('November 2, restored'), findsOneWidget);
+    // Juno C6: the covered day is identifiable without color.
+    expect(
+      find.bySemanticsLabel('November 2, covered by a freeze'),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('restore status shows the unused grant in a fresh month',
+  testWidgets('freeze status shows the ready grant in a fresh month',
       (tester) async {
     final s = streakSeed(current: 3, best: 3, now: at(2026, 11, 4));
     await pumpScreen(tester, s);
-    expect(find.text('1 restore left this month'), findsOneWidget);
-    // No restored day this month → no marked cell, no legend.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('streakFreezeStatus')),
+      120,
+    );
+    await tester.pump();
+    expect(
+      find.text('Your free monthly freeze is ready for November. '
+          'You have 1 of 2 freezes available. A freeze can cover one '
+          'missed day automatically when you have one available.'),
+      findsOneWidget,
+    );
+    // No covered day this month → no marked cell, no legend.
     expect(
       find.byKey(const Key('streakRestoredDay-2026-11-02')),
       findsNothing,
     );
     expect(
-      find.text('A day with a purple ring was restored.'),
+      find.text('A day with a snowflake was covered by a freeze.'),
       findsNothing,
     );
   });
@@ -131,7 +166,6 @@ void main() {
         home: Scaffold(
           body: HomeStreakRow(
             currentStreak: 7,
-            bestStreak: 8,
             animateCountUps: false,
             onStreakTap: () => taps++,
           ),
@@ -173,7 +207,6 @@ void main() {
           body: Builder(
             builder: (context) => HomeStreakRow(
               currentStreak: 6,
-              bestStreak: 12,
               animateCountUps: false,
               onStreakTap: () =>
                   StreakScreen.openWith(context, state: settled),

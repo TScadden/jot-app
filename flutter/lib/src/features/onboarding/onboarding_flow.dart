@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:tabs_lab/src/data/billing_service.dart';
@@ -8,70 +10,51 @@ import 'package:tabs_lab/src/data/onboarding_sync_outbox.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/onboarding/conditions_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/consent_screen.dart';
-import 'package:tabs_lab/src/features/onboarding/consultation_intro_screen.dart';
+import 'package:tabs_lab/src/features/onboarding/gems_onboarding_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/membership_onboarding_screen.dart';
-import 'package:tabs_lab/src/features/onboarding/notification_onboarding_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/onboarding_connections_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/profile_setup_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/setup_loading_screen.dart';
 
-/// The onboarding steps, in native NavHost order (`MainActivity.kt`):
-/// consent → consultation_intro → profile_setup → conditions →
-/// notification_onboarding → connections → membership_onboarding →
-/// setup_loading → today (home).
+/// The flow3 onboarding steps (founder, Nov 19, 2026):
+/// consent → profileSetup → conditions → connections → gems →
+/// membership → setupLoading → today (home).
+///
+/// Flow3 changes from the Round 32 sequence:
+/// - The consultation-intro interstitial is CUT (its heading
+///   folded into Profile).
+/// - The notifications STEP is REMOVED — the permission ask is a
+///   card over Home on the first post-onboarding landing.
+/// - A NEW gems step sits between connections and membership.
+/// - Enum order doubles as the persisted resume-marker index
+///   (see [OnboardingStore.stepMarkerKey]): consent=0,
+///   profileSetup=1, conditions=2, connections=3, gems=4,
+///   membership=5, setupLoading=6. Do not reorder.
 enum OnboardingStep {
   consent,
-  consultationIntro,
   profileSetup,
   conditions,
-  notifications,
   connections,
+  gems,
   membership,
   setupLoading,
 }
 
-/// Round 32 — the onboarding flow shell. Owns the step sequence and
-/// the flag writes each native route performs in `MainActivity.kt`:
+/// Flow3 onboarding shell. Owns the step sequence, the flag writes
+/// each step performs, and the resume marker: every advance writes
+/// the NEXT step's index to [OnboardingStore.setStepMarker], so a
+/// user who leaves mid-flow and logs back in resumes at the step
+/// they left (the login routing consumes the marker through the
+/// one-shot [OnboardingResumeGate] — see onboarding_resume_gate).
 ///
-/// - consent (onConsent): `setHasConsented(true)` → consultation intro.
-/// - consultation intro (onContinue): `setIntroConsultationSeen(true)`
-///   → profile setup.
-/// - profile setup → conditions → notifications → connections →
-///   membership → setup loading (each step owns its own data; see
-///   the step files).
-/// - setup loading sets `onboarding_complete` itself (native
-///   finalizeSetup) and its button fires [onComplete] → home.
-///
-/// Back walks the sequence in reverse. Native clears the back stack
-/// at the login→consent and consent→intro transitions
-/// (`popUpTo(...) { inclusive = true }`), so back from those steps
-/// exits the flow in native; here the entry step's back is a no-op,
-/// matching the effective native behavior, and every later step's
-/// back returns to the previous step (native pushes those routes
-/// sequentially from profile_setup onward).
-///
-/// The Android system back follows the SAME path (founder fix,
-/// Oct 27, 2026): the steps are body swaps inside AppFlow's single
-/// root route, so the build wraps them in a PopScope that runs
-/// [_OnboardingFlowState._stepBack] — the one back action every
-/// step's arrow also calls — whenever the current step has an
-/// in-flow back destination. On consent (the first step, and the
-/// only step with no back destination) the pop is allowed through
-/// instead, so the gesture exits the app rather than trapping the
-/// user on the arrow's deliberate no-op; setup loading intercepts
-/// like every other later step and returns to membership (see
-/// [_OnboardingFlowState._backTargetFor]).
-///
-/// [initialStep] is where a cold start resumes (AppFlow's startup
-/// resolver maps the stored flags to a step, exactly like native's
-/// splash routing); a fresh registration always starts at consent.
+/// Back walks the sequence in reverse; consent is the entry step
+/// and its back is a no-op (the system gesture pops instead), as
+/// before. The Android system back follows the same path via the
+/// PopScope below.
 class OnboardingFlow extends StatefulWidget {
   final OnboardingStep initialStep;
   final OnboardingStore? onboardingStore;
   final TabsBackend? backend;
-
-  /// C-08 — injectable for tests; forwarded to the setup-loading
-  /// step, which stages failed finalize posts in it.
   final OnboardingSyncOutbox? onboardingSyncOutbox;
   final HealthConnectService? healthConnectService;
   final ReminderNotificationService? notificationService;
@@ -81,12 +64,18 @@ class OnboardingFlow extends StatefulWidget {
   /// or disposed by the flow or the step.
   final BillingService? billingService;
 
+  /// The account's email-verification state, forwarded to the
+  /// membership step's billing gate.
+  final bool emailVerified;
+
+  /// Fired when the membership step's VerifyEmailGate is tapped.
+  final VoidCallback? onVerifyEmail;
+
   /// Fired when setup loading's "Start keeping Tabs" is tapped.
   final VoidCallback onComplete;
 
   /// Fired when consent is declined via the decline dialog's
-  /// "Log Out" (AppFlow clears the session and returns to welcome,
-  /// mirroring native's onDecline).
+  /// "Log Out" (AppFlow clears the session and returns to welcome).
   final VoidCallback onDeclineConsent;
 
   const OnboardingFlow({
@@ -98,6 +87,8 @@ class OnboardingFlow extends StatefulWidget {
     this.healthConnectService,
     this.notificationService,
     this.billingService,
+    this.emailVerified = true,
+    this.onVerifyEmail,
     required this.onComplete,
     required this.onDeclineConsent,
   });
@@ -115,42 +106,34 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     super.initState();
     _store = widget.onboardingStore ?? OnboardingStore();
     _step = widget.initialStep;
+    // Entering the flow (fresh or resumed) records where the user
+    // currently is, so leaving now still resumes here.
+    unawaited(_writeMarker(_step));
+  }
+
+  Future<void> _writeMarker(OnboardingStep step) async {
+    try {
+      await _store.setStepMarker(step.index);
+    } catch (_) {}
   }
 
   void _go(OnboardingStep step) {
+    unawaited(_writeMarker(step));
     if (mounted) setState(() => _step = step);
   }
 
   void _backTo(OnboardingStep step) => _go(step);
 
-  /// The step the in-app back arrow returns to from [step] — the
-  /// single source for every step's `onBack` below AND for the
-  /// system-back interception in [build], so the two can never
-  /// drift apart. Null only where the step has no in-flow back
-  /// destination: consent is the entry step (its arrow is a
-  /// deliberate no-op — native clears the stack beneath it).
-  /// Setup loading maps to membership like every other later
-  /// step, even though the screen itself carries no back arrow
-  /// (it is the auto-finalizing terminal step; stepping back
-  /// lets its finalize finish in the background — see
-  /// SetupLoadingScreen).
   OnboardingStep? _backTargetFor(OnboardingStep step) => switch (step) {
         OnboardingStep.consent => null,
-        OnboardingStep.consultationIntro => OnboardingStep.consent,
-        OnboardingStep.profileSetup => OnboardingStep.consultationIntro,
+        OnboardingStep.profileSetup => OnboardingStep.consent,
         OnboardingStep.conditions => OnboardingStep.profileSetup,
-        OnboardingStep.notifications => OnboardingStep.conditions,
-        OnboardingStep.connections => OnboardingStep.notifications,
-        OnboardingStep.membership => OnboardingStep.connections,
+        OnboardingStep.connections => OnboardingStep.conditions,
+        OnboardingStep.gems => OnboardingStep.connections,
+        OnboardingStep.membership => OnboardingStep.gems,
         OnboardingStep.setupLoading => OnboardingStep.membership,
       };
 
-  /// The one back action for this flow: every step screen's arrow
-  /// and the Android system back both call it, so the gesture
-  /// inherits the arrow's exact destination per step. A no-op on
-  /// steps whose [_backTargetFor] is null, matching the arrows
-  /// there (system back never reaches this on those steps — the
-  /// PopScope in [build] lets the pop through instead).
   void _stepBack() {
     final target = _backTargetFor(_step);
     if (target != null) _backTo(target);
@@ -159,29 +142,27 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   Future<void> _onConsent() async {
     try {
       await _store.setHasConsented(true);
-    } catch (_) {}
-    _go(OnboardingStep.consultationIntro);
-  }
-
-  Future<void> _onConsultationContinue() async {
-    try {
+      // Legacy flag kept set so older readers (the startup gate's
+      // pre-flow3 mapping) still see a coherent state; the intro
+      // step itself no longer exists in the flow.
       await _store.setIntroConsultationSeen(true);
     } catch (_) {}
     _go(OnboardingStep.profileSetup);
   }
 
+  /// Setup loading completed: stamp the flow3 completion flag
+  /// (gates the one-time notification card on Home) and clear the
+  /// resume marker before handing off to AppFlow's completion.
+  Future<void> _onSetupComplete() async {
+    try {
+      await _store.setFlow3Completed(true);
+      await _store.clearStepMarker();
+    } catch (_) {}
+    widget.onComplete();
+  }
+
   @override
   Widget build(BuildContext context) {
-    // System-back parity with the steps' back arrows (founder fix,
-    // Oct 27, 2026): the steps are body swaps inside AppFlow's
-    // single root route, so without interception the Navigator has
-    // nothing to pop on Android back and the gesture exits the app
-    // mid-wizard — while the arrow correctly steps back. Intercept
-    // whenever the current step has an in-flow back destination
-    // and run [_stepBack], the SAME action the arrow calls. On
-    // consent — the first step and the only step with no back
-    // destination — the pop goes through: the gesture exits
-    // instead of trapping the user (see _backTargetFor).
     final bool interceptBack = _backTargetFor(_step) != null;
     return PopScope(
       canPop: !interceptBack,
@@ -191,17 +172,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       },
       child: switch (_step) {
         OnboardingStep.consent => OnboardingConsentScreen(
-            // Entry step: native's stack is cleared beneath consent,
-            // so back has nowhere to go (see the class doc). The
-            // arrow keeps its deliberate no-op (_stepBack is a no-op
-            // at consent); only the system gesture is allowed to pop.
             onBack: _stepBack,
             onConsent: _onConsent,
             onDecline: widget.onDeclineConsent,
-          ),
-        OnboardingStep.consultationIntro => ConsultationIntroScreen(
-            onBack: _stepBack,
-            onContinue: _onConsultationContinue,
           ),
         OnboardingStep.profileSetup => ProfileSetupScreen(
             onBack: _stepBack,
@@ -211,30 +184,30 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           ),
         OnboardingStep.conditions => OnboardingConditionsScreen(
             onBack: _stepBack,
-            onNavigateNext: () => _go(OnboardingStep.notifications),
-            onSkip: () => _go(OnboardingStep.notifications),
+            onNavigateNext: () => _go(OnboardingStep.connections),
+            onSkip: () => _go(OnboardingStep.connections),
             onboardingStore: _store,
             backend: widget.backend,
           ),
-        OnboardingStep.notifications => NotificationOnboardingScreen(
-            onBack: _stepBack,
-            onNavigateNext: () => _go(OnboardingStep.connections),
-            onSkip: () => _go(OnboardingStep.connections),
-            notificationService: widget.notificationService,
-          ),
         OnboardingStep.connections => OnboardingConnectionsScreen(
             onBack: _stepBack,
-            onNavigateNext: () => _go(OnboardingStep.membership),
+            onNavigateNext: () => _go(OnboardingStep.gems),
             healthConnectService: widget.healthConnectService,
+          ),
+        OnboardingStep.gems => GemsOnboardingScreen(
+            onBack: _stepBack,
+            onContinue: () => _go(OnboardingStep.membership),
           ),
         OnboardingStep.membership => MembershipOnboardingScreen(
             onBack: _stepBack,
             onSkip: () => _go(OnboardingStep.setupLoading),
             backend: widget.backend,
             billingService: widget.billingService,
+            emailVerified: widget.emailVerified,
+            onVerifyEmail: widget.onVerifyEmail,
           ),
         OnboardingStep.setupLoading => SetupLoadingScreen(
-            onNavigateMain: widget.onComplete,
+            onNavigateMain: () => unawaited(_onSetupComplete()),
             onboardingStore: _store,
             backend: widget.backend,
             onboardingSyncOutbox: widget.onboardingSyncOutbox,

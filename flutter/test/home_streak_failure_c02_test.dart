@@ -63,7 +63,7 @@ class _FailedStreakRepository extends HealthRepository {
   _FailedStreakRepository() : super();
 
   @override
-  Future<TodayVitals> loadTodayVitals({required bool connected}) async =>
+  Future<TodayVitals> loadTodayVitals({required HcAvailability snapshot}) async =>
       const TodayVitals(
         heartRate: 75,
         activeCalories: 460,
@@ -76,9 +76,22 @@ class _FailedStreakRepository extends HealthRepository {
       (succeeded: false, current: null, best: null);
 
   @override
-  Future<({bool succeeded, int? current, int? best, String? stateJson})>
-  loadStreakRecord() async =>
-      (succeeded: false, current: null, best: null, stateJson: null);
+  Future<
+    ({
+      bool succeeded,
+      int? current,
+      int? best,
+      String? stateJson,
+      int? purchasedFreezes,
+    })
+  >
+  loadStreakRecord() async => (
+    succeeded: false,
+    current: null,
+    best: null,
+    stateJson: null,
+    purchasedFreezes: null,
+  );
 }
 
 HealthRepository _repoWith(MockClient client, {String? token = 'tok'}) {
@@ -233,9 +246,12 @@ void main() {
 
       // The fresh vitals landed…
       expect(find.text('75'), findsOneWidget);
-      // …but the failed streak pull did not blank the pills.
+      // …but the failed streak pull did not blank the pill.
       expect(find.text('12'), findsOneWidget);
-      expect(find.text('30'), findsOneWidget);
+      // Scope #5 (Nov 20, 2026): the best streak (30) no longer
+      // renders on Home — the trophy pill is gone. It survives in
+      // memory and on disk (asserted below), not on screen.
+      expect(find.text('30'), findsNothing);
 
       final s = cache.snapshot;
       expect(s.streakLoaded, isTrue);

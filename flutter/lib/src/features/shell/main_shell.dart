@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/billing_service.dart';
+import 'package:tabs_lab/src/data/midnight_grace.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/migraine_controller.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
@@ -11,6 +12,7 @@ import 'package:tabs_lab/src/features/quicklog/quick_log_screen.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
 import 'package:tabs_lab/src/features/tools/tools_screen.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
+import 'package:tabs_lab/src/theme/app_background.dart';
 
 /// Round 9 — the post-login shell: tab state, the bottom nav dock, and
 /// placeholder screens.
@@ -95,6 +97,12 @@ class MainShell extends StatefulWidget {
   /// main.dart), forwarded to Home.
   final MigraineController? migraineController;
 
+  /// Midnight Grace (Nov 21, 2026) — injectable for tests; when
+  /// null the shell creates, starts, and owns one. The controller
+  /// lives at shell level (above Home) so the midnight crossing is
+  /// detected wherever the user is in the app; Home consumes it.
+  final MidnightGraceController? graceController;
+
   const MainShell(
       {super.key,
       this.email,
@@ -104,6 +112,7 @@ class MainShell extends StatefulWidget {
       this.onLogout,
       this.settingsStore,
       this.billingService,
+      this.graceController,
       this.migraineController});
 
   @override
@@ -162,11 +171,41 @@ class _MainShellState extends State<MainShell>
   bool _showNavLabels = true;
   late final SettingsStore _settingsStore;
 
+  // Drawer nav fade (founder, Nov 20, 2026) — true while the Home
+  // drawer is open. The dock below is an overlay sibling ABOVE the
+  // tab bodies, so it paints over the drawer's scrim and would sit
+  // lit on top of the dimmed screen; while this is true the dock
+  // fades out and stops taking touches. Reported by HomeScreen's
+  // Scaffold.onDrawerChanged through the callback wired in
+  // [_screenFor]. Only Home has a drawer and the drawer is modal,
+  // so this can only be true while Home is mounted; [_selectTab]
+  // also clears it defensively so no stale fade can leak onto
+  // another tab.
+  bool _homeDrawerOpen = false;
+
+  /// Midnight Grace — the shell's grace controller (injected or
+  /// owned) and whether this shell created it (owned → disposed
+  /// here; injected → the caller owns its lifecycle).
+  late final MidnightGraceController _graceController;
+  late final bool _ownsGraceController;
+
   @override
   void initState() {
     super.initState();
+    _graceController = widget.graceController ?? MidnightGraceController();
+    _ownsGraceController = widget.graceController == null;
+    _graceController.start();
     _settingsStore = widget.settingsStore ?? SettingsStore();
     _settingsStore.addListener(_onSettingsStoreChanged);
+    // Dev-only app background (Nov 19, 2026): when the background
+    // controller notifies, repaint the shell so the ACTIVE tab
+    // body re-reads the resolved NotelColors.background token on
+    // this same frame — the change applies app-wide immediately,
+    // no tab switch, no restart. Inert for non-dev users: the
+    // controller only ever notifies on a dev-screen change or the
+    // bootstrap load (which lands before the shell exists).
+    AppBackgroundController.instance
+        .addListener(_onAppBackgroundChanged);
     // Round 40 — one controller for the paired slide; Round 22's
     // 300ms duration and easeOut curve.
     _slideController = AnimationController(
@@ -180,11 +219,17 @@ class _MainShellState extends State<MainShell>
 
   @override
   void dispose() {
+    // The grace controller: an owned one is disposed (cancelling
+    // its crossing/tick timers and its lifecycle observation); an
+    // injected one belongs to the caller.
+    if (_ownsGraceController) _graceController.dispose();
     // The store is NOT disposed here: when it was injected the
     // caller owns it, and when the shell created it nothing else
     // disposes stores anywhere in this codebase — only the
     // listener registration is the shell's to undo.
     _settingsStore.removeListener(_onSettingsStoreChanged);
+    AppBackgroundController.instance
+        .removeListener(_onAppBackgroundChanged);
     _slideController.dispose();
     super.dispose();
   }
@@ -193,6 +238,14 @@ class _MainShellState extends State<MainShell>
   /// already landed in storage, so a plain re-read is the refresh.
   void _onSettingsStoreChanged() {
     _refreshNavLabels();
+  }
+
+  /// Background-change callback: the token already holds the new
+  /// color; a bare setState re-runs the shell build (and with it
+  /// the active tab's build) so the new base background paints
+  /// immediately.
+  void _onAppBackgroundChanged() {
+    if (mounted) setState(() {});
   }
 
   void _onSlideStatus(AnimationStatus status) {
@@ -213,11 +266,25 @@ class _MainShellState extends State<MainShell>
     }
   }
 
+  /// Drawer nav fade: Home's drawer reported a state change. A
+  /// plain rebuild flips the dock's fade target and its
+  /// IgnorePointer gate together (see the dock mount in [build]).
+  void _onHomeDrawerOpenChanged(bool open) {
+    if (!mounted || open == _homeDrawerOpen) return;
+    setState(() => _homeDrawerOpen = open);
+  }
+
   /// Round 40 — a dock tap. Same-tab is a no-op; reduced motion swaps
   /// instantly; otherwise the paired directional slide starts (or
   /// retargets, if one is already in flight — nothing ever queues).
   void _selectTab(DockTab tab) {
     if (tab == _tab) return; // Tapping the active tab: no transition.
+    // Drawer nav fade: leaving Home always restores the dock. The
+    // modal drawer makes this unreachable in practice (its scrim
+    // blocks dock taps), but a stale true here would strand the
+    // dock invisible on the next tab. Both paths below setState,
+    // so this plain mutation rides along.
+    _homeDrawerOpen = false;
     if (animationsDisabled(context)) {
       // Instant swap, as before Round 40. Land the new tab in the
       // slot the current (or in-flight target) screen occupies so no
@@ -276,12 +343,16 @@ class _MainShellState extends State<MainShell>
           weatherApi: widget.weatherApi,
           locationService: widget.locationService,
           healthConnectService: widget.healthConnectService,
+          // Drawer nav fade (founder, Nov 20, 2026): Home reports
+          // its drawer's open/close so the dock can fade.
+          onDrawerOpenChanged: _onHomeDrawerOpenChanged,
           // The shell's shared instance: Home forwards it into
           // every Settings surface it opens (the Event Counters
           // push and the header-gear settings tray), so a
           // Customize change made there notifies this shell too.
           settingsStore: _settingsStore,
           billingService: widget.billingService,
+          graceController: _graceController,
           migraineController: widget.migraineController,
           // Round 34 — so a logout started in the Settings screen
           // pushed from Home's counter slot exits the shell too.
@@ -378,17 +449,39 @@ class _MainShellState extends State<MainShell>
           ),
         ),
         // Dock floats above every tab.
+        //
+        // Drawer nav fade (founder, Nov 20, 2026): while the Home
+        // drawer is open, the dock fades out over 200ms (the app's
+        // easeOut family; the drawer's own slide is 250ms) and is
+        // removed from the hit path — it paints ABOVE the drawer
+        // scrim in this Stack, so left alone it would stay lit over
+        // the dimmed screen and swallow the scrim taps that close
+        // the drawer along the bottom edge. IgnorePointer flips
+        // with the same state change that starts the fade, so the
+        // dock is inert for the whole fade-out and live again the
+        // moment the drawer starts closing. The Positioned slot is
+        // unchanged, so nothing shifts layout in either state.
         Positioned(
           left: 0,
           right: 0,
           bottom: 0,
-          child: NavDock(
-            selected: _tab,
-            showLabels: _showNavLabels,
-            onSelect: (tab) {
-              _selectTab(tab);
-              _refreshNavLabels();
-            },
+          child: IgnorePointer(
+            key: const ValueKey('nav_dock_drawer_ignore_pointer'),
+            ignoring: _homeDrawerOpen,
+            child: AnimatedOpacity(
+              key: const ValueKey('nav_dock_drawer_fade'),
+              opacity: _homeDrawerOpen ? 0.0 : 1.0,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              child: NavDock(
+                selected: _tab,
+                showLabels: _showNavLabels,
+                onSelect: (tab) {
+                  _selectTab(tab);
+                  _refreshNavLabels();
+                },
+              ),
+            ),
           ),
         ),
       ],

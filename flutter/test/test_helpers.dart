@@ -1,5 +1,27 @@
+import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
+
+/// HC Grant Hardening — builds the availability snapshot a screen
+/// or repository load would have probed, for tests that used to
+/// pass a bare connected flag. [granted] defaults to the full
+/// required set (the old connected=true); pass an explicit set to
+/// model a partial grant, or the empty set for not-granted.
+HcAvailability fakeHcSnapshot({
+  Set<String>? granted,
+  bool serviceAvailable = true,
+  HcReadProbeOutcome? stepsProbe,
+  bool persistedConnected = true,
+}) {
+  final g = granted ?? HealthConnectService.requiredPermissions.toSet();
+  return HcAvailability(
+    serviceAvailable: serviceAvailable,
+    grantedPermissions: g,
+    bridgeErrorCode: null,
+    stepsProbe: stepsProbe,
+    persistedConnected: persistedConnected,
+  );
+}
 
 /// In-memory stand-in for [SessionStore] so widget tests never touch
 /// platform channels (flutter_secure_storage) or real credentials.
@@ -86,6 +108,23 @@ class FakeReminderNotificationService implements ReminderNotificationService {
       dailyDetails = {};
   final Map<int, DateTime> once = {};
   final Map<int, String> weekly = {};
+
+  /// Per-id record of [scheduleStreakCountdownOnce] calls (fire
+  /// time, chronometer target, and the exact copy/channel), so
+  /// tests can assert the countdown's configuration without a
+  /// platform plugin.
+  final Map<
+      int,
+      ({
+        DateTime when,
+        DateTime countdownTo,
+        String title,
+        String body,
+        String channelId,
+        String channelName,
+        String channelDescription,
+        bool highImportance,
+      })> countdown = {};
   final List<int> cancelled = [];
 
   FakeReminderNotificationService(
@@ -164,11 +203,36 @@ class FakeReminderNotificationService implements ReminderNotificationService {
   }
 
   @override
+  Future<void> scheduleStreakCountdownOnce({
+    required int id,
+    required String title,
+    required String body,
+    required String channelId,
+    required String channelName,
+    required String channelDescription,
+    required DateTime when,
+    required DateTime countdownTo,
+    required bool highImportance,
+  }) async {
+    countdown[id] = (
+      when: when,
+      countdownTo: countdownTo,
+      title: title,
+      body: body,
+      channelId: channelId,
+      channelName: channelName,
+      channelDescription: channelDescription,
+      highImportance: highImportance,
+    );
+  }
+
+  @override
   Future<void> cancel(int id) async {
     cancelled.add(id);
     daily.remove(id);
     dailyDetails.remove(id);
     once.remove(id);
     weekly.remove(id);
+    countdown.remove(id);
   }
 }

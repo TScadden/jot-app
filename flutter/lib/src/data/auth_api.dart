@@ -15,10 +15,12 @@ import 'package:http/http.dart' as http;
 ///   (see `AuthRequest` in `JotApi.kt`).
 /// - Success: HTTP 200 with a JSON body containing `token`
 ///   (plus `refreshToken`, `userId`, `email` — see `AuthResponse`).
-/// - Failure: non-2xx. The server returns `{"error": "..."}`; the HTTP
-///   status distinguishes the two cases the founder cares about:
-///   404 = no account with that email (verified against the live API),
-///   401 = wrong password.
+/// - Failure: non-2xx. The server returns `{"error": "..."}`.
+///   Credential failure is ONE case (anti-enumeration, decision
+///   2026-11-16): the server returns an identical 401 for an unknown
+///   email and for a wrong password, and the client maps it — plus a
+///   legacy 404 from a pre-fix server — to a single generic failure,
+///   so neither path can reveal whether an account exists.
 ///
 /// Security rules (Vera):
 /// - HTTPS only — the base URL is hard-coded with the https scheme and
@@ -41,8 +43,10 @@ class AuthApiClient {
   /// Attempts email+password login.
   ///
   /// Returns [LoginSuccess] with the session on HTTP 200 + non-blank
-  /// token, otherwise a [LoginFailure] whose [LoginFailureKind]
-  /// distinguishes wrong-password from nonexistent-account.
+  /// token, otherwise a [LoginFailure]. Credential failures are a
+  /// single kind ([LoginFailureKind.wrongCredentials]) carrying one
+  /// generic message: unknown email and wrong password are
+  /// indistinguishable by design (anti-enumeration).
   Future<LoginResult> login({
     required String email,
     required String password,
@@ -105,17 +109,15 @@ class AuthApiClient {
       );
     }
 
-    if (response.statusCode == 404) {
-      return const LoginFailure(
-        LoginFailureKind.accountNotFound,
-        "That account doesn't exist.",
-      );
-    }
-
-    if (response.statusCode == 401) {
+    // Anti-enumeration (decision 2026-11-16): the fixed server returns
+    // one identical 401 for unknown email and wrong password. A 404
+    // can only come from a pre-fix server (its old unknown-email
+    // response); map it to the SAME generic failure so the client
+    // never reintroduces the distinction during rollout.
+    if (response.statusCode == 401 || response.statusCode == 404) {
       return const LoginFailure(
         LoginFailureKind.wrongCredentials,
-        'Wrong password or email.',
+        'Email or password is incorrect.',
       );
     }
 
@@ -502,10 +504,12 @@ class RefreshTemporaryFailure extends RefreshResult {
 }
 
 enum LoginFailureKind {
-  /// HTTP 404 — no account with that email.
-  accountNotFound,
-
-  /// HTTP 401 — account exists, password wrong.
+  /// Credential failure — the server deliberately does not say
+  /// whether the email has an account or the password was wrong
+  /// (anti-enumeration, decision 2026-11-16). The former
+  /// accountNotFound distinction was removed after a caller audit:
+  /// no code branched on it (login UI shows only the message;
+  /// Google sign-in keeps its own separate path and messages).
   wrongCredentials,
 
   /// Transport failure (no connectivity, timeout, TLS).

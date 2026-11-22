@@ -99,6 +99,11 @@ dependencies:
   in_app_purchase: ^3.3.1
   in_app_purchase_android: ^0.5.4
   sentry_flutter: ^10.2.0
+  # Streak upgrade (Nov 18, 2026) — the celebration / milestone
+  # share action hands the generated share-card PNG to the Android
+  # system share sheet via share_plus (spec addendum: no in-app
+  # destination list, no direct posting, no network call).
+  share_plus: ^13.3.1
   # Home redesign — Bandit reading-loop video on Home (muted, looping).
   video_player: ^2.9.2
 
@@ -141,7 +146,29 @@ flutter:
     - assets/images/bandit_full.png
     - assets/images/bandit_full_blink.png
     - assets/images/bandit_reading_poster_v8.png
-    - assets/videos/bandit_reading_loop_v8.mp4
+    # Bandit v9 (Nov 20, 2026) — the reading loop remade as discrete
+    # drawn frames in animated WebP with real alpha (replaces the
+    # v8 mp4, whose baked background and breathing warp the founder
+    # rejected), plus the tap-reaction one-shot. Frame-diff audited:
+    # zero pixel changes outside the eye band.
+    - assets/images/bandit_reading_loop_v9.webp
+    - assets/images/bandit_reading_tap_v1.webp
+    # Streak upgrade — Bandit cheer art for the share card (copied
+    # verbatim from the signed mock source; do not recut).
+    - assets/images/bandit_cheer_cut_v3.png
+    # Gems — founder-approved gem icon v1 (Nov 19, 2026), copied
+    # byte-identical from the design record; do not redraw/recolor.
+    - assets/images/tabs_gem_icon_v1_20261119.png
+    # Body revamp (Nov 20, 2026) — anatomical figures + per-zone
+    # masks generated from the founder-approved mock art
+    # (~/workspace/build-body-workout/gen_body_assets.py), plus the
+    # on-device workout parsing table.
+    - assets/body/male_front_base.png
+    - assets/body/male_back_base.png
+    - assets/body/female_front_base.png
+    - assets/body/female_back_base.png
+    - assets/body/workout_table.json
+    - assets/body/zones/
     # Round 18b — bundled research library (mirrors native
     # app/src/main/assets/research/*.json).
     - assets/research/

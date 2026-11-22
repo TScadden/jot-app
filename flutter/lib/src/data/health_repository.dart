@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:tabs_lab/src/data/correlation_engine.dart'
     show deriveFeelingByDay;
+import 'package:tabs_lab/src/data/hc_availability.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/heart_data_cache.dart';
@@ -34,11 +35,24 @@ class TodayVitals {
   /// Raw log count for today — 0 is real (native shows the raw count).
   final int logCountToday;
 
+  /// HC Grant Hardening §3.2 — wedge evidence from THIS load's own
+  /// reads: a core read failed with a SecurityException while its
+  /// permission was granted. Deliberately conservative: the three
+  /// vitals reads run in parallel over the service's shared
+  /// diagnostic slots, so a security failure is attributed to the
+  /// load (not to a single type) and only counts when EVERY
+  /// attempted core type's grant state was full — a failure under
+  /// a partial grant may belong to the missing leg, which is a
+  /// missing permission, not a wedge. False on every load that did
+  /// not run or did not fail that way.
+  final bool coreReadWedged;
+
   const TodayVitals({
     this.heartRate,
     this.activeCalories,
     this.sleepMinutes,
     this.logCountToday = 0,
+    this.coreReadWedged = false,
   });
 }
 
@@ -80,15 +94,17 @@ class HealthRepository {
     } catch (_) {}
   }
 
-  Future<bool> _connected() async {
-    // Phase 2 PR-2 — derives from the unified availability probe
-    // (the snapshot never throws): connected iff the snapshot's
-    // derived status is connected; an unknown grant layer (status
-    // null) and a confirmed-unavailable device both read false,
-    // exactly as the old isConnected() try/catch flattened them.
-    final snapshot = await hc.probeAvailability();
-    return snapshot.status == HealthConnectStatus.connected;
-  }
+  /// The missing set the per-type gates consume for [snapshot]:
+  /// a confirmed-UNAVAILABLE service is a known state in which
+  /// every type is effectively missing (no read can succeed), so
+  /// the gates see the full required set as missing instead of
+  /// the unknown-layer null — the pre-hardening fast path (an
+  /// unavailable device resolves its loads immediately, with no
+  /// doomed bridge reads).
+  Set<String>? _missingForGates(HcAvailability snapshot) =>
+      snapshot.status == HealthConnectStatus.unavailable
+          ? HealthConnectService.requiredPermissions
+          : snapshot.missingIfKnown;
 
   Future<bool> _loggedIn() async {
     try {
@@ -101,10 +117,16 @@ class HealthRepository {
 
   /// Today's vitals for the [VitalsStrip].
   ///
-  /// When [connected] is false, biometrics stay null (the native empty
-  /// state); the log count still comes from the backend when logged in.
+  /// HC Grant Hardening §3.4 — the reads are gated PER TYPE off
+  /// the caller's availability [snapshot] (Home probes once and
+  /// shares it): each type is attempted unless ITS permission set
+  /// is verified missing, and an unknown grant layer attempts
+  /// (reads fail closed to honest empty values). A type that is
+  /// not attempted keeps its null (the native empty state); the
+  /// log count still comes from the backend when logged in.
   /// Never throws.
-  Future<TodayVitals> loadTodayVitals({required bool connected}) async {
+  Future<TodayVitals> loadTodayVitals(
+      {required HcAvailability snapshot}) async {
     // Round 60 — every source here is independent, so they run in
     // PARALLEL (measured at base: the log-count pull, then the HR,
     // calories, and sleep bridge reads ran one after another —
@@ -112,13 +134,20 @@ class HealthRepository {
     // The log-count future starts FIRST and is awaited LAST so it
     // overlaps the Health Connect reads instead of gating them.
     final logCountFuture = _todayLogCount();
-    if (!connected) {
+    final missing = _missingForGates(snapshot);
+    final hrAttempt = hcShouldAttemptRead(heartPermissions, missing);
+    final calAttempt = hcShouldAttemptRead(vitalsCaloriesPermissions,
+        missing,
+        anySufficient: true);
+    final sleepAttempt = hcShouldAttemptRead(sleepPermissions, missing);
+    if (!hrAttempt && !calAttempt && !sleepAttempt) {
       return TodayVitals(logCountToday: await logCountFuture);
     }
 
     int? heartRate;
     int? activeCalories;
     int? sleepMinutes;
+    var coreReadWedged = false;
     try {
       // The service keeps its read error codes without clearing
       // them on success; reset them so the write-through gate
@@ -137,10 +166,14 @@ class HealthRepository {
       // other two reads still land, exactly as the sequential base
       // assigned each value as it arrived. Without the wrappers,
       // one throw poisoned all three assignments after the await.
+      // A type whose gate closed never enters the wait at all —
+      // its slot in the results is its honest empty value.
       final reads = await Future.wait<Object?>([
-        _hrSamplesOrEmpty(today),
-        _caloriesOrNull(today),
-        _sleepOrNull(today),
+        hrAttempt
+            ? _hrSamplesOrEmpty(today)
+            : Future<Object?>.value(const <HrSample>[]),
+        calAttempt ? _caloriesOrNull(today) : Future<Object?>.value(null),
+        sleepAttempt ? _sleepOrNull(today) : Future<Object?>.value(null),
       ]);
       final hrSamples = reads[0] as List<HrSample>;
       // Perf package (Nov 2, 2026) — write-through: this load just
@@ -159,13 +192,28 @@ class HealthRepository {
       // "fresh" data or be painted as complete (the cache itself
       // also refuses to stamp failed applies). The zero rule is
       // re-applied inside the cache's apply.
-      if (hc.lastReadErrorCode == null && hc.lastPartialErrorCode == null) {
+      if (hrAttempt &&
+          hc.lastReadErrorCode == null &&
+          hc.lastPartialErrorCode == null) {
         try {
           HeartDataCache.instance.apply(today, hrSamples);
         } catch (_) {
           // Cache write-through is an optimization; never fail vitals.
         }
       }
+      // HC Grant Hardening §3.2 — this load's wedge evidence (see
+      // [TodayVitals.coreReadWedged] for the conservative rule).
+      final attemptedStates = <HcGrantState>[
+        if (hrAttempt) hcGrantStateFor(heartPermissions, missing),
+        if (calAttempt)
+          hcGrantStateFor(vitalsCaloriesPermissions, missing),
+        if (sleepAttempt) hcGrantStateFor(sleepPermissions, missing),
+      ];
+      coreReadWedged = snapshot.grantKnown &&
+          hc.lastReadErrorCode != null &&
+          (hc.lastReadErrorDetails?.contains('SecurityException') ??
+              false) &&
+          attemptedStates.every((s) => s == HcGrantState.full);
       heartRate = daytimeHeartRateAvg(hrSamples);
       final cal = reads[1] as int?;
       // Biometric 0 = failed read → null, never shown/averaged.
@@ -180,10 +228,16 @@ class HealthRepository {
       activeCalories: activeCalories,
       sleepMinutes: sleepMinutes,
       logCountToday: await logCountFuture,
+      coreReadWedged: coreReadWedged,
     );
     // R70 WS1b — values are computed; capture history behind the
-    // throttle without blocking the return.
-    _triggerHistoryCapture();
+    // throttle without blocking the return. HC Grant Hardening
+    // §1.3 — the capture fires when at least one of its core
+    // inputs (HR, sleep) was attempted-or-readable; the capture
+    // and the Daily Score engine already suppress per-metric, so
+    // a partial grant no longer starves the score of the metrics
+    // it does have.
+    if (hrAttempt || sleepAttempt) _triggerHistoryCapture();
     return vitals;
   }
 
@@ -231,24 +285,46 @@ class HealthRepository {
 
   /// 7-day snapshot for one metric, oldest → today, device-local dates.
   ///
-  /// Health Connect metrics load ONLY when connected — otherwise the
-  /// native empty state for that metric. Logs/habits/manual-BP and the
-  /// Morning Score (Daily Ranking entries) come from the backend when
-  /// a session token exists. Never throws.
+  /// HC Grant Hardening §3.4 — each Health Connect metric loads
+  /// behind the gate for ITS OWN permission set (the report map's
+  /// sets for the union metrics; READ_BLOOD_PRESSURE for the BP
+  /// half): a metric whose set is verified missing renders the
+  /// native empty state for THAT metric only, and an unknown grant
+  /// layer attempts (the union fails closed per metric). Logs/
+  /// habits/manual-BP and the Morning Score (Daily Ranking
+  /// entries) come from the backend when a session token exists.
+  /// Never throws.
   Future<WeeklySnapshotMetricData> loadSnapshot(SnapshotMetric metric) async {
     final window = sevenDayWindow();
     final dateStrs = [for (final w in window) w.dateStr];
     final labels = [for (final w in window) w.dayLabel];
-    final connected = await _connected();
+    final snapshot = await hc.probeAvailability();
+    final missing = _missingForGates(snapshot);
+    // The HC attempt verdict for THIS metric's load (BP decides
+    // its own below — only its HC half is gated).
+    final bool hcAttempt = switch (metric) {
+      SnapshotMetric.sleepHours =>
+        hcShouldAttemptRead(sleepPermissions, missing),
+      SnapshotMetric.restingHeartRate => hcShouldAttemptRead(
+          reportMetricPermissions[HistoryMetric.restingHr]!, missing),
+      SnapshotMetric.hrSpikes =>
+        hcShouldAttemptRead(heartPermissions, missing),
+      SnapshotMetric.calories => hcShouldAttemptRead(
+          vitalsCaloriesPermissions, missing,
+          anySufficient: true),
+      _ => false,
+    };
     final hcOnly = metric != SnapshotMetric.logs &&
         metric != SnapshotMetric.habitCompletion &&
         metric != SnapshotMetric.bloodPressure &&
         metric != SnapshotMetric.morningScore;
-    if (!connected && hcOnly) return emptyMetricData(metric);
-    // R70 WS1b — a connected snapshot load also feeds the history
-    // store (throttled, fire-and-forget; the load below is
-    // fail-soft and never throws past its honest empty states).
-    if (connected) _triggerHistoryCapture();
+    if (!hcAttempt && hcOnly) return emptyMetricData(metric);
+    // R70 WS1b — a snapshot load that attempts an HC metric also
+    // feeds the history store (throttled, fire-and-forget; the
+    // load below is fail-soft and never throws past its honest
+    // empty states). HC Grant Hardening §3.4: the trigger follows
+    // the attempt, not a global verdict.
+    if (hcAttempt) _triggerHistoryCapture();
     try {
       switch (metric) {
         case SnapshotMetric.sleepHours:
@@ -287,7 +363,9 @@ class HealthRepository {
           return buildHabitsMetric(dateStrs, labels, habits, true);
         case SnapshotMetric.bloodPressure:
           final records = <BpRecord>[];
-          if (connected) records.addAll(await hc.readBloodPressure(7));
+          if (hcShouldAttemptRead(bloodPressurePermissions, missing)) {
+            records.addAll(await hc.readBloodPressure(7));
+          }
           if (await _loggedIn()) records.addAll(await backend.fetchManualBpLogs());
           return buildBpMetric(dateStrs, labels, records);
         case SnapshotMetric.morningScore:
@@ -337,21 +415,59 @@ class HealthRepository {
   /// The full authoritative streak record (VC 100115); a failed
   /// pull reports `succeeded: false` so the streak store never
   /// fabricates a run from silence.
-  Future<({bool succeeded, int? current, int? best, String? stateJson})>
-      loadStreakRecord() async {
+  Future<
+      ({
+        bool succeeded,
+        int? current,
+        int? best,
+        String? stateJson,
+        int? purchasedFreezes
+      })> loadStreakRecord() async {
     try {
-      return await backend.fetchStreakRecord();
+      // Field-mapped (not returned directly): fetchStreakRecord's
+      // record also carries gemBalance, which this pinned shape
+      // deliberately omits — existing test fakes construct it.
+      final rec = await backend.fetchStreakRecord();
+      return (
+        succeeded: rec.succeeded,
+        current: rec.current,
+        best: rec.best,
+        stateJson: rec.stateJson,
+        purchasedFreezes: rec.purchasedFreezes,
+      );
     } catch (_) {
-      return (succeeded: false, current: null, best: null, stateJson: null);
+      return (
+        succeeded: false,
+        current: null,
+        best: null,
+        stateJson: null,
+        purchasedFreezes: null
+      );
+    }
+  }
+
+  /// The server gem balance from the same sync pull
+  /// (jot-server PR #41: profile `gem_balance`). Null on any
+  /// failure — callers keep the last server value, never a guess.
+  Future<int?> loadGemBalance() async {
+    try {
+      final rec = await backend.fetchStreakRecord();
+      return rec.succeeded ? rec.gemBalance : null;
+    } catch (_) {
+      return null;
     }
   }
 
   /// Push one settled streak record back to the profile
   /// (VC 100115). False on any failure — the local record stays
   /// strictly newer and re-pushes on the next settle.
-  Future<bool> pushStreakRecord(int current, int best, String stateJson) async {
+  /// [purchasedFreezes] rides along only when the settle consumed
+  /// a purchased freeze (streak upgrade A2).
+  Future<bool> pushStreakRecord(int current, int best, String stateJson,
+      {int? purchasedFreezes}) async {
     try {
-      return await backend.pushStreakRecord(current, best, stateJson);
+      return await backend.pushStreakRecord(current, best, stateJson,
+          purchasedFreezes: purchasedFreezes);
     } catch (_) {
       return false;
     }

@@ -529,7 +529,8 @@ void main() {
         sessionStore: store,
       );
 
-      final vitals = await repo.loadTodayVitals(connected: true);
+      final vitals =
+          await repo.loadTodayVitals(snapshot: fakeHcSnapshot());
       expect(vitals.heartRate, 75);
       expect(vitals.activeCalories, 250);
       expect(vitals.sleepMinutes, 480);
@@ -548,7 +549,8 @@ void main() {
         sessionStore: store,
       );
 
-      final vitals = await repo.loadTodayVitals(connected: false);
+      final vitals = await repo.loadTodayVitals(
+          snapshot: fakeHcSnapshot(granted: const {}, persistedConnected: false));
       expect(vitals.heartRate, isNull);
       expect(vitals.activeCalories, isNull);
       expect(vitals.sleepMinutes, isNull);
@@ -565,7 +567,8 @@ void main() {
         sessionStore: store,
       );
 
-      final vitals = await repo.loadTodayVitals(connected: true);
+      final vitals =
+          await repo.loadTodayVitals(snapshot: fakeHcSnapshot());
       expect(vitals.heartRate, isNull);
       expect(vitals.activeCalories, isNull);
       expect(vitals.sleepMinutes, isNull);

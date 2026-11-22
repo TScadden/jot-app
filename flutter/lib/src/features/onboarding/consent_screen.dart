@@ -112,27 +112,35 @@ class OnboardingConsentScreen extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 8),
                 child: OnboardingHeader(onBack: onBack),
               ),
+              const SizedBox(height: 12),
+              // Flow3: pinned progress bar, segment 1 of 6.
+              const OnboardingProgressBar(currentSegment: 1),
               const SizedBox(height: 16),
+              // Flow3 consent-box rule: the card sizes to its
+              // content and is vertically centered between the
+              // bar and the Terms/Privacy line + buttons below.
               Expanded(
-                child: Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: NotelColors.surface,
-                    borderRadius: BorderRadius.circular(28),
-                    border: Border.all(color: NotelColors.cardBorder),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x33000000),
-                        blurRadius: 12,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: const SingleChildScrollView(
-                    padding: EdgeInsets.all(24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+                child: Center(
+                  child: Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: NotelColors.surface,
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(color: NotelColors.cardBorder),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x33000000),
+                          blurRadius: 12,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: const SingleChildScrollView(
+                      padding: EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                         Text(
                           'Privacy & Data Consent',
                           style: TextStyle(
@@ -179,7 +187,8 @@ class OnboardingConsentScreen extends StatelessWidget {
                             height: 20 / 14,
                           ),
                         ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -251,12 +260,14 @@ class OnboardingConsentScreen extends StatelessWidget {
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(24),
                             ),
-                            textStyle: const TextStyle(
+                          ),
+                          child: const Text(
+                            'Decline',
+                            style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          child: const Text('Decline'),
                         ),
                       ),
                     ),
@@ -272,12 +283,14 @@ class OnboardingConsentScreen extends StatelessWidget {
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(24),
                             ),
-                            textStyle: const TextStyle(
+                          ),
+                          child: const Text(
+                            'I consent',
+                            style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          child: const Text('I consent'),
                         ),
                       ),
                     ),

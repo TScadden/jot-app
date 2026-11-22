@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Standalone streak widget — BANNER face (values, Nov 18, 2026;
+     occlusion fix Nov 19, 2026).
+     One dark navy card (widget_banner_bg, the in-app banner's
+     background): flame + count row centered at top (flame grey /
+     count #8E97B8 while today is open; flame lit / count #FF7A50
+     once done), the payload greeting (GONE entirely when empty,
+     Juno §9d), the payload sub-line verbatim, and Bandit PEEKING
+     from the bottom edge (bandit_peek / bandit_peek_cheer,
+     pre-rendered head crops, full nose visible).
+
+     OCCLUSION FIX (Nov 19, 2026, founder screenshot: the subline's
+     second line was partially covered by Bandit's head): the old
+     FrameLayout root let the wrap_content text column and the
+     bottom-anchored Bandit overlap whenever the placed height was
+     less than text height + Bandit height — nothing reserved the
+     Bandit zone. The root is now a VERTICAL LinearLayout: the text
+     column is layout_weight=1 inside its own clipped area and
+     Bandit sits in a FIXED-HEIGHT (64dp) bottom container with
+     clipChildren=true. LinearLayout allocates the two zones as
+     disjoint rectangles at every placed height, so text can NEVER
+     enter the Bandit zone — a structural guarantee, not a margin
+     tweak. Inside its container the bitmap keeps the banner's
+     bottom-edge peek crop: 104x72dp with marginBottom=-8dp aligns
+     the bitmap top with the container top and crops ~11% at the
+     bottom edge; the nose (y 0.78-0.85 of the bitmap, measured)
+     stays fully visible.
+     RemoteViews-safe classes only. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/streak_widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_banner_bg"
+    android:clipChildren="true"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipChildren="true"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingStart="12dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="12dp">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/streak_widget_flame"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:contentDescription="Streak flame"
+                android:src="@drawable/ic_widget_flame_grey" />
+
+            <TextView
+                android:id="@+id/streak_widget_count"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:text=""
+                android:textColor="#8E97B8"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/streak_widget_greeting"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:singleLine="true"
+            android:text=""
+            android:textColor="#F0EEFF"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/streak_widget_subline"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="1dp"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:maxLines="2"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:text=""
+            android:textColor="#8E97B8"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/streak_widget_bandit_zone"
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:clipChildren="true">
+
+        <ImageView
+            android:id="@+id/streak_widget_bandit"
+            android:layout_width="104dp"
+            android:layout_height="72dp"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="-8dp"
+            android:contentDescription="Bandit"
+            android:scaleType="fitCenter"
+            android:src="@drawable/bandit_peek" />
+    </FrameLayout>
+</LinearLayout>

@@ -23,6 +23,7 @@ import androidx.health.connect.client.records.PowerRecord
 import androidx.health.connect.client.records.Record
 import androidx.health.connect.client.records.RespiratoryRateRecord
 import androidx.health.connect.client.records.RestingHeartRateRecord
+import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
@@ -104,7 +105,17 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
         const val HC_CHANNEL = "com.notel.notel.playground.flutter/health_connect"
         const val HC_PROVIDER_PACKAGE = "com.google.android.apps.healthdata"
         const val SETTINGS_ACTION = "android.health.connect.action.HEALTH_HOME_SETTINGS"
-        private const val REQUEST_TIMEOUT_MS = 5 * 60 * 1000L
+        // Aligned with the Dart side's request timeout
+        // (HealthConnectService.requestTimeout, 4m30s): a pending
+        // request older than this has no live Dart caller left —
+        // Dart has already thrown REQUEST_TIMEOUT and attempted
+        // cancelRequest (which clears the pending natively). If
+        // that cancel never landed, the next launch SUPERSEDES the
+        // dead pending instead of answering IN_FLIGHT. A younger
+        // pending may still have a live caller at the HC UI, so it
+        // is never superseded early. (Was 5 minutes: up to 30s of
+        // IN_FLIGHT answers past the death of any possible caller.)
+        private const val REQUEST_TIMEOUT_MS = 4 * 60 * 1000L + 30 * 1000L
 
         // ── Activity-owned permission-launcher bridge ─────────────
         // MainActivity registers the HC permission launcher in its
@@ -277,6 +288,9 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
             "readRestingHeartRate" -> readRestingHeartRate(call.argument<String>("dateStr"), result)
             "readRestingHrHistory" -> readRestingHrHistory(call.argument<Int>("days"), result)
             "readCaloriesHistory" -> readCaloriesHistory(call.argument<Int>("days"), result)
+            "readStepsHistory" -> readStepsHistory(call.argument<Int>("days"), result)
+            "readTotalCaloriesHistory" -> readTotalCaloriesHistory(call.argument<Int>("days"), result)
+            "readExerciseSessions" -> readExerciseSessions(call.argument<Int>("days"), result)
             "readBloodPressure" -> readBloodPressure(call.argument<Int>("days"), result)
             "readSteps" -> readSteps(call.argument<String>("dateStr"), result)
             // Round 30: profile Auto-Fill reads (native
@@ -1050,6 +1064,120 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                 )
             } catch (e: Exception) {
                 result.error("CALORIES_HISTORY_READ_FAILED", "Could not read calorie history.", hcErrorDetails(e))
+            }
+        }
+    }
+
+    /// Per-day step totals over [tomorrowStart - days, tomorrowStart),
+    /// via aggregateGroupByDuration on StepsRecord.COUNT_TOTAL (the
+    /// readCaloriesHistory mechanism). Dart shape: [{date, count}]
+    /// sorted ascending; days with no data carry 0 and Dart applies
+    /// the founder zero rule. (BADGES package.)
+    private fun readStepsHistory(days: Int?, result: MethodChannel.Result) {
+        val client = hcClientOrError(result) ?: return
+        val n = (days ?: 30).coerceIn(1, 400)
+        engineScope.launch {
+            try {
+                val zone = ZoneId.systemDefault()
+                val end = ZonedDateTime.now(zone).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
+                val start = end.minus(n.toLong(), ChronoUnit.DAYS)
+                val agg = client.aggregateGroupByDuration(
+                    AggregateGroupByDurationRequest(
+                        metrics = setOf(StepsRecord.COUNT_TOTAL),
+                        timeRangeFilter = TimeRangeFilter.between(start, end),
+                        timeRangeSlicer = Duration.ofDays(1)
+                    )
+                )
+                result.success(
+                    agg.map { bucket ->
+                        val date = ZonedDateTime.ofInstant(bucket.startTime, zone).toLocalDate().toString()
+                        val count = bucket.result[StepsRecord.COUNT_TOTAL] ?: 0L
+                        mapOf("date" to date, "count" to count)
+                    }.sortedBy { it["date"] as String }
+                )
+            } catch (e: Exception) {
+                result.error("STEPS_HISTORY_READ_FAILED", "Could not read step history.", hcErrorDetails(e))
+            }
+        }
+    }
+
+    /// Per-day TOTAL calories over [tomorrowStart - days,
+    /// tomorrowStart) — TotalCaloriesBurnedRecord.ENERGY_TOTAL ONLY
+    /// (resting + active), unlike readCaloriesHistory's
+    /// active-preferred figure: the badges Monthly calories ladder
+    /// is calibrated on totals. Dart shape: [{date, kcal}] sorted
+    /// ascending. (BADGES package.)
+    private fun readTotalCaloriesHistory(days: Int?, result: MethodChannel.Result) {
+        val client = hcClientOrError(result) ?: return
+        val n = (days ?: 30).coerceIn(1, 400)
+        engineScope.launch {
+            try {
+                val zone = ZoneId.systemDefault()
+                val end = ZonedDateTime.now(zone).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
+                val start = end.minus(n.toLong(), ChronoUnit.DAYS)
+                val agg = client.aggregateGroupByDuration(
+                    AggregateGroupByDurationRequest(
+                        metrics = setOf(TotalCaloriesBurnedRecord.ENERGY_TOTAL),
+                        timeRangeFilter = TimeRangeFilter.between(start, end),
+                        timeRangeSlicer = Duration.ofDays(1)
+                    )
+                )
+                result.success(
+                    agg.map { bucket ->
+                        val date = ZonedDateTime.ofInstant(bucket.startTime, zone).toLocalDate().toString()
+                        val total = bucket.result[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories?.toInt() ?: 0
+                        mapOf("date" to date, "kcal" to total)
+                    }.sortedBy { it["date"] as String }
+                )
+            } catch (e: Exception) {
+                result.error("TOTAL_CALORIES_HISTORY_READ_FAILED", "Could not read total calorie history.", hcErrorDetails(e))
+            }
+        }
+    }
+
+    /// Exercise sessions over [tomorrowStart - days, tomorrowStart),
+    /// chunked + paginated like readSleepHistory, mock records
+    /// dropped. Dart shape: [{startMs, endMs}] sorted ascending —
+    /// day/week attribution happens in Dart (the badges engine's
+    /// Tabs-day seam). (BADGES package: Active week minutes.)
+    private fun readExerciseSessions(days: Int?, result: MethodChannel.Result) {
+        val client = hcClientOrError(result) ?: return
+        val n = (days ?: 30).coerceIn(1, 400)
+        engineScope.launch {
+            try {
+                val zone = ZoneId.systemDefault()
+                val end = ZonedDateTime.now(zone).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
+                val start = end.minus(n.toLong(), ChronoUnit.DAYS)
+                val records = mutableListOf<ExerciseSessionRecord>()
+                var chunkEnd = end
+                while (chunkEnd.isAfter(start)) {
+                    val chunkStart = maxOf(start, chunkEnd.minus(31, ChronoUnit.DAYS))
+                    var pageToken: String? = null
+                    do {
+                        val response = client.readRecords(
+                            ReadRecordsRequest(
+                                recordType = ExerciseSessionRecord::class,
+                                timeRangeFilter = TimeRangeFilter.between(chunkStart, chunkEnd),
+                                pageToken = pageToken
+                            )
+                        )
+                        records.addAll(response.records)
+                        pageToken = response.pageToken
+                    } while (pageToken != null)
+                    chunkEnd = chunkStart
+                }
+                result.success(
+                    nonMock(records)
+                        .sortedBy { it.startTime.toEpochMilli() }
+                        .map { session ->
+                            mapOf(
+                                "startMs" to session.startTime.toEpochMilli(),
+                                "endMs" to session.endTime.toEpochMilli()
+                            )
+                        }
+                )
+            } catch (e: Exception) {
+                result.error("EXERCISE_SESSIONS_READ_FAILED", "Could not read exercise sessions.", hcErrorDetails(e))
             }
         }
     }

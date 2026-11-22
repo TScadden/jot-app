@@ -22,11 +22,13 @@ import 'package:tabs_lab/src/features/home/daily_score_circle.dart';
 import 'package:tabs_lab/src/features/home/home_checkin_strip.dart';
 import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
+import 'package:tabs_lab/src/features/badges/badges_screen.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/features/home/weekly_snapshot_card.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
+import 'package:tabs_lab/src/features/tools/community_screen.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 import 'test_helpers.dart';
@@ -188,6 +190,29 @@ Future<void> _drainScoreChain(WidgetTester tester) async {
   await tester.pump(const Duration(seconds: 31));
 }
 
+/// Streak upgrade (Nov 2026): committing the Daily Ranking
+/// completes the Daily Summary, and a log-entry commit is one of
+/// the completion triggers — so the celebration screen
+/// legitimately covers Home right after the commit this file's
+/// check-in test performs. Dismiss it when shown so the Today
+/// Summary face (the surface under test) is onstage again.
+Future<void> _dismissCelebrationIfShown(WidgetTester tester) async {
+  final yay = find.byKey(const Key('celebrationYay'));
+  if (yay.evaluate().isEmpty) return;
+  // Sequence adaptation (Nov 18, 2026): the celebration plays the
+  // ignition sequence and its buttons are not tappable during it —
+  // the first tap skips to the final state, the second dismisses.
+  await tester.tap(yay);
+  await tester.pump();
+  final yayAgain = find.byKey(const Key('celebrationYay'));
+  if (yayAgain.evaluate().isNotEmpty) {
+    await tester.tap(yayAgain);
+    await tester.pump();
+  }
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.pump();
+}
+
 Future<void> _pumpHome(
   WidgetTester tester, {
   required Size physicalSize,
@@ -279,12 +304,28 @@ void main() {
     );
   });
 
-  group('drawer deep-links (AI Advocate + Event Counters)', () {
+  group('drawer deep-links (AI Advocate + Event Counters + Community)',
+      () {
     // Round 5 (founder, Nov 10, 2026) supersedes the Nov 9
     // redesign's "drawer holds exactly one entry" rule: the
-    // drawer now holds AI Advocate AND Event Counters, and
-    // neither has a Settings menu row anymore.
+    // drawer holds AI Advocate AND Event Counters, and neither
+    // has a Settings menu row anymore. Added scope #7 (founder,
+    // Nov 20, 2026) adds a third row UNDER Event Counters:
+    // Community, moved out of Tools.
     Future<void> openDrawer(WidgetTester tester) async {
+      // BADGES package (Nov 20, 2026): Home's settlement hook may
+      // have raised the one-time badge unlock dialog over Home —
+      // the seeded history crosses badge rungs, exactly the
+      // production backfill case. Dismiss it (its 'Done' button)
+      // before opening the drawer, as a user would.
+      if (find.byType(BadgeUnlockDialog).evaluate().isNotEmpty) {
+        await tester.tap(find.descendant(
+            of: find.byType(BadgeUnlockDialog),
+            matching: find.text('Done')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pump();
+      }
       await tester.tap(find.byKey(const ValueKey('home_drawer_button')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
@@ -294,12 +335,17 @@ void main() {
       expect(find.byIcon(Icons.auto_awesome), findsOneWidget);
       expect(find.text('Event Counters'), findsOneWidget);
       expect(find.byIcon(Icons.timer), findsOneWidget);
-      // Exactly two rows: two tappables inside the drawer, AI
-      // Advocate above Event Counters.
+      expect(find.text('Community'), findsOneWidget);
+      expect(find.byIcon(Icons.people), findsOneWidget);
+      expect(find.text('Badges'), findsOneWidget);
+      // Exactly four rows: four tappables inside the drawer, AI
+      // Advocate above Event Counters above Community above
+      // Badges (BADGES package, Nov 20, 2026 — founder's final
+      // drawer order).
       expect(
         find.descendant(
             of: find.byType(Drawer), matching: find.byType(InkWell)),
-        findsNWidgets(2),
+        findsNWidgets(4),
       );
       expect(
         tester
@@ -309,6 +355,25 @@ void main() {
         lessThan(tester
             .getTopLeft(
                 find.byKey(const ValueKey('home_drawer_event_counters')))
+            .dy),
+      );
+      expect(
+        tester
+            .getTopLeft(
+                find.byKey(const ValueKey('home_drawer_event_counters')))
+            .dy,
+        lessThan(tester
+            .getTopLeft(
+                find.byKey(const ValueKey('home_drawer_community')))
+            .dy),
+      );
+      expect(
+        tester
+            .getTopLeft(
+                find.byKey(const ValueKey('home_drawer_community')))
+            .dy,
+        lessThan(tester
+            .getTopLeft(find.byKey(const ValueKey('home_drawer_badges')))
             .dy),
       );
     }
@@ -378,6 +443,40 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
       await tester.pump();
       expect(find.byType(SettingsScreen), findsNothing);
+      expect(find.byType(HomeScreen), findsOneWidget);
+      await _drainScoreChain(tester);
+    });
+
+    testWidgets(
+        'tapping "Community" pushes the Community screen (the same '
+        'screen the Tools tile opened), and back exits to Home',
+        (tester) async {
+      await _pumpHome(
+        tester,
+        physicalSize: const Size(1080, 2400),
+        entries: [_entry(id: 41, categoryId: 1, body: 'headache')],
+      );
+
+      await openDrawer(tester);
+
+      await tester.tap(find.byKey(const ValueKey('home_drawer_community')));
+      await _bridge(tester);
+
+      // The SAME Community screen: same widget, same AppBar title.
+      expect(find.byType(CommunityToolScreen), findsOneWidget);
+      expect(
+        find.descendant(
+            of: find.byType(AppBar),
+            matching: find.text('Community')),
+        findsOneWidget,
+      );
+
+      // Back from Community exits to Home.
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+      expect(find.byType(CommunityToolScreen), findsNothing);
       expect(find.byType(HomeScreen), findsOneWidget);
       await _drainScoreChain(tester);
     });
@@ -535,9 +634,11 @@ void main() {
             tester.getRect(find.byKey(const ValueKey('vitalsStripCompact')));
         final face = tester.getRect(find.byType(DailyScoreFace));
 
-        // The streak stack's axis: the two pills are equal-width
-        // house pills sharing one center axis (the stack centers
-        // them in its 62dp slot).
+        // The streak stack's axis: the stack's one house pill
+        // (scope #5, Nov 20, 2026: the trophy pill is gone; no gem
+        // balance in this harness, so the current-streak pill is
+        // the only pill) sits on the stack's center axis (the stack
+        // centers it in its 62dp slot).
         final stack = find.byType(HomeStreakStack);
         final pillContainers = find.descendant(
           of: stack,
@@ -552,8 +653,7 @@ void main() {
                 0.6)
               tester.getRect(pillContainers.at(i)),
         ];
-        expect(pillRects, hasLength(2));
-        expect(pillRects[0].center.dx, closeTo(pillRects[1].center.dx, 1.0));
+        expect(pillRects, hasLength(1));
 
         // Ruling A: shared center axes within ~1dp.
         expect(pillRects[0].center.dx, closeTo(drawer.center.dx, 1.0),
@@ -576,8 +676,9 @@ void main() {
   });
 
   group('corner band', () {
-    testWidgets('streak stack: BEST (🏆 68) sits above CURRENT (🔥 18)',
-        (tester) async {
+    testWidgets(
+        'streak stack: CURRENT (flame 18) only — no trophy/best pill '
+        '(scope #5)', (tester) async {
       await _pumpHome(
         tester,
         physicalSize: const Size(1080, 2400),
@@ -586,20 +687,28 @@ void main() {
 
       final stack = find.byType(HomeStreakStack);
       expect(stack, findsOneWidget);
-      final trophy = tester.getRect(find.descendant(
-          of: stack, matching: find.text('🏆')));
+      // Scope #5 (Nov 20, 2026, founder direction): the 🏆
+      // best-streak pill is removed from Home. The best value (68
+      // in this harness's profile) no longer renders in the stack
+      // at all — the record lives on the streak screen.
+      expect(
+          find.descendant(of: stack, matching: find.text('🏆')),
+          findsNothing);
+      expect(
+          find.descendant(of: stack, matching: find.text('68')),
+          findsNothing);
+      // Added scope (Nov 19, 2026): CURRENT's flame is the streak
+      // icon, not the 🔥 emoji text.
+      expect(
+          find.descendant(of: stack, matching: find.text('🔥')),
+          findsNothing);
       final flame = tester.getRect(find.descendant(
-          of: stack, matching: find.text('🔥')));
-      expect(trophy.top, lessThan(flame.top));
-      // Values ride their own pills: 68 beside the trophy,
-      // 18 beside the flame (same row band, ± a few dp).
-      final best = tester.getRect(
-          find.descendant(of: stack, matching: find.text('68')));
+          of: stack, matching: find.byIcon(Icons.local_fire_department)));
+      // The current value rides its pill: 18 beside the flame
+      // (same row band, ± a few dp).
       final current = tester.getRect(
           find.descendant(of: stack, matching: find.text('18')));
-      expect(best.center.dy, closeTo(trophy.center.dy, 6));
       expect(current.center.dy, closeTo(flame.center.dy, 6));
-      expect(best.top, lessThan(current.top));
     });
   });
 
@@ -674,6 +783,9 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pump();
+      // The commit completed the summary → the celebration may
+      // be covering Home (see _dismissCelebrationIfShown).
+      await _dismissCelebrationIfShown(tester);
 
       expect(posted, isNotNull);
       final rows = posted!['entries'] as List<dynamic>;

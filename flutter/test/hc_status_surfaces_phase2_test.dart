@@ -11,6 +11,7 @@ import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
+import 'package:tabs_lab/src/features/home/hc_repair_card.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 
 import 'settings_r29_test.dart' as r29;
@@ -30,6 +31,9 @@ import 'test_helpers.dart';
 /// Settings (stale / unavailable / unknown / loading
 /// presentations; the raw bracketed-code line deleted). Home and
 /// Connections deltas: none — identical strings via the new path.
+/// (HC Grant Hardening, later: Home's stale state now presents
+/// the repair card instead of the stale banner — §3.3; the stale
+/// case below pins the card's Juno strings.)
 ///
 /// The fake fakes the PROBE (a canned snapshot), never the old
 /// getStatus() seam: stale arrives as DATA (staleWedged), unknown
@@ -220,8 +224,6 @@ const _ncTitle = "Health Connect isn't connected";
 const _ncBody = 'Tap to reconnect';
 const _partialBanner = 'Health Connect needs permissions — tap to fix';
 const _staleTitle = 'Health Connect got disconnected';
-const _staleBody =
-    "There's a problem with the connection. Tap to disconnect and connect again.";
 const _rowName = 'Android Health (Google Fit, Samsung)';
 
 void main() {
@@ -244,11 +246,15 @@ void main() {
       expect(find.text(_ncTitle), findsNothing);
     });
 
-    testWidgets('stale (staleWedged data) → stale banner, no code',
+    testWidgets(
+        'stale (staleWedged data) → HC Grant Hardening §3.3: the '
+        'repair card REPLACES the stale banner, no code',
         (tester) async {
       await _pumpHome(tester, ProbeFakeHc(snapStale()));
-      expect(find.text(_staleTitle), findsOneWidget);
-      expect(find.text(_staleBody), findsOneWidget);
+      expect(find.text(hcRepairCardTitle), findsOneWidget);
+      expect(find.text(hcRepairCardBody), findsOneWidget);
+      expect(find.text(hcRepairCardButton), findsOneWidget);
+      expect(find.text(_staleTitle), findsNothing);
       expect(find.text(_ncTitle), findsNothing);
       expectNoBracketedCode(tester);
     });

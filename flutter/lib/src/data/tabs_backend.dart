@@ -226,10 +226,10 @@ class TabsBackend {
   /// constructs ~29 [TabsBackend] instances over one session (several
   /// screens mint a new one on every property access), so nearly every
   /// navigation missed the cache and paid a full GET /api/sync/pull.
-  /// Each entry records the profile-mutation epoch at which its fetch
-  /// STARTED (see [_profileMutationEpoch]): a body whose fetch started
-  /// before the latest successful profile push is never served as
-  /// fresh, on ANY instance.
+  /// Each entry records the pull-mutation epoch at which its fetch
+  /// STARTED (see [_pullMutationEpoch]): a body whose fetch started
+  /// before the latest successful profile push or entry write is
+  /// never served as fresh, on ANY instance.
   static final Map<
       (String, String?),
       ({
@@ -258,13 +258,50 @@ class TabsBackend {
   /// and made the revert permanent.
   static int _profileMutationEpoch = 0;
 
+  /// Daily Summary race (Nov 20, 2026) — the ENTRIES twin of
+  /// [_profileMutationEpoch]. Every successful [postLogEntries] and
+  /// [deleteLogEntry] bumps it: both mutate the pull's `entries`
+  /// view exactly as a profile push mutates its `profile` view.
+  /// Before this counter existed, the entries path had NO epoch
+  /// protection: a pull that started before a completion's POST
+  /// could land after it and be stamped fresh for the full TTL,
+  /// and a rapid second completion whose fetch joined that
+  /// in-flight pull computed its entry id (maxId + 1) from the
+  /// pre-post snapshot — allocating the SAME id as the first
+  /// completion, whose server row its POST then upserted over.
+  /// The first completion was destroyed in the log itself (the
+  /// founder's "if I go too fast it doesn't even mark it done").
+  /// Habit log posts do NOT bump it: habits are not pull-visible
+  /// (separate /api/habits endpoint, own cache) — the habit
+  /// completion ENTRY goes through [postLogEntries] and bumps it
+  /// there.
+  static int _entriesMutationEpoch = 0;
+
+  /// The freshness epoch every sync-pull consumer checks: a pull
+  /// body is fresh only for the combined mutation state in which
+  /// its fetch started. Profile pushes and entry writes both move
+  /// it, so a body that predates EITHER is never served or cached
+  /// as fresh after the write lands.
+  static int get _pullMutationEpoch =>
+      _profileMutationEpoch + _entriesMutationEpoch;
+
   /// Round 19 — drops the cached sync pull so the next read hits the
   /// server. Called after local writes (log save/repeat/delete,
   /// category add/delete) so counts and lists refresh honestly.
   /// Oct 26, 2026: clears EVERY session entry — the cache is shared
   /// app-wide now, so one instance's write must invalidate for all.
+  /// Nov 20, 2026: also drops the IN-FLIGHT slot. Callers already
+  /// assume invalidation means the next read starts a NEW fetch;
+  /// before this, a pull already in flight (started by any of the
+  /// ~29 instances) was handed to the next reader as-is even when
+  /// it started before the write that prompted the invalidation.
+  /// Dropping the slot cannot strand its awaiters — they hold the
+  /// future itself, whose epoch check still guards what it
+  /// delivers — and the slot's completion cleanup is
+  /// identical()-guarded, so it never removes a newer fetch.
   void invalidateSyncPull() {
     _syncPullCacheBySession.clear();
+    _syncPullInFlight.clear();
   }
 
   /// The (baseUrl, token) key scoping the shared caches, or null when
@@ -646,36 +683,37 @@ class TabsBackend {
             int fetchEpoch,
           })>> _syncPullInFlight = {};
 
-  /// One epoch-checked sync-pull GET: records the profile-mutation
+  /// One epoch-checked sync-pull GET: records the pull-mutation
   /// epoch at start; when the body lands after a successful profile
-  /// push (epoch moved), the body predates that push — discard it
-  /// and re-issue the GET. The re-issue LOOPS while the epoch keeps
-  /// moving (bounded at [_maxPullReissues] re-issues): a second
-  /// push landing during the first re-issue must not let a body
-  /// that predates it be delivered as fresh (Vera F3 — bulk
-  /// archive in quick succession hit exactly that window).
+  /// push OR entry write (epoch moved), the body predates that
+  /// write — discard it and re-issue the GET. The re-issue LOOPS
+  /// while the epoch keeps moving (bounded at [_maxPullReissues]
+  /// re-issues): a second write landing during the first re-issue
+  /// must not let a body that predates it be delivered as fresh
+  /// (Vera F3 — bulk archive in quick succession hit exactly that
+  /// window).
   /// [fetchEpoch] is the epoch at which the fetch that produced
   /// [body] STARTED, so callers can refuse to cache a body that
-  /// predates the latest push. If the bound is exhausted with the
+  /// predates the latest write. If the bound is exhausted with the
   /// epoch STILL moving, delivery is refused outright (null body —
   /// the caller's ordinary failed-pull path) rather than handing
-  /// out a body known to predate the latest push: a non-null body
+  /// out a body known to predate the latest write: a non-null body
   /// from this method always started at the current epoch.
   static const int _maxPullReissues = 3;
 
   Future<({Map<String, dynamic>? body, int fetchEpoch})>
       _getSyncPullEpochChecked() async {
-    var fetchEpoch = _profileMutationEpoch;
+    var fetchEpoch = _pullMutationEpoch;
     var body = await _getJson('/api/sync/pull');
     var reissues = 0;
     while (body != null &&
-        _profileMutationEpoch != fetchEpoch &&
+        _pullMutationEpoch != fetchEpoch &&
         reissues < _maxPullReissues) {
       reissues++;
-      fetchEpoch = _profileMutationEpoch;
+      fetchEpoch = _pullMutationEpoch;
       body = await _getJson('/api/sync/pull');
     }
-    if (body != null && _profileMutationEpoch != fetchEpoch) {
+    if (body != null && _pullMutationEpoch != fetchEpoch) {
       return (body: null, fetchEpoch: fetchEpoch);
     }
     return (body: body, fetchEpoch: fetchEpoch);
@@ -711,16 +749,17 @@ class TabsBackend {
   ///
   /// Counter-mutation durability (Oct 2026): the cached body is
   /// served only while the epoch recorded when its fetch started
-  /// still equals the current profile-mutation epoch — a successful
-  /// profile push on ANY instance makes every older cached body
-  /// unservable, not just this instance's (the pre-fix per-instance
-  /// invalidation in `_pushProfile` could not see other instances).
+  /// still equals the current pull-mutation epoch — a successful
+  /// profile push OR entry write on ANY instance makes every older
+  /// cached body unservable, not just this instance's (the pre-fix
+  /// per-instance invalidation in `_pushProfile` could not see
+  /// other instances).
   Future<Map<String, dynamic>?> fetchSyncPull() async {
     final key = await _sessionKey();
     if (key != null) {
       final entry = _syncPullCacheBySession[key];
       if (entry != null &&
-          entry.epoch == _profileMutationEpoch &&
+          entry.epoch == _pullMutationEpoch &&
           DateTime.now().difference(entry.at) < syncPullTtl) {
         return entry.body;
       }
@@ -1443,15 +1482,36 @@ class TabsBackend {
   /// the streak store's anti-fabrication rule turns on that
   /// distinction (a successful pull with no streak fields is a
   /// confirmed-empty record, not a failure).
-  Future<({bool succeeded, int? current, int? best, String? stateJson})>
-      fetchStreakRecord() async {
+  Future<
+      ({
+        bool succeeded,
+        int? current,
+        int? best,
+        String? stateJson,
+        int? purchasedFreezes,
+        int? gemBalance
+      })> fetchStreakRecord() async {
     final body = await fetchSyncPull();
     if (body == null) {
-      return (succeeded: false, current: null, best: null, stateJson: null);
+      return (
+        succeeded: false,
+        current: null,
+        best: null,
+        stateJson: null,
+        purchasedFreezes: null,
+        gemBalance: null
+      );
     }
     final profile = body['profile'];
     if (profile is! Map<String, dynamic>) {
-      return (succeeded: true, current: null, best: null, stateJson: null);
+      return (
+        succeeded: true,
+        current: null,
+        best: null,
+        stateJson: null,
+        purchasedFreezes: null,
+        gemBalance: null
+      );
     }
     final rawState = profile['streakState'];
     return (
@@ -1459,18 +1519,133 @@ class TabsBackend {
       current: _asInt(profile['currentStreak']),
       best: _asInt(profile['bestStreak']),
       stateJson: rawState is String ? rawState : null,
+      // The server purchased-freeze column (streak upgrade A2).
+      // The server contract names the pull field
+      // `purchased_freezes`; the camelCase twin is accepted so
+      // either serialization of the profile row parses.
+      purchasedFreezes: _asInt(
+          profile['purchased_freezes'] ?? profile['purchasedFreezes']),
+      // Gems (Nov 19, 2026; jot-server PR #41): the pull profile
+      // carries `gem_balance` — the ONE balance source for the
+      // Home pill and the buy surface. The camelCase twin is
+      // accepted like purchasedFreezes above.
+      gemBalance:
+          _asInt(profile['gem_balance'] ?? profile['gemBalance']),
     );
   }
+
+  /// Status-carrying authenticated POST (the verify-endpoint
+  /// shape): returns the HTTP status and decoded body (null body
+  /// on transport failure or an unparseable response).
+  Future<({int? statusCode, Map<String, dynamic>? body})> _postAuthedWithStatus(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    final response = await _sendAuthed((token) => _client.post(
+          Uri.parse('$_baseUrl$path'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(body),
+        ));
+    if (response == null) return (statusCode: null, body: null);
+    try {
+      final decoded = jsonDecode(response.body);
+      return (
+        statusCode: response.statusCode,
+        body: decoded is Map<String, dynamic> ? decoded : null,
+      );
+    } catch (_) {
+      return (statusCode: response.statusCode, body: null);
+    }
+  }
+
+  /// Gems grant (jot-server PR #41): `POST /api/gems/grant {key}`
+  /// → 200 `{gemBalance, amount, alreadyGranted}`. The amount is
+  /// derived SERVER-side from the key kind (daily +5, milestone
+  /// 7/30/100+ +25/+50/+100, perfect week +20); a replay answers
+  /// `alreadyGranted: true` with the current balance and never
+  /// double-grants.
+  Future<({int? statusCode, Map<String, dynamic>? body})> grantGems(
+    String key,
+  ) =>
+      _postAuthedWithStatus('/api/gems/grant', {'key': key});
+
+  /// Gems spend (jot-server PR #41): `POST /api/gems/spend/freeze
+  /// {spendId}` → 200 `{gemBalance, purchasedFreezes,
+  /// alreadyGranted}`; 409 `{error: freeze_cap_reached |
+  /// insufficient_gems, gemBalance, purchasedFreezes}`. (Before
+  /// the Nov 21, 2026 gem-buy rule change the server could also
+  /// answer `purchased_already_held`; it no longer returns that
+  /// code for gem spends, and [GemService.spendOnFreeze] maps a
+  /// legacy answer to a silent re-sync.) The spendId is
+  /// client-generated, unique per user intent; a replayed
+  /// spendId is a replay, never a double charge.
+  Future<({int? statusCode, Map<String, dynamic>? body})> spendGemsOnFreeze(
+    String spendId,
+  ) =>
+      _postAuthedWithStatus('/api/gems/spend/freeze', {'spendId': spendId});
 
   /// Push one settled streak record to the profile (VC 100115):
   /// counters + day-level blob in a single partial profile push —
   /// the server's COALESCE upsert means no other field is touched.
-  Future<bool> pushStreakRecord(int current, int best, String stateJson) {
+  ///
+  /// [purchasedFreezes] is sent ONLY when the settle being pushed
+  /// consumed a purchased freeze (streak upgrade A2): the body
+  /// then carries `purchased_freezes` with the decreased count,
+  /// which the server applies only when the pushed blob justifies
+  /// the decrease. It is never sent otherwise — an increase on
+  /// this route is ignored by the server by design.
+  Future<bool> pushStreakRecord(int current, int best, String stateJson,
+      {int? purchasedFreezes}) {
     return postSyncProfile({
       'currentStreak': current,
       'bestStreak': best,
       'streakState': stateJson,
+      'purchased_freezes': ?purchasedFreezes,
     });
+  }
+
+  /// Verify one streak-freeze purchase with the server (streak
+  /// upgrade D9/A9; contract in BRIEF-SERVER.md):
+  /// `POST /api/streak/purchase/verify` `{productId, purchaseToken,
+  /// orderId}` → 200 `{purchasedFreezes}` (plus `alreadyGranted:
+  /// true` on a replayed token — idempotent, never a double grant),
+  /// 409 `{error: 'purchased_already_held'}` when a purchased freeze
+  /// is already held, other 4xx with a stable error code on any
+  /// verification failure (no grant). Returns the HTTP status and
+  /// decoded body (null body on transport failure). The purchase
+  /// token travels only in the request body over HTTPS — never
+  /// logged.
+  Future<({int? statusCode, Map<String, dynamic>? body})>
+      verifyStreakFreezePurchase({
+    required String productId,
+    required String purchaseToken,
+    required String orderId,
+  }) async {
+    final response = await _sendAuthed((token) => _client.post(
+          Uri.parse('$_baseUrl/api/streak/purchase/verify'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'productId': productId,
+            'purchaseToken': purchaseToken,
+            'orderId': orderId,
+          }),
+        ));
+    if (response == null) return (statusCode: null, body: null);
+    try {
+      final decoded = jsonDecode(response.body);
+      return (
+        statusCode: response.statusCode,
+        body: decoded is Map<String, dynamic> ? decoded : null,
+      );
+    } catch (_) {
+      return (statusCode: response.statusCode, body: null);
+    }
   }
 
   /// Log-entry timestamps (epoch ms) from `/api/sync/pull` `entries`.
@@ -1532,6 +1707,7 @@ class TabsBackend {
   @visibleForTesting
   static void debugResetSharedCaches() {
     _syncPullCacheBySession.clear();
+    _syncPullInFlight.clear();
     _habitsCacheBySession.clear();
     _habitsInFlight.clear();
   }
@@ -1771,11 +1947,20 @@ class TabsBackend {
 
   /// Round 19 — `POST /api/sync/entries` `{entries: [...]}`.
   /// Returns true on 200.
-  Future<bool> postLogEntries(List<QuickLogEntry> entries) {
-    return _postJson(
+  ///
+  /// Daily Summary race (Nov 20, 2026): a successful post bumps
+  /// the entries-mutation epoch (see [_entriesMutationEpoch]) —
+  /// every sync pull that started before this post is discarded
+  /// on landing / never cached as fresh, on every instance, so
+  /// no reader can allocate an entry id or derive plan state
+  /// from a snapshot that predates this write.
+  Future<bool> postLogEntries(List<QuickLogEntry> entries) async {
+    final ok = await _postJson(
       '/api/sync/entries',
       {'entries': entries.map((e) => e.toSyncJson()).toList()},
     );
+    if (ok) _entriesMutationEpoch++;
+    return ok;
   }
 
   /// Round 19 — `POST /api/sync/categories` with the FULL category list.
@@ -1791,7 +1976,16 @@ class TabsBackend {
   }
 
   /// Round 19 — `DELETE /api/sync/entries/{localId}`.
-  Future<bool> deleteLogEntry(int id) => _delete('/api/sync/entries/$id');
+  ///
+  /// A successful delete mutates the pull's entries view exactly
+  /// as a post does, so it bumps the same entries-mutation epoch:
+  /// a pull that started before the delete must never resurrect
+  /// the deleted row as fresh state.
+  Future<bool> deleteLogEntry(int id) async {
+    final ok = await _delete('/api/sync/entries/$id');
+    if (ok) _entriesMutationEpoch++;
+    return ok;
+  }
 
   /// Round 19 — AI chip suggestions via the real backend endpoint.
   /// `category` and each recent entry are sent as the native DTO shapes;
@@ -2311,12 +2505,23 @@ class FriendDto {
   final String status;
   final int level;
 
+  /// Community revamp (Option A, Nov 19, 2026): GAME stats from
+  /// `GET /api/friends/list` — the server change is additive
+  /// (`gemBalance` / `currentStreak` aliases on the joined profile
+  /// row), so both default to 0 when the deployed server does not
+  /// send them yet. Streak and gems are visible to confirmed
+  /// friends; they are NOT gated by the health-data sharing opt-in.
+  final int gemBalance;
+  final int currentStreak;
+
   const FriendDto({
     required this.id,
     required this.nickname,
     required this.tag,
     required this.status,
     required this.level,
+    this.gemBalance = 0,
+    this.currentStreak = 0,
   });
 
   factory FriendDto.fromJson(Map<String, dynamic> json) {
@@ -2327,6 +2532,22 @@ class FriendDto {
       status: '${json['status'] ?? ''}',
       // Tolerant: server numbers may arrive as strings.
       level: TabsBackend._asInt(json['level']) ?? 0,
+      gemBalance:
+          TabsBackend._asInt(json['gemBalance'] ?? json['gem_balance']) ??
+              0,
+      currentStreak: TabsBackend._asInt(json['currentStreak']) ?? 0,
+    );
+  }
+
+  FriendDto copyWith({int? gemBalance, int? currentStreak, int? level}) {
+    return FriendDto(
+      id: id,
+      nickname: nickname,
+      tag: tag,
+      status: status,
+      level: level ?? this.level,
+      gemBalance: gemBalance ?? this.gemBalance,
+      currentStreak: currentStreak ?? this.currentStreak,
     );
   }
 }
@@ -2404,6 +2625,14 @@ class FriendDetail {
   final int? todaySpikes;
   final int? todaySleepDebt;
 
+  /// Community revamp (Option A, Nov 19, 2026): GAME stats, shown
+  /// to confirmed friends even when [sharingEnabled] is false —
+  /// only the health stats above sit behind the sharing gate.
+  /// Non-nullable with an honest 0 default: 0 streak / 0 gems are
+  /// real values, unlike the nullable health stats' "·" rendering.
+  final int gemBalance;
+  final int currentStreak;
+
   const FriendDetail({
     required this.friendId,
     required this.nickname,
@@ -2414,6 +2643,8 @@ class FriendDetail {
     this.todayScore,
     this.todaySpikes,
     this.todaySleepDebt,
+    this.gemBalance = 0,
+    this.currentStreak = 0,
   });
 
   /// Parses the `data` object of a `FriendDetailResponse`. Null when
@@ -2431,6 +2662,10 @@ class FriendDetail {
         todayScore: TabsBackend._asInt(raw['todayScore']),
         todaySpikes: TabsBackend._asInt(raw['todaySpikes']),
         todaySleepDebt: TabsBackend._asInt(raw['todaySleepDebt']),
+        gemBalance:
+            TabsBackend._asInt(raw['gemBalance'] ?? raw['gem_balance']) ??
+                0,
+        currentStreak: TabsBackend._asInt(raw['currentStreak']) ?? 0,
       );
     } catch (_) {
       return null;

@@ -10,5 +10,10 @@
 # disappears). Keep these names verbatim; Lab-appropriate and
 # deliberately minimal.
 -keep class com.notel.notel.playground.flutter.VitalsWidgetProvider { *; }
+# Size-fix package (Nov 19, 2026): the streak provider shipped
+# Nov 18 without a keep line here; it is manifest-facing exactly
+# like the vitals provider, and its onAppWidgetOptionsChanged
+# override (the size-bucket re-render) must survive R8 verbatim.
+-keep class com.notel.notel.playground.flutter.StreakWidgetProvider { *; }
 -keep class es.antonborri.home_widget.HomeWidgetProvider { *; }
 -keep class es.antonborri.home_widget.HomeWidgetPlugin { *; }

@@ -32,7 +32,12 @@ void main() {
     return s;
   }
 
-  Future<bool> recordingPush(int current, int best, String json) async {
+  Future<bool> recordingPush(
+    int current,
+    int best,
+    String json, {
+    int? purchasedFreezes,
+  }) async {
     pushes.add((current: current, best: best, json: json));
     return true;
   }
@@ -57,19 +62,23 @@ void main() {
     expect(streakCurrent(s, at(2026, 11, 5)), 14);
     expect(streakBest(s), 68);
     // The settled record returns to the server exactly once, with
-    // the adopted counters and a 14-day counted run ending today.
+    // the adopted counters. V2 (A6): adoption seeding anchors the
+    // assumed run on the PRIOR Tabs day — Nov 5 is not counted
+    // (no summary has completed), so the 14-day run ends Nov 4.
     expect(pushes, hasLength(1));
     expect(pushes.single.current, 14);
     expect(pushes.single.best, 68);
     final blob = StreakState.fromJson(
-        jsonDecode(pushes.single.json) as Map<String, dynamic>);
+      jsonDecode(pushes.single.json) as Map<String, dynamic>,
+    );
     expect(blob.countedDays, hasLength(14));
-    expect(blob.countedDays.contains('2026-11-05'), isTrue);
-    expect(blob.countedDays.contains('2026-10-23'), isTrue);
+    expect(blob.countedDays.contains('2026-11-05'), isFalse);
+    expect(blob.countedDays.contains('2026-11-04'), isTrue);
+    expect(blob.countedDays.contains('2026-10-22'), isTrue);
   });
 
   test('fresh-install adoption: a server blob is adopted wholesale '
-      'and the run continues — never a fresh 1', () async {
+      'and the run survives — never a fresh 1', () async {
     // Server record settled Nov 4: run Oct 22 – Nov 4 (14 days).
     final serverState = streakEvaluate(
       streakSeed(current: 14, best: 68, now: at(2026, 11, 4)),
@@ -87,9 +96,11 @@ void main() {
       push: recordingPush,
     );
     expect(s.seeded, isTrue);
-    expect(streakCurrent(s, at(2026, 11, 5)), 15);
+    // V2 (D1/D3): app-open settles but never counts Nov 5 — the
+    // adopted 14-day run stands, still alive through yesterday.
+    expect(streakCurrent(s, at(2026, 11, 5)), 14);
     expect(streakBest(s), 68);
-    expect(pushes.single.current, 15);
+    expect(pushes.single.current, 14);
   });
 
   test('anti-fabrication: no local record + failed pull evaluates '
@@ -110,7 +121,7 @@ void main() {
   });
 
   test('confirmed-empty server record: a genuinely new account '
-      'starts at 1 (the legacy first-open rule)', () async {
+      'counts NOTHING at open under v2 (first completion counts 1)', () async {
     final s = await store.recordOpen(
       pullSucceeded: true,
       seedCurrent: null,
@@ -120,12 +131,13 @@ void main() {
       push: recordingPush,
     );
     expect(s.seeded, isTrue);
-    expect(streakCurrent(s, at(2026, 11, 5)), 1);
-    expect(pushes.single.current, 1);
+    expect(streakCurrent(s, at(2026, 11, 5)), 0);
+    expect(s.countedDays, isEmpty);
+    expect(pushes.single.current, 0);
   });
 
-  test('offline open with an existing local record still counts '
-      'the day and pushes nothing', () async {
+  test('offline open with an existing local record settles the '
+      'gap (bridging a missed day) but counts no new day', () async {
     await store.recordOpen(
       pullSucceeded: true,
       seedCurrent: 6,
@@ -144,37 +156,53 @@ void main() {
       push: recordingPush,
     );
     expect(s.seeded, isTrue);
+    // Adoption seeded the run ending Nov 3 (6 days); the Nov 5
+    // settle bridges missed Nov 4 with November's monthly grant,
+    // so the run reads 7 — but Nov 5 itself is NOT counted.
+    expect(s.restoredDays, contains('2026-11-04'));
+    expect(s.countedDays.contains('2026-11-05'), isFalse);
     expect(streakCurrent(s, at(2026, 11, 5)), 7);
     expect(pushes, isEmpty);
   });
 
   test('a local record strictly newer than the server blob is '
       'kept and re-pushed (a lost push self-heals)', () async {
-    // Local settled through Nov 5 (its push never landed).
-    final local = await store.recordOpen(
+    // Local: adopted Nov 4 (run ending Nov 3, 6 days), then the
+    // Nov 4 summary completes — counted through Nov 4 (7 days),
+    // stamped Nov 4. Its push never landed.
+    await store.recordOpen(
       pullSucceeded: true,
       seedCurrent: 6,
       seedBest: 12,
       seedStateJson: null,
-      now: at(2026, 11, 5),
+      now: at(2026, 11, 4),
       push: recordingPush,
     );
-    expect(streakCurrent(local, at(2026, 11, 5)), 6);
+    final local = (await store.recordSummaryComplete(
+      pullSucceeded: false,
+      seedCurrent: null,
+      seedBest: null,
+      seedStateJson: null,
+      now: at(2026, 11, 4),
+      summaryDay: at(2026, 11, 4),
+      push: recordingPush,
+    )).state;
+    expect(streakCurrent(local, at(2026, 11, 4)), 7);
     pushes.clear();
 
-    // Next open: the server still holds the older Nov 4 blob.
-    final olderServer = streakSeed(current: 5, best: 12, now: at(2026, 11, 4));
+    // Next open: the server still holds the older Nov 3 blob.
+    final olderServer = streakSeed(current: 5, best: 12, now: at(2026, 11, 3));
     final s = await store.recordOpen(
       pullSucceeded: true,
       seedCurrent: 5,
       seedBest: 12,
       seedStateJson: jsonEncode(olderServer.toJson()),
-      now: at(2026, 11, 5),
+      now: at(2026, 11, 4),
       push: recordingPush,
     );
-    expect(streakCurrent(s, at(2026, 11, 5)), 6);
+    expect(streakCurrent(s, at(2026, 11, 4)), 7);
     expect(pushes, hasLength(1));
-    expect(pushes.single.current, 6);
+    expect(pushes.single.current, 7);
   });
 
   test('restore flows through the store: a single missed day is '
@@ -191,11 +219,15 @@ void main() {
     );
     expect(s.restoredDays, contains('2026-11-03'));
     expect(s.consumedSaveMonths, contains('2026-11'));
-    expect(streakCurrent(s, at(2026, 11, 4)), 7);
+    // V2: the settle bridges Nov 3 (run now ends Nov 3, 6 days)
+    // but does NOT count Nov 4 itself.
+    expect(s.countedDays.contains('2026-11-04'), isFalse);
+    expect(streakCurrent(s, at(2026, 11, 4)), 6);
     final pushedBlob = StreakState.fromJson(
-        jsonDecode(pushes.single.json) as Map<String, dynamic>);
+      jsonDecode(pushes.single.json) as Map<String, dynamic>,
+    );
     expect(pushedBlob.restoredDays, contains('2026-11-03'));
-    expect(pushes.single.current, 7);
+    expect(pushes.single.current, 6);
   });
 
   test('persistence round-trip: a cold store reads the identical '
@@ -283,10 +315,17 @@ void main() {
       readFails = false;
       // The true local record: a 6-day run (Oct 30 – Nov 4) seeded
       // 6/12, settled Nov 4, stamped with its owner.
+      // P0 adaptation (Bram, flagged for Vera): Nov 4 is recorded
+      // as summary-completed — under the P0 open-day revalidation
+      // a counted open day WITHOUT a completion record is a legacy
+      // app-open artifact and is stripped at adoption, which is
+      // not what these C-04 disk-failure tests are about. With the
+      // completion record the fixture is a legitimate v2 record
+      // and every assertion below stands unchanged.
       final settled = streakEvaluate(
         streakSeed(current: 6, best: 12, now: at(2026, 11, 4)),
         at(2026, 11, 4),
-      );
+      ).copyWith(summaryCompletedDays: {'2026-11-04'});
       trueBlob = jsonEncode({
         'ownerEmail': 'owner@example.test',
         'state': settled.toJson(),
@@ -361,7 +400,9 @@ void main() {
       expect(s.countedDays.contains('2026-11-04'), isTrue);
       expect(disk[StreakStore.storageKey], trueBlob);
 
-      // And the next day counts again, as normal.
+      // And the next day settles again, as normal — under v2 the
+      // open counts nothing, so the run still reads 6 (alive
+      // through yesterday, Nov 4).
       final next = await flaky.recordOpen(
         pullSucceeded: false,
         seedCurrent: null,
@@ -370,7 +411,7 @@ void main() {
         now: at(2026, 11, 5),
         push: recordingPush,
       );
-      expect(streakCurrent(next, at(2026, 11, 5)), 7);
+      expect(streakCurrent(next, at(2026, 11, 5)), 6);
     });
 
     test('a failed load never produces a blob stamped '

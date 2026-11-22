@@ -72,6 +72,15 @@ const int reminderMaxSlot = reminderSlotsPerReminder - 1;
 /// event-counter range (700000): id 399 → 698500–699999.
 const int reminderMaxSchedulableId = 399;
 
+/// Thrown inside a currency-guarded alarm sync when the caller's
+/// `isStillCurrent` check reports the sync superseded mid-flight
+/// (see [syncReminderAlarms]). Private to this library:
+/// [reconcileReminderAlarms] converts it into a quiet abort, and
+/// unguarded callers never trigger it.
+class _StaleAlarmSync implements Exception {
+  const _StaleAlarmSync();
+}
+
 /// Whether [reminderId]'s plugin-id block is provably disjoint
 /// from every reserved range (see the file doc comment).
 bool isReminderIdSchedulable(int reminderId) =>
@@ -123,8 +132,28 @@ Future<void> cancelReminderAlarms(
 /// scheduled for it, and the mutation caller surfaces the
 /// non-blocking alarm note. A DISABLED out-of-range reminder is
 /// cancel-only by definition, so it returns silently.
+///
+/// Currency guard (toggle-wedge fix round 2, Vera): when the
+/// caller supplies [isStillCurrent], it is consulted immediately
+/// before EVERY schedule call below. A sync whose snapshot was
+/// superseded while its plugin work was stalled — its queue
+/// timeout already fired and a newer state has been saved since —
+/// must never schedule from that stale snapshot: it aborts by
+/// throwing [_StaleAlarmSync] instead. Cancels are deliberately
+/// NOT guarded: cancelling a block is idempotent, and the screen
+/// serializes plugin work so a superseded task's cancels can
+/// never land after a newer task's schedules.
 Future<void> syncReminderAlarms(
-    ReminderNotificationService service, ReminderModel r) async {
+  ReminderNotificationService service,
+  ReminderModel r, {
+  bool Function()? isStillCurrent,
+}) async {
+  void requireCurrent() {
+    if (isStillCurrent != null && !isStillCurrent()) {
+      throw const _StaleAlarmSync();
+    }
+  }
+
   if (!isReminderIdSchedulable(r.id)) {
     if (r.isEnabled) {
       throw const NotificationServiceException('REMINDER_ID_OUT_OF_RANGE');
@@ -136,6 +165,7 @@ Future<void> syncReminderAlarms(
   if (r.type == 'INTERVAL') {
     final times = intervalSlotMinutes(r);
     for (var i = 0; i < times.length; i++) {
+      requireCurrent();
       await service.scheduleDaily(
         id: reminderSlotId(r.id, i),
         title: userReminderNotificationTitle,
@@ -152,6 +182,7 @@ Future<void> syncReminderAlarms(
   final enabledDays = r.dayConfigs.where((d) => d.isEnabled).toList();
   if (enabledDays.isNotEmpty) {
     for (final d in enabledDays) {
+      requireCurrent();
       await service.scheduleWeekly(
         id: reminderSlotId(r.id, d.dayOfWeek),
         title: userReminderNotificationTitle,
@@ -165,6 +196,7 @@ Future<void> syncReminderAlarms(
       );
     }
   } else {
+    requireCurrent();
     await service.scheduleDaily(
       id: reminderSlotId(r.id, 0),
       title: userReminderNotificationTitle,
@@ -187,12 +219,26 @@ Future<void> syncReminderAlarms(
 /// every reminder synced cleanly (false → the caller surfaces the
 /// non-blocking alarm note on the mutation path; the load path
 /// ignores it by design).
+///
+/// When [isStillCurrent] is supplied it is checked before each
+/// reminder in the loop and forwarded to [syncReminderAlarms],
+/// which checks it again immediately before every schedule call.
+/// The moment it reports false the reconcile aborts quietly
+/// (returning the failures accumulated so far): a superseded
+/// reconcile must never schedule, and the state that superseded
+/// it has its own reconcile queued or already run.
 Future<bool> reconcileReminderAlarms(
-    ReminderNotificationService service, Iterable<ReminderModel> reminders) async {
+  ReminderNotificationService service,
+  Iterable<ReminderModel> reminders, {
+  bool Function()? isStillCurrent,
+}) async {
   var allOk = true;
   for (final r in reminders) {
+    if (isStillCurrent != null && !isStillCurrent()) return allOk;
     try {
-      await syncReminderAlarms(service, r);
+      await syncReminderAlarms(service, r, isStillCurrent: isStillCurrent);
+    } on _StaleAlarmSync {
+      return allOk;
     } catch (_) {
       allOk = false;
     }

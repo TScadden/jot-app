@@ -18,6 +18,7 @@ import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
+import 'package:tabs_lab/src/features/badges/badges_screen.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 
 import 'test_helpers.dart';
@@ -150,6 +151,29 @@ Future<void> _bridge(WidgetTester tester) async {
   }
   await tester.pump();
   await tester.pump(const Duration(seconds: 3));
+}
+
+/// Streak upgrade (Nov 2026): in the checked fixture the Daily
+/// Summary is complete, and Home load is one of the completion
+/// triggers — so the celebration screen legitimately covers
+/// Home after load, leaving the Today Summary card offstage.
+/// Dismiss it when shown; the captured frames are Home states,
+/// and the celebration is not a frame subject.
+Future<void> _dismissCelebrationIfShown(WidgetTester tester) async {
+  final yay = find.byKey(const Key('celebrationYay'));
+  if (yay.evaluate().isEmpty) return;
+  // Sequence adaptation (Nov 18, 2026): the celebration plays the
+  // ignition sequence and its buttons are not tappable during it —
+  // the first tap skips to the final state, the second dismisses.
+  await tester.tap(yay);
+  await tester.pump();
+  final yayAgain = find.byKey(const Key('celebrationYay'));
+  if (yayAgain.evaluate().isNotEmpty) {
+    await tester.tap(yayAgain);
+    await tester.pump();
+  }
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.pump();
 }
 
 void main() {
@@ -318,6 +342,7 @@ void main() {
         ),
       );
       await _bridge(tester);
+      await _dismissCelebrationIfShown(tester);
     }
 
     Future<void> capture(String name, int wantW, int wantH) async {
@@ -347,6 +372,18 @@ void main() {
     tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.reset);
     await pumpHome(checked: false);
+    // BADGES package (Nov 20, 2026): the settlement hook may have
+    // raised the one-time badge unlock dialog over Home (seeded
+    // history crosses badge rungs — the production backfill
+    // case). Dismiss it before capturing, as a user would.
+    if (find.byType(BadgeUnlockDialog).evaluate().isNotEmpty) {
+      await tester.tap(find.descendant(
+          of: find.byType(BadgeUnlockDialog),
+          matching: find.text('Done')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+    }
     await capture('home_360', 1080, 2400);
 
     // FRAME 2 — home_390.

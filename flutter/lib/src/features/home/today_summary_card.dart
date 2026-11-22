@@ -74,8 +74,9 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 ///   (optimistic, the same frame as the tap); the check-off then
 ///   persists through the exact same loader writes as before,
 ///   in the background through the serialized [_actionChain],
-///   and the reconciling reload that follows each write keeps
-///   the view honest. Reduced motion
+///   and the reconciling reload that follows the chain's drain
+///   (Nov 20, 2026: coalesced from per-write) keeps the view
+///   honest. Reduced motion
 ///   (animationsDisabled) removes the item instantly, no slide.
 ///   Section rule (founder): the card auto-collapses ONLY when a
 ///   check-off removes the LAST remaining plan item, and only after
@@ -219,17 +220,35 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
   /// execute sequentially in tap order: the loader allocates each
   /// new log entry's id as server-max+1 from a fresh fetch, so two
   /// concurrent writes could collide on the same id and clobber
-  /// each other's entry. Each link runs one write plus its
-  /// reconciling reload, and swallows its own errors so a failed
-  /// link never wedges the chain. There is deliberately NO global
-  /// acting lock: the pre-fix `_actingItemId` guard silently ate
-  /// taps on every other row for the whole in-flight window,
-  /// which is what broke the founder's rapid back-to-back med
-  /// routine. Idempotency is per item instead: an item already in
-  /// [_goneItemIds] (sliding, slid, or vanished) ignores further
-  /// taps, and once tapped its row is replaced by the inert slide
-  /// slot, so a same-row double-tap cannot re-fire.
+  /// each other's entry. Each link runs one write and swallows its
+  /// own errors so a failed link never wedges the chain. There is
+  /// deliberately NO global acting lock: the pre-fix `_actingItemId`
+  /// guard silently ate taps on every other row for the whole
+  /// in-flight window, which is what broke the founder's rapid
+  /// back-to-back med routine. Idempotency is per item instead: an
+  /// item already in [_goneItemIds] (sliding, slid, or vanished)
+  /// ignores further taps, and once tapped its row is replaced by
+  /// the inert slide slot, so a same-row double-tap cannot
+  /// re-fire.
+  ///
+  /// Nov 20, 2026 (Daily Summary race): the reconciling reload no
+  /// longer runs after EVERY link. Each link's reload cost a full
+  /// sync pull, so a burst of N taps paid N pulls of pure
+  /// reconciliation on top of the N write fetches, and the last
+  /// tap's state settled only after the sum of every cycle — the
+  /// founder's "delayed logging". The reload now runs ONCE, when
+  /// the chain drains (see [_queuedActions]): intermediate links
+  /// skip straight to the next write, and the visible state
+  /// settles promptly after the final write lands.
   Future<void> _actionChain = Future<void>.value();
+
+  /// Links currently queued on [_actionChain] whose writes have
+  /// not yet landed. Incremented at enqueue time, decremented as
+  /// each link's write completes; the reconciling reload runs
+  /// when the count returns to zero (chain drain), so a burst of
+  /// taps pays exactly one reload no matter how many links it
+  /// queued — and a lone tap still reloads exactly as before.
+  int _queuedActions = 0;
 
   /// Slide-away exit state (see the class doc). At most one row
   /// slides out at a time; a second check-off finalizes the
@@ -784,19 +803,32 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
     return index < 0 ? visible.length : index;
   }
 
-  /// Queues one background write + its reconciling reload on the
-  /// serialized [_actionChain]. The UI never waits on this: the
-  /// caller has already started the slide. Errors are swallowed
-  /// per link so one failure never wedges later writes.
+  /// Queues one background write on the serialized
+  /// [_actionChain]. The UI never waits on this: the caller has
+  /// already started the slide. Errors are swallowed per link so
+  /// one failure never wedges later writes. The reconciling
+  /// reload runs once, when the last queued link's write has
+  /// landed (chain drain — see [_queuedActions]), not after
+  /// every link.
   void _enqueueAction(Future<void> Function() write) {
+    _queuedActions++;
     _actionChain = _actionChain.then((_) async {
       try {
         await write();
-        await _load(includeTrends: false);
       } catch (_) {
-        // A background write/reload failure must never wedge the
-        // chain or surface as a crash; the next reconciling
-        // reload (or the next mount's load) re-reads the truth.
+        // A background write failure must never wedge the chain
+        // or surface as a crash; the drain reload below (or the
+        // next mount's load) re-reads the truth.
+      }
+      _queuedActions--;
+      if (_queuedActions == 0) {
+        try {
+          await _load(includeTrends: false);
+        } catch (_) {
+          // Same contract as the write above: a failed reload
+          // leaves the last honest state on screen; the next
+          // mount's load re-reads the truth.
+        }
       }
     });
   }

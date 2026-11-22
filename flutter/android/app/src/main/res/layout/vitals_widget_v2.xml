@@ -1,0 +1,267 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Streak upgrade (D14) + FOUNDER WIDGET RESTYLE (Nov 18, 2026)
+     — values face WITH the streak banner. Used by
+     VitalsWidgetProvider when WidgetSync has published streak
+     fields; the original vitals_widget.xml remains the no-streak
+     face (and the layout the Round 59 tests pin).
+
+     Structure: vertical — streak banner on top, the Round 50/59
+     vitals row below (cells copied verbatim: singleLine values,
+     FrameLayout dividers, multi-density PNG icons).
+
+     The banner is ONE dark navy card in BOTH states (the restyle
+     superseded the purple-gradient celebrate design), matching
+     the governing mocks (tabs_streak_widget_open_v5 /
+     celebrate_a_v2 / celebrate_b_v4, 20261118):
+     - flame row centered: flame glyph + the streak count (GREY
+       #8E97B8 while today is open; ORANGE #FF7A50 once done).
+     - headline: "Hey {name}." (GONE entirely when the Dart side
+       sends an empty greeting, Juno §9d) / "See you tomorrow!".
+     - sub-line: the Juno §9b projected line / "Day {N} is
+       locked in." (both preformatted by Dart, verbatim).
+     - Bandit PEEKING from the bottom edge: the full pose image
+       (bandit_full for peek, bandit_cheer for the cheer peek) is
+       anchored to the banner's bottom with a large negative
+       bottom margin, so only its top portion rises into the
+       card — the same crop in both states; the done rotation
+       varies only the expression drawable.
+     RemoteViews-safe classes only (LinearLayout / FrameLayout /
+     ImageView / TextView). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:orientation="vertical"
+    android:paddingStart="12dp"
+    android:paddingTop="10dp"
+    android:paddingEnd="12dp"
+    android:paddingBottom="10dp">
+
+    <!-- Streak banner (one card, both states) -->
+    <FrameLayout
+        android:id="@+id/widget_banner"
+        android:layout_width="match_parent"
+        android:layout_height="106dp"
+        android:background="@drawable/widget_banner_bg"
+        android:clipChildren="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|center_horizontal"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:paddingTop="8dp">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <!-- Flame (added scope, Nov 19, 2026): the bundled
+                     streak flame drawable, NOT the old emoji text —
+                     the same asset pair + ImageView swap the
+                     standalone streak widget binds (grey while
+                     today is open, lit once done; the provider
+                     rebinds by the payload's todayDone flag). 20dp
+                     matches the replaced 20sp emoji's footprint. -->
+                <ImageView
+                    android:id="@+id/widget_streak_flame"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:contentDescription="Streak flame"
+                    android:src="@drawable/ic_widget_flame_grey" />
+
+                <TextView
+                    android:id="@+id/widget_streak_flame_count"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:singleLine="true"
+                    android:text=""
+                    android:textColor="#8E97B8"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_streak_greeting"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:text=""
+                android:textColor="#F0EEFF"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/widget_streak_subline"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:maxLines="2"
+                android:paddingStart="30dp"
+                android:paddingEnd="30dp"
+                android:text=""
+                android:textColor="#8E97B8"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <ImageView
+            android:id="@+id/widget_bandit_pose"
+            android:layout_width="128dp"
+            android:layout_height="150dp"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="-102dp"
+            android:contentDescription="Bandit"
+            android:scaleType="fitCenter"
+            android:src="@drawable/bandit_full" />
+    </FrameLayout>
+
+    <!-- Vitals row (Round 50/59 cells, verbatim) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="6dp"
+        android:paddingEnd="6dp">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:contentDescription="Heart Rate"
+                android:src="@drawable/ic_widget_heart" />
+
+            <TextView
+                android:id="@+id/widget_heart_rate"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:text="--"
+                android:textColor="#FFFFFFFF"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <FrameLayout
+            android:layout_width="1dp"
+            android:layout_height="16dp"
+            android:layout_gravity="center_vertical"
+            android:background="#26FFFFFF" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:contentDescription="Calories"
+                android:src="@drawable/ic_widget_flame" />
+
+            <TextView
+                android:id="@+id/widget_streak"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:text="--"
+                android:textColor="#FFFFFFFF"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <FrameLayout
+            android:layout_width="1dp"
+            android:layout_height="16dp"
+            android:layout_gravity="center_vertical"
+            android:background="#26FFFFFF" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:contentDescription="Logs"
+                android:src="@drawable/ic_widget_edit" />
+
+            <TextView
+                android:id="@+id/widget_logs"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:text="--"
+                android:textColor="#FFFFFFFF"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <FrameLayout
+            android:layout_width="1dp"
+            android:layout_height="16dp"
+            android:layout_gravity="center_vertical"
+            android:background="#26FFFFFF" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:contentDescription="Sleep"
+                android:src="@drawable/ic_widget_sleep" />
+
+            <TextView
+                android:id="@+id/widget_sleep"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:text="--"
+                android:textColor="#FFFFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

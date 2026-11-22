@@ -349,7 +349,7 @@ void main() {
         backend: _delayedBackend(onPull: () => pulls++),
       );
       final sw = Stopwatch()..start();
-      final vitals = await repo.loadTodayVitals(connected: true);
+      final vitals = await repo.loadTodayVitals(snapshot: fakeHcSnapshot());
       sw.stop();
       // ignore: avoid_print
       print('R60 vitals: parallel=${sw.elapsedMilliseconds}ms '
@@ -381,7 +381,7 @@ void main() {
             onPull: () {},
             pullDelay: const Duration(milliseconds: 10)),
       );
-      final vitals = await repo.loadTodayVitals(connected: true);
+      final vitals = await repo.loadTodayVitals(snapshot: fakeHcSnapshot());
       expect(vitals.heartRate, 72);
       expect(vitals.activeCalories, 300);
       expect(vitals.sleepMinutes, isNull);
@@ -399,7 +399,7 @@ void main() {
             onPull: () {},
             pullDelay: const Duration(milliseconds: 10)),
       );
-      final vitals = await repo.loadTodayVitals(connected: true);
+      final vitals = await repo.loadTodayVitals(snapshot: fakeHcSnapshot());
       expect(vitals.activeCalories, isNull);
       expect(vitals.sleepMinutes, isNull);
       expect(vitals.heartRate, 72);

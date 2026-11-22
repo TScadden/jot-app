@@ -177,6 +177,9 @@ class _OnboardingConditionsScreenState
             ),
           ),
           const SizedBox(height: 12),
+          // Flow3: pinned progress bar, segment 3 of 6.
+          const OnboardingProgressBar(currentSegment: 3),
+          const SizedBox(height: 12),
           const Text(
             'Add conditions',
             textAlign: TextAlign.center,
