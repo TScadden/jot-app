@@ -1,0 +1,23 @@
+name: healthkit_bridge
+description: >-
+  Local Flutter plugin carrying the Tabs HealthKit MethodChannel
+  bridge on iOS. iOS-only counterpart to health_connect_bridge: it
+  registers on the same fixed channel the Android bridge serves, so
+  the one Dart HealthConnectService drives both platforms and the
+  Android registrant never sees this plugin.
+version: 0.0.1
+publish_to: 'none'
+
+environment:
+  sdk: ^3.13.5
+  flutter: '>=3.3.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      ios:
+        pluginClass: HealthkitBridgePlugin

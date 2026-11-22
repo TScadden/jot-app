@@ -58,6 +58,15 @@ dependencies:
   # HealthConnectService keeps using the same fixed channel name.
   health_connect_bridge:
     path: plugins/health_connect_bridge
+  # HealthKit bridge as a local plugin package (iOS-only counterpart
+  # to health_connect_bridge): the generated plugin registrant
+  # registers HealthkitBridgePlugin on iOS only, serving the SAME
+  # fixed channel name from HealthKit, so HealthConnectService drives
+  # both platforms. It declares no Android platform, so the Android
+  # registrant and behavior are unchanged. No Dart API is consumed
+  # from it.
+  healthkit_bridge:
+    path: plugins/healthkit_bridge
   flutter_timezone: ^4.1.1
   timezone: ^0.10.1
   flutter_secure_storage: ^11.2.0

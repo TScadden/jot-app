@@ -399,6 +399,13 @@ packages:
       relative: true
     source: path
     version: "0.0.1"
+  healthkit_bridge:
+    dependency: "direct main"
+    description:
+      path: "plugins/healthkit_bridge"
+      relative: true
+    source: path
+    version: "0.0.1"
   home_widget:
     dependency: "direct main"
     description:
