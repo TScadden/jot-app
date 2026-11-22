@@ -21,6 +21,14 @@ class SessionStore {
   /// explicit 'false' gates a restored session.
   static const _emailVerifiedKey = 'email_verified';
 
+  /// The Tabs server account ID (`userId` from the auth API's
+  /// AuthResponse). Persisted so platform subscription tooling can
+  /// bind to the account (RevenueCat app user ID on iOS — see
+  /// revenuecat_service.dart). It is an opaque server identifier,
+  /// never an email or any other personal data. Written only when
+  /// the caller carries one, like the verified flag below.
+  static const _userIdKey = 'user_id';
+
   final FlutterSecureStorage _storage;
 
   SessionStore({FlutterSecureStorage? storage})
@@ -31,6 +39,7 @@ class SessionStore {
     required String refreshToken,
     required String email,
     bool? emailVerified,
+    String? userId,
   }) async {
     // WRITE ORDER IS LOAD-BEARING (Round 31 fix pass, Vera
     // SHOULD-FIX 1): the refresh token is written BEFORE the
@@ -63,6 +72,15 @@ class SessionStore {
         key: _emailVerifiedKey,
         value: emailVerified ? 'true' : 'false',
       );
+    }
+    // The account ID is written LAST, after the verified flag, and
+    // only when the caller carries one: it is a binding-only value
+    // like the email (a lagging write can never strand the
+    // session), and callers that know nothing about it (the
+    // refresh rotation path) must leave a stored ID untouched
+    // rather than clobber it.
+    if (userId != null && userId.isNotEmpty) {
+      await _storage.write(key: _userIdKey, value: userId);
     }
   }
 
@@ -113,6 +131,10 @@ class SessionStore {
 
   Future<String?> readEmail() => _storage.read(key: _emailKey);
 
+  /// The stored server account ID, or null when absent (every
+  /// install that predates this key, until its next sign-in).
+  Future<String?> readUserId() => _storage.read(key: _userIdKey);
+
   Future<void> clear() async {
     // Each delete isolated (R29b): one failing storage delete must
     // not leave the other session values behind, and must not throw
@@ -129,6 +151,9 @@ class SessionStore {
     } catch (_) {}
     try {
       await _storage.delete(key: _emailVerifiedKey);
+    } catch (_) {}
+    try {
+      await _storage.delete(key: _userIdKey);
     } catch (_) {}
   }
 }

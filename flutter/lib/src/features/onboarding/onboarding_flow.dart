@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:tabs_lab/src/data/billing_service.dart';
+import 'package:tabs_lab/src/data/revenuecat_service.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/onboarding_store.dart';
@@ -64,6 +65,12 @@ class OnboardingFlow extends StatefulWidget {
   /// or disposed by the flow or the step.
   final BillingService? billingService;
 
+  /// The app-owned RevenueCat service (single instance, iOS),
+  /// forwarded to the membership step beside [billingService] —
+  /// consumed there, never constructed or disposed by the flow
+  /// or the step.
+  final RevenueCatService? revenueCatService;
+
   /// The account's email-verification state, forwarded to the
   /// membership step's billing gate.
   final bool emailVerified;
@@ -87,6 +94,7 @@ class OnboardingFlow extends StatefulWidget {
     this.healthConnectService,
     this.notificationService,
     this.billingService,
+    this.revenueCatService,
     this.emailVerified = true,
     this.onVerifyEmail,
     required this.onComplete,
@@ -203,6 +211,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
             onSkip: () => _go(OnboardingStep.setupLoading),
             backend: widget.backend,
             billingService: widget.billingService,
+            revenueCatService: widget.revenueCatService,
             emailVerified: widget.emailVerified,
             onVerifyEmail: widget.onVerifyEmail,
           ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/billing_service.dart';
+import 'package:tabs_lab/src/data/revenuecat_service.dart';
 import 'package:tabs_lab/src/data/midnight_grace.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/migraine_controller.dart';
@@ -93,6 +94,12 @@ class MainShell extends StatefulWidget {
   /// there, never constructed or disposed by the shell or screens.
   final BillingService? billingService;
 
+  /// The app-owned RevenueCat service (single instance, iOS),
+  /// forwarded beside [billingService] along the same routes to
+  /// Settings — consumed there, never constructed or disposed by
+  /// the shell or screens.
+  final RevenueCatService? revenueCatService;
+
   /// The shared app-level migraine controller (app wiring in
   /// main.dart), forwarded to Home.
   final MigraineController? migraineController;
@@ -112,6 +119,7 @@ class MainShell extends StatefulWidget {
       this.onLogout,
       this.settingsStore,
       this.billingService,
+      this.revenueCatService,
       this.graceController,
       this.migraineController});
 
@@ -352,6 +360,7 @@ class _MainShellState extends State<MainShell>
           // Customize change made there notifies this shell too.
           settingsStore: _settingsStore,
           billingService: widget.billingService,
+          revenueCatService: widget.revenueCatService,
           graceController: _graceController,
           migraineController: widget.migraineController,
           // Round 34 — so a logout started in the Settings screen
@@ -360,7 +369,8 @@ class _MainShellState extends State<MainShell>
         ),
       DockTab.tools => ToolsScreen(
           key: const ValueKey('tools_screen'),
-          billingService: widget.billingService),
+          billingService: widget.billingService,
+          revenueCatService: widget.revenueCatService),
       DockTab.quickLog => QuickLogScreen(
           key: const ValueKey('quicklog_screen'),
           weatherApi: widget.weatherApi,

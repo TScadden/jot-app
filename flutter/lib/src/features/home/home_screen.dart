@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:tabs_lab/src/data/billing_service.dart';
+import 'package:tabs_lab/src/data/revenuecat_service.dart';
 import 'package:tabs_lab/src/data/correlation_engine.dart'
     show energyDayLabel;
 import 'package:tabs_lab/src/data/crash_reporting.dart';
@@ -220,6 +221,11 @@ class HomeScreen extends StatefulWidget {
   /// to the Settings screen pushed from the counter slot.
   final BillingService? billingService;
 
+  /// The app-owned RevenueCat service (single instance, iOS),
+  /// forwarded beside [billingService] to the same Settings
+  /// pushes.
+  final RevenueCatService? revenueCatService;
+
   /// The shared app-level migraine controller (app wiring in
   /// main.dart). Home consumes its one-shot pending-details signal
   /// (notification tap → attack ended → details form, Juno §C) and
@@ -269,6 +275,7 @@ class HomeScreen extends StatefulWidget {
       this.dailyScoreSnapshotCapture,
       this.dailyScoreSync,
       this.billingService,
+      this.revenueCatService,
       this.migraineController,
       this.logEntryOutbox,
       this.notificationService,
@@ -1700,6 +1707,7 @@ class _HomeScreenState extends State<HomeScreen>
           settingsStore: widget.settingsStore,
           healthConnectService: widget.healthConnectService,
           billingService: widget.billingService,
+          revenueCatService: widget.revenueCatService,
           openEventCounters: true,
         ),
       ),
@@ -1731,6 +1739,7 @@ class _HomeScreenState extends State<HomeScreen>
           settingsStore: widget.settingsStore,
           healthConnectService: widget.healthConnectService,
           billingService: widget.billingService,
+          revenueCatService: widget.revenueCatService,
           openAiKnowledge: openAiKnowledge,
         ),
       ),
