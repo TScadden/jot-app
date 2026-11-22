@@ -25,14 +25,23 @@ shape.
 
 ## Chunk status
 
-- **Chunk 1 (this skeleton):** the plugin registers on the shared
+- **Chunk 1 (skeleton):** the plugin registers on the shared
   channel and implements only `isAvailable`, answered truthfully from
   `HKHealthStore.isHealthDataAvailable()`. Every other bridge method
   returns `FlutterMethodNotImplemented`, which Dart surfaces as a
   `MissingPluginException` that `HealthConnectService` already maps
   to its fail-closed `NO_CHANNEL` paths. No payloads are faked.
-- Later chunks add the HealthKit read queries (heart rate, resting
-  heart rate, sleep, steps, energy, SDNN) behind the same contract.
+- **Chunks 2+3 (reads):** real HealthKit queries behind the same
+  contract — heart rate, resting HR (+ history), steps (+ history),
+  active/total calories (+ histories), blood pressure correlations,
+  respiratory rate, oxygen saturation, latest weight/height, spike
+  counts, exercise sessions, sleep minutes/stages/history, and a
+  real-read `probeReadAccess`. HRV is SDNN-only on iOS and travels
+  through the separate `readHrvSdnnSamples` series (design §5);
+  `readHrvSamples` / `readHrvRmssd` stay unimplemented, as do
+  `getGrantedPermissions` (HealthKit never discloses read denial —
+  no fabricated grant list), `requestPermissions` (chunk 6), and the
+  Android-only file/settings/keep-alive methods.
 
 The app's iOS build is Swift Package Manager based (no Podfile;
 `FlutterGeneratedPluginSwiftPackage`), so the SPM manifest at
