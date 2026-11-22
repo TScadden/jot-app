@@ -310,6 +310,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // line is deleted).
   HcAvailability? _hcSnapshot;
 
+  // Chunk 5 — the iOS availability snapshot (HealthKit), read
+  // instead of the Android probe on iOS. Null until the first
+  // probe lands. The iOS Connected Apps card renders Juno's §2
+  // strings (title + status line only): no per-type/missing-types
+  // line and no background-access row exist on iOS v1.
+  IosHealthAvailability? _iosSnapshot;
+
   // HRV grant visibility — when Health Connect is only partially
   // granted, the plain-language names of the data types that are
   // NOT shared (e.g. "Heart rate variability"), derived from the
@@ -630,6 +637,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (_) {
       // Keep the last-known flag values — never reset to defaults
       // on a storage surprise.
+    }
+    if (_hc.isIOS) {
+      // Chunk 5 — iOS reads the honest HealthKit snapshot instead:
+      // no Android grant probe, no HRV capture diagnostics (an
+      // Android-capture record), and NO background-access read —
+      // Juno's ruling is that iOS v1 has no background-access row,
+      // so the grant behind it is never consulted here.
+      try {
+        final iosSnapshot = await _hc.probeIosAvailability();
+        if (!mounted) return;
+        setState(() => _iosSnapshot = iosSnapshot);
+      } catch (_) {
+        // Keep the last-known iOS snapshot — never reset to a
+        // fabricated state on a probe surprise (the probe itself
+        // never throws; this is belt-and-braces).
+      }
+      return;
     }
     // Phase 2 PR-2 — ONE probe snapshot derives the whole card.
     // The probe never throws; a defensive catch still maps any
@@ -3974,6 +3998,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ];
   }
 
+  /// Chunk 5 — the iOS Connected Apps card (Juno §2): the row
+  /// title "Apple Health" plus the state's status line, and
+  /// nothing else — no per-type/missing-types line (HealthKit
+  /// exposes no grant set to name one from) and no
+  /// background-access row (iOS v1 ships foreground reads only).
+  /// Tapping in States 1–3 opens the Connections screen, whose
+  /// detail sheet carries the full Juno §1 strings; State 4 is
+  /// not tappable. While the first probe is in flight the card
+  /// shows the title alone — Juno's file carries no iOS loading
+  /// string, and none is invented.
+  Widget _iosHealthCard() {
+    final state = _iosSnapshot?.state;
+    final card = _card([
+      const Text(IosHealthCopy.rowName,
+          style: TextStyle(
+              color: NotelColors.textPrimary, fontWeight: FontWeight.w500)),
+      if (state != null)
+        Text(IosHealthCopy.statusLine(state),
+            style: TextStyle(
+                color: state == IosHealthAvailabilityState.connected
+                    ? NotelColors.success
+                    : NotelColors.textSecondary,
+                fontSize: 12)),
+    ]);
+    if (state == null ||
+        state == IosHealthAvailabilityState.unavailable) {
+      return card;
+    }
+    return GestureDetector(
+      key: const ValueKey('open_connections'),
+      behavior: HitTestBehavior.opaque,
+      onTap: _openConnections,
+      child: card,
+    );
+  }
+
   // ── CONNECTED APPS (native :2240-2710) ───────────────────────────
 
   List<Widget> _connectedAppsPage() {
@@ -3994,6 +4054,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // while Home showed live data. It now binds the live
       // availability snapshot, native presentation
       // (SettingsScreen.kt:2251-2281) for the known branches.
+      if (_hc.isIOS) ...[
+        _iosHealthCard(),
+      ] else ...[
       _card([
         if (hcSnapshot == null) ...[
           // Juno §4 Loading — no snapshot has landed and no
@@ -4233,6 +4296,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
       ]),
+      ],
       const SizedBox(height: 24),
       _sectionLabel('INTEGRATED APPS'),
       _card([

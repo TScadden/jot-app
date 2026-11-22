@@ -51,7 +51,17 @@ class _OnboardingConnectionsScreenState
   bool _requesting = false;
   String? _error;
 
-  bool get _connected => _status == HealthConnectStatus.connected;
+  /// Chunk 5/6 — the iOS availability snapshot, used instead of
+  /// the Android status on iOS (HealthKit has no grant list for
+  /// [HealthConnectService.getStatus] to read). The FLOW is wired
+  /// here (probe + request through the same service surface); this
+  /// screen's copy is unchanged — an iOS copy pass for onboarding
+  /// is not part of Juno's signed availability file.
+  IosHealthAvailability? _iosAvailability;
+
+  bool get _connected => _service.isIOS
+      ? _iosAvailability?.state == IosHealthAvailabilityState.connected
+      : _status == HealthConnectStatus.connected;
 
   @override
   void initState() {
@@ -61,6 +71,11 @@ class _OnboardingConnectionsScreenState
   }
 
   Future<void> _loadStatus() async {
+    if (_service.isIOS) {
+      final snapshot = await _service.probeIosAvailability();
+      if (mounted) setState(() => _iosAvailability = snapshot);
+      return;
+    }
     try {
       final persisted = await _service.hasPersistedConnection();
       if (mounted && persisted) {
@@ -87,6 +102,32 @@ class _OnboardingConnectionsScreenState
 
   Future<void> _onConnectTap() async {
     if (_requesting) return;
+    if (_service.isIOS) {
+      // Chunk 6 — the iOS request flow through the same surface:
+      // the read-only HealthKit authorization sheet, then a
+      // re-probe. No Health Connect disclosure dialog on iOS (that
+      // dialog is the Android/Play prominent disclosure; the iOS
+      // rationale lives in the system purpose string and Juno's
+      // Connections detail sheet). A completed request is never an
+      // error here: shared-nothing lands on "No data yet" in the
+      // availability surfaces, and this step simply stays
+      // not-connected with Skip available, exactly like a declined
+      // Android grant.
+      setState(() {
+        _requesting = true;
+        _error = null;
+      });
+      try {
+        await _service.requestPermissions();
+      } on HealthConnectException catch (e) {
+        if (mounted) setState(() => _error = e.message);
+      }
+      if (!mounted) return;
+      setState(() => _requesting = false);
+      final snapshot = await _service.probeIosAvailability();
+      if (mounted) setState(() => _iosAvailability = snapshot);
+      return;
+    }
     // MF-3: prominent disclosure BEFORE the system permission UI.
     final proceed = await showHealthConnectDisclosure(context);
     if (!proceed || !mounted) return;
@@ -359,17 +400,24 @@ class _OnboardingConnectionsScreenState
                   label: 'Connect Health Data',
                   onPressed: _requesting ? null : _onConnectTap,
                 ),
-                const SizedBox(height: 8),
-                TextButton(
-                  onPressed: _onManageInSettings,
-                  child: const Text(
-                    'Manage access in Settings',
-                    style: TextStyle(
-                      color: NotelColors.textSecondary,
-                      fontSize: 12,
+                // The manage-in-settings hand-off opens Health
+                // Connect settings, an Android-only surface; on iOS
+                // there is no analogue to hand off to (access is
+                // managed in the Health app, per Juno's Connections
+                // copy), so the button is Android-only.
+                if (!_service.isIOS) ...[
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: _onManageInSettings,
+                    child: const Text(
+                      'Manage access in Settings',
+                      style: TextStyle(
+                        color: NotelColors.textSecondary,
+                        fontSize: 12,
+                      ),
                     ),
                   ),
-                ),
+                ],
               ],
                       if (_error != null) ...[
                         const SizedBox(height: 12),

@@ -75,6 +75,20 @@ class DailyBiometrics {
   /// the per-day `readHrvRmssd`.
   final double? hrvRmssdMs;
 
+  /// HRV SDNN (ms) — the per-day iOS value (HealthKit chunk 4,
+  /// design §5). A SEPARATE field beside [hrvRmssdMs] — never
+  /// instead of it, never merged into it: SDNN and RMSSD are
+  /// different measurements and no conversion factor between them
+  /// exists or may be invented. Written ONLY by the iOS capture
+  /// leg (from `readHrvSdnnSamples` with `attributeDailySdnn`);
+  /// Android capture never writes it. In this chunk it is
+  /// DATA-ONLY: `daily_score.dart` reads [hrvRmssdMs] alone, so an
+  /// SDNN-only day has no HRV score component (the SDNN scoring
+  /// adaptation is chunk 7). Serialization adds the `hrvSdnnMs`
+  /// key only when present; blobs written before this field
+  /// existed parse with it null (migration-safe).
+  final double? hrvSdnnMs;
+
   // ── R70 Daily Score fields (score write paths ONLY) ──────────
   //
   // Written exclusively through the store's two score write paths:
@@ -118,6 +132,7 @@ class DailyBiometrics {
     this.spikeCount,
     this.caloriesKcal,
     this.hrvRmssdMs,
+    this.hrvSdnnMs,
     this.dailyScore,
     this.scoreSleep,
     this.scoreHrv,
@@ -131,6 +146,7 @@ class DailyBiometrics {
       spikeCount != null ||
       caloriesKcal != null ||
       hrvRmssdMs != null ||
+      hrvSdnnMs != null ||
       dailyScore != null;
 
   DailyBiometrics copyWith({
@@ -140,6 +156,7 @@ class DailyBiometrics {
     int? spikeCount,
     int? caloriesKcal,
     double? hrvRmssdMs,
+    double? hrvSdnnMs,
   }) =>
       DailyBiometrics(
         date: date,
@@ -149,6 +166,7 @@ class DailyBiometrics {
         spikeCount: spikeCount ?? this.spikeCount,
         caloriesKcal: caloriesKcal ?? this.caloriesKcal,
         hrvRmssdMs: hrvRmssdMs ?? this.hrvRmssdMs,
+        hrvSdnnMs: hrvSdnnMs ?? this.hrvSdnnMs,
         dailyScore: dailyScore,
         scoreSleep: scoreSleep,
         scoreHrv: scoreHrv,
@@ -175,6 +193,7 @@ class DailyBiometrics {
         spikeCount: spikeCount,
         caloriesKcal: caloriesKcal,
         hrvRmssdMs: hrvRmssdMs,
+        hrvSdnnMs: hrvSdnnMs,
         dailyScore: dailyScore,
         scoreSleep: scoreSleep,
         scoreHrv: scoreHrv,
@@ -189,6 +208,7 @@ class DailyBiometrics {
         if (spikeCount != null) 'spikeCount': spikeCount,
         if (caloriesKcal != null) 'caloriesKcal': caloriesKcal,
         if (hrvRmssdMs != null) 'hrvRmssdMs': hrvRmssdMs,
+        if (hrvSdnnMs != null) 'hrvSdnnMs': hrvSdnnMs,
         if (dailyScore != null) 'dailyScore': dailyScore,
         if (scoreSleep != null) 'scoreSleep': scoreSleep,
         if (scoreHrv != null) 'scoreHrv': scoreHrv,
@@ -233,6 +253,8 @@ class DailyBiometrics {
       spikeCount: asSpike(raw['spikeCount']),
       caloriesKcal: asPosInt(raw['caloriesKcal']),
       hrvRmssdMs: asPosDouble(raw['hrvRmssdMs']),
+      // Absent on every pre-chunk-4 blob → null (migration-safe).
+      hrvSdnnMs: asPosDouble(raw['hrvSdnnMs']),
       dailyScore: asScore(raw['dailyScore']),
       scoreSleep: asScore(raw['scoreSleep']),
       scoreHrv: asScore(raw['scoreHrv']),
@@ -264,6 +286,8 @@ class DailyBiometrics {
             (caloriesKcal != null && caloriesKcal! > 0) ? caloriesKcal : null,
         hrvRmssdMs:
             (hrvRmssdMs != null && hrvRmssdMs! > 0) ? hrvRmssdMs : null,
+        hrvSdnnMs:
+            (hrvSdnnMs != null && hrvSdnnMs! > 0) ? hrvSdnnMs : null,
         // dailyScore / scoreSleep / scoreHrv / scoreRestingHr:
         // deliberately null — see the doc above.
       );
@@ -278,6 +302,7 @@ class DailyBiometrics {
       other.spikeCount == spikeCount &&
       other.caloriesKcal == caloriesKcal &&
       other.hrvRmssdMs == hrvRmssdMs &&
+      other.hrvSdnnMs == hrvSdnnMs &&
       other.dailyScore == dailyScore &&
       other.scoreSleep == scoreSleep &&
       other.scoreHrv == scoreHrv &&
@@ -292,6 +317,7 @@ class DailyBiometrics {
       spikeCount,
       caloriesKcal,
       hrvRmssdMs,
+      hrvSdnnMs,
       dailyScore,
       scoreSleep,
       scoreHrv,
@@ -300,7 +326,7 @@ class DailyBiometrics {
   @override
   String toString() => 'DailyBiometrics($date, hr=$restingHrBpm, '
       'sleep=$sleepMinutes, deep=$deepSleepMinutes, spikes=$spikeCount, '
-      'kcal=$caloriesKcal, hrv=$hrvRmssdMs)';
+      'kcal=$caloriesKcal, hrv=$hrvRmssdMs, sdnn=$hrvSdnnMs)';
 }
 
 /// One metric's last capture outcome, recorded by
@@ -1070,6 +1096,7 @@ class HealthHistoryStore {
         spikeCount: incoming.spikeCount ?? existing.spikeCount,
         caloriesKcal: incoming.caloriesKcal ?? existing.caloriesKcal,
         hrvRmssdMs: incoming.hrvRmssdMs ?? existing.hrvRmssdMs,
+        hrvSdnnMs: incoming.hrvSdnnMs ?? existing.hrvSdnnMs,
         // Score fields are NOT part of this merge's field set: the
         // existing day's scores are carried through untouched
         // (incoming rows carry none — see [DailyBiometrics.sanitized]).
@@ -1121,6 +1148,7 @@ class HealthHistoryStore {
         spikeCount: existing.spikeCount ?? incoming.spikeCount,
         caloriesKcal: existing.caloriesKcal ?? incoming.caloriesKcal,
         hrvRmssdMs: existing.hrvRmssdMs ?? incoming.hrvRmssdMs,
+        hrvSdnnMs: existing.hrvSdnnMs ?? incoming.hrvSdnnMs,
         // Score fields are NOT part of this merge's field set: the
         // existing day's scores are carried through untouched
         // (incoming rows carry none — see [DailyBiometrics.sanitized]).
@@ -1314,6 +1342,10 @@ class HealthHistoryStore {
             spikeCount: base.spikeCount,
             caloriesKcal: base.caloriesKcal,
             hrvRmssdMs: base.hrvRmssdMs ?? fillHrv,
+            // SDNN is carried through untouched: hydration records
+            // carry RMSSD-shaped HRV only, and a server value must
+            // never land in the SDNN field (design §5 typing rule).
+            hrvSdnnMs: base.hrvSdnnMs,
             dailyScore: base.dailyScore,
             scoreSleep: base.scoreSleep,
             scoreHrv: base.scoreHrv,
@@ -1371,16 +1403,18 @@ class HealthHistoryStore {
   }
 
   // NOTE: _fieldCount / _fieldCountChanged deliberately count the
-  // six biometric fields ONLY — merges never gain or lose a day
-  // because of score fields, and score writes go through
-  // [persistScore] / [replaceScore], never through a merge.
+  // seven biometric fields ONLY (hrvSdnnMs joined the set in
+  // chunk 4) — merges never gain or lose a day because of score
+  // fields, and score writes go through [persistScore] /
+  // [replaceScore], never through a merge.
   static int _fieldCount(DailyBiometrics d) =>
       (d.restingHrBpm != null ? 1 : 0) +
       (d.sleepMinutes != null ? 1 : 0) +
       (d.deepSleepMinutes != null ? 1 : 0) +
       (d.spikeCount != null ? 1 : 0) +
       (d.caloriesKcal != null ? 1 : 0) +
-      (d.hrvRmssdMs != null ? 1 : 0);
+      (d.hrvRmssdMs != null ? 1 : 0) +
+      (d.hrvSdnnMs != null ? 1 : 0);
 
   static int _fieldCountChanged(DailyBiometrics a, DailyBiometrics b) =>
       (a.restingHrBpm != b.restingHrBpm ? 1 : 0) +
@@ -1388,7 +1422,8 @@ class HealthHistoryStore {
       (a.deepSleepMinutes != b.deepSleepMinutes ? 1 : 0) +
       (a.spikeCount != b.spikeCount ? 1 : 0) +
       (a.caloriesKcal != b.caloriesKcal ? 1 : 0) +
-      (a.hrvRmssdMs != b.hrvRmssdMs ? 1 : 0);
+      (a.hrvRmssdMs != b.hrvRmssdMs ? 1 : 0) +
+      (a.hrvSdnnMs != b.hrvSdnnMs ? 1 : 0);
 
   // ── Query API (WS2 builds against exactly these names) ─────────
 
