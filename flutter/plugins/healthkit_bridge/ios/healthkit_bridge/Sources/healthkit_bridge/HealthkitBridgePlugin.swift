@@ -648,7 +648,7 @@ public class HealthkitBridgePlugin: NSObject, FlutterPlugin {
     let start = end.addingTimeInterval(-Double(days) * 86400)
     let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [.strictStartDate])
     let query = HKCorrelationQuery(
-      type: bpType, predicate: predicate, typePredicates: nil
+      type: bpType, predicate: predicate, samplePredicates: nil
     ) { _, correlations, error in
       if let error = error {
         self.fail(result, code: "BP_READ_FAILED",
@@ -863,7 +863,10 @@ public class HealthkitBridgePlugin: NSObject, FlutterPlugin {
     }
     switch sample.value {
     case HKCategoryValueSleepAnalysis.inBed.rawValue: return .inBed
-    case HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue: return .asleepUnspecified
+    // Raw value 1 is `asleep` (renamed `asleepUnspecified` in
+    // iOS 16; the named case is iOS 16+ in current SDKs, so the
+    // pre-16 branch compares the raw value directly).
+    case 1: return .asleepUnspecified
     case HKCategoryValueSleepAnalysis.awake.rawValue: return .awake
     default: return .other
     }
