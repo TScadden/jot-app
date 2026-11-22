@@ -2426,6 +2426,68 @@ class TabsBackend {
     }
   }
 
+  /// Sign in with Apple — link an Apple account to the signed-in
+  /// account, mirroring [linkGoogle]: `POST api/auth/link-apple`
+  /// with `{"idToken": ...}`, routed through [_sendAuthed] (401 →
+  /// refresh → retry-once). Returns the decoded body on HTTP 200.
+  /// The identity token is sent only in this request body — never
+  /// logged.
+  ///
+  /// CONTRACT DIVERGENCE from Google (flagged for Vera): Google's
+  /// link/disconnect endpoints report errors inside a 200 body, so
+  /// [linkGoogle]/[disconnectGoogle] decode ONLY on 200 and return
+  /// null otherwise. The Apple endpoints return link/disconnect
+  /// errors as NON-200 (400/401/409) with `{success: false, error}`
+  /// bodies — so this method (and [disconnectApple]) decodes the
+  /// body on error statuses too and returns it whenever it decodes
+  /// to a JSON object. Without that, the server's refusal text
+  /// (e.g. the 409 "already connected to another Tabs account")
+  /// could never reach the caller. Null remains the outcome for
+  /// transport failure / no session / an undecodable body.
+  Future<Map<String, dynamic>?> linkApple(String idToken) async {
+    final response = await _sendAuthed((token) => _client.post(
+          Uri.parse('$_baseUrl/api/auth/link-apple'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({'idToken': idToken}),
+        ));
+    if (response == null) return null;
+    try {
+      final decoded = jsonDecode(response.body);
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Sign in with Apple — disconnect the linked Apple account,
+  /// mirroring [disconnectGoogle]: `POST api/auth/disconnect-apple`.
+  /// Same contract divergence as [linkApple]: the body is decoded
+  /// on error statuses too, because the 409 refusal ("Set or reset
+  /// a password before disconnecting your only sign-in method")
+  /// arrives as a NON-200 `{success: false, error}` body and the
+  /// disconnect dialog must show it while local state is preserved
+  /// (the caller enforces that, exactly like Google).
+  Future<Map<String, dynamic>?> disconnectApple() async {
+    final response = await _sendAuthed((token) => _client.post(
+          Uri.parse('$_baseUrl/api/auth/disconnect-apple'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(const <String, dynamic>{}),
+        ));
+    if (response == null) return null;
+    try {
+      final decoded = jsonDecode(response.body);
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Authenticated POST with a JSON body → true on HTTP 200.
   /// Token used only in the header; never logged.
   ///
