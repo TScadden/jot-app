@@ -1,6 +1,9 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:tabs_lab/src/data/apple_sign_in_service.dart';
 import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/google_sign_in_service.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
@@ -80,6 +83,20 @@ import 'package:url_launcher/url_launcher.dart';
 /// native's design. Email/password login does NOT seed it
 /// (native parity).
 ///
+/// Sign in with Apple — the iOS mirror of Round 24: tapping the
+/// Apple button runs `AppleSignInService.signInForCredential()` and
+/// exchanges the identity token via `AuthApiClient.appleLogin`,
+/// with the same register-mode 13+ gate, the same SessionStore +
+/// [onLoginSuccess] success path (BOTH modes — never
+/// [onRegisterSuccess], exactly like Google), quiet cancellation,
+/// and verbatim server messages. The first-authorization name parts
+/// ride along in register mode only (the server contract's
+/// `fullName`). The button itself is the package's
+/// `SignInWithAppleButton` (black, Apple logo) and builds ONLY on
+/// iOS — see [_LoginScreenState._isApplePlatform]. A successful
+/// Apple sign-in also seeds the SettingsStore Apple Account
+/// connected flag + email, mirroring the Round 51 Google seed.
+///
 /// [initialRegisterMode] mirrors the native `mode` query arg: `true`
 /// starts on "Create Your Account", `false` on "Welcome Back".
 /// [onBack] pops to the welcome screen (native back button).
@@ -110,6 +127,10 @@ class LoginScreen extends StatefulWidget {
   /// service (Round 24).
   final GoogleSignInService? googleSignInService;
 
+  /// Injectable for tests; defaults to the real Apple sign-in
+  /// service (Sign in with Apple).
+  final AppleSignInService? appleSignInService;
+
   /// Injectable for tests (Round 51 Google-account flag seeding);
   /// defaults to the real on-device settings store.
   final SettingsStore? settingsStore;
@@ -123,6 +144,7 @@ class LoginScreen extends StatefulWidget {
     this.authApi,
     this.sessionStore,
     this.googleSignInService,
+    this.appleSignInService,
     this.settingsStore,
   });
 
@@ -357,6 +379,95 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  /// Sign in with Apple: a deliberate mirror of [_onGooglePressed].
+  /// Register mode requires the 13+ attestation before sign-in is
+  /// even launched, with the exact same age-gate error; otherwise
+  /// the credential comes from [AppleSignInService] and is exchanged
+  /// via `AuthApiClient.appleLogin` (the first-authorization name
+  /// parts ride along; the API layer sends them only in register
+  /// mode). Success takes the exact same downstream path as Google —
+  /// SessionStore, then [LoginScreen.onLoginSuccess] in BOTH modes.
+  Future<void> _onApplePressed() async {
+    if (_isLoading) return;
+    if (_isRegisterMode && !_ageConfirmed) {
+      setState(() => _errorMessage =
+          'Tabs is for people 13 and older. You cannot create an account yet.');
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    try {
+      final service = widget.appleSignInService ?? AppleSignInService();
+      final credential = await service.signInForCredential();
+      if (!mounted) return;
+      final api = widget.authApi ?? AuthApiClient();
+      final result = await api.appleLogin(
+        idToken: credential.idToken,
+        isRegisterMode: _isRegisterMode,
+        ageConfirmed: _ageConfirmed,
+        givenName: credential.givenName,
+        familyName: credential.familyName,
+      );
+      if (!mounted) return;
+      switch (result) {
+        case LoginSuccess(:final token, :final refreshToken):
+          final store = widget.sessionStore ?? SessionStore();
+          await store.saveSession(
+            token: token,
+            refreshToken: refreshToken,
+            email: result.email,
+            // Apple is verified by definition, exactly like Google:
+            // force true so this path can never land on the code
+            // screen (client invariant).
+            emailVerified: true,
+          );
+          // Round 51 parity: seed the Apple Account connection
+          // state Settings' Connected Apps row reads (the server
+          // links the Apple identity on this very call). Best-effort
+          // and NOT awaited, exactly like the Google seed.
+          final settings = widget.settingsStore ?? SettingsStore();
+          unawaited(() async {
+            try {
+              await settings.setAppleAccountConnected(true);
+              await settings.setAppleAccountEmail(result.email);
+            } catch (_) {}
+          }());
+          if (!mounted) return;
+          setState(() => _isLoading = false);
+          widget.onLoginSuccess
+              ?.call((email: result.email, emailVerified: true));
+        case LoginFailure(:final message):
+          setState(() {
+            _isLoading = false;
+            _errorMessage = message;
+          });
+      }
+    } on AppleSignInOutcome catch (outcome) {
+      if (!mounted) return;
+      switch (outcome.kind) {
+        case AppleSignInOutcomeKind.cancelled:
+          // Quiet return: the user dismissed the sheet, so no
+          // error is shown.
+          setState(() => _isLoading = false);
+        case AppleSignInOutcomeKind.unavailable:
+        case AppleSignInOutcomeKind.failed:
+          setState(() {
+            _isLoading = false;
+            _errorMessage = outcome.message;
+          });
+      }
+    } catch (_) {
+      // Last-resort guard so the button can never wedge loading.
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Something went wrong. Please try again.';
+      });
+    }
+  }
+
   /// Total vertical footprint of the pinned logo header: the outer
   /// vertical padding (16) + the extra top padding (8) + the header
   /// itself (40). Keep in sync with the header Padding widgets below.
@@ -393,6 +504,18 @@ class _LoginScreenState extends State<LoginScreen> {
 
   String get _googleButtonLabel =>
       _isRegisterMode ? 'Continue with Google' : 'Log in with Google';
+
+  String get _appleButtonLabel =>
+      _isRegisterMode ? 'Sign up with Apple' : 'Sign in with Apple';
+
+  /// Platform gate for the Apple button: Sign in with Apple is an
+  /// iOS flow in this app, so the button must never build on
+  /// non-iOS. Reads [defaultTargetPlatform] — the overridable
+  /// platform check — so widget tests exercise both branches via
+  /// `debugDefaultTargetPlatformOverride` (iOS shows the button;
+  /// the default Android test platform does not, which is the
+  /// Android-parity evidence for the existing login tests).
+  bool get _isApplePlatform => defaultTargetPlatform == TargetPlatform.iOS;
 
   void _onToggleMode() {
     setState(() {
@@ -705,6 +828,26 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
           ),
+          // Apple button (Sign in with Apple): DIRECTLY BELOW the
+          // Google button, iOS only (see _isApplePlatform — it never
+          // builds on Android). The package's own button is the
+          // HIG-faithful rendering (black style, Apple logo); it is
+          // disabled while any auth attempt is in flight so it
+          // cannot double-fire.
+          if (_isApplePlatform) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: SignInWithAppleButton(
+                key: const ValueKey('sign_in_with_apple_button'),
+                text: _appleButtonLabel,
+                style: SignInWithAppleButtonStyle.black,
+                height: 50,
+                onPressed: _isLoading ? null : _onApplePressed,
+              ),
+            ),
+          ],
         ],
       ),
     );
