@@ -57,6 +57,13 @@ class SettingsStore extends ChangeNotifier {
   static const googleAccountConnectedKey =
       'settings_google_account_connected';
   static const googleAccountEmailKey = 'settings_google_account_email';
+  // Sign in with Apple — the Apple Account connected flag + email,
+  // mirroring the Google account keys above: device-only, never
+  // synced, written by the Settings link flow and seeded by Apple
+  // sign-in itself (login_screen.dart).
+  static const appleAccountConnectedKey =
+      'settings_apple_account_connected';
+  static const appleAccountEmailKey = 'settings_apple_account_email';
   // Dev-only app background override (founder direction Nov 19,
   // 2026): a '#RRGGBB' hex string set from the Developer Terminal
   // by `dev_access` accounts only. Device-only like every key in
@@ -230,6 +237,23 @@ class SettingsStore extends ChangeNotifier {
 
   Future<void> setGoogleAccountEmail(String v) =>
       _write(googleAccountEmailKey, v);
+
+  /// Sign in with Apple — mirrors [getGoogleAccountConnected].
+  Future<bool> getAppleAccountConnected() =>
+      _readBool(appleAccountConnectedKey, false);
+  Future<void> setAppleAccountConnected(bool v) =>
+      _writeBool(appleAccountConnectedKey, v);
+
+  Future<String> getAppleAccountEmail() async {
+    try {
+      return await _read(appleAccountEmailKey) ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Future<void> setAppleAccountEmail(String v) =>
+      _write(appleAccountEmailKey, v);
 
   // ── Round 66 — Progress Reports prefs ───────────────────────────
 
@@ -489,6 +513,8 @@ class SettingsStore extends ChangeNotifier {
     googleCalendarEmailKey,
     googleAccountConnectedKey,
     googleAccountEmailKey,
+    appleAccountConnectedKey,
+    appleAccountEmailKey,
     reportAppointmentDateKey,
     reportAppointmentTypeKey,
   ];
@@ -548,6 +574,8 @@ class SettingsStore extends ChangeNotifier {
       googleCalendarEmailKey,
       googleAccountConnectedKey,
       googleAccountEmailKey,
+      appleAccountConnectedKey,
+      appleAccountEmailKey,
       reportLastTypeKey,
       reportLastRange30dKey,
       reportLastExportKey,

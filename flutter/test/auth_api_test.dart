@@ -350,4 +350,187 @@ void main() {
       expect(failure.message, contains("Couldn't reach the server"));
     });
   });
+
+  group('AuthApiClient.appleLogin', () {
+    test('register: posts to the Apple endpoint with ageConfirmed '
+        'and the JOINED fullName, and parses the AuthResponse',
+        () async {
+      late http.Request captured;
+      final client = AuthApiClient(
+        client: MockClient((request) async {
+          captured = request;
+          return http.Response(
+            jsonEncode({
+              'token': 'tok123',
+              'refreshToken': 'ref456',
+              'userId': 'u1',
+              'email': 'jane@privaterelay.appleid.com',
+            }),
+            200,
+          );
+        }),
+      );
+
+      final result = await client.appleLogin(
+        idToken: 'fake-identity-token',
+        isRegisterMode: true,
+        ageConfirmed: true,
+        givenName: 'Jane',
+        familyName: 'Appleseed',
+      );
+
+      expect(captured.url.toString(),
+          'https://api.jottracker.com/api/auth/apple');
+      expect(captured.method, 'POST');
+      expect(captured.headers['Content-Type'], 'application/json');
+      final body = jsonDecode(captured.body) as Map<String, dynamic>;
+      expect(body['idToken'], 'fake-identity-token');
+      expect(body['isRegisterMode'], true);
+      expect(body['ageConfirmed'], true);
+      // One joined string, not an object and not separate fields.
+      expect(body['fullName'], 'Jane Appleseed');
+      expect(body.containsKey('givenName'), isFalse);
+      expect(body.containsKey('familyName'), isFalse);
+      expect(body.containsKey('password'), isFalse);
+
+      expect(result, isA<LoginSuccess>());
+      final success = result as LoginSuccess;
+      expect(success.token, 'tok123');
+      expect(success.refreshToken, 'ref456');
+      expect(success.userId, 'u1');
+      expect(success.email, 'jane@privaterelay.appleid.com');
+      // Apple is verified by definition, like Google.
+      expect(success.emailVerified, isTrue);
+    });
+
+    test('login: omits fullName and sends ageConfirmed:false even '
+        'when name parts and a stray age flag are passed', () async {
+      late http.Request captured;
+      final client = AuthApiClient(
+        client: MockClient((request) async {
+          captured = request;
+          return http.Response(
+            jsonEncode({
+              'token': 'tok123',
+              'refreshToken': 'ref456',
+              'email': 'jane@privaterelay.appleid.com',
+            }),
+            200,
+          );
+        }),
+      );
+
+      final result = await client.appleLogin(
+        idToken: 'fake-identity-token',
+        isRegisterMode: false,
+        ageConfirmed: true,
+        givenName: 'Jane',
+        familyName: 'Appleseed',
+      );
+
+      final body = jsonDecode(captured.body) as Map<String, dynamic>;
+      expect(body['isRegisterMode'], false);
+      expect(body['ageConfirmed'], false);
+      expect(body.containsKey('fullName'), isFalse);
+      expect(result, isA<LoginSuccess>());
+    });
+
+    test('register without a name omits fullName', () async {
+      late http.Request captured;
+      final client = AuthApiClient(
+        client: MockClient((request) async {
+          captured = request;
+          return http.Response(
+            jsonEncode({'token': 'tok', 'refreshToken': 'ref'}),
+            200,
+          );
+        }),
+      );
+
+      await client.appleLogin(
+        idToken: 'fake-identity-token',
+        isRegisterMode: true,
+        ageConfirmed: true,
+      );
+
+      final body = jsonDecode(captured.body) as Map<String, dynamic>;
+      expect(body.containsKey('fullName'), isFalse);
+    });
+
+    test('404 surfaces the server error verbatim as a server failure',
+        () async {
+      final client = AuthApiClient(
+        client: MockClient((_) async => http.Response(
+              jsonEncode({
+                'error':
+                    'No account was found with that Apple account. Please sign up first.'
+              }),
+              404,
+            )),
+      );
+
+      final result = await client.appleLogin(
+        idToken: 'fake-identity-token',
+        isRegisterMode: false,
+        ageConfirmed: false,
+      );
+
+      expect(result, isA<LoginFailure>());
+      final failure = result as LoginFailure;
+      expect(failure.kind, LoginFailureKind.server);
+      expect(failure.message,
+          'No account was found with that Apple account. Please sign up first.');
+    });
+
+    test('401 also surfaces the server error verbatim', () async {
+      final client = AuthApiClient(
+        client: MockClient((_) async =>
+            http.Response('{"error":"Apple authentication failed"}', 401)),
+      );
+
+      final result = await client.appleLogin(
+        idToken: 'fake-identity-token',
+        isRegisterMode: false,
+        ageConfirmed: false,
+      );
+
+      final failure = result as LoginFailure;
+      expect(failure.kind, LoginFailureKind.server);
+      expect(failure.message, 'Apple authentication failed');
+    });
+
+    test('200 without a token is a server failure', () async {
+      final client = AuthApiClient(
+        client: MockClient((_) async => http.Response('{}', 200)),
+      );
+
+      final result = await client.appleLogin(
+        idToken: 'fake-identity-token',
+        isRegisterMode: false,
+        ageConfirmed: false,
+      );
+
+      expect(result, isA<LoginFailure>());
+      final failure = result as LoginFailure;
+      expect(failure.kind, LoginFailureKind.server);
+      expect(failure.message, 'Something went wrong. Please try again.');
+    });
+
+    test('transport failure maps to the network kind', () async {
+      final client = AuthApiClient(
+        client: MockClient((_) async => throw const SocketException('nope')),
+      );
+
+      final result = await client.appleLogin(
+        idToken: 'fake-identity-token',
+        isRegisterMode: false,
+        ageConfirmed: false,
+      );
+
+      expect(result, isA<LoginFailure>());
+      final failure = result as LoginFailure;
+      expect(failure.kind, LoginFailureKind.network);
+      expect(failure.message, contains("Couldn't reach the server"));
+    });
+  });
 }

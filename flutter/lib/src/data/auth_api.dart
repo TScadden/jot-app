@@ -316,6 +316,121 @@ class AuthApiClient {
     );
   }
 
+  /// Sign in with Apple against the Tabs backend — a verbatim
+  /// mirror of [googleLogin] (same semantics, same response shape):
+  /// `POST api/auth/apple` with `{"idToken": ..., "isRegisterMode":
+  /// ..., "ageConfirmed": ...}` plus, in register mode only, the
+  /// optional `fullName`. The server contract is
+  /// `~/workspace/build-apple-readiness/siwa-server-contract.md`
+  /// (endpoint live in production).
+  ///
+  /// [givenName]/[familyName] are the name parts Apple returns ONLY
+  /// on the first authorization (they are not inside the identity
+  /// token). When either is present in register mode they are sent
+  /// as ONE joined `fullName` string ("givenName familyName", blank
+  /// parts dropped) — the server uses it only as the new account's
+  /// nickname. In login mode `fullName` is omitted entirely and
+  /// `ageConfirmed` is sent as false, whatever the caller passed:
+  /// no account can be created from the login flow, so neither
+  /// value may ride along.
+  ///
+  /// Like [googleLogin], ANY non-200 surfaces the server's
+  /// `{"error": "..."}` verbatim as a server failure, falling back
+  /// to the generic server message; a 200 without a token is a
+  /// server failure; transport failures are the network kind. The
+  /// identity token is never logged, printed, or included in
+  /// exceptions (Vera rule).
+  Future<LoginResult> appleLogin({
+    required String idToken,
+    required bool isRegisterMode,
+    required bool ageConfirmed,
+    String? givenName,
+    String? familyName,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/api/auth/apple');
+    final String? fullName;
+    if (isRegisterMode) {
+      final parts = [givenName, familyName]
+          .map((p) => p?.trim() ?? '')
+          .where((p) => p.isNotEmpty)
+          .toList();
+      fullName = parts.isEmpty ? null : parts.join(' ');
+    } else {
+      fullName = null;
+    }
+    final payload = <String, dynamic>{
+      'idToken': idToken,
+      'isRegisterMode': isRegisterMode,
+      'ageConfirmed': isRegisterMode ? ageConfirmed : false,
+    };
+    if (fullName != null) payload['fullName'] = fullName;
+    http.Response response;
+    try {
+      response = await _client
+          .post(
+            uri,
+            headers: const {'Content-Type': 'application/json'},
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 20));
+    } on TimeoutException {
+      return const LoginFailure(
+        LoginFailureKind.network,
+        "Couldn't reach the server. Check your connection and try again.",
+      );
+    } on SocketException {
+      return const LoginFailure(
+        LoginFailureKind.network,
+        "Couldn't reach the server. Check your connection and try again.",
+      );
+    } on HttpException {
+      return const LoginFailure(
+        LoginFailureKind.network,
+        "Couldn't reach the server. Check your connection and try again.",
+      );
+    } catch (_) {
+      // Deliberately generic: never leak transport details.
+      return const LoginFailure(
+        LoginFailureKind.network,
+        "Couldn't reach the server. Check your connection and try again.",
+      );
+    }
+
+    if (response.statusCode == 200) {
+      final body = _decodeJson(response.body);
+      final token = body['token']?.toString() ?? '';
+      if (token.isNotBlank) {
+        return LoginSuccess(
+          token: token,
+          refreshToken: body['refreshToken']?.toString() ?? '',
+          userId: body['userId']?.toString(),
+          email: body['email']?.toString() ?? '',
+          // Apple sign-in is verified by definition, exactly like
+          // Google: Apple proved the identity (and the server
+          // requires a verified email for the link path). Force
+          // true so this path can never land on the code screen.
+          emailVerified: true,
+        );
+      }
+      // 200 without a token is a server bug — treat as a server error.
+      return const LoginFailure(
+        LoginFailureKind.server,
+        'Something went wrong. Please try again.',
+      );
+    }
+
+    // Any non-200: surface the server's real message verbatim when
+    // it has one, otherwise a generic fallback. Never echo the
+    // request (and never the identity token) back.
+    final serverMessage = _decodeJson(response.body)['error']?.toString();
+    return LoginFailure(
+      LoginFailureKind.server,
+      (serverMessage?.isNotBlank ?? false)
+          ? serverMessage!
+          : 'Something went wrong. Please try again.',
+    );
+  }
+
   /// Round 31 — refresh-token exchange, mirroring the native
   /// `AuthInterceptor.performRefresh` taxonomy exactly.
   ///

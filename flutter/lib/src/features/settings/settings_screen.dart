@@ -15,6 +15,7 @@ import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/metrics_csv_import.dart';
 import 'package:tabs_lab/src/data/migration_bundle.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
+import 'package:tabs_lab/src/data/apple_sign_in_service.dart';
 import 'package:tabs_lab/src/data/google_sign_in_service.dart';
 import 'package:tabs_lab/src/data/medication_change_events.dart';
 import 'package:tabs_lab/src/data/medications.dart';
@@ -135,6 +136,9 @@ class SettingsScreen extends StatefulWidget {
   /// Injectable for tests (Round 30 Google linking flows).
   final GoogleSignInService? googleSignInService;
 
+  /// Injectable for tests (Sign in with Apple linking flows).
+  final AppleSignInService? appleSignInService;
+
   /// Injectable calendar bridge (Round 54) for the connect-time
   /// usability check on the Google Calendar row. Null in
   /// production.
@@ -197,6 +201,7 @@ class SettingsScreen extends StatefulWidget {
     this.onboardingSyncOutbox,
     this.notificationService,
     this.googleSignInService,
+    this.appleSignInService,
     this.calendarService,
     this.knowledgePicker,
     this.knowledgeStore,
@@ -240,6 +245,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final AccountActions _actions;
   late final ReminderNotificationService _notifs;
   late final GoogleSignInService _google;
+  late final AppleSignInService _apple;
   late final HealthConnectService _hc;
   late final MigrationBundleService _migration;
   late final MigrationFilePicker _migrationPicker;
@@ -298,6 +304,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _gCalEmail = '';
   bool _gAccountConnected = false;
   String _gAccountEmail = '';
+
+  // Sign in with Apple — Apple Account device state, mirroring the
+  // Google Account pair above (SettingsStore, device-only).
+  bool _appleAccountConnected = false;
+  String _appleAccountEmail = '';
 
   // Round 51 — Health Connect status for the Connected Apps row.
   // Phase 2 PR-2 — the row now derives from ONE probeAvailability()
@@ -406,6 +417,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         AccountActions(backend: _backend, settingsStore: _store);
     _notifs = widget.notificationService ?? LocalReminderNotificationService();
     _google = widget.googleSignInService ?? GoogleSignInService();
+    _apple = widget.appleSignInService ?? AppleSignInService();
     _hc = widget.healthConnectService ?? HealthConnectService();
     _kStore = widget.knowledgeStore ?? KnowledgeExtractionStore.instance;
     _kPicker = widget.knowledgePicker ?? KnowledgeDocumentPicker();
@@ -620,12 +632,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final calEmail = await _store.getGoogleCalendarEmail();
       final acc = await _store.getGoogleAccountConnected();
       final accEmail = await _store.getGoogleAccountEmail();
+      final appleAcc = await _store.getAppleAccountConnected();
+      final appleAccEmail = await _store.getAppleAccountEmail();
       if (!mounted) return;
       setState(() {
         _gCalConnected = cal;
         _gCalEmail = calEmail;
         _gAccountConnected = acc;
         _gAccountEmail = accEmail;
+        _appleAccountConnected = appleAcc;
+        _appleAccountEmail = appleAccEmail;
       });
     } catch (_) {
       // Keep the last-known flag values — never reset to defaults
@@ -4341,6 +4357,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ],
+        const SizedBox(height: 20),
+        // Apple Account (Sign in with Apple) — mirrors the Google
+        // Account row above: authorization sheet, then the identity
+        // token goes to POST /api/auth/link-apple; local state
+        // flips ONLY on the server's success (fail closed).
+        if (_appleAccountConnected) ...[
+          const Text('Apple Account Connected',
+              style: TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontWeight: FontWeight.w500)),
+          if (_appleAccountEmail.isNotEmpty)
+            Text('Connected as $_appleAccountEmail',
+                style: const TextStyle(
+                    color: NotelColors.textSecondary, fontSize: 12)),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              key: const ValueKey('disconnect_apple_button'),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: NotelColors.surfaceHigh,
+                  foregroundColor: NotelColors.textPrimary),
+              onPressed: _showDisconnectAppleDialog,
+              child: const Text('Disconnect Apple Account',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ] else ...[
+          const Text('Apple Account',
+              style: TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontWeight: FontWeight.w500)),
+          const Text(
+              'Link your Apple account to sign in with Apple or email & password.',
+              style:
+                  TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              key: const ValueKey('connect_apple_button'),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: NotelColors.surfaceHigh,
+                  foregroundColor: NotelColors.textPrimary),
+              onPressed: _connectAppleAccount,
+              icon: const Icon(Icons.apple, size: 20),
+              label: const Text('Connect Apple Account',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+            ),
+          ),
+        ],
       ]),
       const SizedBox(height: 24),
       _sectionLabel('ADVANCED DATA SOURCES'),
@@ -4540,6 +4607,119 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   // could not confirm the disconnect.
                   setLocal(() => error = res?['error']?.toString() ??
                       'Could not disconnect Google account. Check your connection and try again.');
+                }
+              },
+              child: const Text('Disconnect',
+                  style: TextStyle(
+                      color: NotelColors.primary,
+                      fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Apple Account link — mirrors [_connectGoogleAccount]:
+  /// authorization sheet → POST /api/auth/link-apple → local state
+  /// flips ONLY on server success. The display email prefers the
+  /// link response's `appleEmail` (Apple itself returns the email
+  /// only on the FIRST authorization, so the identity may carry
+  /// none on later links; the server echoes the stored one).
+  Future<void> _connectAppleAccount() async {
+    final AppleAccountIdentity identity;
+    try {
+      identity = await _apple.signInForIdentity();
+    } on AppleSignInOutcome catch (e) {
+      if (e.kind == AppleSignInOutcomeKind.cancelled) return;
+      _snack(e.message);
+      return;
+    } catch (_) {
+      _snack('Apple sign-in failed. Please try again.');
+      return;
+    }
+    final res = await _backend.linkApple(identity.idToken);
+    if (res != null && res['success'] == true) {
+      final email =
+          res['appleEmail']?.toString() ?? identity.email ?? '';
+      await _store.setAppleAccountConnected(true);
+      await _store.setAppleAccountEmail(email);
+      if (!mounted) return;
+      setState(() {
+        _appleAccountConnected = true;
+        _appleAccountEmail = email;
+      });
+      final msg = res['message']?.toString();
+      if (msg != null && msg.isNotEmpty) _snack(msg);
+    } else {
+      // Fail closed: local state stays disconnected. Unlike
+      // Google's 200-body errors, the Apple endpoint's refusal
+      // arrives as a non-200 {success:false, error} body, which
+      // TabsBackend.linkApple decodes and returns — surface its
+      // error text when present.
+      final err = res?['error']?.toString();
+      _snack((err != null && err.isNotEmpty)
+          ? err
+          : 'Could not verify Apple account. Check your connection and try again.');
+    }
+  }
+
+  /// Apple disconnect dialog — mirrors [_showDisconnectGoogleDialog]:
+  /// the server is authoritative and refuses disconnecting the last
+  /// usable sign-in method; its error stays in the dialog. The 409
+  /// refusal arrives as a non-200 body, decoded by
+  /// TabsBackend.disconnectApple (see the divergence note there).
+  Future<void> _showDisconnectAppleDialog() async {
+    String? error;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: NotelColors.surface,
+          title: const Text('Disconnect Apple Account',
+              style: TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                  'Are you sure you want to disconnect this Apple account? Tabs will refuse if you do not have another usable sign in method.',
+                  style: TextStyle(
+                      color: NotelColors.textSecondary, fontSize: 13)),
+              if (error != null) ...[
+                const SizedBox(height: 10),
+                Text(error!,
+                    style: const TextStyle(
+                        color: NotelColors.error, fontSize: 12)),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel',
+                  style: TextStyle(color: NotelColors.textSecondary)),
+            ),
+            TextButton(
+              key: const ValueKey('confirm_disconnect_apple'),
+              onPressed: () async {
+                final res = await _backend.disconnectApple();
+                if (res != null && res['error'] == null) {
+                  await _store.setAppleAccountConnected(false);
+                  await _store.setAppleAccountEmail('');
+                  if (!mounted) return;
+                  setState(() {
+                    _appleAccountConnected = false;
+                    _appleAccountEmail = '';
+                  });
+                  if (ctx.mounted) Navigator.of(ctx).pop();
+                  _snack('Apple account disconnected successfully.');
+                } else {
+                  // Local state is preserved when the server could
+                  // not confirm the disconnect.
+                  setLocal(() => error = res?['error']?.toString() ??
+                      'Could not disconnect Apple account. Check your connection and try again.');
                 }
               },
               child: const Text('Disconnect',
