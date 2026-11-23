@@ -329,11 +329,12 @@ class HealthConnectService {
   /// The has-data evidence for [probeIosAvailability]: at least one
   /// real read actually returning data. Steps for today is the
   /// primary probe (the analogue of the Android Steps probe);
-  /// heart-rate samples, resting HR, and recent SDNN samples are
-  /// checked too, because a type the user did not share must not
-  /// condemn the types they did (per-permission isolation, team
-  /// LESSONS Nov 20, 2026). Every read fails closed — an error is
-  /// "no evidence from this read", never a verdict.
+  /// heart-rate samples, resting HR, recent SDNN samples, and
+  /// today's sleep are checked too, because a type the user did
+  /// not share must not condemn the types they did (per-permission
+  /// isolation, team LESSONS Nov 20, 2026). Every read fails
+  /// closed — an error is "no evidence from this read", never a
+  /// verdict.
   Future<bool> _iosHasDataEvidence() async {
     final today = _localDateStr(DateTime.now());
     final steps = await readSteps(today);
@@ -344,6 +345,8 @@ class HealthConnectService {
     if (resting != null) return true;
     final sdnn = await readHrvSdnnSamples(30);
     if (sdnn.isNotEmpty) return true;
+    final sleep = await readSleepMinutes(today);
+    if (sleep != null && sleep > 0) return true;
     return false;
   }
 
