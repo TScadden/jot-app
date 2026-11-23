@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
@@ -105,6 +107,17 @@ class HealthConnectService {
   static const String _kGrantedKey = 'hc_granted_permissions';
   static const String _kConnectedAtKey = 'hc_connected_at';
 
+  /// iOS only (HealthKit chunks 5/6): the persisted record that a
+  /// read-only authorization request has been made. HealthKit does
+  /// not disclose read grants or denials, so "requested" is a fact
+  /// Tabs itself must remember — it is one of the three facts the
+  /// honest iOS availability model derives from (see
+  /// [probeIosAvailability]). Written ONLY by the iOS branch of
+  /// [requestPermissions], after the system authorization sheet
+  /// completes without error. Never written on Android.
+  static const String _kIosRequestedKey = 'hk_authorization_requested';
+  static const String _kIosRequestedAtKey = 'hk_authorization_requested_at';
+
   /// Native allows up to 5 minutes in the HC UI; Dart gives up just before
   /// so it can cancel the native pending request and stay retryable.
   static const Duration requestTimeout = Duration(minutes: 4, seconds: 30);
@@ -152,10 +165,26 @@ class HealthConnectService {
   final Duration _probeTimeout;
 
   HealthConnectService(
-      {MethodChannel? channel, SecureStore? store, Duration? probeTimeoutOverride})
+      {MethodChannel? channel,
+      SecureStore? store,
+      Duration? probeTimeoutOverride,
+      bool? isIOSOverride})
       : _channel = channel ?? const MethodChannel(channelName),
         _store = store ?? const FlutterSecureStore(),
-        _probeTimeout = probeTimeoutOverride ?? readTimeout;
+        _probeTimeout = probeTimeoutOverride ?? readTimeout,
+        _isIOS = isIOSOverride ??
+            defaultTargetPlatform == TargetPlatform.iOS;
+
+  final bool _isIOS;
+
+  /// The platform gate for every HealthKit (iOS) path in this
+  /// service and its consumers (chunks 4–6). True ONLY on iOS:
+  /// every other platform — Android, and the Linux/macOS hosts the
+  /// test suite runs on — takes the Android Health Connect paths
+  /// exactly as before, so Android behavior is unchanged by
+  /// construction. Tests inject the constructor's `isIOSOverride`
+  /// to drive the iOS paths on a non-iOS host.
+  bool get isIOS => _isIOS;
 
   /// True when Health Connect is installed and available on this device.
   Future<bool> isAvailable() async {
@@ -229,6 +258,99 @@ class HealthConnectService {
   /// every other field is the probe's.
   Future<HcAvailability> probeGrantState() =>
       _probeAvailability(readPersisted: false);
+
+  /// Whether a HealthKit read-only authorization request has been
+  /// made on this device (iOS only — see [_kIosRequestedKey]).
+  /// Storage-only; false on any read failure (a storage failure is
+  /// not evidence a request happened).
+  Future<bool> iosAuthorizationRequested() async {
+    try {
+      final raw = await _store.read(_kIosRequestedKey);
+      return raw != null && raw.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Chunk 5 — the honest iOS availability snapshot (design
+  /// 2026-11-11 §1c/§4; Juno's signed copy in
+  /// `build-apple-readiness/juno/ios-availability-copy.md`).
+  ///
+  /// HealthKit deliberately does not disclose read-permission
+  /// denial: a denied type simply returns no data, indistinguishable
+  /// from no data existing. The snapshot therefore derives from
+  /// three SEPARATE facts and nothing else:
+  /// - `HKHealthStore.isHealthDataAvailable()` (via [isAvailable]);
+  /// - authorization requested (persisted by Tabs at request time,
+  ///   [iosAuthorizationRequested]);
+  /// - per-type has-data evidence from REAL reads
+  ///   ([_iosHasDataEvidence]).
+  ///
+  /// Four states: unavailable / notYetRequested / noDataYet /
+  /// connected. "Connected" is earned ONLY by requested AND a real
+  /// read actually returning data — never from an authorization
+  /// status (HealthKit's `authorizationStatus` is never consulted;
+  /// it cannot speak for read types anyway). NEVER throws: a bridge
+  /// failure before availability is answered maps to unavailable
+  /// (HealthKit cannot be used on this device through this build),
+  /// and every evidence read fails closed to "no evidence".
+  Future<IosHealthAvailability> probeIosAvailability() async {
+    bool available;
+    try {
+      available = await isAvailable();
+    } catch (_) {
+      available = false;
+    }
+    if (!available) {
+      return const IosHealthAvailability(
+        state: IosHealthAvailabilityState.unavailable,
+        requested: false,
+        hasData: false,
+      );
+    }
+    final requested = await iosAuthorizationRequested();
+    if (!requested) {
+      return const IosHealthAvailability(
+        state: IosHealthAvailabilityState.notYetRequested,
+        requested: false,
+        hasData: false,
+      );
+    }
+    final hasData = await _iosHasDataEvidence();
+    return IosHealthAvailability(
+      state: hasData
+          ? IosHealthAvailabilityState.connected
+          : IosHealthAvailabilityState.noDataYet,
+      requested: true,
+      hasData: hasData,
+    );
+  }
+
+  /// The has-data evidence for [probeIosAvailability]: at least one
+  /// real read actually returning data. Steps for today is the
+  /// primary probe (the analogue of the Android Steps probe);
+  /// heart-rate samples, resting HR, and recent SDNN samples are
+  /// checked too, because a type the user did not share must not
+  /// condemn the types they did (per-permission isolation, team
+  /// LESSONS Nov 20, 2026). Every read fails closed — an error is
+  /// "no evidence from this read", never a verdict.
+  Future<bool> _iosHasDataEvidence() async {
+    final today = _localDateStr(DateTime.now());
+    final steps = await readSteps(today);
+    if (steps != null && steps > 0) return true;
+    final hrSamples = await readHeartRateSamples(today);
+    if (hrSamples.isNotEmpty) return true;
+    final resting = await readRestingHeartRate(today);
+    if (resting != null) return true;
+    final sdnn = await readHrvSdnnSamples(30);
+    if (sdnn.isNotEmpty) return true;
+    return false;
+  }
+
+  static String _localDateStr(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
 
   /// The probe core. [readPersisted] controls only the
   /// first-paint hint: [getStatus] runs the same probe WITHOUT
@@ -407,7 +529,15 @@ class HealthConnectService {
   /// (possibly partial or empty if the user declined). Throws
   /// [HealthConnectException] with a visible code on failure/timeout.
   /// Safe to call from the connections screen OR onboarding — no UI coupling.
+  ///
+  /// On iOS this is the SAME surface with a different, honest
+  /// contract (chunk 6, [_requestIosAuthorization]): the read-only
+  /// HealthKit authorization sheet runs in context, and the return
+  /// is the empty set — HealthKit discloses no grant list, so there
+  /// is nothing truthful to return; the availability model
+  /// ([probeIosAvailability]) carries the truth instead.
   Future<Set<String>> requestPermissions() async {
+    if (isIOS) return _requestIosAuthorization();
     try {
       final granted = await _channel
           .invokeMethod<List>('requestPermissions')
@@ -441,6 +571,54 @@ class HealthConnectService {
     } on MissingPluginException {
       throw const HealthConnectException(
           'NO_CHANNEL', 'Health Connect bridge is not available.');
+    }
+  }
+
+  /// Chunk 6 — the iOS authorization request: the Swift bridge runs
+  /// `HKHealthStore.requestAuthorization(toShare: [], read:
+  /// healthReadTypes)` — read-only, in context, no write types ever
+  /// (the app ships no `NSHealthUpdateUsageDescription`). The
+  /// channel answers a Bool (the HealthKit completion's success
+  /// flag); there is deliberately NO granted-permission list in the
+  /// reply, because HealthKit never discloses one.
+  ///
+  /// On success the REQUEST itself is persisted
+  /// ([_kIosRequestedKey]) — that fact, plus later real-read
+  /// evidence, is what the availability model derives from — and
+  /// the empty set is returned (see [requestPermissions]).
+  ///
+  /// Timeout discipline mirrors the Android path exactly (the
+  /// team's stuck-request lesson): the call is bounded by
+  /// [requestTimeout], expiry attempts `cancelRequest` (a no-op on
+  /// iOS — HealthKit has no cancellation API — whose failure is
+  /// swallowed) and throws REQUEST_TIMEOUT, so a request that never
+  /// returns can never wedge a later one.
+  Future<Set<String>> _requestIosAuthorization() async {
+    try {
+      final ok = await _channel
+          .invokeMethod<bool>('requestPermissions')
+          .timeout(requestTimeout);
+      if (ok != true) {
+        throw const HealthConnectException('AUTHORIZATION_FAILED',
+            'Apple Health authorization did not complete.');
+      }
+      await _store.write(_kIosRequestedKey, '1');
+      await _store.write(_kIosRequestedAtKey,
+          DateTime.now().toUtc().toIso8601String());
+      return const <String>{};
+    } on TimeoutException {
+      // Keep native + Dart in sync so a retry is never wedged.
+      try {
+        await _channel.invokeMethod('cancelRequest');
+      } catch (_) {}
+      throw const HealthConnectException('REQUEST_TIMEOUT',
+          'The permission request timed out. Please try again.');
+    } on PlatformException catch (e) {
+      throw HealthConnectException(
+          e.code, e.message ?? 'Permission request failed.');
+    } on MissingPluginException {
+      throw const HealthConnectException(
+          'NO_CHANNEL', 'Health bridge is not available.');
     }
   }
 
@@ -502,6 +680,12 @@ class HealthConnectService {
   Future<void> disconnect() async {
     await _store.delete(_kGrantedKey);
     await _store.delete(_kConnectedAtKey);
+    if (isIOS) {
+      // The iOS persisted state is the authorization-requested
+      // record (there is no granted set to clear on iOS).
+      await _store.delete(_kIosRequestedKey);
+      await _store.delete(_kIosRequestedAtKey);
+    }
   }
 
   /// Opens the Health Connect system settings screen.
@@ -587,6 +771,7 @@ class HealthConnectService {
   // is proven (see [_outcomeOf]), because the shared slots
   // cannot attribute concurrent reads; the union's loaders
   // claim ONLY from outcome objects after this change.
+  static final Object _sdnnOutcomeZoneKey = Object();
   static final Object _restingHrOutcomeZoneKey = Object();
   static final Object _sleepOutcomeZoneKey = Object();
   static final Object _hrvOutcomeZoneKey = Object();
@@ -1131,6 +1316,74 @@ class HealthConnectService {
     }
   }
 
+  /// Chunk 4 (design §5) — raw HRV SDNN samples `[{t: epochMs, ms}]`
+  /// over `[tomorrowStart - days, tomorrowStart)` from the iOS
+  /// HealthKit bridge (`readHrvSdnnSamples`). SDNN is a SEPARATE
+  /// series from RMSSD end to end: its own method name, its own
+  /// type ([HrvSdnnSample] — no `tier`, because HealthKit SDNN has
+  /// no record-origin tiering in this payload), and its own store
+  /// field (`hrvSdnnMs`). It is NEVER routed through
+  /// [readHrvSamples] / [attributeDailyHrv], and no conversion
+  /// factor between SDNN and RMSSD exists or may be invented.
+  /// On Android the bridge does not implement this method, so the
+  /// read fails closed to empty — and the Android capture never
+  /// calls it (see `health_history_sync.dart`). Empty when
+  /// unreadable.
+  Future<List<HrvSdnnSample>> readHrvSdnnSamples(int days) async =>
+      (await readHrvSdnnSamplesWithOutcome(days)).value;
+
+  /// Outcome-carrying variant of [readHrvSdnnSamples] (Phase 2 §1).
+  Future<HcReadOutcome<List<HrvSdnnSample>>> readHrvSdnnSamplesWithOutcome(
+          int days) =>
+      _outcomeOf(
+        _sdnnOutcomeZoneKey,
+        () => readHrvSdnnSamples(days),
+        () => _readHrvSdnnSamplesCore(days),
+      );
+
+  Future<HcReadOutcome<List<HrvSdnnSample>>> _readHrvSdnnSamplesCore(
+      int days) async {
+    try {
+      final raw = await _channel
+          .invokeMethod<dynamic>('readHrvSdnnSamples', {'days': days});
+      List<dynamic> items = const [];
+      String? partialCode;
+      String? partialDetails;
+      if (raw is List) {
+        items = raw;
+      } else if (raw is Map) {
+        final s = raw['items'];
+        if (s is List) items = s;
+        final partial = raw['partialError'];
+        if (partial is String && partial.isNotEmpty) {
+          partialCode = 'HRV_SDNN_SAMPLES_PARTIAL';
+          partialDetails = partial;
+          lastPartialErrorCode = partialCode;
+          lastReadErrorDetails = partial;
+        }
+      }
+      final out = <HrvSdnnSample>[];
+      for (final item in items) {
+        if (item is Map) {
+          final t = item['t'];
+          final ms = item['ms'];
+          if (t is num && ms is num) {
+            out.add(HrvSdnnSample(t: t.toInt(), ms: ms.toDouble()));
+          }
+        }
+      }
+      return HcReadOutcome(
+          value: out, errorDetails: partialDetails, partialCode: partialCode);
+    } on PlatformException catch (e) {
+      _notePlatformError(e);
+      return HcReadOutcome(
+          value: const [], errorCode: e.code, errorDetails: _detailsOf(e));
+    } on MissingPluginException {
+      _noteReadError('NO_CHANNEL');
+      return HcReadOutcome(value: const [], errorCode: 'NO_CHANNEL');
+    }
+  }
+
   /// Parses one raw interval list from the bridge (`[[startMs,
   /// endMs], ...]`). Malformed entries are skipped; a non-list
   /// value yields no intervals.
@@ -1446,6 +1699,29 @@ class HealthConnectService {
   }
 }
 
+/// One raw HRV SDNN sample from the iOS HealthKit bridge
+/// (chunk 4, design §5): [t] is the sample's epoch milliseconds,
+/// [ms] its SDNN value in milliseconds. A deliberately separate
+/// type from the RMSSD sample shape (`{t, ms, tier}`): SDNN points
+/// keep their own type end to end and can never be attributed by
+/// [attributeDailyHrv] or stored as RMSSD.
+class HrvSdnnSample {
+  final int t;
+  final double ms;
+
+  const HrvSdnnSample({required this.t, required this.ms});
+
+  @override
+  bool operator ==(Object other) =>
+      other is HrvSdnnSample && other.t == t && other.ms == ms;
+
+  @override
+  int get hashCode => Object.hash(t, ms);
+
+  @override
+  String toString() => 'HrvSdnnSample(t=$t, ms=$ms)';
+}
+
 /// One raw sleep session as returned by the `readSleepHistory`
 /// bridge: the session interval plus its raw (unmerged) awake and
 /// deep stage intervals. [date] is the session's wake/end date
@@ -1602,11 +1878,89 @@ Map<String, double> attributeDailyHrv(
   return out;
 }
 
+/// Chunk 4 — attribute raw SDNN samples to local calendar days and
+/// reduce each day to its daily SDNN value: the MEAN of the day's
+/// usable samples. The SDNN analogue of [attributeDailyHrv], with
+/// the differences the data forces: SDNN samples carry no tier, so
+/// there is no top-tier rule — every usable sample of the day
+/// counts. Samples with `ms <= 0` are failed reads (founder zero
+/// rule) and are dropped; only dates in [dates] are kept; days with
+/// no usable sample are absent, never zero-filled. No conversion
+/// between SDNN and RMSSD is applied anywhere in this reduction.
+Map<String, double> attributeDailySdnn(
+  Iterable<HrvSdnnSample> samples,
+  Set<String> dates,
+) {
+  String dateStr(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+
+  // date → (sum, count)
+  final byDate = <String, (double, int)>{};
+  for (final s in samples) {
+    if (s.ms <= 0) continue;
+    final date = dateStr(DateTime.fromMillisecondsSinceEpoch(s.t));
+    if (!dates.contains(date)) continue;
+    final prev = byDate[date];
+    byDate[date] = prev == null ? (s.ms, 1) : (prev.$1 + s.ms, prev.$2 + 1);
+  }
+  return {
+    for (final entry in byDate.entries) entry.key: entry.value.$1 / entry.value.$2,
+  };
+}
+
 enum HealthConnectStatus {
   unavailable,
   notConnected,
   partiallyConnected,
   connected,
+}
+
+/// Chunk 5 — the four honest iOS availability states (design
+/// 2026-11-11 §1c/§4; copy signed by Juno, 2026-11-22). There is no
+/// iOS analogue of Android's partially-connected or stale-grant
+/// states: HealthKit does not disclose per-type grants, so those
+/// states are unknowable on iOS and are never derived.
+enum IosHealthAvailabilityState {
+  /// Authorization has not been requested yet.
+  notYetRequested,
+
+  /// Authorization was requested AND at least one real read has
+  /// actually returned data. The ONLY state that may render
+  /// "Connected".
+  connected,
+
+  /// Authorization was requested, but no real read has returned
+  /// data yet — a full decline, no Apple Watch, and a not-yet-synced
+  /// watch are indistinguishable here, by HealthKit's design.
+  noDataYet,
+
+  /// HealthKit is not available on this device.
+  unavailable,
+}
+
+/// Chunk 5 — one iOS availability snapshot from
+/// [HealthConnectService.probeIosAvailability]. Carries the three
+/// facts the state was derived from, separately, so consumers can
+/// see exactly what the state rests on.
+class IosHealthAvailability {
+  final IosHealthAvailabilityState state;
+
+  /// Tabs has persisted a completed authorization request.
+  final bool requested;
+
+  /// A real read has actually returned data for at least one type.
+  final bool hasData;
+
+  const IosHealthAvailability({
+    required this.state,
+    required this.requested,
+    required this.hasData,
+  });
+
+  bool get serviceAvailable =>
+      state != IosHealthAvailabilityState.unavailable;
 }
 
 /// Phase 2 (§1) — one history read's result WITH its own signals:

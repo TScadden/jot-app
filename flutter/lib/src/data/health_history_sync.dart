@@ -324,7 +324,10 @@ class HealthHistorySync {
   /// - resting HR: full window 180 days (`readRestingHrHistory`)
   /// - sleep + deep: full window 90 days (`readSleepHistory`)
   /// - HRV: ONE range read (`readHrvSamples`) over 90 days until
-  ///   the backfill completes, 31 days after (see
+  ///   the backfill completes, 31 days after (iOS instead runs the
+  ///   SDNN data-only leg — `readHrvSdnnSamples` into `hrvSdnnMs`
+  ///   only; see the platform-split HRV leg in the method body)
+  ///   (see
   ///   [HealthHistoryStore.hrvBackfillComplete]: the window is
   ///   keyed off that persisted flag — set only by a CLEAN HRV
   ///   read — not off the day count, B-02); raw samples
@@ -415,7 +418,13 @@ class HealthHistorySync {
 
       final byDate = <String, DailyBiometrics>{};
       void put(String date,
-          {int? hr, int? sleep, int? deep, int? spikes, int? kcal, double? hrv}) {
+          {int? hr,
+          int? sleep,
+          int? deep,
+          int? spikes,
+          int? kcal,
+          double? hrv,
+          double? sdnn}) {
         final prev = byDate[date];
         byDate[date] = DailyBiometrics(
           date: date,
@@ -425,6 +434,7 @@ class HealthHistorySync {
           spikeCount: spikes ?? prev?.spikeCount,
           caloriesKcal: kcal ?? prev?.caloriesKcal,
           hrvRmssdMs: hrv ?? prev?.hrvRmssdMs,
+          hrvSdnnMs: sdnn ?? prev?.hrvSdnnMs,
         );
       }
 
@@ -540,42 +550,114 @@ class HealthHistorySync {
         put(r.date, sleep: r.mins, deep: r.deep);
       }
 
-      // HRV — ONE range read of raw samples; day attribution +
-      // the daily top-tier rule run in Dart (attributeDailyHrv).
-      // The window retro-fills HRV onto days already in the store
-      // from other metrics: it reaches back 90 days UNTIL the
-      // backfill completes and 31 days after. B-02: the window is
-      // keyed off the store's persisted backfill-complete flag —
-      // NOT the dayCount-derived isFirst, which collapsed to
-      // "routine" the moment any sibling metric merged data, so
-      // HRV in chunks that failed during the first capture
-      // (days 31–90) was never re-read.
-      final hrvWindowDays = _store.hrvBackfillComplete ? 31 : 90;
-      final today = DateTime(now.year, now.month, now.day);
-      final hrvDates = <String>{
-        for (var i = 0; i < hrvWindowDays; i++)
-          _historyDateStr(today.subtract(Duration(days: i))),
-      };
-      final hrvOutcome =
-          await boundedRead(_hc.readHrvSamplesWithOutcome(hrvWindowDays));
-      noteRead('hrv', hrvOutcome);
-      final hrvSamples = hrvOutcome.value;
-      // Defect 1b — HRV outcome numbers: the partial code (the
-      // read returned data with chunks missing — Defect 0's new
-      // contract), the raw sample count the bridge returned, and
-      // the attributed day count are recorded alongside any error
-      // code, so a recurrence is diagnosable from the diagnostics
-      // record alone. Counts are operational metadata, not values.
-      final hrvPartialCode = hrvOutcome.partialCode;
-      // Snapshot the HRV leg's cleanliness NOW, from its own
-      // outcome: the backfill flag below may be set only by a
-      // clean read (no error, no partial — strict null checks,
-      // exactly as the slot snapshot read them).
-      final hrvReadClean =
-          hrvOutcome.errorCode == null && hrvPartialCode == null;
-      final dailyHrv = attributeDailyHrv(hrvSamples, hrvDates);
-      for (final entry in dailyHrv.entries) {
-        put(entry.key, hrv: entry.value);
+      // HRV — the platform-split leg (chunk 4, design §5).
+      //
+      // The diagnostics locals are lifted out of the branches:
+      // the RMSSD branch fills them exactly as the pre-split code
+      // did; the iOS branch leaves them null, so the persisted
+      // `hrv` diagnostics entry and the RMSSD backfill flag keep
+      // their RMSSD-only meaning on iOS (an SDNN read is not an
+      // HRV-RMSSD read and must not rewrite either).
+      String? hrvPartialCode;
+      int? hrvSampleCount;
+      int? hrvDayCount;
+      var hrvReadClean = false;
+      if (_hc.isIOS) {
+        // ── iOS: SDNN data-only (design §5, BINDING) ────────────
+        //
+        // SETTLED DECISION (chunk 7): the Daily Score's iOS HRV
+        // component will be scored from SDNN against the user's
+        // own personal baselines (series never mixed with RMSSD,
+        // baselines rebuilt on platform switch). That adaptation
+        // is chunk 7, a separate PR. THIS chunk stores SDNN only:
+        // SDNN days write into `hrvSdnnMs` ONLY, `hrvRmssdMs`
+        // stays null on iOS, and `daily_score.dart` keeps
+        // computing its HRV component solely from `hrvRmssdMs` —
+        // so an SDNN-only day has NO HRV score component here.
+        // No SDNN↔RMSSD conversion factor exists or is applied.
+        //
+        // Bookkeeping deliberately does NOT go through noteRead:
+        // SDNN never feeds the Daily Score in this chunk, so an
+        // SDNN partial must not set captureHadPartial (which would
+        // suppress the post-capture score compute for the sleep /
+        // resting-HR components SDNN cannot contaminate), and the
+        // RMSSD backfill flag / `hrv` diagnostics belong to the
+        // RMSSD leg alone. The SDNN leg records its own evidence
+        // and its own `sdnn` diagnostics entry instead.
+        const sdnnWindowDays = 90;
+        final sdnnToday = DateTime(now.year, now.month, now.day);
+        final sdnnDates = <String>{
+          for (var i = 0; i < sdnnWindowDays; i++)
+            _historyDateStr(sdnnToday.subtract(Duration(days: i))),
+        };
+        final sdnnOutcome = await boundedRead(
+            _hc.readHrvSdnnSamplesWithOutcome(sdnnWindowDays));
+        final sdnnCode = sdnnOutcome.errorCode;
+        final sdnnPartialCode = sdnnOutcome.partialCode;
+        if (sdnnCode != null && sdnnCode.isNotEmpty) {
+          captureFailures['sdnn'] = sdnnCode;
+          _lastCaptureEvidence['sdnn'] = CaptureMetricEvidence(
+            readFailed: true,
+            partialRead: false,
+            readSecurityException: sdnnOutcome.failedWithSecurityException,
+            errorCode: sdnnCode,
+          );
+        } else {
+          captureSucceeded.add('sdnn');
+          _lastCaptureEvidence['sdnn'] = CaptureMetricEvidence(
+            readFailed: false,
+            partialRead:
+                sdnnPartialCode != null && sdnnPartialCode.isNotEmpty,
+            readSecurityException: false,
+            partialCode: sdnnPartialCode,
+          );
+        }
+        final dailySdnn = attributeDailySdnn(sdnnOutcome.value, sdnnDates);
+        for (final entry in dailySdnn.entries) {
+          put(entry.key, sdnn: entry.value);
+        }
+      } else {
+        // ── Android: RMSSD (unchanged) ──────────────────────────
+        // ONE range read of raw samples; day attribution + the
+        // daily top-tier rule run in Dart (attributeDailyHrv).
+        // The window retro-fills HRV onto days already in the
+        // store from other metrics: it reaches back 90 days UNTIL
+        // the backfill completes and 31 days after. B-02: the
+        // window is keyed off the store's persisted
+        // backfill-complete flag — NOT the dayCount-derived
+        // isFirst, which collapsed to "routine" the moment any
+        // sibling metric merged data, so HRV in chunks that
+        // failed during the first capture (days 31–90) was never
+        // re-read.
+        final hrvWindowDays = _store.hrvBackfillComplete ? 31 : 90;
+        final today = DateTime(now.year, now.month, now.day);
+        final hrvDates = <String>{
+          for (var i = 0; i < hrvWindowDays; i++)
+            _historyDateStr(today.subtract(Duration(days: i))),
+        };
+        final hrvOutcome =
+            await boundedRead(_hc.readHrvSamplesWithOutcome(hrvWindowDays));
+        noteRead('hrv', hrvOutcome);
+        final hrvSamples = hrvOutcome.value;
+        // Defect 1b — HRV outcome numbers: the partial code (the
+        // read returned data with chunks missing — Defect 0's new
+        // contract), the raw sample count the bridge returned, and
+        // the attributed day count are recorded alongside any error
+        // code, so a recurrence is diagnosable from the diagnostics
+        // record alone. Counts are operational metadata, not values.
+        hrvPartialCode = hrvOutcome.partialCode;
+        // Snapshot the HRV leg's cleanliness NOW, from its own
+        // outcome: the backfill flag below may be set only by a
+        // clean read (no error, no partial — strict null checks,
+        // exactly as the slot snapshot read them).
+        hrvReadClean =
+            hrvOutcome.errorCode == null && hrvPartialCode == null;
+        hrvSampleCount = hrvSamples.length;
+        final dailyHrv = attributeDailyHrv(hrvSamples, hrvDates);
+        hrvDayCount = dailyHrv.length;
+        for (final entry in dailyHrv.entries) {
+          put(entry.key, hrv: entry.value);
+        }
       }
 
       final calOutcome = await boundedRead(
@@ -608,8 +690,8 @@ class HealthHistorySync {
         succeeded: captureSucceeded,
         atMs: now.millisecondsSinceEpoch,
         hrvPartialCode: hrvPartialCode,
-        hrvSampleCount: hrvSamples.length,
-        hrvDayCount: dailyHrv.length,
+        hrvSampleCount: hrvSampleCount,
+        hrvDayCount: hrvDayCount,
       );
       // Sleep-totals upgrade: stamp the current rule version
       // only when the pending full-window sleep re-read above
