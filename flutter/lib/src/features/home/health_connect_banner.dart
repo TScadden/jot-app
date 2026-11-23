@@ -82,6 +82,39 @@ String? healthConnectBannerBody(
 String? healthConnectBannerText(HealthConnectStatus? status) =>
     healthConnectBannerTitle(status);
 
+// ── iOS banner (Juno Heart/Home addendum §3) ─────────────────────
+//
+// On iOS the banner gate reads probeIosAvailability() ONLY — the
+// Android status derivation above never paints it. The banner
+// shows ONLY in State 1 (not yet requested): States 2/3/4 get no
+// banner in any vitals state (§3.2/§3.3 are explicit rulings, not
+// omissions), and no iOS variant of the partial or stale-grant
+// copy exists (§3.4).
+
+/// iOS banner title for [state] — non-null ONLY in State 1.
+String? iosHealthBannerTitle(IosHealthAvailabilityState? state) =>
+    state == IosHealthAvailabilityState.notYetRequested
+        ? "Apple Health isn't connected"
+        : null;
+
+/// iOS banner body for [state] — the signed State 1 line only.
+/// ("Tap to reconnect" can never render on iOS: nothing on the
+/// device was ever connected.)
+String? iosHealthBannerBody(IosHealthAvailabilityState? state) =>
+    state == IosHealthAvailabilityState.notYetRequested
+        ? 'Tap to connect'
+        : null;
+
+/// The full iOS banner gate: State 1 AND empty biometrics (the
+/// empty-vitals half is shared with Android, unchanged).
+bool shouldShowIosHealthBanner({
+  required IosHealthAvailabilityState? state,
+  required TodayVitals? vitals,
+}) {
+  return iosHealthBannerTitle(state) != null &&
+      healthBiometricsEmpty(vitals);
+}
+
 /// True when the vitals carry NO biometric reading. The log count is
 /// deliberately excluded: it comes from the Tabs backend, not Health
 /// Connect, so a day with logs but no HC data still counts as empty
@@ -120,19 +153,34 @@ class HealthConnectBanner extends StatelessWidget {
   final bool staleGrant;
   final VoidCallback onTap;
 
+  /// iOS surface truth (Juno Heart/Home addendum §3): when
+  /// non-null, the banner renders from the iOS probe state alone
+  /// and [status]/[staleGrant] are ignored. The widget is only
+  /// constructed in State 1 (the gate's doing), so the defensive
+  /// fallback below is the signed State 1 title — never the
+  /// Health Connect literal (§3.4).
+  final IosHealthAvailabilityState? iosState;
+
   const HealthConnectBanner({
     super.key,
     required this.status,
     required this.onTap,
     this.staleGrant = false,
+    this.iosState,
   });
 
   @override
   Widget build(BuildContext context) {
-    final title = healthConnectBannerTitle(status, staleGrant: staleGrant) ??
-        "Health Connect isn't connected";
-    final body = healthConnectBannerBody(status, staleGrant: staleGrant);
-    final isPartial = status == HealthConnectStatus.partiallyConnected;
+    final ios = iosState;
+    final title = ios != null
+        ? iosHealthBannerTitle(ios) ?? "Apple Health isn't connected"
+        : healthConnectBannerTitle(status, staleGrant: staleGrant) ??
+            "Health Connect isn't connected";
+    final body = ios != null
+        ? iosHealthBannerBody(ios)
+        : healthConnectBannerBody(status, staleGrant: staleGrant);
+    final isPartial =
+        ios == null && status == HealthConnectStatus.partiallyConnected;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 2.0),
       child: Container(
