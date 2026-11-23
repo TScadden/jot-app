@@ -263,7 +263,7 @@ class CoachChatMessage {
     return CoachChatMessage(
       id: '${json['id'] ?? ''}',
       sessionId: '${json['sessionId'] ?? ''}',
-      role: '${json['role'] ?? 'coach'}',
+      role: '${json['role'] ?? 'user'}',
       content: '${json['content'] ?? ''}',
       timestamp: _asIntOr(json['timestamp'], 0),
     );
