@@ -306,15 +306,15 @@ class MigrationBundleService {
       throw const MigrationException(
         'INVALID_FILE',
         'That file could not be read as a Tabs data export. Pick '
-        'the file the Tabs Lab created when you exported, and try '
+        'the file you exported, and try '
         'again. Nothing was imported.',
       );
     }
     if (envelope['bundle'] != bundleId) {
       throw const MigrationException(
         'INVALID_FILE',
-        'That file is not a Tabs data export. Pick the file the '
-        'Tabs Lab created when you exported, and try again. '
+        'That file is not a Tabs data export. Pick the file you '
+        'exported, and try again. '
         'Nothing was imported.',
       );
     }
@@ -333,8 +333,8 @@ class MigrationBundleService {
       throw const MigrationException(
         'INVALID_FILE',
         'That export does not say which account it belongs to, so '
-        'it cannot be imported safely. Export it again from the '
-        'Tabs Lab and try again. Nothing was imported.',
+        'it cannot be imported safely. Export it again '
+        'and try again. Nothing was imported.',
       );
     }
     final current = CoachMemoryStore.normalizeEmail(currentEmail);
@@ -361,7 +361,7 @@ class MigrationBundleService {
       throw const MigrationException(
         'INVALID_FILE',
         'That export is missing its data section. Export it again '
-        'from the Tabs Lab and try again. Nothing was imported.',
+        'and try again. Nothing was imported.',
       );
     }
     // Collect + type-check every known entry BEFORE any write.
@@ -373,7 +373,7 @@ class MigrationBundleService {
         throw const MigrationException(
           'INVALID_FILE',
           'That export has a damaged entry and cannot be imported '
-          'safely. Export it again from the Tabs Lab and try again. '
+          'safely. Export it again and try again. '
           'Nothing was imported.',
         );
       }

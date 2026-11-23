@@ -338,26 +338,35 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                                   const EdgeInsets.fromLTRB(12, 0, 16, 10),
                               child: Row(
                                 children: [
-                                  IconButton(
-                                    key: const ValueKey('profile_mic_button'),
-                                    onPressed: _listening ? null : _onMicTap,
-                                    icon: Icon(
-                                      _listening
-                                          ? Icons.mic
-                                          : Icons.mic_none,
-                                      color: NotelColors.primary,
-                                    ),
-                                  ),
-                                  const Expanded(
-                                    child: Text(
-                                      'Tap the mic to talk',
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: NotelColors.textSecondary,
-                                        fontSize: 13,
+                                  // Voice input has no iOS handler —
+                                  // hide the mic AND its 'Tap the mic
+                                  // to talk' label where
+                                  // VoiceInput.isSupported is false
+                                  // (Juno sweep A-S2).
+                                  if (VoiceInput.isSupported) ...[
+                                    IconButton(
+                                      key:
+                                          const ValueKey('profile_mic_button'),
+                                      onPressed:
+                                          _listening ? null : _onMicTap,
+                                      icon: Icon(
+                                        _listening
+                                            ? Icons.mic
+                                            : Icons.mic_none,
+                                        color: NotelColors.primary,
                                       ),
                                     ),
-                                  ),
+                                    const Expanded(
+                                      child: Text(
+                                        'Tap the mic to talk',
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: NotelColors.textSecondary,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                   Text(
                                     '$count / $denominator words',
                                     style: const TextStyle(

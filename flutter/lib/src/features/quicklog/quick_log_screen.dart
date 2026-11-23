@@ -1093,12 +1093,16 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
                   tooltip: 'Log typed note',
                   color: activeCatColor,
                 )
-              : IconButton(
-                  onPressed: _mic,
-                  icon: const Icon(Icons.mic),
-                  tooltip: 'Voice Input',
-                  color: activeCatColor,
-                ),
+              // Voice input has no iOS handler — hide the mic where
+              // VoiceInput.isSupported is false (Juno sweep A-S1).
+              : VoiceInput.isSupported
+                  ? IconButton(
+                      onPressed: _mic,
+                      icon: const Icon(Icons.mic),
+                      tooltip: 'Voice Input',
+                      color: activeCatColor,
+                    )
+                  : null,
         ),
       ),
     );

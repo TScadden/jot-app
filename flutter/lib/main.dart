@@ -214,7 +214,7 @@ class TabsLabApp extends StatelessWidget {
     return ListenableBuilder(
       listenable: AppBackgroundController.instance,
       builder: (context, _) => MaterialApp(
-        title: 'Tabs Lab',
+        title: 'Tabs',
         debugShowCheckedModeBanner: false,
         // Round 22 — the app's first theme carried only the slide
         // pageTransitionsTheme (navigation flash fix) and the scaffold
