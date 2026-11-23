@@ -974,6 +974,51 @@ class TabsBackend {
     return out;
   }
 
+  /// MCP v1.1 — the signed-in user's AI connections from
+  /// `GET /api/api-tokens` (metadata only — the server never sends
+  /// a connection's secret, and this app never displays one).
+  /// Returns null on any failure so the Connect an AI screen can
+  /// tell "couldn't load" apart from "nothing connected"; an
+  /// empty list is a real answer. Revoked rows are filtered out
+  /// here AND by the screen's contract (the list is connections
+  /// that can still read, by definition). The payload is parsed
+  /// tolerantly: the v1 envelope keys the list `tokens`, and
+  /// additive v1.1 fields (or envelope aliases) must not break
+  /// this screen — unknown fields are ignored, malformed rows
+  /// are skipped, never fatal.
+  Future<List<AiConnectionDto>?> fetchAiConnections() async {
+    final body = await _getJson('/api/api-tokens');
+    if (body == null) return null;
+    dynamic raw = body['tokens'] ??
+        body['connections'] ??
+        body['apiTokens'] ??
+        body['data'];
+    if (raw is Map<String, dynamic>) {
+      raw = raw['tokens'] ?? raw['connections'] ?? raw['items'];
+    }
+    if (raw is! List) return null;
+    final out = <AiConnectionDto>[];
+    for (final row in raw) {
+      if (row is Map<String, dynamic>) {
+        try {
+          final dto = AiConnectionDto.fromJson(row);
+          if (dto != null) out.add(dto);
+        } catch (_) {
+          // Skip malformed rows — never fail the whole list.
+        }
+      }
+    }
+    return out;
+  }
+
+  /// MCP v1.1 — disconnect one AI connection via
+  /// `POST /api/api-tokens/:id/revoke`. Revocation is immediate
+  /// server-side. True on HTTP 200; the caller keeps the row and
+  /// surfaces an error on false (never a silent no-op).
+  Future<bool> revokeAiConnection(String id) =>
+      _postJson('/api/api-tokens/${Uri.encodeComponent(id)}/revoke',
+          const {});
+
   /// Round 18 — friend notifications from `GET /api/friends/notifications`.
   Future<List<FriendNotificationDto>> fetchFriendNotifications() async {
     final body = await _getJson('/api/friends/notifications');
@@ -2611,6 +2656,66 @@ class FriendDto {
       gemBalance: gemBalance ?? this.gemBalance,
       currentStreak: currentStreak ?? this.currentStreak,
     );
+  }
+}
+
+/// MCP v1.1 — one AI connection row from `GET /api/api-tokens`.
+/// Metadata only: the payload carries no secret material, and
+/// [tokenPrefix] is deliberately NOT modelled — this app never
+/// displays any part of a connection's credential.
+class AiConnectionDto {
+  final String id;
+  final String name;
+  final DateTime? connectedAt;
+  final DateTime? lastUsedAt;
+
+  const AiConnectionDto({
+    required this.id,
+    required this.name,
+    this.connectedAt,
+    this.lastUsedAt,
+  });
+
+  /// Tolerant parse (additive v1.1 fields are ignored). Returns
+  /// null for a revoked row — the Connect an AI screen lists only
+  /// connections that can still read — and for a row with no id.
+  /// Revocation arrives either as the v1 `revoked_at` timestamp
+  /// or a boolean `revoked` flag; both are honoured.
+  static AiConnectionDto? fromJson(Map<String, dynamic> json) {
+    if (json['revoked'] == true || json['revoked_at'] != null) {
+      return null;
+    }
+    final rawId = json['id'];
+    if (rawId == null) return null;
+    final rawName = json['name'];
+    return AiConnectionDto(
+      id: rawId.toString(),
+      name: (rawName is String && rawName.trim().isNotEmpty)
+          ? rawName
+          : 'Unknown app',
+      connectedAt: _parseTimestamp(json['created_at']),
+      lastUsedAt: _parseTimestamp(json['last_used_at']),
+    );
+  }
+
+  /// ISO-8601 string or epoch (seconds or milliseconds) →
+  /// device-local time; anything else is null (the row still
+  /// renders, just without that line).
+  static DateTime? _parseTimestamp(dynamic v) {
+    if (v is String) {
+      final parsed = DateTime.tryParse(v);
+      return parsed?.toLocal();
+    }
+    if (v is num) {
+      final n = v.toInt();
+      if (n > 100000000000) {
+        return DateTime.fromMillisecondsSinceEpoch(n).toLocal();
+      }
+      if (n > 1000000000) {
+        return DateTime.fromMillisecondsSinceEpoch(n * 1000).toLocal();
+      }
+    }
+    return null;
   }
 }
 

@@ -27,6 +27,7 @@ import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/billing/billing_plans_panel.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
+import 'package:tabs_lab/src/features/connections/connect_ai_screen.dart';
 import 'package:tabs_lab/src/data/crash_reporting.dart';
 import 'package:tabs_lab/src/features/settings/account_actions.dart';
 import 'package:tabs_lab/src/data/streak_engine.dart';
@@ -740,6 +741,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     if (!mounted) return;
     await _loadConnectionState();
+  }
+
+  /// MCP v1.1 — opens the Connect an AI screen (see + revoke AI
+  /// connections; connecting itself happens in the AI app's
+  /// sign-in flow, never here).
+  Future<void> _openConnectAi() async {
+    await Navigator.of(context).push(
+      SlidePageRoute(
+        reducedMotion: animationsDisabled(context),
+        builder: (_) => const ConnectAiScreen(),
+      ),
+    );
   }
 
   /// Hands off to Health Connect settings — the only place the
@@ -4472,6 +4485,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ],
+        const SizedBox(height: 20),
+        // MCP v1.1 — Connect an AI entry. Mirrors the blocks
+        // above: title, one-line description, full-width button.
+        // Title + button carry Juno's screen title verbatim and
+        // the description is her how-it-works line verbatim
+        // (JUNO-COPY.md §c); the block heading is page chrome.
+        // The button only OPENS the Connect an AI screen (see +
+        // revoke) — connecting happens in the AI app's sign-in
+        // flow, so there is no creation action here either.
+        const Text('AI Apps',
+            style: TextStyle(
+                color: NotelColors.textPrimary,
+                fontWeight: FontWeight.w500)),
+        const Text(ConnectAiCopy.howItWorks,
+            style:
+                TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            key: const ValueKey('connect_ai_entry'),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: NotelColors.surfaceHigh,
+                foregroundColor: NotelColors.textPrimary),
+            onPressed: _openConnectAi,
+            child: const Text(ConnectAiCopy.title,
+                style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ),
       ]),
       const SizedBox(height: 24),
       _sectionLabel('ADVANCED DATA SOURCES'),
