@@ -87,13 +87,20 @@ class _ScoredDay {
 /// Which components contributed to a persisted score, as plain
 /// component names — derived from the non-null component fields,
 /// which is exactly the record the engine wrote. The HRV name
-/// carries its series (chunk 7): an SDNN-sourced component (see
-/// [scoreHrvCameFromSdnn]) reads "HRV (SDNN)"; RMSSD-sourced
-/// reads "HRV (RMSSD)".
-List<String> contributedComponentNames(DailyBiometrics row) => [
+/// carries its series: the score's persisted series marker in
+/// [meta] decides when one exists (see
+/// [persistedScoreHrvSeries]); pre-marker rows fall back to the
+/// field derivation ([scoreHrvCameFromSdnn]). An SDNN-sourced
+/// component reads "HRV (SDNN)"; RMSSD-sourced reads
+/// "HRV (RMSSD)".
+List<String> contributedComponentNames(DailyBiometrics row,
+        {DailyScoreMeta? meta}) =>
+    [
       if (row.scoreSleep != null) 'Sleep',
       if (row.scoreHrv != null)
-        scoreHrvCameFromSdnn(row) ? 'HRV (SDNN)' : 'HRV (RMSSD)',
+        persistedScoreHrvSeries(row, meta) == dailyScoreHrvSeriesSdnn
+            ? 'HRV (SDNN)'
+            : 'HRV (RMSSD)',
       if (row.scoreRestingHr != null) 'Resting heart rate',
     ];
 
@@ -513,7 +520,9 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          contributedComponentNames(row).join(' · '),
+                          contributedComponentNames(row,
+                                  meta: _store.scoreMetaFor(row.date))
+                              .join(' · '),
                           style: const TextStyle(
                             fontSize: 11,
                             color: NotelColors.textSecondary,
@@ -1364,18 +1373,28 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
   /// The HRV component's name for this day, series-aware
   /// (chunk 7): "HRV (SDNN)" when the day's HRV component is
   /// SDNN-sourced — per the live computation when it scored the
-  /// component, else per the persisted row (see
-  /// [scoreHrvCameFromSdnn]) — and "HRV (RMSSD)" otherwise, the
-  /// name this row has always carried. A day that did NOT score
-  /// its HRV component but carries ONLY SDNN data (no RMSSD)
-  /// still reads "HRV (SDNN)": its sole HRV series is SDNN,
-  /// regardless of whether the component counted.
+  /// component, else per the persisted score's series (see
+  /// [persistedScoreHrvSeries]: the score metadata's marker when
+  /// one exists, else the field derivation) — and "HRV (RMSSD)"
+  /// otherwise, the name this row has always carried. A day that
+  /// did NOT score its HRV component but carries ONLY SDNN data
+  /// (no RMSSD) still reads "HRV (SDNN)": its sole HRV series is
+  /// SDNN, regardless of whether the component counted.
   String _hrvComponentName(DailyBiometrics row) {
     final c = _computation;
     final sdnn = (c != null && c.hrvScore != null)
         ? c.hrvFromSdnn
-        : scoreHrvCameFromSdnn(row) ||
-            (row.hrvRmssdMs == null && row.hrvSdnnMs != null);
+        : row.scoreHrv != null
+            // Scored day: the persisted score's own series
+            // decides (marker first, derivation as fallback) —
+            // the day's raw fields must not override it.
+            ? persistedScoreHrvSeries(
+                    row, widget.store.scoreMetaFor(row.date)) ==
+                dailyScoreHrvSeriesSdnn
+            // Unscored day: the raw-data rule, unchanged — the
+            // day's sole HRV series names the row.
+            : scoreHrvCameFromSdnn(row) ||
+                (row.hrvRmssdMs == null && row.hrvSdnnMs != null);
     return sdnn ? 'HRV (SDNN)' : 'HRV (RMSSD)';
   }
 

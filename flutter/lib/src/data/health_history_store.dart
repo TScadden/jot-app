@@ -432,22 +432,41 @@ class CaptureDiagnostic {
 /// conflict rule, so a server `manual_refresh` record with ANY
 /// computedAt wins over it (see
 /// [HealthHistoryStore.applyHydratedScores]).
+///
+/// [hrvSeries] (sync series marker package) records which HRV
+/// series the score's HRV component used — the marker values are
+/// the sync contract's (`dailyScoreHrvSeriesRmssd` /
+/// `dailyScoreHrvSeriesSdnn` in `daily_score.dart`; this store
+/// takes provenance values as opaque contract strings, exactly
+/// like [source], and never interprets them beyond the hydration
+/// fill branch). Null = the HRV component did not contribute, OR
+/// the meta predates the marker (legacy): label consumers fall
+/// back to the field derivation for a null marker, which is
+/// exact for locally computed scores. The marker describes the
+/// STANDING score, so it is written exactly when score + meta
+/// are written — never by a biometric fill that leaves the
+/// local score standing.
 class DailyScoreMeta {
   /// `auto` or `manual_refresh` (the sync contract's values).
   final String source;
   final int computedAt; // epoch ms
   final int algorithmVersion;
 
+  /// `'rmssd'` | `'sdnn'` | null — see the class doc.
+  final String? hrvSeries;
+
   const DailyScoreMeta({
     required this.source,
     required this.computedAt,
     required this.algorithmVersion,
+    this.hrvSeries,
   });
 
   Map<String, dynamic> toJson() => {
         'source': source,
         'computedAt': computedAt,
         'algorithmVersion': algorithmVersion,
+        if (hrvSeries != null) 'hrvSeries': hrvSeries,
       };
 
   static DailyScoreMeta? fromJson(dynamic raw) {
@@ -458,10 +477,15 @@ class DailyScoreMeta {
     if (source == null || source.isEmpty || computedAt is! num) {
       return null;
     }
+    // A stored marker this build does not recognise is treated
+    // as absent (legacy), never guessed: the label falls back
+    // to the field derivation.
+    final series = raw['hrvSeries']?.toString();
     return DailyScoreMeta(
       source: source,
       computedAt: computedAt.toInt(),
       algorithmVersion: version is num ? version.toInt() : 1,
+      hrvSeries: (series == 'rmssd' || series == 'sdnn') ? series : null,
     );
   }
 
@@ -470,14 +494,16 @@ class DailyScoreMeta {
       other is DailyScoreMeta &&
       other.source == source &&
       other.computedAt == computedAt &&
-      other.algorithmVersion == algorithmVersion;
+      other.algorithmVersion == algorithmVersion &&
+      other.hrvSeries == hrvSeries;
 
   @override
-  int get hashCode => Object.hash(source, computedAt, algorithmVersion);
+  int get hashCode =>
+      Object.hash(source, computedAt, algorithmVersion, hrvSeries);
 
   @override
-  String toString() =>
-      'DailyScoreMeta($source @ $computedAt, v$algorithmVersion)';
+  String toString() => 'DailyScoreMeta($source @ $computedAt, '
+      'v$algorithmVersion${hrvSeries != null ? ', $hrvSeries' : ''})';
 }
 
 /// One server Daily Score record, translated for hydration (see
@@ -485,7 +511,8 @@ class DailyScoreMeta {
 /// is deliberately absent: Sleep Need is derived locally from
 /// stored nights, never stored as a biometric — only the raw
 /// inputs that map onto row fields travel ([asleepMinutes] →
-/// `sleepMinutes`, [hrvMs] → `hrvRmssdMs`, [restingHrBpm]).
+/// `sleepMinutes`, [hrvMs] → `hrvRmssdMs` or `hrvSdnnMs` per
+/// [hrvSeries], [restingHrBpm]).
 class HydratedScore {
   final String date;
   final int dailyScore;
@@ -497,6 +524,15 @@ class HydratedScore {
   final int algorithmVersion;
   final int? asleepMinutes;
   final double? hrvMs;
+
+  /// The series [hrvMs] is expressed in: `'rmssd'` | `'sdnn'` |
+  /// null (the sync contract's marker values; null only when
+  /// [hrvMs] is null — the sync layer's parse applies the
+  /// effective-series rule before a record reaches this shape).
+  /// Decides which row field the HRV fill lands in and, when the
+  /// server score is taken, the persisted [DailyScoreMeta]
+  /// marker.
+  final String? hrvSeries;
   final int? restingHrBpm;
 
   const HydratedScore({
@@ -510,6 +546,7 @@ class HydratedScore {
     required this.algorithmVersion,
     this.asleepMinutes,
     this.hrvMs,
+    this.hrvSeries,
     this.restingHrBpm,
   });
 }
@@ -1198,6 +1235,7 @@ class HealthHistoryStore {
     String? scoreSource,
     int? scoreComputedAt,
     int? scoreAlgorithmVersion,
+    String? scoreHrvSeries,
   }) async {
     await _ensureWarmed();
     final existing = _days[date];
@@ -1211,11 +1249,14 @@ class HealthHistoryStore {
     // Score metadata (sync): recorded when the caller supplies
     // it (the engine always does). A caller that supplies none
     // leaves the day a legacy record — see [DailyScoreMeta].
+    // The HRV series marker rides the same write: it describes
+    // THIS score, so it is stamped with it and only with it.
     if (scoreSource != null && scoreComputedAt != null) {
       _scoreMeta[date] = DailyScoreMeta(
         source: scoreSource,
         computedAt: scoreComputedAt,
         algorithmVersion: scoreAlgorithmVersion ?? 1,
+        hrvSeries: scoreHrvSeries,
       );
     }
     await persist();
@@ -1248,6 +1289,7 @@ class HealthHistoryStore {
     String? scoreSource,
     int? scoreComputedAt,
     int? scoreAlgorithmVersion,
+    String? scoreHrvSeries,
   }) async {
     await _ensureWarmed();
     final existing = _days[date];
@@ -1281,6 +1323,12 @@ class HealthHistoryStore {
         computedAt: scoreComputedAt,
         algorithmVersion:
             scoreAlgorithmVersion ?? _scoreMeta[date]?.algorithmVersion ?? 1,
+        // The marker describes the REPLACEMENT score, so it is
+        // restamped with it (never carried over from the score
+        // being replaced): the refresher passes the fresh
+        // computation's series, null when its HRV component did
+        // not contribute.
+        hrvSeries: scoreHrvSeries,
       );
     }
     await persist();
@@ -1302,8 +1350,9 @@ class HealthHistoryStore {
   //   * Hydration writes the persisted score + the three
   //     component subscores + source/computedAt/algorithmVersion
   //     metadata + the raw inputs (asleepMinutes → the row's
-  //     sleep minutes, hrvMs → hrvRmssdMs, restingHrBpm) ONLY into
-  //     fields that are locally absent — it must NEVER overwrite
+  //     sleep minutes, hrvMs → hrvRmssdMs or hrvSdnnMs per the
+  //     record's series marker, restingHrBpm) ONLY into fields
+  //     that are locally absent — it must NEVER overwrite
   //     a locally present biometric value (Health Connect is the
   //     source of truth for biometrics).
   //   * Hydration runs only against the store's bound owner; on
@@ -1334,6 +1383,16 @@ class HealthHistoryStore {
           ? rec.restingHrBpm
           : null;
 
+      // The HRV fill follows the record's series marker (sync
+      // series marker package): the value lands ONLY in its own
+      // series' field — an SDNN value in hrvRmssdMs would be
+      // mislabeled AND would enter future RMSSD baseline pools.
+      // A null marker routes to RMSSD, mirroring the sync
+      // layer's effective-series rule (a value-carrying record
+      // with no marker is an unmarked Android RMSSD record).
+      // Fill-absent holds per field either way: a locally
+      // present value in EITHER field is never overwritten.
+      final fillIsSdnn = rec.hrvSeries == 'sdnn';
       DailyBiometrics withFills(DailyBiometrics base) => DailyBiometrics(
             date: base.date,
             restingHrBpm: base.restingHrBpm ?? fillRhr,
@@ -1341,11 +1400,8 @@ class HealthHistoryStore {
             deepSleepMinutes: base.deepSleepMinutes,
             spikeCount: base.spikeCount,
             caloriesKcal: base.caloriesKcal,
-            hrvRmssdMs: base.hrvRmssdMs ?? fillHrv,
-            // SDNN is carried through untouched: hydration records
-            // carry RMSSD-shaped HRV only, and a server value must
-            // never land in the SDNN field (design §5 typing rule).
-            hrvSdnnMs: base.hrvSdnnMs,
+            hrvRmssdMs: base.hrvRmssdMs ?? (fillIsSdnn ? null : fillHrv),
+            hrvSdnnMs: base.hrvSdnnMs ?? (fillIsSdnn ? fillHrv : null),
             dailyScore: base.dailyScore,
             scoreSleep: base.scoreSleep,
             scoreHrv: base.scoreHrv,
@@ -1365,6 +1421,7 @@ class HealthHistoryStore {
           source: rec.source,
           computedAt: rec.computedAt,
           algorithmVersion: rec.algorithmVersion,
+          hrvSeries: rec.hrvSeries,
         );
         changed++;
         continue;
@@ -1385,12 +1442,16 @@ class HealthHistoryStore {
           source: rec.source,
           computedAt: rec.computedAt,
           algorithmVersion: rec.algorithmVersion,
+          hrvSeries: rec.hrvSeries,
         );
         changed++;
         continue;
       }
 
-      // Local record stands (score + metadata untouched): fill
+      // Local record stands (score + metadata untouched — the
+      // meta HRV marker included, even though a biometric fill
+      // may land below: the fill does not change which series
+      // the STANDING local score used): fill
       // only locally absent biometrics from the server record.
       final filled = withFills(existing);
       if (filled != existing) {
