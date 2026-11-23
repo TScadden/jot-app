@@ -365,11 +365,15 @@ class _MembershipOnboardingScreenState
                             // follows the selected plan — monthly
                             // (the trial plan) names the trial;
                             // yearly keeps the pre-flow3 subscribe
-                            // label (flagged in BRAM-REPORT).
-                            _selectedPlan == 'monthly'
-                                ? 'Start 7-Day Free Trial'
-                                : _isIos
-                                    ? 'Subscribe with the App Store'
+                            // label (flagged in BRAM-REPORT). iOS
+                            // exception (Juno C2): with no store
+                            // data behind this surface, BOTH
+                            // selections use the App Store label —
+                            // the trial is never named on iOS.
+                            _isIos
+                                ? 'Subscribe with the App Store'
+                                : _selectedPlan == 'monthly'
+                                    ? 'Start 7-Day Free Trial'
                                     : 'Subscribe with Google Play',
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
@@ -429,12 +433,41 @@ class _MembershipOnboardingScreenState
     );
   }
 
-  /// iOS twin of [_fallbackPlans]: identical cards (same plan
-  /// facts, already shown on Android) with the App Store billed-by
-  /// line. Reached only on iOS when no RC service was threaded.
+  /// iOS fallback when no RC service was threaded: the Settings
+  /// Lab house pattern (see _planCardIos/_iosUnavailablePlans in
+  /// settings_screen.dart) — plan cards with NO price, trial, or
+  /// savings claims, since there is no store data behind them on
+  /// this surface. Reached only on iOS.
   Widget _iosFallbackPlans() {
-    return _fallbackPlans(
-      billedByLine: 'Auto-renews until canceled. Billed by the App Store.',
+    return Column(
+      children: [
+        _PlanCard(
+          selected: _selectedPlan == 'monthly',
+          title: 'Monthly Plan',
+          price: 'Pricing shown in the App Store',
+          chip: '',
+          chipColor: NotelColors.primary,
+          onTap: () => setState(() => _selectedPlan = 'monthly'),
+        ),
+        const SizedBox(height: 12),
+        _PlanCard(
+          selected: _selectedPlan == 'yearly',
+          title: 'Yearly Plan',
+          price: 'Pricing shown in the App Store',
+          chip: '',
+          chipColor: NotelColors.success,
+          onTap: () => setState(() => _selectedPlan = 'yearly'),
+        ),
+        const SizedBox(height: 10),
+        const Text(
+          'Auto-renews until canceled. Billed by the App Store.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Color(0xBF7A8FAF),
+            fontSize: 11,
+          ),
+        ),
+      ],
     );
   }
 }

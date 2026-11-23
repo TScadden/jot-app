@@ -553,5 +553,46 @@ void main() {
           findsOneWidget);
       expect(find.textContaining('Google Play'), findsNothing);
     });
+
+    iosTestWidgets(
+        'iOS no RC service: fallback cards carry no price/trial/'
+        'savings claims; CTA is the App Store label for both plans',
+        (tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(
+        home: MembershipOnboardingScreen(
+          onBack: () {},
+          onSkip: () {},
+          backend: FakeMembershipBackend(),
+        ),
+      ));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Monthly Plan'), findsOneWidget);
+      expect(find.text('Yearly Plan'), findsOneWidget);
+      expect(find.text('Pricing shown in the App Store'), findsNWidgets(2));
+      expect(
+          find.text('Auto-renews until canceled. Billed by the App Store.'),
+          findsOneWidget);
+      expect(find.text(r'$5.99 / month'), findsNothing);
+      expect(find.text(r'$39.99 / year'), findsNothing);
+      expect(find.text('7-DAY FREE TRIAL'), findsNothing);
+      expect(find.text('SAVE 44% · BEST VALUE'), findsNothing);
+      expect(find.textContaining('Google Play'), findsNothing);
+      // Monthly selected by default: no trial claim on the CTA.
+      expect(find.text('Subscribe with the App Store'), findsOneWidget);
+      expect(find.text('Start 7-Day Free Trial'), findsNothing);
+      // Yearly selection keeps the same App Store CTA.
+      await tester.ensureVisible(find.text('Yearly Plan'));
+      await tester.pump();
+      await tester.tap(find.text('Yearly Plan'));
+      await tester.pump();
+      expect(find.text('Subscribe with the App Store'), findsOneWidget);
+      expect(find.text('Start 7-Day Free Trial'), findsNothing);
+    });
   });
 }
