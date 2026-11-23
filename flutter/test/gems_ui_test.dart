@@ -18,14 +18,12 @@ Future<void> unawaitedShowGemsSheet(
   BuildContext context, {
   required GemService gems,
   required StreakState state,
-}) =>
-    showGemsSheet(
-      context: context,
-      gemService: gems,
-      streakState: state,
-      streakPush: (current, best, json, {int? purchasedFreezes}) async =>
-          true,
-    );
+}) => showGemsSheet(
+  context: context,
+  gemService: gems,
+  streakState: state,
+  streakPush: (current, best, json, {int? purchasedFreezes}) async => true,
+);
 
 /// Gems UI (Nov 19, 2026) — Home pill rendering/widening, the
 /// streak screen's buy-with-gems surface, the celebration earn
@@ -51,7 +49,8 @@ void main() {
       grant: (_) async => (statusCode: null, body: null),
       spend: (id) async {
         spendIds?.add(id);
-        final r = onSpend?.call() ??
+        final r =
+            onSpend?.call() ??
             const GemSpendResult(status: GemSpendStatus.failed);
         return (
           statusCode: switch (r.status) {
@@ -103,8 +102,9 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('renders counts 0 / 10 / 500 / 1000 as plain digits',
-        (tester) async {
+    testWidgets('renders counts 0 / 10 / 500 / 1000 as plain digits', (
+      tester,
+    ) async {
       for (final count in [0, 10, 500, 1000]) {
         await pumpStack(tester, count);
         expect(find.byKey(const Key('homeGemPill')), findsOneWidget);
@@ -112,10 +112,16 @@ void main() {
         final text = tester.widget<Text>(
           find.byKey(const Key('homeGemPillCount')),
         );
-        expect(text.data, '$count',
-            reason: 'plain digits, no thousands separator');
-        expect(text.style!.color, kGemCountColor,
-            reason: 'lavender #B9AFFF per the approved mock');
+        expect(
+          text.data,
+          '$count',
+          reason: 'plain digits, no thousands separator',
+        );
+        expect(
+          text.style!.color,
+          kGemCountColor,
+          reason: 'lavender #B9AFFF per the approved mock',
+        );
       }
     });
 
@@ -126,8 +132,11 @@ void main() {
         widths.add(tester.getSize(find.byKey(const Key('homeGemPill'))).width);
       }
       for (var i = 1; i < widths.length; i++) {
-        expect(widths[i], greaterThan(widths[i - 1]),
-            reason: 'widths $widths must strictly widen');
+        expect(
+          widths[i],
+          greaterThan(widths[i - 1]),
+          reason: 'widths $widths must strictly widen',
+        );
       }
     });
 
@@ -140,8 +149,9 @@ void main() {
       expect(find.bySemanticsLabel('1000 gems'), findsOneWidget);
     });
 
-    testWidgets('no server balance yet → no pill (never a guess)',
-        (tester) async {
+    testWidgets('no server balance yet → no pill (never a guess)', (
+      tester,
+    ) async {
       await pumpStack(tester, null);
       expect(find.byKey(const Key('homeGemPill')), findsNothing);
       // The streak pills are untouched.
@@ -185,14 +195,15 @@ void main() {
             state: s,
             now: at(2026, 11, 19),
             gemService: gems,
-            streakPush: (current, best, json, {int? purchasedFreezes}) async => true,
+            streakPush: (current, best, json, {int? purchasedFreezes}) async =>
+                true,
             purchaseService: StreakFreezePurchaseService(
               store: _FakePurchaseStore(),
-              verify: (
-                  {required productId,
-                  required purchaseToken,
-                  required orderId}) async =>
-                  null,
+              verify: ({
+                required productId,
+                required purchaseToken,
+                required orderId,
+              }) async => null,
             ),
           ),
         ),
@@ -221,30 +232,34 @@ void main() {
       }
       expect(find.text('About gems'), findsNothing);
       expect(
-        find.text("Gems are earned in Tabs. You can't buy them, and "
-            'they have no cash value.'),
+        find.text(
+          "Gems are earned in Tabs. You can't buy them, and "
+          'they have no cash value.',
+        ),
         findsNothing,
       );
       // The buy-with-gems row STAYS exactly where it was.
       expect(find.byKey(const Key('gemBuySection')), findsOneWidget);
-      expect(find.text('You have 35 gems.'), findsOneWidget);
+      expect(find.textContaining('· Gems: 35'), findsOneWidget);
       expect(find.byKey(const Key('gemBuyButton')), findsOneWidget);
-      expect(find.text('GET ONE MORE FREEZE · 100 GEMS'), findsOneWidget);
+      expect(find.text('100 GEMS'), findsOneWidget);
     });
 
     testWidgets('insufficient balance: balance line, DISABLED '
         'button with the same label, §2d line', (tester) async {
       await pumpScreen(tester, baseState(), fakeGems(balance: 35));
       await scrollToGemSection(tester);
-      expect(find.text('You have 35 gems.'), findsOneWidget);
+      expect(find.textContaining('· Gems: 35'), findsOneWidget);
       final button = tester.widget<ElevatedButton>(
         find.byKey(const Key('gemBuyButton')),
       );
       expect(button.onPressed, isNull, reason: 'disabled under 100');
-      expect(find.text('GET ONE MORE FREEZE · 100 GEMS'), findsOneWidget);
+      expect(find.text('100 GEMS'), findsOneWidget);
       expect(
-        find.text('you need 65 more gems for a freeze — you earn 5 gems '
-            'each time you finish your daily summary.'),
+        find.text(
+          'you need 65 more gems for a freeze — you earn 5 gems '
+          'each time you finish your daily summary.',
+        ),
         findsOneWidget,
       );
     });
@@ -252,10 +267,12 @@ void main() {
     testWidgets('singular balance and needed forms', (tester) async {
       await pumpScreen(tester, baseState(), fakeGems(balance: 1));
       await scrollToGemSection(tester);
-      expect(find.text('You have 1 gem.'), findsOneWidget);
+      expect(find.textContaining('· Gems: 1'), findsOneWidget);
       expect(
-        find.text('you need 99 more gems for a freeze — you earn 5 gems '
-            'each time you finish your daily summary.'),
+        find.text(
+          'you need 99 more gems for a freeze — you earn 5 gems '
+          'each time you finish your daily summary.',
+        ),
         findsOneWidget,
       );
     });
@@ -272,7 +289,7 @@ void main() {
       );
       await pumpScreen(tester, baseState(), gems);
       await scrollToGemSection(tester);
-      expect(find.text('You have 150 gems.'), findsOneWidget);
+      expect(find.textContaining('· Gems: 150'), findsOneWidget);
       final button = tester.widget<ElevatedButton>(
         find.byKey(const Key('gemBuyButton')),
       );
@@ -286,8 +303,10 @@ void main() {
       }
       expect(find.text('freeze added'), findsOneWidget);
       expect(
-        find.text("you've got a freeze now. it covers one missed day. "
-            'you have 50 gems left.'),
+        find.text(
+          "you've got a freeze now. it covers one missed day. "
+          'you have 50 gems left.',
+        ),
         findsOneWidget,
       );
       // Gem-buy rule change (Nov 21, 2026): holding the freeze no
@@ -296,11 +315,16 @@ void main() {
       final afterButton = tester.widget<ElevatedButton>(
         find.byKey(const Key('gemBuyButton')),
       );
-      expect(afterButton.onPressed, isNull,
-          reason: 'visible but disabled under 100 after the spend');
       expect(
-        find.text('you need 50 more gems for a freeze — you earn 5 gems '
-            'each time you finish your daily summary.'),
+        afterButton.onPressed,
+        isNull,
+        reason: 'visible but disabled under 100 after the spend',
+      );
+      expect(
+        find.text(
+          'you need 50 more gems for a freeze — you earn 5 gems '
+          'each time you finish your daily summary.',
+        ),
         findsOneWidget,
       );
     });
@@ -322,10 +346,12 @@ void main() {
         await tester.pump(const Duration(milliseconds: 50));
       }
       expect(find.text('freeze added'), findsNothing);
-      expect(find.text('You have 40 gems.'), findsOneWidget);
+      expect(find.textContaining('· Gems: 40'), findsOneWidget);
       expect(
-        find.text('you need 60 more gems for a freeze — you earn 5 gems '
-            'each time you finish your daily summary.'),
+        find.text(
+          'you need 60 more gems for a freeze — you earn 5 gems '
+          'each time you finish your daily summary.',
+        ),
         findsOneWidget,
       );
       // No raw error code anywhere on the surface.
@@ -348,15 +374,14 @@ void main() {
       );
       await pumpScreen(tester, baseState(), gems);
       await scrollToGemSection(tester);
-      expect(find.text('You have 500 gems.'), findsOneWidget);
+      expect(find.textContaining('· Gems: 500'), findsOneWidget);
       await tester.tap(find.byKey(const Key('gemBuyButton')));
       for (var i = 0; i < 12; i++) {
         await tester.pump(const Duration(milliseconds: 50));
       }
       // No §2c success copy, and no raw error code anywhere.
       expect(find.text('freeze added'), findsNothing);
-      expect(find.textContaining('purchased_already_held'),
-          findsNothing);
+      expect(find.textContaining('purchased_already_held'), findsNothing);
       // The 409's adopted held state IS the surface: 1 monthly +
       // 1 purchased-class = 2 of 3, so under the Nov 21, 2026
       // rule the buy stays visible and enabled.
@@ -364,7 +389,7 @@ void main() {
         find.byKey(const Key('gemBuyButton')),
       );
       expect(button.onPressed, isNotNull);
-      expect(find.byKey(const Key('gemBalanceLine')), findsOneWidget);
+      expect(find.byKey(const Key('streakBuyCaption')), findsOneWidget);
       expect(find.byKey(const Key('gemExplainerHeading')), findsNothing);
     });
 
@@ -386,12 +411,11 @@ void main() {
         await tester.pump(const Duration(milliseconds: 50));
       }
       expect(find.text('freeze added'), findsNothing);
-      expect(find.textContaining('freeze_cap_reached'),
-          findsNothing);
+      expect(find.textContaining('freeze_cap_reached'), findsNothing);
       // The refusal is cached nowhere: after the one re-sync the
       // buy surface is live again from the adopted balance, so
       // the user can retry.
-      expect(find.text('You have 500 gems.'), findsOneWidget);
+      expect(find.textContaining('· Gems: 500'), findsOneWidget);
       final button = tester.widget<ElevatedButton>(
         find.byKey(const Key('gemBuyButton')),
       );
@@ -412,17 +436,19 @@ void main() {
       // The founder's exact state: 1 of 3, the one held freeze
       // being the purchased-class one.
       expect(
-        find.textContaining('You have 1 of 3 freezes available.'),
+        find.textContaining('You have 1 of 3 Streak Freezes ready'),
         findsOneWidget,
       );
-      expect(find.text('You have 500 gems.'), findsOneWidget);
+      expect(find.textContaining('· Gems: 500'), findsOneWidget);
       final button = tester.widget<ElevatedButton>(
         find.byKey(const Key('gemBuyButton')),
       );
-      expect(button.onPressed, isNotNull,
-          reason: 'gem buy enabled while a purchased freeze is held');
-      expect(find.text('GET ONE MORE FREEZE · 100 GEMS'),
-          findsOneWidget);
+      expect(
+        button.onPressed,
+        isNotNull,
+        reason: 'gem buy enabled while a purchased freeze is held',
+      );
+      expect(find.text('100 GEMS'), findsOneWidget);
       // The $0.99 money buy keeps its own rule (unchanged): hidden
       // while a purchased freeze is held, §1c line in its place.
       expect(find.byKey(const Key('streakBuyButton')), findsNothing);
@@ -442,25 +468,24 @@ void main() {
         fakeGems(balance: 35),
       );
       await scrollToGemSection(tester);
-      expect(find.text('You have 35 gems.'), findsOneWidget);
+      expect(find.textContaining('· Gems: 35'), findsOneWidget);
       final button = tester.widget<ElevatedButton>(
         find.byKey(const Key('gemBuyButton')),
       );
       expect(button.onPressed, isNull, reason: 'disabled under 100');
       expect(
-        find.text('you need 65 more gems for a freeze — you earn 5 gems '
-            'each time you finish your daily summary.'),
+        find.text(
+          'you need 65 more gems for a freeze — you earn 5 gems '
+          'each time you finish your daily summary.',
+        ),
         findsOneWidget,
       );
     });
 
-    testWidgets('buy rows hidden at cap (monthly + earned = 2/2)',
-        (tester) async {
-      await pumpScreen(
-        tester,
-        baseState(earned: 1),
-        fakeGems(balance: 500),
-      );
+    testWidgets('buy rows hidden at cap (monthly + earned = 2/2)', (
+      tester,
+    ) async {
+      await pumpScreen(tester, baseState(earned: 1), fakeGems(balance: 500));
       await scrollToGemSection(tester);
       expect(find.byKey(const Key('gemBuyButton')), findsNothing);
       expect(find.byKey(const Key('gemExplainerHeading')), findsNothing);
@@ -476,11 +501,11 @@ void main() {
       );
       await scrollToGemSection(tester);
       expect(
-        find.textContaining('You have 3 of 3 freezes available.'),
+        find.textContaining('You have 3 of 3 Streak Freezes ready'),
         findsOneWidget,
       );
       expect(find.byKey(const Key('gemBuyButton')), findsNothing);
-      expect(find.byKey(const Key('gemBalanceLine')), findsNothing);
+      expect(find.byKey(const Key('gemBuyButton')), findsNothing);
     });
   });
 
@@ -520,11 +545,8 @@ void main() {
                   currentStreak: 5,
                   animateCountUps: false,
                   gemBalance: pillBalance,
-                  onGemTap: () => unawaitedShowGemsSheet(
-                    context,
-                    gems: gems,
-                    state: state,
-                  ),
+                  onGemTap: () =>
+                      unawaitedShowGemsSheet(context, gems: gems, state: state),
                 ),
               ),
             ),
@@ -541,8 +563,9 @@ void main() {
     }
 
     testWidgets('tapping the gem pill opens the sheet: title once, '
-        'balance, explainer lines 1–4 verbatim + approved line 5',
-        (tester) async {
+        'balance, explainer lines 1–4 verbatim + approved line 5', (
+      tester,
+    ) async {
       await pumpHostAndTapPill(
         tester,
         gems: fakeGems(balance: 150),
@@ -566,9 +589,7 @@ void main() {
       ];
       for (var i = 0; i < lines.length; i++) {
         expect(
-          tester
-              .widget<Text>(find.byKey(Key('gemsSheetExplainerLine$i')))
-              .data,
+          tester.widget<Text>(find.byKey(Key('gemsSheetExplainerLine$i'))).data,
           lines[i],
         );
       }
@@ -581,16 +602,17 @@ void main() {
         '100 gems buys one streak freeze.',
       );
       expect(
-        find.text('100 gems buys one streak freeze — the freeze on '
-            'this screen.'),
+        find.text(
+          '100 gems buys one streak freeze — the freeze on '
+          'this screen.',
+        ),
         findsNothing,
       );
     });
 
     testWidgets('buy-with-gems from the sheet succeeds at ≥100: '
         '§2c copy, service balance moves, buy control then stays '
-        '— disabled under 100 with the §2d line (rule change)',
-        (tester) async {
+        '— disabled under 100 with the §2d line (rule change)', (tester) async {
       final spendIds = <String>[];
       final gems = fakeGems(
         balance: 150,
@@ -614,8 +636,10 @@ void main() {
       expect(spendIds, isNotEmpty, reason: 'the spend path ran');
       expect(find.text('freeze added'), findsOneWidget);
       expect(
-        find.text("you've got a freeze now. it covers one missed day. "
-            'you have 50 gems left.'),
+        find.text(
+          "you've got a freeze now. it covers one missed day. "
+          'you have 50 gems left.',
+        ),
         findsOneWidget,
       );
       // The shared service balance moved (the pill reads the same
@@ -628,16 +652,23 @@ void main() {
       final afterButton = tester.widget<ElevatedButton>(
         find.byKey(const Key('gemsSheetBuyButton')),
       );
-      expect(afterButton.onPressed, isNull,
-          reason: 'visible but disabled under 100 after the spend');
       expect(
-        find.text('you need 50 more gems for a freeze — you earn 5 gems '
-            'each time you finish your daily summary.'),
+        afterButton.onPressed,
+        isNull,
+        reason: 'visible but disabled under 100 after the spend',
+      );
+      expect(
+        find.text(
+          'you need 50 more gems for a freeze — you earn 5 gems '
+          'each time you finish your daily summary.',
+        ),
         findsOneWidget,
       );
       expect(
-        find.text("you've already got a freeze — it covers one "
-            'missed day.'),
+        find.text(
+          "you've already got a freeze — it covers one "
+          'missed day.',
+        ),
         findsNothing,
       );
     });
@@ -657,8 +688,10 @@ void main() {
       expect(button.onPressed, isNull, reason: 'disabled under 100');
       expect(find.text('GET ONE MORE FREEZE · 100 GEMS'), findsOneWidget);
       expect(
-        find.text('you need 65 more gems for a freeze — you earn 5 gems '
-            'each time you finish your daily summary.'),
+        find.text(
+          'you need 65 more gems for a freeze — you earn 5 gems '
+          'each time you finish your daily summary.',
+        ),
         findsOneWidget,
       );
     });
@@ -672,13 +705,14 @@ void main() {
         pillBalance: 500,
       );
       expect(find.byKey(const Key('gemsSheetBuyButton')), findsNothing);
-      expect(
-          find.byKey(const Key('gemsSheetInsufficientLine')), findsNothing);
+      expect(find.byKey(const Key('gemsSheetInsufficientLine')), findsNothing);
       expect(find.text('You have 500 gems.'), findsOneWidget);
       expect(find.text('About gems'), findsOneWidget);
       expect(
-        find.text("you've already got a freeze — it covers one "
-            'missed day.'),
+        find.text(
+          "you've already got a freeze — it covers one "
+          'missed day.',
+        ),
         findsNothing,
       );
     });
@@ -695,8 +729,11 @@ void main() {
       final button = tester.widget<ElevatedButton>(
         find.byKey(const Key('gemsSheetBuyButton')),
       );
-      expect(button.onPressed, isNotNull,
-          reason: 'gem buy enabled while a purchased freeze is held');
+      expect(
+        button.onPressed,
+        isNotNull,
+        reason: 'gem buy enabled while a purchased freeze is held',
+      );
       expect(find.text('You have 500 gems.'), findsOneWidget);
     });
 
@@ -714,15 +751,16 @@ void main() {
       );
       expect(button.onPressed, isNull, reason: 'disabled under 100');
       expect(
-        find.text('you need 65 more gems for a freeze — you earn 5 gems '
-            'each time you finish your daily summary.'),
+        find.text(
+          'you need 65 more gems for a freeze — you earn 5 gems '
+          'each time you finish your daily summary.',
+        ),
         findsOneWidget,
       );
     });
 
     testWidgets('gem-buy rule change: at cap 3 of 3 (monthly + '
-        'earned + purchased-class) the buy control is ABSENT',
-        (tester) async {
+        'earned + purchased-class) the buy control is ABSENT', (tester) async {
       await pumpHostAndTapPill(
         tester,
         gems: fakeGems(balance: 500),
@@ -730,13 +768,11 @@ void main() {
         pillBalance: 500,
       );
       expect(find.byKey(const Key('gemsSheetBuyButton')), findsNothing);
-      expect(
-          find.byKey(const Key('gemsSheetInsufficientLine')), findsNothing);
+      expect(find.byKey(const Key('gemsSheetInsufficientLine')), findsNothing);
       expect(find.text('You have 500 gems.'), findsOneWidget);
     });
 
-    testWidgets('the Row layout gem pill is tappable too',
-        (tester) async {
+    testWidgets('the Row layout gem pill is tappable too', (tester) async {
       var taps = 0;
       await tester.pumpWidget(
         MaterialApp(
@@ -830,15 +866,16 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('granted lines render in Juno §3 order',
-        (tester) async {
+    testWidgets('granted lines render in Juno §3 order', (tester) async {
       await pumpCelebration(
         tester,
-        data(gemLines: const [
-          '+5 gems',
-          '+25 gems — 7-day streak bonus',
-          '+20 gems — perfect week bonus',
-        ]),
+        data(
+          gemLines: const [
+            '+5 gems',
+            '+25 gems — 7-day streak bonus',
+            '+20 gems — perfect week bonus',
+          ],
+        ),
       );
       expect(find.byKey(const Key('celebrationGemLines')), findsOneWidget);
       expect(find.text('+5 gems'), findsOneWidget);
@@ -846,8 +883,7 @@ void main() {
       expect(find.text('+20 gems — perfect week bonus'), findsOneWidget);
     });
 
-    testWidgets('no lines when the day was already granted',
-        (tester) async {
+    testWidgets('no lines when the day was already granted', (tester) async {
       await pumpCelebration(tester, data());
       expect(find.byKey(const Key('celebrationGemLines')), findsNothing);
       expect(find.text('+5 gems'), findsNothing);
