@@ -143,7 +143,32 @@ class _BanditReadingSlotState extends State<BanditReadingSlot> {
         _tapPlaying = false;
         _loopEpoch++; // restart the loop from its base frame
       });
+      _rewarmTapAsset();
     });
+  }
+
+  /// Re-arms the tap reaction after a play (Nov 23, 2026 fix).
+  ///
+  /// A finished one-shot animation's image-stream completer
+  /// disposes its codec and stays in the image cache holding only
+  /// its final frame — which is the loop's base frame. The next
+  /// tap's new Image widget resolves through the cache by provider
+  /// key (the per-tap ValueKey does not change that), re-attaches
+  /// to the dead completer, and is handed the static final frame:
+  /// the tap visibly does nothing. It only recovered when memory
+  /// pressure evicted the dead entry — the founder's "sometimes
+  /// when I click on Bandit it doesn't actually do it."
+  ///
+  /// So on return to the loop: evict the spent completer and
+  /// precache a fresh one. Precache parks the new completer on its
+  /// first frame with the codec alive, so the next idle tap paints
+  /// instantly (first frame == base frame — no flash on the swap)
+  /// and replays in full, exactly once, every time.
+  Future<void> _rewarmTapAsset() async {
+    const provider = AssetImage(BanditReadingSlot.tapAsset);
+    await provider.evict();
+    if (!mounted) return;
+    await precacheImage(provider, context).catchError((_) {});
   }
 
   @override
