@@ -57,7 +57,17 @@ class HeartScreen extends StatefulWidget {
   /// Injectable for tests; defaults to the shared [HeartDataCache].
   final HeartDataCache? cache;
 
-  const HeartScreen({super.key, this.email, this.healthConnectService, this.cache});
+  /// Heart/Sleep toggle (founder, Nov 23, 2026) — supplied by the
+  /// shell, which owns the heart slot's mode. The moon button in
+  /// the AppBar calls it to switch the slot to the Sleep screen.
+  final VoidCallback? onShowSleep;
+
+  const HeartScreen(
+      {super.key,
+      this.email,
+      this.healthConnectService,
+      this.cache,
+      this.onShowSleep});
 
   @override
   State<HeartScreen> createState() => _HeartScreenState();
@@ -606,6 +616,17 @@ class _HeartScreenState extends State<HeartScreen> {
                 ),
               ),
             ),
+          ),
+          // Heart/Sleep toggle (founder, Nov 23, 2026): the moon
+          // sits immediately beside the refresh ("sync") button
+          // and is ALWAYS visible — unlike refresh it is NOT gated
+          // on the connection verdict, so the slot can be switched
+          // to Sleep in the not-connected state too.
+          IconButton(
+            onPressed: widget.onShowSleep,
+            icon: const Icon(Icons.bedtime,
+                size: 24, color: NotelColors.textSecondary),
+            tooltip: 'Sleep',
           ),
           if (connected == true)
             IconButton(

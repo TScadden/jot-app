@@ -17,7 +17,6 @@ import 'package:tabs_lab/src/features/tools/notes_screen.dart';
 import 'package:tabs_lab/src/features/tools/project_focus_screen.dart';
 import 'package:tabs_lab/src/features/tools/reminders_screen.dart';
 import 'package:tabs_lab/src/features/tools/research_screen.dart';
-import 'package:tabs_lab/src/features/tools/sleep_screen.dart';
 import 'package:tabs_lab/src/features/tools/tips_tricks_screen.dart';
 import 'package:tabs_lab/src/features/tools/tool_placeholder_screen.dart';
 import 'package:tabs_lab/src/features/tools/trends_screen.dart';
@@ -56,16 +55,17 @@ class ToolTile {
 
 /// The native `DEFAULT_INFO_TILES` order, verbatim — minus
 /// Community, which moved to the Home drawer (added scope #7,
-/// founder direction Nov 20, 2026). A stale saved order can still
-/// carry the 'community' id; [applyTileOrder] drops unknown ids,
-/// so it can never resurrect the tile here.
+/// founder direction Nov 20, 2026), and minus Sleep, which moved
+/// to the heart nav slot (Heart/Sleep toggle, founder direction
+/// Nov 23, 2026). A stale saved order can still carry the
+/// 'community' or 'sleep' id; [applyTileOrder] drops unknown ids,
+/// so it can never resurrect either tile here.
 const List<ToolTile> defaultToolTiles = [
   ToolTile('habits', 'Habits', Icons.check_circle, 'Daily routine tracking'),
   ToolTile('reminders', 'Reminders', Icons.notifications, 'Scheduled alerts'),
   ToolTile('lists', 'Lists', Icons.list, 'Checklists & Tasks'),
   ToolTile('notes', 'Notes', Icons.edit, 'Quick notes & thoughts'),
   ToolTile('project_focus', 'Project Focus', Icons.science, 'Track experiments'),
-  ToolTile('sleep', 'Sleep', Icons.bedtime, 'Analysis & Debt'),
   ToolTile('body_info', 'Body Info', Icons.accessibility_new, 'Impact & Side Effects'),
   ToolTile('medications', 'Medications', Icons.medication, 'Prescriptions & Doses'),
   ToolTile('tips_and_tricks', 'Tips and Tricks', Icons.lightbulb, 'Master your data'),
@@ -236,7 +236,6 @@ class _ToolsScreenState extends State<ToolsScreen>
       'lists' => const ListsScreen(),
       'notes' => const NotesScreen(),
       'project_focus' => const ProjectFocusScreen(),
-      'sleep' => const SleepScreen(),
       'body_info' => const BodyInfoScreen(),
       'medications' => MedicationsScreen(billingService: widget.billingService),
       'tips_and_tricks' => const TipsTricksScreen(),

@@ -23,7 +23,9 @@ Future<void> _pumpTools(WidgetTester tester, ToolOrderStore store) async {
 
 void main() {
   group('default tile list (native DEFAULT_INFO_TILES)', () {
-    test('has all 15 tiles in native order', () {
+    // Heart/Sleep toggle (founder, Nov 23, 2026): Sleep left Tools
+    // for the heart nav slot — 14 tiles, no 'sleep'.
+    test('has all 14 tiles in native order', () {
       final ids = defaultToolTiles.map((t) => t.id).toList();
       expect(ids, [
         'habits',
@@ -31,7 +33,6 @@ void main() {
         'lists',
         'notes',
         'project_focus',
-        'sleep',
         'body_info',
         'medications',
         'tips_and_tricks',
@@ -60,7 +61,6 @@ void main() {
       expect(byId['lists']!.description, 'Checklists & Tasks');
       expect(byId['notes']!.description, 'Quick notes & thoughts');
       expect(byId['project_focus']!.description, 'Track experiments');
-      expect(byId['sleep']!.description, 'Analysis & Debt');
       expect(byId['body_info']!.description, 'Impact & Side Effects');
       expect(byId['blood_pressure']!.description, 'Systolic & Diastolic');
       expect(byId['food']!.description, 'Sensitivity Checker');
@@ -77,12 +77,12 @@ void main() {
       final ordered = applyTileOrder(defaultToolTiles, ['medications', 'habits']);
       expect(ordered.first.id, 'medications');
       expect(ordered[1].id, 'habits');
-      expect(ordered.length, 15);
+      expect(ordered.length, 14);
     });
 
     test('unknown ids are dropped', () {
       final ordered = applyTileOrder(defaultToolTiles, ['nope', 'habits']);
-      expect(ordered.length, 15);
+      expect(ordered.length, 14);
       expect(ordered.first.id, 'habits');
       expect(ordered.any((t) => t.id == 'nope'), isFalse);
     });
@@ -92,8 +92,19 @@ void main() {
     test('a stale saved community id is dropped', () {
       final ordered =
           applyTileOrder(defaultToolTiles, ['community', 'habits']);
-      expect(ordered.length, 15);
+      expect(ordered.length, 14);
       expect(ordered.any((t) => t.id == 'community'), isFalse);
+      expect(ordered.first.id, 'habits');
+    });
+
+    // Heart/Sleep toggle (Nov 23, 2026): a stale saved order from
+    // before the move can still carry 'sleep'; it is dropped like
+    // any unknown id and can never resurrect the tile.
+    test('a stale saved sleep id is dropped', () {
+      final ordered =
+          applyTileOrder(defaultToolTiles, ['sleep', 'habits']);
+      expect(ordered.length, 14);
+      expect(ordered.any((t) => t.id == 'sleep'), isFalse);
       expect(ordered.first.id, 'habits');
     });
 
@@ -200,6 +211,50 @@ void main() {
       expect(find.text('Community'), findsNothing);
       expect(find.text('Friends & Leaderboard'), findsNothing);
       expect(find.byIcon(Icons.people), findsNothing);
+    });
+
+    // Heart/Sleep toggle (founder, Nov 23, 2026): the Tools grid
+    // renders NO Sleep entry anywhere — Sleep lives in the heart
+    // nav slot now. The whole lazy grid is visited first.
+    testWidgets('renders no Sleep entry anywhere in the grid',
+        (tester) async {
+      await _pumpTools(tester, _memoryStore());
+      final scrollable = find.descendant(
+        of: find.byType(GridView),
+        matching: find.byType(Scrollable),
+      );
+      for (final tile in defaultToolTiles) {
+        await tester.scrollUntilVisible(
+          find.text(tile.title),
+          300,
+          scrollable: scrollable,
+        );
+      }
+      expect(find.text('Sleep'), findsNothing);
+      expect(find.text('Analysis & Debt'), findsNothing);
+      expect(find.byIcon(Icons.bedtime), findsNothing);
+    });
+
+    // A saved order written before the move still carries 'sleep';
+    // on load it is dropped and the surviving order is honored.
+    testWidgets('a saved order carrying sleep drops it on load',
+        (tester) async {
+      final store = _memoryStore();
+      await store.saveOrder(['sleep', 'medications', 'habits']);
+      await _pumpTools(tester, store);
+      final grid = find.byType(GridView);
+      final firstCell = tester
+          .widgetList<DragTarget<ToolTile>>(
+              find.descendant(of: grid, matching: find.byType(DragTarget<ToolTile>)))
+          .first;
+      final draggable = find.descendant(
+          of: find.byWidget(firstCell),
+          matching: find.byType(LongPressDraggable<ToolTile>));
+      final data = tester
+          .widget<LongPressDraggable<ToolTile>>(draggable)
+          .data;
+      expect(data?.id, 'medications');
+      expect(find.text('Sleep'), findsNothing);
     });
 
     testWidgets('applies a saved order on load', (tester) async {

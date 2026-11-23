@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
+import 'package:tabs_lab/src/features/shell/heart_sleep_mode.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 
@@ -163,11 +164,19 @@ class NavDock extends StatefulWidget {
   /// value does not change what the dock draws or its height.
   final bool showLabels;
 
+  /// Heart/Sleep toggle (founder, Nov 23, 2026): which screen the
+  /// heart slot currently hosts. The heart cell's glyph + semantic
+  /// label follow it — heart mode draws Icons.favorite / 'Heart',
+  /// sleep mode draws Icons.bedtime / 'Sleep'. Icon-only in both
+  /// modes (NAVBAR_SPEC unchanged); geometry untouched.
+  final HeartSleepMode heartSleepMode;
+
   const NavDock({
     super.key,
     required this.selected,
     required this.onSelect,
     this.showLabels = false,
+    this.heartSleepMode = HeartSleepMode.heart,
   });
 
   @override
@@ -341,8 +350,14 @@ class _NavDockState extends State<NavDock>
                               onTap: () => widget.onSelect(DockTab.quickLog),
                             ),
                             _DockIcon(
-                              icon: Icons.favorite,
-                              semanticLabel: 'Heart',
+                              icon: widget.heartSleepMode ==
+                                      HeartSleepMode.sleep
+                                  ? Icons.bedtime
+                                  : Icons.favorite,
+                              semanticLabel: widget.heartSleepMode ==
+                                      HeartSleepMode.sleep
+                                  ? 'Sleep'
+                                  : 'Heart',
                               onTap: () => widget.onSelect(DockTab.heart),
                             ),
                             // No Settings cell: Settings moved to
