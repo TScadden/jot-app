@@ -312,6 +312,11 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
             "readSleepHistory" -> readSleepHistory(call.argument<Int>("days"), result)
             "readSpikeCounts" -> readSpikeCounts(call.argument<Int>("days"), result)
             "readHrSamples" -> readHrSamples(call.argument<Int>("days"), result)
+            "readHrSamplesRange" -> readHrSamplesRange(
+                call.argument<Number>("startMs")?.toLong(),
+                call.argument<Number>("endMs")?.toLong(),
+                result
+            )
             "exportCsvFile" -> exportCsvFile(
                 call.argument<String>("fileName"),
                 call.argument<String>("content"),
@@ -1751,6 +1756,57 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                         )
                     )
                 }
+            } catch (e: Exception) {
+                result.error("HR_SAMPLES_READ_FAILED", "Could not read heart rate samples.", hcErrorDetails(e))
+            }
+        }
+    }
+
+    /// Raw intraday HR samples over an EXPLICIT epoch-ms range
+    /// [startMs, endMs) (MCP HR-spike fix, Nov 23, 2026): the
+    /// range-capable sibling of readHrSamples, with the identical
+    /// discipline — mock-origin records excluded (nonMock, exactly
+    /// as in readSpikeCounts), samples shipped RAW (the zero rule
+    /// is Dart's), paginated, sorted ascending. The range is read
+    /// as ONE native read: chunking the window is the Dart leg's
+    /// job (7-day chunks, each its own bounded read), so a failure
+    /// here fails exactly that chunk — result.error with
+    /// HR_SAMPLES_READ_FAILED, never a partial envelope (there is
+    /// nothing partial about a single bounded range).
+    private fun readHrSamplesRange(startMs: Long?, endMs: Long?, result: MethodChannel.Result) {
+        val client = hcClientOrError(result) ?: return
+        if (startMs == null || endMs == null || endMs <= startMs) {
+            result.error("HR_SAMPLES_READ_FAILED", "Could not read heart rate samples.", "invalid range")
+            return
+        }
+        engineScope.launch {
+            try {
+                val start = Instant.ofEpochMilli(startMs)
+                val end = Instant.ofEpochMilli(endMs)
+                val samples = mutableListOf<Pair<Long, Int>>()
+                var pageToken: String? = null
+                do {
+                    val response = client.readRecords(
+                        ReadRecordsRequest(
+                            recordType = HeartRateRecord::class,
+                            timeRangeFilter = TimeRangeFilter.between(start, end),
+                            pageToken = pageToken
+                        )
+                    )
+                    for (record in nonMock(response.records)) {
+                        for (sample in record.samples) {
+                            samples.add(
+                                sample.time.toEpochMilli() to
+                                    sample.beatsPerMinute.toInt()
+                            )
+                        }
+                    }
+                    pageToken = response.pageToken
+                } while (pageToken != null)
+                result.success(
+                    samples.sortedBy { it.first }
+                        .map { (t, bpm) -> mapOf("t" to t, "bpm" to bpm) }
+                )
             } catch (e: Exception) {
                 result.error("HR_SAMPLES_READ_FAILED", "Could not read heart rate samples.", hcErrorDetails(e))
             }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/data/health_data.dart' show HrSample;
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_history_sync.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
@@ -103,6 +104,15 @@ class _CaptureFakeHc extends HealthConnectService {
   @override
   Future<List<({String date, int count})>> readSpikeCounts(
       int days) async => const [];
+
+  // MCP HR-spike fix (Nov 23, 2026): the chunked summary leg's
+  // range read, modeled clean + empty — so the leg's own
+  // `spikeSummary` diagnostics entry is the clean shape
+  // (0 samples applied, 0 days filled, no codes).
+  @override
+  Future<HcReadOutcome<List<HrSample>>> readHrSamplesRangeWithOutcome(
+          {required int startMs, required int endMs}) async =>
+      HcReadOutcome(value: const []);
 
   @override
   Future<List<({int t, double ms, int tier})>> readHrvSamples(
@@ -302,7 +312,10 @@ void main() {
       // behavior unchanged) — but the failure is now on record.
       expect(await sync.captureFromHealthConnect(force: true), isTrue);
       final diag = store.lastCaptureDiagnostics;
-      expect(diag.keys, ['hrv']);
+      // MCP HR-spike fix (Nov 23, 2026): the spike summary leg
+      // records its own `spikeSummary` entry on every capture, so
+      // the key set is the HRV entry plus that one.
+      expect(diag.keys, unorderedEquals(['hrv', 'spikeSummary']));
       expect(diag['hrv']!.errorCode, 'HRV_SAMPLES_READ_FAILED');
       expect(diag['hrv']!.partialCode, isNull);
       expect(diag['hrv']!.sampleCount, 0);
@@ -318,6 +331,13 @@ void main() {
       expect(blob['lastCaptureDiagnostics'], {
         'hrv': {
           'code': 'HRV_SAMPLES_READ_FAILED',
+          'samples': 0,
+          'days': 0,
+          'atMs': now.millisecondsSinceEpoch,
+        },
+        // The summary leg's own entry (Nov 23, 2026 fix): clean
+        // here — the fake's range read returns no samples.
+        'spikeSummary': {
           'samples': 0,
           'days': 0,
           'atMs': now.millisecondsSinceEpoch,
@@ -378,7 +398,10 @@ void main() {
       final sync = HealthHistorySync.withDeps(
           hc: hc, store: store, now: () => DateTime(2026, 10, 19, 12));
       expect(await sync.captureFromHealthConnect(force: true), isTrue);
-      expect(store.lastCaptureDiagnostics.keys, ['hrv']);
+      // Plus the summary leg's own `spikeSummary` entry (Nov 23,
+      // 2026 fix — see the sibling assertion above).
+      expect(store.lastCaptureDiagnostics.keys,
+          unorderedEquals(['hrv', 'spikeSummary']));
       final diag = store.lastCaptureDiagnostics['hrv']!;
       expect(diag.errorCode, isNull);
       expect(diag.sampleCount, 1);

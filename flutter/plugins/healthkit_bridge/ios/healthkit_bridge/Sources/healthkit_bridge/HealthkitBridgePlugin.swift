@@ -134,6 +134,9 @@ public class HealthkitBridgePlugin: NSObject, FlutterPlugin {
       readSpikeCounts(days: argDays(call, defaultDays: 30, maxDays: 365), result: result)
     case "readHrSamples":
       readHrSamples(days: argDays(call, defaultDays: 30, maxDays: 365), result: result)
+    case "readHrSamplesRange":
+      readHrSamplesRange(startMs: argEpochMs(call, key: "startMs"),
+                         endMs: argEpochMs(call, key: "endMs"), result: result)
     case "readExerciseSessions":
       readExerciseSessions(days: argDays(call, defaultDays: 30, maxDays: 400), result: result)
     case "readSleepMinutes":
@@ -171,6 +174,12 @@ public class HealthkitBridgePlugin: NSObject, FlutterPlugin {
   private func argDays(_ call: FlutterMethodCall, defaultDays: Int, maxDays: Int) -> Int {
     let raw = ((call.arguments as? [String: Any])?["days"] as? NSNumber)?.intValue ?? defaultDays
     return min(max(raw, 1), maxDays)
+  }
+
+  /// Epoch-ms argument (the Dart side sends Int64 epoch bounds
+  /// for the range reads); nil when absent or not a number.
+  private func argEpochMs(_ call: FlutterMethodCall, key: String) -> Int64? {
+    ((call.arguments as? [String: Any])?[key] as? NSNumber)?.int64Value
   }
 
   #if canImport(HealthKit)
@@ -880,6 +889,46 @@ public class HealthkitBridgePlugin: NSObject, FlutterPlugin {
   /// Dart shape: [{t: epochMs, bpm}] sorted ascending.
   private func readHrSamples(days: Int, result: @escaping FlutterResult) {
     let (start, end) = historyWindow(days: days)
+    quantitySamples(identifier: .heartRate, start: start, end: end) { samples, error in
+      if let error = error {
+        self.fail(result, code: "HR_SAMPLES_READ_FAILED",
+                  message: "Could not read heart rate samples.", error: error)
+        return
+      }
+      let unit = HKUnit.count().unitDivided(by: .minute())
+      var seen = Set<Int64>()
+      var out: [[String: Any]] = []
+      for sample in samples ?? [] {
+        let bpm = Int(sample.quantity.doubleValue(for: unit).rounded())
+        if bpm <= 0 { continue }
+        let t = self.epochMs(sample.startDate)
+        if seen.insert(t).inserted {
+          out.append(["t": t, "bpm": bpm])
+        }
+      }
+      out.sort { ($0["t"] as? Int64 ?? 0) < ($1["t"] as? Int64 ?? 0) }
+      result(out)
+    }
+  }
+
+  /// Raw intraday HR samples over an EXPLICIT epoch-ms range
+  /// [startMs, endMs) (MCP HR-spike fix, Nov 23, 2026): the
+  /// range-capable sibling of readHrSamples, with the identical
+  /// shaping discipline (bpm ≤ 0 dropped, distinct by time,
+  /// sorted ascending; all reduction in Dart). Chunking the
+  /// window is the Dart leg's job (7-day chunks, each its own
+  /// bounded read), so a failure here fails exactly that chunk
+  /// with HR_SAMPLES_READ_FAILED.
+  /// Dart shape: [{t: epochMs, bpm}] sorted ascending.
+  private func readHrSamplesRange(startMs: Int64?, endMs: Int64?, result: @escaping FlutterResult) {
+    guard let startMs = startMs, let endMs = endMs, endMs > startMs else {
+      result(FlutterError(code: "HR_SAMPLES_READ_FAILED",
+                          message: "Could not read heart rate samples.",
+                          details: "invalid range"))
+      return
+    }
+    let start = Date(timeIntervalSince1970: Double(startMs) / 1000.0)
+    let end = Date(timeIntervalSince1970: Double(endMs) / 1000.0)
     quantitySamples(identifier: .heartRate, start: start, end: end) { samples, error in
       if let error = error {
         self.fail(result, code: "HR_SAMPLES_READ_FAILED",
