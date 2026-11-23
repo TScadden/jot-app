@@ -1166,6 +1166,19 @@ class HealthHistoryStore {
   /// `hrv` entry is then (re)written on EVERY capture — its
   /// errorCode comes from [failures] (absent = the read returned)
   /// — replacing, never stacking on, the previous capture's entry.
+  ///
+  /// MCP HR-spike fix (Nov 23, 2026) — the spike SUMMARY leg's
+  /// outcome, the same every-capture shape under its OWN
+  /// `spikeSummary` key (the `spikes` key stays owned by the
+  /// counts read): the caller passes [spikeSummarySampleCount]
+  /// (samples from the chunks it applied) and
+  /// [spikeSummaryDayCount] (days whose summaries it filled this
+  /// capture) on every capture; [spikeSummaryErrorCode] carries
+  /// the first failing chunk's code when NO chunk was clean, and
+  /// [spikeSummaryPartialCode] is set when some chunks failed but
+  /// others filled. Passing a sample count (every capture does)
+  /// (re)writes the entry; passing none leaves any prior entry
+  /// untouched, exactly like the HRV rule above.
   Future<void> recordCaptureDiagnostics({
     required Map<String, String> failures,
     required Set<String> succeeded,
@@ -1173,6 +1186,10 @@ class HealthHistoryStore {
     String? hrvPartialCode,
     int? hrvSampleCount,
     int? hrvDayCount,
+    String? spikeSummaryErrorCode,
+    String? spikeSummaryPartialCode,
+    int? spikeSummarySampleCount,
+    int? spikeSummaryDayCount,
   }) async {
     await _ensureWarmed();
     var changed = false;
@@ -1205,6 +1222,19 @@ class HealthHistoryStore {
       // A successful HRV read with no outcome counts reported
       // clears the failure entry like every other metric.
       if (_captureDiagnostics.remove('hrv') != null) changed = true;
+    }
+    if (spikeSummarySampleCount != null || spikeSummaryErrorCode != null) {
+      final next = CaptureDiagnostic(
+        errorCode: spikeSummaryErrorCode,
+        partialCode: spikeSummaryPartialCode,
+        sampleCount: spikeSummarySampleCount,
+        dayCount: spikeSummaryDayCount,
+        atMs: atMs,
+      );
+      if (_captureDiagnostics['spikeSummary'] != next) {
+        _captureDiagnostics['spikeSummary'] = next;
+        changed = true;
+      }
     }
     if (changed) await persist();
   }

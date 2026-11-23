@@ -1678,6 +1678,91 @@ class HealthConnectService {
     }
   }
 
+  /// MCP HR-spike fix package (Nov 23, 2026) — raw intraday HR
+  /// samples over an EXPLICIT epoch-ms range `[startMs, endMs)`,
+  /// sorted ascending: the range-capable sibling of
+  /// [readHrSamples]. The trailing-window read forced the spike
+  /// summary leg to pull the whole window (up to 180 days of raw
+  /// samples) as ONE MethodChannel list under one 30 s bound —
+  /// a single slow/failed stretch voided every day's summary.
+  /// Callers chunk the window themselves (the capture leg uses
+  /// 7-day chunks) so each chunk is its own bounded read with its
+  /// own outcome. The bridge ships the range faithfully (same
+  /// nonMock discipline as [readHrSamples]); ALL reduction stays
+  /// in Dart. Samples are NOT zero-filtered here.
+  Future<List<HrSample>> readHrSamplesRange(
+          {required int startMs, required int endMs}) async =>
+      (await readHrSamplesRangeWithOutcome(
+              startMs: startMs, endMs: endMs))
+          .value;
+
+  /// Outcome-carrying variant of [readHrSamplesRange] (Phase 2 §1).
+  ///
+  /// Deliberately NOT routed through [_outcomeOf]: that bridge
+  /// exists so a LEGACY method and its outcome variant can share
+  /// one implementation while legacy slot-reporting overrides
+  /// (test fakes) keep working — and its unproven path serializes
+  /// reads behind the shared slot gate. This read is new (no
+  /// legacy slot consumers, no slot-reporting overrides in
+  /// production) and its one caller issues MANY chunk reads per
+  /// capture: a wedged chunk must never serialize-block the
+  /// chunks behind it, or one hang would re-create the shipped
+  /// all-or-nothing failure one level down. So the legacy method
+  /// delegates to this variant (the _ConcurrentHc fake pattern),
+  /// this variant runs the core directly, and the outcome needs
+  /// no reconstruction — it IS the core's own. The core still
+  /// writes the legacy slots as a diagnostic side channel,
+  /// exactly like every other core.
+  Future<HcReadOutcome<List<HrSample>>> readHrSamplesRangeWithOutcome(
+          {required int startMs, required int endMs}) =>
+      _readHrSamplesRangeCore(startMs: startMs, endMs: endMs);
+
+  Future<HcReadOutcome<List<HrSample>>> _readHrSamplesRangeCore(
+      {required int startMs, required int endMs}) async {
+    try {
+      final raw = await _channel.invokeMethod<dynamic>(
+          'readHrSamplesRange', {'startMs': startMs, 'endMs': endMs});
+      List<dynamic> items = const [];
+      String? partialCode;
+      String? partialDetails;
+      if (raw is List) {
+        items = raw;
+      } else if (raw is Map) {
+        final s = raw['items'];
+        if (s is List) items = s;
+        final partial = raw['partialError'];
+        if (partial is String && partial.isNotEmpty) {
+          // Partial is NOT a failure: its own field, exactly as
+          // in _readHrSamplesCore.
+          partialCode = 'HR_SAMPLES_RANGE_PARTIAL';
+          partialDetails = partial;
+          lastPartialErrorCode = partialCode;
+          lastReadErrorDetails = partial;
+        }
+      }
+      final out = <HrSample>[];
+      for (final item in items) {
+        if (item is Map) {
+          final t = item['t'];
+          final bpm = item['bpm'];
+          if (t is num && bpm is num) {
+            out.add(HrSample(timeMs: t.toInt(), bpm: bpm.toInt()));
+          }
+        }
+      }
+      out.sort((a, b) => a.timeMs.compareTo(b.timeMs));
+      return HcReadOutcome(
+          value: out, errorDetails: partialDetails, partialCode: partialCode);
+    } on PlatformException catch (e) {
+      _notePlatformError(e);
+      return HcReadOutcome(
+          value: const [], errorCode: e.code, errorDetails: _detailsOf(e));
+    } on MissingPluginException {
+      _noteReadError('NO_CHANNEL');
+      return HcReadOutcome(value: const [], errorCode: 'NO_CHANNEL');
+    }
+  }
+
   /// Round 48 — CSV export hand-off (native `exportMetricsCsvAsync`):
   /// the bridge writes the file to Downloads and opens the share
   /// sheet. True only when the share sheet was launched.

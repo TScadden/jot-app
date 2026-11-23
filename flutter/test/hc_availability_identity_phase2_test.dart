@@ -479,7 +479,12 @@ void main() {
     // (bounded) until its diagnostics land on the store.
     var landed = false;
     for (var i = 0; i < 100 && !landed; i++) {
-      landed = store.lastCaptureDiagnostics.length == 5;
+      // All five metrics recorded. (Since the Nov 23, 2026
+      // HR-spike fix the diagnostics ALSO carry the summary leg's
+      // own `spikeSummary` entry, so this polls for the five
+      // metric keys, not an exact entry count.)
+      landed =
+          _codes.keys.every(store.lastCaptureDiagnostics.containsKey);
       if (!landed) {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }

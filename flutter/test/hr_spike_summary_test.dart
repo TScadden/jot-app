@@ -523,6 +523,11 @@ class _SummaryHc extends HealthConnectService {
       const [];
 
   @override
-  Future<List<HrSample>> readHrSamples(int days) async =>
-      [_s(0, 110), _s(1, 118), _s(2, 70)];
+  Future<HcReadOutcome<List<HrSample>>> readHrSamplesRangeWithOutcome(
+      {required int startMs, required int endMs}) async {
+    final all = [_s(0, 110), _s(1, 118), _s(2, 70)];
+    return HcReadOutcome(
+        value:
+            all.where((s) => s.timeMs >= startMs && s.timeMs < endMs).toList());
+  }
 }
