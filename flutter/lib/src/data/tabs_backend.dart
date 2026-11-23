@@ -1020,6 +1020,130 @@ class TabsBackend {
       _postJson('/api/api-tokens/${Uri.encodeComponent(id)}/revoke',
           const {});
 
+  // ── Friend data sharing (MCP friend-sharing package, Nov 23,
+  // 2026; jot-server PR #57, `src/routes/dataShares.js`) ──
+  // Session-auth endpoints under `/api/data-shares`. Every list
+  // method returns null on any failure so the Connect an AI
+  // screen can tell "couldn't load" apart from "nothing there"
+  // (the fetchAiConnections discipline); an empty list is a real
+  // answer. Malformed rows are skipped, never fatal.
+
+  /// Shares I created, from `GET /api/data-shares/outgoing` →
+  /// `{shares: [...]}` (each row nests the recipient under
+  /// `recipient`). Null on any failure.
+  Future<List<DataShareDto>?> fetchOutgoingShares() =>
+      _fetchShares('/api/data-shares/outgoing', outgoing: true);
+
+  /// Shares offered to me, from `GET /api/data-shares/incoming`
+  /// → `{shares: [...]}` (each row nests the sharer under
+  /// `sharer`). Null on any failure.
+  Future<List<DataShareDto>?> fetchIncomingShares() =>
+      _fetchShares('/api/data-shares/incoming', outgoing: false);
+
+  Future<List<DataShareDto>?> _fetchShares(String path,
+      {required bool outgoing}) async {
+    final body = await _getJson(path);
+    if (body == null) return null;
+    final raw = body['shares'];
+    if (raw is! List) return null;
+    final out = <DataShareDto>[];
+    for (final row in raw) {
+      if (row is Map<String, dynamic>) {
+        try {
+          final dto = DataShareDto.fromJson(row, outgoing: outgoing);
+          if (dto != null) out.add(dto);
+        } catch (_) {
+          // Skip malformed rows — never fail the whole list.
+        }
+      }
+    }
+    return out;
+  }
+
+  /// Create (or re-request) a share via `POST /api/data-shares`
+  /// with `{recipientId, categories}` — the field name is the
+  /// server's camelCase contract (dataShares.js destructures
+  /// `recipientId`). The server answers 201 for a new share and
+  /// 200 for a re-request, so success is either status with a
+  /// parseable `share` row; anything else is null (the caller
+  /// surfaces an honest error and keeps its state).
+  Future<DataShareDto?> createDataShare(
+      String recipientId, List<String> categories) async {
+    final res = await _postAuthedWithStatus('/api/data-shares', {
+      'recipientId': recipientId,
+      'categories': categories,
+    });
+    if (res.statusCode != 200 && res.statusCode != 201) return null;
+    final share = res.body?['share'];
+    if (share is! Map<String, dynamic>) return null;
+    try {
+      return DataShareDto.fromJson(share, outgoing: true);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Recipient accepts a pending share via
+  /// `POST /api/data-shares/:id/accept`. True on HTTP 200.
+  Future<bool> acceptDataShare(String id) =>
+      _postJson('/api/data-shares/${Uri.encodeComponent(id)}/accept',
+          const {});
+
+  /// Recipient declines a pending share via
+  /// `POST /api/data-shares/:id/decline`. True on HTTP 200.
+  Future<bool> declineDataShare(String id) =>
+      _postJson('/api/data-shares/${Uri.encodeComponent(id)}/decline',
+          const {});
+
+  /// Sharer revokes a pending or accepted share via
+  /// `POST /api/data-shares/:id/revoke`. True on HTTP 200.
+  /// NOTE: the server also exposes a recipient-side remove
+  /// endpoint, but it has NO signed UI copy (Juno flag 8) — it is
+  /// deliberately NOT wrapped here and must not be surfaced.
+  Future<bool> revokeDataShare(String id) =>
+      _postJson('/api/data-shares/${Uri.encodeComponent(id)}/revoke',
+          const {});
+
+  /// Sharer edits an accepted share's categories via
+  /// `PUT /api/data-shares/:id/categories` `{categories}` —
+  /// immediate effect server-side, no fresh accept. True on
+  /// HTTP 200.
+  Future<bool> updateDataShareCategories(
+      String id, List<String> categories) async {
+    final response = await _sendAuthed((token) => _client.put(
+          Uri.parse('$_baseUrl/api/data-shares/${Uri.encodeComponent(id)}/categories'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({'categories': categories}),
+        ));
+    return response?.statusCode == 200;
+  }
+
+  /// Last-read rows from `GET /api/data-shares/last-read` →
+  /// `{lastReads: [...]}`: the latest successful shared read per
+  /// (recipient, category) for shares where I am the sharer.
+  /// Null on any failure.
+  Future<List<ShareLastReadDto>?> fetchShareLastReads() async {
+    final body = await _getJson('/api/data-shares/last-read');
+    if (body == null) return null;
+    final raw = body['lastReads'];
+    if (raw is! List) return null;
+    final out = <ShareLastReadDto>[];
+    for (final row in raw) {
+      if (row is Map<String, dynamic>) {
+        try {
+          final dto = ShareLastReadDto.fromJson(row);
+          if (dto != null) out.add(dto);
+        } catch (_) {
+          // Skip malformed rows — never fail the whole list.
+        }
+      }
+    }
+    return out;
+  }
+
   /// Round 18 — friend notifications from `GET /api/friends/notifications`.
   Future<List<FriendNotificationDto>> fetchFriendNotifications() async {
     final body = await _getJson('/api/friends/notifications');
@@ -2643,6 +2767,159 @@ class TabsBackend {
     if (v is num) return v.toInt();
     if (v is String) return int.tryParse(v);
     return null;
+  }
+}
+
+/// The 8 shareable category keys, in Juno's signed order
+/// (build-mcp-sharing/JUNO-COPY.md §a2). Stable server strings
+/// (jot-server `CATEGORY_KEYS`); the server re-sorts any payload
+/// into this order, and the app renders category lists in this
+/// order too (Juno's {categories} slot rule).
+const List<String> dataShareCategoryKeys = [
+  'medications',
+  'sleep',
+  'daily_scores',
+  'heart_rate_spikes',
+  'streak',
+  'badges_and_gems',
+  'log_entries',
+  'summaries',
+];
+
+/// Friend data sharing — one grant row from
+/// `GET /api/data-shares/outgoing|incoming` (or the `share`
+/// object a create/transition answers with). The other party is
+/// nested under `recipient` (outgoing) or `sharer` (incoming);
+/// the create/transition answers carry flat ids instead, which
+/// parse with empty names (the screen re-fetches lists after a
+/// write, so display rows always come from the list endpoints).
+class DataShareDto {
+  final String id;
+
+  /// The other party's user id (recipient for outgoing, sharer
+  /// for incoming).
+  final String otherId;
+  final String otherNickname;
+  final String otherTag;
+
+  /// Category keys (subset of [dataShareCategoryKeys]).
+  final List<String> categories;
+
+  /// pending | accepted | declined | revoked.
+  final String status;
+  final DateTime? createdAt;
+
+  /// When the recipient responded (accept/decline) — the
+  /// "since" date of an accepted share.
+  final DateTime? respondedAt;
+
+  const DataShareDto({
+    required this.id,
+    required this.otherId,
+    required this.otherNickname,
+    required this.otherTag,
+    required this.categories,
+    required this.status,
+    this.createdAt,
+    this.respondedAt,
+  });
+
+  bool get isPending => status == 'pending';
+  bool get isAccepted => status == 'accepted';
+
+  DataShareDto copyWith(
+      {List<String>? categories, String? status, DateTime? respondedAt}) {
+    return DataShareDto(
+      id: id,
+      otherId: otherId,
+      otherNickname: otherNickname,
+      otherTag: otherTag,
+      categories: categories ?? this.categories,
+      status: status ?? this.status,
+      createdAt: createdAt,
+      respondedAt: respondedAt ?? this.respondedAt,
+    );
+  }
+
+  /// Tolerant parse; null for a row with no id. [outgoing]
+  /// selects which nested party object to read.
+  static DataShareDto? fromJson(Map<String, dynamic> json,
+      {required bool outgoing}) {
+    final rawId = json['id'];
+    if (rawId == null) return null;
+    final partyKey = outgoing ? 'recipient' : 'sharer';
+    final party = json[partyKey];
+    String otherId = '';
+    String nickname = '';
+    String tag = '';
+    if (party is Map<String, dynamic>) {
+      otherId = '${party['id'] ?? ''}';
+      nickname = '${party['nickname'] ?? ''}';
+      tag = '${party['tag'] ?? ''}';
+    } else {
+      // Flat create/transition shape: {recipientId} / {sharerId}.
+      final flat = json[outgoing ? 'recipientId' : 'sharerId'];
+      if (flat != null) otherId = '$flat';
+    }
+    final rawCats = json['categories'];
+    final cats = <String>[];
+    if (rawCats is List) {
+      for (final c in rawCats) {
+        if (c is String && dataShareCategoryKeys.contains(c)) {
+          cats.add(c);
+        }
+      }
+    }
+    // Render order is Juno's §a2 order regardless of payload order.
+    cats.sort((a, b) => dataShareCategoryKeys
+        .indexOf(a)
+        .compareTo(dataShareCategoryKeys.indexOf(b)));
+    return DataShareDto(
+      id: rawId.toString(),
+      otherId: otherId,
+      otherNickname: nickname,
+      otherTag: tag,
+      categories: cats,
+      status: '${json['status'] ?? ''}',
+      createdAt: AiConnectionDto._parseTimestamp(json['created_at']),
+      respondedAt: AiConnectionDto._parseTimestamp(json['responded_at']),
+    );
+  }
+}
+
+/// Friend data sharing — one last-read row from
+/// `GET /api/data-shares/last-read`: the latest successful shared
+/// read of my data by one friend's AI, for one category.
+class ShareLastReadDto {
+  final String recipientId;
+  final String nickname;
+  final String tag;
+
+  /// Category key (one of [dataShareCategoryKeys]).
+  final String category;
+  final DateTime? readAt;
+
+  const ShareLastReadDto({
+    required this.recipientId,
+    required this.nickname,
+    required this.tag,
+    required this.category,
+    this.readAt,
+  });
+
+  static ShareLastReadDto? fromJson(Map<String, dynamic> json) {
+    final rawId = json['recipient_id'];
+    final rawCat = json['category'];
+    if (rawId == null || rawCat is! String || rawCat.isEmpty) {
+      return null;
+    }
+    return ShareLastReadDto(
+      recipientId: rawId.toString(),
+      nickname: '${json['nickname'] ?? ''}',
+      tag: '${json['tag'] ?? ''}',
+      category: rawCat,
+      readAt: AiConnectionDto._parseTimestamp(json['read_at']),
+    );
   }
 }
 

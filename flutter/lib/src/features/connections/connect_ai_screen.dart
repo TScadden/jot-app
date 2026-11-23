@@ -98,6 +98,216 @@ class ConnectAiCopy {
       "Couldn't open that page — try again.";
 }
 
+/// Friend data sharing copy — Juno's SIGNED pack
+/// (`build-mcp-sharing/JUNO-COPY.md` §a + §b), verbatim. Any
+/// change to a string here needs her re-sign. Slot rules:
+/// {friend}/{sharer} are display names; {categories} is the
+/// exact §a2 display names, complete, in §a2 order,
+/// comma-separated — never truncated or paraphrased.
+class ShareCopy {
+  // §a1 — Share my data.
+  static const String shareTitle = 'Share my data';
+  static const String shareExplainer =
+      'Share some of your Tabs data with a friend, so their AI '
+      'can read it and answer their questions about it — like how '
+      'your sleep has been lately. You pick the friend, and you '
+      'pick exactly what they can see. They can only read, never '
+      'change anything.';
+
+  // §a2 — the 8 categories, in order, names + descriptions.
+  static const List<(String, String, String)> categories = [
+    (
+      'medications',
+      'Medications',
+      'Your medications list, exactly as you entered it in Tabs.'
+    ),
+    (
+      'sleep',
+      'Sleep',
+      'Only your sleep numbers: how long you slept, your Sleep '
+          'Need, and your sleep score. Nothing else from your '
+          'Daily Scores.'
+    ),
+    (
+      'daily_scores',
+      'Daily Scores',
+      'Your full Daily Scores, including the sleep, HRV, and '
+          'resting heart rate numbers behind each score.'
+    ),
+    (
+      'heart_rate_spikes',
+      'Heart rate spikes',
+      'Your daily spike summaries: how many spikes you had, your '
+          'highest heart rate, and minutes over 100 and over 120.'
+    ),
+    (
+      'streak',
+      'Streak',
+      'Your current streak, your best streak, and your streak '
+          'freezes.'
+    ),
+    (
+      'badges_and_gems',
+      'Badges and gems',
+      "Your gems balance and history, and the badges you've "
+          'earned.'
+    ),
+    (
+      'log_entries',
+      'Log entries',
+      'The entries you record in Tabs, including the text, '
+          'categories, and times.'
+    ),
+    (
+      'summaries',
+      'Summaries',
+      'Basic facts about your generated reports — when one was '
+          'made and how many entries it covered. Never the report '
+          'itself.'
+    ),
+  ];
+
+  static String categoryName(String key) {
+    for (final c in categories) {
+      if (c.$1 == key) return c.$2;
+    }
+    return key;
+  }
+
+  /// The {categories} slot: exact display names, complete, in
+  /// §a2 order, comma-separated.
+  static String categoryList(List<String> keys) {
+    final ordered = [...keys]..sort((a, b) {
+        int idx(String k) {
+          final i = categories.indexWhere((c) => c.$1 == k);
+          return i < 0 ? categories.length : i;
+        }
+
+        return idx(a).compareTo(idx(b));
+      });
+    return ordered.map(categoryName).join(', ');
+  }
+
+  // §a3 — friend picker.
+  static const String pickerHeading = 'Pick a friend';
+  static const String pickerSubline =
+      "You can only share with friends you've already accepted "
+      'in Community.';
+  static const String pickerEmpty =
+      'No friends to share with yet. Add a friend in Community '
+      'first, then come back here.';
+  static const String categoryStepHeading = 'Choose what to share';
+  static const String categoryStepSubline =
+      "Everything starts off. Turn on only what you're okay "
+      'sharing.';
+  static const String nothingSelected =
+      'Pick at least one thing to share first.';
+
+  // §a4 — honesty block + send (shown above the send button,
+  // every time).
+  static const String thirdPartyLine =
+      "Heads up: what you share doesn't go straight to your "
+      "friend. It goes through your friend's AI app, on that "
+      "company's systems, under that company's privacy policy — "
+      "not Tabs'.";
+  static const String cantPullBackLine =
+      'If you stop sharing later, or turn a category off, that '
+      'stops future reads right away. It can\'t take back '
+      'anything their AI already read.';
+  static const String sendLabel = 'Send share request';
+
+  // §a5 — pending state.
+  static String pendingLabel(String friend) =>
+      'Waiting for $friend to accept';
+  static String pendingExplainer(String friend) =>
+      "$friend hasn't accepted yet, so their AI can't read "
+      "anything. Nothing is shared until they say yes.";
+  static const String cancelRequestLabel = 'Cancel request';
+
+  // §a6 — manage view (accepted share).
+  static String manageHeading(String friend) =>
+      'What $friend can see';
+  static const String toggleHeading = 'Categories';
+  static const String toggleSubline =
+      'Changes take effect right away. Turning a category off '
+      "stops future reads of it — it can't take back what their "
+      'AI already read.';
+  static String turnOnNote(String friend) =>
+      'Turning a category on shares it right away. $friend '
+      "doesn't need to accept again.";
+  static const String revokeLabel = 'Stop sharing';
+  static String revokeConfirmTitle(String friend) =>
+      'Stop sharing with $friend?';
+  static const String revokeConfirmBody =
+      'Their AI will stop being able to read your data right '
+      'away. Anything it already read stays with that company, '
+      'under its own privacy policy — stopping can\'t take that '
+      'back.';
+  static const String revokeConfirmButton = 'Stop sharing';
+  static const String revokeCancelButton = 'Cancel';
+  static const String noSharesEmpty =
+      "You're not sharing anything with anyone right now.";
+
+  // §a7 — last-read line.
+  static String lastReadLine(
+          String friend, String category, String when) =>
+      "$friend's AI last viewed your $category $when";
+  static String neverReadLine(String friend) =>
+      "$friend's AI hasn't viewed your data yet";
+
+  // §b1 — Shared with you.
+  static const String sharedWithYouTitle = 'Shared with you';
+
+  // §b2 — incoming pending offer.
+  static String offerHeading(String sharer) =>
+      '$sharer wants to share their Tabs data with you';
+  static String offerBody(String sharer, String categories) =>
+      '$sharer is offering to share: $categories. If you accept, '
+      'your AI can read those parts of $sharer\'s Tabs data and '
+      'answer your questions about them. It can only read — it '
+      "can't change anything in their account.";
+  static String incomingThirdPartyLine(String sharer) =>
+      "What your AI reads doesn't stay just between you and "
+      "$sharer. It goes through your AI app, on that company's "
+      "systems, under that company's privacy policy — not Tabs'.";
+  static String incomingCantPullBackLine(String sharer) =>
+      'If $sharer stops sharing later, or turns a category off, '
+      "that stops future reads. It can't take back anything "
+      'your AI already read.';
+  static const String acceptLabel = 'Accept';
+  static const String declineLabel = 'Decline';
+  static String declinedLine(String sharer) =>
+      "You said no to $sharer's share, so your AI can't read "
+      'any of their data.';
+
+  // §b3 — active share row.
+  static String activeRowLine(String categories, String date) =>
+      'Sharing $categories with you since $date';
+
+  // §b4 — paused lines.
+  static String pausedSharerLapsed(String sharer) =>
+      "Paused — $sharer's Premium isn't active right now, so "
+      "your AI can't read their data. Nothing was deleted. It'll "
+      "work again if they resubscribe — you don't need to do "
+      'anything.';
+  static const String pausedRecipientLapsed =
+      "Paused — sharing needs Premium on both sides, and yours "
+      "isn't active right now. Nothing was deleted. It'll work "
+      'again if you resubscribe — no need to accept again.';
+  static String pausedManageLine(String friend) =>
+      "Paused — your Premium isn't active, so $friend's AI "
+      "can't read your data right now. Your sharing choices are "
+      "saved, not deleted, and they'll work again if you "
+      'resubscribe.';
+
+  // Failure lines — app-pattern chrome (the loadError pattern
+  // above), NOT from Juno's pack; flagged for her in the PR.
+  static const String sharesLoadError =
+      "Couldn't load your sharing right now. Try again later.";
+  static const String shareActionError =
+      "Couldn't do that right now — try again.";
+}
+
 /// The help page (Juno copy pack §d), live with the v1.1 server
 /// deploy. Opened in the browser, never in-app.
 const String connectAiHelpUrl =
@@ -174,6 +384,34 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
   /// disabled so a connection can't be double-revoked.
   final Set<String> _revoking = {};
 
+  // ── Friend data sharing state ──
+  // Null until the first shares load lands; a failed load sets
+  // [_sharesLoadError] and NEVER renders an empty-state claim.
+  List<FriendDto>? _friends;
+  List<DataShareDto>? _outgoing;
+  List<DataShareDto>? _incoming;
+  List<ShareLastReadDto>? _lastReads;
+  bool _sharesLoaded = false;
+  String? _sharesLoadError;
+
+  /// The friend whose category step is open in the picker, and
+  /// its working toggle set (Juno §a2: everything starts off).
+  String? _pickerFriendId;
+  final Set<String> _pickerCategories = {};
+
+  /// Per-share working category sets for the manage view,
+  /// seeded from the share row when its manage view opens.
+  final Map<String, Set<String>> _manageCategories = {};
+  final Set<String> _manageOpen = {};
+
+  /// Share/friend ids with a write in flight.
+  final Set<String> _shareBusy = {};
+  bool _sending = false;
+
+  /// Friends the user declined an offer from this session —
+  /// Juno §b2's declined line renders for them until refresh.
+  final Set<String> _declinedThisSession = {};
+
   @override
   void initState() {
     super.initState();
@@ -182,7 +420,244 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
   }
 
   Future<void> _load() async {
-    await Future.wait([_resolveEntitlement(), _loadConnections()]);
+    await Future.wait(
+        [_resolveEntitlement(), _loadConnections(), _loadShares()]);
+  }
+
+  /// Loads every sharing input. Any failure fails closed with
+  /// Juno-pattern honest error (never an empty-state claim);
+  /// partial successes are kept so a retry only needs the rest.
+  Future<void> _loadShares() async {
+    List<FriendDto>? friends;
+    var friendsFailed = false;
+    try {
+      friends = await _backend.fetchFriendsList();
+    } catch (_) {
+      friendsFailed = true;
+    }
+    List<DataShareDto>? outgoing;
+    List<DataShareDto>? incoming;
+    List<ShareLastReadDto>? lastReads;
+    try {
+      outgoing = await _backend.fetchOutgoingShares();
+    } catch (_) {
+      outgoing = null;
+    }
+    try {
+      incoming = await _backend.fetchIncomingShares();
+    } catch (_) {
+      incoming = null;
+    }
+    try {
+      lastReads = await _backend.fetchShareLastReads();
+    } catch (_) {
+      lastReads = null;
+    }
+    if (!mounted) return;
+    setState(() {
+      if (!friendsFailed && friends != null) _friends = friends;
+      if (outgoing != null) _outgoing = outgoing;
+      if (incoming != null) _incoming = incoming;
+      if (lastReads != null) _lastReads = lastReads;
+      final failed = friendsFailed ||
+          outgoing == null ||
+          incoming == null ||
+          lastReads == null;
+      _sharesLoaded = !failed &&
+          _friends != null &&
+          _outgoing != null &&
+          _incoming != null &&
+          _lastReads != null;
+      _sharesLoadError = _sharesLoaded ? null : ShareCopy.sharesLoadError;
+    });
+  }
+
+  void _shareErrorSnack() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text(ShareCopy.shareActionError)),
+    );
+  }
+
+  Future<void> _sendShare() async {
+    final friendId = _pickerFriendId;
+    if (friendId == null || _sending) return;
+    if (_pickerCategories.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(ShareCopy.nothingSelected)),
+      );
+      return;
+    }
+    setState(() => _sending = true);
+    DataShareDto? created;
+    try {
+      created = await _backend.createDataShare(
+          friendId, _orderedKeys(_pickerCategories));
+    } catch (_) {
+      created = null;
+    }
+    if (!mounted) return;
+    setState(() => _sending = false);
+    if (created == null) {
+      _shareErrorSnack();
+      return;
+    }
+    // The create answer carries flat ids only; re-fetch so the
+    // pending row renders with the friend's name.
+    await _loadShares();
+    if (!mounted) return;
+    setState(() {
+      _pickerFriendId = null;
+      _pickerCategories.clear();
+    });
+  }
+
+  Future<void> _cancelPending(DataShareDto share) async {
+    // Juno §a5's Cancel request IS the sharer's revoke on a
+    // pending share (the server's revoke covers pending).
+    await _revokeShare(share);
+  }
+
+  Future<void> _confirmRevoke(DataShareDto share) async {
+    final name = share.otherNickname;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: NotelColors.surface,
+        title: Text(
+          ShareCopy.revokeConfirmTitle(name),
+          style: const TextStyle(
+            color: NotelColors.textPrimary,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: const Text(
+          ShareCopy.revokeConfirmBody,
+          style: TextStyle(color: NotelColors.textPrimary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text(
+              ShareCopy.revokeCancelButton,
+              style: TextStyle(color: NotelColors.textSecondary),
+            ),
+          ),
+          TextButton(
+            key: const ValueKey('confirm_stop_sharing'),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(
+              ShareCopy.revokeConfirmButton,
+              style: TextStyle(color: NotelColors.error),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _revokeShare(share);
+  }
+
+  Future<void> _revokeShare(DataShareDto share) async {
+    if (_shareBusy.contains(share.id)) return;
+    setState(() => _shareBusy.add(share.id));
+    var ok = false;
+    try {
+      ok = await _backend.revokeDataShare(share.id);
+    } catch (_) {
+      ok = false;
+    }
+    if (!mounted) return;
+    setState(() {
+      _shareBusy.remove(share.id);
+      if (ok) {
+        _outgoing = _outgoing
+            ?.map((s) => s.id == share.id
+                ? s.copyWith(status: 'revoked')
+                : s)
+            .toList();
+        _manageOpen.remove(share.id);
+      }
+    });
+    if (!ok) _shareErrorSnack();
+  }
+
+  Future<void> _toggleManageCategory(
+      DataShareDto share, String key, bool on) async {
+    final current =
+        _manageCategories[share.id] ?? share.categories.toSet();
+    final next = {...current};
+    if (on) {
+      next.add(key);
+    } else {
+      next.remove(key);
+    }
+    if (next.isEmpty) {
+      // The server rejects an empty set (Juno §a3's line is its
+      // error verbatim); ending a share is Stop sharing, not an
+      // empty category list.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(ShareCopy.nothingSelected)),
+      );
+      return;
+    }
+    setState(() => _manageCategories[share.id] = next);
+    var ok = false;
+    try {
+      ok = await _backend.updateDataShareCategories(
+          share.id, _orderedKeys(next));
+    } catch (_) {
+      ok = false;
+    }
+    if (!mounted) return;
+    if (ok) {
+      setState(() {
+        _outgoing = _outgoing
+            ?.map((s) => s.id == share.id
+                ? s.copyWith(categories: _orderedKeys(next))
+                : s)
+            .toList();
+      });
+    } else {
+      setState(() => _manageCategories[share.id] = current);
+      _shareErrorSnack();
+    }
+  }
+
+  Future<void> _respondIncoming(DataShareDto share, bool accept) async {
+    if (_shareBusy.contains(share.id)) return;
+    setState(() => _shareBusy.add(share.id));
+    var ok = false;
+    try {
+      ok = accept
+          ? await _backend.acceptDataShare(share.id)
+          : await _backend.declineDataShare(share.id);
+    } catch (_) {
+      ok = false;
+    }
+    if (!mounted) return;
+    setState(() {
+      _shareBusy.remove(share.id);
+      if (ok) {
+        _incoming = _incoming
+            ?.map((s) => s.id == share.id
+                ? s.copyWith(
+                    status: accept ? 'accepted' : 'declined',
+                    respondedAt: accept ? DateTime.now() : s.respondedAt)
+                : s)
+            .toList();
+        if (!accept) _declinedThisSession.add(share.id);
+      }
+    });
+    if (!ok) _shareErrorSnack();
+  }
+
+  static List<String> _orderedKeys(Set<String> keys) {
+    final list = keys.toList();
+    list.sort((a, b) => dataShareCategoryKeys
+        .indexOf(a)
+        .compareTo(dataShareCategoryKeys.indexOf(b)));
+    return list;
   }
 
   /// Resolves the Premium gate (see the widget docs). The
@@ -438,7 +913,585 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
       const SizedBox(height: 24),
       _HelpLinkRow(onTap: _openHelp),
       const SizedBox(height: 32),
+      ..._shareMyDataChildren(),
+      const SizedBox(height: 32),
+      ..._sharedWithYouChildren(),
+      const SizedBox(height: 32),
     ];
+  }
+
+  // ── Share my data (Juno §a) ──
+  // Renders only inside _premiumChildren (KNOWN Premium
+  // verdict). A failed shares load shows the honest error line
+  // and NO empty-state claim; the empty state renders only on a
+  // completed load.
+  List<Widget> _shareMyDataChildren() {
+    final children = <Widget>[
+      const _SectionLabel(ShareCopy.shareTitle),
+      const SizedBox(height: 8),
+      const Text(
+        ShareCopy.shareExplainer,
+        style: TextStyle(
+          color: NotelColors.textSecondary,
+          fontSize: 14,
+          height: 20 / 14,
+        ),
+      ),
+      const SizedBox(height: 16),
+    ];
+    if (!_sharesLoaded) {
+      if (_sharesLoadError != null) {
+        children.add(Text(
+          _sharesLoadError!,
+          style:
+              const TextStyle(color: NotelColors.error, fontSize: 13),
+        ));
+      } else {
+        children.add(const _LoadingRow());
+      }
+      return children;
+    }
+    final outgoing = _outgoing!;
+    final active =
+        outgoing.where((s) => s.isPending || s.isAccepted).toList();
+    if (active.isEmpty) {
+      children.add(const Padding(
+        padding: EdgeInsets.only(left: 4),
+        child: Text(
+          ShareCopy.noSharesEmpty,
+          style: TextStyle(
+            color: Color(0x807A8FAF),
+            fontSize: 14,
+            height: 20 / 14,
+          ),
+        ),
+      ));
+      children.add(const SizedBox(height: 16));
+    } else {
+      for (var i = 0; i < active.length; i++) {
+        if (i > 0) children.add(const SizedBox(height: 12));
+        children.add(active[i].isPending
+            ? _pendingShareCard(active[i])
+            : _acceptedShareCard(active[i]));
+      }
+      children.add(const SizedBox(height: 16));
+    }
+    children.addAll(_pickerChildren());
+    return children;
+  }
+
+  Widget _pendingShareCard(DataShareDto share) {
+    final name = share.otherNickname;
+    return _ShareCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            ShareCopy.pendingLabel(name),
+            style: const TextStyle(
+              color: NotelColors.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            ShareCopy.pendingExplainer(name),
+            style: const TextStyle(
+              color: NotelColors.textSecondary,
+              fontSize: 13,
+              height: 18 / 13,
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              key: ValueKey('cancel_share_${share.id}'),
+              onPressed: _shareBusy.contains(share.id)
+                  ? null
+                  : () => _cancelPending(share),
+              style: TextButton.styleFrom(
+                minimumSize: const Size(48, 48),
+                foregroundColor: NotelColors.error,
+              ),
+              child: const Text(ShareCopy.cancelRequestLabel),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _acceptedShareCard(DataShareDto share) {
+    final name = share.otherNickname;
+    final open = _manageOpen.contains(share.id);
+    final lastRead = _lastReadFor(share);
+    return _ShareCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  name,
+                  style: const TextStyle(
+                    color: NotelColors.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              TextButton(
+                key: ValueKey('manage_share_${share.id}'),
+                onPressed: () => setState(() {
+                  if (open) {
+                    _manageOpen.remove(share.id);
+                  } else {
+                    _manageOpen.add(share.id);
+                    _manageCategories[share.id] =
+                        share.categories.toSet();
+                  }
+                }),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(48, 48),
+                ),
+                child: Text(open ? 'Done' : 'Manage'),
+              ),
+            ],
+          ),
+          Text(
+            lastRead,
+            style: const TextStyle(
+              color: NotelColors.textSecondary,
+              fontSize: 12,
+              height: 16 / 12,
+            ),
+          ),
+          if (open) ...[
+            const SizedBox(height: 8),
+            Text(
+              ShareCopy.manageHeading(name),
+              style: const TextStyle(
+                color: NotelColors.textPrimary,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const _SectionLabel(ShareCopy.toggleHeading),
+            const Text(
+              ShareCopy.toggleSubline,
+              style: TextStyle(
+                color: NotelColors.textSecondary,
+                fontSize: 13,
+                height: 18 / 13,
+              ),
+            ),
+            const SizedBox(height: 4),
+            for (final cat in ShareCopy.categories)
+              SwitchListTile(
+                key: ValueKey('manage_cat_${share.id}_${cat.$1}'),
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  cat.$2,
+                  style: const TextStyle(
+                    color: NotelColors.textPrimary,
+                    fontSize: 14,
+                  ),
+                ),
+                value: (_manageCategories[share.id] ??
+                        share.categories.toSet())
+                    .contains(cat.$1),
+                onChanged: _shareBusy.contains(share.id)
+                    ? null
+                    : (v) => _toggleManageCategory(share, cat.$1, v),
+              ),
+            Text(
+              ShareCopy.turnOnNote(name),
+              style: const TextStyle(
+                color: NotelColors.textSecondary,
+                fontSize: 13,
+                height: 18 / 13,
+              ),
+            ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                key: ValueKey('stop_sharing_${share.id}'),
+                onPressed: _shareBusy.contains(share.id)
+                    ? null
+                    : () => _confirmRevoke(share),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(48, 48),
+                  foregroundColor: NotelColors.error,
+                ),
+                child: const Text(ShareCopy.revokeLabel),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Juno §a7: the latest read for this share's friend, or the
+  /// never-read line. The endpoint returns one row per
+  /// (recipient, category); the line shows the most recent.
+  String _lastReadFor(DataShareDto share) {
+    final name = share.otherNickname;
+    final rows = (_lastReads ?? const <ShareLastReadDto>[])
+        .where((r) =>
+            r.recipientId == share.otherId && r.readAt != null)
+        .toList()
+      ..sort((a, b) => b.readAt!.compareTo(a.readAt!));
+    if (rows.isEmpty) return ShareCopy.neverReadLine(name);
+    final latest = rows.first;
+    return ShareCopy.lastReadLine(
+      name,
+      ShareCopy.categoryName(latest.category),
+      _formatShareWhen(latest.readAt!),
+    );
+  }
+
+  List<Widget> _pickerChildren() {
+    final friends = _friends!;
+    final children = <Widget>[
+      const _SectionLabel(ShareCopy.pickerHeading),
+      const Padding(
+        padding: EdgeInsets.only(left: 4),
+        child: Text(
+          ShareCopy.pickerSubline,
+          style: TextStyle(
+            color: NotelColors.textSecondary,
+            fontSize: 13,
+            height: 18 / 13,
+          ),
+        ),
+      ),
+      const SizedBox(height: 8),
+    ];
+    if (friends.isEmpty) {
+      children.add(const Padding(
+        padding: EdgeInsets.only(left: 4),
+        child: Text(
+          ShareCopy.pickerEmpty,
+          style: TextStyle(
+            color: Color(0x807A8FAF),
+            fontSize: 14,
+            height: 20 / 14,
+          ),
+        ),
+      ));
+      return children;
+    }
+    // Picker population is fetchFriendsList() output exactly —
+    // accepted friends by construction (the server's friends
+    // table). FriendDto.status is a hardcoded server literal and
+    // is never filtered or labelled on.
+    final sharedIds = (_outgoing ?? const <DataShareDto>[])
+        .where((s) => s.isPending || s.isAccepted)
+        .map((s) => s.otherId)
+        .toSet();
+    for (final friend in friends) {
+      if (sharedIds.contains(friend.id)) continue;
+      children.add(_ShareCard(
+        child: InkWell(
+          key: ValueKey('pick_friend_${friend.id}'),
+          onTap: () => setState(() {
+            if (_pickerFriendId == friend.id) {
+              _pickerFriendId = null;
+            } else {
+              _pickerFriendId = friend.id;
+              _pickerCategories.clear();
+            }
+          }),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    friend.nickname,
+                    style: const TextStyle(
+                      color: NotelColors.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                Icon(
+                  _pickerFriendId == friend.id
+                      ? Icons.expand_less
+                      : Icons.expand_more,
+                  color: NotelColors.textSecondary,
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ));
+      children.add(const SizedBox(height: 8));
+      if (_pickerFriendId == friend.id) {
+        children.addAll(_categoryStepChildren());
+        children.add(const SizedBox(height: 8));
+      }
+    }
+    return children;
+  }
+
+  List<Widget> _categoryStepChildren() {
+    return [
+      const _SectionLabel(ShareCopy.categoryStepHeading),
+      const Padding(
+        padding: EdgeInsets.only(left: 4),
+        child: Text(
+          ShareCopy.categoryStepSubline,
+          style: TextStyle(
+            color: NotelColors.textSecondary,
+            fontSize: 13,
+            height: 18 / 13,
+          ),
+        ),
+      ),
+      const SizedBox(height: 4),
+      for (final cat in ShareCopy.categories)
+        SwitchListTile(
+          key: ValueKey('pick_cat_${cat.$1}'),
+          contentPadding: EdgeInsets.zero,
+          title: Text(
+            cat.$2,
+            style: const TextStyle(
+              color: NotelColors.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          subtitle: Text(
+            cat.$3,
+            style: const TextStyle(
+              color: NotelColors.textSecondary,
+              fontSize: 12,
+              height: 16 / 12,
+            ),
+          ),
+          value: _pickerCategories.contains(cat.$1),
+          onChanged: (v) => setState(() {
+            if (v) {
+              _pickerCategories.add(cat.$1);
+            } else {
+              _pickerCategories.remove(cat.$1);
+            }
+          }),
+        ),
+      const SizedBox(height: 8),
+      // Juno §a4: the honesty block sits directly above the send
+      // button, every time.
+      const Text(
+        ShareCopy.thirdPartyLine,
+        style: TextStyle(
+          color: NotelColors.textSecondary,
+          fontSize: 13,
+          height: 18 / 13,
+        ),
+      ),
+      const SizedBox(height: 8),
+      const Text(
+        ShareCopy.cantPullBackLine,
+        style: TextStyle(
+          color: NotelColors.textSecondary,
+          fontSize: 13,
+          height: 18 / 13,
+        ),
+      ),
+      const SizedBox(height: 12),
+      SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          key: const ValueKey('send_share_request'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: NotelColors.primary,
+            foregroundColor: const Color(0xFF0A0A0E),
+            minimumSize: const Size(64, 48),
+          ),
+          onPressed: _sending ? null : _sendShare,
+          child: const Text(
+            ShareCopy.sendLabel,
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ),
+      ),
+    ];
+  }
+
+  // ── Shared with you (Juno §b) ──
+  List<Widget> _sharedWithYouChildren() {
+    final children = <Widget>[
+      const _SectionLabel(ShareCopy.sharedWithYouTitle),
+      const SizedBox(height: 8),
+    ];
+    if (!_sharesLoaded) {
+      if (_sharesLoadError != null) {
+        children.add(Text(
+          _sharesLoadError!,
+          style:
+              const TextStyle(color: NotelColors.error, fontSize: 13),
+        ));
+      } else {
+        children.add(const _LoadingRow());
+      }
+      return children;
+    }
+    final incoming = _incoming!;
+    final pending = incoming.where((s) => s.isPending).toList();
+    final accepted = incoming.where((s) => s.isAccepted).toList();
+    final declined = incoming
+        .where((s) =>
+            s.status == 'declined' &&
+            _declinedThisSession.contains(s.id))
+        .toList();
+    var first = true;
+    for (final share in pending) {
+      if (!first) children.add(const SizedBox(height: 12));
+      first = false;
+      children.add(_incomingOfferCard(share));
+    }
+    for (final share in accepted) {
+      if (!first) children.add(const SizedBox(height: 12));
+      first = false;
+      children.add(_activeIncomingCard(share));
+    }
+    for (final share in declined) {
+      if (!first) children.add(const SizedBox(height: 12));
+      first = false;
+      children.add(Padding(
+        padding: const EdgeInsets.only(left: 4),
+        child: Text(
+          ShareCopy.declinedLine(share.otherNickname),
+          style: const TextStyle(
+            color: NotelColors.textSecondary,
+            fontSize: 13,
+            height: 18 / 13,
+          ),
+        ),
+      ));
+    }
+    return children;
+  }
+
+  Widget _incomingOfferCard(DataShareDto share) {
+    final name = share.otherNickname;
+    final cats = ShareCopy.categoryList(share.categories);
+    return _ShareCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            ShareCopy.offerHeading(name),
+            style: const TextStyle(
+              color: NotelColors.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            ShareCopy.offerBody(name, cats),
+            style: const TextStyle(
+              color: NotelColors.textSecondary,
+              fontSize: 13,
+              height: 18 / 13,
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Juno §b2: both honesty lines directly above Accept.
+          Text(
+            ShareCopy.incomingThirdPartyLine(name),
+            style: const TextStyle(
+              color: NotelColors.textSecondary,
+              fontSize: 13,
+              height: 18 / 13,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            ShareCopy.incomingCantPullBackLine(name),
+            style: const TextStyle(
+              color: NotelColors.textSecondary,
+              fontSize: 13,
+              height: 18 / 13,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                key: ValueKey('decline_share_${share.id}'),
+                onPressed: _shareBusy.contains(share.id)
+                    ? null
+                    : () => _respondIncoming(share, false),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(48, 48),
+                  foregroundColor: NotelColors.textSecondary,
+                ),
+                child: const Text(ShareCopy.declineLabel),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                key: ValueKey('accept_share_${share.id}'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: NotelColors.primary,
+                  foregroundColor: const Color(0xFF0A0A0E),
+                  minimumSize: const Size(64, 48),
+                ),
+                onPressed: _shareBusy.contains(share.id)
+                    ? null
+                    : () => _respondIncoming(share, true),
+                child: const Text(
+                  ShareCopy.acceptLabel,
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _activeIncomingCard(DataShareDto share) {
+    final since = share.respondedAt ?? share.createdAt;
+    return _ShareCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            share.otherNickname,
+            style: const TextStyle(
+              color: NotelColors.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            ShareCopy.activeRowLine(
+              ShareCopy.categoryList(share.categories),
+              since == null ? '' : _formatShareDate(since),
+            ),
+            style: const TextStyle(
+              color: NotelColors.textSecondary,
+              fontSize: 12,
+              height: 16 / 12,
+            ),
+          ),
+          // NOTE: no recipient-side remove/end-share action is
+          // surfaced — it has no signed copy (Juno flag 8).
+        ],
+      ),
+    );
   }
 
   /// Juno §c Premium state — rendered only on a KNOWN
@@ -713,6 +1766,66 @@ class _HelpLinkRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Card chrome for the sharing sections — the connection rows'
+/// surface card (20dp radius, hairline border).
+class _ShareCard extends StatelessWidget {
+  final Widget child;
+  const _ShareCard({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: NotelColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: NotelColors.surfaceHigh.withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        // Material so the SwitchListTiles / InkWells inside
+        // paint their ink on this card, not the scaffold behind
+        // the DecoratedBox (the ListTile-background assertion).
+        child: Material(color: Colors.transparent, child: child),
+      ),
+    );
+  }
+}
+
+/// Juno §a7's {when} rule: `today` / `yesterday` for the last
+/// two days; `on {weekday}` within the last 7 days;
+/// `on {Month D, YYYY}` for anything older. Calendar days are
+/// compared device-local.
+String _formatShareWhen(DateTime readAt, {DateTime? now}) {
+  final n = now ?? DateTime.now();
+  final today = DateTime(n.year, n.month, n.day);
+  final readDay = DateTime(readAt.year, readAt.month, readAt.day);
+  final days = today.difference(readDay).inDays;
+  if (days <= 0) return 'today';
+  if (days == 1) return 'yesterday';
+  if (days < 7) {
+    const weekdays = [
+      '', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday',
+      'Saturday', 'Sunday'
+    ];
+    return 'on ${weekdays[readAt.weekday]}';
+  }
+  return 'on ${_formatShareDate(readAt)}';
+}
+
+/// `{Month D, YYYY}` in full (e.g. "November 9, 2026") — Juno
+/// §a7/§b3's long form, NOT the abbreviated house format.
+String _formatShareDate(DateTime d) {
+  const months = [
+    '', 'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November',
+    'December'
+  ];
+  return '${months[d.month]} ${d.day}, ${d.year}';
 }
 
 /// `MMM d, yyyy` (e.g. "Nov 22, 2026"), device-local — the app's
