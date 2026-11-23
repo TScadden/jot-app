@@ -29,10 +29,8 @@
 ///   the night has no sleep data or its prior history is too
 ///   sparse for a need estimate
 ///   (evaluateSleepNight's own ≥7-prior-nights rule).
-/// - HRV (weight [weightHrv] = 35): today's `hrvRmssdMs` (RMSSD —
-///   the literature's canonical short-term HRV metric; within-
-///   person baseline interpretation is the research-standard
-///   approach) vs the baseline MEDIAN, as a percent deviation
+/// - HRV (weight [weightHrv] = 35): today's HRV value vs the
+///   baseline MEDIAN, as a percent deviation
 ///   `dev = (today − median) / median × 100`, mapped piecewise-
 ///   linearly through the anchors
 ///       dev ≤ −40% → 0 · dev = 0% → 70 · dev ≥ +25% → 100
@@ -40,6 +38,23 @@
 ///   Slopes: 1.75 points per % below baseline, 1.2 per % above.
 ///   Unavailable when today has no HRV value or the baseline has
 ///   fewer than [baselineMinDays] days.
+///   SERIES (chunk 7, founder decision e-3 — Option 1): the input
+///   series is the day's OWN, keyed off the data, never off a UI
+///   or platform context: a day carrying `hrvRmssdMs` (Android /
+///   Health Connect) scores from RMSSD against an RMSSD-only
+///   baseline — the original computation, unchanged; a day
+///   carrying ONLY `hrvSdnnMs` (iOS / HealthKit, which has no
+///   RMSSD) scores from SDNN against an SDNN-only baseline, with
+///   the SAME weight, anchors, baseline window and minimum —
+///   the only difference is the input series. The two series are
+///   NEVER mixed: no conversion factor exists or is applied, and
+///   a baseline never borrows days from the other series, so
+///   after a platform switch the HRV component stays unavailable
+///   until [baselineMinDays] days of the new series exist
+///   (baselines rebuild on switch). A day carrying BOTH series
+///   scores from RMSSD (the Android precedence: the RMSSD path
+///   is the proven one, and both-present can only arise from a
+///   cross-platform merge of the same date).
 /// - Resting HR (weight [weightRestingHr] = 25): today's
 ///   `restingHrBpm` vs the baseline median, INVERTED (below
 ///   baseline scores higher), same anchor style:
@@ -288,6 +303,15 @@ class DailyScoreComputation {
   final int? sleepNeedMinutes;
   final double? hrvMs;
   final double? hrvBaselineMs;
+
+  /// True when [hrvMs] / [hrvBaselineMs] came from the SDNN
+  /// series (chunk 7): the day carried only `hrvSdnnMs`, so the
+  /// HRV component scored SDNN against the user's own SDNN
+  /// baseline. False for RMSSD-sourced computations and whenever
+  /// the HRV component is unavailable. Display surfaces key the
+  /// "HRV (SDNN)" label off this (live computations) or off
+  /// [scoreHrvCameFromSdnn] (persisted rows).
+  final bool hrvFromSdnn;
   final int? restingHrBpm;
   final double? restingHrBaselineBpm;
 
@@ -301,6 +325,7 @@ class DailyScoreComputation {
     this.sleepNeedMinutes,
     this.hrvMs,
     this.hrvBaselineMs,
+    this.hrvFromSdnn = false,
     this.restingHrBpm,
     this.restingHrBaselineBpm,
   });
@@ -350,15 +375,38 @@ DailyScoreComputation? computeDailyScore(
     sleepNeedMinutes = night.needMinutes;
   }
 
-  // HRV: today's value vs the baseline median.
+  // HRV: today's value vs the baseline median, from the day's
+  // OWN series (chunk 7 — see the SERIES note in the file
+  // header). RMSSD present → the original computation, exactly
+  // as before chunk 7. RMSSD absent and SDNN present → the same
+  // computation over the SDNN series, with the baseline drawn
+  // ONLY from SDNN days. The gate keys off the DATA (which
+  // series the day and its history carry), so every caller —
+  // foreground screens, the refresher, the post-capture engine,
+  // and the Android WorkManager background runner (which has no
+  // iOS counterpart; iOS scores are computed in-app through this
+  // same entry) — gets the platform-correct series with no
+  // platform context passed in.
   double? hrvScore;
   double? hrvBaseline;
+  double? hrvValue;
+  var hrvFromSdnn = false;
   if (row.hrvRmssdMs != null) {
     final baseline =
         _baselineValues(days, date, (d) => d.hrvRmssdMs);
     if (baseline != null) {
       hrvBaseline = medianOf(baseline);
+      hrvValue = row.hrvRmssdMs;
       hrvScore = scoreHrvComponent(row.hrvRmssdMs!, hrvBaseline);
+    }
+  } else if (row.hrvSdnnMs != null) {
+    final baseline =
+        _baselineValues(days, date, (d) => d.hrvSdnnMs);
+    if (baseline != null) {
+      hrvBaseline = medianOf(baseline);
+      hrvValue = row.hrvSdnnMs;
+      hrvFromSdnn = true;
+      hrvScore = scoreHrvComponent(row.hrvSdnnMs!, hrvBaseline);
     }
   }
 
@@ -399,12 +447,26 @@ DailyScoreComputation? computeDailyScore(
     dailyExact: weightedSum / weightTotal,
     asleepMinutes: asleepMinutes,
     sleepNeedMinutes: sleepNeedMinutes,
-    hrvMs: hrvScore == null ? null : row.hrvRmssdMs,
+    hrvMs: hrvScore == null ? null : hrvValue,
     hrvBaselineMs: hrvBaseline,
+    hrvFromSdnn: hrvFromSdnn,
     restingHrBpm: restingHrScore == null ? null : row.restingHrBpm,
     restingHrBaselineBpm: restingHrBaseline,
   );
 }
+
+/// Whether a PERSISTED score's HRV component was SDNN-sourced
+/// (chunk 7). The persisted record itself carries no series
+/// marker (the component fields and `algorithmVersion` predate
+/// the SDNN adaptation and do not distinguish the series), but
+/// the row's own data determines it exactly under the scoring
+/// rule above: the HRV component contributed ([DailyBiometrics
+/// .scoreHrv] non-null), the day carries SDNN, and it carries
+/// NO RMSSD (an RMSSD-carrying day always scores from RMSSD).
+/// Display surfaces use this to label a persisted day
+/// "HRV (SDNN)" truthfully from local data.
+bool scoreHrvCameFromSdnn(DailyBiometrics row) =>
+    row.scoreHrv != null && row.hrvRmssdMs == null && row.hrvSdnnMs != null;
 
 /// Drives score computation over a [HealthHistoryStore]: computes
 /// every stored day that does not yet hold a score and whose

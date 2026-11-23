@@ -70,6 +70,20 @@ void main() {
         'paints stored scored days while the snapshot is still pending; '
         'pre-paint body is a loading indicator, not a blank',
         (tester) async {
+      // C3 fallout fix: the lengthened how-it-works paragraph
+      // pushes the first history row out of the ListView's
+      // initial build window at the default 800x600 surface.
+      // Enlarge the surface HEIGHT only (width unchanged, so
+      // text wrapping and layout are unchanged in kind) so the
+      // row is in the initial build window. No scrolling is
+      // used: this test asserts what is painted while the
+      // snapshot is still pending, and a lazy ListView builds
+      // from the data it already holds — a row absent from the
+      // data cannot be brought into existence by a taller
+      // window, so the paint-timing semantics are untouched.
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
       final store = await _seededStore(scoreIt: true);
       final gate = Completer<bool>();
       await tester.pumpWidget(MaterialApp(
@@ -99,6 +113,17 @@ void main() {
         'repaints when the snapshot lands: a day the capture brings in '
         'is scored by the real chain and appears without reopening',
         (tester) async {
+      // C3 fallout fix: same taller-surface mechanism as the
+      // test above (height only, width unchanged). The
+      // pre-completion findsNothing check below still runs
+      // against the unscrolled tree: enlarging the window
+      // cannot create a row the data does not contain, so
+      // Oct 16 stays absent until the capture actually lands;
+      // after it lands, the scored row is in the initial build
+      // window of the repaint with no scrolling involved.
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
       // Priors are scored; Oct 16 itself is NOT in the store yet.
       final store = _fakeStore(_FakeStore());
       await store.mergeRefresh([
@@ -142,6 +167,18 @@ void main() {
         'order pin: a past day computeMissingScores would score does NOT '
         'appear before the snapshot completes and DOES after',
         (tester) async {
+      // C3 fallout fix: same taller-surface mechanism as
+      // above (height only, width unchanged). Crucially NO
+      // scrolling is used anywhere in this test: the negative
+      // half of the pin — Oct 16 does NOT appear before the
+      // snapshot completes — runs against the unscrolled tree
+      // exactly as before (a taller window cannot create a
+      // row the unscored data does not contain), and the
+      // positive half after completion finds the row in the
+      // repaint's initial build window.
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
       final store = await _seededStore(scoreIt: false);
       final gate = Completer<bool>();
       await tester.pumpWidget(MaterialApp(
@@ -170,6 +207,16 @@ void main() {
     testWidgets(
         'a background chain failure keeps the painted stored days up',
         (tester) async {
+      // C3 fallout fix: same taller-surface mechanism as
+      // above (height only, width unchanged, no scrolling).
+      // The assertion is that the stored days painted first
+      // stay up after the chain fails; a lazy ListView builds
+      // from the data it already holds, so a taller initial
+      // build window changes only whether the already-painted
+      // row is built, never what the data contains.
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
       final store = await _seededStore(scoreIt: true);
       await tester.pumpWidget(MaterialApp(
         home: DailyScoreScreen(

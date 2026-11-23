@@ -541,9 +541,14 @@ void main() {
       // body, verbatim — supersedes the C4 draft wording.
       expect(
         find.text(
-            'Each day is compared with your own recent baseline: the most recent 28 days with data before it. Sleep counts 40%, HRV 35%, and resting heart rate 25%, counting only the parts with at least 7 baseline days. HRV is measured as RMSSD, among the most-studied signals in physiology. A day is scored once and does not change on its own. You can refresh a day from its detail screen.'),
+            'Each day is compared with your own recent baseline: the most recent 28 days with data before it. Sleep counts 40%, HRV 35%, and resting heart rate 25%, counting only the parts with at least 7 baseline days. HRV is measured as RMSSD on Android and as SDNN on iPhone, two of the most-studied signals in physiology; the two are never mixed, and each day is compared only with earlier days measured the same way. A day is scored once and does not change on its own. You can refresh a day from its detail screen.'),
         findsOneWidget,
       );
+      // The C3-lengthened how-it-works paragraph pushes the
+      // first history row below the ListView's initial build
+      // window; scroll it into view before asserting on it.
+      await tester.scrollUntilVisible(find.text('Fri, Oct 16'), 200);
+      await tester.pump();
       // Newest scored day first: Oct 16, 2026 was a Friday.
       expect(find.text('Fri, Oct 16'), findsOneWidget);
       expect(find.text('100'), findsWidgets);

@@ -16,9 +16,16 @@ import 'package:tabs_lab/src/data/health_history_sync.dart';
 /// - the iOS capture leg writes SDNN days into `hrvSdnnMs` ONLY;
 ///   the Android capture never calls the SDNN read and never
 ///   writes the field;
-/// - the score gate: `daily_score.dart` computes its HRV component
-///   solely from `hrvRmssdMs` — an SDNN-only day yields a null HRV
-///   component (SDNN scoring vs personal baselines is chunk 7).
+/// - the score gate AS OF CHUNK 4: `daily_score.dart` computed
+///   its HRV component solely from `hrvRmssdMs` — an SDNN-only
+///   day yielded a null HRV component. CHUNK 7 EVOLUTION
+///   (disclosed in the chunk-7 PR body): the gate is now
+///   series-keyed — an SDNN-only day scores from SDNN when an
+///   SDNN baseline exists, and still yields a null HRV component
+///   when it does not (a baseline never borrows the other
+///   series). The gate group below pins the evolved truth; the
+///   full chunk-7 behavior lives in
+///   `healthkit_sdnn_score_chunk7_test.dart`.
 
 class MemorySecureStore implements SecureStore {
   final Map<String, String> map = {};
@@ -286,7 +293,7 @@ void main() {
     });
   });
 
-  group('the score gate (chunk 4 regression)', () {
+  group('the score gate (chunk 4 regression, evolved by chunk 7)', () {
     Map<String, DailyBiometrics> daysWithTarget(DailyBiometrics target) {
       final days = <String, DailyBiometrics>{};
       for (var i = 10; i <= 19; i++) {
@@ -302,8 +309,8 @@ void main() {
       return days;
     }
 
-    test('an SDNN-only day yields hrvRmssdMs == null and a null HRV '
-        'score component', () {
+    test('an SDNN-only day with NO SDNN baseline yields '
+        'hrvRmssdMs == null and a null HRV score component', () {
       const target = DailyBiometrics(
         date: '2026-11-20',
         sleepMinutes: 480,
@@ -314,10 +321,16 @@ void main() {
       expect(days['2026-11-20']!.hrvRmssdMs, isNull);
       final computation = computeDailyScore(days, '2026-11-20');
       expect(computation, isNotNull);
-      // The HRV component is absent even though a full RMSSD
-      // baseline exists: SDNN cannot reach the score in this chunk.
+      // CHUNK 7 EVOLUTION (disclosed in the chunk-7 PR body):
+      // this fixture's baseline days carry RMSSD only, so the
+      // SDNN-only target has NO SDNN baseline — and a baseline
+      // never borrows the other series, so the HRV component is
+      // still absent. (Pre-chunk-7 this asserted SDNN could
+      // never reach the score at all; with an SDNN baseline the
+      // same day now scores — pinned in the chunk-7 test file.)
       expect(computation!.hrvScore, isNull);
       expect(computation.hrvMs, isNull);
+      expect(computation.hrvFromSdnn, isFalse);
       // The other components still compute (the null-component
       // reweighting carries the day).
       expect(computation.sleepScore, isNotNull);
@@ -339,15 +352,20 @@ void main() {
       expect(computation.hrvMs, 40.0);
     });
 
-    test('source pins: daily_score.dart reads RMSSD only; the capture '
-        'site carries the settled chunk-7 decision', () {
+    test('source pins: daily_score.dart reads BOTH series (chunk 7 '
+        'wired); the capture site records the wiring', () {
       final scoreSource =
           File('lib/src/data/daily_score.dart').readAsStringSync();
       expect(scoreSource, contains('hrvRmssdMs'));
-      expect(scoreSource, isNot(contains('hrvSdnnMs')));
+      // Chunk 7 evolution: the pre-chunk-7 pin asserted
+      // daily_score.dart did NOT contain hrvSdnnMs; the SDNN
+      // adaptation is exactly that string arriving, gated to
+      // SDNN-only days.
+      expect(scoreSource, contains('hrvSdnnMs'));
       final syncSource =
           File('lib/src/data/health_history_sync.dart').readAsStringSync();
       expect(syncSource, contains('SETTLED DECISION (chunk 7)'));
+      expect(syncSource, contains('SDNN SCORING WIRED (chunk 7)'));
       expect(syncSource, contains('hrvSdnnMs'));
     });
   });

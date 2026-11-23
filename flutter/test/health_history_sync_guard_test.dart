@@ -322,6 +322,22 @@ void main() {
     testWidgets(
         'score history renders its rows even though the snapshot '
         'read never completes', (tester) async {
+      // C3 fallout fix: the lengthened how-it-works paragraph
+      // pushes the first history row (which carries the '82'
+      // score face) out of the ListView's initial build window
+      // at the default 800x600 surface. Enlarge the surface
+      // HEIGHT only (width unchanged, so text wrapping and
+      // layout are unchanged in kind) so the row is in the
+      // initial build window. Scrolling is not used here:
+      // find.text('82') matches many rows (every seeded day
+      // scores 82), so scrollUntilVisible has no unique target,
+      // and this test's point — rows render from store truth
+      // despite the wedged read — is about presence in the
+      // data, which a taller window cannot fabricate: a row
+      // absent from the store cannot appear in any window.
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
       final store = await seededStore(_FakeStore());
       await tester.pumpWidget(MaterialApp(
         home: DailyScoreScreen(

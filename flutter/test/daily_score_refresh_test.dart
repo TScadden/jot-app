@@ -644,11 +644,18 @@ void main() {
               'baseline: the most recent 28 days with data before '
               'it. Sleep counts 40%, HRV 35%, and resting heart rate '
               '25%, counting only the parts with at least 7 baseline '
-              'days. HRV is measured as RMSSD, among the most-studied '
-              'signals in physiology. A day is scored once and does '
-              'not change on its own. You can refresh a day from its '
-              'detail screen.'),
+              'days. HRV is measured as RMSSD on Android and as SDNN '
+              'on iPhone, two of the most-studied signals in '
+              'physiology; the two are never mixed, and each day is '
+              'compared only with earlier days measured the same '
+              'way. A day is scored once and does not change on its '
+              'own. You can refresh a day from its detail screen.'),
           findsOneWidget);
+      // The C3-lengthened how-it-works paragraph pushes the
+      // target row below the ListView's initial build window;
+      // scroll it into view before asserting on / tapping it.
+      await tester.scrollUntilVisible(find.text('Fri, Oct 16'), 200);
+      await tester.pump();
       // Target row first (newest scored), showing 62 before.
       expect(find.text('Fri, Oct 16'), findsOneWidget);
       expect(find.text('62'), findsWidgets);
@@ -961,6 +968,11 @@ void main() {
       expect(snapshotCalls, greaterThanOrEqualTo(1));
       expect(forces, everyElement(isFalse)); // never forced here
       expect((await store.readAll())[_target]!.dailyScore, 70);
+      // The C3-lengthened how-it-works paragraph pushes the
+      // first history row below the ListView's initial build
+      // window; scroll it into view before asserting on it.
+      await tester.scrollUntilVisible(find.text('Fri, Oct 16'), 200);
+      await tester.pump();
       expect(find.text('Fri, Oct 16'), findsOneWidget);
     });
 

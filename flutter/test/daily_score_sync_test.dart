@@ -1267,6 +1267,15 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump();
+      // The C3-lengthened how-it-works paragraph pushes the
+      // first history row below the ListView's initial build
+      // window; scroll it into view before asserting on it
+      // (same fix as the sibling history tests in PR #143).
+      // This is a positive presence assertion only — a row
+      // absent from the hydrated data could not be scrolled
+      // into existence.
+      await tester.scrollUntilVisible(find.text('Fri, Oct 16'), 200);
+      await tester.pump();
       // The hydrated day renders in the history.
       expect(find.text('Fri, Oct 16'), findsOneWidget);
       expect(find.text('83'), findsWidgets);

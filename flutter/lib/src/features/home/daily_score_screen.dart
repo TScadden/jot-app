@@ -86,10 +86,14 @@ class _ScoredDay {
 
 /// Which components contributed to a persisted score, as plain
 /// component names — derived from the non-null component fields,
-/// which is exactly the record the engine wrote.
+/// which is exactly the record the engine wrote. The HRV name
+/// carries its series (chunk 7): an SDNN-sourced component (see
+/// [scoreHrvCameFromSdnn]) reads "HRV (SDNN)"; RMSSD-sourced
+/// reads "HRV (RMSSD)".
 List<String> contributedComponentNames(DailyBiometrics row) => [
       if (row.scoreSleep != null) 'Sleep',
-      if (row.scoreHrv != null) 'HRV',
+      if (row.scoreHrv != null)
+        scoreHrvCameFromSdnn(row) ? 'HRV (SDNN)' : 'HRV (RMSSD)',
       if (row.scoreRestingHr != null) 'Resting heart rate',
     ];
 
@@ -405,7 +409,7 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
           ),
           SizedBox(height: 4),
           Text(
-            'Each day is compared with your own recent baseline: the most recent 28 days with data before it. Sleep counts 40%, HRV 35%, and resting heart rate 25%, counting only the parts with at least 7 baseline days. HRV is measured as RMSSD, among the most-studied signals in physiology. A day is scored once and does not change on its own. You can refresh a day from its detail screen.',
+            'Each day is compared with your own recent baseline: the most recent 28 days with data before it. Sleep counts 40%, HRV 35%, and resting heart rate 25%, counting only the parts with at least 7 baseline days. HRV is measured as RMSSD on Android and as SDNN on iPhone, two of the most-studied signals in physiology; the two are never mixed, and each day is compared only with earlier days measured the same way. A day is scored once and does not change on its own. You can refresh a day from its detail screen.',
             style: TextStyle(fontSize: 13, color: NotelColors.textSecondary),
           ),
         ],
@@ -1208,7 +1212,7 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
               _componentRow(
                 icon: Icons.graphic_eq,
                 tint: NotelColors.primary,
-                name: 'HRV (RMSSD)',
+                name: _hrvComponentName(row),
                 componentScore: row.scoreHrv,
                 detail: _hrvDetail(row),
                 chip: hrvChip,
@@ -1357,17 +1361,41 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
         '${formatSleepMinutes(c.sleepNeedMinutes!)} need';
   }
 
+  /// The HRV component's name for this day, series-aware
+  /// (chunk 7): "HRV (SDNN)" when the day's HRV component is
+  /// SDNN-sourced — per the live computation when it scored the
+  /// component, else per the persisted row (see
+  /// [scoreHrvCameFromSdnn]) — and "HRV (RMSSD)" otherwise, the
+  /// name this row has always carried. A day that did NOT score
+  /// its HRV component but carries ONLY SDNN data (no RMSSD)
+  /// still reads "HRV (SDNN)": its sole HRV series is SDNN,
+  /// regardless of whether the component counted.
+  String _hrvComponentName(DailyBiometrics row) {
+    final c = _computation;
+    final sdnn = (c != null && c.hrvScore != null)
+        ? c.hrvFromSdnn
+        : scoreHrvCameFromSdnn(row) ||
+            (row.hrvRmssdMs == null && row.hrvSdnnMs != null);
+    return sdnn ? 'HRV (SDNN)' : 'HRV (RMSSD)';
+  }
+
   String _hrvDetail(DailyBiometrics row) {
+    // The day's HRV value in whichever series it carries
+    // (chunk 7: an SDNN-scored day has no RMSSD value — the
+    // pre-chunk-7 code dereferenced hrvRmssdMs unconditionally
+    // here and would have thrown on such a day).
+    final value = row.hrvRmssdMs ?? row.hrvSdnnMs;
     if (row.scoreHrv == null) {
-      return row.hrvRmssdMs == null
+      return value == null
           ? 'No HRV reading stored for this day.'
           : 'Not counted: the baseline needs 7 earlier days.';
     }
     final c = _computation;
+    final shown = c?.hrvMs ?? value;
     if (c?.hrvBaselineMs == null) {
-      return '${row.hrvRmssdMs!.toStringAsFixed(1)} ms.';
+      return '${shown!.toStringAsFixed(1)} ms.';
     }
-    return '${row.hrvRmssdMs!.toStringAsFixed(1)} ms · '
+    return '${shown!.toStringAsFixed(1)} ms · '
         'your baseline ${_formatBaseline(c!.hrvBaselineMs!)} ms';
   }
 
