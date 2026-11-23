@@ -3,9 +3,13 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/billing_service.dart';
+import 'package:tabs_lab/src/data/med_scan.dart';
 import 'package:tabs_lab/src/data/medication_change_events.dart';
 import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/features/tools/med_scan_confirm_sheet.dart';
+import 'package:tabs_lab/src/features/tools/med_scan_screen.dart';
+import 'package:tabs_lab/src/features/tools/med_scan_strings.dart';
 import 'package:tabs_lab/src/features/tools/medication_timeline_screen.dart';
 import 'package:tabs_lab/src/features/tools/medication_timeline_strings.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
@@ -326,11 +330,13 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
   /// mode; the save appends exactly one row through
   /// [MedicationDocument.addEntry] and pushes through the same
   /// serialized splice-back path as archive/edit.
-  Future<void> _showAddMedicationDialog() async {
+  Future<void> _showAddMedicationDialog(
+      {String? prefillName, String? prefillDose}) async {
     if (_writing) return;
     final result = await showDialog<_MedicationEditResult>(
       context: context,
-      builder: (_) => const _MedicationEditDialog.add(),
+      builder: (_) => _MedicationEditDialog.add(
+          initialName: prefillName, initialDose: prefillDose),
     );
     if (result == null || !mounted) return;
     final id = generateMedicationUuid();
@@ -343,6 +349,75 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
           id: id,
           now: now,
         ));
+  }
+
+  /// Med Scan (Nov 22, 2026) — "Scan medication": barcode or
+  /// label photo identifies the medication (see
+  /// `data/med_scan.dart` for the privacy shape: barcode digits
+  /// go to public drug lookups only; the label photo is read
+  /// on-device and never uploaded). A scan NEVER saves on its
+  /// own: an identified proposal goes through the confirm sheet
+  /// first, and the confirmed save routes through EXACTLY the
+  /// manual paths — [MedicationDocument.addEntry] with a fresh
+  /// [generateMedicationUuid] for an add (same as
+  /// [_showAddMedicationDialog]), and a fresh-document
+  /// re-resolve + [MedicationDocument.editEntry] for an update
+  /// (same as [_showEditDialog]). Not identified → the normal
+  /// manual add dialog, prefilled with any usable OCR text.
+  Future<void> _startMedScan() async {
+    if (_writing) return;
+    final result = await Navigator.of(context).push<MedScanFlowResult>(
+      SlidePageRoute(
+        reducedMotion: animationsDisabled(context),
+        builder: (_) => const MedScanScreen(),
+      ),
+    );
+    if (result == null || !mounted) return;
+    final proposal = result.proposal;
+    if (proposal == null) {
+      await _showAddMedicationDialog(
+          prefillName: result.prefillName, prefillDose: result.prefillDose);
+      return;
+    }
+    final match = findConfidentMedicationMatch(proposal.name, _doc.entries);
+    final request = await showMedScanConfirmSheet(
+      context,
+      proposal: proposal,
+      matchedEntry: match,
+    );
+    if (request == null || !mounted) return;
+    final now = DateTime.now();
+    if (request.updateExisting && request.target != null) {
+      final target = request.target!;
+      final hint = _rawIndexHint(target);
+      await _mutateDoc((fresh) {
+        final freshTarget = fresh.resolveFreshEntry(target, rawIndexHint: hint);
+        if (freshTarget == null) return null;
+        return fresh.editEntry(
+          freshTarget,
+          name: request.name,
+          dose: request.dose,
+          // The scan flow has no frequency field: an update
+          // keeps the entry's own frequency (the manual edit
+          // dialog likewise seeds from the stored value).
+          frequency: freshTarget.frequency,
+          startDate: request.startDate,
+          endDate: freshTarget.endDate,
+          now: now,
+        );
+      });
+    } else {
+      final id = generateMedicationUuid();
+      await _mutateDoc((fresh) => fresh.addEntry(
+            name: request.name,
+            dose: request.dose,
+            // Native add default, as in the manual add dialog.
+            frequency: 'Once daily',
+            startDate: request.startDate,
+            id: id,
+            now: now,
+          ));
+    }
   }
 
   /// Round 48D2 — archived-card permanent delete: native has
@@ -642,6 +717,12 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                   backgroundColor: NotelColors.primary,
                   disabledBackgroundColor:
                       NotelColors.surfaceHigh.withValues(alpha: 0.4),
+                  // Med Scan capture pass (Nov 22, 2026): the
+                  // header row overflowed by ~10px at 360dp with
+                  // the app's real font (title column + this
+                  // button); tighter horizontal padding restores
+                  // the fit with no visible change.
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
@@ -683,38 +764,89 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
             ),
           ],
           const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              key: const ValueKey('add_medication'),
-              onPressed: _writing ? null : _showAddMedicationDialog,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: NotelColors.surfaceHigh,
-                disabledBackgroundColor: NotelColors.surfaceHigh,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.add,
-                    size: 16,
-                    color: NotelColors.textPrimary,
-                  ),
-                  SizedBox(width: 6),
-                  Text(
-                    'Add Medication',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: NotelColors.textPrimary,
+          // Add + Scan side by side (Med Scan, Nov 22, 2026):
+          // the scan entry shares the add row so the card's
+          // height — and everything the list lays out below it —
+          // is unchanged from the pre-scan layout.
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton(
+                  key: const ValueKey('add_medication'),
+                  onPressed: _writing ? null : _showAddMedicationDialog,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: NotelColors.surfaceHigh,
+                    disabledBackgroundColor: NotelColors.surfaceHigh,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                ],
+                  // ScaleDown: at 360dp the half-width buttons
+                  // are narrower than the labels' natural width
+                  // in the app's real font — the content scales
+                  // a touch instead of overflowing (capture
+                  // pass, Nov 22, 2026).
+                  child: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.add,
+                          size: 16,
+                          color: NotelColors.textPrimary,
+                        ),
+                        SizedBox(width: 6),
+                        Text(
+                          'Add Medication',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: NotelColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton(
+                  key: const ValueKey('scan_medication'),
+                  onPressed: _writing ? null : _startMedScan,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.qr_code_scanner,
+                          size: 16,
+                          color: NotelColors.textPrimary,
+                        ),
+                        SizedBox(width: 6),
+                        Text(
+                          MedScanStrings.scanButtonLabel,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: NotelColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           const Text(
@@ -1145,9 +1277,20 @@ class _MedicationEditResult {
 class _MedicationEditDialog extends StatefulWidget {
   final MedicationEntry? med;
 
-  const _MedicationEditDialog({required this.med});
+  /// Add mode only (Med Scan, Nov 22, 2026): name/dose prefills
+  /// from a label photo that yielded usable text but no
+  /// confident identification (Juno §5) — the user still
+  /// confirms/edits every field in this dialog before anything
+  /// saves.
+  final String? initialName;
+  final String? initialDose;
 
-  const _MedicationEditDialog.add() : med = null;
+  const _MedicationEditDialog({required this.med})
+      : initialName = null,
+        initialDose = null;
+
+  const _MedicationEditDialog.add({this.initialName, this.initialDose})
+      : med = null;
 
   @override
   State<_MedicationEditDialog> createState() =>
@@ -1173,12 +1316,13 @@ class _MedicationEditDialogState extends State<_MedicationEditDialog> {
   @override
   void initState() {
     super.initState();
-    _name = TextEditingController(text: _med?.name ?? '');
+    _name = TextEditingController(
+        text: _med?.name ?? widget.initialName ?? '');
     // Native: a stored "As prescribed" dose opens as an empty
     // field (exact match), forcing a real dose before Save.
     _dose = TextEditingController(
         text: _med == null
-            ? ''
+            ? (widget.initialDose ?? '')
             : (_med!.dose == 'As prescribed' ? '' : _med!.dose));
     // Edit seeds from the stored frequency (display view: an
     // empty raw frequency shows as "Once daily"); add seeds
