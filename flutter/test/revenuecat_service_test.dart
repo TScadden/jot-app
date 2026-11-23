@@ -517,7 +517,7 @@ void main() {
       expect(find.textContaining('Google Play'), findsNothing);
       expect(
           find.text('Subscriptions are purchased through Google Play '
-              'in the Tabs app. The Flutter Lab cannot start a '
+              'in the Tabs app. This build cannot start a '
               'subscription yet.'),
           findsNothing);
     });

@@ -147,7 +147,6 @@ class _MembershipOnboardingScreenState
             ),
           ),
           content: const Text(
-            // TODO_JUNO: iOS twin of the Lab dialog below.
             'Subscriptions are purchased through the App Store in the '
             'Tabs app. This build cannot start a subscription yet.',
             style: TextStyle(color: NotelColors.textSecondary),
@@ -179,7 +178,7 @@ class _MembershipOnboardingScreenState
         ),
         content: const Text(
           'Subscriptions are purchased through Google Play in the Tabs '
-          'app. The Flutter Lab cannot start a subscription yet.',
+          'app. This build cannot start a subscription yet.',
           style: TextStyle(color: NotelColors.textSecondary),
         ),
         actions: [

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// Round 19 — voice input for the Quick Log details field.
@@ -16,6 +17,16 @@ class VoiceInput {
   static const MethodChannel _channel =
       MethodChannel('com.notel.notel.playground.flutter/voice');
 
+  /// Whether voice input can work on this platform. The recognizer
+  /// handler exists only in Android's MainActivity.kt — iOS has no
+  /// handler registered, so every call there throws
+  /// [MissingPluginException]. Surfaces consult this gate and hide
+  /// their mic affordances where it is false (Juno pre-submission
+  /// sweep, Nov 22, 2026). When an iOS handler is built, this getter
+  /// is the only Dart change needed.
+  static bool get isSupported =>
+      defaultTargetPlatform == TargetPlatform.android;
+
   /// Launches the system voice recognizer and returns the recognized
   /// text. Throws [VoiceInputException] with a visible `[CODE]` on any
   /// failure (no recognizer app, cancelled, empty result, timeout).
@@ -32,7 +43,7 @@ class VoiceInput {
           e.message ?? 'Voice input failed.');
     } on MissingPluginException {
       throw const VoiceInputException(
-          'Voice input is not available in this build.');
+          'Voice input is not available on this device.');
     }
   }
 }

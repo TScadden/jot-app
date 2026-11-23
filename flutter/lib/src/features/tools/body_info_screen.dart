@@ -1282,11 +1282,14 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
                   onSubmitted: (_) => _submitWorkoutText(),
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.mic, color: _workoutColor),
-                tooltip: 'Speak your workout',
-                onPressed: _loggingWorkout ? null : _voiceWorkout,
-              ),
+              // Voice input has no iOS handler — hide the mic where
+              // VoiceInput.isSupported is false (Juno sweep A-S3).
+              if (VoiceInput.isSupported)
+                IconButton(
+                  icon: const Icon(Icons.mic, color: _workoutColor),
+                  tooltip: 'Speak your workout',
+                  onPressed: _loggingWorkout ? null : _voiceWorkout,
+                ),
               IconButton(
                 icon: _loggingWorkout
                     ? const SizedBox(
