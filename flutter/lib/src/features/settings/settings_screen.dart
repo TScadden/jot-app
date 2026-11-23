@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -48,6 +49,7 @@ import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/widgets/user_avatar.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
 
 /// Dark ink on a primary fill (native LegacyDarkChipInk) — the in-app
@@ -2321,6 +2323,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return [
       _sectionLabel('USER PROFILE'),
       _card([
+        // Profile picture (founder direction, Nov 23, 2026): the
+        // user's current pick at 72px, or the initials fallback
+        // when none is picked. Settings state carries no account
+        // id (identity here is nickname + tag), so the fallback is
+        // nickname initials on NotelColors.primary. The button
+        // opens the picker; a pick saves immediately (no separate
+        // save button) through _pushProfile({'avatarId': id}).
+        //
+        // Juno a11y ruling: the card avatar carries ONE semantics
+        // label — "Profile picture: {Name}", or "Profile picture:
+        // not set" on the initials fallback — and the image/initial
+        // inside is excluded so nothing reads twice.
+        Center(
+          child: Semantics(
+            container: true,
+            image: true,
+            label: avatarOptionForId(d.avatarId) != null
+                ? 'Profile picture: ${avatarOptionForId(d.avatarId)!.name}'
+                : 'Profile picture: not set',
+            child: ExcludeSemantics(
+              child: UserAvatar(
+                key: const ValueKey('profile_avatar'),
+                avatarId: d.avatarId.isEmpty ? null : d.avatarId,
+                size: 72,
+                fallback: _profileInitialsAvatar(d.nickname),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            key: const ValueKey('edit_profile_picture_button'),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: NotelColors.surfaceHigh,
+                foregroundColor: NotelColors.textPrimary,
+                // R49 SE6/S2: 48dp height (stock default is 40).
+                minimumSize: const Size(64, 48)),
+            onPressed: _showAvatarPicker,
+            // Juno copy ruling (Nov 23, 2026): Title Case, matching
+            // this card's existing 'Edit Profile' button.
+            child: const Text('Edit Profile Picture',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ),
+        const SizedBox(height: 16),
         Row(
           children: [
             const Icon(Icons.face, color: NotelColors.primary, size: 28),
@@ -2740,6 +2789,77 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     // Not disposed here: the dialog's exit transition still builds
     // the field after showDialog returns (dispose-after-use crash).
+  }
+
+  /// The Settings profile card's no-picture fallback: nickname
+  /// initials (first two letters, uppercased; '?' when the nickname
+  /// has no letters — the Community friendAvatarInitials rule) on
+  /// NotelColors.primary. Settings state carries no account id to
+  /// hash a palette color from, so the brand primary is the color.
+  Widget _profileInitialsAvatar(String nickname) {
+    final letters = <String>[];
+    for (final ch in nickname.split('')) {
+      if (RegExp(r'\p{L}', unicode: true).hasMatch(ch)) {
+        letters.add(ch);
+        if (letters.length == 2) break;
+      }
+    }
+    return Container(
+      width: 72,
+      height: 72,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        color: NotelColors.primary,
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        letters.isEmpty ? '?' : letters.join().toUpperCase(),
+        style: const TextStyle(
+          fontSize: 26,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+
+  /// Saves a picked profile picture immediately through the single
+  /// profile-push choke point. Local state is applied ONLY on
+  /// success, so a failed push leaves the shown picture untouched —
+  /// and _pushProfile's own failure path reloads from the server,
+  /// so the card can never show a picture the server did not
+  /// accept (Juno rollback condition, Nov 23, 2026). Only catalog
+  /// ids can reach this call: the picker offers exactly the 15
+  /// contract ids and there is no free-form path.
+  Future<bool> _pickAvatar(String avatarId) async {
+    final ok = await _pushProfile({'avatarId': avatarId});
+    if (ok && mounted) {
+      setState(() => _data = _data.copyWith(avatarId: avatarId));
+      // Juno ruling (Nov 23, 2026): on CONFIRMED save the only
+      // added success signal is this accessibility announcement —
+      // no snackbar/toast; the closing picker + updated card are
+      // the visual feedback.
+      unawaited(SemanticsService.sendAnnouncement(
+        View.of(context),
+        'Profile picture saved.',
+        TextDirection.ltr,
+      ));
+    }
+    return ok;
+  }
+
+  /// The profile-picture picker (founder direction, Nov 23, 2026):
+  /// a dialog in the Settings dialog pattern, grid of all 15
+  /// catalog icons, the current pick ringed + checked. Tapping a
+  /// cell saves immediately — there is no separate save button.
+  Future<void> _showAvatarPicker() async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => _AvatarPickerDialog(
+        currentAvatarId: _data.avatarId,
+        onPick: _pickAvatar,
+      ),
+    );
   }
 
   Future<void> _showEditProfileDialog() async {
@@ -7173,6 +7293,158 @@ class _ThresholdFieldState extends State<_ThresholdField> {
             ),
             onSubmitted: _submit,
           ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The profile-picture picker dialog (Nov 23, 2026): all 15
+/// catalog icons in a 3-column circular grid; the current pick is
+/// ringed in the brand primary with a check badge. A tap saves
+/// immediately through [onPick] (the Settings _pushProfile choke
+/// point): the dialog closes only when the save lands, so a failed
+/// save leaves the picker open over the unchanged card picture
+/// while _pushProfile's own snack surfaces the failure. While a
+/// save is in flight the cells are inert, so a double-tap cannot
+/// push twice.
+///
+/// Juno copy (byte-exact): title 'Choose a Profile Picture'
+/// (heading), helper line 'Tap a picture to save it. Your friends
+/// will see it next to your name.' directly under the title.
+/// Juno a11y: each cell is ONE focusable element whose label is
+/// the display name only; selection rides the platform selected
+/// flag; the artwork inside is excluded from semantics.
+class _AvatarPickerDialog extends StatefulWidget {
+  final String currentAvatarId;
+  final Future<bool> Function(String avatarId) onPick;
+
+  const _AvatarPickerDialog({
+    required this.currentAvatarId,
+    required this.onPick,
+  });
+
+  @override
+  State<_AvatarPickerDialog> createState() => _AvatarPickerDialogState();
+}
+
+class _AvatarPickerDialogState extends State<_AvatarPickerDialog> {
+  bool _saving = false;
+
+  Future<void> _tap(AvatarOption option) async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    final ok = await widget.onPick(option.id);
+    if (!mounted) return;
+    if (ok) {
+      Navigator.of(context).pop();
+    } else {
+      setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: NotelColors.surface,
+      title: Semantics(
+        header: true,
+        child: const Text('Choose a Profile Picture',
+            style: TextStyle(
+                color: NotelColors.textPrimary,
+                fontWeight: FontWeight.bold)),
+      ),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Tap a picture to save it. Your friends will see it next to your name.',
+                style: TextStyle(
+                    color: NotelColors.textSecondary, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: kAvatarCatalog.length,
+                gridDelegate:
+                    const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                ),
+                itemBuilder: (ctx, i) {
+                  final option = kAvatarCatalog[i];
+                  final selected = option.id == widget.currentAvatarId;
+                  return Semantics(
+                    button: true,
+                    selected: selected,
+                    label: option.name,
+                    child: InkWell(
+                      key: ValueKey('avatar_option_${option.id}'),
+                      customBorder: const CircleBorder(),
+                      onTap: _saving ? null : () => _tap(option),
+                      child: ExcludeSemantics(
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.all(3),
+                              child: ClipOval(
+                                child: Image.asset(
+                                  option.asset,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            ),
+                            if (selected)
+                              Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: NotelColors.primary,
+                                    width: 3,
+                                  ),
+                                ),
+                              ),
+                            if (selected)
+                              Positioned(
+                                right: 0,
+                                bottom: 0,
+                                child: Container(
+                                  width: 22,
+                                  height: 22,
+                                  decoration: const BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: NotelColors.primary,
+                                  ),
+                                  child: const Icon(
+                                    Icons.check,
+                                    size: 14,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel',
+              style: TextStyle(color: NotelColors.textSecondary)),
         ),
       ],
     );

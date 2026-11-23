@@ -2941,6 +2941,12 @@ class FriendDto {
   final int gemBalance;
   final int currentStreak;
 
+  /// Profile picture (Nov 23, 2026): the friend's picked avatar id
+  /// (`avatar_01`..`avatar_15`) from the friends list row's
+  /// `avatarId` key. Null when the row carries no usable id — the
+  /// row then renders its initials fallback, exactly as before.
+  final String? avatarId;
+
   const FriendDto({
     required this.id,
     required this.nickname,
@@ -2949,9 +2955,11 @@ class FriendDto {
     required this.level,
     this.gemBalance = 0,
     this.currentStreak = 0,
+    this.avatarId,
   });
 
   factory FriendDto.fromJson(Map<String, dynamic> json) {
+    final rawAvatarId = json['avatarId'];
     return FriendDto(
       id: '${json['id'] ?? ''}',
       nickname: '${json['nickname'] ?? ''}',
@@ -2963,10 +2971,20 @@ class FriendDto {
           TabsBackend._asInt(json['gemBalance'] ?? json['gem_balance']) ??
               0,
       currentStreak: TabsBackend._asInt(json['currentStreak']) ?? 0,
+      // Tolerant, mirroring the rest of this parser: only a
+      // non-empty string is a picture id; anything else is none.
+      avatarId: (rawAvatarId is String && rawAvatarId.trim().isNotEmpty)
+          ? rawAvatarId
+          : null,
     );
   }
 
-  FriendDto copyWith({int? gemBalance, int? currentStreak, int? level}) {
+  FriendDto copyWith({
+    int? gemBalance,
+    int? currentStreak,
+    int? level,
+    String? avatarId,
+  }) {
     return FriendDto(
       id: id,
       nickname: nickname,
@@ -2975,6 +2993,7 @@ class FriendDto {
       level: level ?? this.level,
       gemBalance: gemBalance ?? this.gemBalance,
       currentStreak: currentStreak ?? this.currentStreak,
+      avatarId: avatarId ?? this.avatarId,
     );
   }
 }

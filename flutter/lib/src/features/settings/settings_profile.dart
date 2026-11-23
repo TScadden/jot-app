@@ -36,6 +36,12 @@ class SettingsProfileData {
   final bool devAccess;
   final String nickname;
   final String tag;
+
+  /// The user's picked profile picture (Nov 23, 2026): one of
+  /// `avatar_01`..`avatar_15` from the pull profile map's
+  /// `avatarId` key, or '' when no picture is picked — surfaces
+  /// then render their initials fallback, exactly as before.
+  final String avatarId;
   final String userContext;
   final String knowledgeBase;
   final String professionalUpdates;
@@ -100,6 +106,7 @@ class SettingsProfileData {
     this.devAccess = false,
     this.nickname = '',
     this.tag = '',
+    this.avatarId = '',
     this.userContext = '',
     this.knowledgeBase = '',
     this.professionalUpdates = '',
@@ -159,6 +166,7 @@ class SettingsProfileData {
   SettingsProfileData copyWith({
     String? nickname,
     String? tag,
+    String? avatarId,
     String? userContext,
     String? knowledgeBase,
     String? professionalUpdates,
@@ -190,6 +198,7 @@ class SettingsProfileData {
       devAccess: devAccess,
       nickname: nickname ?? this.nickname,
       tag: tag ?? this.tag,
+      avatarId: avatarId ?? this.avatarId,
       userContext: userContext ?? this.userContext,
       knowledgeBase: knowledgeBase ?? this.knowledgeBase,
       professionalUpdates: professionalUpdates ?? this.professionalUpdates,
@@ -250,6 +259,7 @@ class SettingsProfileData {
       isUnlimited: body['isUnlimited'] == true || isAdmin,
       nickname: _asString(body['nickname']),
       tag: _asString(body['tag']),
+      avatarId: p['avatarId'] is String ? p['avatarId'] as String : '',
       userContext: _asString(p['userContext']),
       knowledgeBase: _asString(p['knowledgeBase']),
       professionalUpdates: _asString(p['professionalUpdates']),
