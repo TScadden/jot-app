@@ -625,7 +625,9 @@ class _HeartScreenState extends State<HeartScreen> {
           IconButton(
             onPressed: widget.onShowSleep,
             icon: const Icon(Icons.bedtime,
-                size: 24, color: NotelColors.textSecondary),
+                size: 24,
+                color: NotelColors.textSecondary,
+                semanticLabel: 'Sleep'),
             tooltip: 'Sleep',
           ),
           if (connected == true)
