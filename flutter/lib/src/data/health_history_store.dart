@@ -81,10 +81,10 @@ class DailyBiometrics {
   /// different measurements and no conversion factor between them
   /// exists or may be invented. Written ONLY by the iOS capture
   /// leg (from `readHrvSdnnSamples` with `attributeDailySdnn`);
-  /// Android capture never writes it. In this chunk it is
-  /// DATA-ONLY: `daily_score.dart` reads [hrvRmssdMs] alone, so an
-  /// SDNN-only day has no HRV score component (the SDNN scoring
-  /// adaptation is chunk 7). Serialization adds the `hrvSdnnMs`
+  /// Android capture never writes it. Since chunk 7 the Daily
+  /// Score's HRV component reads this field for SDNN-only days
+  /// (scored against an SDNN-only personal baseline; the series
+  /// are never mixed — see `daily_score.dart`). Serialization adds the `hrvSdnnMs`
   /// key only when present; blobs written before this field
   /// existed parse with it null (migration-safe).
   final double? hrvSdnnMs;

@@ -325,8 +325,9 @@ class HealthHistorySync {
   /// - sleep + deep: full window 90 days (`readSleepHistory`)
   /// - HRV: ONE range read (`readHrvSamples`) over 90 days until
   ///   the backfill completes, 31 days after (iOS instead runs the
-  ///   SDNN data-only leg — `readHrvSdnnSamples` into `hrvSdnnMs`
-  ///   only; see the platform-split HRV leg in the method body)
+  ///   SDNN leg — `readHrvSdnnSamples` into `hrvSdnnMs` only,
+  ///   scored by the chunk-7 SDNN adaptation in `daily_score.dart`;
+  ///   see the platform-split HRV leg in the method body)
   ///   (see
   ///   [HealthHistoryStore.hrvBackfillComplete]: the window is
   ///   keyed off that persisted flag — set only by a CLEAN HRV
@@ -563,27 +564,32 @@ class HealthHistorySync {
       int? hrvDayCount;
       var hrvReadClean = false;
       if (_hc.isIOS) {
-        // ── iOS: SDNN data-only (design §5, BINDING) ────────────
+        // ── iOS: SDNN (design §5, BINDING) ──────────────────────
         //
         // SETTLED DECISION (chunk 7): the Daily Score's iOS HRV
-        // component will be scored from SDNN against the user's
-        // own personal baselines (series never mixed with RMSSD,
-        // baselines rebuilt on platform switch). That adaptation
-        // is chunk 7, a separate PR. THIS chunk stores SDNN only:
-        // SDNN days write into `hrvSdnnMs` ONLY, `hrvRmssdMs`
-        // stays null on iOS, and `daily_score.dart` keeps
-        // computing its HRV component solely from `hrvRmssdMs` —
-        // so an SDNN-only day has NO HRV score component here.
+        // component is scored from SDNN against the user's own
+        // personal baselines (series never mixed with RMSSD,
+        // baselines rebuilt on platform switch).
+        // SDNN SCORING WIRED (chunk 7): `daily_score.dart` reads
+        // `hrvSdnnMs` for SDNN-only days, against a baseline
+        // drawn only from SDNN days — so an SDNN-only day WITH
+        // ≥7 earlier SDNN days scores its HRV component, and one
+        // without an SDNN baseline has no HRV component (exactly
+        // like an Android day with no RMSSD baseline). Capture
+        // itself is unchanged from chunk 4: SDNN days write into
+        // `hrvSdnnMs` ONLY and `hrvRmssdMs` stays null on iOS.
         // No SDNN↔RMSSD conversion factor exists or is applied.
         //
         // Bookkeeping deliberately does NOT go through noteRead:
-        // SDNN never feeds the Daily Score in this chunk, so an
-        // SDNN partial must not set captureHadPartial (which would
-        // suppress the post-capture score compute for the sleep /
-        // resting-HR components SDNN cannot contaminate), and the
-        // RMSSD backfill flag / `hrv` diagnostics belong to the
-        // RMSSD leg alone. The SDNN leg records its own evidence
-        // and its own `sdnn` diagnostics entry instead.
+        // the RMSSD backfill flag / `hrv` diagnostics belong to
+        // the RMSSD leg alone, and the SDNN leg records its own
+        // evidence and its own `sdnn` diagnostics entry instead.
+        // One chunk-7 change: an SDNN PARTIAL now sets
+        // captureHadPartial (below) — SDNN feeds the score now,
+        // so a partial SDNN read gets the same B-02 protection
+        // as every other score-feeding leg (a partial capture
+        // must not write-once-lock past days missing the HRV
+        // component their failed chunks held).
         const sdnnWindowDays = 90;
         final sdnnToday = DateTime(now.year, now.month, now.day);
         final sdnnDates = <String>{
@@ -611,6 +617,13 @@ class HealthHistorySync {
             readSecurityException: false,
             partialCode: sdnnPartialCode,
           );
+          // Chunk 7: SDNN feeds the Daily Score now, so a
+          // partial SDNN read suppresses this capture's
+          // post-capture score compute like any other partial
+          // score-feeding leg (B-02 write-once protection).
+          if (sdnnPartialCode != null && sdnnPartialCode.isNotEmpty) {
+            captureHadPartial = true;
+          }
         }
         final dailySdnn = attributeDailySdnn(sdnnOutcome.value, sdnnDates);
         for (final entry in dailySdnn.entries) {
