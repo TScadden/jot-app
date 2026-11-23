@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/billing_service.dart';
 import 'package:tabs_lab/src/data/revenuecat_service.dart';
@@ -10,7 +12,9 @@ import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/heart/heart_screen.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/quicklog/quick_log_screen.dart';
+import 'package:tabs_lab/src/features/shell/heart_sleep_mode.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
+import 'package:tabs_lab/src/features/tools/sleep_screen.dart';
 import 'package:tabs_lab/src/features/tools/tools_screen.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/app_background.dart';
@@ -89,6 +93,10 @@ class MainShell extends StatefulWidget {
   /// Injectable for tests (Round 30 nav-labels preference source).
   final SettingsStore? settingsStore;
 
+  /// Injectable for tests (Heart/Sleep toggle, Nov 23, 2026): the
+  /// persisted heart-slot mode source.
+  final HeartSleepModeStore? heartSleepModeStore;
+
   /// The app-owned billing service (single instance), forwarded
   /// to Settings (pushed / tray routes via Home/Tools) — consumed
   /// there, never constructed or disposed by the shell or screens.
@@ -118,6 +126,7 @@ class MainShell extends StatefulWidget {
       this.healthConnectService,
       this.onLogout,
       this.settingsStore,
+      this.heartSleepModeStore,
       this.billingService,
       this.revenueCatService,
       this.graceController,
@@ -134,6 +143,16 @@ class _MainShellState extends State<MainShell>
   // cannot disagree. (The founder-reported wrong highlight lived one
   // level down, in NavDock's pill controller bounds; see nav_dock.dart.)
   DockTab _tab = DockTab.home;
+
+  // Heart/Sleep toggle (founder, Nov 23, 2026) — the mode of the
+  // DockTab.heart slot: heart (the Heart screen) or sleep (the Sleep
+  // screen, moved out of Tools). This field is the single source of
+  // truth: _screenFor renders the slot's screen from it and the dock
+  // renders the heart cell's glyph from it, so they cannot disagree.
+  // It starts at heart (the default) and the persisted value lands
+  // a frame later, exactly like the nav-labels preference above.
+  HeartSleepMode _heartSleepMode = HeartSleepMode.heart;
+  late final HeartSleepModeStore _heartSleepModeStore;
 
   // Round 40 — the two slide slots. `_slots[i]` is the tab whose
   // screen currently lives in slot i (null = empty). At rest exactly
@@ -205,6 +224,9 @@ class _MainShellState extends State<MainShell>
     _graceController.start();
     _settingsStore = widget.settingsStore ?? SettingsStore();
     _settingsStore.addListener(_onSettingsStoreChanged);
+    _heartSleepModeStore =
+        widget.heartSleepModeStore ?? HeartSleepModeStore();
+    _loadHeartSleepMode();
     // Dev-only app background (Nov 19, 2026): when the background
     // controller notifies, repaint the shell so the ACTIVE tab
     // body re-reads the resolved NotelColors.background token on
@@ -272,6 +294,26 @@ class _MainShellState extends State<MainShell>
     if (mounted && v != _showNavLabels) {
       setState(() => _showNavLabels = v);
     }
+  }
+
+  /// Heart/Sleep toggle — cold-start restore: the founder's last
+  /// mode is what the heart slot (and its dock glyph) shows when
+  /// they swipe out and back in.
+  Future<void> _loadHeartSleepMode() async {
+    final mode = await _heartSleepModeStore.loadMode();
+    if (mounted && mode != _heartSleepMode) {
+      setState(() => _heartSleepMode = mode);
+    }
+  }
+
+  /// Heart/Sleep toggle — a tap on either screen's switch button.
+  /// The mode flips in this setState (screen + dock glyph together)
+  /// and the write lands behind it; a failed write never breaks
+  /// the switch (the store swallows it).
+  void _setHeartSleepMode(HeartSleepMode mode) {
+    if (mode == _heartSleepMode) return;
+    setState(() => _heartSleepMode = mode);
+    unawaited(_heartSleepModeStore.saveMode(mode));
   }
 
   /// Drawer nav fade: Home's drawer reported a state change. A
@@ -375,11 +417,24 @@ class _MainShellState extends State<MainShell>
           key: const ValueKey('quicklog_screen'),
           weatherApi: widget.weatherApi,
         ),
-      DockTab.heart => HeartScreen(
-          key: const ValueKey('heart_screen'),
-          email: widget.email,
-          healthConnectService: widget.healthConnectService,
-        ),
+      // Heart/Sleep toggle (founder, Nov 23, 2026): the heart slot
+      // hosts Heart or Sleep by mode. Each screen gets the switch
+      // callback for its own toggle button; Sleep is hosted (no
+      // back button — there is nothing to pop to in the shell).
+      DockTab.heart => _heartSleepMode == HeartSleepMode.sleep
+          ? SleepScreen(
+              key: const ValueKey('sleep_screen'),
+              healthConnect: widget.healthConnectService,
+              onShowHeart: () =>
+                  _setHeartSleepMode(HeartSleepMode.heart),
+            )
+          : HeartScreen(
+              key: const ValueKey('heart_screen'),
+              email: widget.email,
+              healthConnectService: widget.healthConnectService,
+              onShowSleep: () =>
+                  _setHeartSleepMode(HeartSleepMode.sleep),
+            ),
     };
   }
 
@@ -486,6 +541,7 @@ class _MainShellState extends State<MainShell>
               child: NavDock(
                 selected: _tab,
                 showLabels: _showNavLabels,
+                heartSleepMode: _heartSleepMode,
                 onSelect: (tab) {
                   _selectTab(tab);
                   _refreshNavLabels();

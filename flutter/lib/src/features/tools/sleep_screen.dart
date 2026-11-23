@@ -158,8 +158,21 @@ class SleepScreen extends StatefulWidget {
   /// Null in production (built from [healthConnect]).
   final HealthHistoryQueries? historyQueries;
 
+  /// Heart/Sleep toggle (founder, Nov 23, 2026) — the shell-hosting
+  /// seam. Null (the default) is the legacy pushed behavior: a back
+  /// button that pops to Tools. Non-null means the shell hosts this
+  /// screen in the heart nav slot: there is nothing to pop to (a
+  /// pop would hit the root route), so the back button is omitted
+  /// and a heart button appears in the AppBar actions instead,
+  /// calling this to switch the slot back to the Heart screen.
+  final VoidCallback? onShowHeart;
+
   const SleepScreen(
-      {super.key, this.backend, this.healthConnect, this.historyQueries});
+      {super.key,
+      this.backend,
+      this.healthConnect,
+      this.historyQueries,
+      this.onShowHeart});
 
   @override
   State<SleepScreen> createState() => _SleepScreenState();
@@ -682,19 +695,26 @@ class _SleepScreenState extends State<SleepScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Heart/Sleep toggle: hosted by the shell (see [onShowHeart]).
+    final hosted = widget.onShowHeart != null;
     return Scaffold(
       backgroundColor: NotelColors.background,
       appBar: AppBar(
         backgroundColor: NotelColors.background,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back,
-            color: NotelColors.textPrimary,
-            semanticLabel: 'Back',
-          ),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        // Hosted: no back button and no implied one — the shell's
+        // root route is below, so a pop path must not exist here.
+        automaticallyImplyLeading: !hosted,
+        leading: hosted
+            ? null
+            : IconButton(
+                icon: const Icon(
+                  Icons.arrow_back,
+                  color: NotelColors.textPrimary,
+                  semanticLabel: 'Back',
+                ),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
         title: const Text(
           'Sleep Profile',
           style: TextStyle(
@@ -703,31 +723,43 @@ class _SleepScreenState extends State<SleepScreen> {
             color: NotelColors.textPrimary,
           ),
         ),
-        actions: _connected
-            ? [
-                IconButton(
-                  icon: const Icon(Icons.sync,
-                      color: NotelColors.textSecondary,
-                      semanticLabel: 'Sync'),
-                  onPressed: _refreshing ? null : _sync,
-                ),
-                if (!_isTodaySelected)
-                  IconButton(
-                    icon: const Icon(Icons.today,
-                        color: NotelColors.textSecondary,
-                        semanticLabel: 'Today'),
-                    onPressed: _refreshing
-                        ? null
-                        : () => _selectDate(_dateKey(DateTime.now())),
-                  ),
-                IconButton(
-                  icon: const Icon(Icons.calendar_month,
-                      color: NotelColors.textSecondary,
-                      semanticLabel: 'Select Date'),
-                  onPressed: _refreshing ? null : _pickDate,
-                ),
-              ]
-            : null,
+        actions: [
+          // Hosted only: the heart switch, mirroring the Heart
+          // screen's moon. ALWAYS visible when hosted — NOT gated
+          // on _connected, so the slot can be switched back in the
+          // not-connected state too.
+          if (hosted)
+            IconButton(
+              icon: const Icon(Icons.favorite,
+                  color: NotelColors.textSecondary,
+                  semanticLabel: 'Heart'),
+              tooltip: 'Heart',
+              onPressed: widget.onShowHeart,
+            ),
+          if (_connected) ...[
+            IconButton(
+              icon: const Icon(Icons.sync,
+                  color: NotelColors.textSecondary,
+                  semanticLabel: 'Sync'),
+              onPressed: _refreshing ? null : _sync,
+            ),
+            if (!_isTodaySelected)
+              IconButton(
+                icon: const Icon(Icons.today,
+                    color: NotelColors.textSecondary,
+                    semanticLabel: 'Today'),
+                onPressed: _refreshing
+                    ? null
+                    : () => _selectDate(_dateKey(DateTime.now())),
+              ),
+            IconButton(
+              icon: const Icon(Icons.calendar_month,
+                  color: NotelColors.textSecondary,
+                  semanticLabel: 'Select Date'),
+              onPressed: _refreshing ? null : _pickDate,
+            ),
+          ],
+        ],
       ),
       body: _loading
           ? const SkeletonGroup(

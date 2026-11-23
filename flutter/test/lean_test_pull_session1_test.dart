@@ -106,9 +106,11 @@ void main() {
     test('default tile list carries no lean-test tile', () {
       expect(defaultToolTiles.any((t) => t.id == 'lean_test'), isFalse);
       expect(defaultToolTiles.any((t) => t.title == leanS1Label), isFalse);
-      // 15 since added scope #7 (Nov 20, 2026) moved Community
+      // 14 since the Heart/Sleep toggle (Nov 23, 2026) moved
+      // Sleep out of Tools into the heart nav slot; 15 before
+      // that since added scope #7 (Nov 20, 2026) moved Community
       // out of Tools into the Home drawer (was 16).
-      expect(defaultToolTiles.length, 15);
+      expect(defaultToolTiles.length, 14);
     });
 
     test('a stale saved order cannot resurrect the tile', () {
@@ -116,7 +118,7 @@ void main() {
       // removed id; applyTileOrder drops unknown ids.
       final ordered =
           applyTileOrder(defaultToolTiles, ['lean_test', 'habits']);
-      expect(ordered.length, 15);
+      expect(ordered.length, 14);
       expect(ordered.any((t) => t.id == 'lean_test'), isFalse);
       expect(ordered.first.id, 'habits');
     });
