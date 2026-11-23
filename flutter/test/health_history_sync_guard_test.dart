@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:tabs_lab/src/data/daily_score.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/data/health_data.dart' show HrSample;
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_history_sync.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
@@ -80,6 +81,17 @@ class _NeverHc extends HealthConnectService {
   @override
   Future<List<({int t, double ms, int tier})>> readHrvSamples(int days) async =>
       const [];
+
+  // MCP HR-spike fix (Nov 23, 2026): the summary leg reads raw
+  // samples through the range read in 7-day chunks — model it as
+  // instantly-empty like every other non-wedged read here (an
+  // unmodelled channel read would make the chunk loop's round
+  // trips, not the wedged resting-HR read, the thing the pumps
+  // wait on).
+  @override
+  Future<HcReadOutcome<List<HrSample>>> readHrSamplesRangeWithOutcome(
+          {required int startMs, required int endMs}) async =>
+      HcReadOutcome(value: const []);
 }
 
 /// Resting-HR reads are gated on per-call completers the test
@@ -112,6 +124,13 @@ class _GatedHc extends HealthConnectService {
   @override
   Future<List<({int t, double ms, int tier})>> readHrvSamples(int days) async =>
       const [];
+
+  // See _NeverHc: the chunked summary leg's range read, modeled
+  // instantly-empty (Nov 23, 2026).
+  @override
+  Future<HcReadOutcome<List<HrSample>>> readHrSamplesRangeWithOutcome(
+          {required int startMs, required int endMs}) async =>
+      HcReadOutcome(value: const []);
 }
 
 /// Lets queued microtasks/async gaps run without advancing timers.

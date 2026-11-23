@@ -754,6 +754,10 @@ class HealthHistorySync {
       // stored summary with that understatement (the shipped
       // rationale, now per chunk). Chunk boundaries are local
       // midnights, so no day's samples ever split across chunks.
+      // The chunk reads run concurrently (see below), so the
+      // leg's worst-case duration stays one readTimeout — a
+      // fully wedged window degrades in ~30 s like the shipped
+      // leg, not in 26 sequential timeouts.
       //
       // The leg still deliberately does NOT go through noteRead:
       // the counts read above owns the `spikes` metric's
@@ -783,19 +787,37 @@ class HealthHistorySync {
       {
         final windowEnd =
             DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+        final ranges = <({int startMs, int endMs})>[];
         var chunkStart = windowEnd.subtract(Duration(days: spikeWindowDays));
         while (chunkStart.isBefore(windowEnd)) {
           var chunkEnd = chunkStart.add(const Duration(days: 7));
           if (chunkEnd.isAfter(windowEnd)) chunkEnd = windowEnd;
-          HcReadOutcome<List<HrSample>> chunkOutcome;
+          ranges.add((
+            startMs: chunkStart.millisecondsSinceEpoch,
+            endMs: chunkEnd.millisecondsSinceEpoch,
+          ));
+          chunkStart = chunkEnd;
+        }
+        // All chunk reads are issued CONCURRENTLY (each under
+        // the same per-read bound): the chunks are independent,
+        // and concurrency keeps the leg's worst-case duration at
+        // ONE readTimeout — the shipped leg's footprint — instead
+        // of one timeout per chunk stretching a wedged window's
+        // capture toward 26 × 30 s. Outcomes are applied in
+        // window order once all reads settle.
+        Future<HcReadOutcome<List<HrSample>>> readChunk(
+            ({int startMs, int endMs}) range) async {
           try {
-            chunkOutcome = await boundedRead(_hc.readHrSamplesRangeWithOutcome(
-                startMs: chunkStart.millisecondsSinceEpoch,
-                endMs: chunkEnd.millisecondsSinceEpoch));
+            return await boundedRead(_hc.readHrSamplesRangeWithOutcome(
+                startMs: range.startMs, endMs: range.endMs));
           } catch (_) {
-            chunkOutcome = HcReadOutcome<List<HrSample>>(
+            return HcReadOutcome<List<HrSample>>(
                 value: const [], errorCode: 'HR_SAMPLES_READ_FAILED');
           }
+        }
+
+        final outcomes = await Future.wait(ranges.map(readChunk));
+        for (final chunkOutcome in outcomes) {
           final chunkError = chunkOutcome.errorCode;
           final chunkFailed = chunkError != null && chunkError.isNotEmpty;
           final chunkPartialCode = chunkOutcome.partialCode;
@@ -829,7 +851,6 @@ class HealthHistorySync {
               );
             }
           }
-          chunkStart = chunkEnd;
         }
       }
       final String? spikeSummaryErrorCode =
