@@ -311,6 +311,7 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
             "readHrvSamples" -> readHrvSamples(call.argument<Int>("days"), result)
             "readSleepHistory" -> readSleepHistory(call.argument<Int>("days"), result)
             "readSpikeCounts" -> readSpikeCounts(call.argument<Int>("days"), result)
+            "readHrSamples" -> readHrSamples(call.argument<Int>("days"), result)
             "exportCsvFile" -> exportCsvFile(
                 call.argument<String>("fileName"),
                 call.argument<String>("content"),
@@ -1673,6 +1674,85 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                 )
             } catch (e: Exception) {
                 result.error("SPIKE_COUNTS_READ_FAILED", "Could not read heart rate spikes.", hcErrorDetails(e))
+            }
+        }
+    }
+
+    /// Raw intraday HR samples over [tomorrowStart − days,
+    /// tomorrowStart), shipped faithfully for Dart to reduce
+    /// (MCP spike-data package, Nov 23, 2026 — the range companion
+    /// to readSpikeCounts, mirroring readHrvSamples' chunking and
+    /// partial envelope: 31-day chunks, paginated; a chunk failure
+    /// degrades to {items, partialError} unless EVERY chunk
+    /// failed). Mock-origin records are excluded exactly as in
+    /// readSpikeCounts (nonMock), so the Dart spike summary and
+    /// the bridge spike count walk the SAME sample set and agree
+    /// by construction. Samples ship RAW (bpm as recorded,
+    /// including any ≤ 0 failed reads): the zero rule is Dart's
+    /// (computeDailyHrSpikeSummary), like every other Dart-side
+    /// reduction.
+    private fun readHrSamples(days: Int?, result: MethodChannel.Result) {
+        val client = hcClientOrError(result) ?: return
+        val n = (days ?: 30).coerceIn(1, 365)
+        engineScope.launch {
+            val zone = ZoneId.systemDefault()
+            val end = ZonedDateTime.now(zone).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
+            val start = end.minus(n.toLong(), ChronoUnit.DAYS)
+            val samples = mutableListOf<Pair<Long, Int>>()
+            val chunkErrors = mutableListOf<String>()
+            var chunkCount = 0
+            var chunkEnd = end
+            while (chunkEnd.isAfter(start)) {
+                val chunkStart = maxOf(start, chunkEnd.minus(31, ChronoUnit.DAYS))
+                chunkCount++
+                try {
+                    var pageToken: String? = null
+                    do {
+                        val response = client.readRecords(
+                            ReadRecordsRequest(
+                                recordType = HeartRateRecord::class,
+                                timeRangeFilter = TimeRangeFilter.between(chunkStart, chunkEnd),
+                                pageToken = pageToken
+                            )
+                        )
+                        for (record in nonMock(response.records)) {
+                            for (sample in record.samples) {
+                                samples.add(
+                                    sample.time.toEpochMilli() to
+                                        sample.beatsPerMinute.toInt()
+                                )
+                            }
+                        }
+                        pageToken = response.pageToken
+                    } while (pageToken != null)
+                } catch (e: Exception) {
+                    chunkErrors.add(hcErrorDetails(e))
+                }
+                chunkEnd = chunkStart
+            }
+            if (chunkErrors.size == chunkCount) {
+                result.error(
+                    "HR_SAMPLES_READ_FAILED",
+                    "Could not read heart rate samples.",
+                    chunkErrors.first()
+                )
+                return@launch
+            }
+            try {
+                val sorted = samples.sortedBy { it.first }
+                    .map { (t, bpm) -> mapOf("t" to t, "bpm" to bpm) }
+                if (chunkErrors.isEmpty()) {
+                    result.success(sorted)
+                } else {
+                    result.success(
+                        mapOf(
+                            "items" to sorted,
+                            "partialError" to chunkErrors.first()
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                result.error("HR_SAMPLES_READ_FAILED", "Could not read heart rate samples.", hcErrorDetails(e))
             }
         }
     }
