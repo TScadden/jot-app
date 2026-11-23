@@ -355,11 +355,13 @@ class HealthHistorySync {
   /// - spikes: 180 days until the spike backfill completes,
   ///   31 days on routine captures after that (`readSpikeCounts`
   ///   is the expensive raw-sample compute). The same pass also
-  ///   range-reads the raw HR samples over the same window
-  ///   (`readHrSamples`) and computes each day's spike summary
-  ///   (max + when, minutes over 100/120, top-5 events) in Dart —
-  ///   applied only on a fully clean samples read (see the leg
-  ///   in the method body). VC 100132: the
+  ///   reads the raw HR samples over the same window in 7-day
+  ///   chunks (`readHrSamplesRange`) and computes each day's
+  ///   spike summary (max + when, minutes over 100/120, top-5
+  ///   events) in Dart — applied per fully clean chunk, with the
+  ///   leg's outcome recorded in the capture diagnostics under
+  ///   its own `spikeSummary` entry (see the leg in the method
+  ///   body). VC 100132: the
   ///   window is keyed off the store's persisted
   ///   spikeBackfillComplete flag — set only by a CLEAN full-
   ///   window spike read — not off the dayCount-derived
@@ -725,61 +727,119 @@ class HealthHistorySync {
 
       // MCP spike-data package (Nov 23, 2026) — the spike SUMMARY
       // leg, inside the same pass and over the same window as the
-      // counts above: ONE range read of the raw HR samples, then
-      // one Dart walk per day (computeDailyHrSpikeSummary) that
+      // counts above: range reads of the raw HR samples, then one
+      // Dart walk per day (computeDailyHrSpikeSummary) that
       // produces max + when, minutes over 100/120, and the top-5
       // events from the count's own segmentation. The bridge
       // count stays the stored spikeCount (unchanged path,
       // unchanged semantics); the summary fills only the five new
       // fields.
       //
-      // Clean-read gate: summaries are applied ONLY when the
-      // samples read is fully clean (no error, no partial). A
-      // partial read's surviving samples would UNDERSTATE a day's
-      // max/minutes, and mergeRefresh would overwrite the stored
-      // summary with that understatement — so on anything less
-      // than clean, the leg writes nothing and the stored summary
-      // from an earlier clean capture stands. The leg deliberately
-      // does NOT go through noteRead: the counts read above owns
-      // the `spikes` metric's evidence/diagnostics, and a failed
-      // samples read must not mark the (successful) counts leg
-      // failed or suppress scoring — the summary is additive.
+      // MCP HR-spike FIX (Nov 23, 2026): the shipped leg made ONE
+      // readHrSamples call over the WHOLE window (up to 180 days
+      // of raw samples as a single MethodChannel list) under the
+      // shared 30 s bound and applied summaries only when that
+      // single read was fully clean — one bad/slow stretch meant
+      // partial → nothing filled, on every capture, forever (the
+      // founder's VC 100167 store: summary fields NULL on every
+      // row). The leg now walks the window in 7-day chunks over
+      // the range-capable bridge read (readHrSamplesRange); each
+      // chunk is its own boundedRead under the SAME per-read 30 s
+      // bound, and the clean-read gate applies PER CHUNK:
+      // summaries from a fully clean chunk are applied; a chunk
+      // that errors, partials, or times out contributes nothing,
+      // so those days' stored summaries stand untouched — a
+      // partial chunk's surviving samples would UNDERSTATE a
+      // day's max/minutes, and mergeRefresh would overwrite the
+      // stored summary with that understatement (the shipped
+      // rationale, now per chunk). Chunk boundaries are local
+      // midnights, so no day's samples ever split across chunks.
+      //
+      // The leg still deliberately does NOT go through noteRead:
+      // the counts read above owns the `spikes` metric's
+      // evidence/diagnostics (B-02), and a failed samples chunk
+      // must not mark the (successful) counts leg failed or
+      // suppress scoring — the summary is additive. What changed
+      // (the shipped leg's second defect: it recorded NOTHING, so
+      // the no-fill shipped invisibly): the leg's aggregate
+      // outcome is recorded below in the capture diagnostics
+      // under its OWN `spikeSummary` entry — success, the first
+      // failing chunk's code when no chunk was clean,
+      // SPIKE_SUMMARY_PARTIAL when some chunks failed, plus how
+      // many samples were applied and how many days were filled
+      // this capture — so the Developer Terminal evidence can say
+      // WHY summaries did not fill on a given capture.
       // The leg is additive, so it is wrapped to be incapable of
       // failing the capture: the outcome cores convert channel
       // failures to outcomes, but a read that still throws (a
       // channel that cannot be reached at all, e.g. no platform
-      // binding) degrades here to "no summary this capture" —
-      // never a capture failure, never a counts disturbance.
-      HcReadOutcome<List<HrSample>> hrSamplesOutcome;
-      try {
-        hrSamplesOutcome = await boundedRead(
-            _hc.readHrSamplesWithOutcome(spikeWindowDays));
-      } catch (_) {
-        hrSamplesOutcome = HcReadOutcome<List<HrSample>>(
-            value: const [], errorCode: 'HR_SAMPLES_READ_FAILED');
-      }
-      final hrSamplesClean = hrSamplesOutcome.errorCode == null &&
-          hrSamplesOutcome.partialCode == null;
-      if (hrSamplesClean) {
-        final samplesByDate = <String, List<HrSample>>{};
-        for (final s in hrSamplesOutcome.value) {
-          final date =
-              _historyDateStr(DateTime.fromMillisecondsSinceEpoch(s.timeMs));
-          samplesByDate.putIfAbsent(date, () => []).add(s);
+      // binding) degrades here to a failed chunk — never a
+      // capture failure, never a counts disturbance.
+      var spikeSummarySamplesApplied = 0;
+      var spikeSummaryDaysFilled = 0;
+      var spikeSummaryChunksClean = 0;
+      var spikeSummaryChunksFailed = 0;
+      String? spikeSummaryFirstFailureCode;
+      {
+        final windowEnd =
+            DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+        var chunkStart = windowEnd.subtract(Duration(days: spikeWindowDays));
+        while (chunkStart.isBefore(windowEnd)) {
+          var chunkEnd = chunkStart.add(const Duration(days: 7));
+          if (chunkEnd.isAfter(windowEnd)) chunkEnd = windowEnd;
+          HcReadOutcome<List<HrSample>> chunkOutcome;
+          try {
+            chunkOutcome = await boundedRead(_hc.readHrSamplesRangeWithOutcome(
+                startMs: chunkStart.millisecondsSinceEpoch,
+                endMs: chunkEnd.millisecondsSinceEpoch));
+          } catch (_) {
+            chunkOutcome = HcReadOutcome<List<HrSample>>(
+                value: const [], errorCode: 'HR_SAMPLES_READ_FAILED');
+          }
+          final chunkError = chunkOutcome.errorCode;
+          final chunkFailed = chunkError != null && chunkError.isNotEmpty;
+          final chunkPartialCode = chunkOutcome.partialCode;
+          final chunkPartial = !chunkFailed &&
+              chunkPartialCode != null &&
+              chunkPartialCode.isNotEmpty;
+          if (chunkFailed || chunkPartial) {
+            spikeSummaryChunksFailed++;
+            spikeSummaryFirstFailureCode ??=
+                chunkFailed ? chunkError : chunkPartialCode;
+          } else {
+            spikeSummaryChunksClean++;
+            spikeSummarySamplesApplied += chunkOutcome.value.length;
+            final samplesByDate = <String, List<HrSample>>{};
+            for (final s in chunkOutcome.value) {
+              final date = _historyDateStr(
+                  DateTime.fromMillisecondsSinceEpoch(s.timeMs));
+              samplesByDate.putIfAbsent(date, () => []).add(s);
+            }
+            for (final entry in samplesByDate.entries) {
+              final summary = computeDailyHrSpikeSummary(entry.value);
+              if (summary == null) continue; // no valid samples that day
+              spikeSummaryDaysFilled++;
+              put(
+                entry.key,
+                maxHr: summary.maxBpm,
+                maxHrAt: summary.maxAtMs,
+                over100: summary.minutesOver100,
+                over120: summary.minutesOver120,
+                spikeEvents: summary.spikeEvents,
+              );
+            }
+          }
+          chunkStart = chunkEnd;
         }
-        for (final entry in samplesByDate.entries) {
-          final summary = computeDailyHrSpikeSummary(entry.value);
-          if (summary == null) continue; // no valid samples that day
-          put(
-            entry.key,
-            maxHr: summary.maxBpm,
-            maxHrAt: summary.maxAtMs,
-            over100: summary.minutesOver100,
-            over120: summary.minutesOver120,
-            spikeEvents: summary.spikeEvents,
-          );
-        }
       }
+      final String? spikeSummaryErrorCode =
+          spikeSummaryChunksFailed > 0 && spikeSummaryChunksClean == 0
+              ? (spikeSummaryFirstFailureCode ?? 'HR_SAMPLES_READ_FAILED')
+              : null;
+      final String? spikeSummaryPartialCode =
+          spikeSummaryChunksFailed > 0 && spikeSummaryChunksClean > 0
+              ? 'SPIKE_SUMMARY_PARTIAL'
+              : null;
 
       await _store.mergeRefresh(byDate.values);
       // A failed read leaves a visible trace even though the
@@ -792,6 +852,10 @@ class HealthHistorySync {
         hrvPartialCode: hrvPartialCode,
         hrvSampleCount: hrvSampleCount,
         hrvDayCount: hrvDayCount,
+        spikeSummaryErrorCode: spikeSummaryErrorCode,
+        spikeSummaryPartialCode: spikeSummaryPartialCode,
+        spikeSummarySampleCount: spikeSummarySamplesApplied,
+        spikeSummaryDayCount: spikeSummaryDaysFilled,
       );
       // Sleep-totals upgrade: stamp the current rule version
       // only when the pending full-window sleep re-read above
