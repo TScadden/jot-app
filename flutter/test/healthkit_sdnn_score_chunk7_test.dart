@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/daily_score.dart';
@@ -23,7 +24,7 @@ import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
 ///   platform argument, so foreground, refresher, post-capture
 ///   engine and background paths all agree;
 /// - labels: a persisted SDNN-sourced component is named
-///   "HRV (SDNN)"; RMSSD keeps "HRV" / "HRV (RMSSD)".
+///   "HRV (SDNN)"; RMSSD reads "HRV (RMSSD)".
 
 class MemorySecureStore implements SecureStore {
   final Map<String, String> map = {};
@@ -379,7 +380,7 @@ void main() {
       );
       expect(scoreHrvCameFromSdnn(rmssdRow), isFalse);
       expect(contributedComponentNames(rmssdRow),
-          ['Sleep', 'HRV', 'Resting heart rate']);
+          ['Sleep', 'HRV (RMSSD)', 'Resting heart rate']);
 
       // An SDNN day whose HRV component did NOT contribute is
       // not labeled SDNN-sourced.
@@ -393,6 +394,39 @@ void main() {
       expect(scoreHrvCameFromSdnn(unscoredHrv), isFalse);
       expect(contributedComponentNames(unscoredHrv),
           ['Sleep', 'Resting heart rate']);
+    });
+
+    testWidgets('an unscored SDNN-only day (SDNN data present, '
+        'RMSSD absent, SDNN baseline < 7) renders the detail row '
+        'name HRV (SDNN)', (tester) async {
+      final store = _storeFor(<String, String>{});
+      await store.warmFromDisk();
+      await store.mergeRefresh([
+        // 10 priors carry sleep + resting HR only, so the day
+        // scores on those components; NO prior carries SDNN, so
+        // the target's HRV component cannot count (baseline < 7).
+        for (final d in _priorDates('2026-11-20', 10))
+          DailyBiometrics(date: d, sleepMinutes: 480, restingHrBpm: 60),
+        const DailyBiometrics(
+            date: '2026-11-20',
+            sleepMinutes: 480,
+            restingHrBpm: 60,
+            hrvSdnnMs: 50),
+      ]);
+      await DailyScoreEngine(store: store)
+          .computeMissingScores(beforeDate: '2026-11-21');
+      final row = (await store.readAll())['2026-11-20']!;
+      expect(row.dailyScore, isNotNull);
+      expect(row.scoreHrv, isNull);
+      expect(row.hrvRmssdMs, isNull);
+      expect(row.hrvSdnnMs, 50);
+      await tester.pumpWidget(MaterialApp(
+        home: DailyScoreDayScreen(store: store, date: '2026-11-20'),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('HRV (SDNN)'), findsOneWidget);
+      expect(find.text('HRV (RMSSD)'), findsNothing);
     });
   });
 

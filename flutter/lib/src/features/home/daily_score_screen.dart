@@ -89,11 +89,11 @@ class _ScoredDay {
 /// which is exactly the record the engine wrote. The HRV name
 /// carries its series (chunk 7): an SDNN-sourced component (see
 /// [scoreHrvCameFromSdnn]) reads "HRV (SDNN)"; RMSSD-sourced
-/// keeps the plain "HRV".
+/// reads "HRV (RMSSD)".
 List<String> contributedComponentNames(DailyBiometrics row) => [
       if (row.scoreSleep != null) 'Sleep',
       if (row.scoreHrv != null)
-        scoreHrvCameFromSdnn(row) ? 'HRV (SDNN)' : 'HRV',
+        scoreHrvCameFromSdnn(row) ? 'HRV (SDNN)' : 'HRV (RMSSD)',
       if (row.scoreRestingHr != null) 'Resting heart rate',
     ];
 
@@ -409,7 +409,7 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
           ),
           SizedBox(height: 4),
           Text(
-            'Each day is compared with your own recent baseline: the most recent 28 days with data before it. Sleep counts 40%, HRV 35%, and resting heart rate 25%, counting only the parts with at least 7 baseline days. HRV is measured as RMSSD, among the most-studied signals in physiology. A day is scored once and does not change on its own. You can refresh a day from its detail screen.',
+            'Each day is compared with your own recent baseline: the most recent 28 days with data before it. Sleep counts 40%, HRV 35%, and resting heart rate 25%, counting only the parts with at least 7 baseline days. HRV is measured as RMSSD on Android and as SDNN on iPhone, two of the most-studied signals in physiology; the two are never mixed, and each day is compared only with earlier days measured the same way. A day is scored once and does not change on its own. You can refresh a day from its detail screen.',
             style: TextStyle(fontSize: 13, color: NotelColors.textSecondary),
           ),
         ],
@@ -1366,12 +1366,16 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
   /// SDNN-sourced — per the live computation when it scored the
   /// component, else per the persisted row (see
   /// [scoreHrvCameFromSdnn]) — and "HRV (RMSSD)" otherwise, the
-  /// name this row has always carried.
+  /// name this row has always carried. A day that did NOT score
+  /// its HRV component but carries ONLY SDNN data (no RMSSD)
+  /// still reads "HRV (SDNN)": its sole HRV series is SDNN,
+  /// regardless of whether the component counted.
   String _hrvComponentName(DailyBiometrics row) {
     final c = _computation;
     final sdnn = (c != null && c.hrvScore != null)
         ? c.hrvFromSdnn
-        : scoreHrvCameFromSdnn(row);
+        : scoreHrvCameFromSdnn(row) ||
+            (row.hrvRmssdMs == null && row.hrvSdnnMs != null);
     return sdnn ? 'HRV (SDNN)' : 'HRV (RMSSD)';
   }
 
