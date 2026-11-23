@@ -127,6 +127,43 @@ class FakeIosHc extends HealthConnectService {
       const [];
 }
 
+/// An Android service fake for the Gate 10 twin: full grant, so the
+/// Heart screen paints its connected (State 2) body through the
+/// Android probe path.
+class FakeAndroidHc extends HealthConnectService {
+  FakeAndroidHc()
+      : super(store: MemorySecureStore(), isIOSOverride: false);
+
+  @override
+  Future<HcAvailability> probeAvailability() async => HcAvailability(
+        serviceAvailable: true,
+        grantedPermissions: HealthConnectService.requiredPermissions,
+        bridgeErrorCode: null,
+        stepsProbe: null,
+        persistedConnected: true,
+      );
+
+  @override
+  Future<bool> hasPersistedConnection() async => true;
+
+  @override
+  Future<List<HrSample>> readHeartRateSamples(String dateStr) async =>
+      const [];
+}
+
+/// The Health Connect brand-mark image, by asset name — Gate 10's
+/// pinned asset.
+Finder hcLogoFinder() => find.byWidgetPredicate((w) =>
+    w is Image &&
+    w.image is AssetImage &&
+    (w.image as AssetImage).assetName ==
+        'assets/images/ic_health_connect.png');
+
+/// The source row's heart-icon fallback glyph (size 20; the summary
+/// card's favorite icon is size 48, so size distinguishes them).
+Finder hcFallbackFinder() => find.byWidgetPredicate(
+    (w) => w is Icon && w.icon == Icons.favorite && w.size == 20);
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -240,6 +277,53 @@ void main() {
       expect(find.text('Apple Health'), findsOneWidget);
       expect(find.text('Health Connect'), findsNothing);
       expect(find.text('Connect Vital Signs'), findsNothing);
+    });
+  });
+
+  group('Gate 10: connected source-row logo forks by platform', () {
+    setUp(() {
+      HeartDataCache.instance.debugReset();
+      final store = <String, String>{};
+      HeartDataCache.instance.debugSetStore(
+        read: (k) async => store[k],
+        write: (k, v) async => store[k] = v,
+        delete: (k) async => store.remove(k),
+      );
+    });
+
+    Future<void> pumpHeartWith(
+        WidgetTester tester, HealthConnectService hc) async {
+      tester.view.physicalSize = const Size(1080, 2800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(
+        home: HeartScreen(
+          email: 'a@b.c',
+          healthConnectService: hc,
+          cache: HeartDataCache.instance,
+        ),
+      ));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('iOS State 2: title is Apple Health and the '
+        'ic_health_connect.png asset does NOT render — the '
+        'heart-icon fallback renders instead', (tester) async {
+      final hc = FakeIosHc(state: IosHealthAvailabilityState.connected);
+      await pumpHeartWith(tester, hc);
+      expect(find.text('Apple Health'), findsOneWidget);
+      expect(find.text('Health Connect'), findsNothing);
+      expect(hcLogoFinder(), findsNothing);
+      expect(hcFallbackFinder(), findsOneWidget);
+    });
+
+    testWidgets('Android State 2 twin: title is Health Connect '
+        'and the ic_health_connect.png asset still renders',
+        (tester) async {
+      await pumpHeartWith(tester, FakeAndroidHc());
+      expect(find.text('Health Connect'), findsOneWidget);
+      expect(find.text('Apple Health'), findsNothing);
+      expect(hcLogoFinder(), findsOneWidget);
     });
   });
 

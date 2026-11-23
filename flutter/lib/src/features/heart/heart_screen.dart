@@ -1371,13 +1371,22 @@ class _HeartScreenState extends State<HeartScreen> {
               shape: BoxShape.circle,
             ),
             alignment: Alignment.center,
-            child: Image.asset(
-              'assets/images/ic_health_connect.png',
-              width: 24,
-              height: 24,
-              errorBuilder: (_, _, _) => const Icon(Icons.favorite,
-                  color: NotelColors.primary, size: 20),
-            ),
+            // Gate 10 (Vera): on iOS the row must NOT render the
+            // Health Connect brand mark next to the "Apple Health"
+            // title — that is a false source attribution. iOS renders
+            // the row's existing heart-icon fallback instead (same
+            // glyph the errorBuilder below uses, so the layout is
+            // unchanged in shape); Android keeps the asset exactly.
+            child: _service.isIOS
+                ? const Icon(Icons.favorite,
+                    color: NotelColors.primary, size: 20)
+                : Image.asset(
+                    'assets/images/ic_health_connect.png',
+                    width: 24,
+                    height: 24,
+                    errorBuilder: (_, _, _) => const Icon(Icons.favorite,
+                        color: NotelColors.primary, size: 20),
+                  ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1385,9 +1394,8 @@ class _HeartScreenState extends State<HeartScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Juno Heart/Home addendum §2.4: the source-row
-                // title is the signed row name on iOS. The logo
-                // asset above stays (a visual, flagged for Vera —
-                // see the PR body).
+                // title is the signed row name on iOS, and the
+                // logo above forks on the same signal (Gate 10).
                 Text(
                   _service.isIOS ? 'Apple Health' : 'Health Connect',
                   style: const TextStyle(
