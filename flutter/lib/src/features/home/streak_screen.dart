@@ -1372,16 +1372,19 @@ class _StreakScreenState extends State<StreakScreen> {
                           top: 11,
                           child: _goalMarker(upcoming[s]),
                         ),
-                        // The label group is ~70 CSS wide at
-                        // 10pt (mock fit pass); its center clamps
-                        // inside the card so edge labels never
-                        // cross the border or each other.
+                        // The label group is ~61 CSS wide at
+                        // 9pt (Vera flag 4b fit pass: font 10->9,
+                        // icon 12->11, box 72->60 so adjacent
+                        // groups keep >=5px at 360 and 390); its
+                        // center clamps inside the card so edge
+                        // labels never cross the border or each
+                        // other.
                         Positioned(
                           top: 62,
-                          left: (centers[s + 1] - 36)
-                              .clamp(-10.0, w - 62)
+                          left: (centers[s + 1] - 30)
+                              .clamp(-10.0, w - 50)
                               .toDouble(),
-                          width: 72,
+                          width: 60,
                           child: FittedBox(
                             fit: BoxFit.scaleDown,
                             child: Row(
@@ -1389,13 +1392,13 @@ class _StreakScreenState extends State<StreakScreen> {
                               children: [
                                 Image.asset(
                                   GemCopy.iconAsset,
-                                  width: 12,
-                                  height: 12,
+                                  width: 11,
+                                  height: 11,
                                 ),
-                                const SizedBox(width: 4),
+                                const SizedBox(width: 3),
                                 Text(
                                   '+${gemMilestoneBonus(upcoming[s])} gems',
-                                  style: _duo(10, 800, _duoPrimaryLt),
+                                  style: _duo(9, 800, _duoPrimaryLt),
                                 ),
                               ],
                             ),
