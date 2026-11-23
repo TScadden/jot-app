@@ -198,6 +198,7 @@ class _LoginScreenState extends State<LoginScreen> {
             refreshToken: refreshToken,
             email: result.email,
             emailVerified: result.emailVerified,
+            userId: result.userId,
           );
           if (!mounted) return;
           setState(() => _isLoading = false);
@@ -261,6 +262,7 @@ class _LoginScreenState extends State<LoginScreen> {
             refreshToken: success.refreshToken,
             email: success.email,
             emailVerified: success.emailVerified,
+            userId: success.userId,
           );
           if (!mounted) return;
           setState(() => _isLoading = false);
@@ -323,6 +325,7 @@ class _LoginScreenState extends State<LoginScreen> {
             // true here regardless of payload, so the Google path
             // can never land on the code screen (client invariant).
             emailVerified: true,
+            userId: result.userId,
           );
           // Round 51 — native parity (LoginScreen.kt:220-221):
           // seed the Google Account connection state Settings'
@@ -422,6 +425,7 @@ class _LoginScreenState extends State<LoginScreen> {
             // force true so this path can never land on the code
             // screen (client invariant).
             emailVerified: true,
+            userId: result.userId,
           );
           // Round 51 parity: seed the Apple Account connection
           // state Settings' Connected Apps row reads (the server

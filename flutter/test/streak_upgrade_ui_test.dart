@@ -118,17 +118,20 @@ void main() {
         ),
         findsOneWidget,
       );
-      // §4a ready variant: monthly (1) + earned 0 + purchased 0 = 1 of 2.
+      // Freeze status (Juno B-3): monthly (1) + earned 0 +
+      // purchased 0 = 1 of 2. (The §4a long status retired,
+      // A-16/A-17; its sentence 3 survives as the status card's
+      // caption, A-18.)
       await tester.scrollUntilVisible(
-        find.byKey(const Key('streakFreezeStatus')),
+        find.byKey(const Key('streakFreezeHeadline')),
         120,
       );
       await tester.pump();
+      expect(find.text('You have 1 of 2 Streak Freezes ready'), findsOneWidget);
       expect(
         find.text(
-          'Your free monthly freeze is ready for November. '
-          'You have 1 of 2 freezes available. A freeze can cover one '
-          'missed day automatically when you have one available.',
+          'A freeze can cover one missed day automatically when '
+          'you have one available.',
         ),
         findsOneWidget,
       );
@@ -207,9 +210,10 @@ void main() {
         find.byKey(const Key('streakBuyButton')),
         120,
       );
-      // Juno §4b: the price is the listing's ($1.25), never the
-      // hardcoded $0.99.
-      expect(find.text('GET ONE MORE FREEZE · \$1.25'), findsOneWidget);
+      // Juno §4b/B-21: the button renders the listing's price
+      // string ($1.25), never a hardcoded $0.99; the old
+      // "GET ONE MORE FREEZE · {price}" label form is retired.
+      expect(find.text('\$1.25'), findsOneWidget);
       expect(
         find.text(
           "Not a subscription — you pay once for this freeze. "
@@ -226,14 +230,7 @@ void main() {
         purchase: service,
       );
       expect(find.byKey(const Key('streakBuyButton')), findsNothing);
-      expect(
-        find.text(
-          'Your free monthly freeze is ready for November. '
-          'You have 2 of 3 freezes available. A freeze can cover one '
-          'missed day automatically when you have one available.',
-        ),
-        findsOneWidget,
-      );
+      expect(find.text('You have 2 of 3 Streak Freezes ready'), findsOneWidget);
     });
 
     testWidgets('freeze card: product unavailable renders Juno §5a', (
@@ -644,14 +641,15 @@ void main() {
     });
 
     testWidgets('streak screen: freeze day renders the icy-blue '
-        'snowflake circle in the week row AND the month calendar', (
+        'snowflake circle in the month calendar AND the legend', (
       tester,
     ) async {
       tester.view.physicalSize = const Size(1080, 2400);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(tester.view.reset);
-      // Mon Nov 16 was covered by a freeze; it is in this week's
-      // row and in the November calendar.
+      // Mon Nov 16 was covered by a freeze. (Mock v3 rebuild: the
+      // old week row is superseded by the calendar; the treatment
+      // now renders in the calendar cell and the legend swatch.)
       final s = stateWith(counted: daysThrough(18), restored: {'2026-11-16'});
       await tester.pumpWidget(
         MaterialApp(
@@ -659,12 +657,12 @@ void main() {
         ),
       );
       await tester.pump();
-      // Week row (42dp circle) is built at the top of the screen.
-      final weekCircle = find.byWidgetPredicate(
-        (w) => w is StreakFreezeDayCircle && w.size == 42,
+      // Legend swatch (14dp circle) under the calendar.
+      final legendCircle = find.byWidgetPredicate(
+        (w) => w is StreakFreezeDayCircle && w.size == 14,
       );
-      expect(weekCircle, findsOneWidget);
-      expectFreezeStyle(tester, weekCircle);
+      expect(legendCircle, findsOneWidget);
+      expectFreezeStyle(tester, legendCircle);
       // Month calendar (32dp circle, keyed by day).
       await tester.scrollUntilVisible(
         find.byKey(const Key('streakRestoredDay-2026-11-16')),

@@ -1,9 +1,12 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/billing_play_store.dart';
+import 'package:tabs_lab/src/data/revenuecat_purchases_store.dart';
+import 'package:tabs_lab/src/data/revenuecat_service.dart';
 import 'package:tabs_lab/src/data/coach_memory_store.dart';
 import 'package:tabs_lab/src/data/crash_reporting.dart';
 import 'package:tabs_lab/src/data/first_run_sync.dart';
@@ -302,6 +305,12 @@ class AppFlow extends StatefulWidget {
   /// app-level controller this flow creates in initState.
   final MigraineController? migraineController;
 
+  /// RevenueCat (iOS) — injectable for tests; when provided,
+  /// AppFlow uses this service instead of creating its own
+  /// RevenueCatAppSync. When null, the real sync is created on
+  /// iOS only; on Android nothing is ever created.
+  final RevenueCatService? revenueCatService;
+
   const AppFlow(
       {super.key,
       this.authApi,
@@ -312,7 +321,8 @@ class AppFlow extends StatefulWidget {
       this.onboardingStore,
       this.tabsBackend,
       this.notificationService,
-      this.migraineController});
+      this.migraineController,
+      this.revenueCatService});
 
   @override
   State<AppFlow> createState() => _AppFlowState();
@@ -389,6 +399,14 @@ class _AppFlowState extends State<AppFlow>
     // message so a sticky refresh error never renders for the
     // next account (session expiry reaches here via _onLogout).
     _billingSync?.service.resetErrorMessageForAccountChange();
+    // RevenueCat twin: clear ONLY its messages, and return the
+    // SDK identity to anonymous so the next account never renders
+    // under this account's entitlement.
+    _revenueCat?.resetMessagesForAccountChange();
+    final rcForLogout = _revenueCat;
+    if (rcForLogout != null) {
+      unawaited(rcForLogout.bindAccount(null));
+    }
     unawaited(_onboardingStore.clear());
     // Founder fix (Oct 2026, Vera BLOCKER) — drop this flow's
     // backend pull cache too: TabsBackend.fetchSyncPull serves a
@@ -442,6 +460,40 @@ class _AppFlowState extends State<AppFlow>
     } catch (_) {
       return null;
     }
+  }
+
+  // RevenueCat identity binding — the stored server account ID,
+  // isolated exactly like the email read above (the
+  // _readEmailOrNull pattern): a storage failure returns null and
+  // the caller SKIPS the bind rather than binding null (which
+  // would log the SDK out). The ID is read from the store
+  // login_screen.dart just wrote — never from the email.
+  Future<String?> _readUserIdOrNull() async {
+    try {
+      return await _sessionStore.readUserId();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The RevenueCat service the membership surfaces consume: the
+  /// test-injected instance when AppFlow was given one, otherwise
+  /// the app-lifetime sync's service (null until the sync arrives,
+  /// and always null on Android).
+  RevenueCatService? get _revenueCat =>
+      widget.revenueCatService ?? _revenueCatSync?.service;
+
+  /// Binds the RevenueCat identity to the account whose ID
+  /// login_screen.dart just persisted. A null read (no ID stored,
+  /// or a failed read) skips the bind: the sync's own start read
+  /// covers the cold-start case, and binding null here would log
+  /// the SDK out on a hiccup.
+  Future<void> _bindRevenueCatToStoredAccount() async {
+    final rc = _revenueCat;
+    if (rc == null) return;
+    final userId = await _readUserIdOrNull();
+    if (userId == null) return;
+    await rc.bindAccount(userId);
   }
 
   // VC 100134 — the stored verified flag, isolated exactly like
@@ -807,6 +859,11 @@ class _AppFlowState extends State<AppFlow>
     // Billing account-switch hygiene: a new account signing in
     // clears ONLY the previous account's billing error message.
     _billingSync?.service.resetErrorMessageForAccountChange();
+    // RevenueCat twin: clear the previous account's RC messages,
+    // then bind the SDK identity to the account ID the login
+    // screen just persisted (never the email).
+    _revenueCat?.resetMessagesForAccountChange();
+    unawaited(_bindRevenueCatToStoredAccount());
     unawaited(QuickLogCache.instance.clearIfOwnerMismatch(email));
     unawaited(HomeDataCache.instance.clearIfOwnerMismatch(email));
     // Lab (streak screen package, Nov 4, 2026): same enforcement
@@ -1214,6 +1271,10 @@ class _AppFlowState extends State<AppFlow>
     // Billing account-switch hygiene: as on login, a fresh
     // account clears ONLY the prior billing error message.
     _billingSync?.service.resetErrorMessageForAccountChange();
+    // RevenueCat twin: as on login — clear messages, then bind to
+    // the freshly persisted account ID.
+    _revenueCat?.resetMessagesForAccountChange();
+    unawaited(_bindRevenueCatToStoredAccount());
     unawaited(QuickLogCache.instance.clearIfOwnerMismatch(email));
     unawaited(HomeDataCache.instance.clearIfOwnerMismatch(email));
     // Lab (streak screen package, Nov 4, 2026): same enforcement
@@ -1497,6 +1558,12 @@ class _AppFlowState extends State<AppFlow>
     // production build; the Lab never touches Play Billing.
     WidgetsBinding.instance.addObserver(this);
     unawaited(_startBillingSync());
+    // RevenueCat (iOS only): Android never configures RevenueCat,
+    // and a test-injected service replaces the sync entirely.
+    if (widget.revenueCatService == null &&
+        defaultTargetPlatform == TargetPlatform.iOS) {
+      unawaited(_startRevenueCatSync());
+    }
     _exitController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: _exitMs),
@@ -1627,6 +1694,33 @@ class _AppFlowState extends State<AppFlow>
   // the service).
   BillingAppSync? _billingSync;
 
+  /// RevenueCat (iOS only): the app-lifetime RC sync, mirroring
+  /// [_billingSync]. Null on Android — Android never configures
+  /// RevenueCat — and null when a test injected the service
+  /// directly on the widget.
+  RevenueCatAppSync? _revenueCatSync;
+
+  Future<void> _startRevenueCatSync() async {
+    try {
+      final sync =
+          await startRevenueCatAppSync(sessionStore: _sessionStore);
+      if (!mounted) {
+        // The flow is already gone: ownership ended before the
+        // instance arrived, so dispose it here rather than leak
+        // its customer-info subscription (the _startBillingSync
+        // pattern).
+        sync.dispose();
+        return;
+      }
+      setState(() => _revenueCatSync = sync);
+    } catch (_) {
+      // RevenueCat must never block or crash app start; the iOS
+      // Membership surfaces render their honest unavailable state
+      // when no service is threaded.
+      _revenueCatSync = null;
+    }
+  }
+
   Future<void> _startBillingSync() async {
     try {
       final sync = await startBillingAppSync(backend: _tabsBackend);
@@ -1687,6 +1781,8 @@ class _AppFlowState extends State<AppFlow>
     // Ownership of the single billing service ends here (see
     // _startBillingSync): this is the only dispose of it.
     _billingSync?.dispose();
+    // Same ownership end for the RevenueCat sync.
+    _revenueCatSync?.dispose();
     // Round 31 — don't leave this flow's handler registered on the
     // backend after the flow is gone.
     if (TabsBackend.onSessionExpired == _onSessionExpired) {
@@ -1744,6 +1840,7 @@ class _AppFlowState extends State<AppFlow>
             healthConnectService: widget.healthConnectService,
             notificationService: widget.notificationService,
             billingService: _billingSync?.service,
+            revenueCatService: _revenueCat,
             emailVerified: _sessionEmailVerified,
             onVerifyEmail: () {
               setState(() {
@@ -1760,6 +1857,7 @@ class _AppFlowState extends State<AppFlow>
               locationService: widget.locationService,
               healthConnectService: widget.healthConnectService,
               billingService: _billingSync?.service,
+              revenueCatService: _revenueCat,
               migraineController: _migraineController,
               onLogout: _onLogout),
         if (_splashVisible && animationsDisabled(context))

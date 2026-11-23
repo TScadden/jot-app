@@ -29,80 +29,78 @@ void main() {
     tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
-      MaterialApp(home: StreakScreen(state: s, now: at(2026, 11, 4))),
+      MaterialApp(
+        home: StreakScreen(state: s, now: at(2026, 11, 4)),
+      ),
     );
     await tester.pump();
   }
 
-  testWidgets('screen renders hero, sections, and the marked restored day',
-      (tester) async {
+  testWidgets('screen renders hero, sections, and the marked restored day', (
+    tester,
+  ) async {
     final s = savedDayState();
     expect(s.restoredDays, contains('2026-11-02'));
     await pumpScreen(tester, s);
 
-    // Header + hero.
+    // Header + hero. (Mock v3 rebuild, Nov 22, 2026: the hero
+    // best line is the PERSONAL BEST pill — Juno B-1, unit
+    // included; the old "Best N days" subline is retired, A-6.)
     expect(find.text('Streak'), findsOneWidget);
     expect(find.byKey(const Key('streakHeroNumber')), findsOneWidget);
-    expect((tester.widget<Text>(find.byKey(const Key('streakHeroNumber')))).data,
-        '8');
+    expect(
+      (tester.widget<Text>(find.byKey(const Key('streakHeroNumber')))).data,
+      '8',
+    );
     expect(find.text('day streak!'), findsOneWidget);
-    expect(find.text('Best 12 days'), findsOneWidget);
-    // Juno C6: the hero reads as one value. (Asserted now, while
-    // the hero is in the ListView's built region — the scroll below
-    // disposes it.)
+    expect(find.text('PERSONAL BEST · 12 DAYS'), findsOneWidget);
+    // Juno C6: the hero reads as one value.
     expect(find.bySemanticsLabel('8 day streak'), findsOneWidget);
 
-    // Streaks rows.
-    expect(find.text('Current Streak'), findsOneWidget);
-    expect(find.text('8 days'), findsOneWidget);
-    expect(find.text('Longest Streak'), findsOneWidget);
-    expect(find.text('12 days'), findsOneWidget);
+    // Juno A-8: the streak-ladder milestone line, verbatim
+    // distance form, under the freeze card (nextMilestone(8)=14).
+    expect(find.text('6 days to your next milestone'), findsOneWidget);
+    // The "Streaks" stats rows are retired (Juno A-9 — duplicated
+    // by the hero number and the PERSONAL BEST pill).
+    expect(find.text('Current Streak'), findsNothing);
+    expect(find.text('Longest Streak'), findsNothing);
 
-    // Streak Goal (§3a spoiled variant) — scroll it into the lazy
-    // ListView's built region first.
+    // Freeze status card (Juno B-3): November's monthly freeze is
+    // used; total available cover is 0 of 2. (The §4a long status
+    // is retired, A-16/A-17; the used fact is carried by the
+    // REFILLS IN line in the Monthly Freeze card, B-18.)
+    expect(find.byKey(const Key('streakFreezeHeadline')), findsOneWidget);
+    expect(find.text('You have 0 of 2 Streak Freezes ready'), findsOneWidget);
+    expect(find.byKey(const Key('streakRefillLine')), findsOneWidget);
+
+    // Perks goal block (§3a spoiled variant) — scroll it into view.
     await tester.scrollUntilVisible(
       find.byKey(const Key('streakGoalCopy')),
       120,
     );
     await tester.pump();
-    // Streak Goal (§3a spoiled variant): a freeze was used in
-    // November, so the goal copy is the spoiled-month form and the
-    // §3b progress row is hidden. (Asserted NOW, while the goal
-    // card is in the built region — scrolling on disposes it.)
+    // §3a spoiled variant: a freeze was used in November, so the
+    // goal copy is the spoiled-month form and the §3b progress row
+    // is hidden.
     expect(
-      find.text("A freeze was used in November, so there's no extra "
-          'freeze to earn this month. Your next chance starts in '
-          'December.'),
+      find.text(
+        "A freeze was used in November, so there's no extra "
+        'freeze to earn this month. Your next chance starts in '
+        'December.',
+      ),
       findsOneWidget,
     );
     expect(find.byKey(const Key('streakGoalProgress')), findsNothing);
-    // Streak Freeze (Juno §4a, used variant): November's monthly
-    // freeze is used; total available cover is 0 of 2.
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('streakFreezeStatus')),
-      120,
-    );
-    await tester.pump();
-    expect(find.byKey(const Key('streakFreezeStatus')), findsOneWidget);
-    expect(
-      find.text('Your free monthly freeze for November has been used. '
-          'You have 0 of 2 freezes available. A freeze can cover one '
-          'missed day automatically when you have one available.'),
-      findsOneWidget,
-    );
 
-    // History: November, the restored day is marked, legend shown.
-    // (The calendar sits below the fold in the lazy ListView —
-    // scroll it into the built region first.)
+    // Streak Calendar: November 2026, the restored day is marked,
+    // legend note shown. (Scroll it into view first.)
     await tester.scrollUntilVisible(
       find.byKey(const Key('streakRestoredDay-2026-11-02')),
       120,
     );
     await tester.pump();
-    expect(find.text('History'), findsOneWidget);
-    expect(find.text('November'), findsOneWidget);
-    // Juno string 11: the month count is streak days (Nov 1–4).
-    expect(find.text('4 streak days'), findsOneWidget);
+    expect(find.text('Streak Calendar'), findsOneWidget);
+    expect(find.text('November 2026'), findsOneWidget);
     expect(
       find.byKey(const Key('streakRestoredDay-2026-11-02')),
       findsOneWidget,
@@ -118,48 +116,50 @@ void main() {
     );
   });
 
-  testWidgets('freeze status shows the ready grant in a fresh month',
-      (tester) async {
+  testWidgets('freeze status shows the ready grant in a fresh month', (
+    tester,
+  ) async {
     final s = streakSeed(current: 3, best: 3, now: at(2026, 11, 4));
     await pumpScreen(tester, s);
     await tester.scrollUntilVisible(
-      find.byKey(const Key('streakFreezeStatus')),
+      find.byKey(const Key('streakFreezeHeadline')),
       120,
     );
     await tester.pump();
-    expect(
-      find.text('Your free monthly freeze is ready for November. '
-          'You have 1 of 2 freezes available. A freeze can cover one '
-          'missed day automatically when you have one available.'),
-      findsOneWidget,
-    );
+    // Juno B-3 headline; B-18: while the grant is ready the
+    // REFILLS IN line is suppressed (nothing is coming to add).
+    expect(find.text('You have 1 of 2 Streak Freezes ready'), findsOneWidget);
+    expect(find.byKey(const Key('streakRefillLine')), findsNothing);
     // No covered day this month → no marked cell, no legend.
-    expect(
-      find.byKey(const Key('streakRestoredDay-2026-11-02')),
-      findsNothing,
-    );
+    expect(find.byKey(const Key('streakRestoredDay-2026-11-02')), findsNothing);
     expect(
       find.text('A day with a snowflake was covered by a freeze.'),
       findsNothing,
     );
   });
 
-  testWidgets('longest streak range caption shows when the range is known',
-      (tester) async {
+  testWidgets('personal best pill shows the best with its unit', (
+    tester,
+  ) async {
+    // Juno A-9 retired the Longest Streak row and its range
+    // caption; B-1's pill is where the best now renders.
     final s = streakSeed(current: 8, best: 8, now: at(2026, 9, 8));
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
-      MaterialApp(home: StreakScreen(state: s, now: at(2026, 9, 8))),
+      MaterialApp(
+        home: StreakScreen(state: s, now: at(2026, 9, 8)),
+      ),
     );
     await tester.pump();
-    expect(find.text('Sep 1–8'), findsOneWidget);
-    expect(find.text('Best 8 days'), findsOneWidget);
+    expect(find.text('PERSONAL BEST · 8 DAYS'), findsOneWidget);
+    expect(find.text('Sep 1–8'), findsNothing);
   });
 
-  testWidgets('tapping either Home streak pill fires onStreakTap',
-      (tester) async {
+  testWidgets('tapping either Home streak pill fires onStreakTap', (
+    tester,
+  ) async {
     var taps = 0;
     await tester.pumpWidget(
       MaterialApp(
@@ -177,8 +177,7 @@ void main() {
     expect(taps, 1);
   });
 
-  testWidgets('the pills push the streak screen end to end',
-      (tester) async {
+  testWidgets('the pills push the streak screen end to end', (tester) async {
     // Seed the store the way Home's load does.
     final disk = <String, String>{};
     final store = StreakStore.instance;
@@ -208,8 +207,7 @@ void main() {
             builder: (context) => HomeStreakRow(
               currentStreak: 6,
               animateCountUps: false,
-              onStreakTap: () =>
-                  StreakScreen.openWith(context, state: settled),
+              onStreakTap: () => StreakScreen.openWith(context, state: settled),
             ),
           ),
         ),
@@ -219,6 +217,6 @@ void main() {
     await tester.tap(find.byKey(const Key('homeStreakPills')));
     await tester.pumpAndSettle();
     expect(find.byType(StreakScreen), findsOneWidget);
-    expect(find.text('Best 12 days'), findsOneWidget);
+    expect(find.text('PERSONAL BEST · 12 DAYS'), findsOneWidget);
   });
 }

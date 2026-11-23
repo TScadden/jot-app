@@ -102,6 +102,17 @@ dependencies:
   # GooglePlayProductDetails / queryPastPurchases from it.
   in_app_purchase: ^3.3.1
   in_app_purchase_android: ^0.5.4
+  # RevenueCat — iOS subscription management (App Store parity for
+  # Tabs Premium; see lib/src/data/revenuecat_service.dart).
+  # purchases_flutter is RevenueCat's official Flutter SDK. It
+  # declares an Android implementation too, but the app NEVER
+  # configures or calls it on Android: every entry point is
+  # platform-gated to iOS and Android keeps the Play billing flow
+  # above, byte-for-byte. The public API key is NOT in the repo —
+  # it is injected at build time via
+  # --dart-define=REVENUECAT_IOS_API_KEY (empty = unconfigured =
+  # iOS purchases honestly unavailable; see RevenueCatConfig).
+  purchases_flutter: ^11.0.4
   sentry_flutter: ^10.2.0
   # Streak upgrade (Nov 18, 2026) — the celebration / milestone
   # share action hands the generated share-card PNG to the Android
@@ -136,9 +147,18 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # Nunito (OFL) — variable font bundled for the streak screen's
+  # Duolingo-modeled rebuild (mock v3, Nov 22, 2026). Scoped to
+  # that screen's styles; no theme-level change.
+  fonts:
+    - family: Nunito
+      fonts:
+        - asset: assets/fonts/Nunito-Variable.ttf
+
   assets:
     - assets/fonts/Roboto-Regular.ttf
     - assets/fonts/Roboto-Bold.ttf
+    - assets/fonts/Nunito-Variable.ttf
     - assets/images/ic_tabs_note.png
     - assets/images/ic_google_logo.png
     - assets/images/onboarding_avatar_man.png

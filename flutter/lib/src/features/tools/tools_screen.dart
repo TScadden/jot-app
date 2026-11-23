@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:tabs_lab/src/data/billing_service.dart';
+import 'package:tabs_lab/src/data/revenuecat_service.dart';
 import 'package:tabs_lab/src/features/tools/blood_pressure_tool_screen.dart';
 import 'package:tabs_lab/src/features/tools/body_info_screen.dart';
 import 'package:tabs_lab/src/features/tools/food_screen.dart';
@@ -159,7 +160,16 @@ class ToolsScreen extends StatefulWidget {
   /// to Research → its pushed Settings screen.
   final BillingService? billingService;
 
-  const ToolsScreen({super.key, this.orderStore, this.billingService});
+  /// The app-owned RevenueCat service (single instance, iOS),
+  /// forwarded beside [billingService] to Research → its pushed
+  /// Settings screen.
+  final RevenueCatService? revenueCatService;
+
+  const ToolsScreen(
+      {super.key,
+      this.orderStore,
+      this.billingService,
+      this.revenueCatService});
 
   @override
   State<ToolsScreen> createState() => _ToolsScreenState();
@@ -235,7 +245,9 @@ class _ToolsScreenState extends State<ToolsScreen>
       'trends' => const TrendsScreen(),
       'blood_pressure' => const BloodPressureToolScreen(),
       'food' => const FoodToolScreen(),
-      'research' => ResearchToolScreen(billingService: widget.billingService),
+      'research' => ResearchToolScreen(
+          billingService: widget.billingService,
+          revenueCatService: widget.revenueCatService),
       _ => ToolPlaceholderScreen(tile: tile),
     };
     Navigator.of(context).push(

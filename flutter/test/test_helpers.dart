@@ -34,19 +34,29 @@ class FakeSessionStore extends SessionStore {
   /// verified (grandfathering), exactly like the real store.
   bool? emailVerified;
 
+  /// The persisted server account ID (RevenueCat plumbing).
+  /// Written only when the caller carries one, exactly like the
+  /// real store.
+  String? userId;
+
   @override
   Future<void> saveSession({
     required String token,
     required String refreshToken,
     required String email,
     bool? emailVerified,
+    String? userId,
   }) async {
     this.token = token;
     this.refreshToken = refreshToken;
     this.email = email;
     // A null flag leaves a stored flag untouched (refresh path).
     if (emailVerified != null) this.emailVerified = emailVerified;
+    if (userId != null && userId.isNotEmpty) this.userId = userId;
   }
+
+  @override
+  Future<String?> readUserId() async => userId;
 
   @override
   Future<void> saveEmailVerified(bool verified) async {
@@ -81,6 +91,7 @@ class FakeSessionStore extends SessionStore {
     refreshToken = null;
     email = null;
     emailVerified = null;
+    userId = null;
   }
 }
 
