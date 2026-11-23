@@ -189,6 +189,17 @@ const String dailyScoreSourceAuto = 'auto';
 /// Server contract value.
 const String dailyScoreSourceManualRefresh = 'manual_refresh';
 
+/// HRV series markers (sync series marker package): the values
+/// of the sync record's `hrvSeries` field — which HRV series a
+/// score's HRV component scored from, and therefore which series
+/// its `hrvMs` / `hrvBaselineMs` are expressed in. A null marker
+/// means the HRV component did not contribute, so there is no
+/// series to describe: a record must never carry a marker with a
+/// null `hrvMs`, nor a non-null `hrvMs` whose series is unknown
+/// (see the effective-series rule in `daily_score_sync.dart`).
+const String dailyScoreHrvSeriesRmssd = 'rmssd';
+const String dailyScoreHrvSeriesSdnn = 'sdnn';
+
 /// Sleep component from [asleepRatio] (asleep ÷ personal need):
 /// squared below need, capped at need, never below 0.
 double scoreSleepComponent(double asleepRatio) {
@@ -345,6 +356,20 @@ class DailyScoreComputation {
   int? get sleepScoreRounded => sleepScore?.round();
   int? get hrvScoreRounded => hrvScore?.round();
   int? get restingHrScoreRounded => restingHrScore?.round();
+
+  /// The HRV series this computation's HRV component scored
+  /// from, as the sync marker value: [dailyScoreHrvSeriesSdnn]
+  /// when [hrvFromSdnn], else [dailyScoreHrvSeriesRmssd] — and
+  /// null exactly when the HRV component did not contribute
+  /// ([hrvMs] null). Derived from the computation's own fields,
+  /// never stored or guessed, so a sync payload or a persisted
+  /// score marker can only ever carry the series the computation
+  /// actually used.
+  String? get hrvSeries => hrvMs == null
+      ? null
+      : (hrvFromSdnn
+          ? dailyScoreHrvSeriesSdnn
+          : dailyScoreHrvSeriesRmssd);
 }
 
 /// Computes the Daily Score for [date] from [days] (the store's
@@ -456,17 +481,38 @@ DailyScoreComputation? computeDailyScore(
 }
 
 /// Whether a PERSISTED score's HRV component was SDNN-sourced
-/// (chunk 7). The persisted record itself carries no series
-/// marker (the component fields and `algorithmVersion` predate
-/// the SDNN adaptation and do not distinguish the series), but
-/// the row's own data determines it exactly under the scoring
-/// rule above: the HRV component contributed ([DailyBiometrics
-/// .scoreHrv] non-null), the day carries SDNN, and it carries
-/// NO RMSSD (an RMSSD-carrying day always scores from RMSSD).
-/// Display surfaces use this to label a persisted day
-/// "HRV (SDNN)" truthfully from local data.
+/// (chunk 7), derived from the row's own data: the HRV component
+/// contributed ([DailyBiometrics.scoreHrv] non-null), the day
+/// carries SDNN, and it carries NO RMSSD (an RMSSD-carrying day
+/// always scores from RMSSD). Since the sync series marker
+/// package, scores also persist their series in the
+/// [DailyScoreMeta] sidecar and [persistedScoreHrvSeries] prefers
+/// that record; this derivation remains the fallback for
+/// pre-marker rows, where it is exact for locally computed
+/// scores — the local scoring rule and this derivation are the
+/// same rule. (It cannot be exact for a both-series day whose
+/// score arrived by hydration from the other series — precisely
+/// the case the persisted marker exists to cover.)
 bool scoreHrvCameFromSdnn(DailyBiometrics row) =>
     row.scoreHrv != null && row.hrvRmssdMs == null && row.hrvSdnnMs != null;
+
+/// The series a PERSISTED score's HRV component actually used,
+/// as a marker value ([dailyScoreHrvSeriesRmssd] /
+/// [dailyScoreHrvSeriesSdnn]), or null when the HRV component
+/// did not contribute. The persisted marker in [meta] decides
+/// when one exists — it is the only truth that survives a day
+/// carrying BOTH series whose score was computed from just one
+/// of them. A null marker (a legacy / pre-marker meta, or no
+/// meta at all) falls back to the field derivation
+/// ([scoreHrvCameFromSdnn]).
+String? persistedScoreHrvSeries(DailyBiometrics row, DailyScoreMeta? meta) {
+  if (row.scoreHrv == null) return null;
+  final marked = meta?.hrvSeries;
+  if (marked != null) return marked;
+  return scoreHrvCameFromSdnn(row)
+      ? dailyScoreHrvSeriesSdnn
+      : dailyScoreHrvSeriesRmssd;
+}
 
 /// Drives score computation over a [HealthHistoryStore]: computes
 /// every stored day that does not yet hold a score and whose
@@ -554,6 +600,7 @@ class DailyScoreEngine {
           scoreSource: dailyScoreSourceAuto,
           scoreComputedAt: computedAt,
           scoreAlgorithmVersion: dailyScoreAlgorithmVersion,
+          scoreHrvSeries: computation.hrvSeries,
         );
         if (ok) {
           written++;

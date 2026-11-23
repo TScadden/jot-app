@@ -16,10 +16,12 @@
 /// - Record keys: date ('YYYY-MM-DD'), score (int),
 ///   sleepScore/hrvScore/restingHrScore (int|null), asleepMinutes,
 ///   sleepNeedMinutes (int|null), hrvMs, hrvBaselineMs
-///   (number|null), restingHrBpm (int|null),
-///   restingHrBaselineBpm (number|null), source
-///   ('auto'|'manual_refresh'), algorithmVersion (int),
-///   computedAt (epoch ms int).
+///   (number|null), hrvSeries ('rmssd'|'sdnn'|null — the series
+///   hrvMs/hrvBaselineMs are expressed in; null exactly when
+///   hrvMs is null, i.e. the HRV component did not contribute),
+///   restingHrBpm (int|null), restingHrBaselineBpm
+///   (number|null), source ('auto'|'manual_refresh'),
+///   algorithmVersion (int), computedAt (epoch ms int).
 ///
 /// PUSH: every successful `persistScore` (the engine) and every
 /// successful `replaceScore` (the refresher) enqueues a record
@@ -57,10 +59,14 @@
 ///   * Hydration writes the persisted score + the three component
 ///     subscores + source/computedAt/algorithmVersion metadata +
 ///     the raw inputs (asleepMinutes → the row's sleep minutes,
-///     hrvMs → hrvRmssdMs, restingHrBpm) ONLY into fields that are
-///     locally absent — it must NEVER overwrite a locally present
-///     biometric value (Health Connect is the source of truth for
-///     biometrics).
+///     hrvMs → hrvRmssdMs or hrvSdnnMs per the record's hrvSeries,
+///     restingHrBpm) ONLY into fields that are locally absent —
+///     it must NEVER overwrite a locally present biometric value
+///     (Health Connect is the source of truth for biometrics).
+///     The series marker is also persisted in the score metadata
+///     when (and only when) the server score is taken, so the
+///     day's HRV label follows the score's own series even on a
+///     day carrying both series.
 ///   * Hydration runs only against the store's bound owner; on
 ///     owner mismatch it does nothing (the store's existing owner
 ///     logic governs).
@@ -98,6 +104,13 @@ class DailyScoreSyncRecord {
   final int? sleepNeedMinutes;
   final double? hrvMs;
   final double? hrvBaselineMs;
+
+  /// The series [hrvMs] / [hrvBaselineMs] are expressed in:
+  /// [dailyScoreHrvSeriesRmssd] | [dailyScoreHrvSeriesSdnn] |
+  /// null. Null exactly when [hrvMs] is null. In memory this
+  /// always holds the EFFECTIVE series (see [fromJson]): an
+  /// unmarked record carrying an HRV value reads as RMSSD.
+  final String? hrvSeries;
   final int? restingHrBpm;
   final double? restingHrBaselineBpm;
 
@@ -119,6 +132,7 @@ class DailyScoreSyncRecord {
     this.sleepNeedMinutes,
     this.hrvMs,
     this.hrvBaselineMs,
+    this.hrvSeries,
     this.restingHrBpm,
     this.restingHrBaselineBpm,
     required this.source,
@@ -139,6 +153,7 @@ class DailyScoreSyncRecord {
         'sleepNeedMinutes': sleepNeedMinutes,
         'hrvMs': hrvMs,
         'hrvBaselineMs': hrvBaselineMs,
+        'hrvSeries': hrvSeries,
         'restingHrBpm': restingHrBpm,
         'restingHrBaselineBpm': restingHrBaselineBpm,
         'source': source,
@@ -148,8 +163,9 @@ class DailyScoreSyncRecord {
 
   /// Tolerant parse (server numbers may arrive as strings).
   /// Null when the record is not contract-shaped (no usable date,
-  /// score, source, or computedAt) — a malformed record is
-  /// skipped, never repaired into an invented one.
+  /// score, source, or computedAt — or a present-but-invalid
+  /// hrvSeries marker) — a malformed record is skipped, never
+  /// repaired into an invented one.
   static DailyScoreSyncRecord? fromJson(dynamic raw) {
     if (raw is! Map) return null;
     int? asInt(dynamic v) =>
@@ -168,6 +184,32 @@ class DailyScoreSyncRecord {
         computedAt == null) {
       return null;
     }
+    // The effective-series rule (the client half of the rule;
+    // the server applies the identical rule on write):
+    //   * an explicit 'rmssd' / 'sdnn' marker wins;
+    //   * an absent/null marker on a record carrying an HRV
+    //     value means 'rmssd' — every unmarked record ever
+    //     synced is an Android RMSSD record, so the default is
+    //     a statement about the historical corpus, and it makes
+    //     every downstream consumer (hydration, queue
+    //     re-persist) see a concrete series;
+    //   * no HRV value → no series (a marker accompanying a
+    //     null hrvMs is dropped, never stored: the invariant is
+    //     marker non-null ⇔ hrvMs non-null);
+    //   * a present-but-invalid marker makes the record
+    //     malformed → skipped, never guessed into a series —
+    //     the same treatment the source enum gets above.
+    final hrvMs = asDouble(raw['hrvMs']);
+    final rawSeries = raw['hrvSeries'];
+    final String? hrvSeries;
+    if (rawSeries == null) {
+      hrvSeries = hrvMs != null ? dailyScoreHrvSeriesRmssd : null;
+    } else if (rawSeries == dailyScoreHrvSeriesRmssd ||
+        rawSeries == dailyScoreHrvSeriesSdnn) {
+      hrvSeries = hrvMs != null ? rawSeries as String : null;
+    } else {
+      return null;
+    }
     return DailyScoreSyncRecord(
       date: date,
       score: score,
@@ -176,8 +218,9 @@ class DailyScoreSyncRecord {
       restingHrScore: asInt(raw['restingHrScore']),
       asleepMinutes: asInt(raw['asleepMinutes']),
       sleepNeedMinutes: asInt(raw['sleepNeedMinutes']),
-      hrvMs: asDouble(raw['hrvMs']),
+      hrvMs: hrvMs,
       hrvBaselineMs: asDouble(raw['hrvBaselineMs']),
+      hrvSeries: hrvSeries,
       restingHrBpm: asInt(raw['restingHrBpm']),
       restingHrBaselineBpm: asDouble(raw['restingHrBaselineBpm']),
       source: source!,
@@ -199,6 +242,7 @@ class DailyScoreSyncRecord {
       other.sleepNeedMinutes == sleepNeedMinutes &&
       other.hrvMs == hrvMs &&
       other.hrvBaselineMs == hrvBaselineMs &&
+      other.hrvSeries == hrvSeries &&
       other.restingHrBpm == restingHrBpm &&
       other.restingHrBaselineBpm == restingHrBaselineBpm &&
       other.source == source &&
@@ -216,6 +260,7 @@ class DailyScoreSyncRecord {
       sleepNeedMinutes,
       hrvMs,
       hrvBaselineMs,
+      hrvSeries,
       restingHrBpm,
       restingHrBaselineBpm,
       source,
@@ -248,6 +293,11 @@ DailyScoreSyncRecord buildDailyScoreRecord(
       sleepNeedMinutes: computation.sleepNeedMinutes,
       hrvMs: computation.hrvMs,
       hrvBaselineMs: computation.hrvBaselineMs,
+      // The series marker is derived from the computation
+      // itself — the exact point where chunk 7's payload
+      // dropped it. Never a stored or guessed value: the
+      // client only ever emits 'rmssd' / 'sdnn' / null.
+      hrvSeries: computation.hrvSeries,
       restingHrBpm: computation.restingHrBpm,
       restingHrBaselineBpm: computation.restingHrBaselineBpm,
       source: source,
@@ -808,6 +858,7 @@ class DailyScoreSync {
             algorithmVersion: r.algorithmVersion,
             asleepMinutes: r.asleepMinutes,
             hrvMs: r.hrvMs,
+            hrvSeries: r.hrvSeries,
             restingHrBpm: r.restingHrBpm,
           ),
       ]);

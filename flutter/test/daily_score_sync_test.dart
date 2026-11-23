@@ -92,6 +92,7 @@ DailyScoreSyncRecord _record(
   int? sleepNeedMinutes = 480,
   double? hrvMs = 40,
   double? hrvBaselineMs = 50,
+  String? hrvSeries,
   int? restingHrBpm = 60,
   double? restingHrBaselineBpm = 62,
   String source = dailyScoreSourceAuto,
@@ -108,6 +109,7 @@ DailyScoreSyncRecord _record(
       sleepNeedMinutes: sleepNeedMinutes,
       hrvMs: hrvMs,
       hrvBaselineMs: hrvBaselineMs,
+      hrvSeries: hrvSeries,
       restingHrBpm: restingHrBpm,
       restingHrBaselineBpm: restingHrBaselineBpm,
       source: source,
@@ -215,6 +217,13 @@ void main() {
         'sleepNeedMinutes': 480,
         'hrvMs': 32.0,
         'hrvBaselineMs': 40.0,
+        // Series marker package: the new key, after
+        // hrvBaselineMs. This computation is RMSSD-shaped
+        // (hrvFromSdnn defaults false), so the marker is
+        // 'rmssd'. Disclosed pin change: the exact-map and
+        // key-set expectations gain this one key; the
+        // algorithmVersion pin in the group above is untouched.
+        'hrvSeries': 'rmssd',
         'restingHrBpm': 54,
         'restingHrBaselineBpm': 60.0,
         'source': 'auto',
@@ -231,6 +240,7 @@ void main() {
         'sleepNeedMinutes',
         'hrvMs',
         'hrvBaselineMs',
+        'hrvSeries',
         'restingHrBpm',
         'restingHrBaselineBpm',
         'source',
@@ -268,7 +278,15 @@ void main() {
 
     test('record JSON round-trips through fromJson; malformed '
         'records are refused', () {
-      final record = _record('2026-10-16', computedAt: 777);
+      // Disclosed pin change (series marker package): the
+      // fixture carries its EFFECTIVE marker explicitly —
+      // fromJson resolves an absent/null marker on an
+      // HRV-carrying record to 'rmssd' (the C2 rule), so a
+      // verbatim round-trip fixture must state the resolved
+      // series, exactly as every record the builder emits now
+      // does.
+      final record = _record('2026-10-16',
+          computedAt: 777, hrvSeries: dailyScoreHrvSeriesRmssd);
       expect(DailyScoreSyncRecord.fromJson(record.toJson()), record);
       expect(DailyScoreSyncRecord.fromJson({'date': '2026-10-16'}),
           isNull);
@@ -279,6 +297,131 @@ void main() {
           }),
           isNull);
       expect(DailyScoreSyncRecord.fromJson('nope'), isNull);
+    });
+
+    // ── Series marker (C1): the payload builder derives the
+    // marker from the computation, at the exact point chunk 7
+    // dropped it.
+    test('C1: an SDNN computation builds an sdnn payload', () {
+      const computation = DailyScoreComputation(
+        date: '2026-10-16',
+        sleepScore: 87.5,
+        hrvScore: 35.2,
+        restingHrScore: 100,
+        dailyExact: 71.6,
+        asleepMinutes: 420,
+        sleepNeedMinutes: 480,
+        hrvMs: 88,
+        hrvBaselineMs: 80,
+        hrvFromSdnn: true,
+        restingHrBpm: 54,
+        restingHrBaselineBpm: 60,
+      );
+      expect(computation.hrvSeries, dailyScoreHrvSeriesSdnn);
+      final record = buildDailyScoreRecord(
+        computation,
+        source: dailyScoreSourceAuto,
+        computedAt: 1790000000000,
+      );
+      expect(record.hrvSeries, dailyScoreHrvSeriesSdnn);
+      expect(record.toJson()['hrvSeries'], 'sdnn');
+      // Placement: immediately after hrvBaselineMs.
+      final keys = record.toJson().keys.toList();
+      expect(keys.indexOf('hrvSeries'),
+          keys.indexOf('hrvBaselineMs') + 1);
+    });
+
+    test('C1: an RMSSD computation builds an rmssd payload; a '
+        'no-HRV computation builds a null marker', () {
+      const rmssdComputation = DailyScoreComputation(
+        date: '2026-10-16',
+        sleepScore: 87.5,
+        hrvScore: 35.2,
+        restingHrScore: 100,
+        dailyExact: 71.6,
+        hrvMs: 32,
+        hrvBaselineMs: 40,
+      );
+      expect(rmssdComputation.hrvSeries, dailyScoreHrvSeriesRmssd);
+      expect(
+          buildDailyScoreRecord(rmssdComputation,
+                  source: dailyScoreSourceAuto, computedAt: 1)
+              .toJson()['hrvSeries'],
+          'rmssd');
+
+      const noHrvComputation = DailyScoreComputation(
+        date: '2026-10-16',
+        sleepScore: 87.5,
+        hrvScore: null,
+        restingHrScore: null,
+        dailyExact: 87.5,
+        asleepMinutes: 420,
+        sleepNeedMinutes: 480,
+      );
+      expect(noHrvComputation.hrvSeries, isNull);
+      final json = buildDailyScoreRecord(noHrvComputation,
+              source: dailyScoreSourceAuto, computedAt: 1)
+          .toJson();
+      // The key is always present; the value is an explicit
+      // null, exactly like the other nullable contract fields.
+      expect(json.containsKey('hrvSeries'), isTrue);
+      expect(json['hrvSeries'], isNull);
+      expect(json['hrvMs'], isNull);
+    });
+
+    // ── Series marker (C2): the effective-series rule at the
+    // parse boundary.
+    test('C2: fromJson applies the effective-series rule', () {
+      final base = _record('2026-10-16').toJson(); // hrvMs 40
+
+      // Absent marker + HRV value → 'rmssd' (the pre-marker
+      // corpus is entirely Android RMSSD).
+      final absent = {...base}..remove('hrvSeries');
+      expect(DailyScoreSyncRecord.fromJson(absent)!.hrvSeries,
+          dailyScoreHrvSeriesRmssd);
+
+      // Explicit null marker + HRV value → 'rmssd' (explicit
+      // null = absent).
+      final explicitNull = {...base, 'hrvSeries': null};
+      expect(DailyScoreSyncRecord.fromJson(explicitNull)!.hrvSeries,
+          dailyScoreHrvSeriesRmssd);
+
+      // Absent marker + NO HRV value → null (no series to
+      // describe).
+      final noHrv = {...base, 'hrvMs': null, 'hrvBaselineMs': null}
+        ..remove('hrvSeries');
+      final parsedNoHrv = DailyScoreSyncRecord.fromJson(noHrv)!;
+      expect(parsedNoHrv.hrvMs, isNull);
+      expect(parsedNoHrv.hrvSeries, isNull);
+
+      // An explicit 'sdnn' marker round-trips verbatim — the
+      // default never overrides an explicit marker.
+      final sdnn = _record('2026-10-16',
+          hrvSeries: dailyScoreHrvSeriesSdnn);
+      expect(DailyScoreSyncRecord.fromJson(sdnn.toJson()), sdnn);
+      expect(DailyScoreSyncRecord.fromJson(sdnn.toJson())!.hrvSeries,
+          dailyScoreHrvSeriesSdnn);
+
+      // A present-but-invalid marker → the record is refused
+      // (skipped), never guessed into a series.
+      expect(
+          DailyScoreSyncRecord.fromJson(
+              {...base, 'hrvSeries': 'sdnn-ish'}),
+          isNull);
+      expect(
+          DailyScoreSyncRecord.fromJson({...base, 'hrvSeries': 42}),
+          isNull);
+
+      // A marker accompanying a null HRV value is dropped, not
+      // stored: the in-memory invariant (marker non-null ⇔
+      // hrvMs non-null) holds for every parsed record.
+      final orphan = DailyScoreSyncRecord.fromJson({
+        ...base,
+        'hrvMs': null,
+        'hrvBaselineMs': null,
+        'hrvSeries': 'sdnn',
+      })!;
+      expect(orphan.hrvSeries, isNull);
     });
   });
 
@@ -335,7 +478,12 @@ void main() {
 
     test('fetchDailyScores parses the GET shape and skips '
         'malformed rows; failure → empty', () async {
-      final record = _record('2026-10-16');
+      // Disclosed pin change (series marker package): the
+      // fixture states its effective marker — a GET row is
+      // parsed through the same effective-series rule (see the
+      // round-trip pin above).
+      final record =
+          _record('2026-10-16', hrvSeries: dailyScoreHrvSeriesRmssd);
       final b = backend((request) async {
         expect(request.method, 'GET');
         expect(request.url.path, '/api/sync/daily-scores');
@@ -542,6 +690,96 @@ void main() {
       expect(store.scoreMetaFor('2026-10-16')!.source,
           dailyScoreSourceAuto);
     });
+
+    // ── Series marker (C6): the meta marker and the queued
+    // payload are stamped from the same computation.
+    test('C6: the engine stamps an RMSSD day rmssd in meta and '
+        'payload', () async {
+      final (:rig, :store) = await seededRig();
+      await DailyScoreEngine(
+        store: store,
+        scoreSync: rig.sync,
+        now: () => DateTime(2026, 10, 17, 8),
+      ).computeMissingScores();
+      await rig.sync.drain();
+      expect(rig.server.rows['2026-10-16']!.hrvSeries,
+          dailyScoreHrvSeriesRmssd);
+      expect(store.scoreMetaFor('2026-10-16')!.hrvSeries,
+          dailyScoreHrvSeriesRmssd);
+    });
+
+    Future<({_SyncRig rig, HealthHistoryStore store})>
+        seededSdnnRig() async {
+      final rig = _SyncRig();
+      await rig.store.mergeRefresh([
+        for (final d in _priorDates('2026-10-16', 10))
+          DailyBiometrics(
+              date: d,
+              sleepMinutes: 480,
+              restingHrBpm: 60,
+              hrvSdnnMs: 50),
+        const DailyBiometrics(
+            date: '2026-10-16',
+            sleepMinutes: 480,
+            restingHrBpm: 60,
+            hrvSdnnMs: 50),
+      ]);
+      return (rig: rig, store: rig.store);
+    }
+
+    test('C6: the engine stamps an SDNN day sdnn in meta and '
+        'payload', () async {
+      final (:rig, :store) = await seededSdnnRig();
+      await DailyScoreEngine(
+        store: store,
+        scoreSync: rig.sync,
+        now: () => DateTime(2026, 10, 17, 8),
+      ).computeMissingScores();
+      await rig.sync.drain();
+      final target = rig.server.rows['2026-10-16']!;
+      expect(target.source, dailyScoreSourceAuto);
+      expect(target.hrvMs, 50);
+      expect(target.hrvSeries, dailyScoreHrvSeriesSdnn);
+      expect(store.scoreMetaFor('2026-10-16')!.hrvSeries,
+          dailyScoreHrvSeriesSdnn);
+    });
+
+    test('C6: the refresher restamps an SDNN day sdnn in meta '
+        'and payload', () async {
+      final (:rig, :store) = await seededSdnnRig();
+      await DailyScoreEngine(
+        store: store,
+        scoreSync: rig.sync,
+        now: () => DateTime(2026, 10, 17, 8),
+      ).computeMissingScores();
+      await rig.sync.drain();
+      expect(rig.server.rows['2026-10-16']!.hrvSeries,
+          dailyScoreHrvSeriesSdnn);
+
+      // Late SDNN lands; the founder refreshes the day.
+      final refresher = DailyScoreRefresher.withCapture(
+        store: store,
+        scoreSync: rig.sync,
+        now: () => DateTime(2026, 10, 17, 20),
+        capture: ({bool force = false}) async {
+          await store.mergeRefresh([
+            const DailyBiometrics(date: '2026-10-16', hrvSdnnMs: 65),
+          ]);
+          return true;
+        },
+      );
+      final outcome = await refresher.refresh('2026-10-16');
+      expect(outcome.status, DailyScoreRefreshStatus.refreshed);
+      await rig.sync.drain();
+
+      final target = rig.server.rows['2026-10-16']!;
+      expect(target.source, dailyScoreSourceManualRefresh);
+      expect(target.hrvMs, 65);
+      expect(target.hrvSeries, dailyScoreHrvSeriesSdnn);
+      final meta = store.scoreMetaFor('2026-10-16')!;
+      expect(meta.source, dailyScoreSourceManualRefresh);
+      expect(meta.hrvSeries, dailyScoreHrvSeriesSdnn);
+    });
   });
 
   group('queue durability + dedup', () {
@@ -568,6 +806,30 @@ void main() {
       final after = jsonDecode(rig.queueDisk
           .values[DailyScoreSync.storageKey]!) as Map<String, dynamic>;
       expect((after['records'] as List), isEmpty);
+    });
+
+    test('C3: an SDNN record survives queue persist → reload '
+        'with its marker intact', () async {
+      final rig = _SyncRig();
+      rig.server.failPosts = true; // enqueue's flush cannot land
+      await rig.sync.enqueueRecord(_record('2026-10-16',
+          hrvSeries: dailyScoreHrvSeriesSdnn));
+      await rig.sync.drain();
+      expect(await rig.sync.pendingRecords(), hasLength(1));
+      // The durable blob itself carries the marker.
+      final blob = jsonDecode(rig.queueDisk
+          .values[DailyScoreSync.storageKey]!) as Map<String, dynamic>;
+      expect((blob['records'] as List).single['hrvSeries'], 'sdnn');
+      // Restart: a fresh service over the same disk reloads the
+      // record with the marker intact — no re-derivation, no
+      // RMSSD default applied to an explicit marker.
+      final restarted = rig.restartedSync();
+      final reloaded = await restarted.pendingRecords();
+      expect(reloaded, hasLength(1));
+      expect(reloaded.single.hrvSeries, dailyScoreHrvSeriesSdnn);
+      expect(reloaded.single.hrvMs, 40);
+      expect(reloaded.single,
+          _record('2026-10-16', hrvSeries: dailyScoreHrvSeriesSdnn));
     });
 
     test('flush failure retains the records for retry', () async {
@@ -1124,6 +1386,175 @@ void main() {
     });
   });
 
+  group('hydration series marker (C4)', () {
+    /// Seeds a local day (optionally scored, with meta) in a
+    /// fresh rig.
+    Future<_SyncRig> rigWithLocalDay(
+      DailyBiometrics row, {
+      DailyScoreMeta? meta,
+    }) async {
+      final rig = _SyncRig();
+      await rig.store.mergeRefresh([row]);
+      if (meta != null) {
+        await rig.store.persistScore(
+          row.date,
+          dailyScore: 62,
+          scoreSleep: 70,
+          scoreHrv: 60,
+          scoreRestingHr: 80,
+          scoreSource: meta.source,
+          scoreComputedAt: meta.computedAt,
+          scoreAlgorithmVersion: meta.algorithmVersion,
+          scoreHrvSeries: meta.hrvSeries,
+        );
+      }
+      return rig;
+    }
+
+    test('an SDNN server record hydrates into hrvSdnnMs, NOT '
+        'hrvRmssdMs, and stamps the meta marker', () async {
+      final rig = _SyncRig();
+      rig.server.rows['2026-10-16'] = _record('2026-10-16',
+          hrvMs: 88,
+          hrvBaselineMs: 80,
+          hrvSeries: dailyScoreHrvSeriesSdnn,
+          computedAt: 5000);
+      expect(await rig.sync.hydrate(), 1);
+      final row = (await rig.store.readAll())['2026-10-16']!;
+      expect(row.hrvSdnnMs, 88);
+      expect(row.hrvRmssdMs, isNull);
+      expect(rig.store.scoreMetaFor('2026-10-16')!.hrvSeries,
+          dailyScoreHrvSeriesSdnn);
+    });
+
+    test('an SDNN fill lands beside a locally present RMSSD '
+        'value without touching it', () async {
+      final rig = await rigWithLocalDay(const DailyBiometrics(
+          date: '2026-10-16', restingHrBpm: 60, hrvRmssdMs: 40));
+      rig.server.rows['2026-10-16'] = _record('2026-10-16',
+          hrvMs: 88,
+          hrvBaselineMs: 80,
+          hrvSeries: dailyScoreHrvSeriesSdnn,
+          computedAt: 5000);
+      expect(await rig.sync.hydrate(), 1);
+      final row = (await rig.store.readAll())['2026-10-16']!;
+      expect(row.hrvRmssdMs, 40); // local truth, untouched
+      expect(row.hrvSdnnMs, 88); // filled, in its OWN field
+      expect(rig.store.scoreMetaFor('2026-10-16')!.hrvSeries,
+          dailyScoreHrvSeriesSdnn);
+    });
+
+    test('an RMSSD server record fills hrvRmssdMs only, beside '
+        'a locally present SDNN value', () async {
+      final rig = await rigWithLocalDay(const DailyBiometrics(
+          date: '2026-10-16', restingHrBpm: 60, hrvSdnnMs: 70));
+      rig.server.rows['2026-10-16'] = _record('2026-10-16',
+          hrvMs: 45,
+          hrvSeries: dailyScoreHrvSeriesRmssd,
+          computedAt: 5000);
+      expect(await rig.sync.hydrate(), 1);
+      final row = (await rig.store.readAll())['2026-10-16']!;
+      expect(row.hrvRmssdMs, 45);
+      expect(row.hrvSdnnMs, 70); // local truth, untouched
+      expect(rig.store.scoreMetaFor('2026-10-16')!.hrvSeries,
+          dailyScoreHrvSeriesRmssd);
+    });
+
+    test('a legacy marker-less HRV record hydrates into '
+        'hrvRmssdMs (the historical corpus is Android RMSSD)',
+        () async {
+      final rig = _SyncRig();
+      // No marker at all — the pre-marker server shape.
+      rig.server.rows['2026-10-16'] =
+          _record('2026-10-16', hrvMs: 47.5, computedAt: 5000);
+      expect(await rig.sync.hydrate(), 1);
+      final row = (await rig.store.readAll())['2026-10-16']!;
+      expect(row.hrvRmssdMs, 47.5);
+      expect(row.hrvSdnnMs, isNull);
+    });
+
+    test('local-stands: an SDNN fill lands, but the standing '
+        'local score meta marker is NOT overwritten', () async {
+      final rig = await rigWithLocalDay(
+        const DailyBiometrics(
+            date: '2026-10-16',
+            sleepMinutes: 420,
+            restingHrBpm: 60,
+            hrvRmssdMs: 40),
+        meta: const DailyScoreMeta(
+            source: dailyScoreSourceAuto,
+            computedAt: 1000,
+            algorithmVersion: 2,
+            hrvSeries: dailyScoreHrvSeriesRmssd),
+      );
+      // Auto vs auto → the local score stands, however new the
+      // server stamp; only the absent SDNN biometric may fill.
+      rig.server.rows['2026-10-16'] = _record('2026-10-16',
+          score: 91,
+          hrvMs: 88,
+          hrvBaselineMs: 80,
+          hrvSeries: dailyScoreHrvSeriesSdnn,
+          computedAt: 9999);
+      expect(await rig.sync.hydrate(), 1); // the SDNN fill only
+      final row = (await rig.store.readAll())['2026-10-16']!;
+      expect(row.dailyScore, 62);
+      expect(row.hrvSdnnMs, 88);
+      expect(row.hrvRmssdMs, 40);
+      // G4: the meta — marker included — still describes the
+      // standing LOCAL (RMSSD) score.
+      final meta = rig.store.scoreMetaFor('2026-10-16')!;
+      expect(meta.computedAt, 1000);
+      expect(meta.hrvSeries, dailyScoreHrvSeriesRmssd);
+    });
+
+    test('take-server: a newer manual_refresh SDNN record moves '
+        'the meta marker to sdnn', () async {
+      final rig = await rigWithLocalDay(
+        const DailyBiometrics(
+            date: '2026-10-16',
+            sleepMinutes: 420,
+            restingHrBpm: 60,
+            hrvRmssdMs: 40),
+        meta: const DailyScoreMeta(
+            source: dailyScoreSourceAuto,
+            computedAt: 1000,
+            algorithmVersion: 2,
+            hrvSeries: dailyScoreHrvSeriesRmssd),
+      );
+      rig.server.rows['2026-10-16'] = _record('2026-10-16',
+          score: 91,
+          hrvMs: 88,
+          hrvBaselineMs: 80,
+          hrvSeries: dailyScoreHrvSeriesSdnn,
+          source: dailyScoreSourceManualRefresh,
+          computedAt: 2000);
+      expect(await rig.sync.hydrate(), 1);
+      final row = (await rig.store.readAll())['2026-10-16']!;
+      expect(row.dailyScore, 91);
+      expect(row.hrvSdnnMs, 88);
+      expect(row.hrvRmssdMs, 40); // local value never overwritten
+      final meta = rig.store.scoreMetaFor('2026-10-16')!;
+      expect(meta.source, dailyScoreSourceManualRefresh);
+      expect(meta.computedAt, 2000);
+      expect(meta.hrvSeries, dailyScoreHrvSeriesSdnn);
+    });
+
+    test('the meta marker survives a store restart (sidecar in '
+        'the blob)', () async {
+      final rig = _SyncRig();
+      rig.server.rows['2026-10-16'] = _record('2026-10-16',
+          hrvMs: 88,
+          hrvBaselineMs: 80,
+          hrvSeries: dailyScoreHrvSeriesSdnn,
+          computedAt: 4242);
+      await rig.sync.hydrate();
+      final cold = _storeOn(rig.storeDisk);
+      expect((await cold.readAll())['2026-10-16']!.hrvSdnnMs, 88);
+      expect(cold.scoreMetaFor('2026-10-16')!.hrvSeries,
+          dailyScoreHrvSeriesSdnn);
+    });
+  });
+
   group('round-trip', () {
     test('payload → fake server → GET shape → hydrate into an '
         'EMPTY store renders identically', () async {
@@ -1190,6 +1621,82 @@ void main() {
       expect(serverRecord.hrvBaselineMs, 40);
       expect(serverRecord.restingHrBpm, 54);
       expect(serverRecord.restingHrBaselineBpm, 60);
+    });
+
+    test('C7: an SDNN day round-trips payload → fake server → '
+        'hydrate with fields, meta marker and label all '
+        'SDNN-true', () async {
+      // Device A: an SDNN-only history (the iOS shape) — compute,
+      // persist, push.
+      final a = _SyncRig();
+      await a.store.mergeRefresh([
+        for (final d in _priorDates('2026-10-16', 28))
+          DailyBiometrics(
+              date: d,
+              sleepMinutes: 480,
+              restingHrBpm: 60,
+              hrvSdnnMs: 40),
+        const DailyBiometrics(
+            date: '2026-10-16',
+            sleepMinutes: 420,
+            restingHrBpm: 54,
+            hrvSdnnMs: 32),
+      ]);
+      final fixedNow = DateTime(2026, 10, 17, 9);
+      await DailyScoreEngine(
+        store: a.store,
+        scoreSync: a.sync,
+        now: () => fixedNow,
+      ).computeMissingScores();
+      await a.sync.drain();
+      final aRow = (await a.store.readAll())['2026-10-16']!;
+      final aMeta = a.store.scoreMetaFor('2026-10-16')!;
+      expect(aRow.dailyScore, isNotNull);
+      expect(aRow.scoreHrv, isNotNull);
+      expect(aMeta.hrvSeries, dailyScoreHrvSeriesSdnn);
+
+      // The server's record for the day carries the marker.
+      final serverRecord = a.server.rows['2026-10-16']!;
+      expect(serverRecord.hrvMs, 32);
+      expect(serverRecord.hrvBaselineMs, 40);
+      expect(serverRecord.hrvSeries, dailyScoreHrvSeriesSdnn);
+
+      // Device B: a different store + sync over the SAME server.
+      final bStore = _storeOn(_FakeDisk());
+      final bSync = DailyScoreSync.withDeps(
+        store: bStore,
+        poster: a.server.post,
+        fetcher: a.server.get,
+        ownerProvider: () async => _ownerA,
+        read: _FakeDisk().read,
+        write: _FakeDisk().write,
+        delete: _FakeDisk().delete,
+      );
+      final changed = await bSync.hydrate();
+      expect(changed, greaterThan(0));
+
+      final bRow = (await bStore.readAll())['2026-10-16']!;
+      expect(bRow.dailyScore, aRow.dailyScore);
+      expect(bRow.scoreSleep, aRow.scoreSleep);
+      expect(bRow.scoreHrv, aRow.scoreHrv);
+      expect(bRow.scoreRestingHr, aRow.scoreRestingHr);
+      expect(bRow.sleepMinutes, aRow.sleepMinutes);
+      expect(bRow.restingHrBpm, aRow.restingHrBpm);
+      // THE headline assertions: the SDNN value hydrated into
+      // the SDNN field — the RMSSD field stays empty, so the
+      // value can never enter an RMSSD baseline pool.
+      expect(bRow.hrvSdnnMs, 32);
+      expect(bRow.hrvRmssdMs, isNull);
+      final bMeta = bStore.scoreMetaFor('2026-10-16')!;
+      expect(bMeta.source, aMeta.source);
+      expect(bMeta.computedAt, aMeta.computedAt);
+      expect(bMeta.algorithmVersion, aMeta.algorithmVersion);
+      expect(bMeta.hrvSeries, dailyScoreHrvSeriesSdnn);
+      // And the label reads off the persisted marker.
+      expect(persistedScoreHrvSeries(bRow, bMeta),
+          dailyScoreHrvSeriesSdnn);
+      expect(contributedComponentNames(bRow, meta: bMeta),
+          contains('HRV (SDNN)'));
     });
   });
 
