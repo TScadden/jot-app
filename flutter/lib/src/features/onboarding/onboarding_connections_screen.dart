@@ -54,14 +54,23 @@ class _OnboardingConnectionsScreenState
   /// Chunk 5/6 — the iOS availability snapshot, used instead of
   /// the Android status on iOS (HealthKit has no grant list for
   /// [HealthConnectService.getStatus] to read). The FLOW is wired
-  /// here (probe + request through the same service surface); this
-  /// screen's copy is unchanged — an iOS copy pass for onboarding
-  /// is not part of Juno's signed availability file.
+  /// here (probe + request through the same service surface); the
+  /// iOS copy on this screen is Juno's signed onboarding addendum
+  /// (2026-11-22), implemented verbatim.
   IosHealthAvailability? _iosAvailability;
 
   bool get _connected => _service.isIOS
       ? _iosAvailability?.state == IosHealthAvailabilityState.connected
       : _status == HealthConnectStatus.connected;
+
+  /// Juno onboarding addendum §3 — State 4 on iOS: HealthKit
+  /// unavailable on this device. The connect-button area is
+  /// replaced by the signed unavailable string and the bottom
+  /// button becomes a plain Next (no skip dialog — its premise is
+  /// false where the connection cannot exist).
+  bool get _iosUnavailable =>
+      _service.isIOS &&
+      _iosAvailability?.state == IosHealthAvailabilityState.unavailable;
 
   @override
   void initState() {
@@ -174,6 +183,11 @@ class _OnboardingConnectionsScreenState
   /// ruling — harness tofu risk). The "So there is no Daily
   /// Score…" line is founder-dictated verbatim and ships as-is.
   Future<void> _onSkipTap() async {
+    // Juno onboarding addendum §1 (#4/#5/#6): the dialog's title,
+    // intro, and closing sentence fork on iOS — the bullets and
+    // the founder-dictated first closing sentence stay shared and
+    // byte-identical on both platforms.
+    final isIOS = _service.isIOS;
     final skip = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -182,10 +196,10 @@ class _OnboardingConnectionsScreenState
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(24),
         ),
-        title: const Text(
-          'Skip Health Connect?',
+        title: Text(
+          isIOS ? 'Skip Apple Health?' : 'Skip Health Connect?',
           textAlign: TextAlign.center,
-          style: TextStyle(
+          style: const TextStyle(
             fontWeight: FontWeight.bold,
             color: NotelColors.textPrimary,
           ),
@@ -193,10 +207,12 @@ class _OnboardingConnectionsScreenState
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              "Without it, Tabs can't sync in your:",
+            Text(
+              isIOS
+                  ? "Without it, Tabs can't read your:"
+                  : "Without it, Tabs can't sync in your:",
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 color: NotelColors.textSecondary,
                 fontSize: 14,
               ),
@@ -228,12 +244,20 @@ class _OnboardingConnectionsScreenState
                 ),
               ),
             const SizedBox(height: 12),
-            const Text(
-              'So there is no Daily Score, and your trends and AI '
-              'insights only use what you log by hand. You can '
-              'connect anytime in Settings.',
+            Text(
+              // First sentence founder-dictated, byte-identical on
+              // both platforms; only the final sentence forks
+              // (addendum §1 #6).
+              isIOS
+                  ? 'So there is no Daily Score, and your trends and AI '
+                      'insights only use what you log by hand. You can '
+                      'connect anytime in Tabs: Settings, then Connected '
+                      'Apps, then Apple Health.'
+                  : 'So there is no Daily Score, and your trends and AI '
+                      'insights only use what you log by hand. You can '
+                      'connect anytime in Settings.',
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 color: NotelColors.textSecondary,
                 fontSize: 14,
                 height: 20 / 14,
@@ -342,10 +366,14 @@ class _OnboardingConnectionsScreenState
                         ),
                       ),
                       const SizedBox(height: 16),
-                      const Text(
-                        'Connect Health Data',
+                      // Juno onboarding addendum §1 (#1/#3): title
+                      // and first body line fork on iOS.
+                      Text(
+                        _service.isIOS
+                            ? 'Connect Apple Health'
+                            : 'Connect Health Data',
                         textAlign: TextAlign.center,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.w800,
                           color: NotelColors.textPrimary,
@@ -356,10 +384,13 @@ class _OnboardingConnectionsScreenState
                       // your insights" clause is DROPPED. Shipped
                       // body is the short line + the separate Daily
                       // Score line.
-                      const Text(
-                        'Sync your heart rate and sleep data.',
+                      Text(
+                        _service.isIOS
+                            ? 'Read your heart rate and sleep data '
+                                'from Apple Health.'
+                            : 'Sync your heart rate and sleep data.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 15,
                           color: NotelColors.textSecondary,
                           height: 22 / 15,
@@ -395,9 +426,26 @@ class _OnboardingConnectionsScreenState
                     ),
                   ),
                 )
-              else ...[
+              else if (_iosUnavailable) ...[
+                // Juno onboarding addendum §3: the signed State 4
+                // string replaces the connect-button area verbatim.
+                const Text(
+                  'Apple Health is not available on this device, so '
+                  'Tabs cannot read health data from it here. Your '
+                  'logging, check-ins, and notes in Tabs still work.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: NotelColors.textSecondary,
+                    height: 22 / 15,
+                  ),
+                ),
+              ] else ...[
                 OnboardingPrimaryButton(
-                  label: 'Connect Health Data',
+                  // Addendum §1 #2: same signed literal as the title.
+                  label: _service.isIOS
+                      ? 'Connect Apple Health'
+                      : 'Connect Health Data',
                   onPressed: _requesting ? null : _onConnectTap,
                 ),
                 // The manage-in-settings hand-off opens Health
@@ -440,10 +488,13 @@ class _OnboardingConnectionsScreenState
                 padding:
                     const EdgeInsets.only(bottom: kOnboardingBottomPadding),
                 child: OnboardingPrimaryButton(
-                  label: _connected ? 'Next' : 'Skip for now',
-                  // Connected → advance directly. Not connected →
-                  // the skip-warning dialog FIRST.
-                  onPressed: _connected
+                  // Connected → Next. iOS State 4 (addendum §3) →
+                  // also Next, advancing directly with NO skip
+                  // dialog. Otherwise → "Skip for now" and the
+                  // skip-warning dialog FIRST.
+                  label:
+                      _connected || _iosUnavailable ? 'Next' : 'Skip for now',
+                  onPressed: _connected || _iosUnavailable
                       ? widget.onNavigateNext
                       : _onSkipTap,
                 ),

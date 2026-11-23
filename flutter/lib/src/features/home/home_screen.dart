@@ -329,6 +329,13 @@ class _HomeScreenState extends State<HomeScreen>
   /// shows on a guess, and cached vitals render first regardless.
   HealthConnectStatus? _hcStatus;
 
+  /// iOS surface truth (Juno Heart/Home addendum §3.0) — on iOS the
+  /// banner gate reads THIS probe state alone; the Android status
+  /// derivation ([_hcStatus], the stale flag, the null→notConnected
+  /// fallback) never reaches the banner on iOS. Null until the
+  /// first iOS probe lands (no banner on a guess, as on Android).
+  IosHealthAvailabilityState? _iosHealthState;
+
   /// Phase 2 PR-2 — the stale/wedged half of the availability
   /// snapshot: true when `probeAvailability()` reports
   /// [HcAvailability.staleWedged] (full grant, real read probe
@@ -2351,6 +2358,20 @@ class _HomeScreenState extends State<HomeScreen>
       debugPrint(
           'Home HC status check failed [${snapshot.bridgeErrorCode}]');
     }
+    // iOS surface truth (Juno Heart/Home addendum §3.0): the
+    // banner's iOS state comes from the iOS probe ALONE — never
+    // derived from the Android snapshot above (whose null-status →
+    // notConnected fallback would paint State 3 as "isn't
+    // connected"). The probe never throws by contract; the
+    // catch-all keeps a platform surprise banner-silent.
+    IosHealthAvailabilityState? iosHealthState;
+    if (hc.isIOS) {
+      try {
+        iosHealthState = (await hc.probeIosAvailability()).state;
+      } catch (_) {
+        iosHealthState = null;
+      }
+    }
     final staleGrant = snapshot.staleWedged;
     final HealthConnectStatus status;
     if (staleGrant || snapshot.status == null) {
@@ -2419,10 +2440,12 @@ class _HomeScreenState extends State<HomeScreen>
     // connection state) must also rebuild, or the banner never lands.
     final statusChanged = status != _hcStatus ||
         staleGrant != _hcStaleGrant ||
-        wedged != _hcWedged;
+        wedged != _hcWedged ||
+        iosHealthState != _iosHealthState;
     if (changed || statusChanged) {
       setState(() {
         _vitals = vitals;
+        _iosHealthState = iosHealthState;
         // C-02a — on a failed streak pull the seeded pills stand.
         // Bug 3 — and once the settlement has landed, the settled
         // values stand: provisional counters never overwrite them.
@@ -3579,8 +3602,10 @@ class _HomeScreenState extends State<HomeScreen>
             // HC Grant Hardening §3.3 — while wedged, the repair
             // card REPLACES the banner in this slot; the
             // not-connected and partial banner presentations are
-            // untouched.
-            if (_hcWedged)
+            // untouched. The wedge is an Android grant state: the
+            // card must remain unreachable on iOS (Juno Heart/Home
+            // addendum §3.4), so the slot is Android-gated.
+            if (_hcWedged && !_healthRepo.hc.isIOS)
               Padding(
                 padding: const EdgeInsets.symmetric(
                     horizontal: 16.0, vertical: 2.0),
@@ -3610,11 +3635,22 @@ class _HomeScreenState extends State<HomeScreen>
                   ],
                 ),
               )
-            else if (shouldShowHealthConnectBanner(
-                status: _hcStatus, vitals: _vitals))
+            // iOS surface truth (Juno Heart/Home addendum §3): on
+            // iOS the gate is the iOS probe state alone — the
+            // banner shows ONLY in State 1 with empty vitals; the
+            // repair-card slot above is Android-wedge only and
+            // unreachable on iOS (its gate derives from the Android
+            // snapshot's stale evidence, which an iOS probe never
+            // produces). Android's gate and copy are unchanged.
+            else if (_healthRepo.hc.isIOS
+                ? shouldShowIosHealthBanner(
+                    state: _iosHealthState, vitals: _vitals)
+                : shouldShowHealthConnectBanner(
+                    status: _hcStatus, vitals: _vitals))
               HealthConnectBanner(
-                status: _hcStatus!,
+                status: _hcStatus ?? HealthConnectStatus.notConnected,
                 staleGrant: _hcStaleGrant,
+                iosState: _healthRepo.hc.isIOS ? _iosHealthState : null,
                 onTap: () => unawaited(_openConnections()),
               ),
             // Home polish round 4 (Part B) — Bandit + Today Summary

@@ -80,6 +80,13 @@ class _HeartScreenState extends State<HeartScreen> {
   /// card read from it (plus [_hrReadBlocked]).
   HcAvailability? _lastSnapshot;
 
+  /// iOS surface truth (Juno Heart/Home addendum, 2026-11-22) — on
+  /// iOS this screen's gate derives from [probeIosAvailability]
+  /// ONLY: the Android grant snapshot, the Android persisted-grant
+  /// key, and the Android status pipeline never paint this screen
+  /// on iOS. Null until the first iOS probe lands.
+  IosHealthAvailability? _iosAvailability;
+
   /// This screen's HR-read wedge evidence from the most recent
   /// load: true when the HR read failed with a SecurityException,
   /// false when it completed (data or honest empty), null when no
@@ -147,6 +154,34 @@ class _HeartScreenState extends State<HeartScreen> {
   }
 
   Future<void> _checkConnectionAndLoad({bool forceLoad = false}) async {
+    if (_service.isIOS) {
+      // iOS surface truth (Juno Heart/Home addendum §2.0): the gate
+      // is the four-state iOS probe and nothing else. State 2
+      // (requested AND a real read returned data) is the only state
+      // that earns the connected body; States 1/3/4 get their own
+      // signed presentations (see _iosBody). The probe never throws
+      // by contract; the catch-all maps any platform surprise to
+      // unavailable rather than to the Android persisted fallback.
+      IosHealthAvailability iosSnapshot;
+      try {
+        iosSnapshot = await _service.probeIosAvailability();
+      } catch (_) {
+        iosSnapshot = const IosHealthAvailability(
+          state: IosHealthAvailabilityState.unavailable,
+          requested: false,
+          hasData: false,
+        );
+      }
+      if (!mounted) return;
+      final iosConnected =
+          iosSnapshot.state == IosHealthAvailabilityState.connected;
+      setState(() {
+        _iosAvailability = iosSnapshot;
+        _connected = iosConnected;
+      });
+      if (iosConnected) await _load(force: forceLoad);
+      return;
+    }
     // HC Grant Hardening §3.4 — the layout gate is the grant state
     // for HEART's permission set alone (READ_HEART_RATE), derived
     // from ONE availability probe — never the global
@@ -343,6 +378,36 @@ class _HeartScreenState extends State<HeartScreen> {
 
   Future<void> _onLinkTap() async {
     if (_requesting) return;
+    if (_service.isIOS) {
+      // Juno Heart/Home addendum §2.1: NO MF-3 Health Connect
+      // disclosure dialog on iOS — the tap goes straight to the
+      // HealthKit request. The service's empty-set return is by
+      // design (HealthKit discloses no grant list), so the Android
+      // "No permissions were granted." verdict NEVER renders here:
+      // a completed request simply re-probes and lands on State 2
+      // (data returned) or the State 3 presentation. Only a FAILED
+      // request surfaces an error, and only the service's approved
+      // iOS strings can reach this slot.
+      setState(() {
+        _requesting = true;
+        _error = null;
+      });
+      try {
+        await _service.requestPermissions();
+      } on HealthConnectException catch (e) {
+        if (mounted) {
+          setState(() {
+            _requesting = false;
+            _error = e.message;
+          });
+        }
+        return;
+      }
+      if (!mounted) return;
+      setState(() => _requesting = false);
+      await _checkConnectionAndLoad(forceLoad: true);
+      return;
+    }
     // Juno MF-3: prominent disclosure BEFORE the system permission UI.
     final proceed = await showHealthConnectDisclosure(context);
     if (!proceed || !mounted) return;
@@ -551,9 +616,186 @@ class _HeartScreenState extends State<HeartScreen> {
             ),
         ],
       ),
-      body: connected == false
-          ? _notConnectedBody()
-          : _connectedBody(),
+      body: _service.isIOS
+          ? _iosBody()
+          : connected == false
+              ? _notConnectedBody()
+              : _connectedBody(),
+    );
+  }
+
+  /// iOS surface truth (Juno Heart/Home addendum §2.0) — the Heart
+  /// presentation is chosen by the iOS probe state alone. Before
+  /// the first probe lands, the connected body paints (its cached
+  /// values / "--" placeholders are a data state, not a connection
+  /// claim), exactly as the pre-check first frame has always done.
+  Widget _iosBody() {
+    final snapshot = _iosAvailability;
+    if (snapshot == null) return _connectedBody();
+    return switch (snapshot.state) {
+      IosHealthAvailabilityState.connected => _connectedBody(),
+      IosHealthAvailabilityState.notYetRequested => _iosState1Body(),
+      IosHealthAvailabilityState.noDataYet => _iosState3Body(),
+      IosHealthAvailabilityState.unavailable => _iosState4Body(),
+    };
+  }
+
+  /// The shared centered column for the iOS State 1/3/4
+  /// presentations (the not-connected layout's shape). All strings
+  /// are Juno-signed verbatim — see the per-state builders.
+  Widget _iosStateBody({
+    required String headline,
+    required String body,
+    String? secondary,
+    String? buttonLabel,
+    VoidCallback? onButtonTap,
+    bool buttonBusy = false,
+  }) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          const SizedBox(height: 48),
+          SizedBox(
+            width: 120,
+            height: 120,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Opacity(
+                  opacity: 0.1,
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: NotelColors.primary,
+                    ),
+                  ),
+                ),
+                const Icon(Icons.favorite,
+                    size: 64, color: NotelColors.primary),
+              ],
+            ),
+          ),
+          const SizedBox(height: 32),
+          Text(
+            headline,
+            style: const TextStyle(
+              color: NotelColors.textPrimary,
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            body,
+            style: const TextStyle(
+              color: NotelColors.textSecondary,
+              fontSize: 14,
+              height: 22 / 14,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          if (secondary != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              secondary,
+              style: const TextStyle(
+                color: NotelColors.textSecondary,
+                fontSize: 14,
+                height: 22 / 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+          if (buttonLabel != null) ...[
+            const SizedBox(height: 40),
+            FractionallySizedBox(
+              widthFactor: 0.9,
+              child: _GlassyButton(
+                color: NotelColors.primary,
+                onTap: buttonBusy ? null : onButtonTap,
+                child: buttonBusy
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: _chipInk,
+                        ),
+                      )
+                    : Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Text(
+                          buttonLabel,
+                          style: const TextStyle(
+                            color: _chipInk,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+              ),
+            ),
+          ],
+          if (_error != null) ...[
+            const SizedBox(height: 16),
+            Text(
+              _error!,
+              style: const TextStyle(color: NotelColors.error, fontSize: 13),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// State 1 — not yet requested (addendum §2.1). Headline shared;
+  /// body and button are the signed iOS literals. No disclosure
+  /// dialog precedes the tap (see [_onLinkTap]).
+  Widget _iosState1Body() {
+    return _iosStateBody(
+      headline: 'Connect Vital Signs',
+      body: 'Connect Apple Health to read your heart rate and sleep data.',
+      buttonLabel: 'Connect Apple Health',
+      onButtonTap: _onLinkTap,
+      buttonBusy: _requesting,
+    );
+  }
+
+  /// State 3 — requested, no data yet (addendum §2.2). Every string
+  /// reused verbatim from Juno's signed availability file, State 3.
+  /// Never labeled not-connected; "Check again" re-runs the probe.
+  Widget _iosState3Body() {
+    return _iosStateBody(
+      headline: 'No data yet',
+      body: 'Tabs has asked Apple Health for your health data, and '
+          'nothing has come back yet. That is normal if you do not '
+          'have an Apple Watch or another app writing to Apple '
+          'Health: heart rate, resting heart rate, and heart rate '
+          'variability are recorded by a watch, and sleep is '
+          'recorded by a watch or another sleep app. Steps and '
+          'energy from your iPhone can take a little while to '
+          'appear. Your logging, check-ins, and notes in Tabs work '
+          'either way.',
+      secondary: 'If you expected data to be here, check that Tabs '
+          'is allowed to read it: open the Health app, tap your '
+          'profile, tap Apps, tap Tabs, and make sure the data '
+          'types you want are on.',
+      buttonLabel: 'Check again',
+      onButtonTap: () =>
+          unawaited(_checkConnectionAndLoad(forceLoad: true)),
+    );
+  }
+
+  /// State 4 — unavailable (addendum §2.3): signed copy, NO button,
+  /// and never the State 1 headline.
+  Widget _iosState4Body() {
+    return _iosStateBody(
+      headline: 'Not available on this device',
+      body: 'Apple Health is not available on this device, so Tabs '
+          'cannot read health data from it here. Your logging, '
+          'check-ins, and notes in Tabs still work.',
     );
   }
 
@@ -1142,9 +1384,13 @@ class _HeartScreenState extends State<HeartScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Health Connect',
-                  style: TextStyle(
+                // Juno Heart/Home addendum §2.4: the source-row
+                // title is the signed row name on iOS. The logo
+                // asset above stays (a visual, flagged for Vera —
+                // see the PR body).
+                Text(
+                  _service.isIOS ? 'Apple Health' : 'Health Connect',
+                  style: const TextStyle(
                     color: NotelColors.textPrimary,
                     fontWeight: FontWeight.bold,
                     fontSize: 15,
