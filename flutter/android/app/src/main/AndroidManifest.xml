@@ -50,6 +50,14 @@
          (native CoachScreen.kt:89-113) — never at startup. -->
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+    <!-- Med Scan (Nov 22, 2026): camera for scanning a medication
+         package barcode (mobile_scanner) and photographing its
+         label for ON-DEVICE OCR (google_mlkit_text_recognition —
+         the image never leaves the phone). Requested at runtime
+         only at first scan use, never at startup. This is NOT a
+         Health Connect permission: no health_permissions.xml
+         entry, no HC declaration impact. -->
+    <uses-permission android:name="android.permission.CAMERA" />
     <application
         android:label="${appLabel}"
         android:name="${applicationName}"
