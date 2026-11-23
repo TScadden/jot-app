@@ -59,6 +59,7 @@ import 'package:tabs_lab/src/features/home/good_day_logging.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 import 'package:tabs_lab/src/features/tools/community_screen.dart';
+import 'package:tabs_lab/src/features/tools/medications_screen.dart';
 import 'package:tabs_lab/src/features/home/hc_repair_card.dart';
 import 'package:tabs_lab/src/features/home/health_connect_banner.dart';
 import 'package:tabs_lab/src/features/home/home_checkin_strip.dart';
@@ -3032,6 +3033,24 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  /// Medications to the drawer (founder, Nov 23, 2026) — pushes
+  /// the Medications screen, the drawer's fifth entry (Medications
+  /// moved here from Tools). The destination is the SAME screen
+  /// the Tools tile opened, constructed exactly as the Tools tap
+  /// case constructed it — Home's app-owned billing service
+  /// forwarded, the screen's backend defaulting inside the screen
+  /// — via the app-wide slide transition.
+  Future<void> _openMedicationsFromDrawer() async {
+    Navigator.of(context).pop(); // close the drawer first
+    await Navigator.of(context).push(
+      SlidePageRoute(
+        reducedMotion: animationsDisabled(context),
+        builder: (_) =>
+            MedicationsScreen(billingService: widget.billingService),
+      ),
+    );
+  }
+
   /// Home redesign — the check-in section the Today Summary sheet
   /// hosts. ALL state and commits stay here in _HomeScreenState; the
   /// builder re-reads them on every outbox change (the commit path's
@@ -3185,7 +3204,12 @@ class _HomeScreenState extends State<HomeScreen>
       // of Tools). BADGES package (Nov 20, 2026): a fourth row,
       // Badges, is appended LAST in the identical row style —
       // founder's final drawer order: AI Advocate, Event
-      // Counters, Community, Badges.
+      // Counters, Community, Badges. Medications package
+      // (founder, Nov 23, 2026): a fifth row, Medications, is
+      // appended LAST in the identical plain-row style —
+      // Medications moved here from Tools; the drawer order is
+      // now AI Advocate, Event Counters, Community, Badges,
+      // Medications.
       drawer: Drawer(
         backgroundColor: NotelColors.surface,
         width: 300,
@@ -3327,6 +3351,32 @@ class _HomeScreenState extends State<HomeScreen>
                     ),
                   );
                 },
+              ),
+              InkWell(
+                key: const ValueKey('home_drawer_medications'),
+                onTap: () => unawaited(_openMedicationsFromDrawer()),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  child: Row(
+                    children: [
+                      Icon(Icons.medication,
+                          color: NotelColors.textSecondary, size: 22),
+                      SizedBox(width: 16),
+                      Expanded(
+                        child: Text(
+                          'Medications',
+                          style: TextStyle(
+                            color: NotelColors.textPrimary,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                      Icon(Icons.chevron_right,
+                          size: 20, color: NotelColors.textSecondary),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),

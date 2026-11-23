@@ -395,7 +395,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('drawer: Badges entry appended last, opens the screen',
+  testWidgets('drawer: Badges entry above Medications, opens the screen',
       (tester) async {
     final weather = WeatherApiClient(
       client: MockClient((request) async {
@@ -419,15 +419,22 @@ void main() {
     final counters =
         find.byKey(const ValueKey('home_drawer_event_counters'));
     final badges = find.byKey(const ValueKey('home_drawer_badges'));
+    final medications =
+        find.byKey(const ValueKey('home_drawer_medications'));
     expect(advocate, findsOneWidget);
     expect(counters, findsOneWidget);
     expect(badges, findsOneWidget);
-    // Appended LAST at this base (final order after the Community
-    // merge: AI Advocate, Event Counters, Community, Badges).
+    expect(medications, findsOneWidget);
+    // Badges was appended LAST by its package (order after the
+    // Community merge: AI Advocate, Event Counters, Community,
+    // Badges); the Medications package (Nov 23, 2026) appended
+    // Medications below it, so Badges now sits above Medications.
     expect(tester.getTopLeft(advocate).dy,
         lessThan(tester.getTopLeft(counters).dy));
     expect(tester.getTopLeft(counters).dy,
         lessThan(tester.getTopLeft(badges).dy));
+    expect(tester.getTopLeft(badges).dy,
+        lessThan(tester.getTopLeft(medications).dy));
     expect(
       find.descendant(of: badges, matching: find.text('Badges')),
       findsOneWidget,
