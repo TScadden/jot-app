@@ -251,10 +251,16 @@ void main() {
       }
       // The refreshed day's metadata DID restamp — unconditionally,
       // even though its four score values did not change.
+      // Disclosed pin change (series marker package): the
+      // restamped entry also carries the recomputation's HRV
+      // series marker — the seeded day is RMSSD-shaped, so
+      // 'rmssd' — because the marker describes the replacement
+      // score and restamps with it.
       expect(afterMeta[_target], {
         'source': dailyScoreSourceManualRefresh,
         'computedAt': refreshNow.millisecondsSinceEpoch,
         'algorithmVersion': dailyScoreAlgorithmVersion,
+        'hrvSeries': dailyScoreHrvSeriesRmssd,
       });
       final meta = store.scoreMetaFor(_target)!;
       expect(meta.source, dailyScoreSourceManualRefresh);

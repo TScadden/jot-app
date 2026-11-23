@@ -396,6 +396,137 @@ void main() {
           ['Sleep', 'Resting heart rate']);
     });
 
+    // ── Series marker package (C5): the persisted meta marker
+    // is the label truth; the field derivation is the fallback
+    // for pre-marker rows only.
+    test('C5: persistedScoreHrvSeries — the meta marker decides '
+        'on a both-series row, both ways', () {
+      // The headline edge: the row carries BOTH series (a
+      // cross-platform merge), so the derivation can only ever
+      // answer RMSSD — but the score's own provenance is what
+      // the label must follow.
+      const bothRow = DailyBiometrics(
+        date: '2026-11-20',
+        hrvRmssdMs: 40,
+        hrvSdnnMs: 50,
+        dailyScore: 70,
+        scoreSleep: 70,
+        scoreHrv: 70,
+        scoreRestingHr: 70,
+      );
+      const sdnnMeta = DailyScoreMeta(
+        source: 'auto',
+        computedAt: 1000,
+        algorithmVersion: 2,
+        hrvSeries: dailyScoreHrvSeriesSdnn,
+      );
+      const rmssdMeta = DailyScoreMeta(
+        source: 'auto',
+        computedAt: 1000,
+        algorithmVersion: 2,
+        hrvSeries: dailyScoreHrvSeriesRmssd,
+      );
+      expect(scoreHrvCameFromSdnn(bothRow), isFalse); // derivation
+      expect(persistedScoreHrvSeries(bothRow, sdnnMeta),
+          dailyScoreHrvSeriesSdnn);
+      expect(persistedScoreHrvSeries(bothRow, rmssdMeta),
+          dailyScoreHrvSeriesRmssd);
+      expect(contributedComponentNames(bothRow, meta: sdnnMeta),
+          ['Sleep', 'HRV (SDNN)', 'Resting heart rate']);
+      expect(contributedComponentNames(bothRow, meta: rmssdMeta),
+          ['Sleep', 'HRV (RMSSD)', 'Resting heart rate']);
+    });
+
+    test('C5: persistedScoreHrvSeries — a null marker (legacy '
+        'meta or none) falls back to the field derivation', () {
+      const sdnnRow = DailyBiometrics(
+        date: '2026-11-20',
+        hrvSdnnMs: 50,
+        dailyScore: 70,
+        scoreSleep: 70,
+        scoreHrv: 70,
+        scoreRestingHr: 70,
+      );
+      const rmssdRow = DailyBiometrics(
+        date: '2026-11-20',
+        hrvRmssdMs: 40,
+        dailyScore: 70,
+        scoreSleep: 70,
+        scoreHrv: 70,
+        scoreRestingHr: 70,
+      );
+      const bothRow = DailyBiometrics(
+        date: '2026-11-20',
+        hrvRmssdMs: 40,
+        hrvSdnnMs: 50,
+        dailyScore: 70,
+        scoreSleep: 70,
+        scoreHrv: 70,
+        scoreRestingHr: 70,
+      );
+      // A pre-marker meta: every field present, no marker.
+      const legacyMeta = DailyScoreMeta(
+        source: 'auto',
+        computedAt: 1000,
+        algorithmVersion: 2,
+      );
+      for (final meta in <DailyScoreMeta?>[null, legacyMeta]) {
+        expect(persistedScoreHrvSeries(sdnnRow, meta),
+            dailyScoreHrvSeriesSdnn);
+        expect(persistedScoreHrvSeries(rmssdRow, meta),
+            dailyScoreHrvSeriesRmssd);
+        expect(persistedScoreHrvSeries(bothRow, meta),
+            dailyScoreHrvSeriesRmssd);
+        expect(contributedComponentNames(sdnnRow, meta: meta),
+            ['Sleep', 'HRV (SDNN)', 'Resting heart rate']);
+        expect(contributedComponentNames(bothRow, meta: meta),
+            ['Sleep', 'HRV (RMSSD)', 'Resting heart rate']);
+      }
+      // No HRV contribution → no series, whatever the meta says.
+      const unscoredHrv = DailyBiometrics(
+        date: '2026-11-20',
+        hrvSdnnMs: 50,
+        dailyScore: 70,
+        scoreSleep: 70,
+        scoreRestingHr: 70,
+      );
+      const sdnnMeta = DailyScoreMeta(
+        source: 'auto',
+        computedAt: 1000,
+        algorithmVersion: 2,
+        hrvSeries: dailyScoreHrvSeriesSdnn,
+      );
+      expect(persistedScoreHrvSeries(unscoredHrv, sdnnMeta), isNull);
+      expect(persistedScoreHrvSeries(unscoredHrv, null), isNull);
+    });
+
+    test('C5: DailyScoreMeta JSON round-trips the marker; a '
+        'pre-marker blob parses with a null marker', () {
+      const meta = DailyScoreMeta(
+        source: 'manual_refresh',
+        computedAt: 4242,
+        algorithmVersion: 2,
+        hrvSeries: dailyScoreHrvSeriesSdnn,
+      );
+      expect(DailyScoreMeta.fromJson(meta.toJson()), meta);
+      // Legacy sidecar shape (no hrvSeries key at all).
+      final legacy = DailyScoreMeta.fromJson(const {
+        'source': 'auto',
+        'computedAt': 1000,
+        'algorithmVersion': 1,
+      })!;
+      expect(legacy.hrvSeries, isNull);
+      // An unrecognised stored marker is treated as absent,
+      // never guessed.
+      final unknown = DailyScoreMeta.fromJson(const {
+        'source': 'auto',
+        'computedAt': 1000,
+        'algorithmVersion': 2,
+        'hrvSeries': 'sdnn-ish',
+      })!;
+      expect(unknown.hrvSeries, isNull);
+    });
+
     testWidgets('an unscored SDNN-only day (SDNN data present, '
         'RMSSD absent, SDNN baseline < 7) renders the detail row '
         'name HRV (SDNN)', (tester) async {

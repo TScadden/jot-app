@@ -243,6 +243,7 @@ class DailyScoreRefresher {
       scoreSource: dailyScoreSourceManualRefresh,
       scoreComputedAt: computedAt,
       scoreAlgorithmVersion: dailyScoreAlgorithmVersion,
+      scoreHrvSeries: computation.hrvSeries,
     );
     if (!replaced) {
       // The day is not in the store (any more) — nothing was
