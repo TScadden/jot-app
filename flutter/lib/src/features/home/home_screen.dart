@@ -2970,31 +2970,55 @@ class _HomeScreenState extends State<HomeScreen>
         // Audit 6d (Oct 27, 2026) — house label.
         tooltip: 'Weather',
         padding: EdgeInsets.zero,
-        icon: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_weatherLoaded)
-                Text(
-                  '${_temp!}°',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: NotelColors.textPrimary.withValues(alpha: 0.8),
+        // Weather Corner fix (Nov 23, 2026): shrinkWrap keeps the
+        // button at its visual 40dp height — the M3 default pads
+        // the tap target to 48dp and centers the visual button in
+        // it, which would add a hidden 4dp inset above the cluster
+        // and break the card-corner placement (see
+        // TodaySummaryCard). Tap target stays 64x40.
+        style: IconButton.styleFrom(
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        icon: SizedBox(
+          width: 64,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            // Weather Corner fix (Nov 23, 2026): right-align the
+            // visible cluster (temp text + icon) inside the 64dp
+            // box. TodaySummaryCard overlays this element in the
+            // card's top-right corner with the box's right edge
+            // 10dp from the card's outer right edge, so
+            // right-aligned ink is what hugs the corner — at any
+            // temp width (a centered 3-digit temp would otherwise
+            // sit ~7dp further in). The fixed-width SizedBox makes
+            // the FittedBox actually fill the button; under loose
+            // constraints it would shrink to the cluster's size
+            // and the IconButton would center it instead.
+            alignment: Alignment.centerRight,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_weatherLoaded)
+                  Text(
+                    '${_temp!}°',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: NotelColors.textPrimary.withValues(alpha: 0.8),
+                    ),
                   ),
+                if (_weatherLoaded) const SizedBox(width: 4),
+                // Round 14 — the condition icon is alive: rotating sun
+                // rays, falling rain, drifting clouds, twinkling stars.
+                // Before any condition loads it renders a static cloud
+                // (the "no data yet" glyph).
+                AnimatedWeatherIcon(
+                  weatherCode: _weatherCode,
+                  isDay: _isDay,
+                  size: 20,
                 ),
-              if (_weatherLoaded) const SizedBox(width: 4),
-              // Round 14 — the condition icon is alive: rotating sun
-              // rays, falling rain, drifting clouds, twinkling stars.
-              // Before any condition loads it renders a static cloud
-              // (the "no data yet" glyph).
-              AnimatedWeatherIcon(
-                weatherCode: _weatherCode,
-                isDay: _isDay,
-                size: 20,
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
