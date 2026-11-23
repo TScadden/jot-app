@@ -1,15 +1,18 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:tabs_lab/src/data/med_scan.dart';
 import 'package:tabs_lab/src/data/med_scan_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/tools/med_scan_confirm_sheet.dart';
 import 'package:tabs_lab/src/features/tools/med_scan_screen.dart';
+import 'package:tabs_lab/src/features/tools/med_scan_strings.dart';
 import 'package:tabs_lab/src/features/tools/medications_screen.dart';
 
 import 'test_helpers.dart';
@@ -310,6 +313,162 @@ void main() {
         await DrugLookupService(client: client).lookupBarcode('312345678905'),
         isNull,
       );
+    });
+
+    test('persistent transport failure terminates the walk (F3)', () async {
+      // Juno follow-up F3: a failing lookup must terminate
+      // into "not identified", never grind on — the openFDA
+      // walk stops after 3 transport failures instead of
+      // trying every NDC candidate, and each request carries
+      // the service's timeout.
+      var fdaRequests = 0;
+      final client = MockClient((request) async {
+        if (request.url.host == 'api.fda.gov') fdaRequests++;
+        throw http.ClientException('offline');
+      });
+      expect(
+        await DrugLookupService(client: client).lookupBarcode('312345678905'),
+        isNull,
+      );
+      expect(fdaRequests, 3);
+    });
+  });
+
+  group('Juno follow-up ruling (Nov 23)', () {
+    test('F1: the photo button draft stands as written', () {
+      expect(MedScanStrings.takePhotoButton, 'Take a photo of the label');
+    });
+
+    test('F2: busy strings are byte-exact with a U+2026 ellipsis', () {
+      expect(MedScanStrings.busyBarcodeLookup, 'Looking up this barcode…');
+      expect(MedScanStrings.busyReadingLabelPhoto, 'Reading the label photo…');
+      for (final s in [
+        MedScanStrings.busyBarcodeLookup,
+        MedScanStrings.busyReadingLabelPhoto,
+      ]) {
+        // Single horizontal ellipsis, never three full stops.
+        expect(s.codeUnitAt(s.length - 1), 0x2026);
+        expect(s.endsWith('...'), isFalse);
+      }
+    });
+  });
+
+  group('Juno follow-up: busy states render + termination lands on §5', () {
+    MedScanStore seenStore() {
+      final mem = <String, String>{MedScanStore.rationaleSeenKey: 'true'};
+      return MedScanStore.withStorage(
+        read: (k) async => mem[k],
+        write: (k, v) async => mem[k] = v,
+      );
+    }
+
+    const notIdentified =
+        'We could not identify this medication. Add it manually — any text we could read is already filled in.';
+
+    testWidgets('barcode: busy string renders during the lookup; a failed '
+        'lookup lands on the §5 message', (tester) async {
+      final lookup = _GatedLookupService();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MedScanScreen(store: seenStore(), lookupService: lookup),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(MobileScanner), findsOneWidget);
+      tester.widget<MobileScanner>(find.byType(MobileScanner)).onDetect!(
+        const BarcodeCapture(barcodes: [Barcode(rawValue: '312345678905')]),
+      );
+      await tester.pump();
+      await tester.pump();
+      // F2: the ruled text under the spinner, and the same
+      // text as the spinner's semantics label, while the
+      // lookup is in flight.
+      expect(find.text('Looking up this barcode…'), findsOneWidget);
+      expect(
+        tester
+            .widget<CircularProgressIndicator>(
+              find.byType(CircularProgressIndicator),
+            )
+            .semanticsLabel,
+        'Looking up this barcode…',
+      );
+      // The lookup fails (resolves null) → the §5 panel.
+      lookup.gate.complete(null);
+      await tester.pumpAndSettle();
+      expect(find.text(notIdentified), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+
+    testWidgets('label photo: busy string renders during the read; a failed '
+        'read lands on the §5 message', (tester) async {
+      final gate = Completer<List<String>>();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MedScanScreen(
+            store: seenStore(),
+            imagePicker: _FakeImagePicker(XFile('/tmp/label.jpg')),
+            labelLinesReader: (_) => gate.future,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Label photo'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('med_scan_take_photo')));
+      await tester.pump();
+      await tester.pump();
+      // F2: the ruled text under the spinner, and the same
+      // text as the spinner's semantics label, while the
+      // on-device read is in flight.
+      expect(find.text('Reading the label photo…'), findsOneWidget);
+      expect(
+        tester
+            .widget<CircularProgressIndicator>(
+              find.byType(CircularProgressIndicator),
+            )
+            .semanticsLabel,
+        'Reading the label photo…',
+      );
+      // The read fails → the §5 panel, nothing saved.
+      gate.completeError(StateError('ocr failed'));
+      await tester.pumpAndSettle();
+      expect(find.text(notIdentified), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+
+    testWidgets('label photo: a read that never finishes terminates on the '
+        '§5 message instead of spinning forever', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MedScanScreen(
+            store: seenStore(),
+            imagePicker: _FakeImagePicker(XFile('/tmp/label.jpg')),
+            labelLinesReader: (_) => Completer<List<String>>().future,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Label photo'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('med_scan_take_photo')));
+      await tester.pump();
+      expect(find.text('Reading the label photo…'), findsOneWidget);
+      // Advance past the 30 s read timeout (F3): the busy
+      // state must end on §5.
+      await tester.pump(const Duration(seconds: 31));
+      await tester.pumpAndSettle();
+      expect(find.text(notIdentified), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+
+    test('barcode: a hanging transport terminates under the lookup '
+        'service overall cap (F3)', () async {
+      final client = MockClient((request) => Completer<http.Response>().future);
+      final service = DrugLookupService(
+        client: client,
+        overallTimeout: const Duration(milliseconds: 200),
+      );
+      expect(await service.lookupBarcode('312345678905'), isNull);
     });
   });
 
@@ -666,6 +825,32 @@ class _SheetHarness extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A lookup service whose result the test controls.
+class _GatedLookupService extends DrugLookupService {
+  final Completer<MedScanProposal?> gate = Completer<MedScanProposal?>();
+
+  @override
+  Future<MedScanProposal?> lookupBarcode(String rawValue) => gate.future;
+}
+
+/// An image picker that returns a fixed file without touching
+/// the platform.
+class _FakeImagePicker extends ImagePicker {
+  _FakeImagePicker(this.file);
+
+  final XFile? file;
+
+  @override
+  Future<XFile?> pickImage({
+    required ImageSource source,
+    double? maxWidth,
+    double? maxHeight,
+    int? imageQuality,
+    CameraDevice preferredCameraDevice = CameraDevice.rear,
+    bool requestFullMetadata = true,
+  }) async => file;
 }
 
 /// Minimal backend fake: an empty profile (no medications).

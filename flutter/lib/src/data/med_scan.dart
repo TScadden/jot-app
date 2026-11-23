@@ -603,11 +603,27 @@ MedicationEntry? findConfidentMedicationMatch(
 class DrugLookupService {
   final http.Client _client;
 
-  DrugLookupService({http.Client? client}) : _client = client ?? http.Client();
+  /// Overall cap on one barcode lookup (Juno follow-up F3):
+  /// the per-request timeout alone lets a full candidate walk
+  /// of slow answers spin for minutes, so the whole lookup is
+  /// capped too — on expiry it resolves to null and the UI
+  /// lands on the §5 not-identified message. Injectable so
+  /// tests can use a short cap.
+  final Duration overallTimeout;
+
+  DrugLookupService({
+    http.Client? client,
+    this.overallTimeout = const Duration(seconds: 45),
+  }) : _client = client ?? http.Client();
 
   static const Duration _timeout = Duration(seconds: 10);
 
-  Future<MedScanProposal?> lookupBarcode(String rawValue) async {
+  Future<MedScanProposal?> lookupBarcode(String rawValue) {
+    return _lookupBarcode(rawValue)
+        .timeout(overallTimeout, onTimeout: () => null);
+  }
+
+  Future<MedScanProposal?> _lookupBarcode(String rawValue) async {
     var transportFailures = 0;
     for (final query in ndcQueriesForBarcode(rawValue)) {
       try {

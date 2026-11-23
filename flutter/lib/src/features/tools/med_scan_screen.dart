@@ -63,11 +63,17 @@ class MedScanScreen extends StatefulWidget {
   final ImagePicker? imagePicker;
   final MedScanStore? store;
 
+  /// Injectable label-line reader for tests; production leaves
+  /// this null and reads the photo with on-device ML Kit (see
+  /// [_MedScanScreenState._readLabelLines]).
+  final Future<List<String>> Function(String imagePath)? labelLinesReader;
+
   const MedScanScreen({
     super.key,
     this.lookupService,
     this.imagePicker,
     this.store,
+    this.labelLinesReader,
   });
 
   @override
@@ -98,6 +104,11 @@ class _MedScanScreenState extends State<MedScanScreen> {
   /// A barcode was accepted and its lookup is in flight (or
   /// done) — further detections are ignored.
   bool _barcodeHandled = false;
+
+  /// Which ruled busy text (Juno follow-up F2) the busy panel
+  /// shows — set at each busy entry point, for the state's
+  /// entire duration.
+  String _busyText = MedScanStrings.busyBarcodeLookup;
 
   @override
   void initState() {
@@ -161,7 +172,10 @@ class _MedScanScreenState extends State<MedScanScreen> {
     }
     if (raw == null) return;
     _barcodeHandled = true;
-    setState(() => _phase = _ScanPhase.busy);
+    setState(() {
+      _busyText = MedScanStrings.busyBarcodeLookup;
+      _phase = _ScanPhase.busy;
+    });
     await _scannerController.stop();
     final proposal = await _lookup.lookupBarcode(raw);
     if (!mounted) return;
@@ -193,25 +207,26 @@ class _MedScanScreenState extends State<MedScanScreen> {
       return;
     }
     if (photo == null || !mounted) return; // user backed out
-    setState(() => _phase = _ScanPhase.busy);
+    setState(() {
+      _busyText = MedScanStrings.busyReadingLabelPhoto;
+      _phase = _ScanPhase.busy;
+    });
 
     // On-device OCR: the image is read from its local path by
     // ML Kit's on-device recognizer. No upload exists on this
     // path — no network call is made with the image or its text.
-    final recognizer = TextRecognizer();
     try {
-      final recognized = await recognizer.processImage(
-        InputImage.fromFilePath(photo.path),
-      );
+      // Juno follow-up F3 termination condition: a hung
+      // recognizer must not spin forever — the timeout lands
+      // in the catch below and terminates into the §5
+      // not-identified panel, like any other read failure, and
+      // this path saves/writes nothing. (The barcode path's
+      // equivalent guards are the lookup service's per-request
+      // and overall timeouts.)
+      final lines = await _readLabelLines(photo.path)
+          .timeout(const Duration(seconds: 30));
       if (!mounted) return;
-      final lines = <String>[
-        for (final block in recognized.blocks)
-          for (final line in block.lines) line.text,
-      ];
-      final effectiveLines = lines.isNotEmpty
-          ? lines
-          : recognized.text.split('\n');
-      final parts = parseMedicationLabelLines(effectiveLines);
+      final parts = parseMedicationLabelLines(lines);
       if (parts != null && parts.name != null && parts.name!.isNotEmpty) {
         Navigator.of(context).pop(
           MedScanFlowResult.identified(
@@ -239,6 +254,28 @@ class _MedScanScreenState extends State<MedScanScreen> {
         _prefillDose = null;
         _phase = _ScanPhase.notIdentified;
       });
+    }
+  }
+
+  /// Reads the label lines from the photo at [imagePath]. The
+  /// production path is ML Kit's on-device recognizer (the
+  /// image never leaves the phone); tests inject
+  /// [MedScanScreen.labelLinesReader] instead. The recognizer
+  /// is always closed, including when the caller's timeout
+  /// fires first and the read completes later.
+  Future<List<String>> _readLabelLines(String imagePath) async {
+    final injected = widget.labelLinesReader;
+    if (injected != null) return injected(imagePath);
+    final recognizer = TextRecognizer();
+    try {
+      final recognized = await recognizer.processImage(
+        InputImage.fromFilePath(imagePath),
+      );
+      final lines = <String>[
+        for (final block in recognized.blocks)
+          for (final line in block.lines) line.text,
+      ];
+      return lines.isNotEmpty ? lines : recognized.text.split('\n');
     } finally {
       await recognizer.close();
     }
@@ -464,10 +501,29 @@ class _MedScanScreenState extends State<MedScanScreen> {
   }
 
   Widget _busyPanel() {
-    // No busy copy is in Juno's ruled set — a bare spinner,
-    // never an unruled string.
-    return const Center(
-      child: CircularProgressIndicator(color: NotelColors.primary),
+    // Juno follow-up ruling F2: the spinner is always paired
+    // with its ruled text (below the spinner, for the state's
+    // entire duration), and the same text is the spinner's
+    // semantics label. No other busy wording exists.
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircularProgressIndicator(
+            color: NotelColors.primary,
+            semanticsLabel: _busyText,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            _busyText,
+            style: const TextStyle(
+              fontSize: 14,
+              color: NotelColors.textSecondary,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
     );
   }
 

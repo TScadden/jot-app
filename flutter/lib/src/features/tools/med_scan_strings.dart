@@ -11,11 +11,12 @@
 /// claims; scan results are always a proposal the user checks,
 /// never a fact.
 ///
-/// TWO strings remain Bram drafts, flagged inline, because
-/// Juno's set does not enumerate them (the photo-mode action
-/// button and the rationale heading): they are listed in the
-/// package stage log for a follow-up ruling. Busy states show a
-/// bare spinner — no busy string is ruled, so none is shown.
+/// Follow-up ruling (Nov 23, 2026, JUNO-COPY.md): the
+/// photo-mode action button draft is APPROVED as written (F1),
+/// and the busy states are now ruled (F2) — the spinner is
+/// always paired with its ruled text, never bare. One string
+/// remains a Bram draft, flagged inline: the rationale
+/// heading.
 abstract final class MedScanStrings {
   /// §1 — the Medications screen entry button.
   static const String scanButtonLabel = 'Scan medication';
@@ -51,9 +52,21 @@ abstract final class MedScanStrings {
   static const String barcodeLookupNote =
       'Barcode lookups send only the barcode number to openFDA and RxNorm to find the medication name. No personal information is sent.';
 
-  /// DRAFT (not in Juno's ruled set — flagged for follow-up):
+  /// Follow-up ruling F1: Bram's draft APPROVED as written —
   /// the label-photo mode action button that opens the camera.
   static const String takePhotoButton = 'Take a photo of the label';
+
+  /// Follow-up ruling F2 — busy text for the barcode lookup:
+  /// shown beside/below the spinner for the state's entire
+  /// duration and used as the spinner's semantics label. The
+  /// trailing character is a single horizontal ellipsis
+  /// (U+2026), never three full stops. No sub-lines.
+  static const String busyBarcodeLookup = 'Looking up this barcode…';
+
+  /// Follow-up ruling F2 — busy text for the on-device label
+  /// read (OCR + parse). Same placement, semantics, and
+  /// ellipsis rules as [busyBarcodeLookup].
+  static const String busyReadingLabelPhoto = 'Reading the label photo…';
 
   /// §3 — camera rationale, shown in-app BEFORE the system
   /// permission prompt, on first use of Scan only.
