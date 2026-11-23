@@ -785,13 +785,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// MCP v1.1 — opens the Connect an AI screen (see + revoke AI
   /// connections; connecting itself happens in the AI app's
   /// sign-in flow, never here).
+  ///
+  /// Premium gate: the screen receives this instance's
+  /// RevenueCat premium verdict (iOS only, the same verdict the
+  /// Membership page ORs in). When a free user taps Upgrade to
+  /// Premium there, the screen pops with
+  /// [ConnectAiScreen.upgradeRequestResult] and THIS Settings
+  /// instance switches its own page to Membership — no new
+  /// purchase flow, and the billing / RevenueCat services this
+  /// instance already owns stay threaded into that page.
   Future<void> _openConnectAi() async {
-    await Navigator.of(context).push(
-      SlidePageRoute(
+    final result = await Navigator.of(context).push<String>(
+      SlidePageRoute<String>(
         reducedMotion: animationsDisabled(context),
-        builder: (_) => const ConnectAiScreen(),
+        builder: (_) => ConnectAiScreen(
+          backend: _backend,
+          revenueCatPremium: _isIos ? _rcPremium : null,
+        ),
       ),
     );
+    if (!mounted) return;
+    if (result == ConnectAiScreen.upgradeRequestResult) {
+      setState(() => _page = _Page.membership);
+    }
   }
 
   /// Hands off to Health Connect settings — the only place the
