@@ -17,3 +17,12 @@
 -keep class com.notel.notel.playground.flutter.StreakWidgetProvider { *; }
 -keep class es.antonborri.home_widget.HomeWidgetProvider { *; }
 -keep class es.antonborri.home_widget.HomeWidgetPlugin { *; }
+# Med Scan package (Nov 23, 2026): google_mlkit_text_recognition declares
+# the non-Latin script artifacts (chinese/devanagari/japanese/korean) as
+# compileOnly — the plugin references their options classes but they are
+# not bundled, and the app uses the Latin recognizer only. Without these
+# rules R8 fails the release build with missing-class errors.
+-dontwarn com.google.mlkit.vision.text.chinese.**
+-dontwarn com.google.mlkit.vision.text.devanagari.**
+-dontwarn com.google.mlkit.vision.text.japanese.**
+-dontwarn com.google.mlkit.vision.text.korean.**
