@@ -23,6 +23,27 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// POSTs the revoke and removes the row only on success — a
 /// failed revoke keeps the row and surfaces an error (never a
 /// silent no-op).
+///
+/// Premium gate (MCP Premium-only gate package, Juno copy pack
+/// §c, FINAL, `build-mcp-premium-gate/JUNO-COPY.md`): connecting
+/// an AI is a Premium feature. Entitlement resolves tri-state
+/// (the PatternsScreen pattern): an explicit
+/// [ConnectAiScreen.isUnlimited] seam wins, else the injectable
+/// [ConnectAiScreen.membershipLoader] (default: the backend's
+/// failure-distinguishing `fetchMembershipOrNull` — the sync
+/// pull's `isUnlimited`, which the server computes as
+/// `isAdmin || users.is_unlimited`, so trial and admin count
+/// exactly as they do on every other gated surface), OR-ed with
+/// the optional RevenueCat premium verdict threaded from
+/// Settings (the Membership surface's iOS OR). A KNOWN Premium
+/// verdict renders the v1.1 screen byte-unchanged. A KNOWN
+/// non-Premium verdict renders Juno's §c Premium state instead
+/// of the list (rows never render there, and neither does the
+/// v1.1 empty state; the conditional lapsed note renders only
+/// when a connections fetch shows the account has connections).
+/// An UNKNOWN verdict (the entitlement fetch itself failed)
+/// fails closed: the honest [ConnectAiCopy.loadError] line, no
+/// list, no upsell — pull-to-refresh retries.
 class ConnectAiCopy {
   // Juno §c — verbatim.
   static const String title = 'Connect an AI';
@@ -50,6 +71,23 @@ class ConnectAiCopy {
   static const String cancelButton = 'Cancel';
   static const String helpLinkLabel = 'How to connect an AI';
 
+  // Premium-gate §c — verbatim (Juno Premium-gate pack §c).
+  // The screen title above is unchanged in this state.
+  static const String premiumHeading = 'Connecting an AI needs Premium';
+  static const String premiumExplainer =
+      'Connecting an AI lets it read your Tabs data — your log '
+      'entries, Daily Scores, streak, gems, badges, and medications '
+      'list — so you can ask it questions about your own data. It '
+      'can only read, never change anything.';
+  static const String premiumThirdParty =
+      "Once an app reads your data, that company keeps what it "
+      "read under its own privacy policy — not Tabs'.";
+  static const String upgradeButton = 'Upgrade to Premium';
+  static const String lapsedNote =
+      "You already have connections. They're paused while Premium "
+      "isn't active — not deleted, and if you resubscribe they'll "
+      "work again with no need to reconnect.";
+
   // Failure lines — app-pattern chrome, flagged for Juno (see
   // the class doc). NOT from her pack.
   static const String loadError =
@@ -73,7 +111,43 @@ class ConnectAiScreen extends StatefulWidget {
   /// browser opened. Production default: [launchUrl] external.
   final Future<bool> Function(Uri uri)? openUrl;
 
-  const ConnectAiScreen({super.key, this.backend, this.openUrl});
+  /// Premium flag — tri-state (the PatternsScreen pattern). An
+  /// explicit value wins. When null, membership resolves via
+  /// [membershipLoader] (default: the backend's
+  /// `fetchMembershipOrNull`); a failed resolution fails closed
+  /// (the load-error state) and never reads as non-member, so a
+  /// Premium user's list is never silently replaced by the
+  /// Premium state on a cold or failed fetch.
+  final bool? isUnlimited;
+
+  /// Injectable membership resolver for the unknown-gate path:
+  /// returns the resolved `isUnlimited`, or null when the
+  /// resolution itself failed.
+  final Future<bool?> Function()? membershipLoader;
+
+  /// RevenueCat's validated premium verdict, threaded from
+  /// Settings (iOS only there, exactly as the Membership surface
+  /// receives it). OR-ed into the gate: a true verdict makes the
+  /// user Premium even when the sync pull says otherwise (or
+  /// cannot answer). Null = no verdict.
+  final bool? revenueCatPremium;
+
+  /// Route result popped when the free-user Premium state's
+  /// upgrade button is tapped. Settings' `_openConnectAi` — this
+  /// screen's only production opener — listens for it and
+  /// switches its own page to Membership in the same Settings
+  /// instance (no new purchase flow; the billing / RevenueCat
+  /// services that instance already owns stay threaded).
+  static const String upgradeRequestResult = 'upgrade';
+
+  const ConnectAiScreen({
+    super.key,
+    this.backend,
+    this.openUrl,
+    this.isUnlimited,
+    this.membershipLoader,
+    this.revenueCatPremium,
+  });
 
   @override
   State<ConnectAiScreen> createState() => _ConnectAiScreenState();
@@ -85,6 +159,16 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
   /// Null until the first load lands (the loading row renders).
   List<AiConnectionDto>? _connections;
   String? _loadError;
+
+  /// Tri-state Premium gate: null = genuinely unknown (pending,
+  /// or the resolution failed — see [_entitlementFailed]).
+  /// Gated content (the list AND the Premium state) renders only
+  /// on a KNOWN verdict.
+  bool? _isUnlimitedResolved;
+
+  /// The entitlement fetch itself failed: fail closed with the
+  /// honest load-error line — no list, no upsell.
+  bool _entitlementFailed = false;
 
   /// Ids with a revoke in flight — their Disconnect buttons are
   /// disabled so a connection can't be double-revoked.
@@ -98,6 +182,50 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
   }
 
   Future<void> _load() async {
+    await Future.wait([_resolveEntitlement(), _loadConnections()]);
+  }
+
+  /// Resolves the Premium gate (see the widget docs). The
+  /// RevenueCat verdict ORs in exactly as on the Membership
+  /// surface: a true RC verdict is Premium even when the pull
+  /// says non-member or cannot answer at all.
+  Future<void> _resolveEntitlement() async {
+    bool? base;
+    if (widget.isUnlimited != null) {
+      base = widget.isUnlimited;
+    } else {
+      try {
+        base = await (widget.membershipLoader != null
+            ? widget.membershipLoader!()
+            : _fetchMembershipFromBackend());
+      } catch (_) {
+        base = null;
+      }
+    }
+    if (!mounted) return;
+    final rcPremium = widget.revenueCatPremium ?? false;
+    setState(() {
+      if (base == null) {
+        if (rcPremium) {
+          _isUnlimitedResolved = true;
+          _entitlementFailed = false;
+        } else {
+          _isUnlimitedResolved = null;
+          _entitlementFailed = true;
+        }
+      } else {
+        _isUnlimitedResolved = base || rcPremium;
+        _entitlementFailed = false;
+      }
+    });
+  }
+
+  Future<bool?> _fetchMembershipFromBackend() async {
+    final membership = await _backend.fetchMembershipOrNull();
+    return membership?.isUnlimited;
+  }
+
+  Future<void> _loadConnections() async {
     List<AiConnectionDto>? list;
     try {
       list = await _backend.fetchAiConnections();
@@ -226,67 +354,162 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(24),
           children: [
-            const Text(
-              ConnectAiCopy.howItWorks,
-              style: TextStyle(
-                color: NotelColors.textPrimary,
-                fontSize: 14,
-                height: 20 / 14,
-              ),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              ConnectAiCopy.blurb,
-              style: TextStyle(
-                color: NotelColors.textSecondary,
-                fontSize: 14,
-                height: 20 / 14,
-              ),
-            ),
-            const SizedBox(height: 24),
-            const _SectionLabel(ConnectAiCopy.connectedLabel),
-            const SizedBox(height: 8),
-            if (connections == null)
-              const _LoadingRow()
-            else if (connections.isEmpty && _loadError == null)
-              const Padding(
-                padding: EdgeInsets.only(left: 4),
-                child: Text(
-                  ConnectAiCopy.emptyState,
-                  style: TextStyle(
-                    color: Color(0x807A8FAF),
-                    fontSize: 14,
-                    height: 20 / 14,
-                  ),
-                ),
-              )
-            else
-              for (var i = 0; i < connections.length; i++) ...[
-                if (i > 0) const SizedBox(height: 12),
-                _AiConnectionRow(
-                  key: ValueKey('ai_connection_${connections[i].id}'),
-                  connection: connections[i],
-                  revoking: _revoking.contains(connections[i].id),
-                  onDisconnect: () => _confirmDisconnect(connections[i]),
-                ),
-              ],
-            if (_loadError != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                _loadError!,
-                style: const TextStyle(
+            // Fail closed on an unknown verdict: the honest
+            // error line only — no list, no upsell.
+            if (_entitlementFailed)
+              const Text(
+                ConnectAiCopy.loadError,
+                style: TextStyle(
                   color: NotelColors.error,
                   fontSize: 13,
                 ),
-              ),
-            ],
-            const SizedBox(height: 24),
-            _HelpLinkRow(onTap: _openHelp),
-            const SizedBox(height: 32),
+              )
+            // Verdict still pending: hold every gated surface.
+            else if (_isUnlimitedResolved == null)
+              const _LoadingRow()
+            else if (_isUnlimitedResolved == true)
+              ..._premiumChildren(connections)
+            else
+              ..._premiumStateChildren(),
           ],
         ),
       ),
     );
+  }
+
+  /// The v1.1 screen, byte-unchanged — rendered only on a KNOWN
+  /// Premium verdict.
+  List<Widget> _premiumChildren(List<AiConnectionDto>? connections) {
+    return [
+      const Text(
+        ConnectAiCopy.howItWorks,
+        style: TextStyle(
+          color: NotelColors.textPrimary,
+          fontSize: 14,
+          height: 20 / 14,
+        ),
+      ),
+      const SizedBox(height: 12),
+      const Text(
+        ConnectAiCopy.blurb,
+        style: TextStyle(
+          color: NotelColors.textSecondary,
+          fontSize: 14,
+          height: 20 / 14,
+        ),
+      ),
+      const SizedBox(height: 24),
+      const _SectionLabel(ConnectAiCopy.connectedLabel),
+      const SizedBox(height: 8),
+      if (connections == null)
+        const _LoadingRow()
+      else if (connections.isEmpty && _loadError == null)
+        const Padding(
+          padding: EdgeInsets.only(left: 4),
+          child: Text(
+            ConnectAiCopy.emptyState,
+            style: TextStyle(
+              color: Color(0x807A8FAF),
+              fontSize: 14,
+              height: 20 / 14,
+            ),
+          ),
+        )
+      else
+        for (var i = 0; i < connections.length; i++) ...[
+          if (i > 0) const SizedBox(height: 12),
+          _AiConnectionRow(
+            key: ValueKey('ai_connection_${connections[i].id}'),
+            connection: connections[i],
+            revoking: _revoking.contains(connections[i].id),
+            onDisconnect: () => _confirmDisconnect(connections[i]),
+          ),
+        ],
+      if (_loadError != null) ...[
+        const SizedBox(height: 12),
+        Text(
+          _loadError!,
+          style: const TextStyle(
+            color: NotelColors.error,
+            fontSize: 13,
+          ),
+        ),
+      ],
+      const SizedBox(height: 24),
+      _HelpLinkRow(onTap: _openHelp),
+      const SizedBox(height: 32),
+    ];
+  }
+
+  /// Juno §c Premium state — rendered only on a KNOWN
+  /// non-Premium verdict, instead of the connections list. The
+  /// rows never render here and neither does the v1.1 empty
+  /// state; the lapsed note renders only when the connections
+  /// fetch shows the account actually has connections.
+  List<Widget> _premiumStateChildren() {
+    final hasConnections =
+        _connections != null && _connections!.isNotEmpty;
+    return [
+      const Text(
+        ConnectAiCopy.premiumHeading,
+        style: TextStyle(
+          color: NotelColors.textPrimary,
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+          height: 24 / 18,
+        ),
+      ),
+      const SizedBox(height: 12),
+      const Text(
+        ConnectAiCopy.premiumExplainer,
+        style: TextStyle(
+          color: NotelColors.textPrimary,
+          fontSize: 14,
+          height: 20 / 14,
+        ),
+      ),
+      const SizedBox(height: 12),
+      const Text(
+        ConnectAiCopy.premiumThirdParty,
+        style: TextStyle(
+          color: NotelColors.textSecondary,
+          fontSize: 14,
+          height: 20 / 14,
+        ),
+      ),
+      if (hasConnections) ...[
+        const SizedBox(height: 12),
+        const Text(
+          ConnectAiCopy.lapsedNote,
+          style: TextStyle(
+            color: NotelColors.textSecondary,
+            fontSize: 14,
+            height: 20 / 14,
+          ),
+        ),
+      ],
+      const SizedBox(height: 24),
+      SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          key: const ValueKey('upgrade_to_premium'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: NotelColors.primary,
+            // Dark ink on primary, the Membership CTA pairing
+            // (5.21:1; settings_screen.dart's _chipInk).
+            foregroundColor: const Color(0xFF0A0A0E),
+            minimumSize: const Size(64, 48),
+          ),
+          onPressed: () => Navigator.of(context)
+              .pop(ConnectAiScreen.upgradeRequestResult),
+          child: const Text(
+            ConnectAiCopy.upgradeButton,
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ),
+      ),
+      const SizedBox(height: 32),
+    ];
   }
 }
 

@@ -20,18 +20,33 @@ import 'test_helpers.dart';
 /// (JUNO-COPY.md §c).
 
 class FakeAiBackend extends TabsBackend {
-  FakeAiBackend({required this.fetchResult, this.revokeResult = true})
-      : super(
+  FakeAiBackend({
+    required this.fetchResult,
+    this.revokeResult = true,
+    this.membershipResult =
+        const (isUnlimited: true, isAdmin: false),
+  }) : super(
           client: MockClient((_) async => http.Response('{}', 200)),
           sessionStore: FakeSessionStore(),
         );
 
   List<AiConnectionDto>? fetchResult;
   bool revokeResult;
+
+  /// Premium-gate membership override. The default is a Premium
+  /// verdict, so every pre-gate test below keeps exercising the
+  /// shipped v1.1 list behavior with identical assertions. A
+  /// null value simulates the entitlement fetch itself failing
+  /// (fetchMembershipOrNull's failure shape).
+  ({bool isUnlimited, bool isAdmin})? membershipResult;
   final List<String> revokedIds = [];
 
   @override
   Future<List<AiConnectionDto>?> fetchAiConnections() async => fetchResult;
+
+  @override
+  Future<({bool isUnlimited, bool isAdmin})?> fetchMembershipOrNull() async =>
+      membershipResult;
 
   @override
   Future<bool> revokeAiConnection(String id) async {
@@ -235,6 +250,211 @@ void main() {
       // No credential material of any kind renders.
       expect(find.textContaining('tabs_mcp_'), findsNothing);
       expect(find.textContaining('Bearer'), findsNothing);
+    });
+
+    // ── Premium gate (Juno Premium-gate pack §c, verbatim) ──
+
+    testWidgets('free user sees the Premium state and no list',
+        (tester) async {
+      final backend = FakeAiBackend(
+        fetchResult: const [],
+        membershipResult: const (isUnlimited: false, isAdmin: false),
+      );
+      await tester.pumpWidget(_wrap(ConnectAiScreen(backend: backend)));
+      await tester.pumpAndSettle();
+
+      // Screen title unchanged; Juno §c heading + explainer +
+      // third-party line, verbatim literals.
+      expect(find.text('Connect an AI'), findsOneWidget);
+      expect(find.text('Connecting an AI needs Premium'), findsOneWidget);
+      expect(
+        find.text(
+            'Connecting an AI lets it read your Tabs data — your log '
+            'entries, Daily Scores, streak, gems, badges, and '
+            'medications list — so you can ask it questions about '
+            'your own data. It can only read, never change anything.'),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+            "Once an app reads your data, that company keeps what "
+            "it read under its own privacy policy — not Tabs'."),
+        findsOneWidget,
+      );
+      expect(find.text('Upgrade to Premium'), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('upgrade_to_premium')), findsOneWidget);
+      // No list, no v1.1 Premium-path copy, no empty state, and
+      // no lapsed note for an account with no connections.
+      expect(find.text(ConnectAiCopy.howItWorks), findsNothing);
+      expect(find.text(ConnectAiCopy.blurb), findsNothing);
+      expect(find.text(ConnectAiCopy.connectedLabel), findsNothing);
+      expect(find.text(ConnectAiCopy.emptyState), findsNothing);
+      expect(find.text(ConnectAiCopy.lapsedNote), findsNothing);
+      expect(find.text(ConnectAiCopy.disconnectButton), findsNothing);
+    });
+
+    testWidgets(
+        'lapsed user with connections sees the conditional note, '
+        'never the rows', (tester) async {
+      final backend = FakeAiBackend(
+        fetchResult: [
+          _conn('7', 'Claude', connectedAt: DateTime(2026, 11, 20)),
+        ],
+        membershipResult: const (isUnlimited: false, isAdmin: false),
+      );
+      await tester.pumpWidget(_wrap(ConnectAiScreen(backend: backend)));
+      await tester.pumpAndSettle();
+
+      expect(find.text(ConnectAiCopy.premiumHeading), findsOneWidget);
+      expect(
+        find.text(
+            "You already have connections. They're paused while "
+            "Premium isn't active — not deleted, and if you "
+            "resubscribe they'll work again with no need to "
+            "reconnect."),
+        findsOneWidget,
+      );
+      // The rows themselves never render in this state.
+      expect(find.text('Claude'), findsNothing);
+      expect(find.text(ConnectAiCopy.disconnectButton), findsNothing);
+      expect(find.text(ConnectAiCopy.emptyState), findsNothing);
+    });
+
+    testWidgets('trial verdict takes the Premium path', (tester) async {
+      // A running trial arrives as the same isUnlimited verdict
+      // the server computes (the membershipLoader seam is where
+      // that verdict enters the screen).
+      final backend = FakeAiBackend(fetchResult: [
+        _conn('7', 'Claude', connectedAt: DateTime(2026, 11, 20)),
+      ]);
+      await tester.pumpWidget(_wrap(ConnectAiScreen(
+        backend: backend,
+        membershipLoader: () async => true,
+      )));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Claude'), findsOneWidget);
+      expect(find.text(ConnectAiCopy.premiumHeading), findsNothing);
+      expect(find.text(ConnectAiCopy.upgradeButton), findsNothing);
+    });
+
+    testWidgets('admin verdict takes the Premium path', (tester) async {
+      final backend = FakeAiBackend(
+        fetchResult: [
+          _conn('7', 'Claude', connectedAt: DateTime(2026, 11, 20)),
+        ],
+        membershipResult: const (isUnlimited: true, isAdmin: true),
+      );
+      await tester.pumpWidget(_wrap(ConnectAiScreen(backend: backend)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Claude'), findsOneWidget);
+      expect(find.text(ConnectAiCopy.premiumHeading), findsNothing);
+    });
+
+    testWidgets(
+        'entitlement fetch failure fails closed: honest error, '
+        'no list, no upsell', (tester) async {
+      final backend = FakeAiBackend(
+        fetchResult: [
+          _conn('7', 'Claude', connectedAt: DateTime(2026, 11, 20)),
+        ],
+        membershipResult: null,
+      );
+      await tester.pumpWidget(_wrap(ConnectAiScreen(backend: backend)));
+      await tester.pumpAndSettle();
+
+      expect(find.text(ConnectAiCopy.loadError), findsOneWidget);
+      expect(find.text('Claude'), findsNothing);
+      expect(find.text(ConnectAiCopy.premiumHeading), findsNothing);
+      expect(find.text(ConnectAiCopy.upgradeButton), findsNothing);
+      expect(find.text(ConnectAiCopy.emptyState), findsNothing);
+    });
+
+    testWidgets('explicit isUnlimited seam wins over the backend',
+        (tester) async {
+      // The fake backend's default verdict is Premium; the
+      // explicit seam must still win (PatternsScreen pattern).
+      final backend = FakeAiBackend(fetchResult: const []);
+      await tester.pumpWidget(_wrap(ConnectAiScreen(
+        backend: backend,
+        isUnlimited: false,
+      )));
+      await tester.pumpAndSettle();
+
+      expect(find.text(ConnectAiCopy.premiumHeading), findsOneWidget);
+      expect(find.text(ConnectAiCopy.emptyState), findsNothing);
+    });
+
+    testWidgets(
+        'RevenueCat verdict ORs in: Premium path even when the '
+        'pull says non-member', (tester) async {
+      final backend = FakeAiBackend(
+        fetchResult: [
+          _conn('7', 'Claude', connectedAt: DateTime(2026, 11, 20)),
+        ],
+        membershipResult: const (isUnlimited: false, isAdmin: false),
+      );
+      await tester.pumpWidget(_wrap(ConnectAiScreen(
+        backend: backend,
+        revenueCatPremium: true,
+      )));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Claude'), findsOneWidget);
+      expect(find.text(ConnectAiCopy.premiumHeading), findsNothing);
+    });
+
+    testWidgets(
+        'RevenueCat verdict ORs in: Premium path even when the '
+        'entitlement fetch fails', (tester) async {
+      final backend = FakeAiBackend(
+        fetchResult: [
+          _conn('7', 'Claude', connectedAt: DateTime(2026, 11, 20)),
+        ],
+        membershipResult: null,
+      );
+      await tester.pumpWidget(_wrap(ConnectAiScreen(
+        backend: backend,
+        revenueCatPremium: true,
+      )));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Claude'), findsOneWidget);
+      expect(find.text(ConnectAiCopy.loadError), findsNothing);
+    });
+
+    testWidgets('upgrade button pops with the upgrade-request result',
+        (tester) async {
+      final backend = FakeAiBackend(
+        fetchResult: const [],
+        membershipResult: const (isUnlimited: false, isAdmin: false),
+      );
+      Object? result;
+      await tester.pumpWidget(MaterialApp(
+        home: Builder(
+          builder: (ctx) => ElevatedButton(
+            onPressed: () async {
+              result = await Navigator.of(ctx).push<String>(
+                MaterialPageRoute<String>(
+                  builder: (_) => ConnectAiScreen(backend: backend),
+                ),
+              );
+            },
+            child: const Text('open'),
+          ),
+        ),
+      ));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      expect(find.text(ConnectAiCopy.premiumHeading), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('upgrade_to_premium')));
+      await tester.pumpAndSettle();
+
+      expect(result, ConnectAiScreen.upgradeRequestResult);
+      expect(find.text(ConnectAiCopy.premiumHeading), findsNothing);
     });
   });
 
