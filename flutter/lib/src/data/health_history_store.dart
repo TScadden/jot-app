@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:tabs_lab/src/data/health_data.dart' show HrSpikeEvent;
 
 /// R70 WS1 — the historical health store.
 ///
@@ -54,6 +55,37 @@ class DailyBiometrics {
   /// HR spike count as produced by `readSpikeCounts` /
   /// `computeDailyHrSummary`. 0 is REAL data here.
   final int? spikeCount;
+
+  // ── Spike summary fields (MCP spike-data package, Nov 23, 2026) ──
+  //
+  // Produced by `computeDailyHrSpikeSummary` (health_data.dart) in
+  // the SAME capture pass that produces [spikeCount], from the
+  // day's valid HR samples — one walk, so the fields agree with
+  // the count by construction. All five are null together on a
+  // day with no HR samples (never invented); on a sampled day
+  // they are all present, and 0 is REAL data for the minutes
+  // fields (a sampled day with no time over the threshold),
+  // exactly like [spikeCount]. [spikeEvents] is the count's own
+  // segmentation capped to the top 5 by peak — an EMPTY list is
+  // real data (a sampled day with no spikes); the full count
+  // always lives in [spikeCount].
+
+  /// The day's highest valid HR reading (bpm).
+  final int? maxHrBpm;
+
+  /// Epoch ms of the FIRST sample attaining [maxHrBpm].
+  final int? maxHrAtMs;
+
+  /// Time-weighted minutes with bpm over 100 (see
+  /// `computeDailyHrSpikeSummary`).
+  final int? minutesOver100;
+
+  /// Time-weighted minutes with bpm over 120.
+  final int? minutesOver120;
+
+  /// Top-5 spike events by peak: `{startMs, peakBpm,
+  /// durationMinutes}` each.
+  final List<HrSpikeEvent>? spikeEvents;
 
   /// Calories (kcal) as produced by `readCaloriesHistory`.
   ///
@@ -133,6 +165,11 @@ class DailyBiometrics {
     this.caloriesKcal,
     this.hrvRmssdMs,
     this.hrvSdnnMs,
+    this.maxHrBpm,
+    this.maxHrAtMs,
+    this.minutesOver100,
+    this.minutesOver120,
+    this.spikeEvents,
     this.dailyScore,
     this.scoreSleep,
     this.scoreHrv,
@@ -147,6 +184,7 @@ class DailyBiometrics {
       caloriesKcal != null ||
       hrvRmssdMs != null ||
       hrvSdnnMs != null ||
+      maxHrBpm != null ||
       dailyScore != null;
 
   DailyBiometrics copyWith({
@@ -157,6 +195,11 @@ class DailyBiometrics {
     int? caloriesKcal,
     double? hrvRmssdMs,
     double? hrvSdnnMs,
+    int? maxHrBpm,
+    int? maxHrAtMs,
+    int? minutesOver100,
+    int? minutesOver120,
+    List<HrSpikeEvent>? spikeEvents,
   }) =>
       DailyBiometrics(
         date: date,
@@ -167,6 +210,11 @@ class DailyBiometrics {
         caloriesKcal: caloriesKcal ?? this.caloriesKcal,
         hrvRmssdMs: hrvRmssdMs ?? this.hrvRmssdMs,
         hrvSdnnMs: hrvSdnnMs ?? this.hrvSdnnMs,
+        maxHrBpm: maxHrBpm ?? this.maxHrBpm,
+        maxHrAtMs: maxHrAtMs ?? this.maxHrAtMs,
+        minutesOver100: minutesOver100 ?? this.minutesOver100,
+        minutesOver120: minutesOver120 ?? this.minutesOver120,
+        spikeEvents: spikeEvents ?? this.spikeEvents,
         dailyScore: dailyScore,
         scoreSleep: scoreSleep,
         scoreHrv: scoreHrv,
@@ -194,6 +242,11 @@ class DailyBiometrics {
         caloriesKcal: caloriesKcal,
         hrvRmssdMs: hrvRmssdMs,
         hrvSdnnMs: hrvSdnnMs,
+        maxHrBpm: maxHrBpm,
+        maxHrAtMs: maxHrAtMs,
+        minutesOver100: minutesOver100,
+        minutesOver120: minutesOver120,
+        spikeEvents: spikeEvents,
         dailyScore: dailyScore,
         scoreSleep: scoreSleep,
         scoreHrv: scoreHrv,
@@ -209,6 +262,12 @@ class DailyBiometrics {
         if (caloriesKcal != null) 'caloriesKcal': caloriesKcal,
         if (hrvRmssdMs != null) 'hrvRmssdMs': hrvRmssdMs,
         if (hrvSdnnMs != null) 'hrvSdnnMs': hrvSdnnMs,
+        if (maxHrBpm != null) 'maxHrBpm': maxHrBpm,
+        if (maxHrAtMs != null) 'maxHrAtMs': maxHrAtMs,
+        if (minutesOver100 != null) 'minutesOver100': minutesOver100,
+        if (minutesOver120 != null) 'minutesOver120': minutesOver120,
+        if (spikeEvents != null)
+          'spikeEvents': [for (final e in spikeEvents!) e.toJson()],
         if (dailyScore != null) 'dailyScore': dailyScore,
         if (scoreSleep != null) 'scoreSleep': scoreSleep,
         if (scoreHrv != null) 'scoreHrv': scoreHrv,
@@ -245,6 +304,21 @@ class DailyBiometrics {
       return (n != null && n >= 0 && n <= 100) ? n : null;
     }
 
+    // Spike summary fields: absent on every pre-package blob /
+    // server row → null (migration-safe). Malformed event entries
+    // are dropped individually; the list is capped at the stored
+    // top-5. A present list (even empty) is real data.
+    List<HrSpikeEvent>? asEvents(dynamic v) {
+      if (v is! List) return null;
+      final out = <HrSpikeEvent>[];
+      for (final e in v) {
+        final parsed = HrSpikeEvent.fromJson(e);
+        if (parsed != null) out.add(parsed);
+        if (out.length >= 5) break;
+      }
+      return out;
+    }
+
     return DailyBiometrics(
       date: date,
       restingHrBpm: asPosInt(raw['restingHrBpm']),
@@ -255,6 +329,13 @@ class DailyBiometrics {
       hrvRmssdMs: asPosDouble(raw['hrvRmssdMs']),
       // Absent on every pre-chunk-4 blob → null (migration-safe).
       hrvSdnnMs: asPosDouble(raw['hrvSdnnMs']),
+      maxHrBpm: asPosInt(raw['maxHrBpm']),
+      maxHrAtMs: asPosInt(raw['maxHrAtMs']),
+      // Minutes: 0 is real data (sampled day, nothing over the
+      // threshold) — the spikeCount rule, not the positive rule.
+      minutesOver100: asSpike(raw['minutesOver100']),
+      minutesOver120: asSpike(raw['minutesOver120']),
+      spikeEvents: asEvents(raw['spikeEvents']),
       dailyScore: asScore(raw['dailyScore']),
       scoreSleep: asScore(raw['scoreSleep']),
       scoreHrv: asScore(raw['scoreHrv']),
@@ -288,6 +369,21 @@ class DailyBiometrics {
             (hrvRmssdMs != null && hrvRmssdMs! > 0) ? hrvRmssdMs : null,
         hrvSdnnMs:
             (hrvSdnnMs != null && hrvSdnnMs! > 0) ? hrvSdnnMs : null,
+        // Spike summary: max / its timestamp are positive-only
+        // (a 0 max is a failed read, never data); the minutes
+        // keep 0 (real, like spikeCount); the event list passes
+        // through as parsed (entries are validated at parse).
+        maxHrBpm: (maxHrBpm != null && maxHrBpm! > 0) ? maxHrBpm : null,
+        maxHrAtMs: (maxHrAtMs != null && maxHrAtMs! > 0) ? maxHrAtMs : null,
+        minutesOver100:
+            (minutesOver100 != null && minutesOver100! >= 0)
+                ? minutesOver100
+                : null,
+        minutesOver120:
+            (minutesOver120 != null && minutesOver120! >= 0)
+                ? minutesOver120
+                : null,
+        spikeEvents: spikeEvents,
         // dailyScore / scoreSleep / scoreHrv / scoreRestingHr:
         // deliberately null — see the doc above.
       );
@@ -303,6 +399,11 @@ class DailyBiometrics {
       other.caloriesKcal == caloriesKcal &&
       other.hrvRmssdMs == hrvRmssdMs &&
       other.hrvSdnnMs == hrvSdnnMs &&
+      other.maxHrBpm == maxHrBpm &&
+      other.maxHrAtMs == maxHrAtMs &&
+      other.minutesOver100 == minutesOver100 &&
+      other.minutesOver120 == minutesOver120 &&
+      listEquals(other.spikeEvents, spikeEvents) &&
       other.dailyScore == dailyScore &&
       other.scoreSleep == scoreSleep &&
       other.scoreHrv == scoreHrv &&
@@ -318,6 +419,11 @@ class DailyBiometrics {
       caloriesKcal,
       hrvRmssdMs,
       hrvSdnnMs,
+      maxHrBpm,
+      maxHrAtMs,
+      minutesOver100,
+      minutesOver120,
+      spikeEvents == null ? null : Object.hashAll(spikeEvents!),
       dailyScore,
       scoreSleep,
       scoreHrv,
@@ -326,7 +432,9 @@ class DailyBiometrics {
   @override
   String toString() => 'DailyBiometrics($date, hr=$restingHrBpm, '
       'sleep=$sleepMinutes, deep=$deepSleepMinutes, spikes=$spikeCount, '
-      'kcal=$caloriesKcal, hrv=$hrvRmssdMs, sdnn=$hrvSdnnMs)';
+      'kcal=$caloriesKcal, hrv=$hrvRmssdMs, sdnn=$hrvSdnnMs, '
+      'maxHr=$maxHrBpm@$maxHrAtMs, over100=$minutesOver100, '
+      'over120=$minutesOver120, events=${spikeEvents?.length})';
 }
 
 /// One metric's last capture outcome, recorded by
@@ -1134,6 +1242,11 @@ class HealthHistoryStore {
         caloriesKcal: incoming.caloriesKcal ?? existing.caloriesKcal,
         hrvRmssdMs: incoming.hrvRmssdMs ?? existing.hrvRmssdMs,
         hrvSdnnMs: incoming.hrvSdnnMs ?? existing.hrvSdnnMs,
+        maxHrBpm: incoming.maxHrBpm ?? existing.maxHrBpm,
+        maxHrAtMs: incoming.maxHrAtMs ?? existing.maxHrAtMs,
+        minutesOver100: incoming.minutesOver100 ?? existing.minutesOver100,
+        minutesOver120: incoming.minutesOver120 ?? existing.minutesOver120,
+        spikeEvents: incoming.spikeEvents ?? existing.spikeEvents,
         // Score fields are NOT part of this merge's field set: the
         // existing day's scores are carried through untouched
         // (incoming rows carry none — see [DailyBiometrics.sanitized]).
@@ -1186,6 +1299,11 @@ class HealthHistoryStore {
         caloriesKcal: existing.caloriesKcal ?? incoming.caloriesKcal,
         hrvRmssdMs: existing.hrvRmssdMs ?? incoming.hrvRmssdMs,
         hrvSdnnMs: existing.hrvSdnnMs ?? incoming.hrvSdnnMs,
+        maxHrBpm: existing.maxHrBpm ?? incoming.maxHrBpm,
+        maxHrAtMs: existing.maxHrAtMs ?? incoming.maxHrAtMs,
+        minutesOver100: existing.minutesOver100 ?? incoming.minutesOver100,
+        minutesOver120: existing.minutesOver120 ?? incoming.minutesOver120,
+        spikeEvents: existing.spikeEvents ?? incoming.spikeEvents,
         // Score fields are NOT part of this merge's field set: the
         // existing day's scores are carried through untouched
         // (incoming rows carry none — see [DailyBiometrics.sanitized]).
@@ -1402,6 +1520,14 @@ class HealthHistoryStore {
             caloriesKcal: base.caloriesKcal,
             hrvRmssdMs: base.hrvRmssdMs ?? (fillIsSdnn ? null : fillHrv),
             hrvSdnnMs: base.hrvSdnnMs ?? (fillIsSdnn ? fillHrv : null),
+            // Spike summary fields are not part of the score
+            // record: carried through untouched, exactly like
+            // spikeCount above.
+            maxHrBpm: base.maxHrBpm,
+            maxHrAtMs: base.maxHrAtMs,
+            minutesOver100: base.minutesOver100,
+            minutesOver120: base.minutesOver120,
+            spikeEvents: base.spikeEvents,
             dailyScore: base.dailyScore,
             scoreSleep: base.scoreSleep,
             scoreHrv: base.scoreHrv,
@@ -1464,8 +1590,9 @@ class HealthHistoryStore {
   }
 
   // NOTE: _fieldCount / _fieldCountChanged deliberately count the
-  // seven biometric fields ONLY (hrvSdnnMs joined the set in
-  // chunk 4) — merges never gain or lose a day because of score
+  // biometric fields ONLY (hrvSdnnMs joined the set in chunk 4;
+  // the five spike-summary fields joined in the MCP spike-data
+  // package) — merges never gain or lose a day because of score
   // fields, and score writes go through [persistScore] /
   // [replaceScore], never through a merge.
   static int _fieldCount(DailyBiometrics d) =>
@@ -1475,7 +1602,12 @@ class HealthHistoryStore {
       (d.spikeCount != null ? 1 : 0) +
       (d.caloriesKcal != null ? 1 : 0) +
       (d.hrvRmssdMs != null ? 1 : 0) +
-      (d.hrvSdnnMs != null ? 1 : 0);
+      (d.hrvSdnnMs != null ? 1 : 0) +
+      (d.maxHrBpm != null ? 1 : 0) +
+      (d.maxHrAtMs != null ? 1 : 0) +
+      (d.minutesOver100 != null ? 1 : 0) +
+      (d.minutesOver120 != null ? 1 : 0) +
+      (d.spikeEvents != null ? 1 : 0);
 
   static int _fieldCountChanged(DailyBiometrics a, DailyBiometrics b) =>
       (a.restingHrBpm != b.restingHrBpm ? 1 : 0) +
@@ -1484,7 +1616,12 @@ class HealthHistoryStore {
       (a.spikeCount != b.spikeCount ? 1 : 0) +
       (a.caloriesKcal != b.caloriesKcal ? 1 : 0) +
       (a.hrvRmssdMs != b.hrvRmssdMs ? 1 : 0) +
-      (a.hrvSdnnMs != b.hrvSdnnMs ? 1 : 0);
+      (a.hrvSdnnMs != b.hrvSdnnMs ? 1 : 0) +
+      (a.maxHrBpm != b.maxHrBpm ? 1 : 0) +
+      (a.maxHrAtMs != b.maxHrAtMs ? 1 : 0) +
+      (a.minutesOver100 != b.minutesOver100 ? 1 : 0) +
+      (a.minutesOver120 != b.minutesOver120 ? 1 : 0) +
+      (listEquals(a.spikeEvents, b.spikeEvents) ? 0 : 1);
 
   // ── Query API (WS2 builds against exactly these names) ─────────
 

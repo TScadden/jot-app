@@ -1253,7 +1253,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (_page == _Page.notifications) ..._notificationsPage(),
           if (_page == _Page.syncSettings) ..._syncPage(),
           if (_page == _Page.jotLive) ..._unavailablePage(
-              'Tabs Live Beta streams live heart data from a connected band over Bluetooth. Bluetooth streaming is not available in the Flutter Lab yet.'),
+              'Tabs Live Beta streams live heart data from a connected band over Bluetooth. Bluetooth streaming is not available in this app yet.'),
           if (_page == _Page.debug) ..._debugPage(),
           if (_page == _Page.progressReports)
             ProgressReportsPage(
@@ -2264,7 +2264,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   color: NotelColors.textPrimary,
                   fontWeight: FontWeight.bold)),
           content: const Text(
-              // TODO_JUNO: iOS twin of the Lab dialog below.
               'Subscriptions are purchased through the App Store in the Tabs app. This build cannot start a subscription yet.',
               style: TextStyle(color: NotelColors.textSecondary)),
           actions: [
@@ -2288,7 +2287,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.bold)),
         content: const Text(
-            'Subscriptions are purchased through Google Play in the Tabs app. The Flutter Lab cannot start a subscription yet.',
+            'Subscriptions are purchased through Google Play in the Tabs app. This build cannot start a subscription yet.',
             style: TextStyle(color: NotelColors.textSecondary)),
         actions: [
           TextButton(
@@ -6632,21 +6631,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
         const SizedBox(height: 12),
         const Text(
-            'The Flutter Lab does not keep a Key Metrics cache, so there is nothing to clear here yet.',
+            'This app does not keep a Key Metrics cache, so there is nothing to clear here yet.',
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
       ]),
       const SizedBox(height: 24),
-      _sectionLabel('MOVE TO THE TABS APP'),
+      _sectionLabel('MOVE YOUR DATA'),
       _card([
         const Text(
             'Some of your data lives only on this device: what your '
             'Health Coach remembers about you, your health history, '
             'the text extracted from your Knowledge Base documents, '
             'your food-checker history, and settings like these. '
-            'Export it here in the Tabs Lab, '
-            'then open the Tabs app, sign in with the same account, '
-            'and choose Import from Tabs Lab on this same screen. '
+            'Export it here, '
+            'then sign in with the same account in the app you are '
+            'moving to and choose Import on this same screen. '
             'The file contains health information, so send it only '
             'to yourself and delete it after importing.',
             style:
@@ -6662,7 +6661,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: _migrationBusy ? null : _exportMigration,
             icon: const Icon(Icons.ios_share, color: Colors.white),
             label: Text(
-                _migrationBusy ? 'Working...' : 'Export data for the Tabs app',
+                _migrationBusy ? 'Working...' : 'Export your data',
                 style: const TextStyle(fontWeight: FontWeight.bold)),
           ),
         ),
@@ -6677,7 +6676,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: _migrationBusy ? null : _importMigration,
             icon:
                 const Icon(Icons.file_download, color: NotelColors.primary),
-            label: const Text('Import from Tabs Lab',
+            label: const Text('Import your data',
                 style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ),
@@ -6725,8 +6724,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       setState(() => _migrationStatus = launched
           ? 'Your export is ready. Send the file to yourself, then '
-              'open the Tabs app, sign in with the same account, and '
-              'choose Import from Tabs Lab on this screen.'
+              'sign in with the same account in the app you are '
+              'moving to and choose Import on this screen.'
           : 'Could not open the share sheet. Try again.');
     } on MigrationException catch (e) {
       if (!mounted) return;
@@ -6794,7 +6793,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(() => _migrationStatus =
           'Imported ${result.importedKeys.length} data '
           '${result.importedKeys.length == 1 ? 'store' : 'stores'} '
-          'from your Tabs Lab export. Your coach memory, settings, '
+          'from your export file. Your coach memory, settings, '
           'and history are now in this app, and your reminders have '
           'been rescheduled.');
     } on MigrationException catch (e) {

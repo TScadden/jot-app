@@ -249,6 +249,206 @@ DailyHrSummary? computeDailyHrSummary(String date, List<HrSample> samples) {
   );
 }
 
+/// One spike event in the MCP spike summary's segmentation — the
+/// STORED count's own segmentation (see [computeDailyHrSpikeSummary]):
+/// [startMs] is the first ≥threshold sample of the event, the event's
+/// peak is its highest sample, and [durationMinutes] is
+/// max(1, whole minutes from the first to the LAST ≥threshold sample).
+class HrSpikeEvent {
+  final int startMs; // epoch ms of the first ≥threshold sample
+  final int peakBpm;
+  final int durationMinutes;
+
+  const HrSpikeEvent({
+    required this.startMs,
+    required this.peakBpm,
+    required this.durationMinutes,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'startMs': startMs,
+        'peakBpm': peakBpm,
+        'durationMinutes': durationMinutes,
+      };
+
+  /// Tolerant parse (server rows / stored blobs): null unless all
+  /// three fields are present and sane (startMs > 0, peakBpm > 0,
+  /// durationMinutes ≥ 1 — a computed event never carries less).
+  static HrSpikeEvent? fromJson(dynamic raw) {
+    if (raw is! Map) return null;
+    int? asInt(dynamic v) =>
+        v is num ? v.toInt() : (v is String ? int.tryParse(v) : null);
+    final start = asInt(raw['startMs']);
+    final peak = asInt(raw['peakBpm']);
+    final duration = asInt(raw['durationMinutes']);
+    if (start == null || start <= 0) return null;
+    if (peak == null || peak <= 0) return null;
+    if (duration == null || duration < 1) return null;
+    return HrSpikeEvent(
+        startMs: start, peakBpm: peak, durationMinutes: duration);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is HrSpikeEvent &&
+      other.startMs == startMs &&
+      other.peakBpm == peakBpm &&
+      other.durationMinutes == durationMinutes;
+
+  @override
+  int get hashCode => Object.hash(startMs, peakBpm, durationMinutes);
+
+  @override
+  String toString() =>
+      'HrSpikeEvent(start=$startMs, peak=$peakBpm, dur=${durationMinutes}m)';
+}
+
+/// Per-day heart-rate SPIKE SUMMARY (MCP spike-data package,
+/// Nov 23, 2026) — everything the daily-biometrics sync carries
+/// about a day's spikes beyond the count itself.
+///
+/// Produced by ONE walk over the day's valid samples in
+/// [computeDailyHrSpikeSummary], so the fields agree BY
+/// CONSTRUCTION:
+///
+/// - [spikeCount] is the FULL count from the stored count's own
+///   segmentation — the exact walk [computeDailyHrSummary] and the
+///   bridge's `readSpikeCounts` run (threshold
+///   [DailyHrSummary.spikeThresholdBpm] = 100 bpm; a ≥threshold
+///   reading extends the open event's end to that reading + 5
+///   minutes; a ≥threshold reading after that end closes the event
+///   and starts a new one). It is NEVER capped.
+/// - [spikeEvents] is that same segmentation's event list, capped
+///   to the top [maxStoredSpikeEvents] by peak (descending; ties
+///   keep the earlier start first) for storage/sync only.
+/// - [maxBpm] / [maxAtMs]: the day's highest valid reading and the
+///   FIRST sample attaining it.
+/// - [minutesOver100] / [minutesOver120]: time-weighted estimate —
+///   each valid sample covers the interval until the next sample,
+///   capped at 5 minutes; the covered intervals whose bpm is
+///   strictly over the threshold are summed (milliseconds summed,
+///   then rounded to whole minutes). The day's last sample covers
+///   nothing. These two thresholds are FIXED at 100/120 regardless
+///   of any user setting (descriptive distribution stats; design
+///   ruling 3).
+class DailyHrSpikeSummary {
+  /// Storage/sync cap for the event list (design ruling 2). The
+  /// count itself is never capped.
+  static const int maxStoredSpikeEvents = 5;
+
+  final int spikeCount;
+  final int maxBpm;
+  final int maxAtMs; // epoch ms of the FIRST sample attaining maxBpm
+  final int minutesOver100;
+  final int minutesOver120;
+  final List<HrSpikeEvent> spikeEvents; // top 5 by peak desc
+
+  const DailyHrSpikeSummary({
+    required this.spikeCount,
+    required this.maxBpm,
+    required this.maxAtMs,
+    required this.minutesOver100,
+    required this.minutesOver120,
+    required this.spikeEvents,
+  });
+}
+
+/// The one-walk spike summary (see [DailyHrSpikeSummary]).
+///
+/// Zero rule first (founder rule, same as [computeDailyHrSummary]):
+/// bpm ≤ 0 samples are failed reads and are excluded BEFORE the
+/// walk; the rest are walked in time order. Null when no usable
+/// samples remain — a day with no HR data gets NO summary, never
+/// invented zeros.
+DailyHrSpikeSummary? computeDailyHrSpikeSummary(List<HrSample> samples) {
+  final usable =
+      samples.where((s) => s.bpm > 0).toList()
+        ..sort((a, b) => a.timeMs.compareTo(b.timeMs));
+  if (usable.isEmpty) return null;
+
+  const threshold = DailyHrSummary.spikeThresholdBpm;
+  const fiveMinutesMs = 300000;
+
+  var maxBpm = 0;
+  var maxAtMs = 0;
+  var over100Ms = 0;
+  var over120Ms = 0;
+
+  // The stored count's segmentation, verbatim in structure from
+  // computeDailyHrSummary / the bridge readSpikeCounts walk —
+  // extended to record each event's start / last-high / peak.
+  final events = <HrSpikeEvent>[];
+  var inEvent = false;
+  var eventStartMs = 0;
+  var eventLastHighMs = 0;
+  var eventPeak = 0;
+  var eventEndMs = 0; // last ≥threshold reading + 5 minutes
+
+  void closeEvent() {
+    final wholeMinutes = (eventLastHighMs - eventStartMs) ~/ 60000;
+    events.add(HrSpikeEvent(
+      startMs: eventStartMs,
+      peakBpm: eventPeak,
+      durationMinutes: wholeMinutes < 1 ? 1 : wholeMinutes,
+    ));
+  }
+
+  for (var i = 0; i < usable.length; i++) {
+    final s = usable[i];
+
+    if (s.bpm > maxBpm) {
+      maxBpm = s.bpm;
+      maxAtMs = s.timeMs;
+    }
+
+    // Time-weighted minutes: this sample covers the interval to
+    // the next sample, capped at 5 minutes.
+    if (i + 1 < usable.length) {
+      var coverMs = usable[i + 1].timeMs - s.timeMs;
+      if (coverMs > fiveMinutesMs) coverMs = fiveMinutesMs;
+      if (coverMs > 0) {
+        if (s.bpm > 100) over100Ms += coverMs;
+        if (s.bpm > 120) over120Ms += coverMs;
+      }
+    }
+
+    if (s.bpm >= threshold) {
+      if (!inEvent || s.timeMs > eventEndMs) {
+        if (inEvent) closeEvent();
+        inEvent = true;
+        eventStartMs = s.timeMs;
+        eventPeak = s.bpm;
+      } else if (s.bpm > eventPeak) {
+        eventPeak = s.bpm;
+      }
+      eventLastHighMs = s.timeMs;
+      eventEndMs = s.timeMs + fiveMinutesMs;
+    }
+  }
+  if (inEvent) closeEvent();
+
+  // Top 5 by peak desc; the sort is made deterministic on ties by
+  // keeping the earlier start first (List.sort is not stable).
+  final ranked = events.asMap().entries.toList()
+    ..sort((a, b) {
+      final byPeak = b.value.peakBpm.compareTo(a.value.peakBpm);
+      return byPeak != 0 ? byPeak : a.key.compareTo(b.key);
+    });
+  final top = [
+    for (final e in ranked.take(DailyHrSpikeSummary.maxStoredSpikeEvents))
+      e.value,
+  ];
+
+  return DailyHrSpikeSummary(
+    spikeCount: events.length,
+    maxBpm: maxBpm,
+    maxAtMs: maxAtMs,
+    minutesOver100: (over100Ms / 60000).round(),
+    minutesOver120: (over120Ms / 60000).round(),
+    spikeEvents: top,
+  );
+}
+
 // ── Snapshot builders — native WeeklySnapshotAggregator ports ────────────
 
 String _dateStr(DateTime d) =>
