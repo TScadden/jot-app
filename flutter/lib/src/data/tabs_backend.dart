@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/daily_score_sync.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
+import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/medication_change_events.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
@@ -2214,6 +2215,48 @@ class TabsBackend {
       return inserted + replaced + ignored == scores.length;
     }
     return true;
+  }
+
+  /// Daily biometrics sync (MCP spike-data package, Nov 23, 2026)
+  /// — push a batch of daily biometrics rows via
+  /// `POST /api/sync/daily-biometrics` with `{"days": [...]}` →
+  /// `{synced: n}`. The server merge-upserts (COALESCE per field:
+  /// a sent non-null fills/overwrites, a null/absent field never
+  /// erases), so re-sending the store's series is idempotent and
+  /// never shrinks server data. Row shape is
+  /// [DailyBiometrics.toJson] (the store blob and the sync payload
+  /// share one shape), spike-summary fields included.
+  ///
+  /// True only when the server's body proves the batch landed:
+  /// when the body carries `synced`, it must account for EVERY
+  /// row sent (the verified-count pattern from [postDailyScores]
+  /// — a 200 that silently skipped rows must not read as synced).
+  Future<bool> postDailyBiometrics(List<DailyBiometrics> days) async {
+    if (days.isEmpty) return true;
+    final res = await _postJsonMap('/api/sync/daily-biometrics', {
+      'days': days.map((d) => d.toJson()).toList(),
+    });
+    if (res == null) return false;
+    final synced = _asInt(res['synced']);
+    if (synced != null) return synced == days.length;
+    return true;
+  }
+
+  /// Daily biometrics sync (MCP spike-data package, Nov 23, 2026)
+  /// — the caller's server rows via `GET /api/sync/daily-biometrics`
+  /// → `{days: [...]}`, date-ascending, same field names as the
+  /// POST body. Malformed rows are skipped; an empty list on any
+  /// failure (the caller's honest outcome: nothing to merge).
+  Future<List<DailyBiometrics>> fetchDailyBiometrics() async {
+    final body = await _getJson('/api/sync/daily-biometrics');
+    final days = body?['days'];
+    if (days is! List) return const [];
+    final out = <DailyBiometrics>[];
+    for (final raw in days) {
+      final row = DailyBiometrics.fromJson(raw);
+      if (row != null && row.hasAnyValue) out.add(row);
+    }
+    return out;
   }
 
   /// Daily Score sync (Oct 28, 2026) — the caller's server scores

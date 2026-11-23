@@ -132,6 +132,8 @@ public class HealthkitBridgePlugin: NSObject, FlutterPlugin {
       readHrvSdnnSamples(days: argDays(call, defaultDays: 30, maxDays: 3650), result: result)
     case "readSpikeCounts":
       readSpikeCounts(days: argDays(call, defaultDays: 30, maxDays: 365), result: result)
+    case "readHrSamples":
+      readHrSamples(days: argDays(call, defaultDays: 30, maxDays: 365), result: result)
     case "readExerciseSessions":
       readExerciseSessions(days: argDays(call, defaultDays: 30, maxDays: 400), result: result)
     case "readSleepMinutes":
@@ -865,6 +867,37 @@ public class HealthkitBridgePlugin: NSObject, FlutterPlugin {
         }
         out.append(["date": date, "count": count])
       }
+      result(out)
+    }
+  }
+
+  /// Raw intraday HR samples over the history window (MCP
+  /// spike-data package, Nov 23, 2026 — the range companion to
+  /// readSpikeCounts, mirroring readHeartRateSamples' discipline:
+  /// bpm ≤ 0 dropped, distinct by time, sorted ascending). All
+  /// reduction lives in Dart (computeDailyHrSpikeSummary), so the
+  /// summary and the spike count walk the same sample set.
+  /// Dart shape: [{t: epochMs, bpm}] sorted ascending.
+  private func readHrSamples(days: Int, result: @escaping FlutterResult) {
+    let (start, end) = historyWindow(days: days)
+    quantitySamples(identifier: .heartRate, start: start, end: end) { samples, error in
+      if let error = error {
+        self.fail(result, code: "HR_SAMPLES_READ_FAILED",
+                  message: "Could not read heart rate samples.", error: error)
+        return
+      }
+      let unit = HKUnit.count().unitDivided(by: .minute())
+      var seen = Set<Int64>()
+      var out: [[String: Any]] = []
+      for sample in samples ?? [] {
+        let bpm = Int(sample.quantity.doubleValue(for: unit).rounded())
+        if bpm <= 0 { continue }
+        let t = self.epochMs(sample.startDate)
+        if seen.insert(t).inserted {
+          out.append(["t": t, "bpm": bpm])
+        }
+      }
+      out.sort { ($0["t"] as? Int64 ?? 0) < ($1["t"] as? Int64 ?? 0) }
       result(out)
     }
   }

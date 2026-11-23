@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:tabs_lab/src/data/crash_reporting.dart';
 import 'package:tabs_lab/src/data/daily_score.dart';
 import 'package:tabs_lab/src/data/daily_score_sync.dart';
+import 'package:tabs_lab/src/data/daily_biometrics_sync.dart';
+import 'package:tabs_lab/src/data/health_data.dart'
+    show HrSample, HrSpikeEvent, computeDailyHrSpikeSummary;
 import 'package:tabs_lab/src/data/hc_availability.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart'
@@ -90,6 +93,7 @@ class HealthHistorySync {
         _store = HealthHistoryStore.instance,
         _now = DateTime.now,
         _scoreSync = DailyScoreSync.instance,
+        _biometricsSync = DailyBiometricsSync.instance,
         _readTimeout = HealthConnectService.readTimeout;
 
   /// Injectable for tests / WS2 wiring. [readTimeoutOverride]
@@ -100,22 +104,28 @@ class HealthHistorySync {
   /// server-sync hook (Oct 28, 2026): the shared [instance] and
   /// the screens' explicit wiring pass it; test constructions
   /// leave it null and scoring stays exactly pre-sync.
+  /// [biometricsSync] wires the post-capture daily-biometrics
+  /// server sync (MCP spike-data package, Nov 23, 2026) the same
+  /// way: [instance] passes it, test constructions leave it null
+  /// and captures stay exactly pre-sync.
   factory HealthHistorySync.withDeps({
     HealthConnectService? hc,
     HealthHistoryStore? store,
     DateTime Function()? now,
     Duration? readTimeoutOverride,
     DailyScoreSync? scoreSync,
+    DailyBiometricsSync? biometricsSync,
   }) =>
       HealthHistorySync._(
           hc ?? HealthConnectService(),
           store ?? HealthHistoryStore.instance,
           now ?? DateTime.now,
           readTimeoutOverride ?? HealthConnectService.readTimeout,
-          scoreSync);
+          scoreSync,
+          biometricsSync);
 
   HealthHistorySync._(this._hc, this._store, this._now, this._readTimeout,
-      this._scoreSync);
+      this._scoreSync, this._biometricsSync);
 
   HealthConnectService _hc;
   HealthHistoryStore _store;
@@ -124,6 +134,10 @@ class HealthHistorySync {
   /// The Daily Score server-sync hook handed to the post-capture
   /// engine run (see the factory doc). Null = sync off.
   final DailyScoreSync? _scoreSync;
+
+  /// The daily-biometrics server-sync hook fired after a capture
+  /// (see the factory doc). Null = sync off.
+  final DailyBiometricsSync? _biometricsSync;
 
   final Map<String, CaptureMetricEvidence> _lastCaptureEvidence = {};
 
@@ -340,7 +354,12 @@ class HealthHistorySync {
   /// - calories: full window 180 days (`readCaloriesHistory`)
   /// - spikes: 180 days until the spike backfill completes,
   ///   31 days on routine captures after that (`readSpikeCounts`
-  ///   is the expensive raw-sample compute). VC 100132: the
+  ///   is the expensive raw-sample compute). The same pass also
+  ///   range-reads the raw HR samples over the same window
+  ///   (`readHrSamples`) and computes each day's spike summary
+  ///   (max + when, minutes over 100/120, top-5 events) in Dart —
+  ///   applied only on a fully clean samples read (see the leg
+  ///   in the method body). VC 100132: the
   ///   window is keyed off the store's persisted
   ///   spikeBackfillComplete flag — set only by a CLEAN full-
   ///   window spike read — not off the dayCount-derived
@@ -425,7 +444,12 @@ class HealthHistorySync {
           int? spikes,
           int? kcal,
           double? hrv,
-          double? sdnn}) {
+          double? sdnn,
+          int? maxHr,
+          int? maxHrAt,
+          int? over100,
+          int? over120,
+          List<HrSpikeEvent>? spikeEvents}) {
         final prev = byDate[date];
         byDate[date] = DailyBiometrics(
           date: date,
@@ -436,6 +460,11 @@ class HealthHistorySync {
           caloriesKcal: kcal ?? prev?.caloriesKcal,
           hrvRmssdMs: hrv ?? prev?.hrvRmssdMs,
           hrvSdnnMs: sdnn ?? prev?.hrvSdnnMs,
+          maxHrBpm: maxHr ?? prev?.maxHrBpm,
+          maxHrAtMs: maxHrAt ?? prev?.maxHrAtMs,
+          minutesOver100: over100 ?? prev?.minutesOver100,
+          minutesOver120: over120 ?? prev?.minutesOver120,
+          spikeEvents: spikeEvents ?? prev?.spikeEvents,
         );
       }
 
@@ -694,6 +723,64 @@ class HealthHistorySync {
         put(r.date, spikes: r.count);
       }
 
+      // MCP spike-data package (Nov 23, 2026) — the spike SUMMARY
+      // leg, inside the same pass and over the same window as the
+      // counts above: ONE range read of the raw HR samples, then
+      // one Dart walk per day (computeDailyHrSpikeSummary) that
+      // produces max + when, minutes over 100/120, and the top-5
+      // events from the count's own segmentation. The bridge
+      // count stays the stored spikeCount (unchanged path,
+      // unchanged semantics); the summary fills only the five new
+      // fields.
+      //
+      // Clean-read gate: summaries are applied ONLY when the
+      // samples read is fully clean (no error, no partial). A
+      // partial read's surviving samples would UNDERSTATE a day's
+      // max/minutes, and mergeRefresh would overwrite the stored
+      // summary with that understatement — so on anything less
+      // than clean, the leg writes nothing and the stored summary
+      // from an earlier clean capture stands. The leg deliberately
+      // does NOT go through noteRead: the counts read above owns
+      // the `spikes` metric's evidence/diagnostics, and a failed
+      // samples read must not mark the (successful) counts leg
+      // failed or suppress scoring — the summary is additive.
+      // The leg is additive, so it is wrapped to be incapable of
+      // failing the capture: the outcome cores convert channel
+      // failures to outcomes, but a read that still throws (a
+      // channel that cannot be reached at all, e.g. no platform
+      // binding) degrades here to "no summary this capture" —
+      // never a capture failure, never a counts disturbance.
+      HcReadOutcome<List<HrSample>> hrSamplesOutcome;
+      try {
+        hrSamplesOutcome = await boundedRead(
+            _hc.readHrSamplesWithOutcome(spikeWindowDays));
+      } catch (_) {
+        hrSamplesOutcome = HcReadOutcome<List<HrSample>>(
+            value: const [], errorCode: 'HR_SAMPLES_READ_FAILED');
+      }
+      final hrSamplesClean = hrSamplesOutcome.errorCode == null &&
+          hrSamplesOutcome.partialCode == null;
+      if (hrSamplesClean) {
+        final samplesByDate = <String, List<HrSample>>{};
+        for (final s in hrSamplesOutcome.value) {
+          final date =
+              _historyDateStr(DateTime.fromMillisecondsSinceEpoch(s.timeMs));
+          samplesByDate.putIfAbsent(date, () => []).add(s);
+        }
+        for (final entry in samplesByDate.entries) {
+          final summary = computeDailyHrSpikeSummary(entry.value);
+          if (summary == null) continue; // no valid samples that day
+          put(
+            entry.key,
+            maxHr: summary.maxBpm,
+            maxHrAt: summary.maxAtMs,
+            over100: summary.minutesOver100,
+            over120: summary.minutesOver120,
+            spikeEvents: summary.spikeEvents,
+          );
+        }
+      }
+
       await _store.mergeRefresh(byDate.values);
       // A failed read leaves a visible trace even though the
       // capture itself still completes (merge + throttle stamp
@@ -757,6 +844,16 @@ class HealthHistorySync {
             .computeMissingScores(
           completeOnlyDate: _historyDateStr(now),
         );
+      }
+      // Daily biometrics server sync (MCP spike-data package):
+      // fire-and-forget after the capture's store writes land —
+      // the sync re-sends the store's full series (idempotent
+      // merge-upsert) and fill-merges the server's rows, so a
+      // dropped or failed run is healed by the next capture. It
+      // never throws and never delays the capture's return.
+      final biometricsSync = _biometricsSync;
+      if (biometricsSync != null) {
+        unawaited(biometricsSync.syncAfterCapture());
       }
       return true;
     } catch (e, st) {

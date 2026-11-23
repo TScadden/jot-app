@@ -780,6 +780,7 @@ class HealthConnectService {
   static final Object _hrvOutcomeZoneKey = Object();
   static final Object _caloriesOutcomeZoneKey = Object();
   static final Object _spikesOutcomeZoneKey = Object();
+  static final Object _hrSamplesOutcomeZoneKey = Object();
   static final Object _stepsOutcomeZoneKey = Object();
   static final Object _totalCaloriesOutcomeZoneKey = Object();
 
@@ -1600,6 +1601,73 @@ class HealthConnectService {
         }
       }
       return HcReadOutcome(value: out);
+    } on PlatformException catch (e) {
+      _notePlatformError(e);
+      return HcReadOutcome(
+          value: const [], errorCode: e.code, errorDetails: _detailsOf(e));
+    } on MissingPluginException {
+      _noteReadError('NO_CHANNEL');
+      return HcReadOutcome(value: const [], errorCode: 'NO_CHANNEL');
+    }
+  }
+
+  /// MCP spike-data package (Nov 23, 2026) — raw intraday HR
+  /// samples `[{t: epochMs, bpm}]` over `[tomorrowStart - days,
+  /// tomorrowStart)`, sorted ascending — the range companion to
+  /// [readSpikeCounts]: the bridge ships the samples faithfully
+  /// (mock-origin records excluded, exactly as in the count read)
+  /// and ALL reduction lives in Dart
+  /// (`computeDailyHrSpikeSummary`), mirroring the
+  /// [readHrvSamples] precedent. Samples are NOT zero-filtered
+  /// here — the computation applies the founder's zero rule, like
+  /// every other Dart-side reduction.
+  Future<List<HrSample>> readHrSamples(int days) async =>
+      (await readHrSamplesWithOutcome(days)).value;
+
+  /// Outcome-carrying variant of [readHrSamples] (Phase 2 §1).
+  Future<HcReadOutcome<List<HrSample>>> readHrSamplesWithOutcome(
+          int days) =>
+      _outcomeOf(
+        _hrSamplesOutcomeZoneKey,
+        () => readHrSamples(days),
+        () => _readHrSamplesCore(days),
+      );
+
+  Future<HcReadOutcome<List<HrSample>>> _readHrSamplesCore(int days) async {
+    try {
+      final raw =
+          await _channel.invokeMethod<dynamic>('readHrSamples', {'days': days});
+      List<dynamic> items = const [];
+      String? partialCode;
+      String? partialDetails;
+      if (raw is List) {
+        items = raw;
+      } else if (raw is Map) {
+        final s = raw['items'];
+        if (s is List) items = s;
+        final partial = raw['partialError'];
+        if (partial is String && partial.isNotEmpty) {
+          // Partial is NOT a failure: its own field, like
+          // HRV_SAMPLES_PARTIAL.
+          partialCode = 'HR_SAMPLES_RANGE_PARTIAL';
+          partialDetails = partial;
+          lastPartialErrorCode = partialCode;
+          lastReadErrorDetails = partial;
+        }
+      }
+      final out = <HrSample>[];
+      for (final item in items) {
+        if (item is Map) {
+          final t = item['t'];
+          final bpm = item['bpm'];
+          if (t is num && bpm is num) {
+            out.add(HrSample(timeMs: t.toInt(), bpm: bpm.toInt()));
+          }
+        }
+      }
+      out.sort((a, b) => a.timeMs.compareTo(b.timeMs));
+      return HcReadOutcome(
+          value: out, errorDetails: partialDetails, partialCode: partialCode);
     } on PlatformException catch (e) {
       _notePlatformError(e);
       return HcReadOutcome(
