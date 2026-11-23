@@ -306,10 +306,13 @@ void main() {
       expect(swift, contains('.asleepCore'));
       expect(swift, contains('.asleepDeep'));
       expect(swift, contains('.asleepREM'));
-      // Read-only guarantee: the read-type set exists and no write
-      // authorization API is ever called in this chunk.
+      // Read-only guarantee: the read-type set exists, and the
+      // authorization request (added in chunk 6, superseding this
+      // test's chunk-2/3 "not yet implemented" pin) asks to SHARE
+      // nothing — the toShare set is empty, read types only.
       expect(swift, contains('healthReadTypes'));
-      expect(swift, isNot(contains('requestAuthorization')));
+      expect(swift, contains('requestAuthorization'));
+      expect(swift, contains('toShare: Set<HKSampleType>()'));
     });
   });
 }

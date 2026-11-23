@@ -42,10 +42,15 @@ import HealthKit
 /// Honest-surface rules: HealthKit does not disclose read-permission
 /// denial, so `getGrantedPermissions` is NOT fabricated — it stays
 /// unimplemented (the Dart side records the grant layer as unknown;
-/// the honest iOS availability model is a later chunk).
-/// `requestPermissions` (read-only authorization, in context) is a
-/// later chunk; the read-type set it will request is defined here
-/// (`healthReadTypes`) — read types only, no write types, ever.
+/// truth on iOS is carried by the honest availability model in
+/// Dart, `probeIosAvailability`: requested + real-read evidence,
+/// never an authorization status).
+/// `requestPermissions` (chunk 6) runs the read-only authorization
+/// request in context over `healthReadTypes` — read types only, no
+/// write types, ever. `cancelRequest` stays unimplemented: HealthKit
+/// has no API to cancel an in-flight authorization request, so
+/// there is no honest analogue (the Dart timeout path tolerates
+/// the resulting MissingPluginException).
 public class HealthkitBridgePlugin: NSObject, FlutterPlugin {
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(
@@ -95,6 +100,8 @@ public class HealthkitBridgePlugin: NSObject, FlutterPlugin {
     #if canImport(HealthKit)
     case "probeReadAccess":
       probeReadAccess(result: result)
+    case "requestPermissions":
+      requestPermissions(result: result)
     case "readHeartRateSamples":
       readHeartRateSamples(dateStr: argDateStr(call), result: result)
     case "readRestingHeartRate":
@@ -138,9 +145,11 @@ public class HealthkitBridgePlugin: NSObject, FlutterPlugin {
       // Everything else stays honestly unimplemented on iOS:
       // - getGrantedPermissions: HealthKit never discloses read
       //   grants/denials; a fabricated list would lie to the Dart
-      //   availability layer. (Chunk 5 builds the honest model.)
-      // - requestPermissions / cancelRequest: the read-only
-      //   authorization flow is chunk 6.
+      //   availability layer. (The honest model is chunk 5's
+      //   `probeIosAvailability` in Dart.)
+      // - cancelRequest: HealthKit has no API to cancel an
+      //   in-flight authorization request — no honest analogue
+      //   exists, so this stays unimplemented by design.
       // - readHrvSamples / readHrvRmssd: RMSSD-shaped methods; iOS
       //   HRV is SDNN only and travels via readHrvSdnnSamples.
       // - openHealthConnectSettings, exportCsvFile,
@@ -378,24 +387,68 @@ public class HealthkitBridgePlugin: NSObject, FlutterPlugin {
 
   // MARK: - probeReadAccess
 
-  /// One tiny real read — today's step statistics — results
-  /// discarded, exactly the Kotlin probe's semantics: success means
-  /// THIS read path worked; it is not proof every read works. No
-  /// health values cross the channel (success is a boolean; failure
-  /// carries the error class only). HealthKit never throws for a
-  /// read denial (denied types read as no data), so this probe can
-  /// never fabricate a grant verdict.
+  /// One tiny real read — a SAMPLE query for today's step records,
+  /// limit 1, results discarded. Chunk 5 (Vera's chunk-2 note): the
+  /// probe is an `HKSampleQuery`, the closer analogue of the Kotlin
+  /// probe's deliberate record-path read, rather than a statistics
+  /// query. Semantics are unchanged: success means THIS read path
+  /// worked; it is not proof every read works. No health values
+  /// cross the channel (success is a boolean; failure carries the
+  /// error class only). HealthKit never throws for a read denial
+  /// (denied types read as no data), so this probe can never
+  /// fabricate a grant verdict.
   private func probeReadAccess(result: @escaping FlutterResult) {
     guard let steps = HKQuantityType.quantityType(forIdentifier: .stepCount) else {
       fail(result, code: "PROBE_READ_FAILED", message: "Probe read failed.", error: nil)
       return
     }
     let (start, end) = dayRange(of: "today")
-    queryStatisticsSum(type: steps, unit: .count(), start: start, end: end) { _, error in
+    querySamples(type: steps, start: start, end: end, limit: 1) { _, error in
       if let error = error {
         self.fail(result, code: "PROBE_READ_FAILED", message: "Probe read failed.", error: error)
       } else {
         result(true)
+      }
+    }
+  }
+
+  // MARK: - Authorization (chunk 6)
+
+  /// The read-only authorization request, in context:
+  /// `requestAuthorization(toShare: EMPTY, read: healthReadTypes)`
+  /// — no share/write types are ever requested (the app ships no
+  /// NSHealthUpdateUsageDescription, by design).
+  ///
+  /// The completion maps to the Dart contract the Android
+  /// `requestPermissions` honors, translated honestly: Android
+  /// answers with the granted-permission list, but HealthKit
+  /// discloses no grant list, so success answers a Bool (the
+  /// completion's success flag) and failure answers a FlutterError
+  /// with a stable code and the error CLASS only in details —
+  /// never health values. A completed sheet where the user shared
+  /// nothing still completes with success: that is indistinguishable
+  /// from an empty Health app, and the Dart availability model
+  /// (requested + real-read evidence) carries that truth.
+  ///
+  /// There is deliberately no pending-request tracking here: the
+  /// timeout/supersede discipline lives in the Dart layer (the same
+  /// layer that owns it on Android), and HealthKit coalesces
+  /// repeat requests for already-determined types without
+  /// re-presenting the sheet.
+  private func requestPermissions(result: @escaping FlutterResult) {
+    guard HKHealthStore.isHealthDataAvailable() else {
+      fail(result, code: "HEALTHKIT_UNAVAILABLE",
+           message: "Health data is not available on this device.", error: nil)
+      return
+    }
+    store.requestAuthorization(
+      toShare: Set<HKSampleType>(), read: Self.healthReadTypes
+    ) { success, error in
+      if let error = error {
+        self.fail(result, code: "AUTHORIZATION_FAILED",
+                  message: "Authorization request failed.", error: error)
+      } else {
+        result(success)
       }
     }
   }

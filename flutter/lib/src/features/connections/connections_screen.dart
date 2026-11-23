@@ -45,12 +45,98 @@ class ConnectionsScreen extends StatefulWidget {
   State<ConnectionsScreen> createState() => _ConnectionsScreenState();
 }
 
+/// Chunk 5 — Juno's SIGNED iOS availability copy, verbatim
+/// (`build-apple-readiness/juno/ios-availability-copy.md`,
+/// 2026-11-22; HealthKit wiring design §1c/§4). These strings are
+/// the ONLY iOS health-availability strings in the app: the
+/// Connections detail sheet below and the Settings Connected Apps
+/// row both read from here — one source of truth, never forked.
+///
+/// Juno's blocklist binds this surface: no "Partially connected",
+/// no "Connection problem" / stale-grant language, no "Grant New
+/// Permissions", no "No permissions were granted.", no per-type
+/// grant lines, no background-access row, and no string naming
+/// Health Connect, Google, Android, or App permissions may render
+/// on iOS. "Connected" renders ONLY in the requested + has-data
+/// state ([IosHealthAvailabilityState.connected]).
+class IosHealthCopy {
+  static const String rowName = 'Apple Health';
+
+  /// Row status per state (Connections row; Juno §1).
+  static String rowStatus(IosHealthAvailabilityState state) =>
+      switch (state) {
+        IosHealthAvailabilityState.notYetRequested => 'Available',
+        IosHealthAvailabilityState.connected => 'Connected',
+        IosHealthAvailabilityState.noDataYet => 'No data yet',
+        IosHealthAvailabilityState.unavailable =>
+          'Not available on this device',
+      };
+
+  /// Status line per state (detail sheet, Juno §1; the Settings
+  /// row uses the same lines, Juno §2).
+  static String statusLine(IosHealthAvailabilityState state) =>
+      switch (state) {
+        IosHealthAvailabilityState.notYetRequested => 'Not connected',
+        IosHealthAvailabilityState.connected => 'Connected',
+        IosHealthAvailabilityState.noDataYet => 'No data yet',
+        IosHealthAvailabilityState.unavailable =>
+          'Not available on this device',
+      };
+
+  // State 1 — not yet requested (Juno §1).
+  static const String state1Body =
+      'Tabs can read your heart rate, resting heart rate, heart rate '
+      'variability, sleep, steps, and energy from Apple Health, so you '
+      'can see your own daily values together in Tabs. Tabs reads this '
+      'data only. It does not write anything to Apple Health.';
+  static const String state1Button = 'Connect Apple Health';
+
+  // State 2 — requested, data returning (Juno §1).
+  static const String state2Body =
+      'Tabs is reading your health data from Apple Health.';
+  static const String state2ManageButton = 'Manage in Health app';
+  static const String state2Footer =
+      'Your connection is managed in Apple Health. To stop Tabs from '
+      'reading your health data, open the Health app, tap your profile, '
+      'tap Apps, tap Tabs, and turn off the data types you no longer '
+      'want to share. You can also go to Settings, then Health, then '
+      'Data Access & Devices, then Tabs.';
+
+  // State 3 — requested, no data yet (Juno §1).
+  static const String state3Body =
+      'Tabs has asked Apple Health for your health data, and nothing '
+      'has come back yet. That is normal if you do not have an Apple '
+      'Watch or another app writing to Apple Health: heart rate, '
+      'resting heart rate, and heart rate variability are recorded by '
+      'a watch, and sleep is recorded by a watch or another sleep app. '
+      'Steps and energy from your iPhone can take a little while to '
+      'appear. Your logging, check-ins, and notes in Tabs work either '
+      'way.';
+  static const String state3Secondary =
+      'If you expected data to be here, check that Tabs is allowed to '
+      'read it: open the Health app, tap your profile, tap Apps, tap '
+      'Tabs, and make sure the data types you want are on.';
+  static const String state3Button = 'Check again';
+
+  // State 4 — HealthKit unavailable on this device (Juno §1).
+  static const String state4Detail =
+      'Apple Health is not available on this device, so Tabs cannot '
+      'read health data from it here. Your logging, check-ins, and '
+      'notes in Tabs still work.';
+}
+
 class _ConnectionsScreenState extends State<ConnectionsScreen> {
   late final HealthConnectService _service;
   HealthConnectStatus? _status;
   bool _persistedConnected = false;
   bool _requesting = false;
   String? _error;
+
+  /// Chunk 5 — the iOS availability snapshot. Null until the first
+  /// probe lands (the iOS body renders its loading row meanwhile).
+  /// Only ever read on the iOS path ([HealthConnectService.isIOS]);
+  /// the Android path below is untouched.
+  IosHealthAvailability? _iosAvailability;
 
   /// True when the availability snapshot reports the stale/wedged
   /// grant ([HcAvailability.staleWedged]): Health Connect lists
@@ -149,6 +235,16 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
   }
 
   Future<void> _loadStatus() async {
+    if (_service.isIOS) {
+      // Chunk 5 — the iOS probe: the honest four-state snapshot.
+      // There is no persisted-grant first paint on iOS (the
+      // persisted record is the authorization request itself, which
+      // the probe reads as one of its three facts).
+      final snapshot = await _service.probeIosAvailability();
+      if (!mounted) return;
+      setState(() => _iosAvailability = snapshot);
+      return;
+    }
     // Fast first paint from persisted state (shared with onboarding),
     // then confirm with the live probe snapshot.
     try {
@@ -203,6 +299,74 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
       setState(() => _applySnapshot(snapshot,
           errorOverride: snapshot.staleWedged ? null : e.message));
     }
+  }
+
+  /// Chunk 6 — the iOS connect action (from the detail sheet's
+  /// "Connect Apple Health" button): runs the read-only HealthKit
+  /// authorization request through the SAME
+  /// [HealthConnectService.requestPermissions] surface Android
+  /// uses, then re-probes. No Health Connect disclosure dialog is
+  /// shown on iOS: the rationale-before-dialog step is the detail
+  /// sheet itself, whose Juno-signed body names the data types and
+  /// the read-only fact before the system sheet appears. A
+  /// completed request never shows an error here — if nothing was
+  /// shared, the re-probe lands on "No data yet" (Juno §1, State 1
+  /// note), which is a state, not a failure.
+  Future<void> _onIosConnect() async {
+    if (_requesting) return;
+    setState(() {
+      _requesting = true;
+      _error = null;
+    });
+    try {
+      await _service.requestPermissions();
+    } on HealthConnectException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    }
+    if (!mounted) return;
+    setState(() => _requesting = false);
+    await _loadStatus();
+  }
+
+  /// The iOS sheet's "Manage in Health app" action. Tabs cannot
+  /// deep-link into the Health app's per-app page on iOS v1, so a
+  /// failed settings hand-off surfaces Juno's footer text — the
+  /// manual path — as the visible instruction instead of failing
+  /// silently (LESSONS: silent channel failures).
+  Future<void> _onIosManage() async {
+    try {
+      await _service.openHealthConnectSettings();
+    } on HealthConnectException {
+      if (mounted) setState(() => _error = IosHealthCopy.state2Footer);
+    }
+  }
+
+  /// Opens the iOS detail sheet for States 1–3 (State 4's row is
+  /// disabled and opens nothing, matching Juno §2).
+  Future<void> _openIosSheet() async {
+    final snapshot = _iosAvailability;
+    if (snapshot == null) return;
+    if (snapshot.state == IosHealthAvailabilityState.unavailable) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: NotelColors.surface,
+      builder: (sheetContext) => _IosHealthSheet(
+        availability: snapshot,
+        requesting: _requesting,
+        onConnect: () async {
+          Navigator.of(sheetContext).pop();
+          await _onIosConnect();
+        },
+        onCheckAgain: () async {
+          Navigator.of(sheetContext).pop();
+          await _loadStatus();
+        },
+        onManage: () async {
+          Navigator.of(sheetContext).pop();
+          await _onIosManage();
+        },
+      ),
+    );
   }
 
   Future<void> _openManageSheet() async {
@@ -263,8 +427,150 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
     }
   }
 
+  /// Chunk 5 — the iOS body: the "Apple Health" row in Juno's four
+  /// states (see [IosHealthCopy]). The Android-shaped sections of
+  /// the Android body (the Health Connect help text, the Fitbit
+  /// card, the partial/stale presentations) never render here —
+  /// Juno's blocklist forbids their strings on iOS. Loading renders
+  /// the spinner row only: Juno's file carries no iOS loading
+  /// string, and none is invented.
+  Widget _buildIosScaffold() {
+    final snapshot = _iosAvailability;
+    final state = snapshot?.state;
+    final inYourConnections =
+        state == IosHealthAvailabilityState.connected ||
+            state == IosHealthAvailabilityState.noDataYet;
+    return Scaffold(
+      backgroundColor: NotelColors.background,
+      appBar: AppBar(
+        backgroundColor: NotelColors.background,
+        elevation: 0,
+        leading: IconButton(
+          onPressed: widget.onBack ?? () => Navigator.of(context).pop(),
+          icon: animationsDisabled(context)
+              ? const Icon(Icons.arrow_back, color: NotelColors.primary)
+              : const Hero(
+                  tag: watchConnectionsHeroTag,
+                  child: Icon(Icons.arrow_back, color: NotelColors.primary),
+                ),
+          tooltip: 'Back',
+        ),
+        title: const Text(
+          'Data connections',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: NotelColors.textPrimary,
+          ),
+        ),
+        centerTitle: true,
+        actions: const [SizedBox(width: 48)],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _SectionLabel('Your connections'),
+            const SizedBox(height: 8),
+            if (snapshot == null)
+              const _LoadingRow()
+            else if (inYourConnections)
+              _ConnectionItem(
+                logo: const _AppleHealthLogo(),
+                name: IosHealthCopy.rowName,
+                statusText: IosHealthCopy.rowStatus(state!),
+                statusColor: state == IosHealthAvailabilityState.connected
+                    ? NotelColors.success
+                    : NotelColors.textSecondary,
+                onTap: _openIosSheet,
+              )
+            else
+              const Padding(
+                padding: EdgeInsets.only(left: 4),
+                child: Text(
+                  'No trackers connected yet.',
+                  style: TextStyle(
+                    color: Color(0x807A8FAF),
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            const SizedBox(height: 24),
+            _SectionLabel('Add connections'),
+            const SizedBox(height: 8),
+            if (snapshot == null)
+              const _LoadingRow()
+            else if (state == IosHealthAvailabilityState.notYetRequested)
+              _ConnectionItem(
+                logo: const _AppleHealthLogo(),
+                name: IosHealthCopy.rowName,
+                statusText: IosHealthCopy.rowStatus(state!),
+                statusColor: NotelColors.textSecondary,
+                onTap: _requesting ? null : _openIosSheet,
+                trailing: _requesting
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: NotelColors.primary,
+                        ),
+                      )
+                    : null,
+              )
+            else if (state == IosHealthAvailabilityState.unavailable) ...[
+              _ConnectionItem(
+                logo: const _AppleHealthLogo(),
+                name: IosHealthCopy.rowName,
+                statusText: IosHealthCopy.rowStatus(state!),
+                statusColor: NotelColors.textSecondary,
+                onTap: null,
+              ),
+              const SizedBox(height: 12),
+              const Padding(
+                padding: EdgeInsets.only(left: 4),
+                child: Text(
+                  IosHealthCopy.state4Detail,
+                  style: TextStyle(
+                    color: NotelColors.textSecondary,
+                    fontSize: 13,
+                    height: 18 / 13,
+                  ),
+                ),
+              ),
+            ] else
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Text(
+                  "You've connected every supported tracker.",
+                  style: TextStyle(
+                    color: Color(0x807A8FAF),
+                    fontSize: 14,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _error!,
+                style: const TextStyle(
+                  color: NotelColors.error,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+            const SizedBox(height: 32),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_service.isIOS) return _buildIosScaffold();
     final status = _status;
     final effectiveStatus = _effectiveStatus;
     final showLoading = status == null && !_persistedConnected;
@@ -879,6 +1185,180 @@ class _ManageSheet extends StatelessWidget {
               'Your connection is managed in Health Connect. To stop '
               'Tabs from reading your health data, tap Manage system '
               'permissions and remove access for Tabs there.',
+              style: TextStyle(
+                color: NotelColors.textSecondary.withValues(alpha: 0.7),
+                fontSize: 12,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// The Apple Health row's logo: the heart glyph in the same disc
+/// the Android row's Health Connect logo sits in. (No Health
+/// Connect asset renders on iOS.)
+class _AppleHealthLogo extends StatelessWidget {
+  const _AppleHealthLogo();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Icon(
+      Icons.favorite,
+      color: NotelColors.primary,
+      size: 24,
+    );
+  }
+}
+
+/// Chunk 5 — the iOS detail sheet (Juno §1): one sheet for States
+/// 1–3, every string from [IosHealthCopy] verbatim. State 4 never
+/// opens this sheet (its row is disabled).
+class _IosHealthSheet extends StatelessWidget {
+  final IosHealthAvailability availability;
+  final bool requesting;
+  final Future<void> Function() onConnect;
+  final Future<void> Function() onCheckAgain;
+  final Future<void> Function() onManage;
+
+  const _IosHealthSheet({
+    required this.availability,
+    required this.requesting,
+    required this.onConnect,
+    required this.onCheckAgain,
+    required this.onManage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final state = availability.state;
+    final isConnected = state == IosHealthAvailabilityState.connected;
+    final isNoData = state == IosHealthAvailabilityState.noDataYet;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(32, 16, 32, 64),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: const BoxDecoration(
+              color: NotelColors.legacyDarkHairlineFaint,
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: const _AppleHealthLogo(),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            IosHealthCopy.rowName,
+            style: TextStyle(
+              color: NotelColors.textPrimary,
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          Text(
+            IosHealthCopy.statusLine(state),
+            style: TextStyle(
+              color: isConnected
+                  ? NotelColors.success
+                  : NotelColors.textSecondary,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          Text(
+            isConnected
+                ? IosHealthCopy.state2Body
+                : isNoData
+                    ? IosHealthCopy.state3Body
+                    : IosHealthCopy.state1Body,
+            style: const TextStyle(
+              color: NotelColors.textSecondary,
+              fontSize: 13,
+              height: 18 / 13,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          if (isNoData) ...[
+            const SizedBox(height: 12),
+            const Text(
+              IosHealthCopy.state3Secondary,
+              style: TextStyle(
+                color: NotelColors.textSecondary,
+                fontSize: 13,
+                height: 18 / 13,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+          const SizedBox(height: 24),
+          if (isConnected)
+            SizedBox(
+              width: double.infinity,
+              child: TextButton(
+                onPressed: () => onManage(),
+                child: const Text(
+                  IosHealthCopy.state2ManageButton,
+                  style: TextStyle(
+                    color: NotelColors.textSecondary,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            )
+          else if (isNoData)
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => onCheckAgain(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: NotelColors.primary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text(
+                  IosHealthCopy.state3Button,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            )
+          else
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: requesting ? null : () => onConnect(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: NotelColors.primary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text(
+                  IosHealthCopy.state1Button,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          if (isConnected) ...[
+            const SizedBox(height: 32),
+            Text(
+              IosHealthCopy.state2Footer,
               style: TextStyle(
                 color: NotelColors.textSecondary.withValues(alpha: 0.7),
                 fontSize: 12,
