@@ -1,11 +1,14 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'package:tabs_lab/src/data/billing_service.dart';
+import 'package:tabs_lab/src/data/revenuecat_service.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/billing/billing_panel.dart';
 import 'package:tabs_lab/src/features/billing/billing_plans_panel.dart';
+import 'package:tabs_lab/src/features/billing/revenuecat_plans_panel.dart';
 import 'package:tabs_lab/src/features/onboarding/onboarding_header.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
@@ -49,6 +52,13 @@ class MembershipOnboardingScreen extends StatefulWidget {
   /// the step then keeps its honest cannot-purchase state.
   final BillingService? billingService;
 
+  /// RevenueCat — the app-owned RevenueCat service on iOS (single
+  /// instance, owned by the app flow via RevenueCatAppSync;
+  /// threaded through OnboardingFlow). Consumed only, never
+  /// constructed or disposed here. Null on Android: this step then
+  /// renders exactly today's Play/Lab states.
+  final RevenueCatService? revenueCatService;
+
   /// Flow3: the account's email-verification state, threaded
   /// from AppFlow. False routes the billing area
   /// to the VerifyEmailGate (BillingPanel's FIRST branch) — never
@@ -65,6 +75,7 @@ class MembershipOnboardingScreen extends StatefulWidget {
     required this.onSkip,
     this.backend,
     this.billingService,
+    this.revenueCatService,
     this.emailVerified = true,
     this.onVerifyEmail,
   });
@@ -87,6 +98,9 @@ class _MembershipOnboardingScreenState
   // screen never constructs or disposes a billing service —
   // disposal belongs to the app flow that owns the instance.
   BillingService? get _billing => widget.billingService;
+
+  RevenueCatService? get _revenueCat => widget.revenueCatService;
+  bool get _isIos => defaultTargetPlatform == TargetPlatform.iOS;
 
   @override
   void initState() {
@@ -118,6 +132,40 @@ class _MembershipOnboardingScreenState
   }
 
   void _showPurchaseUnavailable() {
+    if (_isIos) {
+      // iOS twin of the Lab dialog below: on iOS this dialog must
+      // never render the Google Play text.
+      showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          backgroundColor: NotelColors.surface,
+          title: const Text(
+            'App Store',
+            style: TextStyle(
+              color: NotelColors.textPrimary,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: const Text(
+            // TODO_JUNO: iOS twin of the Lab dialog below.
+            'Subscriptions are purchased through the App Store in the '
+            'Tabs app. This build cannot start a subscription yet.',
+            style: TextStyle(color: NotelColors.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text(
+                'OK',
+                style: TextStyle(color: NotelColors.primary),
+              ),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    // Android: the existing dialog, unchanged.
     showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -250,12 +298,19 @@ class _MembershipOnboardingScreenState
                       BillingPanel(
                         state: _gateState,
                         onVerifyEmail: widget.onVerifyEmail,
-                        purchasableChild: _billing != null
-                            ? BillingPlansPanel(
-                                service: _billing!,
-                                onUnlimited: _onBillingUnlimited,
-                              )
-                            : _fallbackPlans(),
+                        purchasableChild: _isIos
+                            ? (_revenueCat != null
+                                ? RevenueCatPlansPanel(
+                                    service: _revenueCat!,
+                                    onUnlimited: _onBillingUnlimited,
+                                  )
+                                : _iosFallbackPlans())
+                            : _billing != null
+                                ? BillingPlansPanel(
+                                    service: _billing!,
+                                    onUnlimited: _onBillingUnlimited,
+                                  )
+                                : _fallbackPlans(),
                       ),
                       const SizedBox(height: 16),
                     ],
@@ -276,6 +331,12 @@ class _MembershipOnboardingScreenState
                 ),
               ),
               if (_billing == null &&
+                  // iOS with an RC service threaded: the RC panel
+                  // IS the purchase entry (CTA + Restore inside
+                  // it), so this bottom button must not also render
+                  // (it would duplicate the CTA, and its yearly
+                  // label names the wrong store).
+                  !(_isIos && _revenueCat != null) &&
                   _gateState == BillingGateState.purchasable)
                 Padding(
                   padding: const EdgeInsets.only(
@@ -304,10 +365,16 @@ class _MembershipOnboardingScreenState
                             // follows the selected plan — monthly
                             // (the trial plan) names the trial;
                             // yearly keeps the pre-flow3 subscribe
-                            // label (flagged in BRAM-REPORT).
-                            _selectedPlan == 'monthly'
-                                ? 'Start 7-Day Free Trial'
-                                : 'Subscribe with Google Play',
+                            // label (flagged in BRAM-REPORT). iOS
+                            // exception (Juno C2): with no store
+                            // data behind this surface, BOTH
+                            // selections use the App Store label —
+                            // the trial is never named on iOS.
+                            _isIos
+                                ? 'Subscribe with the App Store'
+                                : _selectedPlan == 'monthly'
+                                    ? 'Start 7-Day Free Trial'
+                                    : 'Subscribe with Google Play',
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 17,
@@ -329,7 +396,11 @@ class _MembershipOnboardingScreenState
   /// The no-catalog (Lab) plan cards, with the founder-ruled
   /// prices and badges (flow3 amendment: prices SHOW on the
   /// cards, replacing "Pricing shown in Google Play").
-  Widget _fallbackPlans() {
+  /// [billedByLine] defaults to the Google Play line — Android
+  /// output is identical; the iOS twin passes the App Store line.
+  Widget _fallbackPlans({
+    String billedByLine = 'Auto-renews until canceled. Billed by Google Play.',
+  }) {
     return Column(
       children: [
         _PlanCard(
@@ -350,8 +421,46 @@ class _MembershipOnboardingScreenState
           onTap: () => setState(() => _selectedPlan = 'yearly'),
         ),
         const SizedBox(height: 10),
+        Text(
+          billedByLine,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Color(0xBF7A8FAF),
+            fontSize: 11,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// iOS fallback when no RC service was threaded: the Settings
+  /// Lab house pattern (see _planCardIos/_iosUnavailablePlans in
+  /// settings_screen.dart) — plan cards with NO price, trial, or
+  /// savings claims, since there is no store data behind them on
+  /// this surface. Reached only on iOS.
+  Widget _iosFallbackPlans() {
+    return Column(
+      children: [
+        _PlanCard(
+          selected: _selectedPlan == 'monthly',
+          title: 'Monthly Plan',
+          price: 'Pricing shown in the App Store',
+          chip: '',
+          chipColor: NotelColors.primary,
+          onTap: () => setState(() => _selectedPlan = 'monthly'),
+        ),
+        const SizedBox(height: 12),
+        _PlanCard(
+          selected: _selectedPlan == 'yearly',
+          title: 'Yearly Plan',
+          price: 'Pricing shown in the App Store',
+          chip: '',
+          chipColor: NotelColors.success,
+          onTap: () => setState(() => _selectedPlan = 'yearly'),
+        ),
+        const SizedBox(height: 10),
         const Text(
-          'Auto-renews until canceled. Billed by Google Play.',
+          'Auto-renews until canceled. Billed by the App Store.',
           textAlign: TextAlign.center,
           style: TextStyle(
             color: Color(0xBF7A8FAF),

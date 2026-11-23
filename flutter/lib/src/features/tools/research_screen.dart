@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:tabs_lab/src/data/billing_service.dart';
+import 'package:tabs_lab/src/data/revenuecat_service.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
@@ -150,8 +151,17 @@ class ResearchToolScreen extends StatefulWidget {
   /// to the Settings screen this screen pushes.
   final BillingService? billingService;
 
+  /// The app-owned RevenueCat service (single instance, iOS),
+  /// forwarded beside [billingService] to the same Settings push.
+  final RevenueCatService? revenueCatService;
+
   const ResearchToolScreen(
-      {super.key, this.onBack, this.backend, this.bundle, this.billingService});
+      {super.key,
+      this.onBack,
+      this.backend,
+      this.bundle,
+      this.billingService,
+      this.revenueCatService});
 
   @override
   State<ResearchToolScreen> createState() => _ResearchToolScreenState();
@@ -328,7 +338,9 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
       SlidePageRoute<void>(
         reducedMotion: animationsDisabled(context),
         builder: (_) => SettingsScreen(
-            backend: _backend, billingService: widget.billingService),
+            backend: _backend,
+            billingService: widget.billingService,
+            revenueCatService: widget.revenueCatService),
       ),
     );
     if (!mounted) return;

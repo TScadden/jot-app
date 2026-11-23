@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -21,11 +22,13 @@ import 'package:tabs_lab/src/data/medication_change_events.dart';
 import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
+import 'package:tabs_lab/src/data/revenuecat_service.dart';
 import 'package:tabs_lab/src/data/onboarding_sync_outbox.dart';
 import 'package:tabs_lab/src/data/report_generation_service.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/billing/billing_plans_panel.dart';
+import 'package:tabs_lab/src/features/billing/revenuecat_plans_panel.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
 import 'package:tabs_lab/src/data/crash_reporting.dart';
 import 'package:tabs_lab/src/features/settings/account_actions.dart';
@@ -171,6 +174,14 @@ class SettingsScreen extends StatefulWidget {
   /// honest cannot-purchase state.
   final BillingService? billingService;
 
+  /// RevenueCat — the app-owned RevenueCat service for the
+  /// Membership page on iOS (single instance, owned by the app
+  /// flow via RevenueCatAppSync; threaded through MainShell). This
+  /// screen CONSUMES it only. Null on Android and in the Lab's
+  /// Android configuration: the Membership page then renders
+  /// exactly today's Play/Lab states.
+  final RevenueCatService? revenueCatService;
+
   /// TAKEOVER Phase 4 — injectable migration bridge (Lab export /
   /// production import). Null in production (real secure storage +
   /// the SAF picker / share-sheet bridges).
@@ -209,6 +220,7 @@ class SettingsScreen extends StatefulWidget {
     this.historyStore,
     this.urlLauncher,
     this.billingService,
+    this.revenueCatService,
     this.migrationService,
     this.migrationPicker,
     this.migrationShare,
@@ -375,6 +387,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // is picked up when it arrives.
   BillingService? get _billing => widget.billingService;
 
+  RevenueCatService? get _revenueCat => widget.revenueCatService;
+
+  /// iOS platform check (the login_screen.dart Apple-button
+  /// pattern): reads [defaultTargetPlatform] so widget tests
+  /// exercise both branches via debugDefaultTargetPlatformOverride.
+  bool get _isIos => defaultTargetPlatform == TargetPlatform.iOS;
+
+  /// RC premium verdict mirrored from the app-owned service while
+  /// this screen is alive (iOS only). Null = unknown yet.
+  bool? _rcPremium;
+  StreamSubscription<RevenueCatState>? _rcSub;
+
   bool _syncing = false;
   bool _recovering = false;
 
@@ -432,6 +456,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _migration = widget.migrationService ?? MigrationBundleService();
     _migrationPicker = widget.migrationPicker ?? MigrationFilePicker();
     _migrationShare = widget.migrationShare ?? MigrationShareService();
+    // RevenueCat (iOS only): mirror the app-owned service's premium
+    // verdict while this screen is alive. This screen CONSUMES the
+    // service; cancelling its own subscription in dispose is not
+    // disposing the service (the BillingPlansPanel pattern).
+    final rc = _revenueCat;
+    if (_isIos && rc != null) {
+      _rcPremium = rc.state.isPremium;
+      _rcSub = rc.states.listen((s) {
+        if (!mounted) return;
+        setState(() => _rcPremium = s.isPremium);
+      });
+    }
     _load();
   }
 
@@ -496,7 +532,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     // Deliberately does NOT dispose widget.billingService: it is
-    // the app-owned single instance (see _billing).
+    // the app-owned single instance (see _billing). Same for the
+    // RevenueCat service: only this screen's own subscription is
+    // cancelled.
+    unawaited(_rcSub?.cancel());
     // C-08: flush a pending Personal Context edit instead of
     // just cancelling its debounce (see _flushPendingContextEdit).
     // dispose() cannot await, so the push runs fire-and-forget —
@@ -1871,6 +1910,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _membershipPage() {
     final d = _data;
+    // iOS only: RevenueCat's validated premium verdict ORs into the
+    // SAME isUnlimited gate (parity memo §1). On Android _isIos is
+    // false and this is exactly _data.isUnlimited, byte-for-byte.
+    final effectiveUnlimited =
+        d.isUnlimited || (_isIos && (_rcPremium ?? false));
     return _card([
       Row(
         children: [
@@ -1887,7 +1931,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 4),
                 Text(d.membershipSubtitle,
                     style: TextStyle(
-                        color: d.isUnlimited
+                        color: effectiveUnlimited
                             ? NotelColors.success
                             : NotelColors.textSecondary,
                         fontSize: 13)),
@@ -1899,14 +1943,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 // R49 SE8: vertical padding on the 8dp grid (was 6).
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: d.isUnlimited
+              color: effectiveUnlimited
                   ? NotelColors.success.withValues(alpha: 0.15)
                   : NotelColors.surfaceHigh,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(d.membershipBadge,
                 style: TextStyle(
-                    color: d.isUnlimited
+                    color: effectiveUnlimited
                         ? NotelColors.success
                         : NotelColors.textSecondary,
                     fontSize: 11,
@@ -1934,7 +1978,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       const SizedBox(height: 12),
       Text(
-        d.isUnlimited
+        effectiveUnlimited
             ? 'You have full unlimited access to all AI features.'
             : 'Standard account. Upgrade for unlimited AI insights and clinical reports.',
         textAlign: TextAlign.center,
@@ -1957,9 +2001,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   fontWeight: FontWeight.w600)),
         ),
       ),
-      if (!d.isUnlimited) ...[
+      if (!effectiveUnlimited) ...[
         const SizedBox(height: 24),
-        if (_billing != null) ...[
+        if (_isIos) ...[
+          // iOS: RevenueCat flow (or its honest unconfigured state
+          // inside the panel). The Google Play dialog and Play
+          // management link below are Android-only from here on.
+          if (_revenueCat != null)
+            RevenueCatPlansPanel(
+              service: _revenueCat!,
+              ctaKey: const ValueKey('membership_cta'),
+              onUnlimited: () => unawaited(_reloadFromServer()),
+            )
+          else
+            // No RC service threaded (defensive; AppFlow always
+            // threads one on iOS): honest iOS unavailable block —
+            // plan cards with the App Store fallback line and NO
+            // purchase CTA. Never the Google Play dialog.
+            ..._iosUnavailablePlans(),
+        ] else if (_billing != null) ...[
           // Takeover Phase 2 — the REAL flow (production build):
           // live Play catalog, user-picked offer, server-verified
           // purchase. The panel carries its own plan cards, CTA
@@ -2005,6 +2065,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style: TextStyle(color: NotelColors.textSecondary, fontSize: 11),
           ),
         ],
+        // Android only: on iOS, subscription management is the App
+        // Store's; the RC panel carries Restore + the App Store
+        // cancel line, so no link is rendered (no substituted URL).
+        if (!_isIos) ...[
         const SizedBox(height: 12),
         Center(
           child: GestureDetector(
@@ -2035,6 +2099,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ),
+        ],
       ] else ...[
         const SizedBox(height: 20),
         const Text(
@@ -2053,8 +2118,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ]);
   }
 
-  Widget _planCard(
-      String id, String title, String chip, Color chipColor) {
+  /// iOS defensive fallback (no RC service threaded): the Lab
+  /// plan cards with the store name corrected for iOS and NO
+  /// purchase CTA — the honest unavailable state. New copy is
+  /// TODO_JUNO-flagged in the Juno pass.
+  List<Widget> _iosUnavailablePlans() {
+    return [
+      _planCardIos('monthly', 'Monthly Plan'),
+      const SizedBox(height: 12),
+      _planCardIos('yearly', 'Yearly Plan'),
+      const SizedBox(height: 24),
+      const Text(
+        'Subscriptions are purchased through the App Store in the '
+        'Tabs app. This build cannot start a subscription yet.',
+        textAlign: TextAlign.center,
+        style: TextStyle(color: NotelColors.textSecondary, fontSize: 13),
+      ),
+    ];
+  }
+
+  /// [_planCard] with its price line reading 'Pricing shown in
+  /// the App Store' instead of the Google Play string.
+  Widget _planCardIos(String id, String title) {
+    return _planCard(
+      id,
+      title,
+      '',
+      id == 'yearly' ? NotelColors.success : NotelColors.primary,
+      priceLine: 'Pricing shown in the App Store',
+    );
+  }
+
+  Widget _planCard(String id, String title, String chip, Color chipColor,
+      {String priceLine = 'Pricing shown in Google Play'}) {
     final selected = _selectedPlan == id;
     return GestureDetector(
       onTap: () => setState(() => _selectedPlan = id),
@@ -2093,8 +2189,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 2),
                   // Native reads live Play pricing; the Lab has no Play
                   // catalog, so native's own fallback copy is shown.
-                  const Text('Pricing shown in Google Play',
-                      style: TextStyle(
+                  Text(priceLine,
+                      style: const TextStyle(
                           color: NotelColors.textSecondary,
                           fontSize: 13)),
                 ],
@@ -2125,6 +2221,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showPurchaseUnavailable() {
+    if (_isIos) {
+      // iOS twin of the Lab dialog below (defense-in-depth: after
+      // the membership page's platform branch, no iOS path should
+      // reach this dialog at all — but if one ever does, it must
+      // never render the Google Play text).
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: NotelColors.surface,
+          title: const Text('App Store',
+              style: TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontWeight: FontWeight.bold)),
+          content: const Text(
+              // TODO_JUNO: iOS twin of the Lab dialog below.
+              'Subscriptions are purchased through the App Store in the Tabs app. This build cannot start a subscription yet.',
+              style: TextStyle(color: NotelColors.textSecondary)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('OK',
+                  style: TextStyle(color: NotelColors.primary)),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    // Android: the existing dialog, unchanged.
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
