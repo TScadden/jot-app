@@ -11,6 +11,7 @@ import 'package:tabs_lab/src/data/streak_purchase.dart';
 import 'package:tabs_lab/src/data/streak_store.dart';
 import 'package:tabs_lab/src/data/widget_sync.dart';
 import 'package:tabs_lab/src/features/home/streak_flame.dart';
+import 'package:tabs_lab/src/widgets/user_avatar.dart';
 import 'package:tabs_lab/src/features/home/streak_share_card.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
@@ -708,19 +709,31 @@ class _StreakScreenState extends State<StreakScreen> {
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Row(
                 children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: _duoNavyBtn,
-                    ),
-                    child: Center(
-                      child: Text(
-                        friends[i].nickname.isEmpty
-                            ? '?'
-                            : friends[i].nickname[0].toUpperCase(),
-                        style: _duo(16, 900, _duoText),
+                  // The friend's picked profile picture when they
+                  // have one (Nov 23, 2026); the fallback is the
+                  // exact pre-feature navy initial circle. Juno
+                  // a11y ruling: friend-row avatars are decorative
+                  // next to the visible name — excluded from
+                  // semantics.
+                  ExcludeSemantics(
+                    child: UserAvatar(
+                      avatarId: friends[i].avatarId,
+                      size: 40,
+                      fallback: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: _duoNavyBtn,
+                        ),
+                        child: Center(
+                          child: Text(
+                            friends[i].nickname.isEmpty
+                                ? '?'
+                                : friends[i].nickname[0].toUpperCase(),
+                            style: _duo(16, 900, _duoText),
+                          ),
+                        ),
                       ),
                     ),
                   ),
