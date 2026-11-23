@@ -13,25 +13,97 @@ import 'package:tabs_lab/src/data/widget_sync.dart';
 import 'package:tabs_lab/src/features/home/streak_flame.dart';
 import 'package:tabs_lab/src/features/home/streak_share_card.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
-import 'package:tabs_lab/src/theme/lab_black_colors.dart';
-import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
 
 /// Streak detail screen (Lab streak package Nov 4, 2026; streak
-/// upgrade rebuild Nov 18, 2026 — design SIGNED, STAGE-LOG items
-/// 3–8 + Juno copy pass).
+/// upgrade rebuild Nov 18, 2026; Duolingo-modeled rebuild Nov 22,
+/// 2026 to founder-approved mock v3 — streak-mock/make_streak_mock_v3.py).
 ///
-/// Layout per the signed mocks (gen_mocks.py): hero flame + big
-/// count + "day streak!", week row, milestone line, month
-/// calendar, Streak Goal card, Streak Freeze card, History. NO
-/// bottom action button in either state (founder ruling).
+/// Layout per mock v3: header (close / "Streak" / share),
+/// PERSONAL / FRIENDS tabs, hero (PERSONAL BEST pill + big count
+/// + "day streak!" + purple flame), freeze status card with a
+/// GET MORE scroll action, week-bar month calendar with chevron
+/// month nav, the gem-milestone Streak Goal track, the Perks /
+/// Monthly Freeze card, the Get More Freezes buy card, and the
+/// buy card below it. The old Streak Goal card's Juno §3 copy
+/// (the monthly-freeze earning rule) lives in the Perks goal
+/// block directly under the Monthly Freeze card (JUNO-COPY
+/// A-10…A-14 placements). NO Premium card anywhere (founder
+/// ruling). NO bottom action button (founder ruling).
 ///
-/// Copy discipline: EVERY user-facing string is Juno's verbatim
-/// (JUNO-COPY.md). The noun is "freeze" everywhere — "Restore" is
-/// retired on this surface (§11). The displayed freeze count is
-/// TOTAL AVAILABLE COVER (A1), never held-only. All display reads
-/// anchor on the Tabs day (A7: `tabsDayAnchor`), never wall-clock
-/// `now` directly.
+/// Copy discipline: user-facing strings are Juno's verbatim
+/// (JUNO-COPY.md) where she has ruled; new mock-v3 strings follow
+/// the approved mock. The noun is "freeze" everywhere — "Restore"
+/// is retired on this surface (§11). The displayed freeze count
+/// is TOTAL AVAILABLE COVER (A1), never held-only. All display
+/// reads anchor on the Tabs day (A7: `tabsDayAnchor`), never
+/// wall-clock `now` directly.
+
+// ── Mock v3 design tokens ──────────────────────────────────────
+const Color _duoBg = Color(0xFF0A0A0B);
+const Color _duoPrimary = Color(0xFF7C6EFF);
+const Color _duoPrimaryLt = Color(0xFF9D8FFF);
+const Color _duoFreeze = Color(0xFF6EC6FF);
+const Color _duoFreezeChip = Color(0xFF12314F);
+const Color _duoText = Color(0xFFF0EEFF);
+const Color _duoMuted = Color(0xFF9A9AA3);
+const Color _duoCaption = Color(0xFF7E8898);
+const Color _duoBorder = Color(0xFF39434E);
+const Color _duoBarDark = Color(0xFF251B42);
+const Color _duoNavyBtn = Color(0xFF152040);
+const Color _duoOnBright = Color(0xFF150F24);
+
+/// The mock's heavy rounded type: bundled Nunito (OFL, variable)
+/// scoped to this screen only. [wght] is the variable-font axis
+/// value (700–1000 in the mock).
+TextStyle _duo(
+  double size,
+  double wght,
+  Color color, {
+  double? letterSpacing,
+  double? height,
+}) {
+  final index = ((wght / 100).round() - 1).clamp(0, 8);
+  return TextStyle(
+    fontFamily: 'Nunito',
+    fontSize: size,
+    fontWeight: FontWeight.values[index],
+    fontVariations: [FontVariation('wght', wght)],
+    color: color,
+    letterSpacing: letterSpacing,
+    height: height,
+  );
+}
+
+/// The last gem milestone at or below [current], from the shipped
+/// gem table ([gemMilestoneBonus]: 7, 30, then each 100); null
+/// before the first milestone.
+@visibleForTesting
+int? gemGoalLastCrossed(int current) {
+  int? crossed;
+  for (var m = 7; m <= current; m = m < 30 ? 30 : m + (m < 100 ? 70 : 100)) {
+    if (gemMilestoneBonus(m) != null) crossed = m;
+  }
+  return crossed;
+}
+
+/// The next three gem milestones strictly above [current].
+@visibleForTesting
+List<int> gemGoalUpcoming(int current) {
+  final out = <int>[];
+  var m = current < 7
+      ? 7
+      : current < 30
+      ? 30
+      : ((current ~/ 100) + 1) * 100;
+  if (m <= current) m += 100;
+  while (out.length < 3) {
+    if (gemMilestoneBonus(m) != null) out.add(m);
+    m = m < 30 ? 30 : m + (m < 100 ? 70 : 100);
+  }
+  return out;
+}
+
 class StreakScreen extends StatefulWidget {
   final StreakState state;
   final DateTime now;
@@ -55,6 +127,16 @@ class StreakScreen extends StatefulWidget {
   /// uses the real profile push through the backend.
   final StreakSyncPush? streakPush;
 
+  /// Friends loader for the FRIENDS tab. Tests inject a fake;
+  /// production leaves null and the tab uses
+  /// [TabsBackend.fetchFriendsList] — the same Community payload
+  /// (nickname + currentStreak) the Community screen renders.
+  final Future<List<FriendDto>> Function()? friendsLoader;
+
+  /// Preloaded friends for the FRIENDS tab (tests / captures);
+  /// null loads through [friendsLoader] on first tab open.
+  final List<FriendDto>? initialFriends;
+
   const StreakScreen({
     super.key,
     required this.state,
@@ -63,6 +145,8 @@ class StreakScreen extends StatefulWidget {
     this.gemService,
     this.nickname,
     this.streakPush,
+    this.friendsLoader,
+    this.initialFriends,
   });
 
   /// Push the streak screen with an already-settled [state].
@@ -106,20 +190,6 @@ class StreakScreen extends StatefulWidget {
     'November',
     'December',
   ];
-  static const _monthAbbr = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
 
   @override
   State<StreakScreen> createState() => _StreakScreenState();
@@ -149,6 +219,27 @@ class _StreakScreenState extends State<StreakScreen> {
 
   final GlobalKey _cardKey = GlobalKey();
 
+  /// PERSONAL (0) / FRIENDS (1) tab selection (mock v3 §1).
+  int _tabIndex = 0;
+
+  /// The calendar's visible month (presentation-level nav state;
+  /// opens on the Tabs-day anchor's month).
+  late DateTime _visibleMonth;
+
+  final ScrollController _scrollController = ScrollController();
+
+  /// Anchor for the GET MORE scroll-to-buy action.
+  final GlobalKey _buyCardKey = GlobalKey();
+
+  /// FRIENDS tab payload (Community friends, sorted by streak
+  /// desc); null until loaded.
+  List<FriendDto>? _friends;
+  bool _friendsLoading = false;
+
+  /// True when the FRIENDS load actually failed (Juno B-25 line
+  /// renders only then — never for an empty list).
+  bool _friendsFailed = false;
+
   StreakState get state => widget.state;
   DateTime get now => widget.now;
   DateTime get _anchor => tabsDayAnchor(now);
@@ -156,6 +247,11 @@ class _StreakScreenState extends State<StreakScreen> {
   @override
   void initState() {
     super.initState();
+    _visibleMonth = DateTime(_anchor.year, _anchor.month, 1);
+    if (widget.initialFriends != null) {
+      _friends = List<FriendDto>.of(widget.initialFriends!)
+        ..sort((a, b) => b.currentStreak.compareTo(a.currentStreak));
+    }
     _purchase = widget.purchaseService;
     if (_purchase == null) {
       _ownsPurchase = true;
@@ -209,14 +305,10 @@ class _StreakScreenState extends State<StreakScreen> {
   Future<void> _pushSettledBeforeSpend() async {
     try {
       final effective = _effectiveState();
-      final push = widget.streakPush ??
-          (int c, int b, String j, {int? purchasedFreezes}) =>
-              TabsBackend().pushStreakRecord(
-                c,
-                b,
-                j,
-                purchasedFreezes: purchasedFreezes,
-              );
+      final push =
+          widget.streakPush ??
+          (int c, int b, String j, {int? purchasedFreezes}) => TabsBackend()
+              .pushStreakRecord(c, b, j, purchasedFreezes: purchasedFreezes);
       await push(
         streakCurrent(effective, _anchor),
         streakBest(effective),
@@ -259,15 +351,19 @@ class _StreakScreenState extends State<StreakScreen> {
           _grantEpoch++;
           final adopted = StreakStore.instance.state;
           if (adopted != null) {
-            unawaited(WidgetSync.pushStreak(
-              adopted.copyWith(
-                purchasedFreezes: (freezes ?? adopted.purchasedFreezes)
-                    .clamp(0, 3),
+            unawaited(
+              WidgetSync.pushStreak(
+                adopted.copyWith(
+                  purchasedFreezes: (freezes ?? adopted.purchasedFreezes).clamp(
+                    0,
+                    3,
+                  ),
+                ),
+                signedIn: true,
+                nickname: widget.nickname,
+                now: DateTime.now(),
               ),
-              signedIn: true,
-              nickname: widget.nickname,
-              now: DateTime.now(),
-            ));
+            );
           }
         case GemSpendStatus.capReached:
           // Vera §3: a cap refusal right at a month boundary can
@@ -318,6 +414,7 @@ class _StreakScreenState extends State<StreakScreen> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _purchase?.removeListener(_onPurchaseChanged);
     if (_ownsPurchase) _purchase?.dispose();
     _gems.removeListener(_onGemsChanged);
@@ -332,356 +429,88 @@ class _StreakScreenState extends State<StreakScreen> {
     return state.copyWith(purchasedFreezes: adopted.clamp(0, 3));
   }
 
-  String _rangeLabel(({String start, String end}) range) {
-    final a = DateTime.parse(range.start);
-    final b = DateTime.parse(range.end);
-    if (a.year == b.year && a.month == b.month) {
-      return '${StreakScreen._monthAbbr[a.month - 1]} ${a.day}–${b.day}';
-    }
-    if (a.year == b.year) {
-      return '${StreakScreen._monthAbbr[a.month - 1]} ${a.day}–'
-          '${StreakScreen._monthAbbr[b.month - 1]} ${b.day}';
-    }
-    return '${StreakScreen._monthAbbr[a.month - 1]} ${a.day}, ${a.year}–'
-        '${StreakScreen._monthAbbr[b.month - 1]} ${b.day}, ${b.year}';
-  }
-
-  String _days(int n) => n == 1 ? '1 day' : '$n days';
-  String _streakDays(int n) => n == 1 ? '1 streak day' : '$n streak days';
-
   @override
   Widget build(BuildContext context) {
     final current = streakCurrent(state, _anchor);
     final best = streakBest(state);
-    final range = streakBestRange(state);
-    final todayStr = tabsDayStr(now);
-    final todayDone = state.countedDays.contains(todayStr);
-    final monthCount =
-        streakCountedDaysInMonth(state, _anchor.year, _anchor.month);
 
     return Scaffold(
-      backgroundColor: LabBlackColors.background,
+      backgroundColor: _duoBg,
       body: Stack(
         children: [
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 300,
-            child: IgnorePointer(
-              child: Stack(
-                children: [
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: RadialGradient(
-                        center: const Alignment(-0.95, -1.0),
-                        radius: 1.15,
-                        colors: [
-                          const Color(0xFFF26B1D).withValues(alpha: 0.55),
-                          const Color(0xFFF26B1D).withValues(alpha: 0),
-                        ],
-                      ),
-                    ),
-                    child: const SizedBox.expand(),
-                  ),
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: RadialGradient(
-                        center: const Alignment(0, -1.0),
-                        radius: 1.15,
-                        colors: [
-                          NotelColors.primary.withValues(alpha: 0.55),
-                          NotelColors.primary.withValues(alpha: 0),
-                        ],
-                      ),
-                    ),
-                    child: const SizedBox.expand(),
-                  ),
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: RadialGradient(
-                        center: const Alignment(0.95, -1.0),
-                        radius: 1.15,
-                        colors: [
-                          const Color(0xFF2E6BFF).withValues(alpha: 0.55),
-                          const Color(0xFF2E6BFF).withValues(alpha: 0),
-                        ],
-                      ),
-                    ),
-                    child: const SizedBox.expand(),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 300,
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      LabBlackColors.background.withValues(alpha: 0.05),
-                      LabBlackColors.background.withValues(alpha: 0.55),
-                      LabBlackColors.background,
-                    ],
-                    stops: const [0.0, 0.62, 1.0],
-                  ),
-                ),
-              ),
-            ),
-          ),
           StreakShareCardHost(boundaryKey: _cardKey, count: current),
           SafeArea(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-              children: [
-                _header(context, current),
-                const SizedBox(height: 16),
-                _hero(current, best, todayDone),
-                const SizedBox(height: 20),
-                _weekRow(todayStr),
-                const SizedBox(height: 16),
-                _milestoneLine(current),
-                const SizedBox(height: 16),
-                _sectionCard(
-                  label: 'Streaks',
-                  child: _nested(
-                    child: Column(
-                      children: [
-                        _statRow('Current Streak', _days(current)),
-                        const Divider(
-                          height: 1,
-                          thickness: 1,
-                          color: LabBlackColors.hairline,
-                        ),
-                        _statRow(
-                          'Longest Streak',
-                          _days(best),
-                          subCaption:
-                              range == null ? null : _rangeLabel(range),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _goalCard(),
-                const SizedBox(height: 16),
-                _freezeCard(),
-                const SizedBox(height: 16),
-                _sectionCard(
-                  label: 'History',
-                  child: _nested(
-                    child: _historyCalendar(monthCount),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _header(BuildContext context, int current) {
-    return SizedBox(
-      height: 48,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          const Text(
-            'Streak',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: LabBlackColors.textPrimary,
-            ),
-          ),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Tooltip(
-              message: 'Back',
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.of(context).pop(),
-                child: SizedBox(
-                  width: 48,
-                  height: 48,
-                  child: Center(
-                    child: Container(
-                      width: 36,
-                      height: 36,
-                      decoration: const BoxDecoration(
-                        color: LabBlackColors.card,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.chevron_left,
-                        size: 22,
-                        color: LabBlackColors.textPrimary,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: IconButton(
-              key: const Key('streakShareButton'),
-              tooltip: 'Share',
-              icon: const Icon(
-                Icons.ios_share,
-                size: 22,
-                color: LabBlackColors.textSecondary,
-              ),
-              onPressed: () => unawaited(
-                StreakShareService.shareFromBoundary(
-                  _cardKey,
-                  count: current,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _hero(int current, int best, bool todayDone) {
-    final heroColor =
-        todayDone ? const Color(0xFFFF6A3D) : const Color(0xFF8E97B8);
-    return Column(
-      children: [
-        StreakFlame(lit: todayDone, size: 84),
-        const SizedBox(height: 6),
-        Semantics(
-          container: true,
-          label: '$current day streak',
-          child: ExcludeSemantics(
             child: Column(
               children: [
-                Text(
-                  '$current',
-                  key: const Key('streakHeroNumber'),
-                  style: TextStyle(
-                    fontSize: 86,
-                    fontWeight: FontWeight.w900,
-                    height: 1.0,
-                    color: heroColor,
-                  ),
-                ),
-                Text(
-                  'day streak!',
-                  style: TextStyle(
-                    fontSize: 27,
-                    fontWeight: FontWeight.w900,
-                    color: heroColor,
+                _header(context, current),
+                _tabBar(),
+                Expanded(
+                  child: SingleChildScrollView(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
+                    child: _tabIndex == 0
+                        ? _personalTab(current, best)
+                        : _friendsTab(),
                   ),
                 ),
               ],
             ),
           ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          best == 1 ? 'Best 1 day' : 'Best $best days',
-          style: const TextStyle(
-            fontSize: 14,
-            color: LabBlackColors.textSecondary,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _weekRow(String todayStr) {
-    final todayDate = DateTime.parse(todayStr);
-    final monday = todayDate.subtract(Duration(days: todayDate.weekday - 1));
-    const labels = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        for (var i = 0; i < 7; i++)
-          _weekDay(
-            labels[i],
-            monday.add(Duration(days: i)),
-            todayStr,
-          ),
-      ],
-    );
-  }
-
-  Widget _weekDay(String label, DateTime day, String todayStr) {
-    final ds = streakDayStr(day);
-    final counted = state.countedDays.contains(ds);
-    // Founder addition (Nov 18, 2026): a freeze-covered day
-    // renders with the freeze treatment on every rebuilt surface
-    // — checked BEFORE counted (restored days are a subset of
-    // counted days) so it never shows as a plain check.
-    final restored = state.restoredDays.contains(ds);
-    final isToday = ds == todayStr;
-    final Color bg;
-    final Widget? child;
-    if (isToday && counted) {
-      bg = const Color(0xFFFF6A3D);
-      child = const Icon(Icons.check, size: 19, color: Colors.white);
-    } else if (counted) {
-      bg = NotelColors.primary;
-      child = const Icon(Icons.check, size: 19, color: Colors.white);
-    } else if (isToday) {
-      bg = const Color(0xFF131C33);
-      child = null;
-    } else {
-      bg = const Color(0xFF1A2338);
-      child = null;
-    }
-    return SizedBox(
-      width: 44,
-      child: Column(
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w800,
-              color: isToday
-                  ? const Color(0xFFFF7A59)
-                  : LabBlackColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 7),
-          if (restored)
-            const StreakFreezeDayCircle(size: 42)
-          else
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: bg,
-                border: isToday && !counted
-                    ? Border.all(
-                        color: const Color(0xFF4A5470),
-                        width: 2,
-                      )
-                    : null,
-              ),
-              child: child,
-            ),
         ],
       ),
     );
   }
 
-  /// Juno §2 — distance form, never a prediction. Suppressed when
+  Widget _personalTab(int current, int best) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _hero(current, best),
+        const SizedBox(height: 24),
+        _freezeStatusCard(),
+        const SizedBox(height: 16),
+        // Juno A-8: the streak-ladder milestone line keeps its
+        // verbatim distance form, directly under the freeze card.
+        // It is a different ladder from the gem-milestone line in
+        // the Streak Goal card (B-14) — never merged.
+        _milestoneLine(current),
+        const SizedBox(height: 28),
+        _sectionTitle('Streak Calendar'),
+        const SizedBox(height: 12),
+        _calendarCard(),
+        _legendRow(),
+        if (_visibleMonthHasRestored()) ...[
+          const SizedBox(height: 10),
+          const Text(
+            // Juno A-32 (§11): the verb is "covered" — "restored"
+            // is retired from user-facing copy with "Restore".
+            'A day with a snowflake was covered by a freeze.',
+            style: TextStyle(fontSize: 12, color: _duoMuted),
+          ),
+        ],
+        const SizedBox(height: 28),
+        _sectionTitle('Streak Goal'),
+        const SizedBox(height: 12),
+        _goalTrackCard(current),
+        const SizedBox(height: 28),
+        _sectionTitle('Perks'),
+        const SizedBox(height: 12),
+        _perksCard(),
+        const SizedBox(height: 16),
+        _goalBlock(),
+        const SizedBox(height: 16),
+        _buyCard(),
+      ],
+    );
+  }
+
+  bool _visibleMonthHasRestored() {
+    return state.restoredDays.any(
+      (d) => d.startsWith(streakMonthKey(_visibleMonth)),
+    );
+  }
+
+  /// Juno A-8 — distance form, never a prediction. Suppressed when
   /// the distance would be 0 (nextMilestone is strictly greater,
   /// so this is a belt-and-braces guard only).
   Widget _milestoneLine(int current) {
@@ -692,24 +521,1047 @@ class _StreakScreenState extends State<StreakScreen> {
           ? '1 day to your next milestone'
           : '$distance days to your next milestone',
       key: const Key('streakMilestoneLine'),
-      textAlign: TextAlign.center,
-      style: const TextStyle(
-        fontSize: 16.5,
-        fontWeight: FontWeight.w700,
-        color: Color(0xFFAAB3D0),
+      style: _duo(16.5, 700, const Color(0xFFAAB3D0)),
+    );
+  }
+
+  Widget _sectionTitle(String label) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 2),
+      child: Text(label, style: _duo(25, 900, _duoText)),
+    );
+  }
+
+  Widget _outlinedCard({Key? key, required Widget child, EdgeInsets? padding}) {
+    return Container(
+      key: key,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        border: Border.all(color: _duoBorder, width: 1.2),
+        borderRadius: BorderRadius.circular(13),
+      ),
+      padding: padding ?? const EdgeInsets.all(20),
+      child: child,
+    );
+  }
+
+  Widget _header(BuildContext context, int current) {
+    return SizedBox(
+      height: 56,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Text('Streak', style: _duo(19.5, 900, _duoText)),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: IconButton(
+              tooltip: 'Back',
+              icon: const Icon(Icons.close, size: 24, color: _duoText),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: IconButton(
+              key: const Key('streakShareButton'),
+              tooltip: 'Share',
+              icon: const Icon(Icons.ios_share, size: 22, color: _duoText),
+              onPressed: () => unawaited(
+                StreakShareService.shareFromBoundary(_cardKey, count: current),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  /// Streak Goal card — Juno §3a (normal + spoiled variants), §3b
-  /// progress (hidden when spoiled; pinned full for the completed
-  /// month when pending), §3c pause texts (pending vs not-pending).
-  Widget _goalCard() {
+  Widget _tabBar() {
+    Widget tab(int index, String label, Key key) {
+      final active = _tabIndex == index;
+      return Expanded(
+        child: InkWell(
+          key: key,
+          onTap: () {
+            if (_tabIndex == index) return;
+            setState(() => _tabIndex = index);
+            if (index == 1) unawaited(_loadFriends());
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: _duo(
+                16.5,
+                900,
+                active ? _duoPrimary : _duoText,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            tab(0, 'PERSONAL', const Key('streakTabPersonal')),
+            tab(1, 'FRIENDS', const Key('streakTabFriends')),
+          ],
+        ),
+        Stack(
+          children: [
+            Container(height: 1, color: const Color(0xFF2A343C)),
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    height: 3.4,
+                    decoration: BoxDecoration(
+                      color: _tabIndex == 0 ? _duoPrimary : Colors.transparent,
+                      borderRadius: BorderRadius.circular(1.7),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Container(
+                    height: 3.4,
+                    decoration: BoxDecoration(
+                      color: _tabIndex == 1 ? _duoPrimary : Colors.transparent,
+                      borderRadius: BorderRadius.circular(1.7),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _loadFriends() async {
+    if (_friends != null || _friendsLoading) return;
+    _friendsLoading = true;
+    try {
+      final loader =
+          widget.friendsLoader ?? () => TabsBackend().fetchFriendsList();
+      final list = await loader();
+      final sorted = List<FriendDto>.of(list)
+        ..sort((a, b) => b.currentStreak.compareTo(a.currentStreak));
+      if (mounted) setState(() => _friends = sorted);
+    } catch (_) {
+      if (mounted) setState(() => _friendsFailed = true);
+    } finally {
+      _friendsLoading = false;
+    }
+  }
+
+  Widget _friendsTab() {
+    final friends = _friends;
+    if (friends == null) {
+      if (_friendsFailed) {
+        return Padding(
+          padding: const EdgeInsets.only(top: 48),
+          child: Center(
+            child: Text(
+              // Juno B-25: the one approved load-failure line.
+              "Couldn't load your friends right now. Try again later.",
+              key: const Key('streakFriendsError'),
+              textAlign: TextAlign.center,
+              style: _duo(15, 700, _duoMuted),
+            ),
+          ),
+        );
+      }
+      return const Padding(
+        padding: EdgeInsets.only(top: 48),
+        child: Center(child: CircularProgressIndicator(color: _duoPrimary)),
+      );
+    }
+    if (friends.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 48),
+        child: Center(
+          child: Text(
+            // Juno B-24: Community's empty state, verbatim — one
+            // empty state app-wide.
+            'No friends added yet. Add friends using their Nickname#ID!',
+            key: const Key('streakFriendsEmpty'),
+            textAlign: TextAlign.center,
+            style: _duo(15, 700, _duoMuted),
+          ),
+        ),
+      );
+    }
+    return _outlinedCard(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Column(
+        children: [
+          for (var i = 0; i < friends.length; i++) ...[
+            if (i > 0)
+              const Divider(height: 1, thickness: 1, color: Color(0xFF2A343C)),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _duoNavyBtn,
+                    ),
+                    child: Center(
+                      child: Text(
+                        friends[i].nickname.isEmpty
+                            ? '?'
+                            : friends[i].nickname[0].toUpperCase(),
+                        style: _duo(16, 900, _duoText),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            friends[i].nickname,
+                            style: _duo(16, 700, _duoText),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '#${friends[i].tag}',
+                          style: _duo(13, 700, _duoMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Juno B-23: the Community screen's shipped stat
+                  // formats — flame + settled currentStreak with
+                  // "{N} day streak" semantics, gem icon + count
+                  // with GemCopy.pillLabel semantics. No rank, no
+                  // level/points, no comparative copy on this tab.
+                  Semantics(
+                    container: true,
+                    label: '${friends[i].currentStreak} day streak',
+                    child: ExcludeSemantics(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.local_fire_department,
+                            size: 16,
+                            color: _duoPrimary,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${friends[i].currentStreak}',
+                            style: _duo(13, 900, _duoPrimary),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Semantics(
+                    container: true,
+                    label: GemCopy.pillLabel(friends[i].gemBalance),
+                    child: ExcludeSemantics(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Image.asset(
+                            GemCopy.iconAsset,
+                            width: 16,
+                            height: 16,
+                            fit: BoxFit.contain,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${friends[i].gemBalance}',
+                            style: _duo(13, 900, _duoPrimaryLt),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _hero(int current, int best) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(left: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 13,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [_duoPrimaryLt, _duoPrimary],
+                    ),
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      // Juno B-1: the pill carries its unit — it
+                      // must be true read alone.
+                      best == 1
+                          ? 'PERSONAL BEST · 1 DAY'
+                          : 'PERSONAL BEST · $best DAYS',
+                      softWrap: false,
+                      style: _duo(
+                        12,
+                        800,
+                        const Color(0xFF17102E),
+                        letterSpacing: 1.6,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Semantics(
+                  container: true,
+                  label: '$current day streak',
+                  child: ExcludeSemantics(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$current',
+                          key: const Key('streakHeroNumber'),
+                          style: _duo(88, 1000, _duoPrimary, height: 1.0),
+                        ),
+                        Text('day streak!', style: _duo(29, 900, _duoPrimary)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        SizedBox(
+          width: 118,
+          height: 128,
+          child: Stack(
+            alignment: Alignment.topCenter,
+            children: [
+              const Positioned(
+                bottom: 6,
+                child: SizedBox(
+                  width: 74,
+                  height: 11,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Color(0xFF1D1533),
+                      borderRadius: BorderRadius.all(
+                        Radius.elliptical(37, 5.5),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const Icon(
+                Icons.local_fire_department,
+                size: 112,
+                color: _duoPrimary,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _scrollToBuy() {
+    final ctx = _buyCardKey.currentContext;
+    if (ctx != null) {
+      unawaited(
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeOut,
+          alignment: 0.02,
+        ),
+      );
+    } else if (_scrollController.hasClients) {
+      unawaited(
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeOut,
+        ),
+      );
+    }
+  }
+
+  /// Freeze status card (mock §4): the existing freeze-grant chip
+  /// treatment, the available-cover headline from real state, and
+  /// GET MORE wired to scroll to the Get More Freezes card.
+  Widget _freezeStatusCard() {
+    final effective = _effectiveState();
+    final available = totalAvailableCover(effective, now);
+    final max = streakCap(effective);
+    return _outlinedCard(
+      child: Row(
+        children: [
+          _FreezeGrantIcon(
+            grantEpoch: _grantEpoch,
+            alreadyPresented: _grantEpochsPresented.contains(_grantEpoch),
+            onPresented: (epoch) {
+              if (mounted) {
+                setState(() => _grantEpochsPresented.add(epoch));
+              }
+            },
+          ),
+          const SizedBox(width: 18),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'You have $available of $max Streak Freezes ready',
+                  key: const Key('streakFreezeHeadline'),
+                  style: _duo(18.5, 700, _duoText, height: 1.35),
+                ),
+                const SizedBox(height: 4),
+                InkWell(
+                  key: const Key('streakGetMoreButton'),
+                  onTap: _scrollToBuy,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      'GET MORE',
+                      style: _duo(15.5, 900, _duoFreeze, letterSpacing: 1.4),
+                    ),
+                  ),
+                ),
+                // Juno A-18: §4a sentence 3, kept verbatim as the
+                // small caption under GET MORE.
+                const Text(
+                  'A freeze can cover one missed day automatically when you have one available.',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    height: 1.4,
+                    color: _duoCaption,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The bright-bar week for the visible month: the week containing
+  /// today when it has counted days, else the most recent week with
+  /// counted days, else -1 (mock: brighter gradient on the current
+  /// partial week, darker tint on the other completed weeks).
+  int _brightWeekIndex(List<List<DateTime?>> weeks, String todayStr) {
+    var lastCounted = -1;
+    for (var w = 0; w < weeks.length; w++) {
+      var hasCounted = false;
+      var hasToday = false;
+      for (final day in weeks[w]) {
+        if (day == null) continue;
+        final ds = streakDayStr(day);
+        if (state.countedDays.contains(ds)) hasCounted = true;
+        if (ds == todayStr) hasToday = true;
+      }
+      if (hasCounted) {
+        lastCounted = w;
+        if (hasToday) return w;
+      }
+    }
+    return lastCounted;
+  }
+
+  Widget _calendarCard() {
+    final year = _visibleMonth.year;
+    final month = _visibleMonth.month;
+    final first = DateTime(year, month, 1);
+    final daysInMonth = DateTime(year, month + 1, 0).day;
+    final leadBlanks = first.weekday % 7;
+    final cells = <DateTime?>[
+      for (var i = 0; i < leadBlanks; i++) null,
+      for (var d = 1; d <= daysInMonth; d++) DateTime(year, month, d),
+    ];
+    while (cells.length % 7 != 0) {
+      cells.add(null);
+    }
+    final weeks = <List<DateTime?>>[
+      for (var r = 0; r < cells.length ~/ 7; r++)
+        cells.sublist(r * 7, r * 7 + 7),
+    ];
+    final todayStr = tabsDayStr(now);
+    final brightWeek = _brightWeekIndex(weeks, todayStr);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _outlinedCard(
+          padding: const EdgeInsets.fromLTRB(12, 14, 12, 16),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  IconButton(
+                    key: const Key('streakCalPrevMonth'),
+                    tooltip: 'Previous month',
+                    icon: const Icon(
+                      Icons.chevron_left,
+                      size: 24,
+                      color: _duoMuted,
+                    ),
+                    onPressed: () => setState(() {
+                      _visibleMonth = DateTime(year, month - 1, 1);
+                    }),
+                  ),
+                  Expanded(
+                    child: Text(
+                      '${StreakScreen._monthNames[month - 1]} $year',
+                      textAlign: TextAlign.center,
+                      style: _duo(19, 800, _duoText),
+                    ),
+                  ),
+                  IconButton(
+                    key: const Key('streakCalNextMonth'),
+                    tooltip: 'Next month',
+                    icon: const Icon(
+                      Icons.chevron_right,
+                      size: 24,
+                      color: _duoMuted,
+                    ),
+                    onPressed: () => setState(() {
+                      _visibleMonth = DateTime(year, month + 1, 1);
+                    }),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  children: [
+                    for (final w in const [
+                      'Su',
+                      'Mo',
+                      'Tu',
+                      'We',
+                      'Th',
+                      'Fr',
+                      'Sa',
+                    ])
+                      Expanded(
+                        child: Center(
+                          child: Text(
+                            w,
+                            style: _duo(14.5, 800, const Color(0xFF71808F)),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 6),
+              for (var r = 0; r < weeks.length; r++)
+                _calendarWeek(weeks[r], todayStr, bright: r == brightWeek),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _calendarWeek(
+    List<DateTime?> week,
+    String todayStr, {
+    required bool bright,
+  }) {
+    // Maximal runs of counted days in this week render as one
+    // rounded bar (mock §5). Grace-completed days are counted days
+    // with no distinct visual treatment today (their set only
+    // suppresses gem earnings), so they join bars exactly like any
+    // counted day. Freeze-covered days keep the
+    // StreakFreezeDayCircle treatment ON the bar.
+    final runs = <({int start, int len})>[];
+    var i = 0;
+    while (i < 7) {
+      final day = week[i];
+      if (day != null && state.countedDays.contains(streakDayStr(day))) {
+        var j = i;
+        while (j < 7 &&
+            week[j] != null &&
+            state.countedDays.contains(streakDayStr(week[j]!))) {
+          j++;
+        }
+        runs.add((start: i, len: j - i));
+        i = j;
+      } else {
+        i++;
+      }
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: SizedBox(
+        height: 39,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final colW = constraints.maxWidth / 7;
+            return Stack(
+              children: [
+                for (final run in runs)
+                  Positioned(
+                    left: run.start * colW + 1,
+                    top: 4,
+                    width: run.len * colW - 2,
+                    height: 31,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: bright ? null : _duoBarDark,
+                        gradient: bright
+                            ? const LinearGradient(
+                                colors: [_duoPrimaryLt, _duoPrimary],
+                              )
+                            : null,
+                        borderRadius: BorderRadius.circular(15.5),
+                      ),
+                    ),
+                  ),
+                Row(
+                  children: [
+                    for (var c = 0; c < 7; c++)
+                      Expanded(
+                        child: _calendarDay(week[c], todayStr, bright: bright),
+                      ),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _calendarDay(DateTime? day, String todayStr, {required bool bright}) {
+    if (day == null) return const SizedBox(height: 39);
+    final ds = streakDayStr(day);
+    final counted = state.countedDays.contains(ds);
+    final restored = state.restoredDays.contains(ds);
+    final isToday = ds == todayStr;
+
+    // Founder addition (Nov 18, 2026): a freeze-covered day is the
+    // icy-blue snowflake circle on every rebuilt surface — checked
+    // before the today/completed treatments. The date stays
+    // identifiable without color via the semantics label (Juno C6).
+    if (restored) {
+      final cell = SizedBox(
+        height: 39,
+        child: Center(
+          child: StreakFreezeDayCircle(
+            key: Key('streakRestoredDay-$ds'),
+            size: 32,
+          ),
+        ),
+      );
+      return Semantics(
+        container: true,
+        label:
+            '${StreakScreen._monthNames[day.month - 1]} ${day.day}, covered by a freeze',
+        child: ExcludeSemantics(child: cell),
+      );
+    }
+    if (isToday) {
+      return SizedBox(
+        height: 39,
+        child: Center(
+          child: Container(
+            width: 33,
+            height: 33,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: _duoPrimary,
+            ),
+            child: Center(
+              child: Text('${day.day}', style: _duo(17.5, 900, _duoOnBright)),
+            ),
+          ),
+        ),
+      );
+    }
+    return SizedBox(
+      height: 39,
+      child: Center(
+        child: Text(
+          '${day.day}',
+          style: _duo(
+            17.5,
+            800,
+            counted
+                ? (bright ? _duoOnBright : _duoPrimary)
+                : const Color(0xFF5F6874),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _legendRow() {
+    Widget item(Widget swatch, String label) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          swatch,
+          const SizedBox(width: 7),
+          Text(label, style: _duo(13.5, 700, const Color(0xFFC8CDDA))),
+        ],
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 16, 4, 0),
+      child: Wrap(
+        spacing: 22,
+        runSpacing: 8,
+        children: [
+          item(
+            Container(
+              width: 19,
+              height: 10,
+              decoration: BoxDecoration(
+                color: _duoPrimary,
+                borderRadius: BorderRadius.circular(5),
+              ),
+            ),
+            'Completed',
+          ),
+          item(
+            Container(
+              width: 13,
+              height: 13,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: _duoPrimary,
+              ),
+            ),
+            'Today',
+          ),
+          item(const StreakFreezeDayCircle(size: 14), 'Freeze day'),
+        ],
+      ),
+    );
+  }
+
+  /// Streak Goal card (mock §6): the gem-milestone track. The
+  /// check marker sits at the last crossed gem milestone; the next
+  /// three milestones render as calendar markers with their gem
+  /// bonuses from [gemMilestoneBonus]. Generalized from real state.
+  Widget _goalTrackCard(int current) {
+    final crossed = gemGoalLastCrossed(current);
+    final upcoming = gemGoalUpcoming(current);
+    final next = upcoming.first;
+    return _outlinedCard(
+      padding: const EdgeInsets.fromLTRB(22, 20, 22, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final w = constraints.maxWidth;
+                final centers = <double>[0, w / 3, 2 * w / 3, w];
+                return SizedBox(
+                  height: 88,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        top: 20,
+                        child: Container(
+                          height: 23,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF252B38),
+                            borderRadius: BorderRadius.circular(11.5),
+                          ),
+                        ),
+                      ),
+                      if (crossed != null)
+                        Positioned(
+                          left: 0,
+                          top: 20,
+                          child: Container(
+                            width: centers[0] + 21,
+                            height: 23,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [_duoPrimaryLt, _duoPrimary],
+                              ),
+                              borderRadius: BorderRadius.circular(11.5),
+                            ),
+                          ),
+                        ),
+                      // Slot 0: the check marker (last crossed), or a
+                      // dim start marker before the first milestone.
+                      Positioned(
+                        left: centers[0] - 20.5,
+                        top: 11,
+                        child: crossed != null
+                            ? Container(
+                                key: const Key('streakGoalCheck'),
+                                width: 41,
+                                height: 41,
+                                decoration: BoxDecoration(
+                                  color: _duoPrimary,
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
+                                child: const Icon(
+                                  Icons.check,
+                                  size: 24,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Container(
+                                key: const Key('streakGoalStart'),
+                                width: 41,
+                                height: 41,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: _duoBorder,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.radio_button_unchecked,
+                                  size: 20,
+                                  color: _duoCaption,
+                                ),
+                              ),
+                      ),
+                      for (var s = 0; s < 3; s++) ...[
+                        Positioned(
+                          left: centers[s + 1] - 20.5,
+                          top: 11,
+                          child: _goalMarker(upcoming[s]),
+                        ),
+                        // The label group is ~70 CSS wide at
+                        // 10pt (mock fit pass); its center clamps
+                        // inside the card so edge labels never
+                        // cross the border or each other.
+                        Positioned(
+                          top: 62,
+                          left: (centers[s + 1] - 36)
+                              .clamp(-10.0, w - 62)
+                              .toDouble(),
+                          width: 72,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Image.asset(
+                                  GemCopy.iconAsset,
+                                  width: 12,
+                                  height: 12,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '+${gemMilestoneBonus(upcoming[s])} gems',
+                                  style: _duo(10, 800, _duoPrimaryLt),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '$current / $next DAYS',
+                    key: const Key('streakGoalCaption'),
+                    style: _duo(14.5, 800, _duoCaption, letterSpacing: 1.4),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    // Juno B-14: the word "gem" is what makes this
+                    // true — on the streak ladder nextMilestone(30)
+                    // is 60, not 100.
+                    'Next gem milestone: $next days',
+                    key: const Key('streakGoalNext'),
+                    style: _duo(14, 800, _duoPrimary),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _goalMarker(int milestone) {
+    return Container(
+      key: Key('streakGoalMarker-$milestone'),
+      width: 41,
+      height: 41,
+      decoration: BoxDecoration(
+        color: const Color(0xFFEDEFF5),
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(9),
+        child: Column(
+          children: [
+            Container(height: 12.5, color: _duoPrimary),
+            Expanded(
+              child: Center(
+                child: Text(
+                  '$milestone',
+                  style: _duo(15.5, 900, const Color(0xFF1B1430)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Perks / Monthly Freeze card (mock §7; copy per JUNO-COPY
+  /// B-17/B-18): Juno's amended description verbatim — per-month
+  /// grant, no stacking, use-based test, alive condition, cap →
+  /// waits — and the REFILLS IN status line, which renders ONLY
+  /// when the current month's monthly grant has been used
+  /// (monthlyUsed): while the grant is ready a refill countdown
+  /// would be false, because nothing is coming to add to it.
+  Widget _perksCard() {
+    final effective = _effectiveState();
+    final monthlyUsed = effective.consumedSaveMonths.contains(
+      streakMonthKey(_anchor),
+    );
+    final refillDays = _refillDays();
+
+    return _outlinedCard(
+      padding: const EdgeInsets.all(22),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 62,
+            height: 62,
+            decoration: BoxDecoration(
+              color: _duoFreezeChip,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Icon(Icons.ac_unit, size: 38, color: _duoFreeze),
+          ),
+          const SizedBox(width: 18),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Monthly Freeze', style: _duo(20, 900, _duoText)),
+                const SizedBox(height: 8),
+                Text(
+                  "One free streak freeze comes with each new month — an unused one doesn't add up. Finish a month without using any freeze while your streak is going, and you earn one extra freeze. If you're at your max when it comes due, it waits until there's room.",
+                  key: const Key('streakPerksDesc'),
+                  style: _duo(15.5, 600, const Color(0xFFC6CBD8), height: 1.42),
+                ),
+                if (monthlyUsed) ...[
+                  const SizedBox(height: 12),
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: 'REFILLS IN ',
+                          style: _duo(
+                            14.5,
+                            900,
+                            const Color(0xFF7A8494),
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                        TextSpan(
+                          text: refillDays == 1 ? '1 DAY' : '$refillDays DAYS',
+                          style: _duo(
+                            14.5,
+                            900,
+                            _duoFreeze,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                      ],
+                    ),
+                    key: const Key('streakRefillLine'),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The Perks goal block (JUNO-COPY §4 item 6): the shipped
+  /// Streak Goal card's Juno §3 copy — §3a state-swapped copy,
+  /// §3b progress (hidden when spoiled; pinned full for the
+  /// completed month when pending), §3c pause texts — directly
+  /// under the Monthly Freeze card, above the Get More Freezes
+  /// card. The Streak Goal card is the gem-milestone track now;
+  /// this block is where the monthly earning rule lives.
+  Widget _goalBlock() {
     final monthName = StreakScreen._monthNames[_anchor.month - 1];
     final nextMonth = DateTime(_anchor.year, _anchor.month + 1, 1);
     final nextMonthName = StreakScreen._monthNames[nextMonth.month - 1];
     final monthKey = streakMonthKey(_anchor);
-    final spoiled = state.spoiledMonths.contains(monthKey) ||
+    final spoiled =
+        state.spoiledMonths.contains(monthKey) ||
         state.consumedSaveMonths.contains(monthKey);
     final pending = state.earnedPending;
 
@@ -728,8 +1580,7 @@ class _StreakScreenState extends State<StreakScreen> {
       progressMonth = monthName;
     }
 
-    return _sectionCard(
-      label: 'Streak Goal',
+    return _outlinedCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -753,9 +1604,7 @@ class _StreakScreenState extends State<StreakScreen> {
                 value: progressDenom == 0 ? 0 : progressN / progressDenom,
                 minHeight: 16,
                 backgroundColor: const Color(0xFF1A2338),
-                valueColor: const AlwaysStoppedAnimation<Color>(
-                  NotelColors.primary,
-                ),
+                valueColor: const AlwaysStoppedAnimation<Color>(_duoPrimary),
               ),
             ),
             const SizedBox(height: 8),
@@ -787,547 +1636,335 @@ class _StreakScreenState extends State<StreakScreen> {
     );
   }
 
-  /// Streak Freeze card — Juno §4a ready/used variants (displayed
-  /// count = total available cover / cap), §4b buy button (price
-  /// from the Play listing; hidden while a purchased freeze is
-  /// held), §4c buy note, §5a unavailable, §5b/§5c outcomes.
-  Widget _freezeCard() {
+  /// Days from the Tabs-day anchor to the next monthly-grant
+  /// refill: the grant renews on the 1st of the next calendar
+  /// month (an unused grant expires with its month — no rollover).
+  int _refillDays() {
+    final a = DateTime(_anchor.year, _anchor.month, _anchor.day);
+    final next = DateTime(a.year, a.month + 1, 1);
+    return next.difference(a).inDays;
+  }
+
+  /// Get More Freezes card (mock §8; copy per JUNO-COPY): the gem
+  /// buy and the money buy side by side, wired to the EXISTING
+  /// purchase paths (GemService.spendOnFreeze;
+  /// StreakFreezePurchaseService.buy) with their ruled states:
+  ///
+  /// - Gem button (B-20): `GemCopy.freezePrice` GEMS — hidden when
+  ///   total cover is at cap (shipped rule, unchanged), hidden
+  ///   until a server balance has loaded, present but disabled
+  ///   under 100 gems with the §2d line under it.
+  /// - Money button (B-21): the live Play listing price — never a
+  ///   typed literal; §1c already-held text takes its place while
+  ///   a purchased freeze is held; §5a takes its place while Play
+  ///   is unreachable.
+  /// - §4c note (A-25) directly under BOTH buttons, above the
+  ///   state line, whenever the money button is visible.
+  /// - Outcomes (§1a/§1b/§5c gem §2c) under the buy buttons.
+  Widget _buyCard() {
     final effective = _effectiveState();
-    final monthName = StreakScreen._monthNames[_anchor.month - 1];
-    final monthlyUsed =
-        effective.consumedSaveMonths.contains(streakMonthKey(_anchor));
     final available = totalAvailableCover(effective, now);
     final max = streakCap(effective);
     final purchase = _purchase;
     final heldPurchased = effective.purchasedFreezes > 0;
-    // Juno §1c state: the account already holds the purchased
-    // freeze — known from the held inventory or from a verify
-    // answered 409 purchased_already_held this session.
     final alreadyHeldKnown = heldPurchased || purchase?.alreadyHeld == true;
-
-    return _sectionCard(
-      label: 'Streak Freeze',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _FreezeGrantIcon(
-                grantEpoch: _grantEpoch,
-                alreadyPresented: _grantEpochsPresented.contains(_grantEpoch),
-                onPresented: (epoch) {
-                  if (mounted) {
-                    setState(() => _grantEpochsPresented.add(epoch));
-                  }
-                },
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  monthlyUsed
-                      ? 'Your free monthly freeze for $monthName has been used. You have $available of $max freezes available. A freeze can cover one missed day automatically when you have one available.'
-                      : 'Your free monthly freeze is ready for $monthName. You have $available of $max freezes available. A freeze can cover one missed day automatically when you have one available.',
-                  key: const Key('streakFreezeStatus'),
-                  style: const TextStyle(
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w700,
-                    height: 1.45,
-                    color: Color(0xFFAAB3D0),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          // Juno §1a — THE confirmation surface for a verified
-          // grant (A2 fix): exactly one confirmation renders. The
-          // recovered-grant surface (restoredMessage) carries the
-          // same §1a text and renders only when it is not already
-          // the successMessage, so a recovery never stacks two.
-          if (purchase?.successMessage != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              purchase!.successMessage!,
-              key: const Key('streakPurchaseSuccess'),
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: LabBlackColors.textPrimary,
-              ),
-            ),
-          ] else if (purchase?.restoredMessage != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              purchase!.restoredMessage!,
-              key: const Key('streakPurchaseRestored'),
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: LabBlackColors.textPrimary,
-              ),
-            ),
-          ],
-          // Juno §1b — the verify-pending state. While it shows,
-          // the generic §5c failure string must NOT also render
-          // for the same event (A2 fix; the service no longer sets
-          // it then either — this guard is belt-and-braces).
-          if (purchase?.pendingMessage != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              purchase!.pendingMessage!,
-              key: const Key('streakPurchasePending'),
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: LabBlackColors.textSecondary,
-              ),
-            ),
-          ] else if (purchase?.failureMessage != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              purchase!.failureMessage!,
-              key: const Key('streakPurchaseFailure'),
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: LabBlackColors.textSecondary,
-              ),
-            ),
-          ],
-          // Juno §1c — inline on the purchase card when the
-          // already-held state is known (including a 409
-          // purchased_already_held answer): in place of the buy
-          // action (the buy row below is suppressed in this state,
-          // so no purchase sheet can launch and no charge is
-          // attempted).
-          if (purchase != null &&
-              (purchase.alreadyHeld ||
-                  (heldPurchased &&
-                      purchase.adoptedPurchasedFreezes == null &&
-                      _adoptedPurchased == null))) ...[
-            const SizedBox(height: 12),
-            const Text(
-              StreakPurchaseCopy.alreadyHeld,
-              key: Key('streakPurchaseAlreadyHeld'),
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: LabBlackColors.textSecondary,
-              ),
-            ),
-          ],
-          if (!alreadyHeldKnown && purchase != null) ...[
-            const SizedBox(height: 12),
-            if (purchase.state == StreakFreezeBuyState.unavailable) ...[
-              const Text(
-                'EXTRA FREEZE — NOT AVAILABLE RIGHT NOW',
-                key: Key('streakBuyUnavailable'),
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF59637F),
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                "We can't reach Google Play right now, so extra freezes can't be bought at the moment. Try again later.",
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF59637F),
-                ),
-              ),
-            ] else if (purchase.product != null) ...[
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  key: const Key('streakBuyButton'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: NotelColors.primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  onPressed: purchase.state == StreakFreezeBuyState.buying
-                      ? null
-                      : () => unawaited(purchase.buy()),
-                  child: Text(
-                    'GET ONE MORE FREEZE · ${purchase.product!.price}',
-                    style: const TextStyle(
-                      fontSize: 16.5,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                "Not a subscription — you pay once for this freeze. While you hold a freeze you bought, your max is 3; otherwise it's 2.",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF59637F),
-                ),
-              ),
-            ],
-          ],
-          // Gems — the buy-with-gems section (Juno §2), inside
-          // this card. (The §4 explainer moved to the Gems sheet —
-          // added scope #6; the buy row stays.)
-          _gemSection(available: available, max: max),
-        ],
-      ),
-    );
-  }
-
-  /// The gem-buy section of the Streak Freeze card (Juno §2).
-  ///
-  /// Buy rows (balance line §2b, button §2a, insufficient line
-  /// §2d) render only while the buy affordance is live: hidden in
-  /// exactly one ruled state — total cover at cap — and only once
-  /// a server balance exists. (Gem-buy rule change, Nov 21, 2026:
-  /// holding a purchased-class freeze no longer hides the gem
-  /// buy; gem-bought freezes join that same bucket, up to the
-  /// cap. The $0.99 affordance keeps its own held-hides rule —
-  /// it is NOT shared with this section anymore.) Under 100 gems
-  /// the button is present but DISABLED with the §2d line under
-  /// it. The §2c success feedback renders only on a verified
-  /// server spend. The §4 About-gems explainer is NOT here
-  /// anymore — it moved to the Gems sheet (added scope #6,
-  /// Nov 20, 2026).
-  Widget _gemSection({required int available, required int max}) {
     final balance = _gems.balance;
-    final buyHidden = available >= max;
-    final showBuy = !buyHidden && balance != null;
+    final atCap = available >= max;
     final insufficient = balance != null && balance < GemCopy.freezePrice;
-    return Column(
-      key: const Key('gemBuySection'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 16),
-        const Divider(height: 1, thickness: 1, color: LabBlackColors.hairline),
-        const SizedBox(height: 12),
-        if (_gemSuccessBalance != null) ...[
-          const Text(
-            GemCopy.spendSuccessTitle,
-            key: Key('gemSpendSuccessTitle'),
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: LabBlackColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            GemCopy.spendSuccessBody(_gemSuccessBalance!),
-            key: const Key('gemSpendSuccessBody'),
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: LabBlackColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
-        if (showBuy) ...[
-          Text(
-            GemCopy.balanceLine(balance),
-            key: const Key('gemBalanceLine'),
-            style: const TextStyle(
-              fontSize: 14.5,
-              fontWeight: FontWeight.w700,
-              height: 1.45,
-              color: Color(0xFFAAB3D0),
-            ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              key: const Key('gemBuyButton'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: NotelColors.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              onPressed: (insufficient || _gemSpendBusy)
-                  ? null
-                  : () => unawaited(_spendGems()),
-              child: const Text(
-                GemCopy.buyButtonLabel,
-                style: TextStyle(
-                  fontSize: 16.5,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-          ),
-          if (insufficient) ...[
-            const SizedBox(height: 8),
-            Text(
-              GemCopy.insufficientLine(GemCopy.freezePrice - balance),
-              key: const Key('gemInsufficientLine'),
-              style: const TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF59637F),
-              ),
-            ),
-          ],
-          const SizedBox(height: 12),
-        ],
-        // Added scope #6 (Nov 20, 2026, founder direction as
-        // amended): the Juno §4 About-gems explainer no longer
-        // renders here — it MOVED to the Gems sheet opened from
-        // the Home gem pill (gems_sheet.dart). The buy-with-gems
-        // row above stays exactly as-is. No pointer line replaces
-        // the explainer (GEMS-MOVE-COPY §4 ruling: none needed).
-      ],
+    final gemVisible = !atCap && balance != null;
+    final gemEnabled = gemVisible && !insufficient && !_gemSpendBusy;
+    final moneyVisible =
+        purchase == null || purchase.state != StreakFreezeBuyState.unavailable;
+    final moneySlot = _moneySlot(
+      purchase: purchase,
+      alreadyHeldKnown: alreadyHeldKnown,
+      heldPurchased: heldPurchased,
     );
-  }
 
-  Widget _sectionCard({required String label, required Widget child}) {
     return Container(
-      decoration: BoxDecoration(
-        color: LabBlackColors.card,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: LabBlackColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 10),
-          child,
-        ],
-      ),
-    );
-  }
-
-  Widget _nested({required Widget child}) {
-    return Container(
-      decoration: BoxDecoration(
-        color: LabBlackColors.nested,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: child,
-    );
-  }
-
-  Widget _statRow(String label, String value, {String? subCaption}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: Column(
+      key: _buyCardKey,
+      child: _outlinedCard(
+        key: const Key('streakBuyCard'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Get More Freezes', style: _duo(19.5, 900, _duoText)),
+            const SizedBox(height: 14),
+            Column(
+              key: const Key('gemBuySection'),
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: LabBlackColors.textPrimary,
+                if (purchase != null &&
+                    purchase.state == StreakFreezeBuyState.unavailable)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (gemVisible)
+                        Expanded(child: _gemButton(gemEnabled: gemEnabled)),
+                      if (gemVisible) const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'EXTRA FREEZE — NOT AVAILABLE RIGHT NOW',
+                              key: Key('streakBuyUnavailable'),
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF59637F),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              "We can't reach Google Play right now, so extra freezes can't be bought at the moment. Try again later.",
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF59637F),
+                              ),
+                            ),
+                            // §1c renders independently of the §5a
+                            // state, exactly as on the shipped
+                            // screen: both can hold at once.
+                            if (_alreadyHeldSlot(
+                              purchase: purchase,
+                              heldPurchased: heldPurchased,
+                            )) ...[
+                              const SizedBox(height: 12),
+                              const Text(
+                                StreakPurchaseCopy.alreadyHeld,
+                                key: Key('streakPurchaseAlreadyHeld'),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: _duoMuted,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (gemVisible)
+                        Expanded(child: _gemButton(gemEnabled: gemEnabled)),
+                      if (gemVisible) const SizedBox(width: 10),
+                      Expanded(child: moneySlot),
+                    ],
                   ),
-                ),
-                if (subCaption != null) ...[
-                  const SizedBox(height: 2),
+                if (insufficient && !atCap) ...[
+                  const SizedBox(height: 10),
                   Text(
-                    subCaption,
+                    GemCopy.insufficientLine(GemCopy.freezePrice - balance),
+                    key: const Key('gemInsufficientLine'),
                     style: const TextStyle(
-                      fontSize: 13,
-                      color: LabBlackColors.textSecondary,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF59637F),
                     ),
                   ),
                 ],
+                // Gem §2c success — verified server spends only;
+                // the body prints the post-spend server balance.
+                if (_gemSuccessBalance != null) ...[
+                  const SizedBox(height: 12),
+                  const Text(
+                    GemCopy.spendSuccessTitle,
+                    key: Key('gemSpendSuccessTitle'),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: _duoText,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    GemCopy.spendSuccessBody(_gemSuccessBalance!),
+                    key: const Key('gemSpendSuccessBody'),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: _duoText,
+                    ),
+                  ),
+                ],
+                // Juno §1a — THE confirmation surface for a verified
+                // money grant: exactly one confirmation renders.
+                if (purchase?.successMessage != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    purchase!.successMessage!,
+                    key: const Key('streakPurchaseSuccess'),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: _duoText,
+                    ),
+                  ),
+                ] else if (purchase?.restoredMessage != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    purchase!.restoredMessage!,
+                    key: const Key('streakPurchaseRestored'),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: _duoText,
+                    ),
+                  ),
+                ],
+                if (purchase?.pendingMessage != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    purchase!.pendingMessage!,
+                    key: const Key('streakPurchasePending'),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: _duoMuted,
+                    ),
+                  ),
+                ] else if (purchase?.failureMessage != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    purchase!.failureMessage!,
+                    key: const Key('streakPurchaseFailure'),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: _duoMuted,
+                    ),
+                  ),
+                ],
+                // Juno A-25 (§4c): directly under BOTH buy buttons,
+                // above the state line, whenever the money button
+                // is visible.
+                if (moneyVisible) ...[
+                  const SizedBox(height: 12),
+                  const Text(
+                    "Not a subscription — you pay once for this freeze. While you hold a freeze you bought, your max is 3; otherwise it's 2.",
+                    key: Key('streakBuyNote'),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF59637F),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                Text(
+                  // Juno B-22: the cap clause is the VC 100159
+                  // wording verbatim; the "Gems:" segment is
+                  // omitted entirely until a server balance loads.
+                  'Max 2 freezes, or 3 while you hold a purchased freeze'
+                  ' · You hold $available'
+                  '${balance != null ? ' · Gems: $balance' : ''}',
+                  key: const Key('streakBuyCaption'),
+                  style: _duo(13, 600, _duoMuted, height: 1.45),
+                ),
               ],
             ),
-          ),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: LabBlackColors.textPrimary,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _historyCalendar(int monthCount) {
-    final year = _anchor.year;
-    final month = _anchor.month;
-    final first = DateTime(year, month, 1);
-    final daysInMonth = DateTime(year, month + 1, 0).day;
-    final leadBlanks = first.weekday % 7;
-    final cells = <DateTime?>[
-      for (var i = 0; i < leadBlanks; i++) null,
-      for (var d = 1; d <= daysInMonth; d++) DateTime(year, month, d),
-    ];
-    while (cells.length % 7 != 0) {
-      cells.add(null);
-    }
-    final todayStr = tabsDayStr(now);
-    final hasRestoredThisMonth = state.restoredDays.any(
-      (d) => d.startsWith(streakMonthKey(_anchor)),
-    );
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
+  Widget _gemButton({required bool gemEnabled}) {
+    return SizedBox(
+      height: 48,
+      child: ElevatedButton(
+        key: const Key('gemBuyButton'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _duoNavyBtn,
+          foregroundColor: _duoText,
+          padding: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(11),
+          ),
+        ),
+        onPressed: gemEnabled ? () => unawaited(_spendGems()) : null,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Expanded(
-                child: Text(
-                  StreakScreen._monthNames[month - 1],
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: LabBlackColors.textPrimary,
-                  ),
-                ),
-              ),
+              Image.asset(GemCopy.iconAsset, width: 21, height: 21),
+              const SizedBox(width: 7),
+              // Juno B-20: the number renders from
+              // GemCopy.freezePrice, never a literal.
               Text(
-                _streakDays(monthCount),
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: LabBlackColors.textSecondary,
-                ),
+                '${GemCopy.freezePrice} GEMS',
+                style: _duo(16, 900, _duoText),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            for (final w in const ['S', 'M', 'T', 'W', 'T', 'F', 'S'])
-              Expanded(
-                child: Center(
-                  child: Text(
-                    w,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: LabBlackColors.textSecondary,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        for (var r = 0; r < cells.length ~/ 7; r++)
-          Row(
-            children: [
-              for (var c = 0; c < 7; c++)
-                Expanded(child: _dayCell(cells[r * 7 + c], todayStr)),
-            ],
-          ),
-        if (hasRestoredThisMonth) ...[
-          const SizedBox(height: 10),
-          const Text(
-            // Juno §11: the verb is "covered" — "restored" is
-            // retired from user-facing copy with "Restore". The
-            // marker named here is the founder's freeze treatment
-            // (Nov 18, 2026): the purple-ring wording retired
-            // with the purple-ring rendering.
-            'A day with a snowflake was covered by a freeze.',
-            style: TextStyle(
-              fontSize: 12,
-              color: LabBlackColors.textSecondary,
-            ),
-          ),
-        ],
-      ],
+      ),
     );
   }
 
-  Widget _dayCell(DateTime? day, String todayStr) {
-    if (day == null) return const SizedBox(height: 40);
-    final ds = streakDayStr(day);
-    final counted = state.countedDays.contains(ds);
-    final restored = state.restoredDays.contains(ds);
-    final isToday = ds == todayStr;
+  /// Whether Juno §1c's already-held state is known this session
+  /// (the shipped condition: a 409 already-held answer, or a held
+  /// purchased freeze with no adoption this session).
+  bool _alreadyHeldSlot({
+    required StreakFreezePurchaseService? purchase,
+    required bool heldPurchased,
+  }) {
+    return purchase != null &&
+        (purchase.alreadyHeld ||
+            (heldPurchased &&
+                purchase.adoptedPurchasedFreezes == null &&
+                _adoptedPurchased == null));
+  }
 
-    // Founder addition (Nov 18, 2026): a freeze-covered day is
-    // the icy-blue snowflake circle — the legacy purple-ring
-    // Restore treatment is retired on this surface. The date
-    // stays identifiable without color via the semantics label
-    // wrapped below (Juno C6).
-    if (restored) {
-      final cell = SizedBox(
-        height: 40,
-        child: Center(
-          child: StreakFreezeDayCircle(
-            key: Key('streakRestoredDay-$ds'),
-            size: 32,
+  /// The money-buy slot: the price button (price ALWAYS from the
+  /// Play listing — Juno B-21), or Juno §1c's already-held text in
+  /// its place while a purchased freeze is held (no purchase sheet
+  /// can launch and no charge is attempted in that state).
+  Widget _moneySlot({
+    required StreakFreezePurchaseService? purchase,
+    required bool alreadyHeldKnown,
+    required bool heldPurchased,
+  }) {
+    if (_alreadyHeldSlot(purchase: purchase, heldPurchased: heldPurchased)) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 4),
+        child: Text(
+          StreakPurchaseCopy.alreadyHeld,
+          key: Key('streakPurchaseAlreadyHeld'),
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: _duoMuted,
           ),
         ),
       );
-      return Semantics(
-        container: true,
-        label:
-            '${StreakScreen._monthNames[day.month - 1]} ${day.day}, covered by a freeze',
-        child: ExcludeSemantics(child: cell),
-      );
     }
-
-    BoxDecoration decoration;
-    Color numberColor;
-    FontWeight numberWeight = FontWeight.w500;
-    if (counted) {
-      decoration = const BoxDecoration(
-        shape: BoxShape.circle,
-        color: LabBlackColors.segmentedSelected,
-      );
-      numberColor =
-          isToday ? NotelColors.primaryText : LabBlackColors.textPrimary;
-      numberWeight = isToday ? FontWeight.w800 : FontWeight.w600;
-    } else {
-      decoration = const BoxDecoration(shape: BoxShape.circle);
-      numberColor = LabBlackColors.textSecondary.withValues(alpha: 0.55);
+    if (purchase == null || purchase.product == null) {
+      return const SizedBox(height: 48);
     }
-
+    final buying = purchase.state == StreakFreezeBuyState.buying;
     return SizedBox(
-      height: 40,
-      child: Center(
-        child: Container(
-          width: 32,
-          height: 32,
-          decoration: decoration,
-          child: Center(
-            child: Text(
-              '${day.day}',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: numberWeight,
-                color: numberColor,
-              ),
-            ),
+      height: 48,
+      child: ElevatedButton(
+        key: const Key('streakBuyButton'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _duoNavyBtn,
+          foregroundColor: _duoText,
+          padding: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(11),
           ),
         ),
+        onPressed: buying ? null : () => unawaited(purchase.buy()),
+        child: Text(purchase.product!.price, style: _duo(16.5, 900, _duoText)),
       ),
     );
   }
@@ -1432,10 +2069,7 @@ class _FreezeGrantIconState extends State<_FreezeGrantIcon>
           opacity: 0.25 + 0.75 * t,
           child: Transform.translate(
             offset: Offset(-10 * (1 - t), 0),
-            child: Transform.scale(
-              scale: 0.85 + 0.15 * t,
-              child: child,
-            ),
+            child: Transform.scale(scale: 0.85 + 0.15 * t, child: child),
           ),
         );
       },
@@ -1447,11 +2081,7 @@ class _FreezeGrantIconState extends State<_FreezeGrantIcon>
           color: const Color(0xFF12314F),
           borderRadius: BorderRadius.circular(16),
         ),
-        child: const Icon(
-          Icons.ac_unit,
-          size: 32,
-          color: Color(0xFF6EC6FF),
-        ),
+        child: const Icon(Icons.ac_unit, size: 32, color: Color(0xFF6EC6FF)),
       ),
     );
   }

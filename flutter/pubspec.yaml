@@ -136,9 +136,18 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # Nunito (OFL) — variable font bundled for the streak screen's
+  # Duolingo-modeled rebuild (mock v3, Nov 22, 2026). Scoped to
+  # that screen's styles; no theme-level change.
+  fonts:
+    - family: Nunito
+      fonts:
+        - asset: assets/fonts/Nunito-Variable.ttf
+
   assets:
     - assets/fonts/Roboto-Regular.ttf
     - assets/fonts/Roboto-Bold.ttf
+    - assets/fonts/Nunito-Variable.ttf
     - assets/images/ic_tabs_note.png
     - assets/images/ic_google_logo.png
     - assets/images/onboarding_avatar_man.png

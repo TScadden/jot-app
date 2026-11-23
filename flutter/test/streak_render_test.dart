@@ -78,9 +78,7 @@ class _RenderServer {
       return http.Response(jsonEncode(_pullBody()), 200);
     }
     if (request.url.path == '/api/sync/profile') {
-      profilePushes.add(
-        jsonDecode(request.body) as Map<String, dynamic>,
-      );
+      profilePushes.add(jsonDecode(request.body) as Map<String, dynamic>);
       return http.Response('{"saved":true}', 200);
     }
     if (request.url.path == '/api/habits') {
@@ -96,12 +94,12 @@ class _RenderServer {
 class _FakeHc extends HealthConnectService {
   @override
   Future<HcAvailability> probeAvailability() async => const HcAvailability(
-        serviceAvailable: true,
-        grantedPermissions: HealthConnectService.requiredPermissions,
-        bridgeErrorCode: null,
-        stepsProbe: HcReadProbeOutcome.ok,
-        persistedConnected: true,
-      );
+    serviceAvailable: true,
+    grantedPermissions: HealthConnectService.requiredPermissions,
+    bridgeErrorCode: null,
+    stepsProbe: HcReadProbeOutcome.ok,
+    persistedConnected: true,
+  );
 
   @override
   Future<int?> readSleepMinutes(String dateStr) async => null;
@@ -272,9 +270,9 @@ void main() {
     });
 
     ThemeData theme() => ThemeData(
-          fontFamily: 'Roboto',
-          fontFamilyFallback: const ['Noto Color Emoji', 'Noto Sans Symbols 2'],
-        );
+      fontFamily: 'Roboto',
+      fontFamilyFallback: const ['Noto Color Emoji', 'Noto Sans Symbols 2'],
+    );
 
     final homeBoundary = GlobalKey();
     await tester.pumpWidget(
@@ -319,16 +317,24 @@ void main() {
     // production case. Dismiss it (its 'Done' button) before the
     // capture and the streak-screen navigation, as a user would.
     if (find.byType(BadgeUnlockDialog).evaluate().isNotEmpty) {
-      await tester.tap(find.descendant(
+      await tester.tap(
+        find.descendant(
           of: find.byType(BadgeUnlockDialog),
-          matching: find.text('Done')));
+          matching: find.text('Done'),
+        ),
+      );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pump();
     }
     // The streak pills carry the engine's seeded values.
     expect(find.byKey(const Key('homeStreakPills')), findsOneWidget);
-    await _capture(tester, homeBoundary, outDir, 'tabs_home_streak_vc100115_2026-11-05.png');
+    await _capture(
+      tester,
+      homeBoundary,
+      outDir,
+      'tabs_home_streak_vc100115_2026-11-05.png',
+    );
 
     // Rect evidence for the gate: the streak band + pill target
     // box on Home (logical px @ DPR 3.0, same convention as the
@@ -348,30 +354,29 @@ void main() {
     expect(streakPush['currentStreak'], 14);
     expect(streakPush['bestStreak'], 68);
     final pushedState = StreakState.fromJson(
-      jsonDecode(streakPush['streakState'] as String)
-          as Map<String, dynamic>,
+      jsonDecode(streakPush['streakState'] as String) as Map<String, dynamic>,
     );
     expect(pushedState.countedDays, hasLength(14));
     expect(pushedState.lastEvaluatedDay, tabsDayStr(DateTime.now()));
 
     File('${outDir.path}/tabs_streak_captures_vc100115_2026-11-05.json')
         .writeAsStringSync(
-      jsonEncode({
-        'profilePush': streakPush,
-        'homeStreakRow': {
-          'left': rowRect.left,
-          'top': rowRect.top,
-          'width': rowRect.width,
-          'height': rowRect.height,
-        },
-        'homeStreakPills': {
-          'left': pillsRect.left,
-          'top': pillsRect.top,
-          'width': pillsRect.width,
-          'height': pillsRect.height,
-        },
-      }),
-    );
+          jsonEncode({
+            'profilePush': streakPush,
+            'homeStreakRow': {
+              'left': rowRect.left,
+              'top': rowRect.top,
+              'width': rowRect.width,
+              'height': rowRect.height,
+            },
+            'homeStreakPills': {
+              'left': pillsRect.left,
+              'top': pillsRect.top,
+              'width': pillsRect.width,
+              'height': pillsRect.height,
+            },
+          }),
+        );
 
     final now = DateTime.now();
     final freshState = streakSeed(current: 14, best: 68, now: now);
@@ -393,14 +398,21 @@ void main() {
     await _bridge(tester);
     // The rebuilt screen is taller: the freeze card sits below
     // the fold — scroll it into the built region before asserting.
+    // (Mock v3 rebuild: the §4a status key retired with its copy,
+    // Juno A-16/A-17; the B-3 headline key is the status surface.)
     await tester.scrollUntilVisible(
-      find.byKey(const Key('streakFreezeStatus')),
+      find.byKey(const Key('streakFreezeHeadline')),
       160,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pump();
-    expect(find.byKey(const Key('streakFreezeStatus')), findsOneWidget);
-    await _capture(tester, screenBoundary, outDir, 'tabs_streak_screen_vc100115_2026-11-05.png');
+    expect(find.byKey(const Key('streakFreezeHeadline')), findsOneWidget);
+    await _capture(
+      tester,
+      screenBoundary,
+      outDir,
+      'tabs_streak_screen_vc100115_2026-11-05.png',
+    );
 
     var savedState = streakSeed(
       current: 5,
@@ -437,10 +449,17 @@ void main() {
     await tester.pump();
     expect(
       find.byKey(
-        Key('streakRestoredDay-${streakDayStr(now.subtract(const Duration(days: 2)))}'),
+        Key(
+          'streakRestoredDay-${streakDayStr(now.subtract(const Duration(days: 2)))}',
+        ),
       ),
       findsOneWidget,
     );
-    await _capture(tester, savedBoundary, outDir, 'tabs_streak_screen_restored_vc100115_2026-11-05.png');
+    await _capture(
+      tester,
+      savedBoundary,
+      outDir,
+      'tabs_streak_screen_restored_vc100115_2026-11-05.png',
+    );
   });
 }

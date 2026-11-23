@@ -149,12 +149,16 @@ void main() {
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
+    // Mock v3 rebuild (Nov 22, 2026): the §2b balance line retired
+    // on this surface (Juno A-27) — the B-22 state line carries the
+    // balance now, so the frame scrolls to the buy card's caption.
     await tester.scrollUntilVisible(
-      find.byKey(const Key('gemBalanceLine')),
+      find.byKey(const Key('streakBuyCaption')),
       120,
     );
     await tester.pump();
-    expect(find.byKey(const Key('gemBalanceLine')), findsOneWidget);
+    expect(find.byKey(const Key('streakBuyCaption')), findsOneWidget);
+    expect(find.textContaining('· Gems: 35'), findsOneWidget);
     expect(find.byKey(const Key('gemBuySection')), findsOneWidget);
     // Scope #6: the explainer no longer renders on this screen.
     expect(find.byKey(const Key('gemExplainerHeading')), findsNothing);
