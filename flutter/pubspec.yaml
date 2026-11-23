@@ -183,6 +183,24 @@ flutter:
     # Streak upgrade — Bandit cheer art for the share card (copied
     # verbatim from the signed mock source; do not recut).
     - assets/images/bandit_cheer_cut_v3.png
+    # Profile pictures (Nov 23, 2026) — the 15 founder-approved
+    # avatar icons, byte-identical copies of the approved sheet
+    # (avatar_option_v2_*_20261123); do not redraw/recolor.
+    - assets/images/avatar_01.png
+    - assets/images/avatar_02.png
+    - assets/images/avatar_03.png
+    - assets/images/avatar_04.png
+    - assets/images/avatar_05.png
+    - assets/images/avatar_06.png
+    - assets/images/avatar_07.png
+    - assets/images/avatar_08.png
+    - assets/images/avatar_09.png
+    - assets/images/avatar_10.png
+    - assets/images/avatar_11.png
+    - assets/images/avatar_12.png
+    - assets/images/avatar_13.png
+    - assets/images/avatar_14.png
+    - assets/images/avatar_15.png
     # Gems — founder-approved gem icon v1 (Nov 19, 2026), copied
     # byte-identical from the design record; do not redraw/recolor.
     - assets/images/tabs_gem_icon_v1_20261119.png

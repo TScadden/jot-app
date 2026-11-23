@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/gem_service.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
+import 'package:tabs_lab/src/widgets/user_avatar.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/skeleton.dart';
 
@@ -85,6 +86,7 @@ FriendDto selfLeaderboardEntry({
   required int weeklyScore,
   int currentStreak = 0,
   int gemBalance = 0,
+  String? avatarId,
 }) {
   return FriendDto(
     id: 'me',
@@ -94,6 +96,9 @@ FriendDto selfLeaderboardEntry({
     level: weeklyScore,
     currentStreak: currentStreak,
     gemBalance: gemBalance,
+    // Carried for completeness only — leaderboard rows render no
+    // avatar (Option A), so this changes no rendering.
+    avatarId: avatarId,
   );
 }
 
@@ -1165,8 +1170,13 @@ class _FriendStatCard extends StatelessWidget {
   }
 }
 
-/// Option A friend-row avatar: initials on a deterministic
-/// palette color hashed from the friend's id.
+/// Option A friend-row avatar: the friend's picked profile
+/// picture when they have one (Nov 23, 2026); otherwise initials
+/// on a deterministic palette color hashed from the friend's id —
+/// the pre-feature rendering, kept byte-for-byte as the fallback.
+/// Juno a11y ruling (Nov 23, 2026): friend-row avatars are
+/// decorative next to the friend's visible name — excluded from
+/// semantics; the name is the label.
 class _FriendAvatar extends StatelessWidget {
   final FriendDto friend;
 
@@ -1175,20 +1185,26 @@ class _FriendAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const size = 40.0;
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: friendAvatarColor(friend.id),
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        friendAvatarInitials(friend.nickname),
-        style: const TextStyle(
-          fontSize: 14.4,
-          fontWeight: FontWeight.bold,
-          color: Colors.white,
+    return ExcludeSemantics(
+      child: UserAvatar(
+        avatarId: friend.avatarId,
+        size: size,
+        fallback: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: friendAvatarColor(friend.id),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            friendAvatarInitials(friend.nickname),
+            style: const TextStyle(
+              fontSize: 14.4,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
         ),
       ),
     );
