@@ -100,6 +100,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text(ConnectAiCopy.loadError), findsOneWidget);
+      // A load failure must never assert "nothing connected":
+      // Juno's empty state renders only when there is no load
+      // error (Vera's condition on PR #144).
+      expect(find.text(ConnectAiCopy.emptyState), findsNothing);
     });
 
     testWidgets('disconnect happy path: confirm removes the row',

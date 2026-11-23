@@ -248,7 +248,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
             const SizedBox(height: 8),
             if (connections == null)
               const _LoadingRow()
-            else if (connections.isEmpty)
+            else if (connections.isEmpty && _loadError == null)
               const Padding(
                 padding: EdgeInsets.only(left: 4),
                 child: Text(
