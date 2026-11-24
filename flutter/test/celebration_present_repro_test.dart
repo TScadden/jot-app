@@ -22,6 +22,21 @@
 // celebration pops up RIGHT AWAY on completion, over whatever
 // surface is up; the pill lights immediately; the claim is never
 // eaten by a presentation drop.
+//
+// Celebration-delay adaptation (Nov 23, 2026): the latency fix
+// moved the celebration hold BEFORE the streak push, so the
+// gated push no longer parks the presentation — it parks only
+// the claim chain behind an already-held celebration. This
+// harness's original "celebration absent while parked" premise
+// WAS the delay defect, so pumpHomeParked no longer asserts it;
+// the surface tests below keep their outcome assertions
+// (celebration present, claim queued, streak counted, pill lit)
+// under the new timing, (e)/(g) are re-shaped to the guarantees
+// that survive the timing change (exactly-once across
+// backgrounding and remount; pill settles lit on remount), and
+// the fire-while-the-sheet-is-open ordering is covered by
+// celebration_delay_repro_test.dart, which completes the day
+// from the sheet itself.
 
 import 'dart:async';
 import 'dart:convert';
@@ -271,11 +286,14 @@ void main() {
     });
 
     /// Pump Home with the push gate closed; wait until the
-    /// completion has fired (the store counts today) while
-    /// _presentCompletion is parked at its pre-grant push.
+    /// completion has fired (the store counts today). Since the
+    /// celebration-delay fix the gate parks only the claim chain
+    /// (the explicit push inside it) — the celebration itself is
+    /// held and presented from local state before that push, so
+    /// by the time the store counts, the celebration is normally
+    /// already on screen.
     Future<void> pumpHomeParked(WidgetTester tester,
-        {Key key = const ValueKey('repro-home'),
-        bool expectParkedAbsent = true}) async {
+        {Key key = const ValueKey('repro-home')}) async {
       final backend = TabsBackend(
         client: _mockCompleteBackend(),
         sessionStore: FakeSessionStore()
@@ -338,11 +356,7 @@ void main() {
       expect(s, isNotNull, reason: 'store state installed');
       expect(s!.countedDays, contains(todayStr),
           reason: 'the completion fired and counted today while '
-              'the presentation was parked');
-      if (expectParkedAbsent) {
-        expect(find.byType(StreakCelebrationScreen), findsNothing,
-            reason: 'celebration not yet presented while parked');
-      }
+              'the claim chain was parked at the gated push');
     }
 
     Finder flamesFinder() =>
@@ -398,6 +412,19 @@ void main() {
     testWidgets('(a) Today Summary sheet open (founder incident)',
         (tester) async {
       await pumpHomeParked(tester);
+      // Celebration-delay timing: the celebration is ALREADY
+      // presented (it no longer waits for the gated push), so
+      // Home sits offstage beneath it and the card cannot be
+      // tapped yet. The founder-incident shape — the sheet open
+      // when the fire lands — is covered by
+      // celebration_delay_repro_test.dart, which completes the
+      // day FROM the sheet. Here: verify the celebration landed,
+      // dismiss it, then run the sheet-open outcome checks.
+      expect(find.byType(StreakCelebrationScreen), findsOneWidget,
+          reason: '[today-sheet] celebration presented before the '
+              'sheet opens (presentation-first timing)');
+      navKey.currentState!.pop();
+      await _pumpReal(tester, rounds: 4);
       await tester.tap(find.byType(TodaySummaryCard));
       await _pumpReal(tester, rounds: 4);
       expect(find.text("Today's Plan"), findsOneWidget,
@@ -405,20 +432,47 @@ void main() {
       repo.openGate();
       await _pumpReal(tester);
       recordOutcome('today-sheet');
-      expectDesired('today-sheet');
+      // expectDesired asserts the celebration visible; it was
+      // verified above and dismissed, so assert the rest of the
+      // desired outcome here.
+      expect(GemService.instance.debugPending, isNotEmpty,
+          reason: '[today-sheet] the gem claim is queued, not eaten');
+      expect(StreakStore.instance.state!.countedDays,
+          contains(todayStr),
+          reason: '[today-sheet] the streak counted today');
+      final flame = tester.widgetList<StreakPillFlame>(flamesFinder());
+      expect(flame, isNotEmpty,
+          reason: '[today-sheet] streak pill flame present');
+      expect(flame.first.lit, isTrue,
+          reason: '[today-sheet] the pill is lit immediately');
     });
 
     testWidgets('(c) another route pushed on top of Home',
         (tester) async {
       await pumpHomeParked(tester);
-      final nav = Navigator.of(tester.element(find.byType(HomeScreen)));
+      final nav = Navigator.of(
+          tester.element(find.byType(HomeScreen, skipOffstage: false)));
       unawaited(nav.push(MaterialPageRoute<void>(
         builder: (_) => const Scaffold(body: Text('OTHER SCREEN')),
       )));
       await _pumpReal(tester, rounds: 4);
       expect(find.text('OTHER SCREEN'), findsOneWidget);
+      // Celebration-delay timing: the celebration presented
+      // BEFORE this push (it no longer waits for the gated
+      // push), so it now sits in the stack UNDER the pushed
+      // route — held, not dropped. (The original (c) shape —
+      // fire lands while a route is already up, presenter pushes
+      // over it — is the same code path as (d)/(f) and the delay
+      // suites' sheet case.)
+      expect(
+          find.byType(StreakCelebrationScreen, skipOffstage: false),
+          findsOneWidget,
+          reason: '[pushed-route] the presented celebration is '
+              'held in the stack under the pushed route');
       repo.openGate();
       await _pumpReal(tester);
+      nav.pop();
+      await _pumpReal(tester, rounds: 4);
       recordOutcome('pushed-route');
       expectDesired('pushed-route');
     });
@@ -435,20 +489,27 @@ void main() {
       expectDesired('drawer');
     });
 
-    testWidgets('(e) app backgrounded at the completing moment, '
-        'then foregrounded', (tester) async {
+    testWidgets('(e) app backgrounded after the completing '
+        'moment, then foregrounded — the celebration stays '
+        'exactly once', (tester) async {
       await pumpHomeParked(tester);
+      // Celebration-delay timing: the completion fired while the
+      // app was resumed, so the celebration is already presented
+      // (the held-while-paused path is pinned at the presenter
+      // level in celebration_delay_grants_test.dart).
+      expect(find.byType(StreakCelebrationScreen), findsOneWidget,
+          reason: '[completing moment] celebration presented while '
+              'resumed, before the gated push lands');
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       repo.openGate();
       await _pumpReal(tester);
       recordOutcome('backgrounded');
-      // Founder direction: while backgrounded the celebration is
-      // HELD, not dropped — it presents on the next foreground.
-      expect(find.byType(StreakCelebrationScreen), findsNothing,
-          reason: '[backgrounded] celebration held while the app '
-              'is not resumed');
-      expect(StreakCelebrationService.instance.pending, isNotNull,
-          reason: '[backgrounded] the held celebration is pending');
+      expect(find.byType(StreakCelebrationScreen), findsOneWidget,
+          reason: '[backgrounded] the presented celebration is '
+              'not dropped by backgrounding');
+      expect(StreakCelebrationService.instance.pending, isNull,
+          reason: '[backgrounded] nothing is left pending — the '
+              'celebration was already consumed by presentation');
       tester.binding
           .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await _pumpReal(tester);
@@ -459,21 +520,26 @@ void main() {
     testWidgets('(g) after an unmounted completion, a fresh Home '
         'mount settles the pill lit from the store', (tester) async {
       await pumpHomeParked(tester);
+      // Celebration-delay timing: the celebration presented in
+      // the first mount, before the unmount — presentation no
+      // longer waits for the gated claim chain.
+      expect(find.byType(StreakCelebrationScreen), findsOneWidget,
+          reason: '[first mount] celebration presented before the '
+              'unmount');
       await tester.pumpWidget(
         const MaterialApp(home: Scaffold(body: Text('OTHER TAB'))),
       );
       await _pumpReal(tester, rounds: 3);
       repo.openGate();
       await _pumpReal(tester);
-      // Return to Home (fresh mount): the celebration held while
-      // Home was gone presents on the remount (the presenter
-      // retries a held celebration once its Navigator exists),
-      // and the pill settles lit from the store state.
-      await pumpHomeParked(tester,
-          key: const ValueKey('repro-home-2'), expectParkedAbsent: false);
-      expect(find.byType(StreakCelebrationScreen), findsOneWidget,
-          reason: '[remounted] the held celebration presents on '
-              'return to Home');
+      // Return to Home (fresh mount): the pill settles lit from
+      // the store state (this test's original intent), and the
+      // celebration does NOT present a second time — the day
+      // already counted and celebrated (exactly once per day).
+      await pumpHomeParked(tester, key: const ValueKey('repro-home-2'));
+      expect(find.byType(StreakCelebrationScreen), findsNothing,
+          reason: '[remounted] no second celebration for an '
+              'already-celebrated day');
       repo.openGate();
       await _pumpReal(tester);
       recordOutcome('remounted');
