@@ -119,6 +119,25 @@ AvatarOption? avatarOptionForId(String? id) {
 /// Whether [id] names one of the 15 catalog pictures.
 bool isKnownAvatarId(String? id) => avatarOptionForId(id) != null;
 
+/// Perf-lag fix (Nov 23, 2026) — the decode bound for avatar art:
+/// the catalog PNGs are 480×480, but they display at 40–72 dp, so
+/// decoding at full size wastes ~16–21× the pixels. The bound is
+/// a deterministic DPR cap of 3× the display extent:
+/// `ceil(extent * 3)`, clamped to at least 1 and to at most 480
+/// (the source size — decoding beyond it buys nothing, and a
+/// very wide picker cell on a tablet-class layout must not
+/// request it). (Deterministic — deliberately NOT the ambient
+/// devicePixelRatio, so the bound is the same in tests and on
+/// every device class; 3× covers the highest-density phones in
+/// the fleet.) Shared by [UserAvatar] and the Settings picker
+/// grid so both size their decodes the same way.
+int avatarDecodeExtent(double displayExtent) {
+  final extent = (displayExtent * 3).ceil();
+  if (extent < 1) return 1;
+  if (extent > 480) return 480;
+  return extent;
+}
+
 /// The shared profile-picture renderer. A valid [avatarId] renders
 /// the catalog art as a circular cover image at [size]; a null,
 /// empty, or unknown id renders [fallback] completely untouched —
@@ -140,6 +159,7 @@ class UserAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final option = avatarOptionForId(avatarId);
     if (option == null) return fallback;
+    final decode = avatarDecodeExtent(size);
     return SizedBox(
       width: size,
       height: size,
@@ -149,6 +169,8 @@ class UserAvatar extends StatelessWidget {
           width: size,
           height: size,
           fit: BoxFit.cover,
+          cacheWidth: decode,
+          cacheHeight: decode,
         ),
       ),
     );

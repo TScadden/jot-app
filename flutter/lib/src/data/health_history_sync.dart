@@ -33,6 +33,14 @@ import 'package:tabs_lab/src/data/progress_report.dart'
 /// a forced full backfill. Capture NEVER throws — a failure must
 /// never break a screen.
 ///
+/// Perf-lag fix (Nov 23, 2026): the app-open relaxation now has
+/// its own freshness floor, [appOpenMinInterval] — an app-open
+/// capture whose last successful capture stamp is younger than
+/// that floor is skipped, so every home landing / app resume no
+/// longer pays a full capture. Opens after a real gap (>= the
+/// floor) still capture, preserving the founder's
+/// freshness-on-open intent.
+///
 /// Per-metric read failures are never swallowed either: each
 /// read's outcome object (Phase 2 §1 — `HcReadOutcome`) carries
 /// its own failure code, which is persisted to the store's
@@ -86,6 +94,50 @@ class CaptureMetricEvidence {
 
 class HealthHistorySync {
   static const Duration throttle = Duration(hours: 6);
+
+  /// Perf-lag fix (Nov 23, 2026) — the app-open path's own
+  /// freshness floor: [captureOnAppOpen] (the `bypassThrottle`
+  /// path) skips a run when the last successful capture stamp —
+  /// the SAME stamp the 6h [throttle] uses — is younger than
+  /// this. The first-ever capture (no stamp / empty store)
+  /// still runs. Plain [capture] and forced captures are
+  /// unaffected.
+  static const Duration appOpenMinInterval = Duration(minutes: 30);
+
+  /// Pure gate decision for the app-open path (testable form of
+  /// the check in [captureFromHealthConnect]): true when an
+  /// app-open capture should be SKIPPED because the last
+  /// successful capture is younger than [appOpenMinInterval].
+  /// A missing stamp or a first-ever capture never skips, and a
+  /// negative age (clock moved backwards) never skips — exactly
+  /// the shared throttle's age handling.
+  static bool shouldSkipAppOpenCapture({
+    required int nowMs,
+    required int? lastCaptureMs,
+    required bool isFirst,
+  }) {
+    if (isFirst || lastCaptureMs == null) return false;
+    final age = nowMs - lastCaptureMs;
+    return age >= 0 && age < appOpenMinInterval.inMilliseconds;
+  }
+
+  /// Pure flag decision for the spike backfill (perf-lag fix,
+  /// Nov 23, 2026): the persisted spike-backfill flag sets when
+  /// the counts walk covered the full 180-day window with NO
+  /// error (`errorCode == null`). A partial walk (some 30-day
+  /// chunks failed, their days keep their stored values — the
+  /// summary leg's existing contract) no longer blocks the
+  /// flag: the successful chunks DID cover their part of the
+  /// window, and keeping the flag unset re-walked all 180 days
+  /// on every capture forever. [partialCode] is accepted so
+  /// callers/tests state it explicitly; it deliberately does
+  /// not affect the decision.
+  static bool spikeBackfillShouldComplete({
+    required String? errorCode,
+    required String? partialCode,
+    required int windowDays,
+  }) =>
+      errorCode == null && windowDays == 180;
 
   static final HealthHistorySync instance = HealthHistorySync._internal();
   HealthHistorySync._internal()
@@ -276,7 +328,10 @@ class HealthHistorySync {
   /// The app-open entry point (founder directive, Oct 22, 2026):
   /// every app open — cold start and return-from-background —
   /// syncs, so an open-triggered capture is NOT skipped by the
-  /// [throttle]. It is deliberately a DISTINCT intent from
+  /// [throttle]. Perf-lag fix (Nov 23, 2026): it IS skipped when
+  /// the last successful capture is younger than
+  /// [appOpenMinInterval] (30 min) — see [shouldSkipAppOpenCapture].
+  /// It is deliberately a DISTINCT intent from
   /// `force`:
   /// - it runs the identical capture (same five reads, same
   ///   merge-only store writes, same post-capture engine run,
@@ -363,12 +418,15 @@ class HealthHistorySync {
   ///   its own `spikeSummary` entry (see the leg in the method
   ///   body). VC 100132: the
   ///   window is keyed off the store's persisted
-  ///   spikeBackfillComplete flag — set only by a CLEAN full-
-  ///   window spike read — not off the dayCount-derived
-  ///   first-capture test, which collapsed the window to 31
-  ///   days as soon as any sibling metric merged data or the
-  ///   first spike read failed, so older spike days were never
-  ///   persisted (the B-02 defect shape, spikes edition).
+  ///   spikeBackfillComplete flag — set by a full-window spike
+  ///   read with no error (perf-lag fix, Nov 23, 2026: a partial
+  ///   counts walk no longer blocks it; see
+  ///   [spikeBackfillShouldComplete]) — not off the
+  ///   dayCount-derived first-capture test, which collapsed the
+  ///   window to 31 days as soon as any sibling metric merged
+  ///   data or the first spike read failed, so older spike days
+  ///   were never persisted (the B-02 defect shape, spikes
+  ///   edition).
   ///
   /// Resting HR / calories / sleep windows are GAP-AWARE on
   /// routine captures: the full window above applies on the
@@ -394,10 +452,12 @@ class HealthHistorySync {
   /// a failed or partial sleep read leaves the version stale so
   /// the next capture retries the full window.
   /// [bypassThrottle] is the app-open intent (see
-  /// [captureOnAppOpen]): it skips ONLY the throttle check below —
-  /// nothing else about the run changes. Direct callers outside
-  /// the sync's own entry points should not pass it; [force] keeps
-  /// its exact prior meaning for its existing callers.
+  /// [captureOnAppOpen]): it skips ONLY the 6h throttle check
+  /// below, subject to its own [appOpenMinInterval] freshness
+  /// floor — nothing else about the run changes. Direct callers
+  /// outside the sync's own entry points should not pass it;
+  /// [force] keeps its exact prior meaning for its existing
+  /// callers.
   Future<bool> captureFromHealthConnect(
       {bool force = false, bool bypassThrottle = false}) async {
     try {
@@ -407,6 +467,13 @@ class HealthHistorySync {
       final now = _now();
       final isFirst = (await _store.dayCount()) == 0;
       final last = _store.lastCaptureMs;
+      if (!force && bypassThrottle &&
+          shouldSkipAppOpenCapture(
+              nowMs: now.millisecondsSinceEpoch,
+              lastCaptureMs: last,
+              isFirst: isFirst)) {
+        return false;
+      }
       if (!force && !bypassThrottle && !isFirst && last != null) {
         final age = now.millisecondsSinceEpoch - last;
         if (age >= 0 && age < throttle.inMilliseconds) return false;
@@ -711,16 +778,17 @@ class HealthHistorySync {
         put(r.date, kcal: r.kcal);
       }
       // VC 100132: spike window keyed off the persisted
-      // backfill flag (see the method doc), and the flag is set
-      // below only by a CLEAN full-window read (no error, no
-      // partial — strict null checks, exactly as the HRV
-      // backfill stamp reads its leg's cleanliness).
+      // backfill flag (see the method doc). Perf-lag fix
+      // (Nov 23, 2026): the flag decision below is
+      // [spikeBackfillShouldComplete] — no error on a full
+      // 180-day walk; a partial code no longer blocks it (the
+      // native read is now chunk-isolated, so a partial means
+      // some chunks succeeded and their days were covered;
+      // failed chunks' days keep their stored values).
       final spikeWindowDays = _store.spikeBackfillComplete ? 31 : 180;
       final spikeOutcome = await boundedRead(
           _hc.readSpikeCountsWithOutcome(spikeWindowDays));
       noteRead('spikes', spikeOutcome);
-      final spikeReadClean =
-          spikeOutcome.errorCode == null && spikeOutcome.partialCode == null;
       for (final r in spikeOutcome.value) {
         put(r.date, spikes: r.count);
       }
@@ -894,12 +962,24 @@ class HealthHistorySync {
       if (hrvReadClean) {
         await _store.markHrvBackfillComplete();
       }
-      // Spike backfill (VC 100132): the persisted flag is set
-      // ONLY by a clean full-window spike read — a partial,
-      // failed, or timed-out read leaves it unset, so the next
-      // capture still spans the full 180 days and the days that
-      // failed get re-read.
-      if (spikeReadClean && spikeWindowDays == 180) {
+      // Spike backfill (VC 100132, amended perf-lag fix
+      // Nov 23, 2026): the persisted flag is set by a
+      // full-window spike read with NO error — clean OR
+      // partial. Tradeoff, stated explicitly: a partial walk's
+      // failed chunks are NOT re-walked at 180 days; their days
+      // keep their stored spike counts (merge-only, exactly the
+      // summary leg's existing per-chunk contract) and are
+      // refreshed by the routine 31-day window going forward.
+      // The alternative (the shipped behaviour) was worse: one
+      // permanently failing chunk kept BOTH spike legs walking
+      // 180 days on every capture forever. A failed or
+      // timed-out read (errorCode != null — a timeout degrades
+      // to READ_TIMEOUT) still leaves the flag unset, so the
+      // next capture still spans the full 180 days.
+      if (spikeBackfillShouldComplete(
+          errorCode: spikeOutcome.errorCode,
+          partialCode: spikeOutcome.partialCode,
+          windowDays: spikeWindowDays)) {
         await _store.markSpikeBackfillComplete();
       }
       await _store.markCaptured(now.millisecondsSinceEpoch);

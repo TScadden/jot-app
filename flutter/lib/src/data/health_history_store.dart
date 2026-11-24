@@ -842,9 +842,12 @@ class HealthHistoryStore {
   bool _spikeBackfillComplete = false;
 
   /// Whether the HR spike 180-day backfill has completed
-  /// (VC 100132, Problem 4): true only once a capture's spike
-  /// read over the full 180-day window has completed CLEANLY
-  /// (no error, no partial). The capture keys its spike window
+  /// (VC 100132, Problem 4; amended perf-lag fix Nov 23, 2026):
+  /// true once a capture's spike read over the full 180-day
+  /// window has completed with NO error — clean OR partial
+  /// (a partial walk's failed chunks keep their stored values;
+  /// see HealthHistorySync.spikeBackfillShouldComplete). The
+  /// capture keys its spike window
   /// off this flag (180 days until complete, 31 after) instead
   /// of the day count, for exactly the B-02 reason documented on
   /// [hrvBackfillComplete]: the old dayCount-derived `isFirst`
@@ -857,8 +860,8 @@ class HealthHistoryStore {
   /// whatever the fresh scan alone covered. Persisted in the
   /// blob; a blob written before this key existed carries no
   /// flag and warms as NOT complete, so an existing install
-  /// re-reads the 180-day window until its first clean spike
-  /// read lands.
+  /// re-reads the 180-day window until its first error-free
+  /// (clean or partial) spike read lands.
   bool get spikeBackfillComplete => _spikeBackfillComplete;
 
   final Map<String, CaptureDiagnostic> _captureDiagnostics = {};
