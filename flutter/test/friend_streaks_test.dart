@@ -357,6 +357,39 @@ void main() {
     expect(find.text('Request pending'), findsNWidgets(2));
   });
 
+  group('FriendStreaksDto.fromJson outgoingPending shapes', () {
+    // Coordinator ruling (Nov 23, 2026, applied server-side by
+    // Mason 8decbe1): GET /api/friends/streaks returns
+    // outgoingPending as [{pairId, friendId}] objects so EDIT-mode
+    // cancel has a pairId for POST /remove. The DTO must consume
+    // that shape AND tolerate the legacy [friendId...] strings.
+    test('object shape fills outgoingPending + pairId map', () {
+      final dto = FriendStreaksDto.fromJson({
+        'incoming': [],
+        'outgoingPending': [
+          {'pairId': 'pair-out-1', 'friendId': 'u-jeff'},
+          {'pairId': 'pair-out-2', 'friendId': 'u-mom'},
+        ],
+        'pairs': [],
+      });
+      expect(dto.outgoingPending, ['u-jeff', 'u-mom']);
+      expect(dto.outgoingPendingPairIds, {
+        'u-jeff': 'pair-out-1',
+        'u-mom': 'pair-out-2',
+      });
+    });
+
+    test('legacy string shape still parses, with no pairIds', () {
+      final dto = FriendStreaksDto.fromJson({
+        'incoming': [],
+        'outgoingPending': ['u-jeff'],
+        'pairs': [],
+      });
+      expect(dto.outgoingPending, ['u-jeff']);
+      expect(dto.outgoingPendingPairIds, isEmpty);
+    });
+  });
+
   group('local notification surfacing dedupe (DESIGN §6)', () {
     FriendNotificationDto row(
       int id,

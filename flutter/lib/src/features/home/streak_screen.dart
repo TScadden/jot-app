@@ -808,16 +808,20 @@ class _StreakScreenState extends State<StreakScreen> {
       FriendStreaksDto? loadedStreaks;
       if (widget.friendStreaksLoader != null) {
         loadedStreaks = await widget.friendStreaksLoader!();
+      } else if (_hasTestFixtures) {
+        // Fixture mode (a test injected initialFriends / friendsLoader
+        // with no mock backend and no friendStreaksLoader): default to
+        // the empty Friend Streaks payload WITHOUT calling the real
+        // backend. The real call's secure-storage token read never
+        // completes inside a widget test with no mocked channels, so
+        // awaiting it first — and only falling back to empty after it
+        // returned null — hung pumpAndSettle forever (regression
+        // caught in recovery by avatar_picker_test, Nov 23, 2026).
+        // Production never takes this branch: Home/openWith pass no
+        // fixtures, so _hasTestFixtures is false there.
+        loadedStreaks = FriendStreaksDto.empty;
       } else {
         loadedStreaks = await _backend.fetchFriendStreaksOrNull();
-        // When a test injects only initialFriends / friendsLoader without a
-        // mock backend or friendStreaksLoader, default to the empty Friend
-        // Streaks payload instead of failing on the missing test session token.
-        if (loadedStreaks == null &&
-            widget.backend == null &&
-            (widget.initialFriends != null || widget.friendsLoader != null)) {
-          loadedStreaks = FriendStreaksDto.empty;
-        }
       }
 
       if (_friends == null &&
