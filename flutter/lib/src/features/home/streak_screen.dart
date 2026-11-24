@@ -110,39 +110,62 @@ List<int> gemGoalUpcoming(int current) {
 /// User-facing strings for the FRIENDS tab (Friend Streaks, Design §7).
 /// Kept in one obvious place per widget so copy reviews and widget tests
 /// reference a single source of truth.
+///
+/// EVERY string here is Juno's SIGNED final copy (JUNO-COPY.md,
+/// Nov 23, 2026) — verbatim, including the two amended mock strings
+/// (fs_empty_footer, and the picker delivery footer in
+/// friend_streak_invite_screen.dart). Do not paraphrase, shorten, or
+/// re-add a superseded mock line without a fresh Juno ruling. Note
+/// fs_status_partner_done keeps its second sentence — it is the
+/// compliance part of the string.
 class FriendStreaksCopy {
   const FriendStreaksCopy._();
 
+  // fs_heading / fs_edit_toggle / fs_edit_done / fs_invite_row.
   static const String heading = 'Friend Streaks';
   static const String edit = 'EDIT';
   static const String done = 'DONE';
   static const String inviteFriend = 'Invite a friend';
+
+  // fs_empty_footer (AMENDED by Juno — states all three outcomes:
+  // both finish → up by one; missed day → ends; freeze day → pauses).
   static const String emptyFooter =
-      'A friend streak goes up by one every day you both finish your day, '
-      'and ends if either of you loses your streak.';
+      'A friend streak goes up by one every day you both finish your '
+      'day. If a day is missed, the streak ends. A day covered by a '
+      'freeze pauses it instead.';
+
+  // fs_incoming_invite_line / fs_accept_button / fs_decline_button.
   static const String incomingSubtitle = 'Invited you to a friend streak';
   static const String accept = 'ACCEPT';
   static const String decline = 'DECLINE';
+
+  // fs_edit_remove_pair / fs_edit_cancel_invite / fs_picker_pending.
   static const String endStreak = 'End streak';
   static const String cancelInvite = 'Cancel invite';
   static const String requestPending = 'Request pending';
+
+  // fs_error_load (B-25 pattern, friend-streaks object).
   static const String loadError =
-      "Couldn't load your friends right now. Try again later.";
+      "Couldn't load your friend streaks right now. Try again later.";
 
-  static const String bothFinishedToday = 'You both finished today';
-  static String waitingOnPartner(String name) =>
-      'Waiting on $name to finish today';
-  static String partnerFinishedToday(String name) =>
-      '$name finished today — finish your day to keep it going';
-  static const String neitherFinishedToday =
-      'Finish your day to keep your streak going';
+  // Status lines (Juno (c) note 1): exactly one renders per active
+  // row, chosen from the pairView flags (viewerFinishedToday,
+  // partnerFinishedToday) — both → fs_status_both_done; viewer only
+  // → fs_status_viewer_done; partner only → fs_status_partner_done;
+  // neither → fs_status_neither_done.
+  static const String statusBothDone = 'You both finished today';
+  static const String statusViewerDone = 'You finished today';
+  static const String statusPartnerDone =
+      'They finished today. No rush on yours.';
+  static const String statusNeitherDone = 'Today is still open for you both';
 
-  static String endStreakDialogTitle(String name) =>
-      'End friend streak with $name?';
-  static String endStreakDialogBody(String name) =>
-      'This will end your friend streak with $name. You can invite them again anytime.';
-  static const String endStreakDialogCancel = 'Cancel';
-  static const String endStreakDialogConfirm = 'End streak';
+  // fs_end_confirm_* — the dialog appears ONLY for ending an active
+  // pair; cancelling a pending invite fires with no confirmation.
+  static const String endConfirmTitle = 'End this friend streak?';
+  static String endConfirmBody(String name) =>
+      'Your streak with $name will end. You can start a new one anytime.';
+  static const String endConfirmButton = 'END STREAK';
+  static const String endKeepButton = 'KEEP IT';
 }
 
 class StreakScreen extends StatefulWidget {
@@ -545,7 +568,13 @@ class _StreakScreenState extends State<StreakScreen> {
                 Expanded(
                   child: SingleChildScrollView(
                     controller: _scrollController,
-                    padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
+                    // FRIENDS tab: no horizontal padding — the empty
+                    // state's navy banner is full-bleed edge to edge
+                    // (mock v3 part 1); the tab's sections carry
+                    // their own 16px horizontal padding instead.
+                    padding: _tabIndex == 0
+                        ? const EdgeInsets.fromLTRB(16, 20, 16, 32)
+                        : const EdgeInsets.fromLTRB(0, 20, 0, 32),
                     child: _tabIndex == 0
                         ? _personalTab(current, best)
                         : _friendsTab(),
@@ -630,13 +659,18 @@ class _StreakScreenState extends State<StreakScreen> {
     );
   }
 
-  Widget _outlinedCard({Key? key, required Widget child, EdgeInsets? padding}) {
+  Widget _outlinedCard({
+    Key? key,
+    required Widget child,
+    EdgeInsets? padding,
+    double radius = 13,
+  }) {
     return Container(
       key: key,
       width: double.infinity,
       decoration: BoxDecoration(
         border: Border.all(color: _duoBorder, width: 1.2),
-        borderRadius: BorderRadius.circular(13),
+        borderRadius: BorderRadius.circular(radius),
       ),
       padding: padding ?? const EdgeInsets.all(20),
       child: child,
@@ -745,9 +779,12 @@ class _StreakScreenState extends State<StreakScreen> {
     if (_friendStreaks != null || _friendsLoading) return;
     _friendsLoading = true;
     try {
-      // Load viewer's own avatarId from profile if not passed in and not in a
-      // pure test fixture without a backend.
-      if (_ownAvatarId == null && widget.backend != null) {
+      // Load viewer's own avatarId from profile if not passed in.
+      // (Draft bug fixed: production passes NO backend — the screen
+      // builds TabsBackend() itself — so gating on
+      // widget.backend != null meant the banner avatar never
+      // resolved outside tests. Fixtures skip the pull instead.)
+      if (_ownAvatarId == null && !_hasTestFixtures) {
         unawaited(
           _backend.fetchProfile().then((p) {
             final raw = p?['avatarId'];
@@ -810,48 +847,37 @@ class _StreakScreenState extends State<StreakScreen> {
     }
   }
 
-  /// Design §5: viewerFinishedToday is true when the viewer's own
-  /// [StreakState.summaryCompletedDays] contains the viewer's current
-  /// Tabs date. When [summaryCompletedDays] is empty (e.g. a test
-  /// seeded via [streakSeed] that supplies the flag on the pair DTO),
-  /// falls back to the pair DTO's own flag or [statusKind].
-  bool _resolveViewerFinishedToday([FriendStreakPairDto? pair]) {
-    final todayStr = tabsDayStr(now);
-    if (state.summaryCompletedDays.isNotEmpty) {
-      return state.summaryCompletedDays.contains(todayStr);
-    }
-    if (pair != null) {
-      if (pair.viewerFinishedToday) return true;
-      if (pair.statusKind == 'both_finished' ||
-          pair.statusKind == 'viewer_finished') {
-        return true;
-      }
-    }
-    return false;
+  /// Design §5: the viewer's OWN finished-today flag, computed by
+  /// the client from its settled streak state (the viewer's
+  /// [StreakState.summaryCompletedDays] contains the viewer's
+  /// current Tabs date). Used only where the client itself
+  /// constructs a pair view locally (the just-accepted invite row);
+  /// server pairViews carry both flags already (see
+  /// [_pairStatusLine]).
+  bool _ownFinishedToday() {
+    return state.summaryCompletedDays.contains(tabsDayStr(now));
   }
 
-  bool _resolvePartnerFinishedToday(FriendStreakPairDto pair) {
-    return pair.partnerFinishedToday ||
-        pair.statusKind == 'both_finished' ||
-        pair.statusKind == 'partner_finished';
-  }
-
+  /// Juno (c) note 1: exactly one status line per active row,
+  /// chosen from the pairView flags (DESIGN §4/§5:
+  /// viewerFinishedToday, partnerFinishedToday) exactly as they
+  /// arrive on the DTO — no local re-derivation, no statusKind
+  /// override. Both → fs_status_both_done; viewer only →
+  /// fs_status_viewer_done; partner only → fs_status_partner_done
+  /// (second sentence kept); neither → fs_status_neither_done.
   String _pairStatusLine(FriendStreakPairDto pair) {
-    final viewerDone = _resolveViewerFinishedToday(pair);
-    final partnerDone = _resolvePartnerFinishedToday(pair);
-    final partnerName = pair.nickname.trim().isEmpty
-        ? 'your friend'
-        : pair.nickname;
+    final viewerDone = pair.viewerFinishedToday;
+    final partnerDone = pair.partnerFinishedToday;
     if (viewerDone && partnerDone) {
-      return FriendStreaksCopy.bothFinishedToday;
+      return FriendStreaksCopy.statusBothDone;
     }
-    if (viewerDone && !partnerDone) {
-      return FriendStreaksCopy.waitingOnPartner(partnerName);
+    if (viewerDone) {
+      return FriendStreaksCopy.statusViewerDone;
     }
-    if (!viewerDone && partnerDone) {
-      return FriendStreaksCopy.partnerFinishedToday(partnerName);
+    if (partnerDone) {
+      return FriendStreaksCopy.statusPartnerDone;
     }
-    return FriendStreaksCopy.neitherFinishedToday;
+    return FriendStreaksCopy.statusNeitherDone;
   }
 
   FriendDto? _findFriendById(String friendId) {
@@ -898,7 +924,7 @@ class _StreakScreenState extends State<StreakScreen> {
             .toList();
         final nextPairs = List<FriendStreakPairDto>.of(current.pairs);
         if (accept) {
-          final viewerDone = _resolveViewerFinishedToday();
+          final viewerDone = _ownFinishedToday();
           nextPairs.add(
             FriendStreakPairDto(
               pairId: invite.pairId,
@@ -935,11 +961,13 @@ class _StreakScreenState extends State<StreakScreen> {
           side: const BorderSide(color: _duoBorder, width: 1.2),
         ),
         title: Text(
-          FriendStreaksCopy.endStreakDialogTitle(name),
+          // fs_end_confirm_title (Juno — no name in the title).
+          FriendStreaksCopy.endConfirmTitle,
           style: _duo(18, 900, _duoText),
         ),
         content: Text(
-          FriendStreaksCopy.endStreakDialogBody(name),
+          // fs_end_confirm_body with {name} interpolated.
+          FriendStreaksCopy.endConfirmBody(name),
           style: _duo(14.5, 600, _duoMuted, height: 1.4),
         ),
         actions: [
@@ -947,7 +975,8 @@ class _StreakScreenState extends State<StreakScreen> {
             key: const Key('friendStreakEndDialogCancel'),
             onPressed: () => Navigator.of(dialogContext).pop(false),
             child: Text(
-              FriendStreaksCopy.endStreakDialogCancel,
+              // fs_end_keep_button.
+              FriendStreaksCopy.endKeepButton,
               style: _duo(14.5, 800, _duoMuted),
             ),
           ),
@@ -955,7 +984,8 @@ class _StreakScreenState extends State<StreakScreen> {
             key: const Key('friendStreakEndDialogConfirm'),
             onPressed: () => Navigator.of(dialogContext).pop(true),
             child: Text(
-              FriendStreaksCopy.endStreakDialogConfirm,
+              // fs_end_confirm_button.
+              FriendStreaksCopy.endConfirmButton,
               style: _duo(14.5, 900, const Color(0xFFFF6B6B)),
             ),
           ),
@@ -1115,10 +1145,10 @@ class _StreakScreenState extends State<StreakScreen> {
     if (streaks == null) {
       if (_friendsFailed) {
         return Padding(
-          padding: const EdgeInsets.only(top: 48),
+          padding: const EdgeInsets.fromLTRB(16, 48, 16, 0),
           child: Center(
             child: Text(
-              // Juno B-25: the one approved load-failure line.
+              // fs_error_load (Juno): the one approved load-failure line.
               FriendStreaksCopy.loadError,
               key: const Key('streakFriendsError'),
               textAlign: TextAlign.center,
@@ -1142,10 +1172,14 @@ class _StreakScreenState extends State<StreakScreen> {
         activePairs.isNotEmpty ||
         outgoingPending.isNotEmpty ||
         _isEditingFriendStreaks;
+    // Outgoing-pending alone still counts as populated: otherwise
+    // a user whose only state is a sent invite lands on the empty
+    // state, whose EDIT toggle can never surface the cancel row
+    // (outgoing rows render only in the populated card's EDIT mode).
     final isPopulated =
         incoming.isNotEmpty ||
         activePairs.isNotEmpty ||
-        (_isEditingFriendStreaks && outgoingPending.isNotEmpty);
+        outgoingPending.isNotEmpty;
 
     if (!isPopulated) {
       return _friendStreaksEmptyState(canEdit: canEdit);
@@ -1162,13 +1196,17 @@ class _StreakScreenState extends State<StreakScreen> {
     final label = _isEditingFriendStreaks
         ? FriendStreaksCopy.done
         : FriendStreaksCopy.edit;
+    // Mock v3: heading 23/1000 and EDIT 14/900 share one center
+    // line; EDIT is muted grey in the empty state and purple when
+    // pairs exist (DESIGN §7 / Juno fs_edit_toggle ruling).
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Text(
           FriendStreaksCopy.heading,
           key: const Key('friendStreaksHeading'),
-          style: _duo(22, 900, _duoText),
+          style: _duo(23, 1000, _duoText),
         ),
         InkWell(
           key: const Key('friendStreaksEditToggle'),
@@ -1183,10 +1221,9 @@ class _StreakScreenState extends State<StreakScreen> {
             child: Text(
               label,
               style: _duo(
-                15,
+                14,
                 900,
-                canEdit ? _duoPrimary : _duoCaption,
-                letterSpacing: 1.1,
+                canEdit ? _duoPrimary : const Color(0xFF69727E),
               ),
             ),
           ),
@@ -1203,15 +1240,22 @@ class _StreakScreenState extends State<StreakScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Navy banner with own avatar, dashed plus circle, and purple flame.
+        // Navy banner (mock v3 part 1): a FULL-BLEED band, 140 tall,
+        // navy #0D1428 with the mock's surface gradient fading down
+        // from the top. The group (own avatar r30 + dashed plus
+        // circle r30 + flame, ink height ~72) is centered as a group:
+        // avatar, 14 gap, dashed circle, 30 gap, flame.
         Container(
           key: const Key('friendStreaksEmptyBanner'),
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
-          decoration: BoxDecoration(
-            color: _duoNavyBtn,
-            borderRadius: BorderRadius.circular(13),
-            border: Border.all(color: _duoBorder, width: 1.2),
+          height: 140,
+          decoration: const BoxDecoration(
+            color: Color(0xFF0D1428),
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0x46152040), Color(0x00152040)],
+            ),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1219,64 +1263,86 @@ class _StreakScreenState extends State<StreakScreen> {
               ExcludeSemantics(
                 child: UserAvatar(
                   avatarId: _ownAvatarId,
-                  size: 52,
+                  size: 60,
                   fallback: Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
+                    width: 60,
+                    height: 60,
+                    decoration: const BoxDecoration(
                       shape: BoxShape.circle,
-                      color: _duoBarDark,
-                      border: Border.all(color: _duoPrimary, width: 1.6),
+                      color: Color(0xFF1F2A4A),
                     ),
                     child: Center(
                       child: Text(
                         ownInitial,
-                        style: _duo(20, 900, _duoText),
+                        style: _duo(28, 1000, _duoText),
                       ),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: 18),
+              const SizedBox(width: 14),
               const _DashedPlusCircle(
                 key: Key('friendStreaksBannerPlus'),
-                size: 52,
+                size: 60,
               ),
-              const SizedBox(width: 18),
+              const SizedBox(width: 30),
               const Icon(
                 Icons.local_fire_department,
                 key: Key('friendStreaksBannerFlame'),
-                size: 52,
+                size: 84,
                 color: _duoPrimary,
               ),
             ],
           ),
         ),
         const SizedBox(height: 24),
-        _friendStreaksHeadingRow(canEdit: canEdit),
-        const SizedBox(height: 12),
-        _outlinedCard(
-          key: const Key('friendStreaksEmptyCard'),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _inviteFriendRow(
-                key: const Key('friendStreaksInviteRow-0'),
+              _friendStreaksHeadingRow(canEdit: canEdit),
+              const SizedBox(height: 12),
+              // Mock card: radius 16, hairlines inset 16 from the
+              // card edge (Divider indent), invite rows whose dashed
+              // circle center sits 26 from the card edge.
+              _outlinedCard(
+                key: const Key('friendStreaksEmptyCard'),
+                radius: 16,
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
+                child: Column(
+                  children: [
+                    _inviteFriendRow(
+                      key: const Key('friendStreaksInviteRow-0'),
+                    ),
+                    const Divider(
+                      height: 1,
+                      thickness: 1,
+                      indent: 11,
+                      endIndent: 11,
+                      color: Color(0xFF2A343C),
+                    ),
+                    _inviteFriendRow(
+                      key: const Key('friendStreaksInviteRow-1'),
+                    ),
+                  ],
+                ),
               ),
-              const Divider(height: 1, thickness: 1, color: Color(0xFF2A343C)),
-              _inviteFriendRow(
-                key: const Key('friendStreaksInviteRow-1'),
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Text(
+                  FriendStreaksCopy.emptyFooter,
+                  key: const Key('friendStreaksFooter'),
+                  style: _duo(
+                    13.5,
+                    700,
+                    const Color(0xFF69727E),
+                    height: 1.45,
+                  ),
+                ),
               ),
             ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Text(
-            FriendStreaksCopy.emptyFooter,
-            key: const Key('friendStreaksFooter'),
-            style: _duo(14, 600, _duoMuted, height: 1.45),
           ),
         ),
       ],
@@ -1307,29 +1373,35 @@ class _StreakScreenState extends State<StreakScreen> {
       ),
     );
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _friendStreaksHeadingRow(canEdit: canEdit),
-        const SizedBox(height: 12),
-        _outlinedCard(
-          key: const Key('friendStreaksPopulatedCard'),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          child: Column(
-            children: [
-              for (var i = 0; i < rows.length; i++) ...[
-                if (i > 0)
-                  const Divider(
-                    height: 1,
-                    thickness: 1,
-                    color: Color(0xFF2A343C),
-                  ),
-                rows[i],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _friendStreaksHeadingRow(canEdit: canEdit),
+          const SizedBox(height: 12),
+          _outlinedCard(
+            key: const Key('friendStreaksPopulatedCard'),
+            radius: 16,
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
+            child: Column(
+              children: [
+                for (var i = 0; i < rows.length; i++) ...[
+                  if (i > 0)
+                    const Divider(
+                      height: 1,
+                      thickness: 1,
+                      indent: 11,
+                      endIndent: 11,
+                      color: Color(0xFF2A343C),
+                    ),
+                  rows[i],
+                ],
               ],
-            ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -1337,19 +1409,22 @@ class _StreakScreenState extends State<StreakScreen> {
     final initial = nickname.trim().isEmpty
         ? '?'
         : nickname.trim()[0].toUpperCase();
+    // Mock v3: partner avatars are r24 (48px) on #1F2A4A with the
+    // initial at ~r*0.95. UserAvatar art renders when avatarId is
+    // set; the initial circle is the exact fallback otherwise.
     return ExcludeSemantics(
       child: UserAvatar(
         avatarId: avatarId,
-        size: 42,
+        size: 48,
         fallback: Container(
-          width: 42,
-          height: 42,
+          width: 48,
+          height: 48,
           decoration: const BoxDecoration(
             shape: BoxShape.circle,
-            color: _duoNavyBtn,
+            color: Color(0xFF1F2A4A),
           ),
           child: Center(
-            child: Text(initial, style: _duo(16.5, 900, _duoText)),
+            child: Text(initial, style: _duo(22, 1000, _duoText)),
           ),
         ),
       ),
@@ -1358,86 +1433,87 @@ class _StreakScreenState extends State<StreakScreen> {
 
   Widget _incomingInviteRow(FriendStreakIncomingDto invite) {
     final busy = _streakActionBusy.contains('respond:${invite.pairId}');
+    // Mock v3 part 3: the avatar is centered on the whole
+    // name + subtitle + buttons block; the buttons sit in the text
+    // column under the subtitle (ACCEPT white on purple, DECLINE
+    // outline, radius 11, 12px gaps).
     return Padding(
       key: Key('friendStreakIncomingRow-${invite.pairId}'),
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.fromLTRB(7, 18, 11, 18),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Row(
-            children: [
-              _partnerAvatar(
-                avatarId: invite.avatarId,
-                nickname: invite.nickname,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          _partnerAvatar(
+            avatarId: invite.avatarId,
+            nickname: invite.nickname,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  invite.nickname,
+                  style: _duo(16.5, 900, _duoText),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  FriendStreaksCopy.incomingSubtitle,
+                  style: _duo(13.5, 700, const Color(0xFFA4A4AD)),
+                ),
+                const SizedBox(height: 9),
+                Row(
                   children: [
-                    Text(
-                      invite.nickname,
-                      style: _duo(16.5, 800, _duoText),
-                      overflow: TextOverflow.ellipsis,
+                    InkWell(
+                      key: Key('friendStreakAccept-${invite.pairId}'),
+                      onTap: busy
+                          ? null
+                          : () =>
+                              unawaited(_respondIncomingInvite(invite, true)),
+                      borderRadius: BorderRadius.circular(11),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _duoPrimary,
+                          borderRadius: BorderRadius.circular(11),
+                        ),
+                        child: Text(
+                          FriendStreaksCopy.accept,
+                          style: _duo(12.5, 1000, Colors.white),
+                        ),
+                      ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      FriendStreaksCopy.incomingSubtitle,
-                      style: _duo(13.5, 600, _duoMuted),
+                    const SizedBox(width: 12),
+                    InkWell(
+                      key: Key('friendStreakDecline-${invite.pairId}'),
+                      onTap: busy
+                          ? null
+                          : () =>
+                              unawaited(_respondIncomingInvite(invite, false)),
+                      borderRadius: BorderRadius.circular(11),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(11),
+                          border: Border.all(color: _duoBorder, width: 1.2),
+                        ),
+                        child: Text(
+                          FriendStreaksCopy.decline,
+                          style: _duo(12.5, 1000, const Color(0xFFA4A4AD)),
+                        ),
+                      ),
                     ),
                   ],
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              const SizedBox(width: 54),
-              InkWell(
-                key: Key('friendStreakAccept-${invite.pairId}'),
-                onTap: busy
-                    ? null
-                    : () => unawaited(_respondIncomingInvite(invite, true)),
-                borderRadius: BorderRadius.circular(18),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 7,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _duoPrimary,
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Text(
-                    FriendStreaksCopy.accept,
-                    style: _duo(12.5, 900, _duoOnBright, letterSpacing: 0.9),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              InkWell(
-                key: Key('friendStreakDecline-${invite.pairId}'),
-                onTap: busy
-                    ? null
-                    : () => unawaited(_respondIncomingInvite(invite, false)),
-                borderRadius: BorderRadius.circular(18),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 7,
-                  ),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: _duoBorder, width: 1.2),
-                  ),
-                  child: Text(
-                    FriendStreaksCopy.decline,
-                    style: _duo(12.5, 800, _duoMuted, letterSpacing: 0.9),
-                  ),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
@@ -1447,10 +1523,16 @@ class _StreakScreenState extends State<StreakScreen> {
   Widget _activePairRow(FriendStreakPairDto pair) {
     final busy = _streakActionBusy.contains('remove:${pair.pairId}');
     final statusLine = _pairStatusLine(pair);
+    // Mock v3 part 3: name on the first line; flame + count +
+    // status line share ONE center line under it (flame ink ~16,
+    // count 15.5/1000 light purple, status 13.5/700 muted). The
+    // block is centered on the avatar. In EDIT mode the row gains
+    // the End streak action on the right (DESIGN §7).
     return Padding(
       key: Key('friendStreakPairRow-${pair.pairId}'),
-      padding: const EdgeInsets.symmetric(vertical: 14),
+      padding: const EdgeInsets.fromLTRB(7, 14, 11, 14),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           _partnerAvatar(
             avatarId: pair.avatarId,
@@ -1463,20 +1545,50 @@ class _StreakScreenState extends State<StreakScreen> {
               children: [
                 Text(
                   pair.nickname,
-                  style: _duo(16.5, 800, _duoText),
+                  style: _duo(16.5, 900, _duoText),
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  statusLine,
-                  key: Key('friendStreakPairStatus-${pair.pairId}'),
-                  style: _duo(13.5, 600, _duoMuted),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Semantics(
+                      container: true,
+                      label: '${pair.count} day streak',
+                      child: ExcludeSemantics(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.local_fire_department,
+                              size: 19,
+                              color: _duoPrimary,
+                            ),
+                            const SizedBox(width: 7),
+                            Text(
+                              '${pair.count}',
+                              key: Key('friendStreakPairCount-${pair.pairId}'),
+                              style: _duo(15.5, 1000, _duoPrimaryLt),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        statusLine,
+                        key: Key('friendStreakPairStatus-${pair.pairId}'),
+                        style: _duo(13.5, 700, const Color(0xFF69727E)),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 10),
-          if (_isEditingFriendStreaks)
+          if (_isEditingFriendStreaks) ...[
+            const SizedBox(width: 10),
             InkWell(
               key: Key('friendStreakEnd-${pair.pairId}'),
               onTap: busy
@@ -1500,30 +1612,8 @@ class _StreakScreenState extends State<StreakScreen> {
                   style: _duo(12.5, 800, const Color(0xFFFF6B6B)),
                 ),
               ),
-            )
-          else
-            Semantics(
-              container: true,
-              label: '${pair.count} day streak',
-              child: ExcludeSemantics(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.local_fire_department,
-                      size: 20,
-                      color: _duoPrimary,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${pair.count}',
-                      key: Key('friendStreakPairCount-${pair.pairId}'),
-                      style: _duo(17, 900, _duoPrimary),
-                    ),
-                  ],
-                ),
-              ),
             ),
+          ],
         ],
       ),
     );
@@ -1537,7 +1627,7 @@ class _StreakScreenState extends State<StreakScreen> {
     final busy = _streakActionBusy.contains('cancel:$friendId');
     return Padding(
       key: Key('friendStreakOutgoingRow-$friendId'),
-      padding: const EdgeInsets.symmetric(vertical: 14),
+      padding: const EdgeInsets.fromLTRB(7, 14, 11, 14),
       child: Row(
         children: [
           _partnerAvatar(
@@ -1551,13 +1641,13 @@ class _StreakScreenState extends State<StreakScreen> {
               children: [
                 Text(
                   nickname,
-                  style: _duo(16.5, 800, _duoText),
+                  style: _duo(16.5, 900, _duoText),
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
                 Text(
                   FriendStreaksCopy.requestPending,
-                  style: _duo(13.5, 600, _duoMuted),
+                  style: _duo(13.5, 700, const Color(0xFF69727E)),
                 ),
               ],
             ),
@@ -1590,6 +1680,10 @@ class _StreakScreenState extends State<StreakScreen> {
   }
 
   Widget _inviteFriendRow({Key? key}) {
+    // Mock v3 invite row: dashed circle r21 (center 26 from the
+    // card edge — the card's content padding is 5, so no extra
+    // inset here), label at 62 from the card edge in SECONDARY
+    // (not purple), 16.5/800.
     return InkWell(
       key: key,
       onTap: () => unawaited(_openInvitePicker()),
@@ -1599,11 +1693,11 @@ class _StreakScreenState extends State<StreakScreen> {
         child: Row(
           children: [
             const _DashedPlusCircle(size: 42),
-            const SizedBox(width: 14),
+            const SizedBox(width: 15),
             Expanded(
               child: Text(
                 FriendStreaksCopy.inviteFriend,
-                style: _duo(16.5, 800, _duoPrimary),
+                style: _duo(16.5, 800, const Color(0xFFA4A4AD)),
               ),
             ),
           ],
@@ -2903,6 +2997,8 @@ class _FreezeGrantIconState extends State<_FreezeGrantIcon>
 
 /// Dashed circle with a centered plus glyph, used in the Friend Streaks
 /// empty-state banner and on every "Invite a friend" row (Design §7).
+/// Mock v3 colors: the dash ring is MUTED (#69727E, 1.6 wide) and the
+/// plus is SECONDARY (#A4A4AD) — not purple.
 class _DashedPlusCircle extends StatelessWidget {
   final double size;
 
@@ -2915,15 +3011,15 @@ class _DashedPlusCircle extends StatelessWidget {
       height: size,
       child: CustomPaint(
         painter: const _DashedCirclePainter(
-          color: _duoPrimary,
-          strokeWidth: 1.8,
+          color: Color(0xFF69727E),
+          strokeWidth: 1.6,
           dashCount: 12,
         ),
         child: Center(
           child: Icon(
             Icons.add,
-            size: size * 0.48,
-            color: _duoPrimary,
+            size: size * 0.4,
+            color: const Color(0xFFA4A4AD),
           ),
         ),
       ),

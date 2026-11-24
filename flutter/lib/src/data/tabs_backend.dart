@@ -3409,7 +3409,12 @@ class FriendStreaksDto {
           try {
             final dto = FriendStreakPairDto.fromJson(item);
             // Design §7: ended pairs are never listed in active pairs.
-            if (dto.status != 'ended') {
+            // History statuses (ended / removed / declined) are not
+            // live pairs — the ended notification carries them, and
+            // the friend becomes invitable again.
+            if (dto.status != 'ended' &&
+                dto.status != 'removed' &&
+                dto.status != 'declined') {
               pairs.add(dto);
             }
           } catch (_) {
