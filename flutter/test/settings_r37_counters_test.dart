@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -48,6 +49,14 @@ class FakeCountersBackend extends TabsBackend {
 
   @override
   Future<Map<String, dynamic>?> fetchSyncPull() async => pullBody;
+
+  /// This fake serves no habits endpoint; the habit daily
+  /// reminder gate's input is an empty list. (Without this
+  /// override the real backend's read would reach the secure
+  /// session store, whose channel never answers under FakeAsync,
+  /// and Settings' reminder sync would never run.)
+  @override
+  Future<List<HabitDto>?> fetchHabitsOrNull() async => const [];
 
   @override
   void invalidateSyncPull() {}

@@ -38,21 +38,29 @@ import 'report_ready_notification.dart' show LocalReportReadyNotifier;
 ///   the receiver re-checks the toggle before posting.
 ///
 /// Flutter mapping: flutter_local_notifications `zonedSchedule` with
-/// `matchDateTimeComponents: DateTimeComponents.time` gives the same
-/// daily wall-clock recurrence for the habit daily reminder, and a
+/// `matchDateTimeComponents: DateTimeComponents.time` gives a daily
+/// wall-clock recurrence (still used by user reminders), and a
 /// plain one-shot `zonedSchedule` per event counter and per
-/// projected gate-fix date (Project Focus and, since VC 100138,
-/// the check-in reminder). The plugin's boot receiver restores
-/// schedules after a reboot.
+/// projected gate-fix date (Project Focus, the check-in reminder
+/// since VC 100138, and the habit daily reminder since the
+/// habits-notification false-fire fix). The plugin's boot receiver
+/// restores schedules after a reboot.
 ///
-/// Known deviation (flagged in the round report): the plugin cannot
-/// run Dart code at fire time, so the habit "only if still
-/// unchecked" gate (evaluated at fire time in native) cannot be
-/// re-evaluated when the notification fires. That schedule fires
-/// daily while the toggle is on; the subtitle copy on the
-/// Notifications page says exactly what each reminder does. The
-/// check-in "only if not checked in yet" gate is no longer part of
-/// this deviation — see the check-in gate fix below.
+/// Habit daily gate fix (founder report Nov 23, 2026): the habit
+/// daily reminder no longer fires daily unconditionally. Native
+/// evaluated its gate at fire time (post only when an unchecked
+/// habit remains that day); the Flutter equivalent is the same
+/// bounded one-shot projection shape as the other gate fixes —
+/// [habitDailyFireTimes] precomputes, at sync time, the 19:00
+/// dates inside the next [habitDailyReminderHorizonDays] days on
+/// which at least one habit is NOT logged, and [ReminderSync]
+/// arms one one-shot per such date. Completing the last habit
+/// drops tonight's one-shot at the next sync — the Habits screen
+/// and the Home Today Summary completion paths both re-run the
+/// projection on every completion change (see
+/// [ReminderSync.syncHabitDailyOnly]). The retired daily schedule
+/// (id [ReminderIds.habit]) is cancelled on every sync, and the
+/// copy/channel are byte-identical to the retired daily.
 ///
 /// Project Focus gate fix: the project reminder no longer fires
 /// daily unconditionally. Native `ProjectReminderWorker` evaluates
@@ -809,6 +817,125 @@ List<DateTime> streakCountdownFireTimes({
   return out;
 }
 
+/// Habit daily aggregate reminder one-shot projection horizon:
+/// [ReminderSync] looks this many local days ahead (today
+/// included) when projecting habit-daily one-shots, and cancels
+/// this many days either side of today when sweeping stale ones
+/// (see [habitDailyReminderCancelIds]). The same 35-day bound as
+/// the Project Focus, check-in, and streak-countdown projections.
+const int habitDailyReminderHorizonDays = 35;
+
+/// Base of the projected habit-daily one-shot id block:
+/// `830000 + (epochDay % 10000)` → 830000–839999.
+///
+/// Disjointness (verified against every other id owner in the
+/// app, by grepping the whole lib/ tree):
+/// - Fixed ids 1003 / 1004 / 770001 / 7301 / 7303 / 7304: all lie
+///   below the block (770001 is the largest of them).
+/// - Event-counter ids ([eventNotificationId]): 700000–799998 —
+///   strictly below the block.
+/// - User-reminder blocks (`reminder_alarm_sync.dart`):
+///   101500–699999 — strictly below the block.
+/// - Project Focus projection ids: 800000–809999 — strictly
+///   below the block.
+/// - Check-in projection ids: 810000–819999 — strictly below
+///   the block.
+/// - Streak-countdown projection ids: 820000–829999 — strictly
+///   below the block.
+/// - Habit scheduled-time ids: 900000–1899999 — strictly above
+///   the block.
+/// Inside the block, distinct dates can share an id only when
+/// their epoch days differ by a multiple of 10000 (~27 years);
+/// the projection horizon and the cancellable window are both
+/// 71 days wide at most, so two dates that could ever be pending
+/// at once never collide.
+const int habitDailyReminderIdBase = 830000;
+
+/// Span of the projected habit-daily one-shot id block (see
+/// [habitDailyReminderIdBase]).
+const int habitDailyReminderIdSpan = 10000;
+
+/// Plugin notification id for the habit-daily one-shot on the
+/// local calendar date of [date] (see [habitDailyReminderIdBase]
+/// for the disjointness proof).
+int habitDailyReminderIdForDate(DateTime date) {
+  final epochDay = DateTime.utc(date.year, date.month, date.day)
+          .millisecondsSinceEpoch ~/
+      Duration.millisecondsPerDay;
+  return habitDailyReminderIdBase + (epochDay % habitDailyReminderIdSpan);
+}
+
+/// Every projected habit-daily id a previous sync could have
+/// left pending around [now]: the ids for local dates from
+/// `today - [habitDailyReminderHorizonDays]` through
+/// `today + [habitDailyReminderHorizonDays]`. A sync never
+/// projects beyond today + horizon, and a one-shot projected for
+/// a past date has already fired (or was projected at most
+/// horizon days before that date), so sweeping this window
+/// reaches every stale projected id.
+Iterable<int> habitDailyReminderCancelIds(DateTime now) sync* {
+  for (var offset = -habitDailyReminderHorizonDays;
+      offset <= habitDailyReminderHorizonDays;
+      offset++) {
+    yield habitDailyReminderIdForDate(
+        DateTime(now.year, now.month, now.day + offset));
+  }
+}
+
+/// The habit daily aggregate reminder's copy — byte-identical to
+/// the retired daily schedule's (title/body/channel are NOT
+/// user-facing copy changes; the Settings subtitle already
+/// promises exactly this gated behaviour).
+const String habitDailyReminderTitle = 'Finish your habits! ✅';
+const String habitDailyReminderBody =
+    'You still have some daily habits to check off. '
+    'Keep your streak alive!';
+
+/// Whether at least one habit in [habits] is unchecked on the
+/// local calendar date of [date] — the aggregate gate, read off
+/// the SAME per-date log model every habit feature uses
+/// ([HabitDto.logs] holds `yyyy-MM-dd` keys; see
+/// [habitTimeFireTimes], whose per-habit gate is the same
+/// `completedDates.contains(key)` test). A date counts as gated
+/// OFF only when EVERY habit carries that date's log key; with
+/// no habits at all there is nothing to remind about.
+bool habitDailyUncheckedOn(List<HabitDto> habits, DateTime date) {
+  if (habits.isEmpty) return false;
+  final key = focusLogDateKey(date);
+  return habits.any((h) => !h.logs.contains(key));
+}
+
+/// The bounded habit-daily projection (the Nov 11 fire-time-gates
+/// lesson, Project Focus / check-in precedent): the 19:00-local
+/// fire times [ReminderSync] arms as one-shots, mirroring
+/// native's fire-time "only when an unchecked habit remains that
+/// day" gate as evaluated at sync time. For each local date D
+/// from today through today + [habitDailyReminderHorizonDays]
+/// days, D's 19:00 fire time qualifies iff it is strictly after
+/// [now] AND [habitDailyUncheckedOn] passes for D. Future dates
+/// carry no logs yet, so they project as unchecked — exactly as
+/// future check-in/countdown days project — and every re-sync
+/// (Settings load, first-run resync, and every completion change
+/// via [ReminderSync.syncHabitDailyOnly]) drops days as they
+/// complete. Dates are built by calendar-day arithmetic (never
+/// 24-hour durations), so DST transitions cannot skip or repeat
+/// a date.
+List<DateTime> habitDailyFireTimes({
+  required DateTime now,
+  required List<HabitDto> habits,
+}) {
+  if (habits.isEmpty) return const [];
+  final out = <DateTime>[];
+  for (var offset = 0; offset <= habitDailyReminderHorizonDays; offset++) {
+    final date = DateTime(now.year, now.month, now.day + offset);
+    final fire = DateTime(date.year, date.month, date.day, 19);
+    if (!fire.isAfter(now)) continue;
+    if (!habitDailyUncheckedOn(habits, date)) continue;
+    out.add(fire);
+  }
+  return out;
+}
+
 /// VC 100137 — habit scheduled-time reminders: the Juno-ruled body
 /// copy (juno-copy-100137.md, item 1: SIGN WITH CHANGES — the
 /// proposed "It is time to check off this habit in Tabs." was
@@ -1008,6 +1135,67 @@ class ReminderSync {
     }
   }
 
+  /// Cancels EVERY habit-daily schedule a previous sync could
+  /// have left pending: the legacy daily id ([ReminderIds.habit],
+  /// the retired unconditional 19:00 daily) and every projected
+  /// one-shot id in the cancellable window
+  /// ([habitDailyReminderCancelIds]). Runs on every [syncAll] and
+  /// every [syncHabitDailyOnly] — before any re-arm, and on the
+  /// paths that arm nothing (toggle off, OS permission off,
+  /// empty projection) — so a stale daily or one-shot can never
+  /// survive a sync.
+  Future<void> _cancelHabitDailySchedules(DateTime n) async {
+    await service.cancel(ReminderIds.habit);
+    for (final id in habitDailyReminderCancelIds(n)) {
+      await service.cancel(id);
+    }
+  }
+
+  /// Arms the habit-daily projection (see [habitDailyFireTimes]):
+  /// one 19:00 one-shot per qualifying date, with the SAME
+  /// title/body/channel/importance as the retired daily schedule.
+  Future<void> _armHabitDailyProjection(
+      DateTime n, List<HabitDto> habits) async {
+    for (final fire in habitDailyFireTimes(now: n, habits: habits)) {
+      await service.scheduleOnce(
+        id: habitDailyReminderIdForDate(fire),
+        title: habitDailyReminderTitle,
+        body: habitDailyReminderBody,
+        channelId: 'habit_reminders',
+        channelName: 'Habit Reminders',
+        when: fire,
+        highImportance: false,
+      );
+    }
+  }
+
+  /// Re-projects ONLY the habit daily aggregate reminder — the
+  /// habit-completion paths' re-sync, mirroring [syncCheckInOnly]
+  /// (and [HabitTimeReminderSync.syncHabits], which re-projects
+  /// the per-habit timed one-shots alongside it): after a habit
+  /// is checked off or un-checked, tonight's pending 19:00
+  /// one-shot must drop (or re-arm) without waiting for the next
+  /// full [syncAll]. The legacy daily id and the whole projected
+  /// window are cancelled first, on EVERY path (toggle off and
+  /// OS-permission off included); then, only when the toggle is
+  /// on and notifications are enabled, the projection is re-armed
+  /// from [habits] — the caller's current list (the Habits
+  /// screen's post-write optimistic list, or the Today Summary
+  /// loader's fresh post-write fetch), so a just-completed habit
+  /// counts even before any later pull.
+  Future<void> syncHabitDailyOnly({
+    required bool habitEnabled,
+    required List<HabitDto> habits,
+    DateTime? now,
+  }) async {
+    final n = now ?? DateTime.now();
+    await service.initialize();
+    final enabled = await service.areNotificationsEnabled();
+    await _cancelHabitDailySchedules(n);
+    if (!enabled || !habitEnabled) return;
+    await _armHabitDailyProjection(n, habits);
+  }
+
   /// Cancels EVERY streak-countdown schedule a previous sync
   /// could have left pending — and any POSTED countdown in the
   /// window (the plugin's cancel removes posted notifications
@@ -1115,6 +1303,7 @@ class ReminderSync {
     List<FocusTest> focusTests = const [],
     Set<String> checkedInDayLabels = const {},
     StreakState? streakState,
+    List<HabitDto> habits = const [],
     DateTime? now,
   }) async {
     final n = now ?? DateTime.now();
@@ -1123,7 +1312,7 @@ class ReminderSync {
     if (!enabled) {
       // Nothing can fire without the system permission; make sure no
       // stale schedule survives from an earlier grant.
-      await service.cancel(ReminderIds.habit);
+      await _cancelHabitDailySchedules(n);
       await _cancelProjectSchedules(n);
       await _cancelCheckInSchedules(n);
       await _cancelStreakCountdownSchedules(n);
@@ -1132,20 +1321,17 @@ class ReminderSync {
       }
       return;
     }
+    // Habit daily: the legacy daily schedule is ALWAYS cancelled
+    // first (with the whole projected window), then — only when
+    // the toggle is on — the bounded one-shot projection is
+    // armed: one 19:00 one-shot per date on which at least one
+    // habit is still unchecked (see [habitDailyFireTimes]). All
+    // habits logged today, or no habits at all, arms nothing for
+    // tonight. Copy and channel are byte-identical to the retired
+    // daily schedule.
+    await _cancelHabitDailySchedules(n);
     if (habitEnabled) {
-      await service.scheduleDaily(
-        id: ReminderIds.habit,
-        title: 'Finish your habits! ✅',
-        body:
-            'You still have some daily habits to check off. Keep your streak alive!',
-        channelId: 'habit_reminders',
-        channelName: 'Habit Reminders',
-        hour: 19,
-        minute: 0,
-        highImportance: false,
-      );
-    } else {
-      await service.cancel(ReminderIds.habit);
+      await _armHabitDailyProjection(n, habits);
     }
     // Project Focus: the legacy daily schedule is ALWAYS cancelled
     // first (with the whole projected window), then — only when the
