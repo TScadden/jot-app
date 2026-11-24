@@ -7,6 +7,7 @@ import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
+import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -1106,6 +1107,13 @@ class TodaySummaryLoader {
   final TodaySummaryCache cache;
   final SessionStore sessionStore;
 
+  /// The reminder scheduling surface for the habit-completion
+  /// re-projection (see [setHabitCompleted]). Null (standalone
+  /// mounts, most tests) = no re-projection — the pre-fix
+  /// behaviour of this path; Home passes its app-level service
+  /// through [TodaySummaryCard], which is what wires production.
+  final ReminderNotificationService? notificationService;
+
   /// R70 WS2 — the local-first union reader (store ∪ fresh HC).
   final HealthHistoryQueries historyQueries;
 
@@ -1116,6 +1124,7 @@ class TodaySummaryLoader {
     TodaySummaryCache? cache,
     SessionStore? sessionStore,
     HealthHistoryQueries? historyQueries,
+    ReminderNotificationService? notificationService,
   }) : this._internal(
           backend ?? TabsBackend(),
           hc ?? HealthConnectService(),
@@ -1123,6 +1132,7 @@ class TodaySummaryLoader {
           cache ?? TodaySummaryCache.instance,
           sessionStore ?? SessionStore(),
           historyQueries,
+          notificationService,
         );
 
   TodaySummaryLoader._internal(
@@ -1132,6 +1142,7 @@ class TodaySummaryLoader {
     this.cache,
     this.sessionStore,
     HealthHistoryQueries? queries,
+    this.notificationService,
   ) : historyQueries = queries ?? HealthHistoryQueries(hc: hc);
 
   Future<String?> _email() async {
@@ -1480,11 +1491,50 @@ class TodaySummaryLoader {
         completed: completed,
       );
       if (!logged) return false;
+      // The habit-side write landed, so the habit daily aggregate
+      // reminder re-projects NOW (this path previously triggered
+      // no notification sync at all): completing the last habit
+      // drops tonight's 19:00 one-shot, un-completing re-arms it.
+      // Runs before the completion-entry post so it lands even
+      // when that entry write fails — the habit log, which is
+      // what the gate reads, already changed.
+      await _resyncHabitDailyReminder(at);
       if (!completed) return true;
       return await _postCompletionEntry(
           habitCompletionBody(item.title), at);
     } catch (_) {
       return false;
+    }
+  }
+
+  /// Re-projects the habit daily aggregate reminder from the
+  /// post-write habits list (see
+  /// [ReminderSync.syncHabitDailyOnly]). The list is a FRESH
+  /// fetch — [TabsBackend.logHabit] invalidates the habits cache
+  /// on success, so this reads the server-confirmed state with
+  /// the just-landed log in it; the toggle is the pull profile's
+  /// `habitReminderEnabled` (an unreadable profile resolves to
+  /// OFF — cancel only, never arm on a guess). No-op when no
+  /// notification service was wired. Never throws: a notification
+  /// failure must not fail a habit write the server accepted
+  /// (the habits failure rule — log with the visible code,
+  /// swallow, self-heal at the next sync).
+  Future<void> _resyncHabitDailyReminder(DateTime at) async {
+    final service = notificationService;
+    if (service == null) return;
+    try {
+      final habits = await backend.fetchHabitsOrNull() ?? const [];
+      final profile = await backend.fetchProfile();
+      final toggle = profile?['habitReminderEnabled'];
+      await ReminderSync(service).syncHabitDailyOnly(
+        habitEnabled: toggle == true || toggle == 'true',
+        habits: habits,
+        now: at,
+      );
+    } on NotificationServiceException catch (e) {
+      debugPrint('HabitDailyReminderSync failed: $e');
+    } catch (e) {
+      debugPrint('HabitDailyReminderSync unexpected failure: $e');
     }
   }
 

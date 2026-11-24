@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/badge_engine.dart';
 import 'package:tabs_lab/src/data/badge_store.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/features/badges/badge_share_card.dart';
 import 'package:tabs_lab/src/features/badges/badge_strings.dart';
 import 'package:tabs_lab/src/features/badges/badge_widget.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
@@ -688,6 +689,20 @@ class BadgeDetailScreen extends StatelessWidget {
                       ),
                     ),
                   ),
+                // Badge share (Juno badge-share §4b): the labeled
+                // Share button sits with the earned receipt, under
+                // the current-rung block. Earned + not blocked only
+                // — never for a locked badge or a permission-blocked
+                // state — and it shares the top rung only.
+                if (earned && !blocked) ...[
+                  const SizedBox(height: 16),
+                  Center(
+                    child: _BadgeShareButton(
+                      metric: metric,
+                      rungIndex: topRung,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 24),
                 if (blocked)
                   // Juno §9 rule 3: the blocked detail shows the
@@ -906,17 +921,128 @@ class BadgeDetailScreen extends StatelessWidget {
   }
 }
 
+/// The badge detail view's Share affordance (Juno badge-share
+/// §4b): a labeled "Share badge" button plus the ONE offscreen
+/// [BadgeShareCardHost] its PNG renders from. The caller renders
+/// this only for an earned, non-blocked badge; it shares the
+/// badge's current top rung — never the next rung.
+class _BadgeShareButton extends StatefulWidget {
+  final BadgeMetric metric;
+  final int rungIndex;
+
+  const _BadgeShareButton({required this.metric, required this.rungIndex});
+
+  @override
+  State<_BadgeShareButton> createState() => _BadgeShareButtonState();
+}
+
+class _BadgeShareButtonState extends State<_BadgeShareButton> {
+  final GlobalKey _boundaryKey = GlobalKey();
+  bool _sharing = false;
+
+  Future<void> _share() async {
+    if (_sharing) return;
+    _sharing = true;
+    try {
+      await BadgeShareService.shareFromBoundary(
+        _boundaryKey,
+        metric: widget.metric,
+        rungIndex: widget.rungIndex,
+      );
+    } catch (_) {
+      // Streak rule: a share failure never dismisses the host UI —
+      // the detail view stays up and the user can retry.
+    } finally {
+      _sharing = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        BadgeShareCardHost(
+          boundaryKey: _boundaryKey,
+          metric: widget.metric,
+          rungIndex: widget.rungIndex,
+        ),
+        Semantics(
+          label: BadgeStrings.shareSemantics(
+            BadgeStrings.badgeName(widget.metric.id),
+            widget.rungIndex,
+          ),
+          button: true,
+          container: true,
+          excludeSemantics: true,
+          onTap: () => unawaited(_share()),
+          child: FilledButton.icon(
+            key: const ValueKey('badge_detail_share_button'),
+            onPressed: () => unawaited(_share()),
+            icon: const Icon(Icons.share, size: 18),
+            label: const Text(BadgeStrings.shareButtonLabel),
+            style: FilledButton.styleFrom(
+              backgroundColor: NotelColors.primary,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(48, 48),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// The unlock dialog (Juno §8 layouts + §13 gem honesty): one
 /// dialog per evaluation batch. Badge art only — no other
 /// imagery anywhere in this feature.
-class BadgeUnlockDialog extends StatelessWidget {
+///
+/// Badge share (Juno badge-share §4a/§7): every badge row carries
+/// an icon-only Share button — per-rung layout shares that row's
+/// rung; grouped layout shares the row's highest batch rung (the
+/// representative grant the row is built from). Exactly ONE
+/// offscreen [BadgeShareCardHost] lives in the dialog; a tap sets
+/// the share target, waits for the frame that renders it into the
+/// boundary, then shares. A share failure keeps the dialog up.
+class BadgeUnlockDialog extends StatefulWidget {
   final BadgeUnlockBatch batch;
 
   const BadgeUnlockDialog({super.key, required this.batch});
 
   @override
+  State<BadgeUnlockDialog> createState() => _BadgeUnlockDialogState();
+}
+
+class _BadgeUnlockDialogState extends State<BadgeUnlockDialog> {
+  final GlobalKey _shareBoundaryKey = GlobalKey();
+  ({BadgeMetric metric, int rungIndex})? _shareTarget;
+  bool _sharing = false;
+
+  Future<void> _shareBadge(BadgeMetric metric, int rungIndex) async {
+    if (_sharing) return;
+    _sharing = true;
+    try {
+      setState(() => _shareTarget = (metric: metric, rungIndex: rungIndex));
+      // Wait for the frame that renders the tapped row's card
+      // into the offscreen boundary before rendering the PNG.
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      await BadgeShareService.shareFromBoundary(
+        _shareBoundaryKey,
+        metric: metric,
+        rungIndex: rungIndex,
+      );
+    } catch (_) {
+      // Streak rule: a share failure never dismisses the host UI —
+      // the dialog stays up and the user can retry or tap Done.
+    } finally {
+      _sharing = false;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final grants = batch.grants;
+    final grants = widget.batch.grants;
     final grouped = grants.length >= 6;
     return AlertDialog(
       key: const ValueKey('badge_unlock_dialog'),
@@ -936,7 +1062,15 @@ class BadgeUnlockDialog extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: grouped ? _groupedLines() : _perRungLines(),
+          children: [
+            if (_shareTarget != null)
+              BadgeShareCardHost(
+                boundaryKey: _shareBoundaryKey,
+                metric: _shareTarget!.metric,
+                rungIndex: _shareTarget!.rungIndex,
+              ),
+            ...(grouped ? _groupedLines() : _perRungLines()),
+          ],
         ),
       ),
       actions: [
@@ -951,7 +1085,7 @@ class BadgeUnlockDialog extends StatelessWidget {
 
   List<Widget> _perRungLines() {
     final lines = <Widget>[];
-    for (final g in batch.grants) {
+    for (final g in widget.batch.grants) {
       lines.add(_lineRow(
         g,
         BadgeStrings.unlockLine(
@@ -972,11 +1106,11 @@ class BadgeUnlockDialog extends StatelessWidget {
         ));
       }
     }
-    if (batch.grants.length >= 2 && batch.freshPaidCount >= 1) {
+    if (widget.batch.grants.length >= 2 && widget.batch.freshPaidCount >= 1) {
       lines.add(const SizedBox(height: 8));
       lines.add(Text(
         BadgeStrings.unlockTotalLine(
-          batch.freshPaidCount * badgeRungGemAmount,
+          widget.batch.freshPaidCount * badgeRungGemAmount,
         ),
         style: const TextStyle(
           fontSize: 13,
@@ -985,7 +1119,7 @@ class BadgeUnlockDialog extends StatelessWidget {
         ),
       ));
     }
-    if (batch.anyPending) {
+    if (widget.batch.anyPending) {
       lines.add(const SizedBox(height: 8));
       lines.add(const Text(
         BadgeStrings.pendingGemsFooter,
@@ -997,9 +1131,9 @@ class BadgeUnlockDialog extends StatelessWidget {
 
   List<Widget> _groupedLines() {
     final lines = <Widget>[];
-    if (batch.isBackfill) {
+    if (widget.batch.isBackfill) {
       lines.add(Text(
-        batch.includesHcBadge
+        widget.batch.includesHcBadge
             ? BadgeStrings.backfillIntroHc
             : BadgeStrings.backfillIntroTabs,
         style: const TextStyle(
@@ -1010,7 +1144,7 @@ class BadgeUnlockDialog extends StatelessWidget {
       lines.add(const SizedBox(height: 8));
     }
     lines.add(Text(
-      BadgeStrings.unlockCountLine(batch.grants.length),
+      BadgeStrings.unlockCountLine(widget.batch.grants.length),
       style: const TextStyle(
         fontSize: 14,
         fontWeight: FontWeight.bold,
@@ -1021,7 +1155,7 @@ class BadgeUnlockDialog extends StatelessWidget {
     // One line per badge at its highest batch rung, screen order.
     for (final metric in BadgeMetrics.all) {
       final mine = [
-        for (final g in batch.grants)
+        for (final g in widget.batch.grants)
           if (g.metric.id == metric.id) g,
       ];
       if (mine.isEmpty) continue;
@@ -1044,11 +1178,11 @@ class BadgeUnlockDialog extends StatelessWidget {
               ),
       ));
     }
-    if (batch.freshPaidCount >= 1) {
+    if (widget.batch.freshPaidCount >= 1) {
       lines.add(const SizedBox(height: 8));
       lines.add(Text(
         BadgeStrings.unlockTotalLine(
-          batch.freshPaidCount * badgeRungGemAmount,
+          widget.batch.freshPaidCount * badgeRungGemAmount,
         ),
         style: const TextStyle(
           fontSize: 13,
@@ -1057,7 +1191,7 @@ class BadgeUnlockDialog extends StatelessWidget {
         ),
       ));
     }
-    if (batch.anyPending) {
+    if (widget.batch.anyPending) {
       lines.add(const SizedBox(height: 8));
       lines.add(const Text(
         BadgeStrings.pendingGemsFooter,
@@ -1086,6 +1220,23 @@ class BadgeUnlockDialog extends StatelessWidget {
                 fontWeight: FontWeight.w500,
                 color: NotelColors.textPrimary,
               ),
+            ),
+          ),
+          // Juno badge-share §4a: icon-only Share per row. In the
+          // grouped layout [g] is the row's representative grant at
+          // its highest batch rung, so this shares that rung (§7).
+          Semantics(
+            label: BadgeStrings.shareSemantics(
+              BadgeStrings.badgeName(g.metric.id),
+              g.rungIndex,
+            ),
+            button: true,
+            child: IconButton(
+              key: ValueKey('badge_share_${g.metric.id}_${g.rungIndex}'),
+              tooltip: BadgeStrings.shareButtonLabel,
+              icon: const Icon(Icons.share, size: 20),
+              color: NotelColors.textSecondary,
+              onPressed: () => unawaited(_shareBadge(g.metric, g.rungIndex)),
             ),
           ),
         ],

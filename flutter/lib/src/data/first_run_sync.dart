@@ -56,7 +56,12 @@ class FirstRunReminderResync {
   /// upgraded devices must re-run the resync once so check-in
   /// reminders re-project under the new day-label semantics
   /// without the user opening Settings.
-  static const String doneKey = 'first_run_reminder_resync_v5';
+  /// v6: the habit daily reminder moved from an unconditional
+  /// daily schedule to a gated 19:00 one-shot projection —
+  /// upgraded devices must re-run the resync once so the stale
+  /// daily alarm (id 1003) is cancelled (and the projection
+  /// armed) without the user opening Settings.
+  static const String doneKey = 'first_run_reminder_resync_v6';
   static const String doneValue = 'done';
 
   final SecureStore _store;
@@ -101,10 +106,14 @@ class FirstRunReminderResync {
 ///   Tabs-day labels (the check-in reminder gate, via
 ///   `SettingsProfileData.checkedInDayLabels`), the pull's
 ///   settled streak state (the streak-countdown gate, via
-///   `SettingsProfileData.streakState`) and the LOCAL
-///   check-in toggle from [SettingsStore] — after a migration
-///   import that toggle is the imported value, which is why the
-///   import action runs this too.
+///   `SettingsProfileData.streakState`), the habits list from
+///   `GET /api/habits` (the habit daily reminder gate — habits
+///   live on their own endpoint, not in the pull; a failed read
+///   projects from an empty list, which still cancels the legacy
+///   daily alarm and arms nothing rather than firing on a guess)
+///   and the LOCAL check-in toggle from [SettingsStore] — after a
+///   migration import that toggle is the imported value, which is
+///   why the import action runs this too.
 /// - `reconcileReminderAlarms` inputs: the profile's `reminders`
 ///   blob, parsed with the Reminders screen's own parser.
 ///
@@ -123,6 +132,7 @@ Future<void> performReminderResync({
   }
   final data = SettingsProfileData.fromPull(pull);
   final checkInEnabled = await settingsStore.getCheckInReminderEnabled();
+  final habits = await backend.fetchHabitsOrNull() ?? const [];
   await ReminderSync(notifications).syncAll(
     habitEnabled: data.habitReminderEnabled,
     projectEnabled: data.projectReminderEnabled,
@@ -131,6 +141,7 @@ Future<void> performReminderResync({
     focusTests: data.focusTests,
     checkedInDayLabels: data.checkedInDayLabels,
     streakState: data.streakState,
+    habits: habits,
     events: data.eventCounters
         .map(EventCounterItem.fromMap)
         .map((c) => EventReminderRequest(

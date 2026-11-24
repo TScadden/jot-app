@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/migraine_controller.dart';
 import 'package:tabs_lab/src/data/migraine_time_format.dart';
+import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/today_plan_store.dart';
@@ -99,6 +100,12 @@ class TodaySummaryCard extends StatefulWidget {
   /// Injectable for tests; production defaults are real instances.
   final TabsBackend? backend;
   final HealthConnectService? healthConnectService;
+
+  /// Reminder scheduling surface forwarded to the loader: a
+  /// habit check-off from this card re-projects the habit daily
+  /// aggregate reminder through it. Home passes its app-level
+  /// service; standalone mounts leave it null (no re-projection).
+  final ReminderNotificationService? notificationService;
   final TodayPlanStore? planStore;
   final TodaySummaryCache? summaryCache;
   final SessionStore? sessionStore;
@@ -170,6 +177,7 @@ class TodaySummaryCard extends StatefulWidget {
     this.planStore,
     this.summaryCache,
     this.sessionStore,
+    this.notificationService,
     this.migraineController,
     this.checkInBuilder,
     this.headerTrailing,
@@ -353,6 +361,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
       planStore: widget.planStore,
       cache: widget.summaryCache,
       sessionStore: widget.sessionStore,
+      notificationService: widget.notificationService,
     );
     _ownsMigraine = widget.migraineController == null;
     _migraine = widget.migraineController ??

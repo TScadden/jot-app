@@ -88,7 +88,13 @@ void main() {
         events: const [],
         now: DateTime(2026, 10, 12, 12),
       );
-      expect(fake.daily[ReminderIds.habit], '19:0');
+      // Habit daily fix: the aggregate habit reminder is no
+      // longer a daily either — with no habits list fed it arms
+      // nothing, and the legacy daily id is cancelled on every
+      // sync (the gated 19:00 projection is pinned in
+      // habit_daily_reminder_projection_test.dart).
+      expect(fake.daily.containsKey(ReminderIds.habit), isFalse);
+      expect(fake.cancelled, contains(ReminderIds.habit));
       expect(fake.daily.containsKey(ReminderIds.project), isFalse);
       expect(fake.cancelled, contains(ReminderIds.project));
       // VC 100138: check-in is no longer a daily — it is the
@@ -309,7 +315,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(backend.profilePushes,
           contains(equals({'habitReminderEnabled': true})));
-      expect(notifs.daily[ReminderIds.habit], '19:0');
+      // Habit daily fix: enabling the toggle no longer stands up
+      // the unconditional daily — the sync cancels the legacy id
+      // and arms only the gated projection (this fake backend
+      // serves no habits, so nothing projects).
+      expect(notifs.daily.containsKey(ReminderIds.habit), isFalse);
+      expect(notifs.cancelled, contains(ReminderIds.habit));
     });
 
     testWidgets('already-granted permission skips the dialog',

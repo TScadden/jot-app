@@ -10,6 +10,7 @@ import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/medication_change_events.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
+import 'package:tabs_lab/src/data/streak_engine.dart';
 
 /// Round 13 — authenticated reads against the Tabs backend.
 /// Round 18 — extended: full sync-pull cache, profile blobs, friends,
@@ -1201,6 +1202,70 @@ class TabsBackend {
   /// body on HTTP 200, null on any failure.
   Future<Map<String, dynamic>?> fetchFriendDetail(String friendId) =>
       _getJson('/api/friends/data/${Uri.encodeComponent(friendId)}');
+
+  // ── Friend Streaks (Design §4, Nov 23, 2026) ─────────────────────
+  //
+  // Session-auth endpoints mounted under `/api/friends/streaks`:
+  // - `GET /api/friends/streaks` → `{incoming, outgoingPending, pairs}`
+  // - `POST /api/friends/streaks/invite` `{friendId, clientTabsDate}`
+  // - `POST /api/friends/streaks/respond` `{pairId, accept, clientTabsDate}`
+  // - `POST /api/friends/streaks/remove` `{pairId}`
+
+  /// Friend Streaks payload from `GET /api/friends/streaks`.
+  /// Returns [FriendStreaksDto.empty] on any failure — see
+  /// [fetchFriendStreaksOrNull] for the failure-distinguishing variant
+  /// used by the FRIENDS tab to render its load-failure state.
+  Future<FriendStreaksDto> fetchFriendStreaks() async =>
+      await fetchFriendStreaksOrNull() ?? FriendStreaksDto.empty;
+
+  /// Nullable variant of [fetchFriendStreaks]: returns null when the
+  /// fetch itself failed (no token, transport error, non-200, or a
+  /// body without usable list fields), and the parsed payload only
+  /// when the server actually answered.
+  Future<FriendStreaksDto?> fetchFriendStreaksOrNull() async {
+    final body = await _getJson('/api/friends/streaks');
+    if (body == null) return null;
+    if (body['incoming'] is! List &&
+        body['outgoingPending'] is! List &&
+        body['pairs'] is! List) {
+      return null;
+    }
+    return FriendStreaksDto.fromJson(body);
+  }
+
+  /// Send a friend-streak invite via `POST /api/friends/streaks/invite`
+  /// with `{friendId, clientTabsDate}`. Returns the decoded body on
+  /// HTTP 200 (`{success: true, pairId, status}`), null on failure.
+  Future<Map<String, dynamic>?> inviteFriendStreak(
+    String friendId, {
+    String? clientTabsDate,
+  }) =>
+      _postJsonMap('/api/friends/streaks/invite', {
+        'friendId': friendId,
+        'clientTabsDate': clientTabsDate ?? tabsDayStr(DateTime.now()),
+      });
+
+  /// Respond to an incoming friend-streak invite via
+  /// `POST /api/friends/streaks/respond` with
+  /// `{pairId, accept, clientTabsDate}`. Returns the decoded body on
+  /// HTTP 200 (`{success: true, pairId, status}`), null on failure.
+  Future<Map<String, dynamic>?> respondFriendStreak(
+    String pairId,
+    bool accept, {
+    String? clientTabsDate,
+  }) =>
+      _postJsonMap('/api/friends/streaks/respond', {
+        'pairId': pairId,
+        'accept': accept,
+        'clientTabsDate': clientTabsDate ?? tabsDayStr(DateTime.now()),
+      });
+
+  /// Remove (end an active pair, or cancel a pending invite) via
+  /// `POST /api/friends/streaks/remove` with `{pairId}`. Returns the
+  /// decoded body on HTTP 200 (`{success: true, pairId, status}`),
+  /// null on failure.
+  Future<Map<String, dynamic>?> removeFriendStreak(String pairId) =>
+      _postJsonMap('/api/friends/streaks/remove', {'pairId': pairId});
 
   /// Round 48 — push coach sessions, mirroring native
   /// `SyncManager.syncCoachSessions` → `POST api/sync/coach_sessions`
@@ -3076,6 +3141,10 @@ class FriendNotificationDto {
   /// when it is non-null.
   final int? friendRequestId;
 
+  /// Profile picture id (`avatar_01`..`avatar_15`) of the sender when
+  /// present on the notification row (`senderAvatarId`).
+  final String? senderAvatarId;
+
   const FriendNotificationDto({
     required this.id,
     required this.type,
@@ -3085,9 +3154,11 @@ class FriendNotificationDto {
     this.senderNickname,
     this.senderTag,
     this.friendRequestId,
+    this.senderAvatarId,
   });
 
   factory FriendNotificationDto.fromJson(Map<String, dynamic> json) {
+    final rawAvatarId = json['senderAvatarId'] ?? json['avatarId'];
     return FriendNotificationDto(
       // Tolerant: server numbers may arrive as strings.
       id: TabsBackend._asInt(json['id']) ?? 0,
@@ -3098,10 +3169,14 @@ class FriendNotificationDto {
       senderNickname: json['senderNickname']?.toString(),
       senderTag: json['senderTag']?.toString(),
       friendRequestId: TabsBackend._asInt(json['friendRequestId']),
+      senderAvatarId:
+          (rawAvatarId is String && rawAvatarId.trim().isNotEmpty)
+              ? rawAvatarId
+              : null,
     );
   }
 
-  FriendNotificationDto copyWith({bool? isRead}) {
+  FriendNotificationDto copyWith({bool? isRead, String? senderAvatarId}) {
     return FriendNotificationDto(
       id: id,
       type: type,
@@ -3111,6 +3186,264 @@ class FriendNotificationDto {
       senderNickname: senderNickname,
       senderTag: senderTag,
       friendRequestId: friendRequestId,
+      senderAvatarId: senderAvatarId ?? this.senderAvatarId,
+    );
+  }
+}
+
+/// Friend Streaks (Design §4, Nov 23, 2026) — partner metadata nested
+/// inside [FriendStreakIncomingDto] and [FriendStreakPairDto].
+class FriendStreakPartnerDto {
+  final String userId;
+  final String nickname;
+  final String tag;
+  final String? avatarId;
+
+  const FriendStreakPartnerDto({
+    required this.userId,
+    required this.nickname,
+    required this.tag,
+    this.avatarId,
+  });
+
+  factory FriendStreakPartnerDto.fromJson(Map<String, dynamic> json) {
+    final rawAvatarId = json['avatarId'] ?? json['avatar_id'];
+    return FriendStreakPartnerDto(
+      userId: '${json['userId'] ?? json['id'] ?? ''}',
+      nickname: '${json['nickname'] ?? ''}',
+      tag: '${json['tag'] ?? ''}',
+      avatarId: (rawAvatarId is String && rawAvatarId.trim().isNotEmpty)
+          ? rawAvatarId
+          : null,
+    );
+  }
+
+  FriendStreakPartnerDto copyWith({
+    String? userId,
+    String? nickname,
+    String? tag,
+    String? avatarId,
+  }) {
+    return FriendStreakPartnerDto(
+      userId: userId ?? this.userId,
+      nickname: nickname ?? this.nickname,
+      tag: tag ?? this.tag,
+      avatarId: avatarId ?? this.avatarId,
+    );
+  }
+}
+
+/// Friend Streaks (Design §4) — one incoming invite row from
+/// `GET /api/friends/streaks` (`incoming[]`).
+class FriendStreakIncomingDto {
+  final String pairId;
+  final FriendStreakPartnerDto partner;
+  final String? createdAt;
+
+  const FriendStreakIncomingDto({
+    required this.pairId,
+    required this.partner,
+    this.createdAt,
+  });
+
+  String get userId => partner.userId;
+  String get nickname => partner.nickname;
+  String get tag => partner.tag;
+  String? get avatarId => partner.avatarId;
+
+  factory FriendStreakIncomingDto.fromJson(Map<String, dynamic> json) {
+    final rawPartner = json['partner'];
+    final partner = rawPartner is Map<String, dynamic>
+        ? FriendStreakPartnerDto.fromJson(rawPartner)
+        : FriendStreakPartnerDto.fromJson(json);
+    final rawCreated = json['createdAt'] ?? json['created_at'];
+    return FriendStreakIncomingDto(
+      pairId: '${json['pairId'] ?? json['id'] ?? ''}',
+      partner: partner,
+      createdAt: rawCreated?.toString(),
+    );
+  }
+
+  FriendStreakIncomingDto copyWith({
+    String? pairId,
+    FriendStreakPartnerDto? partner,
+    String? createdAt,
+  }) {
+    return FriendStreakIncomingDto(
+      pairId: pairId ?? this.pairId,
+      partner: partner ?? this.partner,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+}
+
+/// Friend Streaks (Design §4) — one active pair view from
+/// `GET /api/friends/streaks` (`pairs[]`).
+class FriendStreakPairDto {
+  final String pairId;
+  final FriendStreakPartnerDto partner;
+  final String status;
+  final int count;
+  final int best;
+  final bool viewerFinishedToday;
+  final bool partnerFinishedToday;
+  final String statusKind;
+
+  const FriendStreakPairDto({
+    required this.pairId,
+    required this.partner,
+    this.status = 'active',
+    this.count = 0,
+    this.best = 0,
+    this.viewerFinishedToday = false,
+    this.partnerFinishedToday = false,
+    this.statusKind = '',
+  });
+
+  String get userId => partner.userId;
+  String get nickname => partner.nickname;
+  String get tag => partner.tag;
+  String? get avatarId => partner.avatarId;
+
+  factory FriendStreakPairDto.fromJson(Map<String, dynamic> json) {
+    final rawPartner = json['partner'];
+    final partner = rawPartner is Map<String, dynamic>
+        ? FriendStreakPartnerDto.fromJson(rawPartner)
+        : FriendStreakPartnerDto.fromJson(json);
+    return FriendStreakPairDto(
+      pairId: '${json['pairId'] ?? json['id'] ?? ''}',
+      partner: partner,
+      status: '${json['status'] ?? 'active'}',
+      count: TabsBackend._asInt(json['count']) ?? 0,
+      best: TabsBackend._asInt(json['best']) ?? 0,
+      viewerFinishedToday: json['viewerFinishedToday'] == true,
+      partnerFinishedToday: json['partnerFinishedToday'] == true,
+      statusKind: '${json['statusKind'] ?? ''}',
+    );
+  }
+
+  FriendStreakPairDto copyWith({
+    String? pairId,
+    FriendStreakPartnerDto? partner,
+    String? status,
+    int? count,
+    int? best,
+    bool? viewerFinishedToday,
+    bool? partnerFinishedToday,
+    String? statusKind,
+  }) {
+    return FriendStreakPairDto(
+      pairId: pairId ?? this.pairId,
+      partner: partner ?? this.partner,
+      status: status ?? this.status,
+      count: count ?? this.count,
+      best: best ?? this.best,
+      viewerFinishedToday: viewerFinishedToday ?? this.viewerFinishedToday,
+      partnerFinishedToday: partnerFinishedToday ?? this.partnerFinishedToday,
+      statusKind: statusKind ?? this.statusKind,
+    );
+  }
+}
+
+/// Friend Streaks (Design §4) — full response envelope from
+/// `GET /api/friends/streaks`:
+/// `{ incoming: [...], outgoingPending: [friendId...], pairs: [pairView...] }`.
+class FriendStreaksDto {
+  final List<FriendStreakIncomingDto> incoming;
+  final List<String> outgoingPending;
+
+  /// Optional map of `friendId -> pairId` for outgoing pending invites
+  /// when the server or a local invite response provides a pairId,
+  /// enabling EDIT-mode cancellation via `POST /api/friends/streaks/remove`.
+  final Map<String, String> outgoingPendingPairIds;
+  final List<FriendStreakPairDto> pairs;
+
+  const FriendStreaksDto({
+    this.incoming = const [],
+    this.outgoingPending = const [],
+    this.outgoingPendingPairIds = const {},
+    this.pairs = const [],
+  });
+
+  static const FriendStreaksDto empty = FriendStreaksDto();
+
+  factory FriendStreaksDto.fromJson(Map<String, dynamic> json) {
+    final incoming = <FriendStreakIncomingDto>[];
+    final rawIncoming = json['incoming'];
+    if (rawIncoming is List) {
+      for (final item in rawIncoming) {
+        if (item is Map<String, dynamic>) {
+          try {
+            incoming.add(FriendStreakIncomingDto.fromJson(item));
+          } catch (_) {
+            // Skip malformed rows — never fail the whole payload.
+          }
+        }
+      }
+    }
+
+    final outgoingPending = <String>[];
+    final outgoingPairIds = <String, String>{};
+    final rawOutgoing = json['outgoingPending'];
+    if (rawOutgoing is List) {
+      for (final item in rawOutgoing) {
+        if (item is String && item.trim().isNotEmpty) {
+          outgoingPending.add(item);
+        } else if (item is Map<String, dynamic>) {
+          final partner = item['partner'];
+          final friendId = '${item['friendId'] ?? item['userId'] ?? (partner is Map ? partner['userId'] : '') ?? ''}';
+          final pairId = '${item['pairId'] ?? item['id'] ?? ''}';
+          if (friendId.isNotEmpty) {
+            outgoingPending.add(friendId);
+            if (pairId.isNotEmpty) outgoingPairIds[friendId] = pairId;
+          }
+        }
+      }
+    }
+
+    final pairs = <FriendStreakPairDto>[];
+    final rawPairs = json['pairs'];
+    if (rawPairs is List) {
+      for (final item in rawPairs) {
+        if (item is Map<String, dynamic>) {
+          try {
+            final dto = FriendStreakPairDto.fromJson(item);
+            // Design §7: ended pairs are never listed in active pairs.
+            // History statuses (ended / removed / declined) are not
+            // live pairs — the ended notification carries them, and
+            // the friend becomes invitable again.
+            if (dto.status != 'ended' &&
+                dto.status != 'removed' &&
+                dto.status != 'declined') {
+              pairs.add(dto);
+            }
+          } catch (_) {
+            // Skip malformed rows — never fail the whole payload.
+          }
+        }
+      }
+    }
+
+    return FriendStreaksDto(
+      incoming: incoming,
+      outgoingPending: outgoingPending,
+      outgoingPendingPairIds: outgoingPairIds,
+      pairs: pairs,
+    );
+  }
+
+  FriendStreaksDto copyWith({
+    List<FriendStreakIncomingDto>? incoming,
+    List<String>? outgoingPending,
+    Map<String, String>? outgoingPendingPairIds,
+    List<FriendStreakPairDto>? pairs,
+  }) {
+    return FriendStreaksDto(
+      incoming: incoming ?? this.incoming,
+      outgoingPending: outgoingPending ?? this.outgoingPending,
+      outgoingPendingPairIds:
+          outgoingPendingPairIds ?? this.outgoingPendingPairIds,
+      pairs: pairs ?? this.pairs,
     );
   }
 }
