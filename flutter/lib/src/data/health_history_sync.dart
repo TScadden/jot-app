@@ -455,9 +455,16 @@ class HealthHistorySync {
 
   /// Pure end-state derivation for a post-grant capture
   /// (Juno's binding conditions):
-  /// - any relevant leg returned rows → data came through;
-  /// - else, if the run did not complete or EVERY relevant leg
-  ///   failed → read failed;
+  /// - if the run did not complete → read failed (checked
+  ///   FIRST: a run that did not complete produced no evidence
+  ///   of its own, so no row count can belong to it — the
+  ///   row-count map is only reassigned at the end of a capture
+  ///   body that completes, and an incomplete run must never
+  ///   settle on a prior completed run's counts; Vera
+  ///   Condition 1 remainder);
+  /// - else, any relevant leg returned rows → data came
+  ///   through;
+  /// - else, if EVERY relevant leg failed → read failed;
   /// - else (at least one relevant leg read cleanly or
   ///   partially, none returned rows) → no data yet.
   /// A partial leg (real data, some chunks missing — e.g.
@@ -474,12 +481,12 @@ class HealthHistorySync {
     final relevant = relevantMetrics.isEmpty
         ? const {'restingHr', 'sleep', 'hrv', 'calories', 'spikes'}
         : relevantMetrics;
+    if (!ran) return PostGrantCaptureOutcome.readFailed;
     for (final m in relevant) {
       if ((rowCounts[m] ?? 0) > 0) {
         return PostGrantCaptureOutcome.dataCameThrough;
       }
     }
-    if (!ran) return PostGrantCaptureOutcome.readFailed;
     var anyRelevant = false;
     var allFailed = true;
     for (final m in relevant) {

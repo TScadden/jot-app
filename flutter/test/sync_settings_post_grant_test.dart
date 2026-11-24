@@ -109,6 +109,20 @@ class _OutcomeHc extends HealthConnectService {
       HcReadOutcome(value: const []);
 }
 
+/// HC fake whose resting-HR read THROWS (a bridge read that
+/// throws instead of returning an outcome) — the capture body
+/// does not complete, so `capture` returns false (`ran` is
+/// false) and the whole-map row-count assignment at run end
+/// never happens (Vera Condition 1 remainder probe shape).
+class _ThrowingRestingHrHc extends _OutcomeHc {
+  @override
+  Future<HcReadOutcome<List<({String date, int bpm})>>>
+      readRestingHrHistoryWithOutcome(int days) async {
+    restingHrCalls++;
+    throw StateError('bridge read failed');
+  }
+}
+
 void _failAllLegs(_OutcomeHc hc) {
   const code = 'PERMISSION_DENIED';
   hc.restingHrOutcome = HcReadOutcome(value: const [], errorCode: code);
@@ -313,6 +327,18 @@ void main() {
             relevantMetrics: {'spikes'},
           ),
           PostGrantCaptureOutcome.noDataYet);
+      // Vera Condition 1 remainder: an incomplete run (ran ==
+      // false) produced no evidence of its own — stale row
+      // counts from a prior completed run must never settle
+      // it as dataCameThrough.
+      expect(
+          HealthHistorySync.derivePostGrantOutcome(
+            ran: false,
+            evidence: {'restingHr': ev()},
+            rowCounts: {'restingHr': 3},
+            relevantMetrics: {'restingHr'},
+          ),
+          PostGrantCaptureOutcome.readFailed);
     });
   });
 
@@ -392,6 +418,38 @@ void main() {
       expect(outcome, PostGrantCaptureOutcome.noDataYet);
       expect(
           b.postGrantStatus.outcome, PostGrantCaptureOutcome.noDataYet);
+    });
+  });
+
+  group('incomplete run (Vera Condition 1 remainder)', () {
+    // Vera's delta re-review probe: _lastCaptureRowCounts is
+    // reassigned only at the end of a capture body that
+    // COMPLETES. A post-grant run that throws / does not
+    // complete never reassigns it, so it must never settle on
+    // a prior completed run's counts.
+    test(
+        'post-grant run whose relevant read throws derives '
+        'readFailed, never dataCameThrough from a prior run',
+        () async {
+      // Prior completed run with relevant rows (resting HR).
+      final hcA = _OutcomeHc()
+        ..restingHrOutcome = HcReadOutcome(
+            value: const [(date: '2026-11-23', bpm: 61)]);
+      final a = _sync(hcA, _fakeStore());
+      expect(await a.capture(force: true), isTrue);
+      expect(a.lastCaptureRowCounts['restingHr'], 1);
+
+      // Fresh instance B: its captureAfterGrant run's resting-HR
+      // read throws, so the capture does not complete.
+      final hcB = _ThrowingRestingHrHc();
+      final b = _sync(hcB, _fakeStore());
+      final outcome = await b.captureAfterGrant(relevantPermissions: {
+        'android.permission.health.READ_HEART_RATE',
+      });
+      expect(hcB.restingHrCalls, 1);
+      expect(outcome, PostGrantCaptureOutcome.readFailed);
+      expect(
+          b.postGrantStatus.outcome, PostGrantCaptureOutcome.readFailed);
     });
   });
 
