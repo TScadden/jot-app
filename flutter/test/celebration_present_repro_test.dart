@@ -412,6 +412,19 @@ void main() {
     testWidgets('(a) Today Summary sheet open (founder incident)',
         (tester) async {
       await pumpHomeParked(tester);
+      // Celebration-delay timing: the celebration is ALREADY
+      // presented (it no longer waits for the gated push), so
+      // Home sits offstage beneath it and the card cannot be
+      // tapped yet. The founder-incident shape — the sheet open
+      // when the fire lands — is covered by
+      // celebration_delay_repro_test.dart, which completes the
+      // day FROM the sheet. Here: verify the celebration landed,
+      // dismiss it, then run the sheet-open outcome checks.
+      expect(find.byType(StreakCelebrationScreen), findsOneWidget,
+          reason: '[today-sheet] celebration presented before the '
+              'sheet opens (presentation-first timing)');
+      navKey.currentState!.pop();
+      await _pumpReal(tester, rounds: 4);
       await tester.tap(find.byType(TodaySummaryCard));
       await _pumpReal(tester, rounds: 4);
       expect(find.text("Today's Plan"), findsOneWidget,
@@ -419,13 +432,26 @@ void main() {
       repo.openGate();
       await _pumpReal(tester);
       recordOutcome('today-sheet');
-      expectDesired('today-sheet');
+      // expectDesired asserts the celebration visible; it was
+      // verified above and dismissed, so assert the rest of the
+      // desired outcome here.
+      expect(GemService.instance.debugPending, isNotEmpty,
+          reason: '[today-sheet] the gem claim is queued, not eaten');
+      expect(StreakStore.instance.state!.countedDays,
+          contains(todayStr),
+          reason: '[today-sheet] the streak counted today');
+      final flame = tester.widgetList<StreakPillFlame>(flamesFinder());
+      expect(flame, isNotEmpty,
+          reason: '[today-sheet] streak pill flame present');
+      expect(flame.first.lit, isTrue,
+          reason: '[today-sheet] the pill is lit immediately');
     });
 
     testWidgets('(c) another route pushed on top of Home',
         (tester) async {
       await pumpHomeParked(tester);
-      final nav = Navigator.of(tester.element(find.byType(HomeScreen)));
+      final nav = Navigator.of(
+          tester.element(find.byType(HomeScreen, skipOffstage: false)));
       unawaited(nav.push(MaterialPageRoute<void>(
         builder: (_) => const Scaffold(body: Text('OTHER SCREEN')),
       )));

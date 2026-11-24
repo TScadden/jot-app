@@ -41,6 +41,7 @@ import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
+import 'package:tabs_lab/src/data/streak_engine.dart';
 import 'package:tabs_lab/src/data/streak_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/tabs_day.dart';
@@ -257,10 +258,45 @@ void main() {
       StreakCelebrationService.instance.debugReset();
       TabsDayBoundary.instance.debugCutoverAt = DateTime(2026, 11, 1);
       TabsBackend.debugResetSharedCaches();
+      final secureStore = <String, String>{
+        // Badges: mark the real today already evaluated so Home's
+        // app-open badge sync takes its retry-only path —
+        // otherwise the first-evaluation BadgeUnlockDialog opens
+        // over the card mid-test and eats the sheet tap (the
+        // 100162 harness never saw it: its control test consumed
+        // the one-time dialog in an earlier test of that file).
+        'badges_v1': jsonEncode({
+          'lastEvaluatedDay': tabsDayStr(DateTime.now()),
+          'evaluatedOnce': true,
+        }),
+      };
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
         const MethodChannel('plugins.it_nomads.com/flutter_secure_storage'),
-        (call) async => call.method == 'readAll' ? <String, String>{} : null,
+        (call) async {
+          final args = call.arguments is Map
+              ? (call.arguments as Map).cast<String, dynamic>()
+              : const <String, dynamic>{};
+          switch (call.method) {
+            case 'read':
+              return secureStore[args['key']];
+            case 'readAll':
+              return Map<String, String>.of(secureStore);
+            case 'write':
+              secureStore[args['key'] as String] =
+                  args['value'] as String;
+              return null;
+            case 'delete':
+              secureStore.remove(args['key']);
+              return null;
+            case 'deleteAll':
+              secureStore.clear();
+              return null;
+            case 'containsKey':
+              return secureStore.containsKey(args['key']);
+          }
+          return null;
+        },
       );
       final disk = <String, String>{};
       LogEntryOutbox.instance.debugSetStore(
