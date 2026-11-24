@@ -457,8 +457,22 @@ void main() {
       )));
       await _pumpReal(tester, rounds: 4);
       expect(find.text('OTHER SCREEN'), findsOneWidget);
+      // Celebration-delay timing: the celebration presented
+      // BEFORE this push (it no longer waits for the gated
+      // push), so it now sits in the stack UNDER the pushed
+      // route — held, not dropped. (The original (c) shape —
+      // fire lands while a route is already up, presenter pushes
+      // over it — is the same code path as (d)/(f) and the delay
+      // suites' sheet case.)
+      expect(
+          find.byType(StreakCelebrationScreen, skipOffstage: false),
+          findsOneWidget,
+          reason: '[pushed-route] the presented celebration is '
+              'held in the stack under the pushed route');
       repo.openGate();
       await _pumpReal(tester);
+      nav.pop();
+      await _pumpReal(tester, rounds: 4);
       recordOutcome('pushed-route');
       expectDesired('pushed-route');
     });

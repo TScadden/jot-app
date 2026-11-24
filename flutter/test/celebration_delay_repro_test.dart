@@ -419,7 +419,11 @@ void main() {
       await _pumpReal(tester, rounds: 24);
       await tester.ensureVisible(find.byType(TodaySummaryCard));
       await tester.pump();
-      await tester.tap(find.byType(TodaySummaryCard));
+      // Tap the card's HEADER (the title text): the sheet-open
+      // InkWell covers only the header region, not the whole
+      // card — a center tap lands on the progress bar and opens
+      // nothing.
+      await tester.tap(find.text('Today Summary'));
       await _pumpReal(tester, rounds: 6);
       expect(find.text("Today's Plan"), findsOneWidget,
           reason: 'the Today Summary sheet is open');
