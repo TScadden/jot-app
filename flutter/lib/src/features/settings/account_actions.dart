@@ -59,6 +59,28 @@ import 'package:tabs_lab/src/data/weekly_snapshot_cache.dart';
 /// previously had no production caller) — plus the Settings store
 /// and the backend's in-memory sync-pull cache, so no
 /// previous-account data can render for the next account.
+///
+/// Bounded sign-out (logout-sync fix, Nov 24, 2026): EVERY awaited
+/// leg of [logout] carries a bound, so sign-out visibly completes
+/// within ~5 s worst case even when a leg wedges — the pre-fix
+/// chain awaited the revoke and both storage clears unbounded, and
+/// one wedged secure-storage channel future parked logout forever
+/// behind a static dialog (Dad's Nov 24, 2026 report). The bounds:
+/// [flushTimeout] per outbox flush (the two flushes run
+/// concurrently), [revokeTimeout] on the revoke call (which
+/// [TabsBackend.logoutAccount] also bounds internally), and a
+/// per-leg bound on each wipe step in [_clearEverything] /
+/// [_clearDefaultCaches]. A leg that hits its bound degrades to
+/// background completion on the funnel's own unawaited precedent
+/// (see the LeanTestSessionStore note in [_clearDefaultCaches]):
+/// every store drops its in-memory / owner state synchronously
+/// when its clear starts, so the account boundary holds even when
+/// the storage future never lands, and a surviving disk blob
+/// stays owner-guarded. When a flush is abandoned at its bound,
+/// [LogEntryOutbox.beginSignOut] / [OnboardingSyncOutbox]'s twin
+/// close the H1 race: the abandoned run stops posting and stops
+/// mutating, so the F2 retain decision is made against a queue
+/// that can no longer change underneath it.
 class AccountActions {
   final TabsBackend _backend;
   final SessionStore _sessionStore;
@@ -81,49 +103,92 @@ class AccountActions {
         _usesDefaultCaches = clearCaches == null,
         _clearCaches = clearCaches ?? _clearDefaultCaches;
 
+  /// Per-flush bound in [logout]: each outbox gets this long to
+  /// confirm its queue before the retain decision is made without
+  /// it. The two flushes run concurrently, so the flush phase
+  /// costs at most this much wall-clock (the pre-fix code ran them
+  /// serially at 3 s each).
+  static const Duration flushTimeout = Duration(seconds: 2);
+
+  /// Bound on the best-effort server revoke in [logout]. The
+  /// backend bounds its own legs internally too
+  /// (TabsBackend.logoutStorageTimeout / logoutRequestTimeout);
+  /// this call-site bound is the envelope that guarantees the
+  /// sign-out deadline even if a future backend leg regresses.
+  static const Duration revokeTimeout = Duration(seconds: 2);
+
+  /// Per-leg bound for the session/settings clears in
+  /// [_clearEverything]: a wedged storage channel degrades that
+  /// leg to background completion instead of parking the wipe.
+  static const Duration wipeLegTimeout = Duration(seconds: 1);
+
+  /// Bound for the whole cache funnel leg in [_clearEverything].
+  static const Duration cachesLegTimeout =
+      Duration(milliseconds: 1500);
+
+  /// Per-step bound inside [_clearDefaultCaches]: one wedged
+  /// cache delete must not starve the steps behind it — each
+  /// step's in-memory drop has already run synchronously by the
+  /// time its future is awaited, so abandoning the await at this
+  /// bound loses nothing the account boundary depends on.
+  static const Duration cacheStepTimeout =
+      Duration(milliseconds: 500);
+
+  /// The in-flight [logout] run, if any (single-flight): a second
+  /// invocation while one is running joins it instead of running
+  /// the whole chain concurrently (the pre-fix dialog-dismiss +
+  /// re-tap and dialog + session-expiry overlaps did exactly
+  /// that).
+  Future<bool>? _logoutInFlight;
+
+  /// Awaits [future] up to [bound], swallowing every outcome —
+  /// the bounded-wipe-step primitive: the caller's step is
+  /// best-effort and fault-isolated by design, and a timeout
+  /// degrades it to background completion (the future itself
+  /// keeps running; its late completion or error harms nothing —
+  /// every wipe step guards its own residue by owner).
+  static Future<void> _bounded(Future<dynamic> future, Duration bound) async {
+    try {
+      await future.timeout(bound);
+    } catch (_) {}
+  }
+
   static Future<void> _clearDefaultCaches({
     bool retainUnconfirmedLogEntries = false,
   }) async {
     // Each cache isolated: one failing clear must not leave the
     // other caches holding the previous account's data (R29b).
-    try {
-      await HomeDataCache.instance.clear();
-    } catch (_) {}
-    try {
-      await QuickLogCache.instance.clear();
-    } catch (_) {}
+    // Logout-sync (Nov 24, 2026): each awaited step is also
+    // TIME-bounded via [_bounded] at [cacheStepTimeout] — one
+    // WEDGED clear (a storage future that never completes, the
+    // documented channel-wedge class) must not starve the steps
+    // behind it either. Every store below drops its in-memory /
+    // owner state synchronously when its clear starts, so the
+    // abandoned await degrades to background completion of the
+    // disk delete, and a surviving blob stays owner-guarded.
+    await _bounded(HomeDataCache.instance.clear(), cacheStepTimeout);
+    await _bounded(QuickLogCache.instance.clear(), cacheStepTimeout);
     // Optimistic logging (Oct 27, 2026): unconfirmed log entries
     // are account-bound health data — the wipe covers the outbox,
     // EXCEPT on the F2 retention path (logout / session expiry
     // with entries the server never confirmed), where the
     // owner-bound blob is retained for the same account's return.
-    try {
-      if (retainUnconfirmedLogEntries) {
-        await LogEntryOutbox.instance.retainUnconfirmed();
-      } else {
-        await LogEntryOutbox.instance.clear();
-      }
-    } catch (_) {}
-    try {
-      await HeartDataCache.instance.clear();
-    } catch (_) {}
-    try {
-      await TodaySummaryCache.instance.clear();
-    } catch (_) {}
-    try {
-      await TodayPlanStore.instance.clear();
-    } catch (_) {}
+    await _bounded(
+      retainUnconfirmedLogEntries
+          ? LogEntryOutbox.instance.retainUnconfirmed()
+          : LogEntryOutbox.instance.clear(),
+      cacheStepTimeout,
+    );
+    await _bounded(HeartDataCache.instance.clear(), cacheStepTimeout);
+    await _bounded(TodaySummaryCache.instance.clear(), cacheStepTimeout);
+    await _bounded(TodayPlanStore.instance.clear(), cacheStepTimeout);
     // Round 55: coach memory is account-bound device-local data —
     // the same wipe covers it.
-    try {
-      await CoachMemoryStore.instance.clear();
-    } catch (_) {}
+    await _bounded(CoachMemoryStore.instance.clear(), cacheStepTimeout);
     // Audit 4e (Oct 27, 2026): migraine attack records are
     // account-bound device-local health data — the same wipe
     // covers them, the in-progress attack included.
-    try {
-      await MigraineAttackStore.instance.clear();
-    } catch (_) {}
+    await _bounded(MigraineAttackStore.instance.clear(), cacheStepTimeout);
     // Phase 1 item 6: the lean-test session is account-bound
     // device-local health data — the same wipe covers it, with
     // the F1/F2 retention exception mirroring the outbox directly
@@ -159,15 +224,12 @@ class AccountActions {
     }
     // Vera 4e follow-up: wipe mid-attack must not orphan the
     // ongoing notification; its tap would load a wiped store.
-    try {
-      await LocalMigraineNotifier.cancelPostedAttack();
-    } catch (_) {}
+    await _bounded(
+        LocalMigraineNotifier.cancelPostedAttack(), cacheStepTimeout);
     // R70 fix pass (Vera F1 / Juno C1): the historical health store
     // is account-bound all-time health data — logout / account
     // deletion must leave none of it on device.
-    try {
-      await HealthHistoryStore.instance.clear();
-    } catch (_) {}
+    await _bounded(HealthHistoryStore.instance.clear(), cacheStepTimeout);
     // Daily Score server sync (Oct 28, 2026): the pending-push
     // queue is owner-stamped account data — the same wipe covers
     // it, and its generation bump aborts any in-flight hydration
@@ -177,9 +239,7 @@ class AccountActions {
     // so a retained queue would be the only surviving copy of a
     // departed account's health data (the migraine-store wipe
     // precedent governs).
-    try {
-      await DailyScoreSync.instance.clear();
-    } catch (_) {}
+    await _bounded(DailyScoreSync.instance.clear(), cacheStepTimeout);
     // H1-07: the medication change-event outbox is owner-stamped
     // account data too — the same wipe covers it on explicit
     // logout / account deletion. (Session EXPIRY deliberately
@@ -240,9 +300,8 @@ class AccountActions {
     } catch (_) {}
     // Round 65: cached extracted document text is account-bound
     // device-local medical text — the same wipe covers it.
-    try {
-      await KnowledgeExtractionStore.instance.clear();
-    } catch (_) {}
+    await _bounded(
+        KnowledgeExtractionStore.instance.clear(), cacheStepTimeout);
     // Round 52 — single widget-clear funnel: the HomeDataCache
     // clear at the top of this sequence IS the widget clear (it
     // fire-and-forgets WidgetSync.clear() — unawaited inside the
@@ -272,25 +331,67 @@ class AccountActions {
     try {
       _backend.invalidateSyncPull();
     } catch (_) {}
+    // Logout-sync (Nov 24, 2026): the three legs START together
+    // and are awaited under per-leg bounds. Starting a leg runs
+    // its synchronous prefix immediately — SessionStore.clear's
+    // first delete, every cache's in-memory reset, SettingsStore
+    // .clear's first delete — so all in-memory account state drops
+    // NOW, and a wedged channel future in any one leg degrades
+    // that leg to background completion instead of parking the
+    // legs behind it (the pre-fix sequential chain let one wedge
+    // starve every later clear, and the logout with it). The legs
+    // touch disjoint stores, and each remains fault-isolated
+    // exactly as in the sequential version (R29b): [_bounded]
+    // swallows throws and timeouts alike.
+    final sessionLeg = _startLeg(_sessionStore.clear, wipeLegTimeout);
+    final cachesLeg = _startLeg(
+      () => retainUnconfirmedLogEntries && _usesDefaultCaches
+          ? _clearDefaultCaches(retainUnconfirmedLogEntries: true)
+          : _clearCaches(),
+      cachesLegTimeout,
+    );
+    final settingsLeg = _startLeg(_settingsStore.clear, wipeLegTimeout);
+    await Future.wait([sessionLeg, cachesLeg, settingsLeg]);
+  }
+
+  /// Starts a wipe leg and bounds its await (see [_clearEverything]):
+  /// a synchronous throw from the step itself is fault-isolated
+  /// exactly like an asynchronous one.
+  static Future<void> _startLeg(
+    Future<void> Function() step,
+    Duration bound,
+  ) {
+    final Future<void> future;
     try {
-      await _sessionStore.clear();
-    } catch (_) {}
-    try {
-      if (retainUnconfirmedLogEntries && _usesDefaultCaches) {
-        await _clearDefaultCaches(retainUnconfirmedLogEntries: true);
-      } else {
-        await _clearCaches();
-      }
-    } catch (_) {}
-    try {
-      await _settingsStore.clear();
-    } catch (_) {}
+      future = step();
+    } catch (_) {
+      return Future<void>.value();
+    }
+    return _bounded(future, bound);
   }
 
   /// Native-parity logout. Always completes the local wipe (the server
   /// revoke is best-effort, exactly as native). Returns true when the
   /// server acknowledged the revoke.
-  Future<bool> logout() async {
+  ///
+  /// Single-flight (logout-sync fix): a second invocation while a
+  /// run is in flight JOINS it — the same future is returned, so
+  /// the chain (flushes, revoke, wipe) executes exactly once no
+  /// matter how many callers pile on (dialog confirm + session
+  /// expiry, a re-tap after a dismissed attempt, [resetAccountStatus]
+  /// racing a manual logout).
+  Future<bool> logout() {
+    final inFlight = _logoutInFlight;
+    if (inFlight != null) return inFlight;
+    late final Future<bool> future;
+    future = _logoutInternal().whenComplete(() {
+      if (identical(_logoutInFlight, future)) _logoutInFlight = null;
+    });
+    _logoutInFlight = future;
+    return future;
+  }
+
+  Future<bool> _logoutInternal() async {
     // Native push-first parity: give unconfirmed log entries their
     // last chance to reach the server before the token is revoked.
     // Best-effort, exactly like the revoke — and time-bounded, so a
@@ -300,32 +401,52 @@ class AccountActions {
     // (offline, timed out, threw) RETAINS the owner-bound blob for
     // the same account's return instead of wiping it silently; only
     // a fully confirmed flush earns the wipe.
-    var flushed = false;
-    try {
-      flushed = await LogEntryOutbox.instance
-          .flush(_backend)
-          .timeout(const Duration(seconds: 3), onTimeout: () => false);
-    } catch (_) {
-      flushed = false;
+    //
+    // Logout-sync (Nov 24, 2026): the two flushes are independent
+    // queues, so they run CONCURRENTLY under one [flushTimeout]
+    // bound each (the pre-fix serial 3 s + 3 s could alone exceed
+    // the whole sign-out budget).
+    Future<bool> flushBounded(Future<bool> flush) async {
+      try {
+        return await flush.timeout(flushTimeout, onTimeout: () => false);
+      } catch (_) {
+        return false;
+      }
     }
+
+    final results = await Future.wait([
+      flushBounded(LogEntryOutbox.instance.flush(_backend)),
+      flushBounded(OnboardingSyncOutbox.instance.flush(_backend)),
+    ]);
+    final flushed = results[0];
     // C-08: the same push-first chance for a staged onboarding
-    // finalize payload, on the same 3-second bound. The retain
-    // decision below is the OR of both flushes: either payload
-    // left unconfirmed keeps the wipe in retain mode, so neither
+    // finalize payload, on the same bound. The retain decision
+    // below is the OR of both flushes: either payload left
+    // unconfirmed keeps the wipe in retain mode, so neither
     // outbox's unconfirmed data is silently wiped on logout
     // (the F2 rule; lean-test retention already rides this same
     // flag).
-    var onboardingFlushed = false;
-    try {
-      onboardingFlushed = await OnboardingSyncOutbox.instance
-          .flush(_backend)
-          .timeout(const Duration(seconds: 3), onTimeout: () => false);
-    } catch (_) {
-      onboardingFlushed = false;
-    }
+    final onboardingFlushed = results[1];
+    // H1: the flush phase is over — confirmed, failed, or ABANDONED
+    // at the bound. From here the revoke runs and the retain
+    // decision is computed, so any flush run still in flight must
+    // stop posting and stop mutating its queue NOW (see
+    // [LogEntryOutbox.beginSignOut]): the retain decision below is
+    // then made against queues that can no longer change. When
+    // both flushes confirmed, no run is in flight and the bumps
+    // are no-ops for the wipe that follows (a flush that starts
+    // later captures the new generation and runs normally).
+    LogEntryOutbox.instance.beginSignOut();
+    OnboardingSyncOutbox.instance.beginSignOut();
+    // Bounded (logout-sync fix): the pre-fix revoke await had NO
+    // timeout — its unbounded secure-storage reads could park
+    // logout forever. The backend bounds its own legs internally;
+    // this envelope keeps the sign-out deadline regardless.
     var revoked = false;
     try {
-      revoked = await _backend.logoutAccount();
+      revoked = await _backend
+          .logoutAccount()
+          .timeout(revokeTimeout, onTimeout: () => false);
     } catch (_) {
       revoked = false;
     }
