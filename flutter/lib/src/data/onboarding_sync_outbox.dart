@@ -237,6 +237,7 @@ class OnboardingSyncOutbox {
     _loadFuture = null;
     _flushFuture = null;
     _generation++;
+    _signOutGeneration = 0;
   }
 
   OnboardingCategoriesSync? _categories;
@@ -256,6 +257,26 @@ class OnboardingSyncOutbox {
   /// removal paths re-check slot identity; the bump is the
   /// explicit marker, mirroring the medication outbox).
   int _generation = 0;
+
+  /// Sign-out generation (logout-sync fix, Nov 24, 2026 — H1):
+  /// bumped by [beginSignOut] together with [_generation] when a
+  /// sign-out abandons a flush at its timeout and proceeds to
+  /// revoke + retain. [_flushInternal] captures it at start and
+  /// re-checks before each slot flush, so an abandoned run posts
+  /// nothing further; the [_generation] bump additionally trips
+  /// the slot flushes' existing dispatch-window and (now)
+  /// post-landing re-checks, so a POST that lands after the bump
+  /// cannot remove its slot from the retained queue.
+  int _signOutGeneration = 0;
+
+  /// Marks the start of sign-out's revoke/retain phase: any flush
+  /// run already in flight is abandoned (see [_signOutGeneration]).
+  /// Synchronous and never throws — it only bumps the generations;
+  /// the abandoned run observes them at its next check.
+  void beginSignOut() {
+    _generation++;
+    _signOutGeneration++;
+  }
 
   bool get hasPending => _categories != null || _profile != null;
 
@@ -585,6 +606,8 @@ class OnboardingSyncOutbox {
   }
 
   Future<bool> _flushInternal(TabsBackend backend) async {
+    final signOutGenerationAtStart = _signOutGeneration;
+    bool signOutBegan() => _signOutGeneration != signOutGenerationAtStart;
     try {
       final owner = await _resolveOwner(backend);
       await _ensureLoaded(owner);
@@ -595,9 +618,14 @@ class OnboardingSyncOutbox {
       if (!_loaded) return false;
       await _enforceLoadedOwner(owner);
       if (!hasPending) return true;
+      // H1: sign-out may have begun during the load awaits above
+      // (this run was abandoned at the caller's timeout) — post
+      // nothing into the revoke/retain phase.
+      if (signOutBegan()) return false;
       if (_categories != null) {
         await _flushCategories(backend);
       }
+      if (signOutBegan()) return false;
       if (_profile != null) {
         await _flushProfile(backend);
       }
@@ -679,8 +707,11 @@ class OnboardingSyncOutbox {
     if (!appended) {
       // Every addition is already on the server: delivery is
       // proven without a post (which would be a full-list
-      // replace for no gain).
-      if (identical(_categories, slot)) {
+      // replace for no gain). H1: not after sign-out began — the
+      // retained queue must stay exactly as the retain decision
+      // found it (the generation re-check is the same one the
+      // dispatch window below uses).
+      if (identical(_categories, slot) && generation == _generation) {
         _categories = null;
         await _persistQueue();
       }
@@ -716,8 +747,13 @@ class OnboardingSyncOutbox {
     if (!ok) return;
     backend.invalidateSyncPull();
     // Remove only if the slot is still the one we flushed — a
-    // restage mid-flight keeps its newer payload queued.
-    if (identical(_categories, attempted)) {
+    // restage mid-flight keeps its newer payload queued. H1: a
+    // sign-out that began while the POST was on the wire also
+    // keeps the slot — the post may have landed, but the retain
+    // decision owns the queue now, and the same account's next
+    // flush replays the merge additively (a no-op union when the
+    // additions already landed), so retention cannot duplicate.
+    if (identical(_categories, attempted) && generation == _generation) {
       _categories = null;
       await _persistQueue();
     }
@@ -779,8 +815,9 @@ class OnboardingSyncOutbox {
     if (payload.isEmpty) {
       // Every field is either already applied or superseded by
       // a newer server value: the slot's delivery obligation is
-      // discharged without a post.
-      if (identical(_profile, slot)) {
+      // discharged without a post. H1: not after sign-out began
+      // (see the categories twin above).
+      if (identical(_profile, slot) && generation == _generation) {
         _profile = null;
         await _persistQueue();
       }
@@ -810,7 +847,13 @@ class OnboardingSyncOutbox {
       ok = false;
     }
     if (!ok) return;
-    if (identical(_profile, attempted)) {
+    // H1: same post-landing guard as [_flushCategories] — a
+    // sign-out that began while the POST was on the wire keeps
+    // the slot for the retain decision; the recency-guarded
+    // replay on the same account's return cannot clobber a
+    // value this post already landed (it only sends into
+    // still-empty fields).
+    if (identical(_profile, attempted) && generation == _generation) {
       _profile = null;
       await _persistQueue();
     }

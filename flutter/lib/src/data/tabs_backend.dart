@@ -216,6 +216,19 @@ class TabsBackend {
   static const Duration refreshStorageTimeout = Duration(seconds: 10);
   static const Duration refreshAwaitTimeout = Duration(seconds: 45);
 
+  /// Logout bounds (logout-sync fix, Nov 24, 2026): [logoutAccount]
+  /// is a best-effort revoke on the sign-out path, where the caller
+  /// (AccountActions) runs under a seconds-scale deadline — the
+  /// refresh path's 10 s storage bound is far too generous there,
+  /// and the pre-fix code bounded NEITHER storage read at all, so
+  /// one wedged secure-storage channel parked logout forever. A
+  /// local storage read is normally sub-second; 1 s is ample. The
+  /// request bound covers the no-refresh leg's token read plus its
+  /// POST (whose own transport timeout is the shared 20 s — far
+  /// beyond what a best-effort revoke may hold sign-out for).
+  static const Duration logoutStorageTimeout = Duration(seconds: 1);
+  static const Duration logoutRequestTimeout = Duration(seconds: 2);
+
   /// Round 18 — in-memory cache for the (large) sync pull so the 16
   /// tools share one fetch per session window instead of each firing
   /// their own. Same stale-while-revalidate spirit as the weather
@@ -2561,15 +2574,30 @@ class TabsBackend {
   Future<bool> logoutAccount() async {
     String? refresh;
     try {
-      refresh = await _sessionStore.readRefreshToken();
+      // Bounded (logout-sync fix): a wedged secure-storage channel
+      // must degrade this best-effort revoke to "not revoked",
+      // never park sign-out — see [logoutStorageTimeout].
+      refresh = await _sessionStore
+          .readRefreshToken()
+          .timeout(logoutStorageTimeout);
     } catch (_) {
       refresh = null;
     }
     if (refresh == null || refresh.isEmpty) return false;
     // Round 31 — logout is a PUBLIC auth endpoint in the native
     // interceptor: it must NOT go through the 401→refresh path.
-    return _postJson('/api/auth/logout', {'refreshToken': refresh},
-        allowRefresh: false);
+    // Bounded as a whole (logout-sync fix): the no-refresh leg's
+    // own token read is unbounded and its POST allows 20 s; the
+    // wrap caps both at [logoutRequestTimeout]. A timeout is a
+    // failed revoke — the caller proceeds with the local wipe
+    // exactly as for any other revoke failure.
+    try {
+      return await _postJson('/api/auth/logout', {'refreshToken': refresh},
+              allowRefresh: false)
+          .timeout(logoutRequestTimeout);
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Round 29 — permanent account deletion, mirroring native

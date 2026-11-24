@@ -7280,63 +7280,121 @@ class _SettingsScreenState extends State<SettingsScreen>
     await showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          backgroundColor: NotelColors.surface,
-          title: const Text('Logout?',
-              style: TextStyle(
-                  color: NotelColors.textPrimary,
-                  fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                loggingOut
-                    ? 'Saving and syncing your data to the cloud...'
-                    : 'Your data will be synced to the cloud before logging out.',
-                style: const TextStyle(color: NotelColors.textPrimary),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Note: saving and syncing everything to the server may take a minute or two depending on how much data you have. Please keep the app open.',
+        // Logout-sync (Nov 24, 2026): while signing out, the
+        // dialog cannot be dismissed — neither the system back
+        // button nor a barrier tap may pop it into a silent
+        // half-state (the pre-fix dialog could be backed out of
+        // mid-chain, and every re-tap restarted the whole
+        // unbounded wait from zero). The wait itself is bounded
+        // (AccountActions), so the lockout lasts seconds at most.
+        builder: (ctx, setLocal) => PopScope(
+          canPop: !loggingOut,
+          child: AlertDialog(
+            backgroundColor: NotelColors.surface,
+            title: const Text('Logout?',
                 style: TextStyle(
-                    color: NotelColors.textSecondary, fontSize: 13),
+                    color: NotelColors.textPrimary,
+                    fontWeight: FontWeight.bold)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (loggingOut)
+                  // Real feedback from the first frame of the wait
+                  // (the pre-fix dialog's only feedback was a
+                  // one-time static text swap — no spinner — which
+                  // read as a dead button). Copy is Juno-signed in
+                  // JUNO-COPY.md (Nov 24, 2026): the working line
+                  // names only the sign-out itself, which completes
+                  // within seconds under every outcome.
+                  const Row(
+                    children: [
+                      SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: NotelColors.primary,
+                        ),
+                      ),
+                      SizedBox(width: 12),
+                      Text(
+                        'Signing out...',
+                        style: TextStyle(color: NotelColors.textPrimary),
+                      ),
+                    ],
+                  )
+                else ...[
+                  // Idle body + note, Juno-signed verbatim in
+                  // JUNO-COPY.md (Nov 24, 2026): the body promises
+                  // only the sign-out itself; the note states the
+                  // bounded wait and the on-device retention
+                  // outcome for entries that have not synced yet.
+                  const Text(
+                    "You'll be signed out of this account on this device.",
+                    style: TextStyle(color: NotelColors.textPrimary),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    "This only takes a few seconds. Anything that hasn't synced yet stays saved on this device and syncs the next time you sign in.",
+                    style: TextStyle(
+                        color: NotelColors.textSecondary, fontSize: 14),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              // Cancel disappears once signing out starts (it was
+              // merely disabled pre-fix, beside a dead-looking
+              // dialog); the bounded chain completes on its own.
+              if (!loggingOut)
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Cancel',
+                      style: TextStyle(color: NotelColors.textSecondary)),
+                ),
+              TextButton(
+                key: const ValueKey('confirm_logout'),
+                onPressed: loggingOut
+                    ? null
+                    : () async {
+                        setLocal(() => loggingOut = true);
+                        // Flush a Personal Context edit still inside
+                        // its 3 s debounce before the wipe, or the edit
+                        // would be lost on an immediate logout (R29b).
+                        // Bounded (logout-sync fix): the push is
+                        // best-effort before the wipe — its loss
+                        // semantics are R29b's (a profile push that
+                        // does not land is superseded by the next
+                        // session's state) — so a stalled push must
+                        // not hold sign-out hostage; on timeout the
+                        // logout proceeds without it.
+                        try {
+                          await _flushPendingContextEdit().timeout(
+                            const Duration(seconds: 2),
+                            onTimeout: () => false,
+                          );
+                        } catch (_) {
+                          // A failed flush never blocks logout.
+                        }
+                        try {
+                          await _actions.logout();
+                        } catch (_) {
+                          // AccountActions isolates every wipe step, so
+                          // this is only a last-resort guard: even an
+                          // unexpected wipe error must still complete
+                          // the flow and fire onLogout rather than
+                          // wedging this dialog in its logging-out
+                          // state (R29b Vera fix).
+                        }
+                        if (ctx.mounted) Navigator.of(ctx).pop();
+                        widget.onLogout?.call();
+                      },
+                child: const Text('Logout',
+                    style: TextStyle(color: NotelColors.primary)),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: loggingOut ? null : () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel',
-                  style: TextStyle(color: NotelColors.textSecondary)),
-            ),
-            TextButton(
-              key: const ValueKey('confirm_logout'),
-              onPressed: loggingOut
-                  ? null
-                  : () async {
-                      setLocal(() => loggingOut = true);
-                      // Flush a Personal Context edit still inside
-                      // its 3 s debounce before the wipe, or the edit
-                      // would be lost on an immediate logout (R29b).
-                      await _flushPendingContextEdit();
-                      try {
-                        await _actions.logout();
-                      } catch (_) {
-                        // AccountActions isolates every wipe step, so
-                        // this is only a last-resort guard: even an
-                        // unexpected wipe error must still complete
-                        // the flow and fire onLogout rather than
-                        // wedging this dialog in its logging-out
-                        // state (R29b Vera fix).
-                      }
-                      if (ctx.mounted) Navigator.of(ctx).pop();
-                      widget.onLogout?.call();
-                    },
-              child: Text(loggingOut ? 'Saving...' : 'Logout',
-                  style: const TextStyle(color: NotelColors.primary)),
-            ),
-          ],
         ),
       ),
     );
