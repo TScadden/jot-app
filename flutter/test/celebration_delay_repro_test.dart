@@ -375,8 +375,16 @@ void main() {
       expect(find.byType(StreakCelebrationScreen), findsNothing);
 
       // Open the Today Summary sheet and find the habit row.
+      // Pump well past the staggered entrance first (the card
+      // slides in; a tap at its layout center mid-entrance hits
+      // whatever is painted there instead — the 100162 repro
+      // harness pumps for seconds before tapping for this
+      // reason).
+      await _pumpReal(tester, rounds: 24);
+      await tester.ensureVisible(find.byType(TodaySummaryCard));
+      await tester.pump();
       await tester.tap(find.byType(TodaySummaryCard));
-      await _pumpReal(tester, rounds: 4);
+      await _pumpReal(tester, rounds: 6);
       expect(find.text("Today's Plan"), findsOneWidget,
           reason: 'the Today Summary sheet is open');
       expect(find.text('Stretch'), findsOneWidget,

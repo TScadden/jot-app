@@ -150,6 +150,19 @@ class TodaySummaryCard extends StatefulWidget {
   final String? checkInScoredSemantics;
   final String? checkInAnnouncement;
 
+  /// Celebration-delay fix (Nov 23, 2026) — invoked after each
+  /// plan write LANDS through the card's action chain (habit
+  /// toggle, reminder toggle, med action: every completing write
+  /// funnels through `_enqueueAction`). Home passes this so a
+  /// write from THIS surface queues a Home completion evaluation
+  /// immediately: before this seam, the card's writes bypassed
+  /// Home's outbox listener and no other Home trigger knew the
+  /// plan had changed, so the last completing tap's celebration
+  /// waited for an incidental trigger (load / resume / an
+  /// unrelated log commit). Null on standalone mounts — the card
+  /// then behaves exactly as before.
+  final VoidCallback? onPlanActionLanded;
+
   const TodaySummaryCard({
     super.key,
     this.backend,
@@ -163,6 +176,7 @@ class TodaySummaryCard extends StatefulWidget {
     this.checkInScoredLine,
     this.checkInScoredSemantics,
     this.checkInAnnouncement,
+    this.onPlanActionLanded,
   });
 
   @override
@@ -822,6 +836,12 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
         // or surface as a crash; the drain reload below (or the
         // next mount's load) re-reads the truth.
       }
+      // Celebration-delay fix: the write has landed (or failed —
+      // a failed write simply evaluates against unchanged
+      // evidence and fires nothing). Notify the host NOW, before
+      // the drain reload, so a completing write queues its Home
+      // completion evaluation at the earliest honest moment.
+      widget.onPlanActionLanded?.call();
       _queuedActions--;
       if (_queuedActions == 0) {
         try {
