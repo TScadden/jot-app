@@ -168,33 +168,55 @@ class HealthRepository {
       // one throw poisoned all three assignments after the await.
       // A type whose gate closed never enters the wait at all —
       // its slot in the results is its honest empty value.
+      //
+      // Heart store-first fix (Nov 24, 2026): the HR read runs
+      // FIRST and completes before the cal/sleep wait starts. It
+      // now enters through the outcome bridge, whose slot gate
+      // (for subclass-override reads) clears the shared diagnostic
+      // slots when its frame runs — if that frame straddled the
+      // parallel bundle, its clear could land AFTER a sibling's
+      // synchronous slot write and wipe this load's wedge
+      // evidence before the coreReadWedged derivation below reads
+      // it. HR is the long pole of the three reads and the other
+      // two are single aggregate queries, so the overlap given up
+      // is the two fast reads only; their own parallelism is
+      // unchanged.
+      final hrOutcome = hrAttempt
+          ? await _hrOutcomeOrEmpty(today)
+          : HcReadOutcome<List<HrSample>>(value: const <HrSample>[]);
       final reads = await Future.wait<Object?>([
-        hrAttempt
-            ? _hrSamplesOrEmpty(today)
-            : Future<Object?>.value(const <HrSample>[]),
         calAttempt ? _caloriesOrNull(today) : Future<Object?>.value(null),
         sleepAttempt ? _sleepOrNull(today) : Future<Object?>.value(null),
       ]);
-      final hrSamples = reads[0] as List<HrSample>;
+      final hrSamples = hrOutcome.value;
       // Perf package (Nov 2, 2026) — write-through: this load just
       // paid the full raw-day HR read; share the series with the
       // Heart screen through its cache (memory only here — the
       // Heart screen persists its own loads, so this path never
       // writes an ownerless disk blob). A Heart open within the
       // cache's fresh window then needs NO Health Connect read at
-      // all. Only a clean read writes through: the service records
-      // a failure code on any failed read, and a PARTIAL read
-      // records its own separate code (lastPartialErrorCode —
-      // deliberately kept apart from lastReadErrorCode per the F2
-      // rule, so partial data is never discarded as an outage).
-      // The gate must require BOTH codes null: a partial series
-      // has chunks missing, so it must never become the cache's
+      // all. Only a clean read writes through: a failure code on
+      // the read, or a PARTIAL code (deliberately kept apart from
+      // the failure code per the F2 rule, so partial data is never
+      // discarded as an outage), blocks it — a partial series has
+      // chunks missing, so it must never become the cache's
       // "fresh" data or be painted as complete (the cache itself
       // also refuses to stamp failed applies). The zero rule is
       // re-applied inside the cache's apply.
+      //
+      // Heart store-first fix (Nov 24, 2026): the gate now claims
+      // the HR read's OWN outcome object instead of the shared
+      // slot fields (lastReadErrorCode / lastPartialErrorCode).
+      // All three reads share one service instance and every
+      // sibling read writes those same slots, so any sibling
+      // failure or partial landing after the HR read silently
+      // skipped this write-through while Home still rendered HR
+      // from the samples it held — Home showed HR 64 the same
+      // morning the Heart cache stayed empty. The outcome travels
+      // with its own read and cannot be dirtied by a sibling.
       if (hrAttempt &&
-          hc.lastReadErrorCode == null &&
-          hc.lastPartialErrorCode == null) {
+          hrOutcome.errorCode == null &&
+          hrOutcome.partialCode == null) {
         try {
           HeartDataCache.instance.apply(today, hrSamples);
         } catch (_) {
@@ -215,10 +237,10 @@ class HealthRepository {
               false) &&
           attemptedStates.every((s) => s == HcGrantState.full);
       heartRate = daytimeHeartRateAvg(hrSamples);
-      final cal = reads[1] as int?;
+      final cal = reads[0] as int?;
       // Biometric 0 = failed read → null, never shown/averaged.
       activeCalories = (cal != null && cal > 0) ? cal : null;
-      final sleep = reads[2] as int?;
+      final sleep = reads[1] as int?;
       sleepMinutes = (sleep != null && sleep > 0) ? sleep : null;
     } catch (_) {
       // Nulls stand — the UI shows "--".
@@ -244,11 +266,20 @@ class HealthRepository {
   /// Round 60 fix (Vera blocker) — per-read error isolation for the
   /// parallel vitals reads: a throwing read becomes its honest
   /// empty value instead of failing the whole [Future.wait].
-  Future<List<HrSample>> _hrSamplesOrEmpty(String today) async {
+  ///
+  /// Heart store-first fix: the HR leg reads through the
+  /// outcome-carrying variant so its caller claims the read's OWN
+  /// outcome (see the write-through gate in [loadTodayVitals]). A
+  /// throwing read degrades to a failed outcome carrying no
+  /// samples — never a clean outcome — so the gate stays closed
+  /// exactly as a thrown legacy read kept it closed.
+  Future<HcReadOutcome<List<HrSample>>> _hrOutcomeOrEmpty(
+      String today) async {
     try {
-      return await hc.readHeartRateSamples(today);
+      return await hc.readHeartRateSamplesWithOutcome(today);
     } catch (_) {
-      return const [];
+      return HcReadOutcome<List<HrSample>>(
+          value: const [], errorCode: 'HR_SAMPLES_READ_FAILED');
     }
   }
 
