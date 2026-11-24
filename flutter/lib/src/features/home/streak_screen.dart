@@ -11,6 +11,7 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/streak_purchase.dart';
 import 'package:tabs_lab/src/data/streak_store.dart';
 import 'package:tabs_lab/src/data/widget_sync.dart';
+import 'package:tabs_lab/src/features/home/friend_streak_invite_screen.dart';
 import 'package:tabs_lab/src/features/home/streak_flame.dart';
 import 'package:tabs_lab/src/widgets/user_avatar.dart';
 import 'package:tabs_lab/src/features/home/streak_share_card.dart';
@@ -1049,7 +1050,64 @@ class _StreakScreenState extends State<StreakScreen> {
   }
 
   Future<void> _openInvitePicker() async {
-    // Wired in Step 3 to open FriendStreakInviteScreen.
+    final streaks = _friendStreaks ?? FriendStreaksDto.empty;
+    final activePartnerIds = <String>{
+      for (final pair in streaks.pairs)
+        if (pair.status != 'ended' && pair.userId.isNotEmpty) pair.userId,
+    };
+    final outgoingPending = <String>{
+      ...streaks.outgoingPending,
+    };
+
+    await Navigator.of(context).push(
+      SlidePageRoute<void>(
+        builder: (_) => FriendStreakInviteScreen(
+          now: now,
+          backend: widget.backend,
+          initialFriends: _friends,
+          friendsLoader: () async {
+            final loader =
+                widget.friendsLoader ?? () => _backend.fetchFriendsList();
+            final loaded = await loader();
+            if (mounted) {
+              setState(() => _friends = List<FriendDto>.of(loaded));
+            }
+            return loaded;
+          },
+          initialOutgoingPending: outgoingPending,
+          activePartnerIds: activePartnerIds,
+          onInviteFriend: widget.onInviteFriendStreak != null
+              ? (friendId, _) => widget.onInviteFriendStreak!(friendId)
+              : null,
+          onInvited: (friendId, {pairId, friend}) {
+            if (!mounted) return;
+            final latest = _friendStreaks ?? FriendStreaksDto.empty;
+            final nextOutgoing = List<String>.of(latest.outgoingPending);
+            if (!nextOutgoing.contains(friendId)) {
+              nextOutgoing.add(friendId);
+            }
+            final nextPairIds = Map<String, String>.of(
+              latest.outgoingPendingPairIds,
+            );
+            if (pairId != null && pairId.isNotEmpty) {
+              nextPairIds[friendId] = pairId;
+            }
+            setState(() {
+              if (friend != null && _friends != null) {
+                final exists = _friends!.any((f) => f.id == friend.id);
+                if (!exists) {
+                  _friends = [..._friends!, friend];
+                }
+              }
+              _friendStreaks = latest.copyWith(
+                outgoingPending: nextOutgoing,
+                outgoingPendingPairIds: nextPairIds,
+              );
+            });
+          },
+        ),
+      ),
+    );
   }
 
   Widget _friendsTab() {
