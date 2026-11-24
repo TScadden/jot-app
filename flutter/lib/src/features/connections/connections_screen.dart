@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/data/health_history_sync.dart';
 import 'package:tabs_lab/src/features/connections/health_connect_disclosure.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
@@ -125,12 +126,24 @@ class IosHealthCopy {
       'notes in Tabs still work.';
 }
 
-class _ConnectionsScreenState extends State<ConnectionsScreen> {
+class _ConnectionsScreenState extends State<ConnectionsScreen>
+    with WidgetsBindingObserver {
   late final HealthConnectService _service;
   HealthConnectStatus? _status;
   bool _persistedConnected = false;
   bool _requesting = false;
   String? _error;
+
+  /// Sync-settings package (Nov 23, 2026) — the last-known
+  /// granted permission set, so a permission request can tell
+  /// NEWLY granted types from ones already held (only a new
+  /// grant triggers the post-grant capture). Updated from
+  /// every probe snapshot and every request result.
+  Set<String> _grantedPermissions = const {};
+
+  /// True while THIS screen's post-grant capture runs — the
+  /// row mirrors the working state (Juno Part 2, Item 1).
+  bool _postGrantCapturing = false;
 
   /// Chunk 5 — the iOS availability snapshot. Null until the first
   /// probe lands (the iOS body renders its loading row meanwhile).
@@ -170,7 +183,24 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
   void initState() {
     super.initState();
     _service = widget.healthConnectService ?? HealthConnectService();
+    // Sync-settings package: re-probe on resume — a grant made
+    // in the system Health Connect UI while this screen sat
+    // underneath it must show on return, not on re-entry.
+    WidgetsBinding.instance.addObserver(this);
     _loadStatus();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadStatus();
+    }
   }
 
   /// Phase 2 PR-2 — derives every presented state from ONE
@@ -185,6 +215,8 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
   /// [_onConnectTap]) when the snapshot itself is a known state.
   void _applySnapshot(HcAvailability snapshot, {String? errorOverride}) {
     _persistedConnected = snapshot.persistedConnected;
+    final granted = snapshot.grantedPermissions;
+    if (granted != null) _grantedPermissions = granted;
     if (snapshot.staleWedged) {
       // Stale grant (Juno ruling #3/#5): the live probe was
       // blocked, so the row tells the truth — "Connection
@@ -269,6 +301,12 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
     try {
       final granted = await _service.requestPermissions();
       if (!mounted) return;
+      // Sync-settings package: a NEWLY granted type triggers
+      // the post-grant capture (see
+      // [HealthHistorySync.captureAfterGrant]) — the grant
+      // alone never synced anything before this package.
+      final newlyGranted = granted.difference(_grantedPermissions);
+      _grantedPermissions = granted;
       setState(() {
         _requesting = false;
         _staleGrant = false;
@@ -285,6 +323,15 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
               HealthConnectService.missingPermissionLabels(granted);
         }
       });
+      if (newlyGranted.isNotEmpty) {
+        // The working state mirrors on this row while the
+        // capture runs; the end state lands on the shared
+        // post-grant status (Settings' card renders it).
+        setState(() => _postGrantCapturing = true);
+        await HealthHistorySync.instance
+            .captureAfterGrant(relevantPermissions: newlyGranted);
+        if (mounted) setState(() => _postGrantCapturing = false);
+      }
     } on HealthConnectException catch (e) {
       // requestPermissions() may still throw — including the
       // stale-grant code when its internal read probe is blocked.
@@ -699,6 +746,35 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
                   color: NotelColors.error,
                   fontSize: 13,
                 ),
+              ),
+            ],
+            // Sync-settings package — the post-grant working
+            // state, mirrored here while the capture this
+            // screen triggered runs (Juno Part 2, Item 1,
+            // verbatim). The end states render on Settings'
+            // Connected Apps card from the shared post-grant
+            // status.
+            if (_postGrantCapturing) ...[
+              const SizedBox(height: 12),
+              const Row(
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: NotelColors.primary,
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  Text(
+                    'Reading your health data now.',
+                    style: TextStyle(
+                      color: NotelColors.textSecondary,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
               ),
             ],
             // HRV grant visibility: a partial grant names the data

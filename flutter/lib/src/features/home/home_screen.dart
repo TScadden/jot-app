@@ -2948,6 +2948,13 @@ class _HomeScreenState extends State<HomeScreen>
           _hcRepairSecondStep = true;
         });
       case HcRepairOutcome.cleared:
+        // Sync-settings package (Nov 23, 2026) — a cleared
+        // repair is a fresh grant state: run the post-grant
+        // capture (force — never floored/throttled out by the
+        // run that wedged) alongside the reload.
+        unawaited(HealthHistorySync.instance.captureAfterGrant(
+            relevantPermissions:
+                HealthConnectService.requiredPermissions));
         await _loadHealthData();
         if (!mounted) return;
         setState(() => _hcRepairError = null);

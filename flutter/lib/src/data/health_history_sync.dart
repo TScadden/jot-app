@@ -92,6 +92,42 @@ class CaptureMetricEvidence {
   });
 }
 
+/// Sync-settings package (Nov 23, 2026) — the honest end state
+/// of the FIRST capture after a new Health Connect grant, for
+/// the Settings Connected Apps card and the Connections row
+/// (Juno's binding show conditions, JUNO-COPY.md Part 2):
+/// - [dataCameThrough]: the capture finished and data of a
+///   newly granted kind actually came through;
+/// - [noDataYet]: the capture's reads succeeded but Health
+///   Connect held no data of that kind;
+/// - [readFailed]: the capture's relevant reads failed.
+enum PostGrantCaptureOutcome { dataCameThrough, noDataYet, readFailed }
+
+/// Lifecycle of a post-grant capture (see
+/// [HealthHistorySync.captureAfterGrant]).
+enum PostGrantCapturePhase { idle, running, settled }
+
+/// The shared post-grant capture status: written by whichever
+/// host ran the post-grant capture, read by the Settings
+/// Connected Apps card and the Connections row so both surfaces
+/// tell the same story about the same run.
+class PostGrantCaptureStatus {
+  final PostGrantCapturePhase phase;
+
+  /// Non-null only when [phase] is settled.
+  final PostGrantCaptureOutcome? outcome;
+
+  /// The permissions the capture was run for (the newly granted
+  /// set's relevant subset, as passed by the host).
+  final Set<String> relevantPermissions;
+
+  const PostGrantCaptureStatus({
+    required this.phase,
+    this.outcome,
+    this.relevantPermissions = const {},
+  });
+}
+
 class HealthHistorySync {
   static const Duration throttle = Duration(hours: 6);
 
@@ -191,7 +227,20 @@ class HealthHistorySync {
   /// (see the factory doc). Null = sync off.
   final DailyBiometricsSync? _biometricsSync;
 
-  final Map<String, CaptureMetricEvidence> _lastCaptureEvidence = {};
+  /// STATIC — shared across ALL instances, like the flight
+  /// state below (Vera Condition 1, sync-settings package):
+  /// production constructs fresh [HealthHistorySync.withDeps]
+  /// instances per call while the single flight is shared, so
+  /// a caller that JOINS another instance's flight (e.g.
+  /// [captureAfterGrant] joining DailyScoreRefresher's forced
+  /// run) must read the evidence THAT run wrote — as an
+  /// instance field it read its own stale/empty map and
+  /// settled on the wrong run's outcome. Replaced leg-by-leg
+  /// as each capture runs; every capture writes every leg, and
+  /// [lastCaptureRowCounts] is replaced whole at run end, so a
+  /// completed run's evidence never mixes with a prior run's.
+  static final Map<String, CaptureMetricEvidence>
+      _lastCaptureEvidence = {};
 
   /// Phase 2 PR-3 — the most recent capture run's per-metric
   /// read evidence (see [CaptureMetricEvidence]), keyed by the
@@ -308,6 +357,181 @@ class HealthHistorySync {
   static void debugResetFlight() {
     _inFlightCapture = null;
     _inFlightForced = false;
+  }
+
+  /// Sync-settings package (Nov 23, 2026) — the in-flight
+  /// capture future, exposed so surfaces can show a truthful
+  /// working state while a capture runs (the flight itself was
+  /// previously private, so no surface could observe it).
+  /// Null when no capture is running.
+  Future<bool>? get inFlightCapture => _inFlightCapture;
+
+  /// Whether a capture is running right now (any entry point).
+  bool get captureInFlight => _inFlightCapture != null;
+
+  // ── Post-grant capture (sync-settings package) ────────────
+  //
+  // After a NEW permission grant, the data the user just
+  // approved must actually be read — promptly, and visibly.
+  // The pre-package app had no such trigger: hosts stopped at
+  // re-probing grant state, and the only follow-on capture was
+  // the repository's throttled plain capture, which a fresh
+  // stamp from a pre-grant run could suppress for 6h.
+  //
+  // Entry design (verified against PR #161, 0e2a5119): the
+  // post-grant capture is `capture(force: true)`. In
+  // [captureFromHealthConnect] BOTH skip gates — the 6h
+  // throttle and #161's 30-min app-open floor
+  // ([shouldSkipAppOpenCapture]) — are conditioned on
+  // `!force`, so a forced run is guaranteed against both,
+  // including a successful capture 10 minutes before the
+  // grant. `captureOnAppOpen()` is NOT sufficient for this
+  // (it is the floor's subject). Single-flight semantics are
+  // force's own: join an in-flight forced run, or chain a
+  // fresh forced run behind an in-flight non-forced run — the
+  // post-grant run is never silently downgraded to a run that
+  // started before the grant.
+  static PostGrantCaptureStatus _postGrantStatus =
+      const PostGrantCaptureStatus(phase: PostGrantCapturePhase.idle);
+
+  /// The shared post-grant capture status (static, like the
+  /// flight state: hosts and surfaces construct different
+  /// [HealthHistorySync] instances, and the status must be the
+  /// same object of truth for all of them).
+  PostGrantCaptureStatus get postGrantStatus => _postGrantStatus;
+
+  /// Test hook: reset the shared post-grant status. Also
+  /// clears the shared capture evidence the status derives
+  /// from (see [debugResetCaptureEvidence]) — resetting one
+  /// without the other would leave a test's settled outcome
+  /// readable from a prior test's run.
+  static void debugResetPostGrantStatus() {
+    _postGrantStatus =
+        const PostGrantCaptureStatus(phase: PostGrantCapturePhase.idle);
+    debugResetCaptureEvidence();
+  }
+
+  /// Test hook (the [debugResetFlight] pattern): clear the
+  /// shared capture evidence + row counts so a test that
+  /// constructs multiple instances cannot inherit a prior
+  /// run's outcome evidence. Production code never calls
+  /// this — a capture run's own writes are the only clearing
+  /// path there (each run replaces the row counts whole and
+  /// rewrites every leg's evidence).
+  static void debugResetCaptureEvidence() {
+    _lastCaptureEvidence.clear();
+    _lastCaptureRowCounts = const {};
+  }
+
+  /// The most recent completed capture's per-metric row counts
+  /// (how many day-rows each leg's read returned THIS run),
+  /// keyed by the capture's metric names. This is the "data
+  /// came through" evidence for the post-grant end states: a
+  /// clean read that returned zero rows is the no-data state,
+  /// not a success-with-data. STATIC/shared across instances
+  /// for the same reason as [_lastCaptureEvidence] (Vera
+  /// Condition 1): it describes the shared flight's run, not
+  /// any one instance.
+  Map<String, int> get lastCaptureRowCounts =>
+      Map.unmodifiable(_lastCaptureRowCounts);
+  static Map<String, int> _lastCaptureRowCounts = const {};
+
+  /// Pure mapping: the capture metric names a permission set
+  /// is relevant to, via [reportMetricPermissions] (the ONE
+  /// metric→permissions map). Permissions no capture leg reads
+  /// (Steps, Weight, …) map to nothing.
+  static Set<String> captureMetricsForPermissions(
+      Set<String> permissions) {
+    final out = <String>{};
+    for (final name
+        in const ['restingHr', 'sleep', 'hrv', 'calories', 'spikes']) {
+      final metric = historyMetricForCaptureMetric(name);
+      if (metric == null) continue;
+      final perms = reportMetricPermissions[metric] ?? const {};
+      if (perms.intersection(permissions).isNotEmpty) out.add(name);
+    }
+    return out;
+  }
+
+  /// Pure end-state derivation for a post-grant capture
+  /// (Juno's binding conditions):
+  /// - if the run did not complete → read failed (checked
+  ///   FIRST: a run that did not complete produced no evidence
+  ///   of its own, so no row count can belong to it — the
+  ///   row-count map is only reassigned at the end of a capture
+  ///   body that completes, and an incomplete run must never
+  ///   settle on a prior completed run's counts; Vera
+  ///   Condition 1 remainder);
+  /// - else, any relevant leg returned rows → data came
+  ///   through;
+  /// - else, if EVERY relevant leg failed → read failed;
+  /// - else (at least one relevant leg read cleanly or
+  ///   partially, none returned rows) → no data yet.
+  /// A partial leg (real data, some chunks missing — e.g.
+  /// #161's SPIKE_COUNTS_PARTIAL) is NOT a failure here.
+  /// [relevantMetrics] empty means every capture metric is
+  /// relevant (a grant of a kind no leg reads still gets an
+  /// honest verdict from the capture as a whole).
+  static PostGrantCaptureOutcome derivePostGrantOutcome({
+    required bool ran,
+    required Map<String, CaptureMetricEvidence> evidence,
+    required Map<String, int> rowCounts,
+    required Set<String> relevantMetrics,
+  }) {
+    final relevant = relevantMetrics.isEmpty
+        ? const {'restingHr', 'sleep', 'hrv', 'calories', 'spikes'}
+        : relevantMetrics;
+    if (!ran) return PostGrantCaptureOutcome.readFailed;
+    for (final m in relevant) {
+      if ((rowCounts[m] ?? 0) > 0) {
+        return PostGrantCaptureOutcome.dataCameThrough;
+      }
+    }
+    var anyRelevant = false;
+    var allFailed = true;
+    for (final m in relevant) {
+      final e = evidence[m];
+      if (e == null) continue;
+      anyRelevant = true;
+      if (!e.readFailed) allFailed = false;
+    }
+    if (!anyRelevant || allFailed) {
+      return PostGrantCaptureOutcome.readFailed;
+    }
+    return PostGrantCaptureOutcome.noDataYet;
+  }
+
+  /// Runs the post-grant capture for a grant that newly
+  /// included [relevantPermissions] and records the shared
+  /// [postGrantStatus] (running → settled with the derived
+  /// outcome). Never throws. Hosts call this fire-and-forget
+  /// or awaited, as their surface requires; surfaces read the
+  /// status and [inFlightCapture] to render the working state.
+  Future<PostGrantCaptureOutcome> captureAfterGrant({
+    Set<String> relevantPermissions = const {},
+  }) async {
+    _postGrantStatus = PostGrantCaptureStatus(
+      phase: PostGrantCapturePhase.running,
+      relevantPermissions: relevantPermissions,
+    );
+    var ran = false;
+    try {
+      ran = await capture(force: true);
+    } catch (_) {
+      ran = false;
+    }
+    final outcome = derivePostGrantOutcome(
+      ran: ran,
+      evidence: _lastCaptureEvidence,
+      rowCounts: _lastCaptureRowCounts,
+      relevantMetrics: captureMetricsForPermissions(relevantPermissions),
+    );
+    _postGrantStatus = PostGrantCaptureStatus(
+      phase: PostGrantCapturePhase.settled,
+      outcome: outcome,
+      relevantPermissions: relevantPermissions,
+    );
+    return outcome;
   }
 
   /// The WS2-facing entry point: fire-and-forget safe, never throws.
@@ -554,6 +778,10 @@ class HealthHistorySync {
       // entry), exactly as the slot protocol's snapshots were.
       final captureFailures = <String, String>{};
       final captureSucceeded = <String>{};
+      // Sync-settings package: per-leg row counts for THIS run
+      // (the post-grant end states' data evidence — see
+      // [lastCaptureRowCounts]). Filled as each leg lands.
+      final captureRowCounts = <String, int>{};
       // B-02 — set when ANY leg of this capture came back
       // partial (real data, some chunks missing). A partial
       // capture is not a clean capture: it must not complete
@@ -631,12 +859,14 @@ class HealthHistorySync {
       final hrOutcome = await boundedRead(
           _hc.readRestingHrHistoryWithOutcome(restingHrWindowDays));
       noteRead('restingHr', hrOutcome);
+      captureRowCounts['restingHr'] = hrOutcome.value.length;
       for (final r in hrOutcome.value) {
         put(r.date, hr: r.bpm);
       }
       final sleepOutcome = await boundedRead(
           _hc.readSleepHistoryWithOutcome(sleepWindowDays));
       noteRead('sleep', sleepOutcome);
+      captureRowCounts['sleep'] = sleepOutcome.value.length;
       // Snapshot the sleep leg's cleanliness NOW, from its own
       // outcome: the upgrade stamp below requires the sleep read
       // to have completed with NO error and NO partial. (Strict
@@ -724,6 +954,7 @@ class HealthHistorySync {
           }
         }
         final dailySdnn = attributeDailySdnn(sdnnOutcome.value, sdnnDates);
+        captureRowCounts['hrv'] = dailySdnn.length;
         for (final entry in dailySdnn.entries) {
           put(entry.key, sdnn: entry.value);
         }
@@ -765,6 +996,7 @@ class HealthHistorySync {
             hrvOutcome.errorCode == null && hrvPartialCode == null;
         hrvSampleCount = hrvSamples.length;
         final dailyHrv = attributeDailyHrv(hrvSamples, hrvDates);
+        captureRowCounts['hrv'] = dailyHrv.length;
         hrvDayCount = dailyHrv.length;
         for (final entry in dailyHrv.entries) {
           put(entry.key, hrv: entry.value);
@@ -774,6 +1006,7 @@ class HealthHistorySync {
       final calOutcome = await boundedRead(
           _hc.readCaloriesHistoryWithOutcome(caloriesWindowDays));
       noteRead('calories', calOutcome);
+      captureRowCounts['calories'] = calOutcome.value.length;
       for (final r in calOutcome.value) {
         put(r.date, kcal: r.kcal);
       }
@@ -789,6 +1022,7 @@ class HealthHistorySync {
       final spikeOutcome = await boundedRead(
           _hc.readSpikeCountsWithOutcome(spikeWindowDays));
       noteRead('spikes', spikeOutcome);
+      captureRowCounts['spikes'] = spikeOutcome.value.length;
       for (final r in spikeOutcome.value) {
         put(r.date, spikes: r.count);
       }
@@ -982,7 +1216,25 @@ class HealthHistorySync {
           windowDays: spikeWindowDays)) {
         await _store.markSpikeBackfillComplete();
       }
-      await _store.markCaptured(now.millisecondsSinceEpoch);
+      _lastCaptureRowCounts = captureRowCounts;
+      // Throttle-poison hardening (sync-settings package,
+      // Nov 23, 2026): the stamp this writes is read by BOTH
+      // the 6h throttle and #161's 30-min app-open floor as
+      // "the last SUCCESSFUL capture". A run whose core reads
+      // ALL failed — or which ran with an empty grant (every
+      // leg permission-blocked) — is not a successful capture
+      // and must not stamp: before this, a pre-grant app-open
+      // run stamped unconditionally and poisoned the follow-on
+      // post-grant capture for up to 6h. The stamp is earned
+      // by at least one core metric reading successfully —
+      // cleanly (in [captureSucceeded]) or partially (a partial
+      // leg returned real data; [captureHadPartial] — #161's
+      // SPIKE_COUNTS_PARTIAL included: a partial spike
+      // envelope is NOT a core-read failure). A clean-but-empty
+      // run stamps exactly as before.
+      if (captureSucceeded.isNotEmpty || captureHadPartial) {
+        await _store.markCaptured(now.millisecondsSinceEpoch);
+      }
       // R70 Daily Score — after-capture compute trigger: any day
       // whose inputs now exist gets its (write-once) score. The
       // engine never throws and never rewrites a scored day.

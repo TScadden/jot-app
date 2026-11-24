@@ -14,6 +14,8 @@ import 'package:tabs_lab/src/data/common_conditions.dart';
 import 'package:tabs_lab/src/data/csv_file_picker.dart';
 import 'package:tabs_lab/src/data/first_run_sync.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
+import 'package:tabs_lab/src/data/health_history_sync.dart';
+import 'package:tabs_lab/src/features/home/hc_repair_card.dart';
 import 'package:tabs_lab/src/data/metrics_csv_import.dart';
 import 'package:tabs_lab/src/data/migration_bundle.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
@@ -250,7 +252,8 @@ enum _Page {
   progressReports,
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends State<SettingsScreen>
+    with WidgetsBindingObserver {
   late final TabsBackend _backend;
   late final OnboardingSyncOutbox _onboardingOutbox;
   late final KnowledgeExtractionStore _kStore;
@@ -360,6 +363,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // capture has recorded an HRV outcome.
   CaptureDiagnostic? _hrvDiag;
 
+  // Sync-settings package (Nov 23, 2026) — store evidence for
+  // the Connected Apps card's honest end states, read alongside
+  // the probe in [_loadConnectionState]: whether any capture
+  // has ever stamped (a capture RAN) and whether the history
+  // store holds any day rows at all (data evidence). Together
+  // they gate the standing-card overclaim fix: a capture that
+  // ran and merged nothing must not keep the card claiming
+  // live sync.
+  bool _hcCaptureRan = false;
+  bool _hcStoreHasData = false;
+
+  /// True while this card's post-grant failure state runs the
+  /// repair flow (its button disables meanwhile).
+  bool _hcRepairing = false;
+
   // Daily Score background scoring (founder amendment #2) — the
   // Health Connect BACKGROUND read grant's live state for the
   // Connected Apps card below. Null until the first check lands;
@@ -438,6 +456,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    // Sync-settings package: re-probe Connected Apps state on
+    // resume — returning from the system Health Connect
+    // permission UI (or from HC settings) must repaint the
+    // TRUE state, not the pre-grant snapshot (the founder's
+    // "still says needs to connect" defect).
+    WidgetsBinding.instance.addObserver(this);
     _page = widget.openEventCounters
         ? _Page.eventCounters
         : widget.openAiKnowledge
@@ -533,7 +557,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_loadConnectionState());
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     // Deliberately does NOT dispose widget.billingService: it is
     // the app-owned single instance (see _billing). Same for the
     // RevenueCat service: only this screen's own subscription is
@@ -743,8 +775,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // capture has run; an unwarmed store simply has no line yet.
     final hs = widget.historyStore ?? HealthHistoryStore.instance;
     final hrvDiag = hs.lastCaptureDiagnostics['hrv'];
+    // Sync-settings package — the store evidence for the
+    // card's honest end states (see the field note). Memory
+    // ONLY, like the diagnostics read above: dayCount() would
+    // warm the store from disk on this probe path — I/O the
+    // path's contract forbids, and a read that can stall this
+    // whole load where storage channels are faked or slow
+    // (it hung the Connected Apps card in tests: the snapshot
+    // setState below never landed). The store is warmed at
+    // startup and by every capture, so the in-memory stamp +
+    // day count are the evidence this card needs; before any
+    // warm they read as "no capture evidence", which keeps
+    // the last-known evidence fields' initial values honest.
+    var captureRan = _hcCaptureRan;
+    var storeHasData = _hcStoreHasData;
+    captureRan = hs.lastCaptureMs != null;
+    storeHasData = hs.warmedDayCount > 0;
     if (!mounted) return;
     setState(() {
+      _hcCaptureRan = captureRan;
+      _hcStoreHasData = storeHasData;
       _hcSnapshot = snapshot;
       // The missing types derive from the snapshot's own granted
       // set — plain-language labels in required order. An unknown
@@ -757,6 +807,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ];
       _hrvDiag = hrvDiag;
     });
+    // Sync-settings package — if a post-grant capture is still
+    // running, this page is showing its working state; reload
+    // when it settles so the card lands on the honest end
+    // state without waiting for the next navigation trigger.
+    // PLACEMENT IS LOAD-BEARING: this hook sits BEFORE the
+    // background-access read below, never behind it — that
+    // read is a live bridge channel call whose completion this
+    // hook must not depend on (in channel-faked environments
+    // it can stall indefinitely, which silently ate the
+    // settle reload: the card stayed on the working state
+    // forever even though the capture had finished).
+    final sync = HealthHistorySync.instance;
+    if (sync.postGrantStatus.phase == PostGrantCapturePhase.running) {
+      final inFlight = sync.inFlightCapture;
+      if (inFlight != null) {
+        unawaited(inFlight.then((_) {
+          if (mounted) unawaited(_loadConnectionState());
+        }, onError: (_) {}));
+      }
+    }
     // Background read grant — a SEPARATE derivation, untouched by
     // this migration: its own guard, a failure leaves the
     // last-known state and never touches the connection status.
@@ -765,6 +835,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       setState(() => _bgScoreAccess = bg);
     } catch (_) {}
+  }
+
+  /// Sync-settings package — the post-grant failure state's
+  /// "Re-approve access" action (Juno Part 2, Item 4): runs
+  /// the EXISTING repair flow (MF-3 disclosure first, inside
+  /// [runHcRepairFlow]); a cleared flow re-runs the post-grant
+  /// capture for the permissions this card's snapshot reports
+  /// granted, then re-probes.
+  Future<void> _onPostGrantRepairTap() async {
+    if (_hcRepairing) return;
+    setState(() => _hcRepairing = true);
+    final result = await runHcRepairFlow(context, _hc);
+    if (!mounted) return;
+    setState(() => _hcRepairing = false);
+    if (result.outcome == HcRepairOutcome.cleared) {
+      final granted = _hcSnapshot?.grantedPermissions ??
+          HealthConnectService.requiredPermissions;
+      unawaited(HealthHistorySync.instance
+          .captureAfterGrant(relevantPermissions: granted));
+    }
+    await _loadConnectionState();
   }
 
   /// Round 51 — opens the shared Data Connections screen (the one
@@ -814,8 +905,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// Hands off to Health Connect settings — the only place the
   /// background read grant can be given (founder amendment #2).
-  /// Failures surface with their code; the grant state re-reads
-  /// the next time this page's state loads.
+  /// Failures surface with their code. On return, this screen's
+  /// resume observer (sync-settings package) re-runs
+  /// [_loadConnectionState], so the grant state re-reads as
+  /// soon as the user comes back — the promise this method's
+  /// doc always made is now kept by the observer, not by a
+  /// later navigation.
   Future<void> _openHcSettingsForBackground() async {
     try {
       await _hc.openHealthConnectSettings();
@@ -4340,7 +4435,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // failure line in the supplementary slot) → the existing
     // connected / partially-connected / not-connected branches,
     // whose copy is byte-untouched.
+    //
+    // Sync-settings package (Nov 23, 2026) — Juno Part 2 states
+    // layer on top, from the shared post-grant capture status:
+    // a RUNNING post-grant capture takes the card over entirely
+    // (Item 1: the working line replaces any stale state for
+    // the duration of the read); a SETTLED outcome rewrites the
+    // connected/partial branches' body lines (Items 2–4, each
+    // shown only under its binding condition — the outcome was
+    // derived from that run's own read evidence, never from
+    // the grant alone).
     final hcSnapshot = _hcSnapshot;
+    final postGrant = HealthHistorySync.instance.postGrantStatus;
+    final postGrantRunning =
+        postGrant.phase == PostGrantCapturePhase.running;
+    final postGrantOutcome =
+        postGrant.phase == PostGrantCapturePhase.settled
+            ? postGrant.outcome
+            : null;
     return [
       _sectionLabel('LOCAL CONNECTIONS'),
       // Round 51 — this row used to be STATIC: it rendered the
@@ -4353,7 +4465,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _iosHealthCard(),
       ] else ...[
       _card([
-        if (hcSnapshot == null) ...[
+        if (postGrantRunning) ...[
+          // Juno Part 2, Item 1 — working state: the read is
+          // happening now; no result is claimed while it runs.
+          const Text('Google Health Connect',
+              style: TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontWeight: FontWeight.w500)),
+          const SizedBox(height: 8),
+          const Row(
+            children: [
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: NotelColors.primary,
+                ),
+              ),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text('Reading your health data now.',
+                    style: TextStyle(
+                        color: NotelColors.textSecondary, fontSize: 12)),
+              ),
+            ],
+          ),
+        ] else if (hcSnapshot == null) ...[
           // Juno §4 Loading — no snapshot has landed and no
           // last-known status is retained: a neutral checking
           // line and an EMPTY button slot (the not-connected
@@ -4415,32 +4553,104 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
         ] else if (hcSnapshot.status ==
             HealthConnectStatus.connected) ...[
-          const Row(
+          Row(
             children: [
-              Icon(Icons.favorite, color: NotelColors.primary, size: 28),
-              SizedBox(width: 12),
+              const Icon(Icons.favorite,
+                  color: NotelColors.primary, size: 28),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Health Connect Active',
+                    const Text('Health Connect Active',
                         style: TextStyle(
                             color: NotelColors.textPrimary,
                             fontWeight: FontWeight.w500)),
-                    Text('Live synchronization active',
-                        style: TextStyle(
-                            color: NotelColors.textSecondary,
-                            fontSize: 12)),
+                    // Sync-settings package — the subtitle is
+                    // the card's sync claim, so it is where the
+                    // honest states land:
+                    // - a settled post-grant outcome shows its
+                    //   Juno line (Items 2–4) instead of the
+                    //   standing claim;
+                    // - standing, with NO post-grant moment in
+                    //   play: if a capture has RUN and the store
+                    //   still holds no data at all, the claim of
+                    //   live sync is an overclaim — Juno's
+                    //   no-data line stands instead (the narrow
+                    //   form: no capture ever ran → no evidence
+                    //   either way → the standing copy is
+                    //   untouched, exactly as Juno §5 signed it).
+                    if (postGrantOutcome ==
+                        PostGrantCaptureOutcome.dataCameThrough)
+                      const Text(
+                          'Connected. Your health data is coming through.',
+                          style: TextStyle(
+                              color: NotelColors.textSecondary,
+                              fontSize: 12))
+                    else if (postGrantOutcome ==
+                            PostGrantCaptureOutcome.readFailed)
+                      const Text(
+                          'Tabs could not read your health data this time. Tap Re-approve access to try again.',
+                          style: TextStyle(
+                              color: NotelColors.textSecondary,
+                              fontSize: 12))
+                    else if (postGrantOutcome ==
+                            PostGrantCaptureOutcome.noDataYet ||
+                        (postGrantOutcome == null &&
+                            _hcCaptureRan &&
+                            !_hcStoreHasData))
+                      const Text(
+                          'Connected, but Health Connect does not have any of this data yet. It shows up here after your watch or phone records some.',
+                          style: TextStyle(
+                              color: NotelColors.textSecondary,
+                              fontSize: 12))
+                    else
+                      const Text('Live synchronization active',
+                          style: TextStyle(
+                              color: NotelColors.textSecondary,
+                              fontSize: 12)),
                   ],
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          const Text('• Connected to local device sensors',
-              style:
-                  TextStyle(color: NotelColors.textSecondary, fontSize: 13)),
-          const SizedBox(height: 12),
+          // The sensors line is part of the standing live-sync
+          // claim: it renders only in the standing state (never
+          // under a post-grant outcome or the no-data form).
+          if (postGrantOutcome == null &&
+              !(_hcCaptureRan && !_hcStoreHasData)) ...[
+            const Text('• Connected to local device sensors',
+                style: TextStyle(
+                    color: NotelColors.textSecondary, fontSize: 13)),
+            const SizedBox(height: 12),
+          ],
+          if (postGrantOutcome ==
+              PostGrantCaptureOutcome.readFailed) ...[
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                key: const ValueKey('post_grant_reapprove'),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: NotelColors.primary,
+                    foregroundColor: Colors.white),
+                onPressed:
+                    _hcRepairing ? null : _onPostGrantRepairTap,
+                child: _hcRepairing
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text('Re-approve access',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
@@ -4462,6 +4672,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Text('Partially connected',
               style: TextStyle(
                   color: NotelColors.warning, fontSize: 12)),
+          // Sync-settings package — a settled post-grant
+          // outcome line also lands on the partial branch (a
+          // partial grant is exactly where new grants happen):
+          // Juno Items 2–4, verbatim, above the missing-types
+          // message, which stays — it names what is still not
+          // shared.
+          if (postGrantOutcome != null) ...[
+            const SizedBox(height: 4),
+            Text(
+                postGrantOutcome == PostGrantCaptureOutcome.dataCameThrough
+                    ? 'Connected. Your health data is coming through.'
+                    : postGrantOutcome ==
+                            PostGrantCaptureOutcome.readFailed
+                        ? 'Tabs could not read your health data this time. Tap Re-approve access to try again.'
+                        : 'Connected, but Health Connect does not have any of this data yet. It shows up here after your watch or phone records some.',
+                style: const TextStyle(
+                    color: NotelColors.textSecondary, fontSize: 12)),
+            if (postGrantOutcome ==
+                PostGrantCaptureOutcome.readFailed) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  key: const ValueKey('post_grant_reapprove'),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: NotelColors.primary,
+                      foregroundColor: Colors.white),
+                  onPressed:
+                      _hcRepairing ? null : _onPostGrantRepairTap,
+                  child: _hcRepairing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'Re-approve access',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                ),
+              ),
+            ],
+          ],
           const SizedBox(height: 4),
           // HRV grant visibility: when the missing set is known,
           // NAME the data types that are not shared and give the
@@ -4492,13 +4748,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ),
+        ] else if (hcSnapshot.status == null) ...[
+          // UNKNOWN (sync-settings package, Nov 23, 2026) —
+          // the probe errored, so the state is NOT KNOWN: this
+          // card must not verdict "not connected". It renders
+          // NEUTRALLY — title plus the plain failure line (the
+          // Juno §3 line, moved inline from the supplementary
+          // slot below) — with NO connect body and NO
+          // "Connect Health Data" CTA. The connected
+          // presentation is likewise never manufactured from a
+          // persisted flag in this state. Supersedes the old
+          // Juno §3 fallback presentation per this package's
+          // brief; flagged for Vera/Juno in the stage log.
+          const Text('Google Health Connect',
+              style: TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontWeight: FontWeight.w500)),
+          const SizedBox(height: 4),
+          const Text('Health Connect status check failed.',
+              style: TextStyle(color: NotelColors.error, fontSize: 12)),
         ] else ...[
-          // Known not-connected — and the UNKNOWN fallback
-          // (Juno §3): when the snapshot's status is null this
-          // card is a fallback presentation, not a finding, and
-          // the supplementary failure line below it is what
-          // keeps it honest. The connected presentation is never
-          // manufactured from a persisted flag in that state.
+          // Known not-connected (Juno §5): the grant set is
+          // KNOWN empty, so the connect card is a finding.
           const Text('Google Health Connect',
               style: TextStyle(
                   color: NotelColors.textPrimary,
@@ -4520,16 +4791,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ],
-        // Juno §3 supplementary line — UNKNOWN only (the
-        // snapshot's status is null): the plain failure line in
-        // the slot the deleted raw-code line occupied, error
-        // colour as that line was. No bracketed code, no bridge
-        // term — the code went to logs in _loadConnectionState.
-        if (hcSnapshot != null && hcSnapshot.status == null) ...[
-          const SizedBox(height: 8),
-          const Text('Health Connect status check failed.',
-              style: TextStyle(color: NotelColors.error, fontSize: 12)),
-        ],
+        // (The Juno §3 supplementary failure line that used to
+        // sit in this slot now renders INSIDE the UNKNOWN
+        // branch above — sync-settings package; see its note.)
         // Defect 1b — diagnostics line: the last capture's HRV
         // outcome (counts + any code) from the persisted capture
         // diagnostics, so a missing-HRV recurrence is diagnosable

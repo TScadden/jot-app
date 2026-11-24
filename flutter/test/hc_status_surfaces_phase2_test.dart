@@ -514,17 +514,22 @@ void main() {
     });
 
     testWidgets(
-        'unknown → Juno §3: not-connected fallback card PLUS the '
-        'plain failure line; the Active card is NEVER manufactured '
-        'from the persisted flag (snapshot carries persisted=true)',
+        'unknown → sync-settings package: NEUTRAL card (title + '
+        'the plain failure line), NO not-connected verdict and NO '
+        'Connect Health Data CTA; the Active card is NEVER '
+        'manufactured from the persisted flag (snapshot carries '
+        'persisted=true). Supersedes the old Juno §3 fallback '
+        'presentation per the package brief.',
         (tester) async {
       await pumpSettings(
           tester, SettingsProbeHc(snapUnknown(persisted: true)));
       expect(
           find.text(
               'Connect to grab data from Garmin, Oura, Fitbit and more.'),
-          findsOneWidget);
-      expect(find.text('Connect Health Data'), findsOneWidget);
+          findsNothing);
+      expect(find.text('Connect Health Data'), findsNothing);
+      expect(find.byKey(const ValueKey('open_connections')),
+          findsNothing);
       expect(find.text('Health Connect status check failed.'),
           findsOneWidget);
       expect(find.text('Health Connect Active'), findsNothing);
