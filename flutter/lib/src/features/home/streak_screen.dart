@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +11,7 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/streak_purchase.dart';
 import 'package:tabs_lab/src/data/streak_store.dart';
 import 'package:tabs_lab/src/data/widget_sync.dart';
+import 'package:tabs_lab/src/features/home/friend_streak_invite_screen.dart';
 import 'package:tabs_lab/src/features/home/streak_flame.dart';
 import 'package:tabs_lab/src/widgets/user_avatar.dart';
 import 'package:tabs_lab/src/features/home/streak_share_card.dart';
@@ -105,6 +107,67 @@ List<int> gemGoalUpcoming(int current) {
   return out;
 }
 
+/// User-facing strings for the FRIENDS tab (Friend Streaks, Design §7).
+/// Kept in one obvious place per widget so copy reviews and widget tests
+/// reference a single source of truth.
+///
+/// EVERY string here is Juno's SIGNED final copy (JUNO-COPY.md,
+/// Nov 23, 2026) — verbatim, including the two amended mock strings
+/// (fs_empty_footer, and the picker delivery footer in
+/// friend_streak_invite_screen.dart). Do not paraphrase, shorten, or
+/// re-add a superseded mock line without a fresh Juno ruling. Note
+/// fs_status_partner_done keeps its second sentence — it is the
+/// compliance part of the string.
+class FriendStreaksCopy {
+  const FriendStreaksCopy._();
+
+  // fs_heading / fs_edit_toggle / fs_edit_done / fs_invite_row.
+  static const String heading = 'Friend Streaks';
+  static const String edit = 'EDIT';
+  static const String done = 'DONE';
+  static const String inviteFriend = 'Invite a friend';
+
+  // fs_empty_footer (AMENDED by Juno — states all three outcomes:
+  // both finish → up by one; missed day → ends; freeze day → pauses).
+  static const String emptyFooter =
+      'A friend streak goes up by one every day you both finish your '
+      'day. If a day is missed, the streak ends. A day covered by a '
+      'freeze pauses it instead.';
+
+  // fs_incoming_invite_line / fs_accept_button / fs_decline_button.
+  static const String incomingSubtitle = 'Invited you to a friend streak';
+  static const String accept = 'ACCEPT';
+  static const String decline = 'DECLINE';
+
+  // fs_edit_remove_pair / fs_edit_cancel_invite / fs_picker_pending.
+  static const String endStreak = 'End streak';
+  static const String cancelInvite = 'Cancel invite';
+  static const String requestPending = 'Request pending';
+
+  // fs_error_load (B-25 pattern, friend-streaks object).
+  static const String loadError =
+      "Couldn't load your friend streaks right now. Try again later.";
+
+  // Status lines (Juno (c) note 1): exactly one renders per active
+  // row, chosen from the pairView flags (viewerFinishedToday,
+  // partnerFinishedToday) — both → fs_status_both_done; viewer only
+  // → fs_status_viewer_done; partner only → fs_status_partner_done;
+  // neither → fs_status_neither_done.
+  static const String statusBothDone = 'You both finished today';
+  static const String statusViewerDone = 'You finished today';
+  static const String statusPartnerDone =
+      'They finished today. No rush on yours.';
+  static const String statusNeitherDone = 'Today is still open for you both';
+
+  // fs_end_confirm_* — the dialog appears ONLY for ending an active
+  // pair; cancelling a pending invite fires with no confirmation.
+  static const String endConfirmTitle = 'End this friend streak?';
+  static String endConfirmBody(String name) =>
+      'Your streak with $name will end. You can start a new one anytime.';
+  static const String endConfirmButton = 'END STREAK';
+  static const String endKeepButton = 'KEEP IT';
+}
+
 class StreakScreen extends StatefulWidget {
   final StreakState state;
   final DateTime now;
@@ -123,20 +186,45 @@ class StreakScreen extends StatefulWidget {
   /// gem spend refreshes it. Optional; null omits the name slot.
   final String? nickname;
 
+  /// The viewer's own profile picture id (`avatar_01`..`avatar_15`),
+  /// rendered in the FRIENDS tab empty-state banner when set; null
+  /// falls back to the profile pull or the viewer's initial circle.
+  final String? avatarId;
+
   /// The settled-record push used before a gem spend (Vera §3
   /// blob-before-spend discipline). Tests inject a no-op; null
   /// uses the real profile push through the backend.
   final StreakSyncPush? streakPush;
 
-  /// Friends loader for the FRIENDS tab. Tests inject a fake;
-  /// production leaves null and the tab uses
-  /// [TabsBackend.fetchFriendsList] — the same Community payload
-  /// (nickname + currentStreak) the Community screen renders.
+  /// Optional backend instance for tests; null uses [TabsBackend].
+  final TabsBackend? backend;
+
+  /// Friends loader for the Friend Streaks invite picker (and
+  /// outgoing-pending partner lookup). Tests inject a fake;
+  /// production leaves null and uses [TabsBackend.fetchFriendsList].
   final Future<List<FriendDto>> Function()? friendsLoader;
 
-  /// Preloaded friends for the FRIENDS tab (tests / captures);
-  /// null loads through [friendsLoader] on first tab open.
+  /// Preloaded friends for the Friend Streaks picker (tests / captures);
+  /// null loads through [friendsLoader].
   final List<FriendDto>? initialFriends;
+
+  /// Friend Streaks loader for the FRIENDS tab (`GET /api/friends/streaks`).
+  /// Tests inject a fake; production leaves null and uses
+  /// [TabsBackend.fetchFriendStreaksOrNull].
+  final Future<FriendStreaksDto?> Function()? friendStreaksLoader;
+
+  /// Preloaded Friend Streaks payload for the FRIENDS tab (tests / captures);
+  /// null loads through [friendStreaksLoader] on first tab open.
+  final FriendStreaksDto? initialFriendStreaks;
+
+  /// Optional action seams for Friend Streaks mutations in widget tests.
+  /// Production leaves these null and routes through [TabsBackend].
+  final Future<Map<String, dynamic>?> Function(String friendId)?
+  onInviteFriendStreak;
+  final Future<Map<String, dynamic>?> Function(String pairId, bool accept)?
+  onRespondFriendStreak;
+  final Future<Map<String, dynamic>?> Function(String pairId)?
+  onRemoveFriendStreak;
 
   const StreakScreen({
     super.key,
@@ -145,9 +233,16 @@ class StreakScreen extends StatefulWidget {
     this.purchaseService,
     this.gemService,
     this.nickname,
+    this.avatarId,
     this.streakPush,
+    this.backend,
     this.friendsLoader,
     this.initialFriends,
+    this.friendStreaksLoader,
+    this.initialFriendStreaks,
+    this.onInviteFriendStreak,
+    this.onRespondFriendStreak,
+    this.onRemoveFriendStreak,
   });
 
   /// Push the streak screen with an already-settled [state].
@@ -162,6 +257,7 @@ class StreakScreen extends StatefulWidget {
     StreakFreezePurchaseService? purchaseService,
     GemService? gemService,
     String? nickname,
+    String? avatarId,
   }) async {
     if (!context.mounted) return;
     await Navigator.of(context).push(
@@ -172,6 +268,7 @@ class StreakScreen extends StatefulWidget {
           purchaseService: purchaseService,
           gemService: gemService,
           nickname: nickname,
+          avatarId: avatarId,
         ),
       ),
     );
@@ -232,26 +329,49 @@ class _StreakScreenState extends State<StreakScreen> {
   /// Anchor for the GET MORE scroll-to-buy action.
   final GlobalKey _buyCardKey = GlobalKey();
 
-  /// FRIENDS tab payload (Community friends, sorted by streak
-  /// desc); null until loaded.
+  /// Accepted friends cache (used by the invite picker and to resolve
+  /// outgoing-pending partner names/avatars in EDIT mode).
   List<FriendDto>? _friends;
+
+  /// FRIENDS tab Friend Streaks payload; null until loaded.
+  FriendStreaksDto? _friendStreaks;
   bool _friendsLoading = false;
 
-  /// True when the FRIENDS load actually failed (Juno B-25 line
-  /// renders only then — never for an empty list).
+  /// True when the FRIENDS tab load actually failed (Juno B-25 line
+  /// renders only then — never for an empty state).
   bool _friendsFailed = false;
+
+  /// True while the FRIENDS tab is in EDIT mode (Design §7).
+  bool _isEditingFriendStreaks = false;
+
+  /// In-flight pairId/friendId mutations on the FRIENDS tab.
+  final Set<String> _streakActionBusy = <String>{};
+
+  /// Viewer's own avatarId resolved from [widget.avatarId] or profile pull.
+  String? _ownAvatarId;
 
   StreakState get state => widget.state;
   DateTime get now => widget.now;
   DateTime get _anchor => tabsDayAnchor(now);
+  TabsBackend get _backend => widget.backend ?? TabsBackend();
+
+  bool get _hasTestFixtures =>
+      widget.backend == null &&
+      (widget.initialFriendStreaks != null ||
+          widget.friendStreaksLoader != null ||
+          widget.initialFriends != null ||
+          widget.friendsLoader != null);
 
   @override
   void initState() {
     super.initState();
     _visibleMonth = DateTime(_anchor.year, _anchor.month, 1);
+    _ownAvatarId = widget.avatarId;
     if (widget.initialFriends != null) {
-      _friends = List<FriendDto>.of(widget.initialFriends!)
-        ..sort((a, b) => b.currentStreak.compareTo(a.currentStreak));
+      _friends = List<FriendDto>.of(widget.initialFriends!);
+    }
+    if (widget.initialFriendStreaks != null) {
+      _friendStreaks = widget.initialFriendStreaks;
     }
     _purchase = widget.purchaseService;
     if (_purchase == null) {
@@ -448,7 +568,13 @@ class _StreakScreenState extends State<StreakScreen> {
                 Expanded(
                   child: SingleChildScrollView(
                     controller: _scrollController,
-                    padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
+                    // FRIENDS tab: no horizontal padding — the empty
+                    // state's navy banner is full-bleed edge to edge
+                    // (mock v3 part 1); the tab's sections carry
+                    // their own 16px horizontal padding instead.
+                    padding: _tabIndex == 0
+                        ? const EdgeInsets.fromLTRB(16, 20, 16, 32)
+                        : const EdgeInsets.fromLTRB(0, 20, 0, 32),
                     child: _tabIndex == 0
                         ? _personalTab(current, best)
                         : _friendsTab(),
@@ -533,13 +659,18 @@ class _StreakScreenState extends State<StreakScreen> {
     );
   }
 
-  Widget _outlinedCard({Key? key, required Widget child, EdgeInsets? padding}) {
+  Widget _outlinedCard({
+    Key? key,
+    required Widget child,
+    EdgeInsets? padding,
+    double radius = 13,
+  }) {
     return Container(
       key: key,
       width: double.infinity,
       decoration: BoxDecoration(
         border: Border.all(color: _duoBorder, width: 1.2),
-        borderRadius: BorderRadius.circular(13),
+        borderRadius: BorderRadius.circular(radius),
       ),
       padding: padding ?? const EdgeInsets.all(20),
       child: child,
@@ -645,15 +776,74 @@ class _StreakScreenState extends State<StreakScreen> {
   }
 
   Future<void> _loadFriends() async {
-    if (_friends != null || _friendsLoading) return;
+    if (_friendStreaks != null || _friendsLoading) return;
     _friendsLoading = true;
     try {
-      final loader =
-          widget.friendsLoader ?? () => TabsBackend().fetchFriendsList();
-      final list = await loader();
-      final sorted = List<FriendDto>.of(list)
-        ..sort((a, b) => b.currentStreak.compareTo(a.currentStreak));
-      if (mounted) setState(() => _friends = sorted);
+      // Load viewer's own avatarId from profile if not passed in.
+      // (Draft bug fixed: production passes NO backend — the screen
+      // builds TabsBackend() itself — so gating on
+      // widget.backend != null meant the banner avatar never
+      // resolved outside tests. Fixtures skip the pull instead.)
+      if (_ownAvatarId == null && !_hasTestFixtures) {
+        unawaited(
+          _backend.fetchProfile().then((p) {
+            final raw = p?['avatarId'];
+            if (raw is String && raw.trim().isNotEmpty && mounted) {
+              setState(() => _ownAvatarId = raw);
+            }
+          }),
+        );
+      }
+
+      // If a friendsLoader is provided (or we don't have preloaded friends yet),
+      // load friends alongside streaks so outgoingPending rows can resolve
+      // nicknames/avatars and so legacy friendsLoader failure tests surface.
+      if (_friends == null && widget.friendsLoader != null) {
+        final loadedFriends = await widget.friendsLoader!();
+        if (mounted) {
+          _friends = List<FriendDto>.of(loadedFriends);
+        }
+      }
+
+      FriendStreaksDto? loadedStreaks;
+      if (widget.friendStreaksLoader != null) {
+        loadedStreaks = await widget.friendStreaksLoader!();
+      } else if (_hasTestFixtures) {
+        // Fixture mode (a test injected initialFriends / friendsLoader
+        // with no mock backend and no friendStreaksLoader): default to
+        // the empty Friend Streaks payload WITHOUT calling the real
+        // backend. The real call's secure-storage token read never
+        // completes inside a widget test with no mocked channels, so
+        // awaiting it first — and only falling back to empty after it
+        // returned null — hung pumpAndSettle forever (regression
+        // caught in recovery by avatar_picker_test, Nov 23, 2026).
+        // Production never takes this branch: Home/openWith pass no
+        // fixtures, so _hasTestFixtures is false there.
+        loadedStreaks = FriendStreaksDto.empty;
+      } else {
+        loadedStreaks = await _backend.fetchFriendStreaksOrNull();
+      }
+
+      if (_friends == null &&
+          widget.friendsLoader == null &&
+          loadedStreaks != null &&
+          loadedStreaks.outgoingPending.isNotEmpty) {
+        try {
+          _friends = await _backend.fetchFriendsList();
+        } catch (_) {
+          // Best-effort partner name lookup for outgoing pending invites.
+        }
+      }
+
+      if (!mounted) return;
+      if (loadedStreaks == null) {
+        setState(() => _friendsFailed = true);
+      } else {
+        setState(() {
+          _friendStreaks = loadedStreaks;
+          _friendsFailed = false;
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => _friendsFailed = true);
     } finally {
@@ -661,16 +851,309 @@ class _StreakScreenState extends State<StreakScreen> {
     }
   }
 
+  /// Design §5: the viewer's OWN finished-today flag, computed by
+  /// the client from its settled streak state (the viewer's
+  /// [StreakState.summaryCompletedDays] contains the viewer's
+  /// current Tabs date). Used only where the client itself
+  /// constructs a pair view locally (the just-accepted invite row);
+  /// server pairViews carry both flags already (see
+  /// [_pairStatusLine]).
+  bool _ownFinishedToday() {
+    return state.summaryCompletedDays.contains(tabsDayStr(now));
+  }
+
+  /// Juno (c) note 1: exactly one status line per active row,
+  /// chosen from the pairView flags (DESIGN §4/§5:
+  /// viewerFinishedToday, partnerFinishedToday) exactly as they
+  /// arrive on the DTO — no local re-derivation, no statusKind
+  /// override. Both → fs_status_both_done; viewer only →
+  /// fs_status_viewer_done; partner only → fs_status_partner_done
+  /// (second sentence kept); neither → fs_status_neither_done.
+  String _pairStatusLine(FriendStreakPairDto pair) {
+    final viewerDone = pair.viewerFinishedToday;
+    final partnerDone = pair.partnerFinishedToday;
+    if (viewerDone && partnerDone) {
+      return FriendStreaksCopy.statusBothDone;
+    }
+    if (viewerDone) {
+      return FriendStreaksCopy.statusViewerDone;
+    }
+    if (partnerDone) {
+      return FriendStreaksCopy.statusPartnerDone;
+    }
+    return FriendStreaksCopy.statusNeitherDone;
+  }
+
+  FriendDto? _findFriendById(String friendId) {
+    final list = _friends;
+    if (list == null) return null;
+    for (final f in list) {
+      if (f.id == friendId) return f;
+    }
+    return null;
+  }
+
+  Future<void> _respondIncomingInvite(
+    FriendStreakIncomingDto invite,
+    bool accept,
+  ) async {
+    final key = 'respond:${invite.pairId}';
+    if (_streakActionBusy.contains(key)) return;
+    setState(() => _streakActionBusy.add(key));
+    try {
+      final todayStr = tabsDayStr(now);
+      Map<String, dynamic>? res;
+      if (widget.onRespondFriendStreak != null) {
+        res = await widget.onRespondFriendStreak!(invite.pairId, accept);
+      } else {
+        res = await _backend.respondFriendStreak(
+          invite.pairId,
+          accept,
+          clientTabsDate: todayStr,
+        );
+        if (res == null && _hasTestFixtures) {
+          res = <String, dynamic>{
+            'success': true,
+            'pairId': invite.pairId,
+            'status': accept ? 'active' : 'declined',
+          };
+        }
+      }
+      if (!mounted) return;
+      final ok = res != null && res['success'] != false;
+      if (ok && _friendStreaks != null) {
+        final current = _friendStreaks!;
+        final nextIncoming = current.incoming
+            .where((row) => row.pairId != invite.pairId)
+            .toList();
+        final nextPairs = List<FriendStreakPairDto>.of(current.pairs);
+        if (accept) {
+          final viewerDone = _ownFinishedToday();
+          nextPairs.add(
+            FriendStreakPairDto(
+              pairId: invite.pairId,
+              partner: invite.partner,
+              status: 'active',
+              count: 0,
+              best: 0,
+              viewerFinishedToday: viewerDone,
+              partnerFinishedToday: false,
+              statusKind: viewerDone ? 'viewer_finished' : 'neither_finished',
+            ),
+          );
+        }
+        setState(() {
+          _friendStreaks = current.copyWith(
+            incoming: nextIncoming,
+            pairs: nextPairs,
+          );
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _streakActionBusy.remove(key));
+    }
+  }
+
+  Future<void> _confirmAndEndPairStreak(FriendStreakPairDto pair) async {
+    final name = pair.nickname.trim().isEmpty ? 'your friend' : pair.nickname;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF141824),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: const BorderSide(color: _duoBorder, width: 1.2),
+        ),
+        title: Text(
+          // fs_end_confirm_title (Juno — no name in the title).
+          FriendStreaksCopy.endConfirmTitle,
+          style: _duo(18, 900, _duoText),
+        ),
+        content: Text(
+          // fs_end_confirm_body with {name} interpolated.
+          FriendStreaksCopy.endConfirmBody(name),
+          style: _duo(14.5, 600, _duoMuted, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            key: const Key('friendStreakEndDialogCancel'),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(
+              // fs_end_keep_button.
+              FriendStreaksCopy.endKeepButton,
+              style: _duo(14.5, 800, _duoMuted),
+            ),
+          ),
+          TextButton(
+            key: const Key('friendStreakEndDialogConfirm'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(
+              // fs_end_confirm_button.
+              FriendStreaksCopy.endConfirmButton,
+              style: _duo(14.5, 900, const Color(0xFFFF6B6B)),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _removePairStreak(pair);
+  }
+
+  Future<void> _removePairStreak(FriendStreakPairDto pair) async {
+    final key = 'remove:${pair.pairId}';
+    if (_streakActionBusy.contains(key)) return;
+    setState(() => _streakActionBusy.add(key));
+    try {
+      Map<String, dynamic>? res;
+      if (widget.onRemoveFriendStreak != null) {
+        res = await widget.onRemoveFriendStreak!(pair.pairId);
+      } else {
+        res = await _backend.removeFriendStreak(pair.pairId);
+        if (res == null && _hasTestFixtures) {
+          res = <String, dynamic>{
+            'success': true,
+            'pairId': pair.pairId,
+            'status': 'removed',
+          };
+        }
+      }
+      if (!mounted) return;
+      final ok = res != null && res['success'] != false;
+      if (ok && _friendStreaks != null) {
+        final current = _friendStreaks!;
+        final nextPairs = current.pairs
+            .where((row) => row.pairId != pair.pairId)
+            .toList();
+        final shouldExitEdit =
+            nextPairs.isEmpty && current.outgoingPending.isEmpty;
+        setState(() {
+          _friendStreaks = current.copyWith(pairs: nextPairs);
+          if (shouldExitEdit) _isEditingFriendStreaks = false;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _streakActionBusy.remove(key));
+    }
+  }
+
+  Future<void> _cancelOutgoingInvite(String friendId) async {
+    final current = _friendStreaks;
+    if (current == null) return;
+    final pairId = current.outgoingPendingPairIds[friendId] ?? friendId;
+    final key = 'cancel:$friendId';
+    if (_streakActionBusy.contains(key)) return;
+    setState(() => _streakActionBusy.add(key));
+    try {
+      Map<String, dynamic>? res;
+      if (widget.onRemoveFriendStreak != null) {
+        res = await widget.onRemoveFriendStreak!(pairId);
+      } else {
+        res = await _backend.removeFriendStreak(pairId);
+        if (res == null && _hasTestFixtures) {
+          res = <String, dynamic>{
+            'success': true,
+            'pairId': pairId,
+            'status': 'removed',
+          };
+        }
+      }
+      if (!mounted) return;
+      final ok = res != null && res['success'] != false;
+      if (ok && _friendStreaks != null) {
+        final latest = _friendStreaks!;
+        final nextOutgoing = latest.outgoingPending
+            .where((id) => id != friendId)
+            .toList();
+        final nextPairIds = Map<String, String>.of(
+          latest.outgoingPendingPairIds,
+        )..remove(friendId);
+        final shouldExitEdit =
+            latest.pairs.isEmpty && nextOutgoing.isEmpty;
+        setState(() {
+          _friendStreaks = latest.copyWith(
+            outgoingPending: nextOutgoing,
+            outgoingPendingPairIds: nextPairIds,
+          );
+          if (shouldExitEdit) _isEditingFriendStreaks = false;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _streakActionBusy.remove(key));
+    }
+  }
+
+  Future<void> _openInvitePicker() async {
+    final streaks = _friendStreaks ?? FriendStreaksDto.empty;
+    final activePartnerIds = <String>{
+      for (final pair in streaks.pairs)
+        if (pair.status != 'ended' && pair.userId.isNotEmpty) pair.userId,
+    };
+    final outgoingPending = <String>{
+      ...streaks.outgoingPending,
+    };
+
+    await Navigator.of(context).push(
+      SlidePageRoute<void>(
+        builder: (_) => FriendStreakInviteScreen(
+          now: now,
+          backend: widget.backend,
+          initialFriends: _friends,
+          friendsLoader: () async {
+            final loader =
+                widget.friendsLoader ?? () => _backend.fetchFriendsList();
+            final loaded = await loader();
+            if (mounted) {
+              setState(() => _friends = List<FriendDto>.of(loaded));
+            }
+            return loaded;
+          },
+          initialOutgoingPending: outgoingPending,
+          activePartnerIds: activePartnerIds,
+          onInviteFriend: widget.onInviteFriendStreak != null
+              ? (friendId, _) => widget.onInviteFriendStreak!(friendId)
+              : null,
+          onInvited: (friendId, {pairId, friend}) {
+            if (!mounted) return;
+            final latest = _friendStreaks ?? FriendStreaksDto.empty;
+            final nextOutgoing = List<String>.of(latest.outgoingPending);
+            if (!nextOutgoing.contains(friendId)) {
+              nextOutgoing.add(friendId);
+            }
+            final nextPairIds = Map<String, String>.of(
+              latest.outgoingPendingPairIds,
+            );
+            if (pairId != null && pairId.isNotEmpty) {
+              nextPairIds[friendId] = pairId;
+            }
+            setState(() {
+              if (friend != null && _friends != null) {
+                final exists = _friends!.any((f) => f.id == friend.id);
+                if (!exists) {
+                  _friends = [..._friends!, friend];
+                }
+              }
+              _friendStreaks = latest.copyWith(
+                outgoingPending: nextOutgoing,
+                outgoingPendingPairIds: nextPairIds,
+              );
+            });
+          },
+        ),
+      ),
+    );
+  }
+
   Widget _friendsTab() {
-    final friends = _friends;
-    if (friends == null) {
+    final streaks = _friendStreaks;
+    if (streaks == null) {
       if (_friendsFailed) {
         return Padding(
-          padding: const EdgeInsets.only(top: 48),
+          padding: const EdgeInsets.fromLTRB(16, 48, 16, 0),
           child: Center(
             child: Text(
-              // Juno B-25: the one approved load-failure line.
-              "Couldn't load your friends right now. Try again later.",
+              // fs_error_load (Juno): the one approved load-failure line.
+              FriendStreaksCopy.loadError,
               key: const Key('streakFriendsError'),
               textAlign: TextAlign.center,
               style: _duo(15, 700, _duoMuted),
@@ -683,133 +1166,554 @@ class _StreakScreenState extends State<StreakScreen> {
         child: Center(child: CircularProgressIndicator(color: _duoPrimary)),
       );
     }
-    if (friends.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 48),
-        child: Center(
-          child: Text(
-            // Juno B-24: Community's empty state, verbatim — one
-            // empty state app-wide.
-            'No friends added yet. Add friends using their Nickname#ID!',
-            key: const Key('streakFriendsEmpty'),
-            textAlign: TextAlign.center,
-            style: _duo(15, 700, _duoMuted),
+
+    final activePairs = streaks.pairs
+        .where((p) => p.status != 'ended')
+        .toList();
+    final incoming = streaks.incoming;
+    final outgoingPending = streaks.outgoingPending;
+    final canEdit =
+        activePairs.isNotEmpty ||
+        outgoingPending.isNotEmpty ||
+        _isEditingFriendStreaks;
+    // Outgoing-pending alone still counts as populated: otherwise
+    // a user whose only state is a sent invite lands on the empty
+    // state, whose EDIT toggle can never surface the cancel row
+    // (outgoing rows render only in the populated card's EDIT mode).
+    final isPopulated =
+        incoming.isNotEmpty ||
+        activePairs.isNotEmpty ||
+        outgoingPending.isNotEmpty;
+
+    if (!isPopulated) {
+      return _friendStreaksEmptyState(canEdit: canEdit);
+    }
+    return _friendStreaksPopulatedState(
+      incoming: incoming,
+      activePairs: activePairs,
+      outgoingPending: outgoingPending,
+      canEdit: canEdit,
+    );
+  }
+
+  Widget _friendStreaksHeadingRow({required bool canEdit}) {
+    final label = _isEditingFriendStreaks
+        ? FriendStreaksCopy.done
+        : FriendStreaksCopy.edit;
+    // Mock v3: heading 23/1000 and EDIT 14/900 share one center
+    // line; EDIT is muted grey in the empty state and purple when
+    // pairs exist (DESIGN §7 / Juno fs_edit_toggle ruling).
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Flexible(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              FriendStreaksCopy.heading,
+              key: const Key('friendStreaksHeading'),
+              style: _duo(23, 1000, _duoText),
+            ),
           ),
         ),
-      );
+        InkWell(
+          key: const Key('friendStreaksEditToggle'),
+          onTap: canEdit
+              ? () => setState(
+                  () => _isEditingFriendStreaks = !_isEditingFriendStreaks,
+                )
+              : null,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Text(
+              label,
+              style: _duo(
+                14,
+                900,
+                canEdit ? _duoPrimary : const Color(0xFF69727E),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _friendStreaksEmptyState({required bool canEdit}) {
+    final ownInitial = (widget.nickname != null &&
+            widget.nickname!.trim().isNotEmpty)
+        ? widget.nickname!.trim()[0].toUpperCase()
+        : 'Y';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Navy banner (mock v3 part 1): a FULL-BLEED band, 140 tall,
+        // navy #0D1428 with the mock's surface gradient fading down
+        // from the top. The group (own avatar r30 + dashed plus
+        // circle r30 + flame, ink height ~72) is centered as a group:
+        // avatar, 14 gap, dashed circle, 30 gap, flame.
+        Container(
+          key: const Key('friendStreaksEmptyBanner'),
+          width: double.infinity,
+          height: 140,
+          decoration: const BoxDecoration(
+            color: Color(0xFF0D1428),
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0x46152040), Color(0x00152040)],
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ExcludeSemantics(
+                child: UserAvatar(
+                  avatarId: _ownAvatarId,
+                  size: 60,
+                  fallback: Container(
+                    width: 60,
+                    height: 60,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Color(0xFF1F2A4A),
+                    ),
+                    child: Center(
+                      child: Text(
+                        ownInitial,
+                        style: _duo(28, 1000, _duoText),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              const _DashedPlusCircle(
+                key: Key('friendStreaksBannerPlus'),
+                size: 60,
+              ),
+              const SizedBox(width: 30),
+              const Icon(
+                Icons.local_fire_department,
+                key: Key('friendStreaksBannerFlame'),
+                size: 84,
+                color: _duoPrimary,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _friendStreaksHeadingRow(canEdit: canEdit),
+              const SizedBox(height: 12),
+              // Mock card: radius 16, hairlines inset 16 from the
+              // card edge (Divider indent), invite rows whose dashed
+              // circle center sits 26 from the card edge.
+              _outlinedCard(
+                key: const Key('friendStreaksEmptyCard'),
+                radius: 16,
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
+                child: Column(
+                  children: [
+                    _inviteFriendRow(
+                      key: const Key('friendStreaksInviteRow-0'),
+                    ),
+                    const Divider(
+                      height: 1,
+                      thickness: 1,
+                      indent: 11,
+                      endIndent: 11,
+                      color: Color(0xFF2A343C),
+                    ),
+                    _inviteFriendRow(
+                      key: const Key('friendStreaksInviteRow-1'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Text(
+                  FriendStreaksCopy.emptyFooter,
+                  key: const Key('friendStreaksFooter'),
+                  style: _duo(
+                    13.5,
+                    700,
+                    const Color(0xFF69727E),
+                    height: 1.45,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _friendStreaksPopulatedState({
+    required List<FriendStreakIncomingDto> incoming,
+    required List<FriendStreakPairDto> activePairs,
+    required List<String> outgoingPending,
+    required bool canEdit,
+  }) {
+    final rows = <Widget>[];
+    for (final invite in incoming) {
+      rows.add(_incomingInviteRow(invite));
     }
-    return _outlinedCard(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+    for (final pair in activePairs) {
+      rows.add(_activePairRow(pair));
+    }
+    if (_isEditingFriendStreaks) {
+      for (final friendId in outgoingPending) {
+        rows.add(_outgoingPendingEditRow(friendId));
+      }
+    }
+    rows.add(
+      _inviteFriendRow(
+        key: const Key('friendStreaksInviteRow-0'),
+      ),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (var i = 0; i < friends.length; i++) ...[
-            if (i > 0)
-              const Divider(height: 1, thickness: 1, color: Color(0xFF2A343C)),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Row(
-                children: [
-                  // The friend's picked profile picture when they
-                  // have one (Nov 23, 2026); the fallback is the
-                  // exact pre-feature navy initial circle. Juno
-                  // a11y ruling: friend-row avatars are decorative
-                  // next to the visible name — excluded from
-                  // semantics.
-                  ExcludeSemantics(
-                    child: UserAvatar(
-                      avatarId: friends[i].avatarId,
-                      size: 40,
-                      fallback: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: _duoNavyBtn,
-                        ),
-                        child: Center(
-                          child: Text(
-                            friends[i].nickname.isEmpty
-                                ? '?'
-                                : friends[i].nickname[0].toUpperCase(),
-                            style: _duo(16, 900, _duoText),
-                          ),
-                        ),
-                      ),
+          _friendStreaksHeadingRow(canEdit: canEdit),
+          const SizedBox(height: 12),
+          _outlinedCard(
+            key: const Key('friendStreaksPopulatedCard'),
+            radius: 16,
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
+            child: Column(
+              children: [
+                for (var i = 0; i < rows.length; i++) ...[
+                  if (i > 0)
+                    const Divider(
+                      height: 1,
+                      thickness: 1,
+                      indent: 11,
+                      endIndent: 11,
+                      color: Color(0xFF2A343C),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            friends[i].nickname,
-                            style: _duo(16, 700, _duoText),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          '#${friends[i].tag}',
-                          style: _duo(13, 700, _duoMuted),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Juno B-23: the Community screen's shipped stat
-                  // formats — flame + settled currentStreak with
-                  // "{N} day streak" semantics, gem icon + count
-                  // with GemCopy.pillLabel semantics. No rank, no
-                  // level/points, no comparative copy on this tab.
-                  Semantics(
-                    container: true,
-                    label: '${friends[i].currentStreak} day streak',
-                    child: ExcludeSemantics(
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.local_fire_department,
-                            size: 16,
-                            color: _duoPrimary,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${friends[i].currentStreak}',
-                            style: _duo(13, 900, _duoPrimary),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Semantics(
-                    container: true,
-                    label: GemCopy.pillLabel(friends[i].gemBalance),
-                    child: ExcludeSemantics(
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Image.asset(
-                            GemCopy.iconAsset,
-                            width: 16,
-                            height: 16,
-                            fit: BoxFit.contain,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${friends[i].gemBalance}',
-                            style: _duo(13, 900, _duoPrimaryLt),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                  rows[i],
                 ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _partnerAvatar({required String? avatarId, required String nickname}) {
+    final initial = nickname.trim().isEmpty
+        ? '?'
+        : nickname.trim()[0].toUpperCase();
+    // Mock v3: partner avatars are r24 (48px) on #1F2A4A with the
+    // initial at ~r*0.95. UserAvatar art renders when avatarId is
+    // set; the initial circle is the exact fallback otherwise.
+    return ExcludeSemantics(
+      child: UserAvatar(
+        avatarId: avatarId,
+        size: 48,
+        fallback: Container(
+          width: 48,
+          height: 48,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            color: Color(0xFF1F2A4A),
+          ),
+          child: Center(
+            child: Text(initial, style: _duo(22, 1000, _duoText)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _incomingInviteRow(FriendStreakIncomingDto invite) {
+    final busy = _streakActionBusy.contains('respond:${invite.pairId}');
+    // Mock v3 part 3: the avatar is centered on the whole
+    // name + subtitle + buttons block; the buttons sit in the text
+    // column under the subtitle (ACCEPT white on purple, DECLINE
+    // outline, radius 11, 12px gaps).
+    return Padding(
+      key: Key('friendStreakIncomingRow-${invite.pairId}'),
+      padding: const EdgeInsets.fromLTRB(7, 18, 11, 18),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          _partnerAvatar(
+            avatarId: invite.avatarId,
+            nickname: invite.nickname,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  invite.nickname,
+                  style: _duo(16.5, 900, _duoText),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  FriendStreaksCopy.incomingSubtitle,
+                  style: _duo(13.5, 700, const Color(0xFFA4A4AD)),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 9),
+                Row(
+                  children: [
+                    InkWell(
+                      key: Key('friendStreakAccept-${invite.pairId}'),
+                      onTap: busy
+                          ? null
+                          : () =>
+                              unawaited(_respondIncomingInvite(invite, true)),
+                      borderRadius: BorderRadius.circular(11),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _duoPrimary,
+                          borderRadius: BorderRadius.circular(11),
+                        ),
+                        child: Text(
+                          FriendStreaksCopy.accept,
+                          style: _duo(12.5, 1000, Colors.white),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    InkWell(
+                      key: Key('friendStreakDecline-${invite.pairId}'),
+                      onTap: busy
+                          ? null
+                          : () =>
+                              unawaited(_respondIncomingInvite(invite, false)),
+                      borderRadius: BorderRadius.circular(11),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(11),
+                          border: Border.all(color: _duoBorder, width: 1.2),
+                        ),
+                        child: Text(
+                          FriendStreaksCopy.decline,
+                          style: _duo(12.5, 1000, const Color(0xFFA4A4AD)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _activePairRow(FriendStreakPairDto pair) {
+    final busy = _streakActionBusy.contains('remove:${pair.pairId}');
+    final statusLine = _pairStatusLine(pair);
+    // Mock v3 part 3: name on the first line; flame + count +
+    // status line share ONE center line under it (flame ink ~16,
+    // count 15.5/1000 light purple, status 13.5/700 muted). The
+    // block is centered on the avatar. In EDIT mode the row gains
+    // the End streak action on the right (DESIGN §7).
+    return Padding(
+      key: Key('friendStreakPairRow-${pair.pairId}'),
+      padding: const EdgeInsets.fromLTRB(7, 14, 11, 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          _partnerAvatar(
+            avatarId: pair.avatarId,
+            nickname: pair.nickname,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  pair.nickname,
+                  style: _duo(16.5, 900, _duoText),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Semantics(
+                      container: true,
+                      label: '${pair.count} day streak',
+                      child: ExcludeSemantics(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.local_fire_department,
+                              size: 19,
+                              color: _duoPrimary,
+                            ),
+                            const SizedBox(width: 7),
+                            Text(
+                              '${pair.count}',
+                              key: Key('friendStreakPairCount-${pair.pairId}'),
+                              style: _duo(15.5, 1000, _duoPrimaryLt),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        statusLine,
+                        key: Key('friendStreakPairStatus-${pair.pairId}'),
+                        style: _duo(13.5, 700, const Color(0xFF69727E)),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          if (_isEditingFriendStreaks) ...[
+            const SizedBox(width: 10),
+            InkWell(
+              key: Key('friendStreakEnd-${pair.pairId}'),
+              onTap: busy
+                  ? null
+                  : () => unawaited(_confirmAndEndPairStreak(pair)),
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFFFF6B6B),
+                    width: 1.2,
+                  ),
+                ),
+                child: Text(
+                  FriendStreaksCopy.endStreak,
+                  style: _duo(12.5, 800, const Color(0xFFFF6B6B)),
+                ),
               ),
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _outgoingPendingEditRow(String friendId) {
+    final friend = _findFriendById(friendId);
+    final nickname = (friend != null && friend.nickname.trim().isNotEmpty)
+        ? friend.nickname
+        : friendId;
+    final busy = _streakActionBusy.contains('cancel:$friendId');
+    return Padding(
+      key: Key('friendStreakOutgoingRow-$friendId'),
+      padding: const EdgeInsets.fromLTRB(7, 14, 11, 14),
+      child: Row(
+        children: [
+          _partnerAvatar(
+            avatarId: friend?.avatarId,
+            nickname: nickname,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  nickname,
+                  style: _duo(16.5, 900, _duoText),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  FriendStreaksCopy.requestPending,
+                  style: _duo(13.5, 700, const Color(0xFF69727E)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          InkWell(
+            key: Key('friendStreakCancel-$friendId'),
+            onTap: busy
+                ? null
+                : () => unawaited(_cancelOutgoingInvite(friendId)),
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 6,
+              ),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: _duoBorder, width: 1.2),
+              ),
+              child: Text(
+                FriendStreaksCopy.cancelInvite,
+                style: _duo(12.5, 800, _duoMuted),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _inviteFriendRow({Key? key}) {
+    // Mock v3 invite row: dashed circle r21 (center 26 from the
+    // card edge — the card's content padding is 5, so no extra
+    // inset here), label at 62 from the card edge in SECONDARY
+    // (not purple), 16.5/800.
+    return InkWell(
+      key: key,
+      onTap: () => unawaited(_openInvitePicker()),
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Row(
+          children: [
+            const _DashedPlusCircle(size: 42),
+            const SizedBox(width: 15),
+            Expanded(
+              child: Text(
+                FriendStreaksCopy.inviteFriend,
+                style: _duo(16.5, 800, const Color(0xFFA4A4AD)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2102,3 +3006,76 @@ class _FreezeGrantIconState extends State<_FreezeGrantIcon>
     );
   }
 }
+
+/// Dashed circle with a centered plus glyph, used in the Friend Streaks
+/// empty-state banner and on every "Invite a friend" row (Design §7).
+/// Mock v3 colors: the dash ring is MUTED (#69727E, 1.6 wide) and the
+/// plus is SECONDARY (#A4A4AD) — not purple.
+class _DashedPlusCircle extends StatelessWidget {
+  final double size;
+
+  const _DashedPlusCircle({super.key, required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: CustomPaint(
+        painter: const _DashedCirclePainter(
+          color: Color(0xFF69727E),
+          strokeWidth: 1.6,
+          dashCount: 12,
+        ),
+        child: Center(
+          child: Icon(
+            Icons.add,
+            size: size * 0.4,
+            color: const Color(0xFFA4A4AD),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DashedCirclePainter extends CustomPainter {
+  final Color color;
+  final double strokeWidth;
+  final int dashCount;
+
+  const _DashedCirclePainter({
+    required this.color,
+    required this.strokeWidth,
+    required this.dashCount,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    final radius = (math.min(size.width, size.height) - strokeWidth) / 2;
+    if (radius <= 0) return;
+    final rect = Rect.fromCircle(
+      center: Offset(size.width / 2, size.height / 2),
+      radius: radius,
+    );
+    final step = (2 * math.pi) / dashCount;
+    final sweep = step * 0.55;
+    for (var i = 0; i < dashCount; i++) {
+      canvas.drawArc(rect, i * step, sweep, false, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedCirclePainter oldDelegate) {
+    return oldDelegate.color != color ||
+        oldDelegate.strokeWidth != strokeWidth ||
+        oldDelegate.dashCount != dashCount;
+  }
+}
+

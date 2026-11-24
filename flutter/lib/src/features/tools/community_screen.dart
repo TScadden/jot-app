@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/data/friend_notification_surfacer.dart';
 import 'package:tabs_lab/src/data/gem_service.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
@@ -156,7 +159,17 @@ class CommunityToolScreen extends StatefulWidget {
   final VoidCallback? onBack;
   final TabsBackend? backend;
 
-  const CommunityToolScreen({super.key, this.onBack, this.backend});
+  /// Friend Streaks local-notification surfacer (DESIGN §6):
+  /// tests inject a fake; production leaves null and the load path
+  /// uses [FriendNotificationSurfacer.production].
+  final FriendNotificationSurfacer? friendNotificationSurfacer;
+
+  const CommunityToolScreen({
+    super.key,
+    this.onBack,
+    this.backend,
+    this.friendNotificationSurfacer,
+  });
 
   @override
   State<CommunityToolScreen> createState() => _CommunityToolScreenState();
@@ -181,6 +194,25 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
     _load();
   }
 
+  /// Friend Streaks local surfacing (DESIGN §6): this screen's
+  /// load is the app's friend-notification FETCH point — when it
+  /// surfaces a new unread friend-class row, the surfacer posts a
+  /// local notification once per notification id. Beside the fetch
+  /// flow, never in build; fully guarded so a surfacing failure can
+  /// never break the load.
+  Future<void> _surfaceFriendNotifications(
+    List<FriendNotificationDto> rows,
+  ) async {
+    try {
+      final surfacer = widget.friendNotificationSurfacer ??
+          FriendNotificationSurfacer.production();
+      await surfacer.surfaceNew(rows);
+    } catch (_) {
+      // The load result stands regardless (surfacer is guarded
+      // internally too; this is belt-and-braces).
+    }
+  }
+
   Future<void> _load() async {
     try {
       final results = await Future.wait([
@@ -188,6 +220,14 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
         _backend.fetchFriendNotifications(),
         _backend.fetchSyncPull(),
       ]);
+      // Surface friend-class notifications from THIS fetch before
+      // the read-state can change (the panel marks rows read only
+      // when opened, a separate later action).
+      unawaited(
+        _surfaceFriendNotifications(
+          results[1] as List<FriendNotificationDto>,
+        ),
+      );
       if (!mounted) return;
       final pull = results[2] as Map<String, dynamic>?;
       final profile = pull?['profile'];

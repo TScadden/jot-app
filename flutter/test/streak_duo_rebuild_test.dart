@@ -99,33 +99,53 @@ void main() {
 
       await tester.tap(find.byKey(const Key('streakTabFriends')));
       await tester.pump();
-      // Juno B-23 row format: nickname + #tag, flame + settled
-      // streak with "{N} day streak" semantics, gem stat with
-      // GemCopy.pillLabel semantics. No rank / level / points.
-      expect(find.text('Boston'), findsOneWidget);
-      expect(find.text('#67676'), findsOneWidget);
-      expect(find.bySemanticsLabel('12 day streak'), findsOneWidget);
-      expect(find.bySemanticsLabel('120 gems'), findsOneWidget);
+      await tester.pump();
+      // Friend Streaks (DESIGN §7, Nov 23, 2026) replaced the old
+      // auto-listed friends tab: friends NEVER auto-appear there.
+      // With no pairs and no incoming invites, the tab renders the
+      // Friend Streaks empty state — Boston's friend row (nickname,
+      // #tag, streak, gems) is Community-surface data now and must
+      // not render here.
+      expect(find.text('Friend Streaks'), findsOneWidget);
+      expect(find.text('Invite a friend'), findsNWidgets(2));
+      expect(find.text('Boston'), findsNothing);
+      expect(find.text('#67676'), findsNothing);
+      expect(find.bySemanticsLabel('12 day streak'), findsNothing);
+      expect(find.bySemanticsLabel('120 gems'), findsNothing);
       expect(find.textContaining('pts'), findsNothing);
       expect(find.byKey(const Key('streakFreezeHeadline')), findsNothing);
 
       await tester.tap(find.byKey(const Key('streakTabPersonal')));
       await tester.pump();
       expect(find.byKey(const Key('streakFreezeHeadline')), findsOneWidget);
-      expect(find.text('Boston'), findsNothing);
+      expect(find.text('Friend Streaks'), findsNothing);
     });
 
-    testWidgets('empty friends list renders the Community empty state', (
+    testWidgets('empty friends list renders the Friend Streaks empty state', (
       tester,
     ) async {
       final s = streakSeed(current: 30, best: 68, now: at(2026, 11, 19));
       await pumpScreen(tester, s, friends: const []);
       await tester.tap(find.byKey(const Key('streakTabFriends')));
       await tester.pump();
-      // Juno B-24, verbatim from Community.
+      await tester.pump();
+      // Friend Streaks empty state (DESIGN §7): heading + two
+      // invite rows + Juno's amended footer. The old Community
+      // empty line (Juno B-24) belongs to the Community screen and
+      // no longer renders on this tab.
+      expect(find.text('Friend Streaks'), findsOneWidget);
+      expect(find.text('Invite a friend'), findsNWidgets(2));
+      expect(
+        find.text(
+          'A friend streak goes up by one every day you both finish '
+          'your day. If a day is missed, the streak ends. A day '
+          'covered by a freeze pauses it instead.',
+        ),
+        findsOneWidget,
+      );
       expect(
         find.text('No friends added yet. Add friends using their Nickname#ID!'),
-        findsOneWidget,
+        findsNothing,
       );
     });
 
@@ -139,11 +159,20 @@ void main() {
       await tester.tap(find.byKey(const Key('streakTabFriends')));
       await tester.pump();
       await tester.pump();
+      // fs_error_load (Juno, JUNO-COPY.md): the B-25 pattern with
+      // the friend-streaks object — supersedes the old friends line
+      // on this tab.
       expect(
-        find.text("Couldn't load your friends right now. Try again later."),
+        find.text(
+          "Couldn't load your friend streaks right now. Try again later.",
+        ),
         findsOneWidget,
       );
-      expect(find.byKey(const Key('streakFriendsEmpty')), findsNothing);
+      expect(
+        find.text("Couldn't load your friends right now. Try again later."),
+        findsNothing,
+      );
+      expect(find.text('Friend Streaks'), findsNothing);
     });
   });
 
