@@ -118,11 +118,13 @@ class TodaySummaryCard extends StatefulWidget {
   final Widget Function(BuildContext context)? checkInBuilder;
 
   /// Seventh founder ruling (Nov 9, 2026) — a plain widget rendered
-  /// at the right end of the card's header row, level with the
-  /// 'Today Summary' title (Home passes its weather element). It is
-  /// a SIBLING of the header's tappable region, never inside it, so
-  /// its own tap target keeps its own behavior and never triggers
-  /// the summary sheet.
+  /// in the card's TOP-RIGHT CORNER (Home passes its weather
+  /// element). It is overlaid on the card as a SIBLING of the
+  /// header's tappable region, never inside it, so its own tap
+  /// target keeps its own behavior and never triggers the summary
+  /// sheet. Weather Corner fix (Nov 23, 2026): the overlay is
+  /// positioned so the trailing's visible content hugs the corner
+  /// ~11dp from the card's outer top and right edges (see build()).
   final Widget? headerTrailing;
 
   /// Home polish round 4 (Part C) — the scored check-in line shown
@@ -923,117 +925,148 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: NotelColors.legacyDarkDivider, width: 1),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Header row: the tappable title region (48dp min
-            // height, opens the sheet) and — as a SIBLING outside
-            // the InkWell, so its gesture wins inside its own
-            // bounds — the trailing widget (Home's weather
-            // element). The header chevron is dropped: the whole
-            // card tap opens the sheet, so it was a duplicate.
-            Row(
-              children: [
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: InkWell(
-                      onTap: () => unawaited(_openSheet()),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(minHeight: 48),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Row(
-                              children: [
-                                Icon(
-                                  Icons.today,
-                                  size: 20,
-                                  color: NotelColors.primary,
-                                ),
-                                SizedBox(width: 8),
-                                Flexible(
-                                  child: Text(
-                                    'Today Summary',
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: NotelColors.textPrimary,
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header row: the tappable title region (48dp min
+              // height, opens the sheet). The trailing widget
+              // (Home's weather element) is NOT in this row — it is
+              // overlaid in the card's top-right corner below, as a
+              // SIBLING outside the InkWell, so its gesture wins
+              // inside its own bounds. The header chevron is
+              // dropped: the whole card tap opens the sheet, so it
+              // was a duplicate.
+              Row(
+                children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: InkWell(
+                        onTap: () => unawaited(_openSheet()),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: 48),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Row(
+                                children: [
+                                  Icon(
+                                    Icons.today,
+                                    size: 20,
+                                    color: NotelColors.primary,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Flexible(
+                                    child: Text(
+                                      'Today Summary',
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: NotelColors.textPrimary,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _subtitle,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                                color: NotelColors.textSecondary,
+                                ],
                               ),
-                            ),
-                          ],
+                              const SizedBox(height: 4),
+                              Text(
+                                _subtitle,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: NotelColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                if (widget.headerTrailing != null) widget.headerTrailing!,
-              ],
-            ),
-            // Round 4 scored line (Part C): the day's recorded
-            // check-in, flat on the card face under the header row.
-            // Round 5: display-only — no tap target (see the field
-            // doc); the line is a sibling of the header's
-            // sheet-opening region and a tap here lands on nothing.
-            if (widget.checkInScoredLine != null) ...[
-              const SizedBox(height: 2),
-              Semantics(
-                label: widget.checkInScoredSemantics,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: 40),
-                  child: Row(
-                    key: const ValueKey('todaySummaryCheckInLine'),
-                    children: [
-                      // Juno reconciliation Q2 (Nov 10, 2026):
-                      // NO icon on the face line — a check glyph
-                      // here would read as a completed plan item
-                      // (Condition 3 presentation). Flat
-                      // secondary text, the subtitle's own
-                      // style; the Item 7.2 semantics sentence
-                      // is descriptive only (round 5).
-                      Flexible(
-                        child: Text(
-                          widget.checkInScoredLine!,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: NotelColors.textSecondary,
+                ],
+              ),
+              // Round 4 scored line (Part C): the day's recorded
+              // check-in, flat on the card face under the header row.
+              // Round 5: display-only — no tap target (see the field
+              // doc); the line is a sibling of the header's
+              // sheet-opening region and a tap here lands on nothing.
+              if (widget.checkInScoredLine != null) ...[
+                const SizedBox(height: 2),
+                Semantics(
+                  label: widget.checkInScoredSemantics,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 40),
+                    child: Row(
+                      key: const ValueKey('todaySummaryCheckInLine'),
+                      children: [
+                        // Juno reconciliation Q2 (Nov 10, 2026):
+                        // NO icon on the face line — a check glyph
+                        // here would read as a completed plan item
+                        // (Condition 3 presentation). Flat
+                        // secondary text, the subtitle's own
+                        // style; the Item 7.2 semantics sentence
+                        // is descriptive only (round 5).
+                        Flexible(
+                          child: Text(
+                            widget.checkInScoredLine!,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: NotelColors.textSecondary,
+                            ),
                           ),
                         ),
-                      ),
-                      // Item 11 announcement live region
-                      // (zero-size, never visible), mirroring
-                      // CheckInSummaryCard.
-                      if (widget.checkInAnnouncement != null)
-                        Semantics(
-                          liveRegion: true,
-                          label: widget.checkInAnnouncement,
-                          child: const SizedBox.shrink(),
-                        ),
-                    ],
+                        // Item 11 announcement live region
+                        // (zero-size, never visible), mirroring
+                        // CheckInSummaryCard.
+                        if (widget.checkInAnnouncement != null)
+                          Semantics(
+                            liveRegion: true,
+                            label: widget.checkInAnnouncement,
+                            child: const SizedBox.shrink(),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
+              ],
+              _progressBar(context),
             ],
-            _progressBar(context),
-          ],
+          ),
         ),
+          // Weather Corner fix (Nov 23, 2026, founder direction):
+          // the trailing widget (Home's weather element) hugs the
+          // card's TOP-RIGHT CORNER instead of sitting centered in
+          // the header row. The Stack's origin is the card's
+          // content box (inside the 1dp border), so top: 1 /
+          // right: 9 puts the trailing's box 2dp below the card's
+          // outer top edge and 10dp in from its outer right edge.
+          // Home's weather element right-aligns its visible
+          // cluster (temp text + icon) inside its 64dp box and
+          // centers it vertically in its 40dp height (10dp
+          // internal top inset), and the icon's own ink sits
+          // ~1.7dp inside its box's right edge — so the VISIBLE
+          // cluster lands ~11dp from the top edge and ~11–12dp
+          // from the right edge at any temp width (pixel-measured
+          // on the package's rendered captures). It stays a
+          // sibling of the header InkWell — painted and
+          // hit-tested above it — so its tap keeps its own
+          // behavior and never opens the summary sheet. Nothing
+          // else in the card moves: the padded column above is
+          // laid out exactly as before.
+          if (widget.headerTrailing != null)
+            Positioned(
+              top: 1,
+              right: 9,
+              child: widget.headerTrailing!,
+            ),
+        ],
       ),
     );
   }
