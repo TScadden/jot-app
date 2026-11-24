@@ -7394,11 +7394,29 @@ class _AvatarPickerDialogState extends State<_AvatarPickerDialog> {
                           children: [
                             Padding(
                               padding: const EdgeInsets.all(3),
-                              child: ClipOval(
-                                child: Image.asset(
-                                  option.asset,
-                                  fit: BoxFit.cover,
-                                ),
+                              // Perf-lag fix (Nov 23, 2026): decode
+                              // at the cell's extent (×3 DPR cap,
+                              // avatarDecodeExtent) instead of the
+                              // full 480×480 for all 15 cells.
+                              child: LayoutBuilder(
+                                builder: (ctx, constraints) {
+                                  final extent = constraints.maxWidth
+                                          .isFinite
+                                      ? constraints.maxWidth
+                                      : constraints.maxHeight;
+                                  final decode = avatarDecodeExtent(
+                                      extent.isFinite && extent > 0
+                                          ? extent
+                                          : 48);
+                                  return ClipOval(
+                                    child: Image.asset(
+                                      option.asset,
+                                      fit: BoxFit.cover,
+                                      cacheWidth: decode,
+                                      cacheHeight: decode,
+                                    ),
+                                  );
+                                },
                               ),
                             ),
                             if (selected)

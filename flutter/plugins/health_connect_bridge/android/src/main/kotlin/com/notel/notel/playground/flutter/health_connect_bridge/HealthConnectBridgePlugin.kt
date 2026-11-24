@@ -1621,18 +1621,32 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
     /// first (founder rule: 0 is a failed read). Only days with at
     /// least one usable sample appear; a day's count may be 0 (real).
     /// Dart shape: [{date: "YYYY-MM-DD", count}] sorted ascending.
+    ///
+    /// Chunk isolation + partial contract mirror readHrvSamples
+    /// exactly (perf-lag fix, Nov 23, 2026): each 30-day chunk
+    /// reads in its own try/catch, so one failing chunk can no
+    /// longer error the whole read. A failed chunk contributes
+    /// NOTHING (its partially-read samples are discarded — its
+    /// days keep their stored values on the Dart side). Partial
+    /// failure returns the surviving chunks' counts in the map
+    /// shape {items, partialError}; if EVERY chunk fails, the
+    /// read still errors with SPIKE_COUNTS_READ_FAILED and the
+    /// real exception class.
     private fun readSpikeCounts(days: Int?, result: MethodChannel.Result) {
         val client = hcClientOrError(result) ?: return
         val n = (days ?: 30).coerceIn(1, 365)
         engineScope.launch {
-            try {
-                val zone = ZoneId.systemDefault()
-                val end = ZonedDateTime.now(zone).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
-                val start = end.minus(n.toLong(), ChronoUnit.DAYS)
-                val counts = mutableMapOf<String, Int>()
-                var chunkStart = start
-                while (chunkStart.isBefore(end)) {
-                    val chunkEnd = minOf(chunkStart.plus(30, ChronoUnit.DAYS), end)
+            val zone = ZoneId.systemDefault()
+            val end = ZonedDateTime.now(zone).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
+            val start = end.minus(n.toLong(), ChronoUnit.DAYS)
+            val counts = mutableMapOf<String, Int>()
+            val chunkErrors = mutableListOf<String>()
+            var chunkCount = 0
+            var chunkStart = start
+            while (chunkStart.isBefore(end)) {
+                val chunkEnd = minOf(chunkStart.plus(30, ChronoUnit.DAYS), end)
+                chunkCount++
+                try {
                     val byDay = mutableMapOf<String, MutableList<Pair<Long, Int>>>()
                     var pageToken: String? = null
                     do {
@@ -1655,6 +1669,9 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                         }
                         pageToken = response.pageToken
                     } while (pageToken != null)
+                    // The chunk read fully: only now do its counts
+                    // join the result (a chunk that throws above
+                    // contributes nothing).
                     for ((date, samples) in byDay) {
                         val sorted = samples.sortedBy { it.first }
                         var count = 0
@@ -1671,12 +1688,32 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                         }
                         counts[date] = count
                     }
-                    chunkStart = chunkEnd
+                } catch (e: Exception) {
+                    chunkErrors.add(hcErrorDetails(e))
                 }
-                result.success(
-                    counts.entries.sortedBy { it.key }
-                        .map { mapOf("date" to it.key, "count" to it.value) }
+                chunkStart = chunkEnd
+            }
+            if (chunkCount > 0 && chunkErrors.size == chunkCount) {
+                result.error(
+                    "SPIKE_COUNTS_READ_FAILED",
+                    "Could not read heart rate spikes.",
+                    chunkErrors.first()
                 )
+                return@launch
+            }
+            try {
+                val out = counts.entries.sortedBy { it.key }
+                    .map { mapOf("date" to it.key, "count" to it.value) }
+                if (chunkErrors.isEmpty()) {
+                    result.success(out)
+                } else {
+                    result.success(
+                        mapOf(
+                            "items" to out,
+                            "partialError" to chunkErrors.first()
+                        )
+                    )
+                }
             } catch (e: Exception) {
                 result.error("SPIKE_COUNTS_READ_FAILED", "Could not read heart rate spikes.", hcErrorDetails(e))
             }

@@ -17,6 +17,15 @@ import 'package:tabs_lab/src/widgets/user_avatar.dart';
 import 'settings_r29_test.dart' as r29;
 import 'test_helpers.dart';
 
+/// Perf-lag fix (Nov 23, 2026): avatar images now decode through
+/// a ResizeImage (cacheWidth/cacheHeight bound), so the asset
+/// name lives on the wrapped provider.
+String assetNameOf(ImageProvider provider) => switch (provider) {
+      ResizeImage resize => assetNameOf(resize.imageProvider),
+      AssetImage asset => asset.assetName,
+      _ => throw StateError('unexpected provider $provider'),
+    };
+
 /// Profile picture picker (Nov 23, 2026) — catalog completeness,
 /// the shared UserAvatar widget's image-vs-fallback contract, the
 /// tolerant avatarId parses (FriendDto + SettingsProfileData), and
@@ -99,7 +108,7 @@ void main() {
       await pumpAvatar(tester, 'avatar_07');
       final image = tester.widget<Image>(find.byType(Image));
       expect(
-        (image.image as AssetImage).assetName,
+        assetNameOf(image.image),
         'assets/images/avatar_07.png',
       );
       expect(find.text('FALLBACK'), findsNothing);
@@ -330,6 +339,33 @@ void main() {
       );
     });
 
+    testWidgets(
+      'picker cells decode at their cell extent, not 480x480 '
+      '(perf-lag fix)',
+      (tester) async {
+        await pumpProfile(tester, backend: backendWithAvatar('avatar_03'));
+        await tester.tap(
+          find.byKey(const ValueKey('edit_profile_picture_button')),
+        );
+        await tester.pumpAndSettle();
+        final cellFinder =
+            find.byKey(const ValueKey('avatar_option_avatar_01'));
+        final cellSize = tester.getSize(cellFinder);
+        final image = tester.widget<Image>(
+          find.descendant(of: cellFinder, matching: find.byType(Image)),
+        );
+        expect(image.image, isA<ResizeImage>());
+        final resize = image.image as ResizeImage;
+        // LayoutBuilder sits inside the cell's 3dp padding, so
+        // its extent is the cell width minus 6.
+        final expected = avatarDecodeExtent(cellSize.width - 6);
+        expect(resize.width, expected);
+        expect(resize.height, expected);
+        expect(resize.width, lessThanOrEqualTo(480));
+        expect(assetNameOf(image.image), 'assets/images/avatar_01.png');
+      },
+    );
+
     testWidgets('tapping a cell saves immediately and closes the picker', (
       tester,
     ) async {
@@ -450,7 +486,7 @@ void main() {
       // Boston picked Flame: his row renders the catalog image.
       final images = tester
           .widgetList<Image>(find.byType(Image))
-          .map((i) => (i.image as AssetImage).assetName)
+          .map((i) => assetNameOf(i.image))
           .toList();
       expect(images, contains('assets/images/avatar_07.png'));
       // Dad picked nothing: his initials fallback renders as before.
@@ -495,7 +531,7 @@ void main() {
       await tester.pumpAndSettle();
       final images = tester
           .widgetList<Image>(find.byType(Image))
-          .map((i) => (i.image as AssetImage).assetName)
+          .map((i) => assetNameOf(i.image))
           .toList();
       expect(images, contains('assets/images/avatar_09.png'));
       // Dad picked nothing: the navy initial fallback renders.

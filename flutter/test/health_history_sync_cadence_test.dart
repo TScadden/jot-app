@@ -9,9 +9,14 @@ import 'package:tabs_lab/src/data/health_history_sync.dart';
 /// time the app is opened and every 30 minutes in the background").
 ///
 /// - (a) An app-open capture ([HealthHistorySync.captureOnAppOpen])
-///   runs even with a fresh (< 6h) throttle stamp. On the base
-///   code there is no such entry point and every non-forced
-///   capture is skipped inside the window, so this fails there.
+///   runs even with a stamp inside the 6h throttle window — as
+///   long as the stamp is older than the app-open freshness
+///   floor (perf-lag fix, Nov 23, 2026: appOpenMinInterval,
+///   30 min; a stamp younger than that now SKIPS the open
+///   capture — see perf_lag_fixes_test.dart for the floor
+///   cases). On the base code there is no such entry point and
+///   every non-forced capture is skipped inside the window, so
+///   this fails there.
 /// - (b) One app open produces exactly ONE capture attempt: the
 ///   open trigger plus Home-shaped, history-shaped, and
 ///   repository-shaped attempts in the same open all join the one
@@ -48,7 +53,15 @@ final _now = DateTime(2026, 10, 22, 9);
 /// Seeds a non-empty store whose last-capture stamp is FRESH
 /// (age 0 against [_now]) — the state in which the old throttle
 /// skipped every non-forced capture.
-Future<HealthHistoryStore> _freshStampedStore() async {
+Future<HealthHistoryStore> _freshStampedStore() async =>
+    _stampedStore(age: Duration.zero);
+
+/// Seeds a non-empty store whose last-capture stamp is [age]
+/// old against [_now]. Perf-lag fix (Nov 23, 2026): app-open
+/// captures need a stamp at least appOpenMinInterval old to
+/// run, so the open-capture tests below seed a 1-hour-old stamp
+/// (past the 30-min floor, still inside the 6h throttle).
+Future<HealthHistoryStore> _stampedStore({required Duration age}) async {
   final store = _fakeStore(_FakeStore());
   await store.mergeRefresh([
     const DailyBiometrics(
@@ -57,7 +70,8 @@ Future<HealthHistoryStore> _freshStampedStore() async {
       restingHrBpm: 60,
     ),
   ]);
-  await store.markCaptured(_now.millisecondsSinceEpoch);
+  await store.markCaptured(
+      _now.millisecondsSinceEpoch - age.inMilliseconds);
   return store;
 }
 
@@ -136,10 +150,11 @@ void main() {
     HealthHistorySync.debugResetFlight();
   });
 
-  test('(a)+(e) open capture runs with a fresh throttle stamp; '
+  test('(a)+(e) open capture runs with a stamp inside the 6h '
+      'throttle window but past the 30-min app-open floor; '
       'the plain non-forced capture stays throttled before AND '
       'after it', () async {
-    final store = await _freshStampedStore();
+    final store = await _stampedStore(age: const Duration(hours: 1));
     final hc = _CountingHc();
     final sync = HealthHistorySync.withDeps(
       hc: hc,
@@ -165,7 +180,7 @@ void main() {
   test('(b) one open = one capture: the open trigger and the '
       'Home / history / repository shaped attempts in the same '
       'open all join the single in-flight run', () async {
-    final store = await _freshStampedStore();
+    final store = await _stampedStore(age: const Duration(hours: 1));
     final hc = _GatedHc();
     // Distinct instances on the same store, as production builds
     // (AppFlow uses the singleton; Home/history build withDeps).
@@ -230,7 +245,7 @@ void main() {
 
   test('forced refresh during an OPEN run still chains its own '
       'forced run behind it (refresh semantics unchanged)', () async {
-    final store = await _freshStampedStore();
+    final store = await _stampedStore(age: const Duration(hours: 1));
     final hc = _GatedHc();
     final sync = HealthHistorySync.withDeps(
       hc: hc,

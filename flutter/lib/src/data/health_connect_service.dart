@@ -1576,6 +1576,15 @@ class HealthConnectService {
   /// days (bridge range read, native spike rule). A count of 0 is
   /// REAL (a sampled day with no spikes) and is kept. Empty when
   /// unreadable.
+  ///
+  /// Perf-lag fix (Nov 23, 2026) — the bridge reads each 30-day
+  /// chunk in isolation (the readHrvSamples contract): when some
+  /// chunks fail, it returns an `{items, partialError}` map
+  /// instead of a bare list or a total failure — the counts that
+  /// DID read are returned and the partial failure is recorded
+  /// in [lastPartialErrorCode] (code `SPIKE_COUNTS_PARTIAL`,
+  /// details in [lastReadErrorDetails]). Only a failure of
+  /// EVERY chunk errors the call.
   Future<List<({String date, int count})>> readSpikeCounts(int days) async =>
       (await readSpikeCountsWithOutcome(days)).value;
 
@@ -1590,17 +1599,36 @@ class HealthConnectService {
   Future<HcReadOutcome<List<({String date, int count})>>>
       _readSpikeCountsCore(int days) async {
     try {
-      final raw =
-          await _channel.invokeMethod<List>('readSpikeCounts', {'days': days});
+      final raw = await _channel
+          .invokeMethod<dynamic>('readSpikeCounts', {'days': days});
+      List<dynamic> items = const [];
+      String? partialCode;
+      String? partialDetails;
+      if (raw is List) {
+        items = raw;
+      } else if (raw is Map) {
+        final s = raw['items'];
+        if (s is List) items = s;
+        final partial = raw['partialError'];
+        if (partial is String && partial.isNotEmpty) {
+          // Partial is NOT a failure: its own field, like
+          // HRV_SAMPLES_PARTIAL / SLEEP_HISTORY_PARTIAL.
+          partialCode = 'SPIKE_COUNTS_PARTIAL';
+          partialDetails = partial;
+          lastPartialErrorCode = partialCode;
+          lastReadErrorDetails = partial;
+        }
+      }
       final out = <({String date, int count})>[];
-      for (final item in raw ?? const []) {
+      for (final item in items) {
         if (item is Map) {
           final d = item['date'];
           final c = item['count'];
           if (d is String && c is num) out.add((date: d, count: c.toInt()));
         }
       }
-      return HcReadOutcome(value: out);
+      return HcReadOutcome(
+          value: out, errorDetails: partialDetails, partialCode: partialCode);
     } on PlatformException catch (e) {
       _notePlatformError(e);
       return HcReadOutcome(
