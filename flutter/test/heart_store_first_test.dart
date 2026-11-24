@@ -78,6 +78,18 @@ class _ScriptedHc extends HealthConnectService {
     readDates.add(dateStr);
     return handler(dateStr);
   }
+
+  /// Vera Condition 2 discharge: the Heart screen now claims each
+  /// load's outcome through the outcome variant, so the scripted
+  /// fake scripts THAT method too — same per-date handler, wrapped
+  /// as the read's own outcome (the handler sets no error/partial
+  /// codes, so the outcome is the value alone).
+  @override
+  Future<HcReadOutcome<List<HrSample>>> readHeartRateSamplesWithOutcome(
+      String dateStr) async {
+    readDates.add(dateStr);
+    return HcReadOutcome(value: await handler(dateStr));
+  }
 }
 
 Future<HealthHistoryStore> _seededStore(
@@ -445,6 +457,398 @@ void main() {
           HeartDataCache.instance.snapshot(today)!.samples, hasLength(1));
     });
   });
+
+  group('Vera conditions discharge (PR #171)', () {
+    testWidgets(
+        '1a. stored summary with a NULL spike count renders no '
+        'zero-spike / load claim; the stored peak still renders',
+        (tester) async {
+      final yesterday = DateTime.now().subtract(const Duration(days: 1));
+      final yStr = _ds(yesterday);
+      final store = await _seededStore(_FakeKv(), [
+        DailyBiometrics(
+          date: yStr,
+          restingHrBpm: 58,
+          // spikeCount deliberately NULL: the store never recorded
+          // a count for this day — it is unexamined, and the old
+          // fromStoredSummary fabricated "0 significant spikes".
+          maxHrBpm: 151,
+          minutesOver100: 62,
+          minutesOver120: 13,
+        ),
+      ]);
+      final hc = _ScriptedHc(handler: (_) async => const <HrSample>[]);
+
+      await pumpHeart(tester, hc: hc, store: store, initialDate: yesterday);
+      await tester.pump();
+      await tester.pump();
+
+      // The stored day is on screen (its peak is recorded data)…
+      expect(find.text('Peak 151 bpm'), findsOneWidget);
+      expect(find.text('151'), findsWidgets);
+      // …but NO count claim is fabricated from the null count.
+      expect(find.text('0 significant spikes'), findsNothing);
+      expect(find.text('Normal load'), findsNothing);
+      expect(find.text('TOTAL'), findsNothing);
+    });
+
+    testWidgets(
+        '1a. stored count 0 is examined data: its zero claim '
+        'still renders', (tester) async {
+      final yesterday = DateTime.now().subtract(const Duration(days: 1));
+      final yStr = _ds(yesterday);
+      final store = await _seededStore(_FakeKv(), [
+        DailyBiometrics(
+          date: yStr,
+          restingHrBpm: 58,
+          spikeCount: 0,
+          maxHrBpm: 90,
+          minutesOver100: 0,
+          minutesOver120: 0,
+        ),
+      ]);
+      final hc = _ScriptedHc(handler: (_) async => const <HrSample>[]);
+
+      await pumpHeart(tester, hc: hc, store: store, initialDate: yesterday);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('0 significant spikes'), findsOneWidget);
+      expect(find.text('Normal load'), findsWidgets);
+    });
+
+    testWidgets(
+        '1b. successful-but-empty read: Juno §1b.2 two lines, no '
+        'zero claim, and §2 failure wording NOT reused',
+        (tester) async {
+      final today = DateTime.now();
+      final store = await _seededStore(_FakeKv(), const []);
+      final hc = _ScriptedHc(handler: (_) async => const <HrSample>[]);
+
+      await pumpHeart(tester, hc: hc, store: store, initialDate: today);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text(heartNoReadingsTitle), findsOneWidget);
+      expect(find.text(heartNoReadingsBody), findsOneWidget);
+      expect(find.text('0 significant spikes'), findsNothing);
+      expect(find.text('Normal load'), findsNothing);
+      // This load did not fail — §1/§2 wording must not appear.
+      expect(find.text(heartNoDataTitle), findsNothing);
+      expect(find.text(heartStaleDataMessage), findsNothing);
+    });
+
+    testWidgets(
+        '1b. pending first load with no seed painted: no spike '
+        'claims at all while the load is in flight', (tester) async {
+      final today = DateTime.now();
+      final store = await _seededStore(_FakeKv(), const []);
+      final never = Completer<List<HrSample>>();
+      final hc = _ScriptedHc(handler: (_) => never.future);
+
+      await pumpHeart(tester, hc: hc, store: store, initialDate: today);
+
+      expect(find.text('Updating sync data...'), findsOneWidget);
+      expect(find.text('0 significant spikes'), findsNothing);
+      expect(find.text('Normal load'), findsNothing);
+      expect(find.text(heartNoReadingsTitle), findsNothing);
+
+      // Drain the screen's 30 s caller-side timeout timer.
+      await tester.pump(const Duration(seconds: 31));
+      await tester.pump();
+    });
+
+    testWidgets(
+        '1b. a backing stored count is NOT displaced by a '
+        'successful-but-empty read', (tester) async {
+      final today = DateTime.now();
+      final tStr = _ds(today);
+      final store = await _seededStore(_FakeKv(), [
+        DailyBiometrics(
+          date: tStr,
+          restingHrBpm: 60,
+          spikeCount: 3,
+          maxHrBpm: 116,
+          minutesOver100: 3,
+          minutesOver120: 0,
+        ),
+      ]);
+      final hc = _ScriptedHc(handler: (_) async => const <HrSample>[]);
+
+      await pumpHeart(tester, hc: hc, store: store, initialDate: today);
+      await tester.pump();
+      await tester.pump();
+
+      // The stored count is recorded data for the date — it stays.
+      expect(find.text('3 significant spikes'), findsOneWidget);
+      expect(find.text(heartNoReadingsTitle), findsNothing);
+    });
+
+    testWidgets(
+        '1c. partial-empty read with NO stored data takes the '
+        'failed path: Juno §2 state, no placeholder claims',
+        (tester) async {
+      final today = DateTime.now();
+      final store = await _seededStore(_FakeKv(), const []);
+      final hc = _PartialEmptyOutcomeHc();
+
+      await pumpHeart(tester, hc: hc, store: store, initialDate: today);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text(heartNoDataTitle), findsOneWidget);
+      expect(find.text(heartNoDataBody), findsOneWidget);
+      expect(find.text('0 significant spikes'), findsNothing);
+      expect(find.text('Normal load'), findsNothing);
+      // The error line stays the partial sentence (Juno J4).
+      expect(
+          find.text(
+              'Some heart rate data could not be read and may be missing.'),
+          findsOneWidget);
+    });
+
+    testWidgets(
+        '1c. partial-empty read WITH stored data takes the failed '
+        'path: Juno §1 stale state over the stored claims',
+        (tester) async {
+      final today = DateTime.now();
+      final tStr = _ds(today);
+      final store = await _seededStore(_FakeKv(), [
+        DailyBiometrics(
+          date: tStr,
+          restingHrBpm: 60,
+          spikeCount: 3,
+          maxHrBpm: 116,
+          minutesOver100: 3,
+          minutesOver120: 0,
+        ),
+      ]);
+      final hc = _PartialEmptyOutcomeHc();
+
+      await pumpHeart(tester, hc: hc, store: store, initialDate: today);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text(heartStaleDataMessage), findsOneWidget);
+      expect(find.text('3 significant spikes'), findsOneWidget);
+      expect(find.text(heartNoDataTitle), findsNothing);
+    });
+
+    testWidgets(
+        'Condition 2. overlapping loads over the REAL service '
+        '(mock channel): the first date times out, the second '
+        'succeeds — each load keeps its OWN outcome', (tester) async {
+      final today = DateTime.now();
+      final yesterday = today.subtract(const Duration(days: 1));
+      final tStr = _ds(today);
+      final yStr = _ds(yesterday);
+      final store = await _seededStore(_FakeKv(), const []);
+      final channel = MethodChannel(HealthConnectService.channelName);
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'readHeartRateSamples') {
+          final ds = (call.arguments as Map)['dateStr'] as String;
+          if (ds == tStr) {
+            // Today's bridge read hangs — the in-service bound
+            // (2 s override) turns it into this load's own
+            // READ_TIMEOUT outcome, AFTER yesterday's load lands.
+            return Future<dynamic>.delayed(const Duration(seconds: 10));
+          }
+          if (ds == yStr) {
+            // Yesterday answers 800 ms after its read starts. Its
+            // read starts when today's resolves (the service
+            // serializes a first, unproven overlapping pair under
+            // its slot gate — the screen-level loads overlap from
+            // the pick onward), so yesterday lands after today's
+            // bound fires but well inside its own.
+            return Future<dynamic>.delayed(
+                const Duration(milliseconds: 800),
+                () => [
+                      {'t': _msOn(yesterday, 9), 'bpm': 70},
+                      {'t': _msOn(yesterday, 10), 'bpm': 140},
+                    ]);
+          }
+          return const <dynamic>[];
+        }
+        return null;
+      });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null);
+      });
+      // The read is NOT overridden: it runs the real service's
+      // channel + outcome machinery. Only the probe is faked.
+      final hc = _ProbeOnlyHc(
+          readTimeoutOverride: const Duration(seconds: 2));
+
+      await pumpHeart(tester, hc: hc, store: store, initialDate: today);
+
+      // Pick yesterday while today's load is still in flight.
+      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.descendant(
+        of: find.byType(DatePickerDialog),
+        matching: find.text('${yesterday.day}'),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.text('OK'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1300));
+      await tester.pump();
+
+      // Today's bound has fired and today's OWN outcome is the
+      // one recorded: READ_TIMEOUT — under the old shared-slot
+      // claim, the overlapping yesterday load would have inherited
+      // or erased exactly this. No sync was stamped/applied for
+      // the failed date, and yesterday's read is still in flight.
+      final diag = store.lastCaptureDiagnostics['heartRead'];
+      expect(diag, isNotNull);
+      expect(diag!.errorCode, 'READ_TIMEOUT');
+      expect(HeartDataCache.instance.snapshot(tStr), isNull);
+
+      // Yesterday's load now lands with its OWN (successful)
+      // outcome: it paints its data and is NOT marked failed by
+      // today's timeout.
+      await tester.pump(const Duration(milliseconds: 900));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('105 bpm'), findsOneWidget);
+      expect(find.text(heartStaleDataMessage), findsNothing);
+      expect(find.text(heartNoDataTitle), findsNothing);
+      expect(HeartDataCache.instance.snapshot(yStr)?.samples,
+          hasLength(2));
+      expect(HeartDataCache.instance.snapshot(tStr), isNull);
+
+      // Drain today's hung channel future.
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pump();
+    });
+
+    testWidgets(
+        'Condition 2 (reverse). overlapping loads over the REAL '
+        'service: the first date succeeds, the second times out — '
+        'the timeout is the second date\'s own', (tester) async {
+      final today = DateTime.now();
+      final yesterday = today.subtract(const Duration(days: 1));
+      final tStr = _ds(today);
+      final yStr = _ds(yesterday);
+      final store = await _seededStore(_FakeKv(), const []);
+      final channel = MethodChannel(HealthConnectService.channelName);
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'readHeartRateSamples') {
+          final ds = (call.arguments as Map)['dateStr'] as String;
+          if (ds == tStr) {
+            return Future<dynamic>.delayed(const Duration(seconds: 10));
+          }
+          if (ds == yStr) {
+            return [
+              {'t': _msOn(yesterday, 9), 'bpm': 70},
+              {'t': _msOn(yesterday, 10), 'bpm': 140},
+            ];
+          }
+          return const <dynamic>[];
+        }
+        return null;
+      });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null);
+      });
+      final hc = _ProbeOnlyHc(
+          readTimeoutOverride: const Duration(milliseconds: 300));
+
+      await pumpHeart(tester, hc: hc, store: store, initialDate: yesterday);
+      await tester.pump();
+      await tester.pump();
+      // The first date's load succeeded with its own data.
+      expect(find.text('105 bpm'), findsOneWidget);
+      expect(HeartDataCache.instance.snapshot(yStr)?.samples,
+          hasLength(2));
+
+      // Pick today; its read hangs and times out on its own bound.
+      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.descendant(
+        of: find.byType(DatePickerDialog),
+        matching: find.text('${today.day}'),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.text('OK'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      await tester.pump();
+
+      // Today resolves to ITS OWN failed state (§2, no stored
+      // data); yesterday's success is untouched in the cache.
+      expect(find.text(heartNoDataTitle), findsOneWidget);
+      expect(find.text('105 bpm'), findsNothing);
+      final diag = store.lastCaptureDiagnostics['heartRead'];
+      expect(diag, isNotNull);
+      expect(diag!.errorCode, 'READ_TIMEOUT');
+      expect(HeartDataCache.instance.snapshot(tStr), isNull);
+      expect(HeartDataCache.instance.snapshot(yStr)?.samples,
+          hasLength(2));
+
+      // Drain today's hung channel future.
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pump();
+    });
+  });
+}
+
+/// Outcome fake for the Condition 1c tests: every read is a
+/// PARTIAL that collected nothing — the B-01 shape — delivered
+/// through the read's own outcome object.
+class _PartialEmptyOutcomeHc extends HealthConnectService {
+  @override
+  Future<HcAvailability> probeAvailability() async => const HcAvailability(
+        serviceAvailable: true,
+        grantedPermissions: HealthConnectService.requiredPermissions,
+        bridgeErrorCode: null,
+        stepsProbe: null,
+        persistedConnected: true,
+      );
+
+  @override
+  Future<bool> hasPersistedConnection() async => true;
+
+  @override
+  Future<HcReadOutcome<List<HrSample>>> readHeartRateSamplesWithOutcome(
+          String dateStr) async =>
+      const HcReadOutcome(
+        value: <HrSample>[],
+        errorDetails: 'IllegalStateException',
+        partialCode: 'HR_SAMPLES_PARTIAL',
+      );
+}
+
+/// Condition 2 regression fake: the probe is scripted, but the HR
+/// read itself is NOT overridden — it runs the REAL service's
+/// channel + outcome machinery over the mock method channel, so
+/// the overlapping loads exercise the genuine per-load outcome
+/// claim (not a fake that sets its own codes).
+class _ProbeOnlyHc extends HealthConnectService {
+  _ProbeOnlyHc({super.readTimeoutOverride});
+
+  @override
+  Future<HcAvailability> probeAvailability() async => const HcAvailability(
+        serviceAvailable: true,
+        grantedPermissions: HealthConnectService.requiredPermissions,
+        bridgeErrorCode: null,
+        stepsProbe: null,
+        persistedConnected: true,
+      );
+
+  @override
+  Future<bool> hasPersistedConnection() async => true;
 }
 
 /// HR read clean; the SLEEP sibling dirties the shared partial

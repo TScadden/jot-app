@@ -421,8 +421,18 @@ class HeartDayData {
   /// honest "--" for those two fields); the spike card is built
   /// from the stored count/max, with the stored resting HR as the
   /// baseline stand-in for the largest-jump figure (max − resting,
-  /// floored at 0). No value is invented: a null count/max stays a
-  /// null/0-free summary exactly as stored.
+  /// floored at 0).
+  ///
+  /// Vera Condition 1a (Nov 24, 2026): a NULL stored spike count is
+  /// an UNEXAMINED day — the store never recorded a count, so none
+  /// may be rendered. [HeartSpikesCardSummary.spikeCount] is
+  /// non-nullable and carries 0 as a numeric placeholder in that
+  /// case; it is NOT data. Consumers must gate every count /
+  /// load-level claim on [hasExaminedSpikeData] (or equivalently on
+  /// [storedSpikeCount] being non-null) — exactly the discipline
+  /// Juno's label addendum applies to the stored-summary metrics,
+  /// extended to the spike-count claim itself. A stored count of 0
+  /// IS examined data and may render as 0.
   factory HeartDayData.fromStoredSummary({
     int? spikeCount,
     int? maxHrBpm,
@@ -464,6 +474,16 @@ class HeartDayData {
       samples.isNotEmpty ||
       storedSpikeCount != null ||
       storedMaxHrBpm != null;
+
+  /// True when the spikes card's count / load-level claims are
+  /// backed by EXAMINED data (Juno §4 all-clear gate; Vera
+  /// Condition 1): a non-empty valid series was actually examined,
+  /// or the store recorded a spike count for the date (a stored 0
+  /// included — it is recorded data). An empty series with no
+  /// stored count is an unexamined day, whatever the reason the
+  /// series is empty, and backs no zero-spike or load-level claim.
+  bool get hasExaminedSpikeData =>
+      samples.isNotEmpty || storedSpikeCount != null;
 
   static const empty = HeartDayData(
     samples: [],

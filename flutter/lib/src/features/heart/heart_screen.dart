@@ -49,6 +49,21 @@ const heartNoDataBody = 'Tap refresh at the top to try again.';
 const heartChartSummaryOnlyMessage =
     "Saved summary only — chart detail isn't available for this day";
 
+/// §1b.2 (Juno addendum — Vera Condition 1b ruling, Nov 24, 2026) —
+/// the spikes card's successful-but-empty state: the live read for
+/// the selected date finished successfully and returned zero
+/// samples, and no other examined data backs the card (no valid or
+/// cached series, no non-null stored spike count / stored
+/// summary). That is an UNEXAMINED day: these two lines render in
+/// place of the spike count and the load level, with no count
+/// number, no load-level label, and no zero claim alongside. This
+/// is NOT §2 — the load did not fail, so §2's wording is never
+/// reused here.
+const heartNoReadingsTitle = 'No readings were returned for this day.';
+
+/// §1b.2 line 2 — see [heartNoReadingsTitle].
+const heartNoReadingsBody = "Spikes can't be checked without readings.";
+
 /// Round 25 — the Heart tab, port of native `FitbitScreen.kt`
 /// (legacy filename; it IS the native Heart screen).
 ///
@@ -145,6 +160,14 @@ class _HeartScreenState extends State<HeartScreen> {
   /// successful refresh for the date clears the flag in the same
   /// update that swaps the fresh data in.
   String? _failedDateStr;
+
+  /// The date whose most recent finished load SUCCEEDED with zero
+  /// samples (no error, no partial), or null. Juno §1b.1/§1b.2: a
+  /// successful-but-empty read is an UNEXAMINED day — the spikes
+  /// card renders the two ruled no-readings lines for it when no
+  /// examined data backs the card. Set/cleared in the same update
+  /// that resolves the date's load, exactly like [_failedDateStr].
+  String? _noReadingsDateStr;
 
   /// The history-store row for the selected date, when one exists
   /// — the store-first seed's source and Spike Review's stored
@@ -448,6 +471,7 @@ class _HeartScreenState extends State<HeartScreen> {
             _lastSyncAt = _effectiveLastSyncAt();
             _error = null;
             if (_failedDateStr == dateStr) _failedDateStr = null;
+            if (_noReadingsDateStr == dateStr) _noReadingsDateStr = null;
           });
         }
         return;
@@ -466,36 +490,50 @@ class _HeartScreenState extends State<HeartScreen> {
     String? errDetails;
     var threw = false;
     try {
-      // The service keeps the last read error code without clearing it
-      // on success; reset it so only THIS call's failure can surface.
-      _service.lastReadErrorCode = null;
-      _service.lastPartialErrorCode = null;
-      _service.lastReadErrorDetails = null;
+      // Vera Condition 2 — this load claims its OWN outcome object
+      // (readHeartRateSamplesWithOutcome, the same per-load claim
+      // Home's write-through gate uses), never the service's SHARED
+      // slot fields. Per-date loads now run concurrently, and the
+      // slots are written/reset by every load on the instance: a
+      // sibling load's entry reset could wipe this load's recorded
+      // error before it was captured (a failed read stamped as a
+      // sync), and a sibling's timeout write could land after this
+      // load's reset and be captured as THIS load's outcome (a
+      // successful date marked failed, wrong heartRead diagnostic
+      // for both). The outcome carries this read's own error /
+      // partial / details, so each load's classification,
+      // diagnostics, and cache-apply decision derive from its own
+      // read alone. This load neither resets nor writes the slots.
+      // Subclass fakes that override only the legacy method keep
+      // working: the service reconstructs their outcome from the
+      // slots they set, serialized under its per-instance gate
+      // until the read's box shape is proven (see _outcomeOf).
+      //
       // Bounded wait (hardening #2): the bridge read itself had NO
       // timeout, so a never-returning channel call wedged this
       // screen's "Updating sync data..." spinner forever (defect
-      // #3). On expiry the read fails closed as READ_TIMEOUT with
-      // the error recorded on the service, and the failed-load path
-      // below surfaces it — never a permanent spinner. (The service
-      // now carries the same bound internally; this caller-side
-      // bound keeps the identical semantics for subclass fakes,
-      // whose futures are theirs alone.)
-      raw = await _service
-          .readHeartRateSamples(dateStr)
+      // #3). On expiry THIS load fails closed as READ_TIMEOUT via
+      // its own synthesized outcome — the shared slots are not
+      // written, so the timeout can never be attributed to a
+      // sibling load — and the failed-load path below surfaces it:
+      // never a permanent spinner. (The service's outcome path
+      // carries the same bound internally; this caller-side bound
+      // keeps the identical semantics for subclass fakes, whose
+      // futures are theirs alone.)
+      final outcome = await _service
+          .readHeartRateSamplesWithOutcome(dateStr)
           .timeout(HealthConnectService.readTimeout, onTimeout: () {
-        _service.lastReadErrorCode = 'READ_TIMEOUT';
-        _service.lastReadErrorDetails =
-            'Health Connect did not respond in time. Please try again.';
-        return const <HrSample>[];
+        return const HcReadOutcome<List<HrSample>>(
+          value: <HrSample>[],
+          errorCode: 'READ_TIMEOUT',
+          errorDetails:
+              'Health Connect did not respond in time. Please try again.',
+        );
       });
-      // readHeartRateSamples fails closed to an empty list with the
-      // error code + native exception class kept on the service; a
-      // partial read records its own code (some chunks failed, real
-      // data still arrived). Captured immediately, before any
-      // further await can interleave a sibling load's slot writes.
-      errCode = _service.lastReadErrorCode;
-      partialCode = _service.lastPartialErrorCode;
-      errDetails = _service.lastReadErrorDetails;
+      raw = outcome.value;
+      errCode = outcome.errorCode;
+      partialCode = outcome.partialCode;
+      errDetails = outcome.errorDetails;
     } catch (_) {
       threw = true;
     }
@@ -503,7 +541,7 @@ class _HeartScreenState extends State<HeartScreen> {
     // "Synced just now" over a failed load is founder defect #3 —
     // and must not be persisted as a fresh blob. A partial read
     // delivered real data and counts as a sync.
-    final failed = threw || errCode != null;
+    final hardFailed = threw || errCode != null;
     // B-01: a partial read that collected NOTHING is not a sync
     // either — passing it as succeeded would let the empty series
     // overwrite the cached series for the date and stamp it fresh
@@ -512,7 +550,16 @@ class _HeartScreenState extends State<HeartScreen> {
     // partial read WITH samples still counts as a sync, exactly
     // as before, and the partial banner below still shows.
     final partialEmpty = partialCode != null && raw.isEmpty;
-    final countsAsSync = !failed && !partialEmpty;
+    // Vera Condition 1c: a partial-empty read takes the FAILED
+    // path for the Juno §1/§2 state decision — its own B-01 rule
+    // already holds it is "not a sync" because nothing was
+    // collected, so with stored data it derives §1 and with none
+    // it derives §2, never the success path's placeholder claims.
+    // (Its error LINE stays the partial sentence — Juno J4: the
+    // partial copy must not claim total failure — and its
+    // heartRead diagnostic stays the partial's, not a failure's.)
+    final failed = hardFailed || partialEmpty;
+    final countsAsSync = !failed;
     HeartDayData data;
     if (threw) {
       // Keep whatever local data the date already has — the cache's
@@ -534,9 +581,12 @@ class _HeartScreenState extends State<HeartScreen> {
     }
     // The Heart read's own outcome lands in the capture
     // diagnostics (heartRead entry) — the next wedge is diagnosable
-    // from the store instead of invisible.
+    // from the store instead of invisible. Keyed on the HARD
+    // failure only, from THIS load's outcome object (Condition 2):
+    // a partial read — even a partial-empty one — is not a failed
+    // read diagnostically, exactly as before.
     unawaited(_recordHeartRead(
-      failed: failed,
+      failed: hardFailed,
       errorCode: threw ? 'HEART_READ_FAILED' : errCode,
       sampleCount: raw.length,
     ));
@@ -550,8 +600,20 @@ class _HeartScreenState extends State<HeartScreen> {
       // (with the spinner now cleared).
       if (failed) {
         _failedDateStr = dateStr;
+        if (_noReadingsDateStr == dateStr) _noReadingsDateStr = null;
       } else if (_failedDateStr == dateStr) {
         _failedDateStr = null;
+      }
+      // Juno §1b bookkeeping: a load that finished successfully
+      // with zero samples (no error, no partial) marks its date
+      // successful-but-empty; a successful non-empty load clears
+      // its date's mark (the failed branch above clears it too).
+      if (!failed && errCode == null && partialCode == null) {
+        if (raw.isEmpty) {
+          _noReadingsDateStr = dateStr;
+        } else if (_noReadingsDateStr == dateStr) {
+          _noReadingsDateStr = null;
+        }
       }
       // Only the SELECTED date's completion paints. A load that
       // finishes after a date switch has already applied its
@@ -565,13 +627,15 @@ class _HeartScreenState extends State<HeartScreen> {
         // is a SecurityException is the granted-but-blocked
         // signature for THIS screen's type; any completed read
         // (data, honest empty, or partial) clears it.
-        _hrReadBlocked = failed &&
+        _hrReadBlocked = hardFailed &&
             (errDetails?.contains('SecurityException') ?? false);
         if (!_hrWedged) _repairSecondStep = false;
-        if (failed) {
+        if (hardFailed) {
           _error = 'Could not read heart rate data.';
         } else if (partialCode != null) {
-          // Juno J4: partial copy must not claim total failure.
+          // Juno J4: partial copy must not claim total failure —
+          // a partial-empty read takes the §1/§2 failure path for
+          // its STATE (Condition 1c) but keeps this sentence.
           _error = 'Some heart rate data could not be read and may be missing.';
         } else {
           _error = null;
@@ -1612,8 +1676,30 @@ class _HeartScreenState extends State<HeartScreen> {
   // ── 3. Spikes card ──────────────────────────────────────────────────
   Widget _spikesCard(HeartDayData data) {
     final card = data.spikesCard;
+    // Juno §4 all-clear gate on this card (Vera Conditions 1a/1b):
+    // the count and load-level claims render ONLY when examined
+    // data backs them — a non-empty valid series, or a non-null
+    // stored spike count for the date (a stored 0 is recorded data
+    // and may render). Every other state is an UNEXAMINED day and
+    // renders no "0 significant spikes" / "Normal load" claim:
+    // - a stored summary whose spike count is null (1a): the
+    //   stored fields that DO exist (peak, largest jump, the
+    //   minutes-over metrics below) still render; the count claim
+    //   and the Total metric are suppressed, not zero-filled.
+    // - a successful-but-empty read with no examined backing
+    //   (1b, Juno §1b.2): the two ruled no-readings lines render in
+    //   place of the count and the load level, nothing alongside.
+    // - the first load still in flight with no seed painted (Juno
+    //   §1b.3): no spike claims at all — the header shows only the
+    //   loading spinner until the load resolves.
+    final examined = data.hasExaminedSpikeData;
+    final noReadings = !examined &&
+        !data.storedSummaryOnly &&
+        !_loading &&
+        _failedDateStr != _dateStr &&
+        _noReadingsDateStr == _dateStr;
     final loadLevel = card.loadLevel;
-    final high = loadLevel == 'High load';
+    final high = examined && loadLevel == 'High load';
     return Container(
       decoration: BoxDecoration(
         color: high ? NotelColors.errorTint : NotelColors.surface,
@@ -1646,57 +1732,125 @@ class _HeartScreenState extends State<HeartScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '${card.spikeCount} significant spikes',
-                      style: const TextStyle(
-                        color: NotelColors.textPrimary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+                    if (noReadings) ...[
+                      // Juno §1b.2 — ONLY these two lines, in place
+                      // of the count and the load level.
+                      const Text(
+                        heartNoReadingsTitle,
+                        style: TextStyle(
+                          color: NotelColors.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    Text(
-                      loadLevel,
-                      style: const TextStyle(
-                        color: NotelColors.error,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                      const Text(
+                        heartNoReadingsBody,
+                        style: TextStyle(
+                          color: NotelColors.textSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
+                    ] else if (examined) ...[
+                      Text(
+                        '${card.spikeCount} significant spikes',
+                        style: const TextStyle(
+                          color: NotelColors.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        loadLevel,
+                        style: const TextStyle(
+                          color: NotelColors.error,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ] else
+                      // Unexamined day (null stored count, or the
+                      // pending first paint): the section label
+                      // only — no count, no load level, no claim.
+                      Row(
+                        children: [
+                          const Text(
+                            'Significant spikes',
+                            style: TextStyle(
+                              color: NotelColors.textPrimary,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          if (_loading) ...[
+                            const SizedBox(width: 8),
+                            const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: NotelColors.primary,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                   ],
                 ),
               ),
-              Container(
-                decoration: BoxDecoration(
-                  color: NotelColors.errorTintStrong,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                child: Text(
-                  loadLevel,
-                  style: const TextStyle(
-                    color: NotelColors.error,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
+              if (examined)
+                Container(
+                  decoration: BoxDecoration(
+                    color: NotelColors.errorTintStrong,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  child: Text(
+                    loadLevel,
+                    style: const TextStyle(
+                      color: NotelColors.error,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _spikeMetric('Peak',
-                  card.maxBpm > 0 ? '${card.maxBpm}' : '--', 'bpm',
-                  color: NotelColors.error),
-              _spikeMetric(
-                  'Largest jump',
-                  card.maxDelta > 0 ? '+${card.maxDelta}' : '--',
-                  'bpm'),
-              _spikeMetric('Total', '${card.spikeCount}', 'events'),
-            ],
-          ),
+          if (examined) ...[
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _spikeMetric('Peak',
+                    card.maxBpm > 0 ? '${card.maxBpm}' : '--', 'bpm',
+                    color: NotelColors.error),
+                _spikeMetric(
+                    'Largest jump',
+                    card.maxDelta > 0 ? '+${card.maxDelta}' : '--',
+                    'bpm'),
+                _spikeMetric('Total', '${card.spikeCount}', 'events'),
+              ],
+            ),
+          ] else if (data.storedSummaryOnly) ...[
+            // Stored-summary day with a null stored count (1a): the
+            // stored peak / jump are recorded data and still
+            // render; the Total metric is the count claim, so it is
+            // suppressed with the count.
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _spikeMetric('Peak',
+                    card.maxBpm > 0 ? '${card.maxBpm}' : '--', 'bpm',
+                    color: NotelColors.error),
+                _spikeMetric(
+                    'Largest jump',
+                    card.maxDelta > 0 ? '+${card.maxDelta}' : '--',
+                    'bpm'),
+              ],
+            ),
+          ],
           // Stored-summary-only days (Heart store-first fix): the
           // store row's remaining summary fields — minutes over
           // the thresholds and resting HR — render as metrics in

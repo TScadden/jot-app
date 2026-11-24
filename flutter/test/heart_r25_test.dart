@@ -341,8 +341,18 @@ void main() {
       expect(find.text('Asleep -- bpm'), findsOneWidget);
       expect(find.text('Last -- bpm'), findsOneWidget);
       expect(find.text('Peak --'), findsOneWidget);
-      expect(find.text('0 significant spikes'), findsOneWidget);
-      expect(find.text('Normal load'), findsWidgets);
+      // RE-PINNED per Juno's Vera Condition 1b addendum
+      // (JUNO-COPY.md, "Addendum — Vera Condition 1b ruling",
+      // §§1b.1–1b.2, Nov 24, 2026): this path is a
+      // successful-but-empty read — an UNEXAMINED day. The old
+      // expectations below ("0 significant spikes" / "Normal
+      // load" as the day's data) do NOT stand under Juno's §4
+      // all-clear gate; the spikes card renders the two ruled
+      // no-readings lines instead, with no zero claim of any kind.
+      expect(find.text(heartNoReadingsTitle), findsOneWidget);
+      expect(find.text(heartNoReadingsBody), findsOneWidget);
+      expect(find.text('0 significant spikes'), findsNothing);
+      expect(find.text('Normal load'), findsNothing);
     });
 
     testWidgets('not connected: native Connect Vital Signs state',

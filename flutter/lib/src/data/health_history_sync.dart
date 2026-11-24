@@ -1089,10 +1089,11 @@ class HealthHistorySync {
       // stored summary with that understatement (the shipped
       // rationale, now per chunk). Chunk boundaries are local
       // midnights, so no day's samples ever split across chunks.
-      // The chunk reads run concurrently (see below), so the
-      // leg's worst-case duration stays one readTimeout — a
-      // fully wedged window degrades in ~30 s like the shipped
-      // leg, not in 26 sequential timeouts.
+      // The chunk reads run in capped concurrent batches (see
+      // below), so the leg's worst-case duration is
+      // ceil(chunks / cap) × readTimeout — a fully wedged window
+      // degrades in bounded batches, not in 26 sequential
+      // timeouts.
       //
       // The leg still deliberately does NOT go through noteRead:
       // the counts read above owns the `spikes` metric's
