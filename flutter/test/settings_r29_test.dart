@@ -1083,7 +1083,11 @@ void main() {
       expect(find.text('Logout?'), findsOneWidget);
       expect(
           find.text(
-              'Your data will be synced to the cloud before logging out.'),
+              "You'll be signed out of this account on this device."),
+          findsOneWidget);
+      expect(
+          find.text(
+              "This only takes a few seconds. Anything that hasn't synced yet stays saved on this device and syncs the next time you sign in."),
           findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('confirm_logout')));
       await tester.pumpAndSettle();

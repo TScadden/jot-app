@@ -7303,9 +7303,10 @@ class _SettingsScreenState extends State<SettingsScreen>
                   // Real feedback from the first frame of the wait
                   // (the pre-fix dialog's only feedback was a
                   // one-time static text swap — no spinner — which
-                  // read as a dead button). Copy is the placeholder
-                  // 'Signing out...' pending Juno's sign-off in
-                  // JUNO-COPY.md.
+                  // read as a dead button). Copy is Juno-signed in
+                  // JUNO-COPY.md (Nov 24, 2026): the working line
+                  // names only the sign-out itself, which completes
+                  // within seconds under every outcome.
                   const Row(
                     children: [
                       SizedBox(
@@ -7323,14 +7324,23 @@ class _SettingsScreenState extends State<SettingsScreen>
                       ),
                     ],
                   )
-                else
+                else ...[
+                  // Idle body + note, Juno-signed verbatim in
+                  // JUNO-COPY.md (Nov 24, 2026): the body promises
+                  // only the sign-out itself; the note states the
+                  // bounded wait and the on-device retention
+                  // outcome for entries that have not synced yet.
                   const Text(
-                    'Your data will be synced to the cloud before logging out.',
+                    "You'll be signed out of this account on this device.",
                     style: TextStyle(color: NotelColors.textPrimary),
                   ),
-                // The pre-fix "may take a minute or two" warning is
-                // gone: the sign-out chain is bounded now, so the
-                // copy no longer concedes an unbounded wait.
+                  const SizedBox(height: 8),
+                  const Text(
+                    "This only takes a few seconds. Anything that hasn't synced yet stays saved on this device and syncs the next time you sign in.",
+                    style: TextStyle(
+                        color: NotelColors.textSecondary, fontSize: 14),
+                  ),
+                ],
               ],
             ),
             actions: [
