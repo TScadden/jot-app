@@ -1003,6 +1003,34 @@ class TodaySummaryCache {
     }
   }
 
+  /// Pre-frame warm (Home First-Paint package, Nov 24, 2026):
+  /// populate the in-memory copy from the disk blob before
+  /// `runApp`, mirroring [HomeDataCache.warmFromDisk]'s place in
+  /// main.dart's warm list, so the card's `_seedFromCache`
+  /// (memory-only `snapshot`) hits on a cold start and the card
+  /// paints the last-known plan on its first frame instead of
+  /// waiting on the sync-pull chain.
+  ///
+  /// Account binding: the disk blob DOES carry ownership — [save]
+  /// stamps `ownerEmail` into it — so the warm delegates to [load],
+  /// which enforces exactly the [clearIfOwnerMismatch] discipline
+  /// on the read side: a blob owned by a DIFFERENT known account
+  /// than [currentEmail] is wiped and never warmed; when
+  /// [currentEmail] is unreadable (null) and the blob HAS an owner,
+  /// nothing is warmed and nothing is wiped (the owner may be this
+  /// same account behind a transient session-read failure). A
+  /// stale-date blob warms nothing. Never throws ([load] is
+  /// fail-safe).
+  Future<void> warmFromDisk({
+    String? currentEmail,
+    String? todayStr,
+  }) async {
+    await load(
+      email: currentEmail,
+      todayStr: todayStr ?? dateStrOf(DateTime.now()),
+    );
+  }
+
   Future<void> _wipeDisk() async {
     try {
       await _delete(storageKey);

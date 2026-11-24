@@ -128,6 +128,14 @@ Future<void> _bootstrap() async {
     // memory before the first frame, ready to overlay the first
     // pull and retry on the first sync trigger.
     LogEntryOutbox.instance.warmFromDisk(currentEmail: sessionEmail),
+    // Home First-Paint package (Nov 24, 2026) — same account-bound
+    // warm for the Today Summary cache: its card seed reads memory
+    // only, so without this the disk blob could never paint on a
+    // cold start (PROFILE.md §1). The warm enforces the blob's
+    // ownerEmail stamp against the session account inside
+    // TodaySummaryCache.load — a foreign blob is wiped, never
+    // seeded.
+    TodaySummaryCache.instance.warmFromDisk(currentEmail: sessionEmail),
   ]);
   LaunchTrace.instance.mark(LaunchTrace.cachesWarmed);
   // Dev-only app background override (Nov 19, 2026): load the
@@ -200,8 +208,25 @@ Future<void> _bootstrap() async {
   });
 }
 
+/// Home First-Paint package (Nov 24, 2026) — the ONE app-level
+/// [WeatherApiClient] for production. The Round-15 weather cache
+/// is per-instance in-memory, and production used to build
+/// `const TabsLabApp()` with no client injected, so Home's header
+/// load, the weather sheet, and the header GPS upgrade each built
+/// a fresh client with an EMPTY cache (PROFILE.md §3.4). This
+/// shared instance is the default [TabsLabApp] forwards into
+/// [AppFlow] when no client is injected, so the cache survives
+/// across header and sheet for the whole process. Tests that
+/// inject their own client (here or at [AppFlow]) are unaffected.
+final WeatherApiClient sharedWeatherApiClient = WeatherApiClient();
+
 class TabsLabApp extends StatelessWidget {
-  const TabsLabApp({super.key});
+  /// Injectable for tests; defaults to [sharedWeatherApiClient]
+  /// (see its doc) — NOT a fresh client — so production shares one
+  /// weather cache app-wide.
+  final WeatherApiClient? weatherApi;
+
+  const TabsLabApp({super.key, this.weatherApi});
 
   @override
   Widget build(BuildContext context) {
@@ -250,7 +275,7 @@ class TabsLabApp extends StatelessWidget {
           child: child ?? const SizedBox.shrink(),
         ),
       ),
-        home: const AppFlow(),
+        home: AppFlow(weatherApi: weatherApi ?? sharedWeatherApiClient),
       ),
     );
   }

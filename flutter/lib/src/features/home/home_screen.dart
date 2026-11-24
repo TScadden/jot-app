@@ -2478,6 +2478,41 @@ class _HomeScreenState extends State<HomeScreen>
     // probe evidence, or this load's own core-read wedge
     // evidence.
     final wedged = staleGrant || vitals.coreReadWedged;
+    // Home First-Paint package (Nov 24, 2026, F3) — the vitals
+    // repaint is DECOUPLED from the streak pull: vitals (and the
+    // status fields this load already knows) are applied in their
+    // own setState as soon as loadTodayVitals lands, instead of
+    // waiting for the single terminal setState that also awaits
+    // streakFuture below (PROFILE.md §2.3(2)). PAINT TIMING ONLY:
+    // the terminal block below is unchanged — the provisional
+    // streak apply rule, the settled-writer exclusivity, the
+    // unawaited settle start, and the Daily Score re-run all keep
+    // their exact order and conditions. The terminal
+    // cache.applyVitals re-apply is a no-op when this early apply
+    // already landed (identical values report no change), so the
+    // terminal setState still fires exactly when the streak
+    // provisional apply or a not-yet-applied status change needs
+    // it.
+    if (mounted) {
+      final vitalsChanged = HomeDataCache.instance.applyVitals(vitals);
+      final statusChangedEarly = status != _hcStatus ||
+          staleGrant != _hcStaleGrant ||
+          wedged != _hcWedged ||
+          iosHealthState != _iosHealthState;
+      if (vitalsChanged || statusChangedEarly) {
+        setState(() {
+          _vitals = vitals;
+          _iosHealthState = iosHealthState;
+          _hcStatus = status;
+          _hcStaleGrant = staleGrant;
+          _hcWedged = wedged;
+          if (!wedged) {
+            _hcRepairSecondStep = false;
+            _hcRepairError = null;
+          }
+        });
+      }
+    }
     final streak = await streakFuture;
     // Streak engine (Lab package Nov 4, 2026; authoritative
     // pipeline VC 100115) — the engine settles today against the

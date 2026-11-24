@@ -90,20 +90,38 @@ class _WeatherSheetState extends State<_WeatherSheet> {
 
   Future<void> _load() async {
     final token = ++_loadToken;
-    Position? position;
+    // Home First-Paint package (Nov 24, 2026) — content NEVER
+    // gates on GPS (PROFILE.md §3): the details load starts
+    // immediately on the cache/IP path, and the GPS position, when
+    // it lands, upgrades the sheet with GPS coords — the same
+    // upgrade pattern the Home header uses
+    // (home_screen.dart's gpsFuture.then → _upgradeHeaderCondition).
+    // Before this, _load awaited the GPS future (15s timeout)
+    // before even the cache-first read, so the skeleton sat for
+    // the whole GPS wait despite an instant network behind it.
+    // No request storm: the first paint is the cache/IP load (its
+    // own cache-first + one background forceRefresh inside
+    // _loadDetails), then at most ONE GPS upgrade load.
     final gpsFuture = widget.gpsPositionFuture;
     if (gpsFuture != null) {
-      position = await gpsFuture.timeout(
-        const Duration(seconds: 15),
-        onTimeout: () => null,
-      );
+      unawaited(gpsFuture.then((position) async {
+        if (position == null || !mounted) return;
+        // A newer load (retry / share-location) supersedes the
+        // pending upgrade.
+        if (token != _loadToken) return;
+        final upgradeToken = ++_loadToken;
+        await _loadDetails(
+          token: upgradeToken,
+          manualLat: position.latitude,
+          manualLon: position.longitude,
+          manualCity: 'Current Location',
+        );
+      }).catchError((_) {
+        // GPS failed/denied: the IP-based content stands, silently
+        // (the header's fallback rule).
+      }));
     }
-    await _loadDetails(
-      token: token,
-      manualLat: position?.latitude,
-      manualLon: position?.longitude,
-      manualCity: position != null ? 'Current Location' : null,
-    );
+    await _loadDetails(token: token);
     // Re-check the rationale in case permission changed while the sheet
     // was open (e.g. granted in system settings); a fresh grant hides
     // the rationale card. The sheet itself is the only place that may
