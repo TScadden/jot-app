@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
+import 'package:tabs_lab/src/features/shell/nav_dock_glass.dart';
 import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 
 /// Navbar replica — Phase 2 of the Lab nav-bar package
@@ -30,7 +31,7 @@ void main() {
             w is Container &&
             w.decoration is BoxDecoration &&
             (w.decoration as BoxDecoration).gradient ==
-                LabBlackColors.navbarGlassGradient,
+                NavDockLiquidGlass.tintGradient,
       );
 
   Widget dock({
@@ -182,8 +183,9 @@ void main() {
       expect(tapped, DockTab.quickLog);
     });
 
-    testWidgets('(c) glass: neutral white gradient, sigma 14 blur, '
-        'rim, specular, sheen, shadow', (tester) async {
+    testWidgets('(c) glass: liquid-glass dark gradient, sigma 14 blur '
+        '+ saturation, gradient rim, specular, sheen, shadow',
+        (tester) async {
       await tester.pumpWidget(dock());
       await tester.pump();
 
@@ -193,15 +195,31 @@ void main() {
       expect(bf.filter, isA<ui.ImageFilter>());
       expect(LabBlackColors.glassBlurSigma, 14);
 
-      // Bar rim: white @ 20%, 1dp, on the bar Material shape.
+      // UPDATED (Nav Bar Liquid Glass package): the flat white-20%
+      // Material side border is gone — the rim is now the gradient
+      // stroke painted by NavDockGlassRimPainter (white @ 50% top
+      // -> @ 10% bottom). The Material shape carries no side.
       final material = tester.widget<Material>(
         find
             .descendant(of: find.byType(NavDock), matching: find.byType(Material))
             .first,
       );
       final shape = material.shape! as RoundedRectangleBorder;
-      expect(shape.side.color, LabBlackColors.glassEdge);
-      expect(shape.side.width, 1);
+      expect(shape.side, BorderSide.none);
+      final rimPaints = tester.widgetList<CustomPaint>(
+        find.descendant(
+            of: find.byType(NavDock), matching: find.byType(CustomPaint)),
+      );
+      expect(
+        rimPaints.any((p) => p.painter is NavDockGlassRimPainter),
+        isTrue,
+        reason: 'gradient rim painter present',
+      );
+      expect(NavDockLiquidGlass.rimGradient.colors, const [
+        Color(0x80FFFFFF), // white @ 50% — top edge
+        Color(0x2EFFFFFF), // white @ 18%
+        Color(0x1AFFFFFF), // white @ 10% — bottom
+      ]);
 
       // Specular top line + sheen band + drop shadow all present.
       final boxes = tester
@@ -238,11 +256,19 @@ void main() {
         isTrue,
         reason: 'drop shadow black @ 35%, blur 16, offset (0, 6)',
       );
-      // Neutral means: none of the bar's gradient stops is a
-      // purple tint — every stop is pure white at some alpha.
-      for (final c in LabBlackColors.navbarGlassGradient.colors) {
+      // UPDATED (Nav Bar Liquid Glass package): the tint is now a
+      // translucent DARK gradient, still neutral — none of the
+      // bar's gradient stops is a purple/colored tint; every stop
+      // is a pure neutral gray at an alpha inside 0.35–0.50.
+      expect(NavDockLiquidGlass.tintGradient.colors, const [
+        Color(0x802E2E2E),
+        Color(0x6B262626),
+        Color(0x5A1C1C1C),
+      ]);
+      for (final c in NavDockLiquidGlass.tintGradient.colors) {
         expect(c.r, c.g);
         expect(c.g, c.b);
+        expect(c.a, inInclusiveRange(0.35, 0.51)); // 0x80 = 50.2%
       }
     });
 

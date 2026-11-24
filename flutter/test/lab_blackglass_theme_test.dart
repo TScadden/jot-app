@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
+import 'package:tabs_lab/src/features/shell/nav_dock_glass.dart';
 import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
@@ -82,10 +83,12 @@ void main() {
       expect(filters, findsOneWidget);
       final bf = tester.widget<BackdropFilter>(filters);
       expect(bf.filter, isA<ui.ImageFilter>());
-      // Phase 2 navbar replica (NAVBAR_SPEC §5): the BAR glass is
-      // now the NEUTRAL white gradient (the v4 lavender tint is
-      // dropped in the bar only) — some Container in the dock
-      // carries exactly that gradient.
+      // UPDATED (Nav Bar Liquid Glass package): the BAR glass is
+      // now the liquid-glass DARK gradient from NavDockLiquidGlass
+      // (the Phase 2 neutral white gradient token is retained
+      // unchanged in LabBlackColors but the dock no longer paints
+      // it) — some Container in the dock carries exactly the new
+      // gradient.
       final gradients = tester
           .widgetList<Container>(
             find.descendant(
@@ -96,7 +99,7 @@ void main() {
           .map((c) => (c.decoration as BoxDecoration?)?.gradient)
           .whereType<Gradient>()
           .toList();
-      expect(gradients, contains(LabBlackColors.navbarGlassGradient));
+      expect(gradients, contains(NavDockLiquidGlass.tintGradient));
       expect(gradients, isNot(contains(LabBlackColors.dockGlassGradient)));
       // The selection capsule is SOLID opaque near-black (spec §3),
       // one full cell wide x 52dp. Default test surface is 800dp
@@ -142,10 +145,11 @@ void main() {
       // with the screen's bottom edge).
       expect(LabBlackColors.settingsTrayRadius, 30.0);
       expect(LabBlackColors.settingsTrayBottomRadius, 33.0);
-      // P5 (bar glass) deliberately NOT moved: the signed neutral
-      // navbar recipe stays (the DNA's as-captured warm #4B3C43
-      // contradicts both the signed recipe and the founder's
-      // "more black" direction). Pin that it is unchanged.
+      // P5 (bar glass token) deliberately NOT moved: the signed
+      // neutral navbar recipe token stays byte-identical (the Nav
+      // Bar Liquid Glass package moved the DOCK's painted material
+      // to NavDockLiquidGlass, dock-locally — it did not retune
+      // this shared token). Pin that the token is unchanged.
       expect(LabBlackColors.navbarGlassGradient.colors, const [
         Color(0x40FFFFFF),
         Color(0x33FFFFFF),

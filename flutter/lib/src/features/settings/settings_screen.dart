@@ -301,6 +301,11 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   // Device-only settings (SettingsStore).
   bool _showNavLabels = true;
+  // Liquid Glass switch (Nav Bar Liquid Glass package, Nov 24,
+  // 2026): default ON, seeded from the store in _load like
+  // _showNavLabels; MainShell reads the same store live, so the
+  // dock re-renders on the flip with no restart.
+  bool _liquidGlass = true;
   // Juno ruling (Oct 2026): no _themeMode view state anymore — the
   // Appearance picker is disabled and Dark is always the shown
   // selection, so this screen never reads the stored theme mode.
@@ -602,6 +607,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       _store.getUserContextHidden(),
       _store.getCheckInReminderEnabled(),
       _store.getLastSyncTimeMs(),
+      _store.getLiquidGlass(),
     ]);
     if (!mounted) return;
     final body = results[0] as Map<String, dynamic>?;
@@ -634,6 +640,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       _contextHidden = results[2] as bool;
       _checkInEnabled = results[3] as bool;
       _lastSyncMs = results[4] as int;
+      _liquidGlass = results[5] as bool;
       _loaded = true;
       if (!_contextSeeded) {
         _contextController.text = data.userContext;
@@ -4302,6 +4309,24 @@ class _SettingsScreenState extends State<SettingsScreen>
             await _store.setShowNavLabels(v);
           },
           key: const ValueKey('nav_labels_toggle'),
+        ),
+        const SizedBox(height: 16),
+        // Liquid Glass switch (Nav Bar Liquid Glass package,
+        // Nov 24, 2026): same row pattern, same card, directly
+        // under the nav-labels preference — same feature family.
+        // Subtitle is Juno's final string (JUNO-NOTES.md): honest
+        // that the switch covers the nav bar only in this build.
+        // OFF renders the pre-package dock; MainShell picks the
+        // flip up live through the shared store.
+        _toggleRow(
+          'Liquid Glass',
+          'Bottom navigation bar only. Off shows the bar as it is now.',
+          _liquidGlass,
+          (v) async {
+            setState(() => _liquidGlass = v);
+            await _store.setLiquidGlass(v);
+          },
+          key: const ValueKey('liquid_glass_toggle'),
         ),
         // Round 30: the dock consumes this preference now (MainShell
         // passes it to NavDock, which renders native's labeled

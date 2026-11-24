@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 import 'package:tabs_lab/src/features/shell/heart_sleep_mode.dart';
+import 'package:tabs_lab/src/features/shell/nav_dock_glass.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 
@@ -44,13 +45,23 @@ import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 /// - Center quick-log is FLATTENED (the reference has no center /
 ///   raised item): the edit glyph is a plain equal cell like the
 ///   other four; no raised button, fill, elevation, or ring.
-/// - Glass: NEUTRAL milky glass (this drops the v4 dock's lavender
-///   tint in the bar only) — real BackdropFilter blur sigma 14,
-///   a vertical WHITE-tint gradient (top lighter), a 1dp specular
-///   top line (white ~45%) plus a top sheen band, a white ~20%
-///   1dp rim, and a drop shadow black @ 35%, blur 16, offset (0,6).
-///   The v4 glass widget structure is reused; only the tint is
-///   neutralized. Surfaces above the dock keep their v4 treatment.
+/// - Glass: LIQUID GLASS (Nav Bar Liquid Glass package, Nov 24,
+///   2026 — a material retune of the Phase 2 surface, values in
+///   [NavDockLiquidGlass]): real BackdropFilter blur sigma 14
+///   composed with a 1.55x saturation boost (vibrancy), a
+///   translucent DARK gradient tint (neutral dark gray, alpha
+///   50% -> 42% -> 35%, top lighter), a GRADIENT 1dp rim (white
+///   50% at the top edge fading to 10% at the bottom), the kept
+///   1dp specular top line (white ~45%) plus top sheen band, and
+///   the unchanged drop shadow black @ 35%, blur 16, offset (0,6).
+///   Geometry, icons, capsule, spring and behavior are exactly
+///   the Phase 2 replica's; only the dock's surface material
+///   changed, and no other surface in the app is affected.
+///   Founder amendment (same day): the material is behind the
+///   Settings "Liquid Glass" switch ([NavDock.liquidGlass],
+///   default ON) — OFF renders this Phase 2 surface exactly as
+///   it was before the package, by construction (see the branch
+///   in the build method).
 /// - Bottom float: bottom padding = max(27dp, viewPadding.bottom
 ///   + 4dp). The reference renders no home indicator and floats
 ///   ~27pt from the screen edge; Tabs must still clear Android's
@@ -171,12 +182,25 @@ class NavDock extends StatefulWidget {
   /// modes (NAVBAR_SPEC unchanged); geometry untouched.
   final HeartSleepMode heartSleepMode;
 
+  /// Liquid Glass switch (founder amendment, Nov 24, 2026): the
+  /// Settings "Liquid Glass" preference, fed by MainShell from
+  /// SettingsStore exactly like [showLabels]. Default ON. When
+  /// ON the dock paints the liquid-glass material
+  /// ([NavDockLiquidGlass]); when OFF the dock renders the
+  /// pre-package Phase 2 surface — the branch below keeps that
+  /// rendering as the untouched legacy code path (plain blur,
+  /// milky white gradient, flat white-20% rim), not a recreation.
+  /// Geometry, icons, capsule and behavior are identical in both
+  /// states; ONLY the surface material branches.
+  final bool liquidGlass;
+
   const NavDock({
     super.key,
     required this.selected,
     required this.onSelect,
     this.showLabels = false,
     this.heartSleepMode = HeartSleepMode.heart,
+    this.liquidGlass = true,
   });
 
   @override
@@ -255,27 +279,43 @@ class _NavDockState extends State<NavDock>
         child: ClipRRect(
           borderRadius: const BorderRadius.all(Radius.circular(kNavDockRadius)),
           child: BackdropFilter(
-            filter: ui.ImageFilter.blur(
-              sigmaX: LabBlackColors.glassBlurSigma,
-              sigmaY: LabBlackColors.glassBlurSigma,
-            ),
+            // Liquid Glass ON: blur sigma 14 composed with the
+            // 1.55x saturation boost (see NavDockLiquidGlass).
+            // Liquid Glass OFF: the pre-package plain blur,
+            // untouched.
+            filter: widget.liquidGlass
+                ? NavDockLiquidGlass.backdropFilter()
+                : ui.ImageFilter.blur(
+                    sigmaX: LabBlackColors.glassBlurSigma,
+                    sigmaY: LabBlackColors.glassBlurSigma,
+                  ),
             child: Material(
               color: Colors.transparent,
-              shape: const RoundedRectangleBorder(
+              shape: RoundedRectangleBorder(
                 borderRadius:
-                    BorderRadius.all(Radius.circular(kNavDockRadius)),
-                side: BorderSide(
-                  color: LabBlackColors.glassEdge,
-                  width: 1,
-                ),
+                    const BorderRadius.all(Radius.circular(kNavDockRadius)),
+                // Liquid Glass ON: no flat side — the rim is the
+                // gradient stroke painted by NavDockGlassRimPainter
+                // inside the Stack below. OFF: the pre-package flat
+                // white-20% 1dp rim, untouched.
+                side: widget.liquidGlass
+                    ? BorderSide.none
+                    : const BorderSide(
+                        color: LabBlackColors.glassEdge,
+                        width: 1,
+                      ),
               ),
               child: Container(
                 height: dockHeight,
                 padding: const EdgeInsets.symmetric(
                   horizontal: kNavDockInnerPadding,
                 ),
-                decoration: const BoxDecoration(
-                  gradient: LabBlackColors.navbarGlassGradient,
+                decoration: BoxDecoration(
+                  // ON: the dark liquid-glass tint. OFF: the
+                  // pre-package milky white gradient, untouched.
+                  gradient: widget.liquidGlass
+                      ? NavDockLiquidGlass.tintGradient
+                      : LabBlackColors.navbarGlassGradient,
                 ),
                 child: LayoutBuilder(
                   builder: (context, constraints) {
@@ -379,6 +419,29 @@ class _NavDockState extends State<NavDock>
                             ),
                           ),
                         ),
+                        // Gradient rim (liquid glass, ON path
+                        // only): a 1dp stroke inside the pill
+                        // outline, white @ 50% at the top edge
+                        // fading to @ 10% at the bottom — replaces
+                        // the flat white-20% Material side border
+                        // on this path. Painted last so the edge
+                        // light sits above the glass fill; it
+                        // touches only the pill's perimeter. On the
+                        // OFF path this layer does not exist, exactly
+                        // as before the package.
+                        if (widget.liquidGlass)
+                          const Positioned.fill(
+                            // IgnorePointer: the rim is pure
+                            // decoration — it must never absorb the
+                            // cells' taps.
+                            child: IgnorePointer(
+                              child: CustomPaint(
+                                painter: NavDockGlassRimPainter(
+                                  radius: kNavDockRadius,
+                                ),
+                              ),
+                            ),
+                          ),
                       ],
                     );
                   },

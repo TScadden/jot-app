@@ -43,10 +43,17 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// with no tab switch. Storage stays the source of truth —
 /// listeners re-read the key, they never receive a pushed value —
 /// and a cold restart re-seeds from storage exactly as before.
-/// Notification is deliberately scoped to this setter: no other
-/// key has a cross-screen live consumer today.
+/// Notification is deliberately scoped to the setters whose keys
+/// have a cross-screen live consumer: [setShowNavLabels] and —
+/// since the Nav Bar Liquid Glass package (Nov 24, 2026) — the
+/// identical [setLiquidGlass]; no other key has one today.
 class SettingsStore extends ChangeNotifier {
   static const showNavLabelsKey = 'settings_show_nav_labels';
+  // Nav Bar Liquid Glass package (Nov 24, 2026): the founder's
+  // on/off switch for the dock's liquid-glass material. Device-
+  // only like every key in this store; default ON (the glass is
+  // the new dock look; OFF renders the pre-package dock exactly).
+  static const liquidGlassKey = 'settings_liquid_glass';
   static const themeModeKey = 'settings_theme_mode';
   static const userContextHiddenKey = 'settings_user_context_hidden';
   static const checkInReminderKey = 'settings_checkin_reminder_enabled';
@@ -149,6 +156,17 @@ class SettingsStore extends ChangeNotifier {
   /// exactly as it did before this channel existed.
   Future<void> setShowNavLabels(bool v) async {
     await _writeBool(showNavLabelsKey, v);
+    notifyListeners();
+  }
+
+  /// Liquid Glass switch: default ON (Nav Bar Liquid Glass
+  /// package, Nov 24, 2026). Mirrors [getShowNavLabels] /
+  /// [setShowNavLabels] exactly, including the notify-after-write
+  /// live-refresh channel MainShell listens to.
+  Future<bool> getLiquidGlass() => _readBool(liquidGlassKey, true);
+
+  Future<void> setLiquidGlass(bool v) async {
+    await _writeBool(liquidGlassKey, v);
     notifyListeners();
   }
 
@@ -566,6 +584,7 @@ class SettingsStore extends ChangeNotifier {
   Future<void> clear() async {
     for (final k in const [
       showNavLabelsKey,
+      liquidGlassKey,
       themeModeKey,
       userContextHiddenKey,
       checkInReminderKey,

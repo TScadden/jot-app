@@ -196,6 +196,14 @@ class _MainShellState extends State<MainShell>
   // braces reseed for writes that bypass the setter (there are
   // none in production; a Round 30 test mutates storage directly).
   bool _showNavLabels = true;
+
+  // Liquid Glass switch (Nav Bar Liquid Glass package, Nov 24,
+  // 2026): wired EXACTLY like _showNavLabels above — seeded from
+  // the shared SettingsStore, refreshed live when the store
+  // notifies (setLiquidGlass notifies after its write, same as
+  // setShowNavLabels), and re-read on dock taps as the same
+  // belt-and-braces reseed. Default ON.
+  bool _liquidGlass = true;
   late final SettingsStore _settingsStore;
 
   // Drawer nav fade (founder, Nov 20, 2026) — true while the Home
@@ -245,6 +253,7 @@ class _MainShellState extends State<MainShell>
     _slideCurve =
         CurvedAnimation(parent: _slideController, curve: Curves.easeOut);
     _refreshNavLabels();
+    _refreshLiquidGlass();
   }
 
   @override
@@ -268,6 +277,7 @@ class _MainShellState extends State<MainShell>
   /// already landed in storage, so a plain re-read is the refresh.
   void _onSettingsStoreChanged() {
     _refreshNavLabels();
+    _refreshLiquidGlass();
   }
 
   /// Background-change callback: the token already holds the new
@@ -293,6 +303,13 @@ class _MainShellState extends State<MainShell>
     final v = await _settingsStore.getShowNavLabels();
     if (mounted && v != _showNavLabels) {
       setState(() => _showNavLabels = v);
+    }
+  }
+
+  Future<void> _refreshLiquidGlass() async {
+    final v = await _settingsStore.getLiquidGlass();
+    if (mounted && v != _liquidGlass) {
+      setState(() => _liquidGlass = v);
     }
   }
 
@@ -541,10 +558,12 @@ class _MainShellState extends State<MainShell>
               child: NavDock(
                 selected: _tab,
                 showLabels: _showNavLabels,
+                liquidGlass: _liquidGlass,
                 heartSleepMode: _heartSleepMode,
                 onSelect: (tab) {
                   _selectTab(tab);
                   _refreshNavLabels();
+                  _refreshLiquidGlass();
                 },
               ),
             ),
