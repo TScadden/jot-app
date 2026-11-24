@@ -90,6 +90,13 @@ void main() {
         home: RepaintBoundary(
           key: rootKey,
           child: StreakScreen(
+            // Distinct keys per capture state: StreakScreen seeds
+            // _friendStreaks in initState only, so reusing the same
+            // widget position across pumpWidget calls would keep the
+            // previous state's State object and render stale data
+            // (the populated capture previously rendered the empty
+            // state verbatim — recovery fix, Nov 23, 2026).
+            key: const ValueKey('capture-empty'),
             state: state,
             now: now,
             nickname: 'Tyson',
@@ -112,6 +119,7 @@ void main() {
         home: RepaintBoundary(
           key: rootKey,
           child: StreakScreen(
+            key: const ValueKey('capture-populated'),
             state: state,
             now: now,
             nickname: 'Tyson',
