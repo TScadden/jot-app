@@ -1203,10 +1203,16 @@ class _StreakScreenState extends State<StreakScreen> {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text(
-          FriendStreaksCopy.heading,
-          key: const Key('friendStreaksHeading'),
-          style: _duo(23, 1000, _duoText),
+        Flexible(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              FriendStreaksCopy.heading,
+              key: const Key('friendStreaksHeading'),
+              style: _duo(23, 1000, _duoText),
+            ),
+          ),
         ),
         InkWell(
           key: const Key('friendStreaksEditToggle'),
@@ -1461,6 +1467,8 @@ class _StreakScreenState extends State<StreakScreen> {
                 Text(
                   FriendStreaksCopy.incomingSubtitle,
                   style: _duo(13.5, 700, const Color(0xFFA4A4AD)),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 9),
                 Row(

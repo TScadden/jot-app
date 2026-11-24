@@ -11,8 +11,6 @@ const Color _duoPrimary = Color(0xFF7C6EFF);
 const Color _duoText = Color(0xFFF0EEFF);
 const Color _duoMuted = Color(0xFF9A9AA3);
 const Color _duoBorder = Color(0xFF39434E);
-const Color _duoNavyBtn = Color(0xFF152040);
-const Color _duoOnBright = Color(0xFF150F24);
 
 TextStyle _duo(
   double size,

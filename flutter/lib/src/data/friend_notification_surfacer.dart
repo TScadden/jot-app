@@ -202,12 +202,10 @@ class FriendNotificationSurfacer {
   Set<int>? _remembered;
 
   FriendNotificationSurfacer({
-    required Future<String?> Function(String key) read,
-    required Future<void> Function(String key, String value) write,
-    required FriendLocalNotifier notifier,
-  })  : _read = read,
-        _write = write,
-        _notifier = notifier;
+    required this._read,
+    required this._write,
+    required this._notifier,
+  });
 
   factory FriendNotificationSurfacer.production() {
     return FriendNotificationSurfacer(
