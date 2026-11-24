@@ -122,18 +122,20 @@ class HealthConnectService {
   /// so it can cancel the native pending request and stay retryable.
   static const Duration requestTimeout = Duration(minutes: 4, seconds: 30);
 
-  /// HC read hardening — the bound callers wrap bridge reads with
+  /// HC read hardening — the bound bridge reads are wrapped with
   /// (founder defect #3: the HR read had no timeout anywhere and
   /// wedged the Heart screen's "Updating sync data..." strip
-  /// forever). The bound lives at the CALLER, matching the codebase's
-  /// established guard pattern (Sleep screen `_guarded`): the Heart
-  /// screen wraps its HR read with this duration and surfaces
-  /// READ_TIMEOUT on expiry. It is deliberately NOT a
-  /// `Future.timeout` inside this service: dozens of widget tests
-  /// drive screens through subclass fakes / unmocked channels whose
-  /// futures legitimately pend, and a service-owned timer on every
-  /// call fails those suites' teardown — while a caller-side guard
-  /// resolves during the screen's own loading lifecycle.
+  /// forever). Callers may still wrap with this duration (the Heart
+  /// screen does, and surfaces READ_TIMEOUT on expiry).
+  ///
+  /// Heart store-first fix (Nov 24, 2026): [readHeartRateSamples]
+  /// now ALSO carries this bound inside the service (see
+  /// [_readTimeout]), because Home's vitals load called it with no
+  /// caller-side bound at all and a starved bridge wedged that read
+  /// forever. Subclass fakes override the method and are unaffected;
+  /// the bound is injectable via the constructor's
+  /// `readTimeoutOverride` so a wedged-read test does not wait the
+  /// production 30 s — the same pattern as the probe bound.
   static const Duration readTimeout = Duration(seconds: 30);
 
   /// Error code thrown when Health Connect reports every required
@@ -164,14 +166,21 @@ class HealthConnectService {
   /// service (Vera F1); data reads are bounded by their callers.
   final Duration _probeTimeout;
 
+  /// Bound for [readHeartRateSamples] inside the service (Heart
+  /// store-first fix) — [readTimeout] in production; tests inject a
+  /// short override so a wedged-read test does not wait 30 s.
+  final Duration _readTimeout;
+
   HealthConnectService(
       {MethodChannel? channel,
       SecureStore? store,
       Duration? probeTimeoutOverride,
+      Duration? readTimeoutOverride,
       bool? isIOSOverride})
       : _channel = channel ?? const MethodChannel(channelName),
         _store = store ?? const FlutterSecureStore(),
         _probeTimeout = probeTimeoutOverride ?? readTimeout,
+        _readTimeout = readTimeoutOverride ?? readTimeout,
         _isIOS = isIOSOverride ??
             defaultTargetPlatform == TargetPlatform.iOS;
 
@@ -781,6 +790,16 @@ class HealthConnectService {
   static final Object _caloriesOutcomeZoneKey = Object();
   static final Object _spikesOutcomeZoneKey = Object();
   static final Object _hrSamplesOutcomeZoneKey = Object();
+  static final Object _heartRateSamplesOutcomeZoneKey = Object();
+
+  /// Heart store-first fix — the LEGACY [readHeartRateSamples]
+  /// frame's own capture-box key. The legacy method normally
+  /// delegates to the outcome variant, but a direct legacy call
+  /// must run an UNBOUNDED core (see [_readHeartRateSamplesCore]),
+  /// so it carries its own box: when no outcome-variant box is
+  /// present in the Zone, the legacy method runs its own
+  /// [_outcomeOf] frame under this key instead of delegating.
+  static final Object _heartRateSamplesLegacyZoneKey = Object();
   static final Object _stepsOutcomeZoneKey = Object();
   static final Object _totalCaloriesOutcomeZoneKey = Object();
 
@@ -940,12 +959,75 @@ class HealthConnectService {
   /// and the partial failure is recorded in [lastPartialErrorCode]
   /// (code `HR_SAMPLES_PARTIAL`, details in [lastReadErrorDetails])
   /// so the UI can show both the partial data and the warning.
+  ///
+  /// Entry-point contract (Heart store-first fix): when an
+  /// outcome-variant frame is already delegating (its capture box
+  /// is in the Zone), this delegates to the outcome variant as
+  /// every Phase-2 read does, and the core that runs is the
+  /// BOUNDED one. A DIRECT legacy call instead runs its own
+  /// [_outcomeOf] frame under [_heartRateSamplesLegacyZoneKey]
+  /// with the UNBOUNDED core — see [_readHeartRateSamplesCore]
+  /// for why the legacy path must not carry a timeout Timer.
   Future<List<HrSample>> readHeartRateSamples(String dateStr) async {
+    if (Zone.current[_heartRateSamplesOutcomeZoneKey] != null) {
+      return (await readHeartRateSamplesWithOutcome(dateStr)).value;
+    }
+    return (await _outcomeOf(
+      _heartRateSamplesLegacyZoneKey,
+      () => readHeartRateSamples(dateStr),
+      () => _readHeartRateSamplesCore(dateStr, bounded: false),
+    ))
+        .value;
+  }
+
+  /// Outcome-carrying variant of [readHeartRateSamples] (Heart
+  /// store-first fix): the outcome carries THIS read's own
+  /// error/partial signals, so a caller running it in parallel with
+  /// sibling reads (Home's vitals load) claims the HR read's outcome
+  /// from the outcome object instead of the shared slot fields its
+  /// parallel siblings also write. Routed through [_outcomeOf] like
+  /// every other Phase-2 read, so subclass overrides of the legacy
+  /// method (the existing test fakes) keep working: their outcome
+  /// is reconstructed from the slots they set, under the gate until
+  /// the read's box shape is proven. The core still writes the
+  /// legacy slots as a diagnostic side channel, exactly as before.
+  Future<HcReadOutcome<List<HrSample>>> readHeartRateSamplesWithOutcome(
+          String dateStr) =>
+      _outcomeOf(
+        _heartRateSamplesOutcomeZoneKey,
+        () => readHeartRateSamples(dateStr),
+        () => _readHeartRateSamplesCore(dateStr, bounded: true),
+      );
+
+  Future<HcReadOutcome<List<HrSample>>> _readHeartRateSamplesCore(
+      String dateStr, {required bool bounded}) async {
     try {
-      final raw = await _channel
-          .invokeMethod<dynamic>('readHeartRateSamples', {'dateStr': dateStr})
-          ;
+      // Bounded on the OUTCOME path only (Heart store-first fix):
+      // a run entered through [readHeartRateSamplesWithOutcome]
+      // bounds its channel call by [_readTimeout] inside the
+      // service — Home's vitals load previously called this read
+      // with NO timeout anywhere, so a bridge starved by the
+      // capture pipeline wedged it forever. On expiry the read
+      // fails closed as READ_TIMEOUT with the code recorded in
+      // the slots AND the outcome, preserving the Heart screen's
+      // error-code semantics (its own caller-side bound produces
+      // the identical code/shape).
+      //
+      // The LEGACY path deliberately stays unbounded, as before
+      // this fix: a Future.timeout Timer outlives a wedged
+      // channel call, and existing legacy callers whose reads
+      // never answer in widget tests (KeyMetrics on an unmocked
+      // channel — tools_team_c_test) newly failed teardown on
+      // the pending Timer when the bound applied there. Legacy
+      // callers bound at their call sites, exactly as the Heart
+      // screen does; new callers should take the outcome variant
+      // and inherit the bound.
+      final call = _channel.invokeMethod<dynamic>(
+          'readHeartRateSamples', {'dateStr': dateStr});
+      final raw = bounded ? await call.timeout(_readTimeout) : await call;
       List<dynamic> items = const [];
+      String? partialCode;
+      String? partialDetails;
       if (raw is List) {
         items = raw;
       } else if (raw is Map) {
@@ -956,7 +1038,9 @@ class HealthConnectService {
           // Partial is NOT a failure (Vera F2): it gets its own
           // field so union/callers never mistake partial data for
           // an outage. Details stay available for the UI warning.
-          lastPartialErrorCode = 'HR_SAMPLES_PARTIAL';
+          partialCode = 'HR_SAMPLES_PARTIAL';
+          partialDetails = partial;
+          lastPartialErrorCode = partialCode;
           lastReadErrorDetails = partial;
         }
       }
@@ -970,13 +1054,23 @@ class HealthConnectService {
           }
         }
       }
-      return out;
+      return HcReadOutcome(
+          value: out, errorDetails: partialDetails, partialCode: partialCode);
+    } on TimeoutException {
+      _noteReadError('READ_TIMEOUT',
+          'Health Connect did not respond in time. Please try again.');
+      return HcReadOutcome(
+        value: const [],
+        errorCode: 'READ_TIMEOUT',
+        errorDetails: lastReadErrorDetails,
+      );
     } on PlatformException catch (e) {
       _notePlatformError(e);
-      return const [];
+      return HcReadOutcome(
+          value: const [], errorCode: e.code, errorDetails: _detailsOf(e));
     } on MissingPluginException {
       _noteReadError('NO_CHANNEL');
-      return const [];
+      return HcReadOutcome(value: const [], errorCode: 'NO_CHANNEL');
     }
   }
 

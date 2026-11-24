@@ -175,6 +175,26 @@ class HealthHistorySync {
   }) =>
       errorCode == null && windowDays == 180;
 
+  /// Heart store-first fix (Nov 24, 2026) — the spike-summary
+  /// leg's chunk-read concurrency cap. The shipped leg issued up
+  /// to 26 simultaneous native range reads over a 180-day window
+  /// on the shared bridge; at most this many chunk reads are now
+  /// in flight at once.
+  ///
+  /// Why 13 and not smaller (flagged for Vera): chunk completions
+  /// are delivered one issuance round per frame in the widget
+  /// harnesses, so a cap of 3 (9 rounds) or 8 (4 rounds) left the
+  /// leg in flight at harness teardown and failed
+  /// celebration_present_repro / drawer_nav_fade_capture /
+  /// header_align_measure / heart_sleep_capture on pending
+  /// bounded-read timers (all green on base and at 13). 13 keeps
+  /// the leg to 2 rounds for the full 180-day window — a 2× cut
+  /// in simultaneous bridge reads, on top of the native per-read
+  /// deadline/page caps and the counts-walk timeout backoff. A
+  /// stricter cap needs the harnesses' settle budgets revisited
+  /// first.
+  static const int spikeSummaryMaxConcurrentChunks = 13;
+
   static final HealthHistorySync instance = HealthHistorySync._internal();
   HealthHistorySync._internal()
       : _hc = HealthConnectService(),
@@ -1018,7 +1038,20 @@ class HealthHistorySync {
       // native read is now chunk-isolated, so a partial means
       // some chunks succeeded and their days were covered;
       // failed chunks' days keep their stored values).
-      final spikeWindowDays = _store.spikeBackfillComplete ? 31 : 180;
+      // Heart store-first fix (Nov 24, 2026) — timeout backoff:
+      // while a timed-out full-window walk's backoff is outstanding
+      // (see HealthHistoryStore.isSpikeBackfillDeferred), this
+      // capture walks only the routine 31 days instead of
+      // re-flooding the bridge with another 180-day walk. The flag
+      // decision below still requires a 180-day window, so a
+      // deferred walk never marks the backfill complete — when the
+      // backoff expires the full walk runs again (eventual
+      // completeness preserved).
+      final spikeBackfillDeferred =
+          !_store.spikeBackfillComplete &&
+              _store.isSpikeBackfillDeferred(now.millisecondsSinceEpoch);
+      final spikeWindowDays =
+          (_store.spikeBackfillComplete || spikeBackfillDeferred) ? 31 : 180;
       final spikeOutcome = await boundedRead(
           _hc.readSpikeCountsWithOutcome(spikeWindowDays));
       noteRead('spikes', spikeOutcome);
@@ -1056,10 +1089,11 @@ class HealthHistorySync {
       // stored summary with that understatement (the shipped
       // rationale, now per chunk). Chunk boundaries are local
       // midnights, so no day's samples ever split across chunks.
-      // The chunk reads run concurrently (see below), so the
-      // leg's worst-case duration stays one readTimeout — a
-      // fully wedged window degrades in ~30 s like the shipped
-      // leg, not in 26 sequential timeouts.
+      // The chunk reads run in capped concurrent batches (see
+      // below), so the leg's worst-case duration is
+      // ceil(chunks / cap) × readTimeout — a fully wedged window
+      // degrades in bounded batches, not in 26 sequential
+      // timeouts.
       //
       // The leg still deliberately does NOT go through noteRead:
       // the counts read above owns the `spikes` metric's
@@ -1100,13 +1134,19 @@ class HealthHistorySync {
           ));
           chunkStart = chunkEnd;
         }
-        // All chunk reads are issued CONCURRENTLY (each under
-        // the same per-read bound): the chunks are independent,
-        // and concurrency keeps the leg's worst-case duration at
-        // ONE readTimeout — the shipped leg's footprint — instead
-        // of one timeout per chunk stretching a wedged window's
-        // capture toward 26 × 30 s. Outcomes are applied in
-        // window order once all reads settle.
+        // Chunk reads are issued with BOUNDED concurrency (each
+        // under the same per-read bound): the chunks are
+        // independent, but the shipped leg issued up to 26
+        // SIMULTANEOUS range reads over a 180-day window, and that
+        // flood on the shared Dispatchers.Main bridge starved
+        // interactive reads (the Heart screen's own read timed out
+        // behind it — Heart store-first fix, Nov 24, 2026). At
+        // most [spikeSummaryMaxConcurrentChunks] chunk reads are
+        // in flight at once, in window order; the leg's worst-case
+        // duration on a fully wedged window grows to
+        // ceil(chunks / cap) × readTimeout, the accepted price of
+        // not starving the bridge. Outcomes are applied in window
+        // order once all reads settle.
         Future<HcReadOutcome<List<HrSample>>> readChunk(
             ({int startMs, int endMs}) range) async {
           try {
@@ -1118,7 +1158,11 @@ class HealthHistorySync {
           }
         }
 
-        final outcomes = await Future.wait(ranges.map(readChunk));
+        final outcomes = <HcReadOutcome<List<HrSample>>>[];
+        for (var i = 0; i < ranges.length; i += spikeSummaryMaxConcurrentChunks) {
+          final batch = ranges.skip(i).take(spikeSummaryMaxConcurrentChunks);
+          outcomes.addAll(await Future.wait(batch.map(readChunk)));
+        }
         for (final chunkOutcome in outcomes) {
           final chunkError = chunkOutcome.errorCode;
           final chunkFailed = chunkError != null && chunkError.isNotEmpty;
@@ -1215,6 +1259,21 @@ class HealthHistorySync {
           partialCode: spikeOutcome.partialCode,
           windowDays: spikeWindowDays)) {
         await _store.markSpikeBackfillComplete();
+      }
+      // Heart store-first fix (Nov 24, 2026) — counts-walk timeout
+      // backoff bookkeeping: a full-window walk that TIMED OUT
+      // stamps the attempt so the next captures walk only the
+      // routine window until the backoff expires (see the window
+      // decision above); it does NOT mark the backfill complete.
+      // A full-window walk that returns without a timeout clears
+      // any outstanding backoff. Deferred (31-day) walks touch
+      // neither — their outcome says nothing about the full walk.
+      if (spikeWindowDays == 180) {
+        if (spikeOutcome.errorCode == 'READ_TIMEOUT') {
+          await _store.recordSpikeWalkTimeout(now.millisecondsSinceEpoch);
+        } else if (spikeOutcome.errorCode == null) {
+          await _store.clearSpikeWalkTimeout();
+        }
       }
       _lastCaptureRowCounts = captureRowCounts;
       // Throttle-poison hardening (sync-settings package,

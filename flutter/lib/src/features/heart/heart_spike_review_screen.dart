@@ -27,10 +27,39 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// MediaStore) and the same bytes are offered via the share sheet
 /// from the saved SnackBar's Share action.
 ///
+/// Juno copy ruling (JUNO-COPY.md §4, BINDING, Nov 24, 2026) — the
+/// detail-unavailable line for a day whose series is empty. Verbatim;
+/// the only substitution anywhere in §4 is the stored integer in
+/// [spikeReviewStoredCountLine].
+const spikeReviewDetailUnavailableLine =
+    "Reading-by-reading detail isn't available for this day, so there's no list to show here.";
+
+/// Juno §4 line 1 — the stored spike count, plain integer, no other
+/// substitution.
+String spikeReviewStoredCountLine(int spikeCount) =>
+    'Spike count saved for this day: $spikeCount';
+
 /// Founder rule: samples arrive already valid-filtered by the caller,
 /// and every derivation here re-filters (bpm ≤ 0 never renders).
 class HeartSpikeReviewScreen extends StatefulWidget {
   final List<HrSample> samples;
+
+  /// The rendered Heart day this review was opened from (Heart
+  /// store-first fix): when the day's data is a stored summary with
+  /// no intraday series, the summary's spike count rides here so
+  /// the review can show the stored count instead of wording an
+  /// empty list as an all-clear. Also passed when a series exists
+  /// (the count then agrees with detection by construction and is
+  /// unused). Null when the caller holds no stored summary for the
+  /// date — the review then renders the no-count detail-unavailable
+  /// variant for an empty series (Juno §4).
+  final HeartDayData? heartData;
+
+  /// The stored summary's spike count for [dateStr], when the
+  /// caller holds one (see [heartData]). Kept as a separate scalar
+  /// so tests and future callers can state the stored truth without
+  /// building a full [HeartDayData].
+  final int? storedSpikeCount;
 
   /// The selected date (`yyyy-MM-dd`) the samples belong to — native
   /// passes `state.selectedHeartRateDate` to the exporter the same
@@ -52,10 +81,19 @@ class HeartSpikeReviewScreen extends StatefulWidget {
     super.key,
     required this.samples,
     this.dateStr,
+    this.heartData,
+    this.storedSpikeCount,
     this.savePdf,
     this.sharePdf,
     this.now,
   });
+
+  /// The stored spike count that governs the empty-series state:
+  /// the explicit scalar wins, then the handed-in day's stored
+  /// summary (its stored count, or its series-derived card count
+  /// when the day was built from a stored row).
+  int? get effectiveStoredSpikeCount =>
+      storedSpikeCount ?? heartData?.storedSpikeCount;
 
   @override
   State<HeartSpikeReviewScreen> createState() =>
@@ -139,6 +177,13 @@ class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
   Widget build(BuildContext context) {
     final valid = validHrSamples(widget.samples);
     final spikes = detectSpikeEvents(valid);
+    // Juno §4 BINDING all-clear gate: an empty valid series is an
+    // UNEXAMINED day. The header's zero-spike claims and the
+    // all-clear empty state may render ONLY when the series is
+    // non-empty AND detection on it found 0 events. An unexamined
+    // day renders the detail-unavailable state instead, with the
+    // "0 Significant Spikes Detected" header suppressed entirely.
+    final examined = valid.isNotEmpty;
 
     return Scaffold(
       backgroundColor: NotelColors.background,
@@ -174,11 +219,14 @@ class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _headerCard(spikes.length),
-            const SizedBox(height: 16),
-            if (spikes.isEmpty)
-              _emptyState()
+            if (!examined)
+              _detailUnavailableState()
             else ...[
+              _headerCard(spikes.length),
+              const SizedBox(height: 16),
+              if (spikes.isEmpty)
+                _emptyState()
+              else ...[
               const Text(
                 'Detected Events',
                 style: TextStyle(
@@ -191,6 +239,7 @@ class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
               for (var i = 0; i < spikes.length; i++) ...[
                 _spikeCard(i, spikes[i], valid),
                 if (i < spikes.length - 1) const SizedBox(height: 16),
+              ],
               ],
             ],
           ],
@@ -257,6 +306,48 @@ class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
     );
   }
 
+  /// Juno §4 — the detail-unavailable state for an UNEXAMINED day
+  /// (empty series). With a stored count > 0 the count line renders
+  /// above the detail line; with a stored count of 0 or no stored
+  /// summary, the detail line renders alone. No header card, no
+  /// zero-spike claim, no all-clear — see the gate in [build].
+  Widget _detailUnavailableState() {
+    final stored = widget.effectiveStoredSpikeCount;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 40),
+      child: Column(
+        children: [
+          const Icon(Icons.info_outline,
+              color: NotelColors.textSecondary, size: 48),
+          const SizedBox(height: 12),
+          if (stored != null && stored > 0) ...[
+            Text(
+              spikeReviewStoredCountLine(stored),
+              style: const TextStyle(
+                color: NotelColors.textPrimary,
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 4),
+          ],
+          const Text(
+            spikeReviewDetailUnavailableLine,
+            style: TextStyle(
+              color: NotelColors.textSecondary,
+              fontSize: 13,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The all-clear. Juno §4 BINDING: renders ONLY from [build]'s
+  /// examined-and-zero-events branch — a non-empty series was
+  /// actually examined and detection found 0 events.
   Widget _emptyState() {
     return const Padding(
       padding: EdgeInsets.symmetric(vertical: 40),

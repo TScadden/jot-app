@@ -341,8 +341,18 @@ void main() {
       expect(find.text('Asleep -- bpm'), findsOneWidget);
       expect(find.text('Last -- bpm'), findsOneWidget);
       expect(find.text('Peak --'), findsOneWidget);
-      expect(find.text('0 significant spikes'), findsOneWidget);
-      expect(find.text('Normal load'), findsWidgets);
+      // RE-PINNED per Juno's Vera Condition 1b addendum
+      // (JUNO-COPY.md, "Addendum — Vera Condition 1b ruling",
+      // §§1b.1–1b.2, Nov 24, 2026): this path is a
+      // successful-but-empty read — an UNEXAMINED day. The old
+      // expectations below ("0 significant spikes" / "Normal
+      // load" as the day's data) do NOT stand under Juno's §4
+      // all-clear gate; the spikes card renders the two ruled
+      // no-readings lines instead, with no zero claim of any kind.
+      expect(find.text(heartNoReadingsTitle), findsOneWidget);
+      expect(find.text(heartNoReadingsBody), findsOneWidget);
+      expect(find.text('0 significant spikes'), findsNothing);
+      expect(find.text('Normal load'), findsNothing);
     });
 
     testWidgets('not connected: native Connect Vital Signs state',
@@ -396,19 +406,27 @@ void main() {
   });
 
   group('HeartSpikeReviewScreen widgets', () {
-    testWidgets('empty: native normal-load state', (tester) async {
+    // Juno §4 BINDING (Nov 24, 2026) supersedes the old native
+    // empty-state expectation: an EMPTY series is an unexamined
+    // day and never gets the all-clear or a zero-spike claim — it
+    // renders the detail-unavailable line instead. The all-clear
+    // survives only for an examined day with 0 events (covered in
+    // heart_store_first_test.dart).
+    testWidgets('empty: detail-unavailable, never the all-clear',
+        (tester) async {
       await tester.pumpWidget(const MaterialApp(
         home: HeartSpikeReviewScreen(samples: []),
       ));
       await tester.pumpAndSettle();
-      expect(find.text('0 Significant Spikes Detected'), findsOneWidget);
+      expect(find.text(spikeReviewDetailUnavailableLine), findsOneWidget);
+      expect(find.text('0 Significant Spikes Detected'), findsNothing);
       expect(find.text('No spikes ≥100 bpm recorded for this time range'),
-          findsOneWidget);
-      expect(find.text('Normal Physiological Load'), findsOneWidget);
+          findsNothing);
+      expect(find.text('Normal Physiological Load'), findsNothing);
       expect(
           find.text(
               'All heart rate readings stayed within normal resting and active ranges.'),
-          findsOneWidget);
+          findsNothing);
     });
 
     testWidgets('zero samples never appear as spikes', (tester) async {
@@ -416,7 +434,10 @@ void main() {
         home: HeartSpikeReviewScreen(samples: [_s(9, 0), _s(10, 0)]),
       ));
       await tester.pumpAndSettle();
-      expect(find.text('0 Significant Spikes Detected'), findsOneWidget);
+      // All-zero input filters to an empty (unexamined) series:
+      // no spike claim of any kind, per Juno §4.
+      expect(find.text('0 Significant Spikes Detected'), findsNothing);
+      expect(find.text(spikeReviewDetailUnavailableLine), findsOneWidget);
     });
   });
 }

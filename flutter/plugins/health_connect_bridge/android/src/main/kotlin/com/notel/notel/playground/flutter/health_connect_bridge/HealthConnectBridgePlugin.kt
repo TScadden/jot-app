@@ -41,6 +41,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.time.Duration
 import java.time.Instant
@@ -653,12 +655,41 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
             val (dayStart, dayEnd) = dayRange(dateStr)
             val records = mutableListOf<HeartRateRecord>()
             val chunkErrors = mutableListOf<String>()
+            // Heart store-first fix (Nov 24, 2026) — bounded,
+            // cancellable pagination. Previously this loop had NO
+            // page cap, NO deadline and NO cancellation check: when
+            // Health Connect's record reads crawled under the
+            // capture pipeline's concurrent load, the coroutine
+            // simply never answered, the Dart caller's 30 s timeout
+            // fired — and the native coroutine KEPT RUNNING as a
+            // zombie, so every retry added another one and the
+            // wedge reinforced itself. Now: a whole-read deadline
+            // just inside the Dart bound (25 s), a generous per-
+            // chunk page cap, and a cooperative cancellation check
+            // per page (engine detach cancels engineScope; the
+            // check also stops the loop at the deadline). A chunk
+            // stopped by the bound records a chunk error, so the
+            // existing shapes below apply unchanged: all chunks
+            // stopped → HR_SAMPLES_READ_FAILED; some stopped with
+            // samples → the partial envelope; some stopped with NO
+            // samples → B-01 failure.
+            val deadlineMs = SystemClock.elapsedRealtime() + 25_000L
+            val maxPagesPerChunk = 200
             var chunkStart = dayStart
             repeat(4) {
                 val chunkEnd = minOf(chunkStart.plus(6, ChronoUnit.HOURS), dayEnd)
                 try {
                     var pageToken: String? = null
+                    var pages = 0
                     do {
+                        if (!currentCoroutineContext().isActive ||
+                            SystemClock.elapsedRealtime() > deadlineMs ||
+                            pages >= maxPagesPerChunk
+                        ) {
+                            throw IllegalStateException(
+                                "readHeartRateSamples pagination bound exceeded"
+                            )
+                        }
                         val response = client.readRecords(
                             ReadRecordsRequest(
                                 recordType = HeartRateRecord::class,
@@ -668,6 +699,7 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                         )
                         records.addAll(response.records)
                         pageToken = response.pageToken
+                        pages++
                     } while (pageToken != null)
                 } catch (e: Exception) {
                     chunkErrors.add(hcErrorDetails(e))
@@ -1821,8 +1853,24 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                 val start = Instant.ofEpochMilli(startMs)
                 val end = Instant.ofEpochMilli(endMs)
                 val samples = mutableListOf<Pair<Long, Int>>()
+                // Heart store-first fix — same pagination bound as
+                // readHeartRateSamples: deadline just inside the
+                // Dart per-read bound, page cap, cancellation check.
+                // Exceeding the bound throws into the catch below,
+                // failing exactly this chunk (the documented shape).
+                val deadlineMs = SystemClock.elapsedRealtime() + 25_000L
+                val maxPages = 1000
+                var pages = 0
                 var pageToken: String? = null
                 do {
+                    if (!currentCoroutineContext().isActive ||
+                        SystemClock.elapsedRealtime() > deadlineMs ||
+                        pages >= maxPages
+                    ) {
+                        throw IllegalStateException(
+                            "readHrSamplesRange pagination bound exceeded"
+                        )
+                    }
                     val response = client.readRecords(
                         ReadRecordsRequest(
                             recordType = HeartRateRecord::class,
@@ -1830,6 +1878,7 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                             pageToken = pageToken
                         )
                     )
+                    pages++
                     for (record in nonMock(response.records)) {
                         for (sample in record.samples) {
                             samples.add(

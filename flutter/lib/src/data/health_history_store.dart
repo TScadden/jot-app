@@ -764,6 +764,8 @@ class HealthHistoryStore {
     _sleepTotalsRuleVersion = 1;
     _hrvBackfillComplete = false;
     _spikeBackfillComplete = false;
+    _spikeWalkTimeoutAtMs = null;
+    _spikeWalkTimeoutCount = 0;
     _warmed = false;
     _warmLoadedUnownedData = false;
   }
@@ -874,6 +876,77 @@ class HealthHistoryStore {
   /// (clean or partial) spike read lands.
   bool get spikeBackfillComplete => _spikeBackfillComplete;
 
+  // ── Spike counts-walk timeout backoff (Heart store-first fix,
+  // Nov 24, 2026) ────────────────────────────────────────────────
+  //
+  // The diagnosis: a 180-day counts walk whose read TIMES OUT left
+  // [spikeBackfillComplete] unset, so EVERY capture re-walked the
+  // full 180 days and kept flooding the shared bridge. The fix is
+  // a time-gated retry, NOT a permanent completion: after a
+  // timed-out full-window walk the store stamps the attempt, and
+  // captures inside the backoff window walk only the routine
+  // 31 days; once the window expires the full 180-day walk runs
+  // again, so eventual completeness is preserved. The backoff
+  // doubles per consecutive timeout (1 h, 2 h, 4 h, … capped at
+  // 24 h) and clears on the first full-window walk that returns
+  // without a timeout.
+  int? _spikeWalkTimeoutAtMs;
+  int _spikeWalkTimeoutCount = 0;
+
+  /// Epoch ms of the most recent timed-out full-window spike
+  /// counts walk, or null when none is outstanding.
+  int? get spikeWalkTimeoutAtMs => _spikeWalkTimeoutAtMs;
+
+  /// Consecutive timed-out full-window walks (drives the backoff).
+  int get spikeWalkTimeoutCount => _spikeWalkTimeoutCount;
+
+  /// The backoff duration for the current consecutive-timeout
+  /// count: 1 h doubling per timeout, capped at 24 h.
+  Duration get spikeWalkBackoff {
+    if (_spikeWalkTimeoutCount <= 0) return Duration.zero;
+    var hours = 1 << (_spikeWalkTimeoutCount - 1);
+    if (hours > 24) hours = 24;
+    return Duration(hours: hours);
+  }
+
+  /// Epoch ms at which the next full-window spike walk may run,
+  /// or null when no backoff is outstanding.
+  int? get spikeBackfillRetryAfterMs {
+    final at = _spikeWalkTimeoutAtMs;
+    if (at == null || _spikeWalkTimeoutCount <= 0) return null;
+    return at + spikeWalkBackoff.inMilliseconds;
+  }
+
+  /// True while [nowMs] is inside the backoff window of a
+  /// timed-out full-window walk: the capture should walk only the
+  /// routine window this time (see [HealthHistorySync]).
+  bool isSpikeBackfillDeferred(int nowMs) {
+    final retry = spikeBackfillRetryAfterMs;
+    return retry != null && nowMs < retry;
+  }
+
+  /// Stamps a timed-out full-window spike counts walk and
+  /// persists it (the backoff must survive a restart — a wedged
+  /// device restarts the app and would otherwise re-walk at once).
+  Future<void> recordSpikeWalkTimeout(int nowMs) async {
+    await _ensureWarmed();
+    _spikeWalkTimeoutAtMs = nowMs;
+    _spikeWalkTimeoutCount++;
+    await persist();
+  }
+
+  /// Clears the timeout backoff after a full-window walk returns
+  /// without timing out. Persists only when something was set.
+  Future<void> clearSpikeWalkTimeout() async {
+    await _ensureWarmed();
+    if (_spikeWalkTimeoutAtMs == null && _spikeWalkTimeoutCount == 0) {
+      return;
+    }
+    _spikeWalkTimeoutAtMs = null;
+    _spikeWalkTimeoutCount = 0;
+    await persist();
+  }
+
   final Map<String, CaptureDiagnostic> _captureDiagnostics = {};
 
   /// Per-metric capture outcomes from the most recent captures,
@@ -977,6 +1050,8 @@ class HealthHistoryStore {
       _sleepTotalsRuleVersion = 1;
       _hrvBackfillComplete = false;
       _spikeBackfillComplete = false;
+      _spikeWalkTimeoutAtMs = null;
+      _spikeWalkTimeoutCount = 0;
       _warmed = true;
       return;
     }
@@ -992,6 +1067,8 @@ class HealthHistoryStore {
       _sleepTotalsRuleVersion = 1;
       _hrvBackfillComplete = false;
       _spikeBackfillComplete = false;
+      _spikeWalkTimeoutAtMs = null;
+      _spikeWalkTimeoutCount = 0;
       _warmed = true;
       return;
     }
@@ -1034,6 +1111,14 @@ class HealthHistoryStore {
       // counts; absent / invalid → NOT complete, the implicit
       // state of every pre-flag blob (see [spikeBackfillComplete]).
       _spikeBackfillComplete = map['spikeBackfillComplete'] == true;
+      // Spike-walk timeout backoff (Heart store-first fix):
+      // absent / invalid on every pre-fix blob → no backoff.
+      final swt = map['spikeWalkTimeoutAtMs'];
+      _spikeWalkTimeoutAtMs = swt is num ? swt.toInt() : null;
+      final swc = map['spikeWalkTimeoutCount'];
+      _spikeWalkTimeoutCount =
+          (swc is num && swc.toInt() > 0) ? swc.toInt() : 0;
+      if (_spikeWalkTimeoutAtMs == null) _spikeWalkTimeoutCount = 0;
       final diag = map['lastCaptureDiagnostics'];
       if (diag is Map) {
         for (final entry in diag.entries) {
@@ -1103,6 +1188,10 @@ class HealthHistoryStore {
           'sleepTotalsRuleVersion': _sleepTotalsRuleVersion,
           'hrvBackfillComplete': _hrvBackfillComplete,
           'spikeBackfillComplete': _spikeBackfillComplete,
+          if (_spikeWalkTimeoutAtMs != null)
+            'spikeWalkTimeoutAtMs': _spikeWalkTimeoutAtMs,
+          if (_spikeWalkTimeoutCount > 0)
+            'spikeWalkTimeoutCount': _spikeWalkTimeoutCount,
           if (_captureDiagnostics.isNotEmpty)
             'lastCaptureDiagnostics': {
               for (final e in _captureDiagnostics.entries)
@@ -1203,6 +1292,8 @@ class HealthHistoryStore {
     String? spikeSummaryPartialCode,
     int? spikeSummarySampleCount,
     int? spikeSummaryDayCount,
+    String? heartReadErrorCode,
+    int? heartReadSampleCount,
   }) async {
     await _ensureWarmed();
     var changed = false;
@@ -1246,6 +1337,24 @@ class HealthHistoryStore {
       );
       if (_captureDiagnostics['spikeSummary'] != next) {
         _captureDiagnostics['spikeSummary'] = next;
+        changed = true;
+      }
+    }
+    // Heart store-first fix (Nov 24, 2026) — the Heart screen's own
+    // live read outcome, under its OWN `heartRead` key, written on
+    // EVERY Heart load (the HRV every-capture shape): before this,
+    // the Heart read wrote NO diagnostics anywhere, so a wedged
+    // Heart screen coexisted with a healthy-looking capture record.
+    // Passing a sample count (every Heart load does) (re)writes the
+    // entry; passing none leaves any prior entry untouched.
+    if (heartReadSampleCount != null || heartReadErrorCode != null) {
+      final next = CaptureDiagnostic(
+        errorCode: heartReadErrorCode,
+        sampleCount: heartReadSampleCount,
+        atMs: atMs,
+      );
+      if (_captureDiagnostics['heartRead'] != next) {
+        _captureDiagnostics['heartRead'] = next;
         changed = true;
       }
     }
@@ -1667,6 +1776,21 @@ class HealthHistoryStore {
       (listEquals(a.spikeEvents, b.spikeEvents) ? 0 : 1);
 
   // ── Query API (WS2 builds against exactly these names) ─────────
+
+  /// Synchronous in-memory read of one day — NO warm, NO disk read
+  /// (Heart store-first fix, Nov 24, 2026). Meaningful once the
+  /// store is warmed (startup and every capture warm it); the Heart
+  /// screen's first-frame seed uses it exactly like
+  /// [warmedDayCount]: a surface that must paint immediately reads
+  /// what memory already holds and warms async behind the paint.
+  DailyBiometrics? peekDay(String date) => _days[date];
+
+  /// One day's row, warming from disk first if needed. Null when
+  /// the store holds no row for [date].
+  Future<DailyBiometrics?> readDay(String date) async {
+    await _ensureWarmed();
+    return _days[date];
+  }
 
   Future<Map<String, DailyBiometrics>> readAll() async {
     await _ensureWarmed();

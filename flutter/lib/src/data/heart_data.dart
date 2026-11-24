@@ -367,6 +367,23 @@ class HeartDayData {
   final HeartSpikesCardSummary spikesCard;
   final List<SpikeEvent> spikeEvents;
 
+  /// Heart store-first fix (Nov 24, 2026): true when this data was
+  /// built from a HealthHistoryStore summary row because no intraday
+  /// series for the date is on the phone. The summary fields
+  /// (spike count, max HR, minutes-over, resting HR) are real stored
+  /// values; the chart has nothing to draw and the screen marks it
+  /// stored-summary-only instead of rendering an empty day.
+  final bool storedSummaryOnly;
+
+  /// The stored summary's own fields, carried for surfaces that
+  /// render them directly (Spike Review's stored count, the pattern
+  /// card's minutes-over line). Null on series-derived data.
+  final int? storedSpikeCount;
+  final int? storedMaxHrBpm;
+  final int? storedMinutesOver100;
+  final int? storedMinutesOver120;
+  final int? storedRestingHrBpm;
+
   const HeartDayData({
     required this.samples,
     required this.awakeAvg,
@@ -375,6 +392,12 @@ class HeartDayData {
     required this.peakBpm,
     required this.spikesCard,
     required this.spikeEvents,
+    this.storedSummaryOnly = false,
+    this.storedSpikeCount,
+    this.storedMaxHrBpm,
+    this.storedMinutesOver100,
+    this.storedMinutesOver120,
+    this.storedRestingHrBpm,
   });
 
   factory HeartDayData.fromSamples(List<HrSample> raw) {
@@ -389,6 +412,78 @@ class HeartDayData {
       spikeEvents: detectSpikeEvents(valid),
     );
   }
+
+  /// Builds the renderable day from a stored summary row's fields
+  /// (HealthHistoryStore's DailyBiometrics heart fields) when no raw
+  /// series exists for the date. Only values the store actually
+  /// holds are carried — awake/asleep averages and the latest
+  /// reading have no stored equivalent and stay null (the UI's
+  /// honest "--" for those two fields); the spike card is built
+  /// from the stored count/max, with the stored resting HR as the
+  /// baseline stand-in for the largest-jump figure (max − resting,
+  /// floored at 0).
+  ///
+  /// Vera Condition 1a (Nov 24, 2026): a NULL stored spike count is
+  /// an UNEXAMINED day — the store never recorded a count, so none
+  /// may be rendered. [HeartSpikesCardSummary.spikeCount] is
+  /// non-nullable and carries 0 as a numeric placeholder in that
+  /// case; it is NOT data. Consumers must gate every count /
+  /// load-level claim on [hasExaminedSpikeData] (or equivalently on
+  /// [storedSpikeCount] being non-null) — exactly the discipline
+  /// Juno's label addendum applies to the stored-summary metrics,
+  /// extended to the spike-count claim itself. A stored count of 0
+  /// IS examined data and may render as 0.
+  factory HeartDayData.fromStoredSummary({
+    int? spikeCount,
+    int? maxHrBpm,
+    int? minutesOver100,
+    int? minutesOver120,
+    int? restingHrBpm,
+  }) {
+    final maxBpm = maxHrBpm ?? 0;
+    final baseline = restingHrBpm ?? 0;
+    final delta = maxBpm > baseline ? maxBpm - baseline : 0;
+    return HeartDayData(
+      samples: const [],
+      awakeAvg: null,
+      asleepAvg: null,
+      latest: null,
+      peakBpm: maxHrBpm,
+      spikesCard: HeartSpikesCardSummary(
+        maxBpm: maxBpm,
+        spikeCount: spikeCount ?? 0,
+        maxDelta: delta,
+        baselineP10: baseline,
+      ),
+      spikeEvents: const [],
+      storedSummaryOnly: true,
+      storedSpikeCount: spikeCount,
+      storedMaxHrBpm: maxHrBpm,
+      storedMinutesOver100: minutesOver100,
+      storedMinutesOver120: minutesOver120,
+      storedRestingHrBpm: restingHrBpm,
+    );
+  }
+
+  /// True when this data carries anything renderable as the day's
+  /// data: a non-empty series, or a stored summary row's heart
+  /// fields. The Heart screen's honest-resolution states key off
+  /// this — a day with neither is "no stored data", never a
+  /// placeholder day.
+  bool get hasRenderableData =>
+      samples.isNotEmpty ||
+      storedSpikeCount != null ||
+      storedMaxHrBpm != null;
+
+  /// True when the spikes card's count / load-level claims are
+  /// backed by EXAMINED data (Juno §4 all-clear gate; Vera
+  /// Condition 1): a non-empty valid series was actually examined,
+  /// or the store recorded a spike count for the date (a stored 0
+  /// included — it is recorded data). An empty series with no
+  /// stored count is an unexamined day, whatever the reason the
+  /// series is empty, and backs no zero-spike or load-level claim.
+  bool get hasExaminedSpikeData =>
+      samples.isNotEmpty || storedSpikeCount != null;
 
   static const empty = HeartDayData(
     samples: [],

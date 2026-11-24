@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/hc_availability.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_history_sync.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/heart_data.dart';
@@ -20,6 +21,48 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 /// passing precedent for text on Tabs purple: 5.21:1 vs white's 3.80:1
 /// (R49 audit S1/HE5).
 const _chipInk = Color(0xFF0A0A0E);
+
+// ── Juno copy ruling (JUNO-COPY.md, BINDING, Nov 24, 2026) ──────
+// Every new user-facing string in this package is a named constant
+// here (or in heart_spike_review_screen.dart for §4), verbatim from
+// the ruling — no paraphrase. JUNO-COPY.md is the source of truth.
+
+/// §1 — stale-data state: the live read for the selected date
+/// finished and failed/timed out AND stored data for that date is
+/// on screen. Renders above the summary card, in place of the
+/// "Updating sync data..." strip, only after the load finished.
+const heartStaleDataMessage = "Couldn't update — showing last saved data";
+
+/// §2 — no-data failure state title: the live read finished and
+/// failed/timed out AND no stored data exists for the date. In
+/// this state the screen must NOT render "-- bpm", an empty chart,
+/// or "0 spikes" as if they were data.
+const heartNoDataTitle = "Couldn't load heart data for this day.";
+
+/// §2 — no-data failure state body (the refresh icon at the top of
+/// the screen is the real control it names).
+const heartNoDataBody = 'Tap refresh at the top to try again.';
+
+/// §3 — chart stored-summary-only marker: a stored summary renders
+/// for the date but no intraday series is on the phone, so the
+/// chart itself has nothing to draw.
+const heartChartSummaryOnlyMessage =
+    "Saved summary only — chart detail isn't available for this day";
+
+/// §1b.2 (Juno addendum — Vera Condition 1b ruling, Nov 24, 2026) —
+/// the spikes card's successful-but-empty state: the live read for
+/// the selected date finished successfully and returned zero
+/// samples, and no other examined data backs the card (no valid or
+/// cached series, no non-null stored spike count / stored
+/// summary). That is an UNEXAMINED day: these two lines render in
+/// place of the spike count and the load level, with no count
+/// number, no load-level label, and no zero claim alongside. This
+/// is NOT §2 — the load did not fail, so §2's wording is never
+/// reused here.
+const heartNoReadingsTitle = 'No readings were returned for this day.';
+
+/// §1b.2 line 2 — see [heartNoReadingsTitle].
+const heartNoReadingsBody = "Spikes can't be checked without readings.";
 
 /// Round 25 — the Heart tab, port of native `FitbitScreen.kt`
 /// (legacy filename; it IS the native Heart screen).
@@ -58,6 +101,15 @@ class HeartScreen extends StatefulWidget {
   /// Injectable for tests; defaults to the shared [HeartDataCache].
   final HeartDataCache? cache;
 
+  /// Injectable for tests; defaults to the shared
+  /// [HealthHistoryStore] — the store-first source this screen now
+  /// seeds its first paint from (Heart store-first fix).
+  final HealthHistoryStore? historyStore;
+
+  /// Test seam: the date the screen opens on. Production leaves it
+  /// null and the screen opens on today, exactly as before.
+  final DateTime? initialDate;
+
   /// Heart/Sleep toggle (founder, Nov 23, 2026) — supplied by the
   /// shell, which owns the heart slot's mode. The moon button in
   /// the AppBar calls it to switch the slot to the Sleep screen.
@@ -68,6 +120,8 @@ class HeartScreen extends StatefulWidget {
       this.email,
       this.healthConnectService,
       this.cache,
+      this.historyStore,
+      this.initialDate,
       this.onShowSleep});
 
   @override
@@ -77,14 +131,49 @@ class HeartScreen extends StatefulWidget {
 class _HeartScreenState extends State<HeartScreen> {
   late final HealthConnectService _service;
   late final HeartDataCache _cache;
+  late final HealthHistoryStore _store;
 
   bool? _connected; // null = first check not landed yet
-  bool _loading = false;
   bool _requesting = false;
   String? _error;
-  DateTime _selectedDate = DateTime.now();
+  late DateTime _selectedDate;
   HeartDayData? _data;
   DateTime? _lastSyncAt;
+
+  /// Heart store-first fix — per-date in-flight load tracking,
+  /// replacing the single `_loading` flag whose `if (_loading)
+  /// return` guard DROPPED a date pick made during a pending load
+  /// (and the finishing load then applied its result under the NEW
+  /// date's key). A picked date now starts its own load; a
+  /// same-date duplicate still joins the in-flight one.
+  final Set<String> _inFlightDates = <String>{};
+
+  /// Whether a load for the SELECTED date is in flight — the
+  /// spinner strip and the refresh button key off this, exactly as
+  /// they keyed off the old single flag.
+  bool get _loading => _inFlightDates.contains(_dateStr);
+
+  /// The date whose most recent finished load FAILED (any read
+  /// error, including READ_TIMEOUT), or null. Juno §1/§2: the
+  /// failure states render only for the selected date, only after
+  /// its load finished (spinner cleared — [_loading] false), and a
+  /// successful refresh for the date clears the flag in the same
+  /// update that swaps the fresh data in.
+  String? _failedDateStr;
+
+  /// The date whose most recent finished load SUCCEEDED with zero
+  /// samples (no error, no partial), or null. Juno §1b.1/§1b.2: a
+  /// successful-but-empty read is an UNEXAMINED day — the spikes
+  /// card renders the two ruled no-readings lines for it when no
+  /// examined data backs the card. Set/cleared in the same update
+  /// that resolves the date's load, exactly like [_failedDateStr].
+  String? _noReadingsDateStr;
+
+  /// The history-store row for the selected date, when one exists
+  /// — the store-first seed's source and Spike Review's stored
+  /// count. Kept beside [_data] because a series-derived [_data]
+  /// carries no stored fields.
+  DailyBiometrics? _storeRow;
 
   /// HC Grant Hardening §3.4 — the availability snapshot the last
   /// connection check probed; the wedge derivation and the repair
@@ -134,17 +223,96 @@ class _HeartScreenState extends State<HeartScreen> {
   static String _fmtDate(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+  /// The stored-summary seed for [dateStr] from [row], or null
+  /// when the row holds no heart summary fields. Pure: callers
+  /// own the state assignment.
+  HeartDayData? _storeSeedFor(String dateStr, DailyBiometrics? row) {
+    if (row == null) return null;
+    if (row.spikeCount == null && row.maxHrBpm == null) return null;
+    return HeartDayData.fromStoredSummary(
+      spikeCount: row.spikeCount,
+      maxHrBpm: row.maxHrBpm,
+      minutesOver100: row.minutesOver100,
+      minutesOver120: row.minutesOver120,
+      restingHrBpm: row.restingHrBpm,
+    );
+  }
+
+  /// Seeds [_data] / [_storeRow] for the selected date from what
+  /// is already in memory: the cache's raw series wins where
+  /// present; otherwise the store row's summary renders (ANY date,
+  /// including past days, with zero bridge reads). Never replaces
+  /// a renderable series with a summary. Call inside setState or
+  /// initState.
+  void _seedFromLocalSources() {
+    _storeRow = _store.peekDay(_dateStr);
+    final cached = _cache.snapshot(_dateStr);
+    if (cached != null && cached.samples.isNotEmpty) {
+      _data = cached;
+      return;
+    }
+    final seed = _storeSeedFor(_dateStr, _storeRow);
+    if (seed != null) {
+      _data = seed;
+      return;
+    }
+    if (cached != null) _data = cached;
+  }
+
+  /// The Health Connect row's sync stamp: the Heart cache's stamp
+  /// floored by the capture's stamp (Heart store-first fix). The
+  /// row previously read ONLY the cache stamp, which failed Heart
+  /// loads are forbidden from advancing — so it said "Not synced
+  /// yet" forever over a store the capture had already synced.
+  /// The floor can never move the stamp BACKWARD: the later of
+  /// the two real stamps wins.
+  DateTime? _effectiveLastSyncAt() {
+    var t = _cache.lastSyncAt ?? _lastSyncAt;
+    final capMs = _store.lastCaptureMs;
+    if (capMs != null) {
+      final cap = DateTime.fromMillisecondsSinceEpoch(capMs);
+      if (t == null || cap.isAfter(t)) t = cap;
+    }
+    return t;
+  }
+
+  /// Records this screen's own live-read outcome into the capture
+  /// diagnostics (a `heartRead` entry — see
+  /// [HealthHistoryStore.recordCaptureDiagnostics]). Fire-and-
+  /// forget by design: diagnostics must never fail a load, and the
+  /// store call itself never throws.
+  Future<void> _recordHeartRead({
+    required bool failed,
+    required String? errorCode,
+    required int sampleCount,
+  }) async {
+    try {
+      await _store.recordCaptureDiagnostics(
+        failures: failed
+            ? {'heartRead': errorCode ?? 'HEART_READ_FAILED'}
+            : const {},
+        succeeded: failed ? const {} : const {'heartRead'},
+        atMs: DateTime.now().millisecondsSinceEpoch,
+        heartReadErrorCode: failed ? (errorCode ?? 'HEART_READ_FAILED') : null,
+        heartReadSampleCount: sampleCount,
+      );
+    } catch (_) {
+      // Diagnostics are best-effort; the load's outcome stands.
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     _service = widget.healthConnectService ?? HealthConnectService();
     _cache = widget.cache ?? HeartDataCache.instance;
-    // Instant first paint from cache (memory, then disk warm).
-    final cached = _cache.snapshot(_dateStr);
-    if (cached != null) {
-      _data = cached;
-      _lastSyncAt = _cache.lastSyncAt;
-    }
+    _store = widget.historyStore ?? HealthHistoryStore.instance;
+    _selectedDate = widget.initialDate ?? DateTime.now();
+    // Instant first paint from local sources (memory): the cache's
+    // series, or the history store's summary for the date — the
+    // store-first seed. The live read refreshes BEHIND this paint.
+    _seedFromLocalSources();
+    _lastSyncAt = _effectiveLastSyncAt();
     unawaited(_init());
   }
 
@@ -152,15 +320,30 @@ class _HeartScreenState extends State<HeartScreen> {
     await _cache.clearIfOwnerMismatch(widget.email);
     if (_data == null) {
       await _cache.warmFromDisk(currentEmail: widget.email);
+    }
+    if (!mounted) return;
+    setState(() {
+      _seedFromLocalSources();
+      _lastSyncAt = _effectiveLastSyncAt();
+    });
+    // Warm the history store CONCURRENTLY — first paint and the
+    // connection check never gate on a storage read (a slow or
+    // wedged store must not reproduce the original "nothing
+    // loads" failure in a new costume). When the warm lands, a
+    // seed-only screen upgrades from the store (a cold start's
+    // disk blob may hold the selected date's summary even when
+    // memory started empty); live samples on screen are never
+    // replaced by a seed.
+    unawaited(_store.warmFromDisk(currentEmail: widget.email).then((_) {
       if (!mounted) return;
-      final cached = _cache.snapshot(_dateStr);
-      if (cached != null && _data == null) {
+      final d = _data;
+      if (d == null || d.storedSummaryOnly || d.samples.isEmpty) {
         setState(() {
-          _data = cached;
-          _lastSyncAt = _cache.lastSyncAt;
+          _seedFromLocalSources();
+          _lastSyncAt = _effectiveLastSyncAt() ?? _lastSyncAt;
         });
       }
-    }
+    }));
     await _checkConnectionAndLoad();
   }
 
@@ -260,7 +443,16 @@ class _HeartScreenState extends State<HeartScreen> {
   }
 
   Future<void> _load({bool force = false}) async {
-    if (_loading) return;
+    // Heart store-first fix — capture the date at entry and apply
+    // the result under THAT key. The old code re-evaluated the
+    // `_dateStr` getter after the await, so a load that finished
+    // after a date switch applied the OLD date's result under the
+    // NEW date's key.
+    final dateStr = _dateStr;
+    // Per-date in-flight tracking: a load already running for THIS
+    // date joins (returns); a load running for ANOTHER date no
+    // longer drops this one — the picked date starts its own load.
+    if (_inFlightDates.contains(dateStr)) return;
     // Perf package (Nov 2, 2026) — freshness skip: when this date's
     // series was successfully loaded within HeartDataCache's fresh
     // window (by this screen, or by Home's vitals load writing
@@ -270,94 +462,186 @@ class _HeartScreenState extends State<HeartScreen> {
     // applies to a forced load (refresh button, Connections return,
     // permission grant), and a date with no cached series always
     // loads as before.
-    if (!force && _cache.isFresh(_dateStr)) {
-      final cached = _cache.snapshot(_dateStr);
+    if (!force && _cache.isFresh(dateStr)) {
+      final cached = _cache.snapshot(dateStr);
       if (cached != null) {
-        setState(() {
-          _data = cached;
-          _lastSyncAt = _cache.lastSyncAt;
-          _error = null;
-        });
+        if (mounted && dateStr == _dateStr) {
+          setState(() {
+            _data = cached;
+            _lastSyncAt = _effectiveLastSyncAt();
+            _error = null;
+            if (_failedDateStr == dateStr) _failedDateStr = null;
+            if (_noReadingsDateStr == dateStr) _noReadingsDateStr = null;
+          });
+        }
         return;
       }
     }
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    _inFlightDates.add(dateStr);
+    if (mounted) {
+      // Repaint for the spinner strip (derived from _inFlightDates);
+      // stored/cached data stays on screen behind it — the load no
+      // longer gates first paint.
+      setState(() => _error = null);
+    }
+    List<HrSample> raw = const [];
+    String? errCode;
+    String? partialCode;
+    String? errDetails;
+    var threw = false;
     try {
-      // The service keeps the last read error code without clearing it
-      // on success; reset it so only THIS call's failure can surface.
-      _service.lastReadErrorCode = null;
-      _service.lastPartialErrorCode = null;
-      _service.lastReadErrorDetails = null;
+      // Vera Condition 2 — this load claims its OWN outcome object
+      // (readHeartRateSamplesWithOutcome, the same per-load claim
+      // Home's write-through gate uses), never the service's SHARED
+      // slot fields. Per-date loads now run concurrently, and the
+      // slots are written/reset by every load on the instance: a
+      // sibling load's entry reset could wipe this load's recorded
+      // error before it was captured (a failed read stamped as a
+      // sync), and a sibling's timeout write could land after this
+      // load's reset and be captured as THIS load's outcome (a
+      // successful date marked failed, wrong heartRead diagnostic
+      // for both). The outcome carries this read's own error /
+      // partial / details, so each load's classification,
+      // diagnostics, and cache-apply decision derive from its own
+      // read alone. This load neither resets nor writes the slots.
+      // Subclass fakes that override only the legacy method keep
+      // working: the service reconstructs their outcome from the
+      // slots they set, serialized under its per-instance gate
+      // until the read's box shape is proven (see _outcomeOf).
+      //
       // Bounded wait (hardening #2): the bridge read itself had NO
       // timeout, so a never-returning channel call wedged this
       // screen's "Updating sync data..." spinner forever (defect
-      // #3). On expiry the read fails closed as READ_TIMEOUT with
-      // the error recorded on the service, and the failed-load path
-      // below surfaces it — never a permanent spinner.
-      final raw = await _service
-          .readHeartRateSamples(_dateStr)
+      // #3). On expiry THIS load fails closed as READ_TIMEOUT via
+      // its own synthesized outcome — the shared slots are not
+      // written, so the timeout can never be attributed to a
+      // sibling load — and the failed-load path below surfaces it:
+      // never a permanent spinner. (The service's outcome path
+      // carries the same bound internally; this caller-side bound
+      // keeps the identical semantics for subclass fakes, whose
+      // futures are theirs alone.)
+      final outcome = await _service
+          .readHeartRateSamplesWithOutcome(dateStr)
           .timeout(HealthConnectService.readTimeout, onTimeout: () {
-        _service.lastReadErrorCode = 'READ_TIMEOUT';
-        _service.lastReadErrorDetails =
-            'Health Connect did not respond in time. Please try again.';
-        return const <HrSample>[];
+        return const HcReadOutcome<List<HrSample>>(
+          value: <HrSample>[],
+          errorCode: 'READ_TIMEOUT',
+          errorDetails:
+              'Health Connect did not respond in time. Please try again.',
+        );
       });
-      if (!mounted) return;
-      // readHeartRateSamples fails closed to an empty list with the
-      // error code + native exception class kept on the service; a
-      // partial read records its own code (some chunks failed, real
-      // data still arrived).
-      final errCode = _service.lastReadErrorCode;
-      final partialCode = _service.lastPartialErrorCode;
-      // A hard failure must NOT stamp the cache's lastSyncAt —
-      // "Synced just now" over a failed load is founder defect #3 —
-      // and must not be persisted as a fresh blob. A partial read
-      // delivered real data and counts as a sync.
-      final failed = errCode != null;
-      // B-01: a partial read that collected NOTHING is not a sync
-      // either — passing it as succeeded would let the empty series
-      // overwrite the cached series for the date and stamp it fresh
-      // (HeartDataCache.apply also refuses an empty overwrite, so
-      // the guard holds even if a caller forgets this one). A
-      // partial read WITH samples still counts as a sync, exactly
-      // as before, and the partial banner below still shows.
-      final partialEmpty = partialCode != null && raw.isEmpty;
-      final countsAsSync = !failed && !partialEmpty;
-      final data = _cache.apply(_dateStr, raw,
+      raw = outcome.value;
+      errCode = outcome.errorCode;
+      partialCode = outcome.partialCode;
+      errDetails = outcome.errorDetails;
+    } catch (_) {
+      threw = true;
+    }
+    // A hard failure must NOT stamp the cache's lastSyncAt —
+    // "Synced just now" over a failed load is founder defect #3 —
+    // and must not be persisted as a fresh blob. A partial read
+    // delivered real data and counts as a sync.
+    final hardFailed = threw || errCode != null;
+    // B-01: a partial read that collected NOTHING is not a sync
+    // either — passing it as succeeded would let the empty series
+    // overwrite the cached series for the date and stamp it fresh
+    // (HeartDataCache.apply also refuses an empty overwrite, so
+    // the guard holds even if a caller forgets this one). A
+    // partial read WITH samples still counts as a sync, exactly
+    // as before, and the partial banner below still shows.
+    final partialEmpty = partialCode != null && raw.isEmpty;
+    // Vera Condition 1c: a partial-empty read takes the FAILED
+    // path for the Juno §1/§2 state decision — its own B-01 rule
+    // already holds it is "not a sync" because nothing was
+    // collected, so with stored data it derives §1 and with none
+    // it derives §2, never the success path's placeholder claims.
+    // (Its error LINE stays the partial sentence — Juno J4: the
+    // partial copy must not claim total failure — and its
+    // heartRead diagnostic stays the partial's, not a failure's.)
+    final failed = hardFailed || partialEmpty;
+    final countsAsSync = !failed;
+    HeartDayData data;
+    if (threw) {
+      // Keep whatever local data the date already has — the cache's
+      // series or the store seed — instead of swapping in empties.
+      data = _cache.snapshot(dateStr) ??
+          _storeSeedFor(dateStr, _store.peekDay(dateStr)) ??
+          HeartDayData.empty;
+    } else {
+      data = _cache.apply(dateStr, raw,
           ownerEmail: widget.email, succeeded: countsAsSync);
       if (countsAsSync) unawaited(_cache.persist());
-      setState(() {
+      // A failed (or honestly empty) apply with nothing cached
+      // falls back to the store seed for THIS date, so stored data
+      // stays on screen behind the Juno §1 stale state.
+      if (!data.hasRenderableData) {
+        final seed = _storeSeedFor(dateStr, _store.peekDay(dateStr));
+        if (seed != null) data = seed;
+      }
+    }
+    // The Heart read's own outcome lands in the capture
+    // diagnostics (heartRead entry) — the next wedge is diagnosable
+    // from the store instead of invisible. Keyed on the HARD
+    // failure only, from THIS load's outcome object (Condition 2):
+    // a partial read — even a partial-empty one — is not a failed
+    // read diagnostically, exactly as before.
+    unawaited(_recordHeartRead(
+      failed: hardFailed,
+      errorCode: threw ? 'HEART_READ_FAILED' : errCode,
+      sampleCount: raw.length,
+    ));
+    _inFlightDates.remove(dateStr);
+    if (!mounted) return;
+    setState(() {
+      _lastSyncAt = _effectiveLastSyncAt();
+      // Juno §1/§2 bookkeeping: success clears the date's failure
+      // in the same update that swaps its fresh data in; failure
+      // marks the date so the honest state renders above the cards
+      // (with the spinner now cleared).
+      if (failed) {
+        _failedDateStr = dateStr;
+        if (_noReadingsDateStr == dateStr) _noReadingsDateStr = null;
+      } else if (_failedDateStr == dateStr) {
+        _failedDateStr = null;
+      }
+      // Juno §1b bookkeeping: a load that finished successfully
+      // with zero samples (no error, no partial) marks its date
+      // successful-but-empty; a successful non-empty load clears
+      // its date's mark (the failed branch above clears it too).
+      if (!failed && errCode == null && partialCode == null) {
+        if (raw.isEmpty) {
+          _noReadingsDateStr = dateStr;
+        } else if (_noReadingsDateStr == dateStr) {
+          _noReadingsDateStr = null;
+        }
+      }
+      // Only the SELECTED date's completion paints. A load that
+      // finishes after a date switch has already applied its
+      // result to the cache under its own key above; the picked
+      // date's own load paints its own data when it lands.
+      if (dateStr == _dateStr) {
         _data = data;
-        _lastSyncAt = _cache.lastSyncAt;
-        _loading = false;
+        _storeRow = _store.peekDay(dateStr);
         // HC Grant Hardening §3.2 — this load's own wedge
         // evidence: a hard failure whose native exception class
         // is a SecurityException is the granted-but-blocked
         // signature for THIS screen's type; any completed read
         // (data, honest empty, or partial) clears it.
-        _hrReadBlocked = failed &&
-            (_service.lastReadErrorDetails?.contains('SecurityException') ??
-                false);
+        _hrReadBlocked = hardFailed &&
+            (errDetails?.contains('SecurityException') ?? false);
         if (!_hrWedged) _repairSecondStep = false;
-        if (failed) {
+        if (hardFailed) {
           _error = 'Could not read heart rate data.';
         } else if (partialCode != null) {
-          // Juno J4: partial copy must not claim total failure.
+          // Juno J4: partial copy must not claim total failure —
+          // a partial-empty read takes the §1/§2 failure path for
+          // its STATE (Condition 1c) but keeps this sentence.
           _error = 'Some heart rate data could not be read and may be missing.';
         } else {
           _error = null;
         }
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = 'Could not read heart rate data.';
-      });
-    }
+      }
+    });
   }
 
   Future<void> _pickDate() async {
@@ -381,9 +665,17 @@ class _HeartScreenState extends State<HeartScreen> {
     if (pickedDay == currentDay) return;
     setState(() {
       _selectedDate = pickedDay;
-      // Cached series for the new date renders instantly when present.
-      _data = _cache.snapshot(_dateStr);
+      // Local sources for the new date render instantly when
+      // present: the cached series, or the store summary (the
+      // store-first seed — a past day with no cached series no
+      // longer paints placeholders while its load runs).
+      _data = null;
+      _seedFromLocalSources();
+      _lastSyncAt = _effectiveLastSyncAt();
     });
+    // Per-date in-flight tracking: this starts the picked date's
+    // OWN load even when another date's load is still pending —
+    // the old single-flag guard dropped this call entirely.
     await _load();
   }
 
@@ -543,11 +835,23 @@ class _HeartScreenState extends State<HeartScreen> {
 
   Future<void> _openSpikeReview() async {
     final data = _data;
+    // Heart store-first fix: the review receives the RENDERED day
+    // (plus the store row's count), not only the raw series — a
+    // summary-only day hands the review an empty series AND the
+    // stored count, and the review renders Juno §4's
+    // detail-unavailable state instead of wording the empty list
+    // as an all-clear.
+    final storedCount =
+        data?.storedSpikeCount ?? _storeRow?.spikeCount;
     await Navigator.of(context).push(
       SlidePageRoute(
         reducedMotion: animationsDisabled(context),
         builder: (_) => HeartSpikeReviewScreen(
-            samples: data?.samples ?? const [], dateStr: _dateStr),
+          samples: data?.samples ?? const [],
+          dateStr: _dateStr,
+          heartData: data,
+          storedSpikeCount: storedCount,
+        ),
       ),
     );
   }
@@ -928,8 +1232,77 @@ class _HeartScreenState extends State<HeartScreen> {
     );
   }
 
+  /// Juno §1 — the stale-data state, rendered above the summary
+  /// card in place of the loading strip (same slot, same shape).
+  Widget _staleDataBanner() {
+    return Container(
+      decoration: BoxDecoration(
+        color: NotelColors.surface.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+      child: const Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.info_outline, size: 14, color: NotelColors.error),
+          SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              heartStaleDataMessage,
+              style: TextStyle(
+                color: NotelColors.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Juno §2 — the no-data failure state. Renders in place of the
+  /// summary/pattern/spikes cards: in this state the screen must
+  /// NOT render "-- bpm", an empty chart, or "0 spikes" as if they
+  /// were the day's data.
+  Widget _noDataFailureState() {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 24),
+      child: Column(
+        children: [
+          Text(
+            heartNoDataTitle,
+            style: TextStyle(
+              color: NotelColors.textPrimary,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: 4),
+          Text(
+            heartNoDataBody,
+            style: TextStyle(
+              color: NotelColors.textSecondary,
+              fontSize: 13,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _connectedBody() {
     final data = _data ?? HeartDayData.empty;
+    // Juno §1/§2 derivation (BINDING conditions): a failure state
+    // renders only when the selected date's load has FINISHED
+    // failed (spinner cleared) — never while its load is in
+    // flight. Stored data on screen → §1 stale; no stored data →
+    // §2 no-data, which suppresses the data cards entirely.
+    final loadFailed = !_loading && _failedDateStr == _dateStr;
+    final hasData = data.hasRenderableData;
+    final showNoDataFailure = loadFailed && !hasData;
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       child: Column(
@@ -968,32 +1341,66 @@ class _HeartScreenState extends State<HeartScreen> {
             ),
             const SizedBox(height: 16),
           ],
-          _summaryCard(data),
-          // HC Grant Hardening §3.3 — the repair card sits above
-          // the pattern card, visible without scrolling (the
-          // Nov 20 wedge error line sat below the fold; that must
-          // not recur for the wedge state).
-          if (_hrWedged) ...[
+          // Juno §1 — stale state above the summary card, in place
+          // of the strip, stored data still on screen below it.
+          if (loadFailed && hasData) ...[
+            _staleDataBanner(),
             const SizedBox(height: 16),
-            HcRepairCard(
-              secondStep: _repairSecondStep,
-              requesting: _repairing,
-              onRepairTap: _repairing ? null : () => unawaited(_onRepairTap()),
-            ),
           ],
-          const SizedBox(height: 16),
-          _patternCard(data),
-          const SizedBox(height: 16),
-          _spikesCard(data),
-          const SizedBox(height: 16),
-          _healthConnectRow(),
+          // Juno §2 — no-data failure state, same slot; the data
+          // cards are suppressed below while this renders. The
+          // error line and the wedge repair card are NOT data —
+          // they are the diagnosis and the fix path — so they
+          // still render in this state (below); §2 suppresses
+          // only the placeholder data cards.
+          if (showNoDataFailure) ...[
+            _noDataFailureState(),
+            const SizedBox(height: 16),
+          ],
+          // The read-error line renders ABOVE the summary card
+          // (Heart store-first fix): it previously sat below the
+          // Health Connect row, below the fold — the VC 100161
+          // violation pattern. It renders in every failure state,
+          // §2 included: the Juno block carries the plain-words
+          // state, this line carries the specific read failure.
           if (_error != null) ...[
-            const SizedBox(height: 12),
             Text(
               _error!,
               style: const TextStyle(color: NotelColors.error, fontSize: 12),
             ),
+            const SizedBox(height: 12),
           ],
+          if (showNoDataFailure && _hrWedged) ...[
+            HcRepairCard(
+              secondStep: _repairSecondStep,
+              requesting: _repairing,
+              onRepairTap:
+                  _repairing ? null : () => unawaited(_onRepairTap()),
+            ),
+            const SizedBox(height: 16),
+          ],
+          if (!showNoDataFailure) ...[
+            _summaryCard(data),
+            // HC Grant Hardening §3.3 — the repair card sits above
+            // the pattern card, visible without scrolling (the
+            // Nov 20 wedge error line sat below the fold; that must
+            // not recur for the wedge state).
+            if (_hrWedged) ...[
+              const SizedBox(height: 16),
+              HcRepairCard(
+                secondStep: _repairSecondStep,
+                requesting: _repairing,
+                onRepairTap:
+                    _repairing ? null : () => unawaited(_onRepairTap()),
+              ),
+            ],
+            const SizedBox(height: 16),
+            _patternCard(data),
+            const SizedBox(height: 16),
+            _spikesCard(data),
+            const SizedBox(height: 16),
+          ],
+          _healthConnectRow(),
           // Native: 72dp tail spacer above the floating nav bar; the
           // shell's dock floats too, so keep the same clearance.
           const SizedBox(height: 72),
@@ -1183,6 +1590,20 @@ class _HeartScreenState extends State<HeartScreen> {
               ),
             ),
           ),
+          // Juno §3 — stored-summary-only marker, directly under
+          // the chart area: the summary above is real stored data,
+          // but the chart has no intraday series to draw for this
+          // day. Never shown when a series is present.
+          if (data.storedSummaryOnly) ...[
+            const SizedBox(height: 8),
+            const Text(
+              heartChartSummaryOnlyMessage,
+              style: TextStyle(
+                color: NotelColors.textSecondary,
+                fontSize: 12,
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           // Legend (native FlowRow, SpaceBetween).
           Wrap(
@@ -1255,8 +1676,30 @@ class _HeartScreenState extends State<HeartScreen> {
   // ── 3. Spikes card ──────────────────────────────────────────────────
   Widget _spikesCard(HeartDayData data) {
     final card = data.spikesCard;
+    // Juno §4 all-clear gate on this card (Vera Conditions 1a/1b):
+    // the count and load-level claims render ONLY when examined
+    // data backs them — a non-empty valid series, or a non-null
+    // stored spike count for the date (a stored 0 is recorded data
+    // and may render). Every other state is an UNEXAMINED day and
+    // renders no "0 significant spikes" / "Normal load" claim:
+    // - a stored summary whose spike count is null (1a): the
+    //   stored fields that DO exist (peak, largest jump, the
+    //   minutes-over metrics below) still render; the count claim
+    //   and the Total metric are suppressed, not zero-filled.
+    // - a successful-but-empty read with no examined backing
+    //   (1b, Juno §1b.2): the two ruled no-readings lines render in
+    //   place of the count and the load level, nothing alongside.
+    // - the first load still in flight with no seed painted (Juno
+    //   §1b.3): no spike claims at all — the header shows only the
+    //   loading spinner until the load resolves.
+    final examined = data.hasExaminedSpikeData;
+    final noReadings = !examined &&
+        !data.storedSummaryOnly &&
+        !_loading &&
+        _failedDateStr != _dateStr &&
+        _noReadingsDateStr == _dateStr;
     final loadLevel = card.loadLevel;
-    final high = loadLevel == 'High load';
+    final high = examined && loadLevel == 'High load';
     return Container(
       decoration: BoxDecoration(
         color: high ? NotelColors.errorTint : NotelColors.surface,
@@ -1289,57 +1732,148 @@ class _HeartScreenState extends State<HeartScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '${card.spikeCount} significant spikes',
-                      style: const TextStyle(
-                        color: NotelColors.textPrimary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+                    if (noReadings) ...[
+                      // Juno §1b.2 — ONLY these two lines, in place
+                      // of the count and the load level.
+                      const Text(
+                        heartNoReadingsTitle,
+                        style: TextStyle(
+                          color: NotelColors.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    Text(
-                      loadLevel,
-                      style: const TextStyle(
-                        color: NotelColors.error,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                      const Text(
+                        heartNoReadingsBody,
+                        style: TextStyle(
+                          color: NotelColors.textSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
+                    ] else if (examined) ...[
+                      Text(
+                        '${card.spikeCount} significant spikes',
+                        style: const TextStyle(
+                          color: NotelColors.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        loadLevel,
+                        style: const TextStyle(
+                          color: NotelColors.error,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ] else
+                      // Unexamined day (null stored count, or the
+                      // pending first paint): the section label
+                      // only — no count, no load level, no claim.
+                      Row(
+                        children: [
+                          const Text(
+                            'Significant spikes',
+                            style: TextStyle(
+                              color: NotelColors.textPrimary,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          if (_loading) ...[
+                            const SizedBox(width: 8),
+                            const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: NotelColors.primary,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                   ],
                 ),
               ),
-              Container(
-                decoration: BoxDecoration(
-                  color: NotelColors.errorTintStrong,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                child: Text(
-                  loadLevel,
-                  style: const TextStyle(
-                    color: NotelColors.error,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
+              if (examined)
+                Container(
+                  decoration: BoxDecoration(
+                    color: NotelColors.errorTintStrong,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  child: Text(
+                    loadLevel,
+                    style: const TextStyle(
+                      color: NotelColors.error,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _spikeMetric('Peak',
-                  card.maxBpm > 0 ? '${card.maxBpm}' : '--', 'bpm',
-                  color: NotelColors.error),
-              _spikeMetric(
-                  'Largest jump',
-                  card.maxDelta > 0 ? '+${card.maxDelta}' : '--',
-                  'bpm'),
-              _spikeMetric('Total', '${card.spikeCount}', 'events'),
-            ],
-          ),
+          if (examined) ...[
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _spikeMetric('Peak',
+                    card.maxBpm > 0 ? '${card.maxBpm}' : '--', 'bpm',
+                    color: NotelColors.error),
+                _spikeMetric(
+                    'Largest jump',
+                    card.maxDelta > 0 ? '+${card.maxDelta}' : '--',
+                    'bpm'),
+                _spikeMetric('Total', '${card.spikeCount}', 'events'),
+              ],
+            ),
+          ] else if (data.storedSummaryOnly) ...[
+            // Stored-summary day with a null stored count (1a): the
+            // stored peak / jump are recorded data and still
+            // render; the Total metric is the count claim, so it is
+            // suppressed with the count.
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _spikeMetric('Peak',
+                    card.maxBpm > 0 ? '${card.maxBpm}' : '--', 'bpm',
+                    color: NotelColors.error),
+                _spikeMetric(
+                    'Largest jump',
+                    card.maxDelta > 0 ? '+${card.maxDelta}' : '--',
+                    'bpm'),
+              ],
+            ),
+          ],
+          // Stored-summary-only days (Heart store-first fix): the
+          // store row's remaining summary fields — minutes over
+          // the thresholds and resting HR — render as metrics in
+          // the same shape, from the stored values only.
+          if (data.storedSummaryOnly &&
+              (data.storedMinutesOver100 != null ||
+                  data.storedMinutesOver120 != null ||
+                  data.storedRestingHrBpm != null)) ...[
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                if (data.storedMinutesOver100 != null)
+                  _spikeMetric(
+                      'Over 100', '${data.storedMinutesOver100}', 'min'),
+                if (data.storedMinutesOver120 != null)
+                  _spikeMetric(
+                      'Over 120', '${data.storedMinutesOver120}', 'min'),
+                if (data.storedRestingHrBpm != null)
+                  _spikeMetric('Resting', '${data.storedRestingHrBpm}', 'bpm'),
+              ],
+            ),
+          ],
           const SizedBox(height: 16),
           _GlassyButton(
             color: NotelColors.legacyDarkReviewButton,
@@ -1446,7 +1980,10 @@ class _HeartScreenState extends State<HeartScreen> {
                   ),
                 ),
                 Text(
-                  formatSyncedAgo(_lastSyncAt, DateTime.now()),
+                  // Floored by the capture's stamp (see
+                  // _effectiveLastSyncAt): the row can no longer
+                  // say "Not synced yet" over a synced store.
+                  formatSyncedAgo(_effectiveLastSyncAt(), DateTime.now()),
                   style: const TextStyle(
                     color: NotelColors.textSecondary,
                     fontSize: 12,
