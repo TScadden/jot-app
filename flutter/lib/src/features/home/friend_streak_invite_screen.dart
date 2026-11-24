@@ -36,16 +36,28 @@ TextStyle _duo(
 /// User-facing strings for the Friend Streaks picker screen
 /// (Design §7, mock part 2). Kept in one obvious place so copy
 /// reviews and widget tests reference a single source of truth.
+///
+/// All strings are Juno's SIGNED final copy (JUNO-COPY.md, Nov 23,
+/// 2026). In particular footerLine1 is fs_picker_footer_delivery —
+/// the AMENDED line. The mock's original line ("They get it as a
+/// phone notification and in the app.") was superseded for a truth
+/// defect (Tabs has no remote push; the local notification posts on
+/// the friend's next app open) and must never come back.
 class FriendStreakInviteCopy {
   const FriendStreakInviteCopy._();
 
+  // fs_picker_title / fs_picker_subtitle / fs_picker_invite_button /
+  // fs_picker_pending / fs_picker_active.
   static const String title = 'Invite a friend';
   static const String subtitle = 'Pick from your friends';
   static const String invite = 'INVITE';
   static const String requestPending = 'Request pending';
   static const String streakActive = 'Streak active';
+
+  // fs_picker_footer_delivery (AMENDED) / fs_picker_footer_consent.
   static const String footerLine1 =
-      'They get it as a phone notification and in the app.';
+      'They will see it in the app, and as a phone notification the '
+      'next time they open Tabs.';
   static const String footerLine2 = 'Nothing starts until they accept.';
   static const String emptyFriends =
       'No friends added yet. Add friends using their Nickname#ID!';
@@ -226,7 +238,9 @@ class _FriendStreakInviteScreenState extends State<FriendStreakInviteScreen> {
                       child: Text(
                         FriendStreakInviteCopy.subtitle,
                         key: const Key('friendStreakInviteSubtitle'),
-                        style: _duo(20, 900, _duoText),
+                        // Mock v3 part 2: subtitle is 14.5/800 in
+                        // SECONDARY grey, not a second heading.
+                        style: _duo(14.5, 800, const Color(0xFFA4A4AD)),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -257,7 +271,9 @@ class _FriendStreakInviteScreenState extends State<FriendStreakInviteScreen> {
             child: IconButton(
               key: const Key('friendStreakInviteBack'),
               tooltip: 'Back',
-              icon: const Icon(Icons.arrow_back, size: 24, color: _duoText),
+              // Mock v3 part 2 header carries the close (X) glyph,
+              // matching the Streak screen header — not a back arrow.
+              icon: const Icon(Icons.close, size: 24, color: _duoText),
               onPressed: () => Navigator.of(context).pop(),
             ),
           ),
@@ -299,7 +315,7 @@ class _FriendStreakInviteScreenState extends State<FriendStreakInviteScreen> {
             width: double.infinity,
             decoration: BoxDecoration(
               border: Border.all(color: _duoBorder, width: 1.2),
-              borderRadius: BorderRadius.circular(13),
+              borderRadius: BorderRadius.circular(16),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
             child: Text(
@@ -315,9 +331,11 @@ class _FriendStreakInviteScreenState extends State<FriendStreakInviteScreen> {
             width: double.infinity,
             decoration: BoxDecoration(
               border: Border.all(color: _duoBorder, width: 1.2),
-              borderRadius: BorderRadius.circular(13),
+              borderRadius: BorderRadius.circular(16),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            // Mock: hairlines inset 16 from the card edge; rows
+            // carry the rest of their own insets.
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
             child: Column(
               children: [
                 for (var i = 0; i < friends.length; i++) ...[
@@ -325,6 +343,8 @@ class _FriendStreakInviteScreenState extends State<FriendStreakInviteScreen> {
                     const Divider(
                       height: 1,
                       thickness: 1,
+                      indent: 11,
+                      endIndent: 11,
                       color: Color(0xFF2A343C),
                     ),
                   _friendRow(friends[i]),
@@ -333,24 +353,21 @@ class _FriendStreakInviteScreenState extends State<FriendStreakInviteScreen> {
             ),
           ),
         const SizedBox(height: 16),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                FriendStreakInviteCopy.footerLine1,
-                key: const Key('friendStreakInviteFooterLine1'),
-                style: _duo(14, 600, _duoMuted, height: 1.45),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                FriendStreakInviteCopy.footerLine2,
-                key: const Key('friendStreakInviteFooterLine2'),
-                style: _duo(14, 600, _duoMuted, height: 1.45),
-              ),
-            ],
-          ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              FriendStreakInviteCopy.footerLine1,
+              key: const Key('friendStreakInviteFooterLine1'),
+              style: _duo(13.5, 700, const Color(0xFF69727E), height: 1.3),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              FriendStreakInviteCopy.footerLine2,
+              key: const Key('friendStreakInviteFooterLine2'),
+              style: _duo(13.5, 700, const Color(0xFF69727E), height: 1.3),
+            ),
+          ],
         ),
       ],
     );
@@ -365,44 +382,46 @@ class _FriendStreakInviteScreenState extends State<FriendStreakInviteScreen> {
     final state = _rowStateFor(friend.id);
     final busy = _invitingIds.contains(friend.id);
 
+    // Mock v3 part 2: avatar r24 centered on the two-line text
+    // block (nickname 16.5/900 over #tag 13/700 muted); rows pitch
+    // 84 (48 avatar + 18 vertical padding each side).
     return Padding(
       key: Key('friendStreakInviteRow-${friend.id}'),
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.fromLTRB(7, 18, 11, 18),
       child: Row(
         children: [
           ExcludeSemantics(
             child: UserAvatar(
               avatarId: friend.avatarId,
-              size: 40,
+              size: 48,
               fallback: Container(
-                width: 40,
-                height: 40,
+                width: 48,
+                height: 48,
                 decoration: const BoxDecoration(
                   shape: BoxShape.circle,
-                  color: _duoNavyBtn,
+                  color: Color(0xFF1F2A4A),
                 ),
                 child: Center(
-                  child: Text(initial, style: _duo(16, 900, _duoText)),
+                  child: Text(initial, style: _duo(22, 1000, _duoText)),
                 ),
               ),
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Flexible(
-                  child: Text(
-                    friend.nickname,
-                    style: _duo(16, 700, _duoText),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                Text(
+                  friend.nickname,
+                  style: _duo(16.5, 900, _duoText),
+                  overflow: TextOverflow.ellipsis,
                 ),
                 if (rawTag.isNotEmpty) ...[
-                  const SizedBox(width: 6),
+                  const SizedBox(height: 3),
                   Text(
                     formattedTag,
-                    style: _duo(13, 700, _duoMuted),
+                    style: _duo(13, 700, const Color(0xFF69727E)),
                   ),
                 ],
               ],
@@ -425,19 +444,20 @@ class _FriendStreakInviteScreenState extends State<FriendStreakInviteScreen> {
         return InkWell(
           key: Key('friendStreakInviteButton-${friend.id}'),
           onTap: busy ? null : () => unawaited(_sendInvite(friend)),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(12),
           child: Container(
             padding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 7,
+              horizontal: 13,
+              vertical: 6,
             ),
             decoration: BoxDecoration(
               color: _duoPrimary,
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
               FriendStreakInviteCopy.invite,
-              style: _duo(12.5, 900, _duoOnBright, letterSpacing: 0.9),
+              // Mock v3 part 2: INVITE is 13/1000 in white.
+              style: _duo(13, 1000, Colors.white),
             ),
           ),
         );
@@ -445,13 +465,13 @@ class _FriendStreakInviteScreenState extends State<FriendStreakInviteScreen> {
         return Text(
           FriendStreakInviteCopy.requestPending,
           key: Key('friendStreakInvitePending-${friend.id}'),
-          style: _duo(13.5, 700, _duoMuted),
+          style: _duo(13.5, 800, const Color(0xFF69727E)),
         );
       case FriendStreakInviteRowState.active:
         return Text(
           FriendStreakInviteCopy.streakActive,
           key: Key('friendStreakInviteActive-${friend.id}'),
-          style: _duo(13.5, 700, _duoMuted),
+          style: _duo(13.5, 800, const Color(0xFF69727E)),
         );
     }
   }
