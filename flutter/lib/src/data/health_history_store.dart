@@ -815,6 +815,16 @@ class HealthHistoryStore {
   /// (persisted in the blob; drives the capture throttle).
   int? get lastCaptureMs => _lastCaptureMs;
 
+  /// In-memory day-row count — NO warm, NO disk read
+  /// (sync-settings package, Nov 23, 2026). Meaningful once
+  /// the store is warmed (startup and every capture warm it);
+  /// read-only paths that must never block on I/O — the
+  /// Settings connection-state probe path — use this instead
+  /// of [dayCount], whose `_ensureWarmed()` disk read can
+  /// stall a load outright where storage channels are faked
+  /// or slow.
+  int get warmedDayCount => _days.length;
+
   int _sleepTotalsRuleVersion = 1;
 
   /// The sleep-totals rule version the stored sleep values were

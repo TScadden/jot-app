@@ -71,6 +71,22 @@ AiConnectionDto _conn(
 Widget _wrap(Widget child) => MaterialApp(home: child);
 
 void main() {
+  // Sync-settings package (Nov 23, 2026): the premium list grew
+  // by the Part 3 header cards (address + Meta AI ID), which
+  // pushed the connections section below the default 800x600
+  // test viewport — and the screen's ListView builds lazily, so
+  // the rows simply did not exist for the finders. Every test
+  // in this file gets a tall surface instead.
+  setUp(() {
+    final view = TestWidgetsFlutterBinding.ensureInitialized()
+        .platformDispatcher
+        .views
+        .single;
+    view.physicalSize = const Size(1080, 3400);
+    view.devicePixelRatio = 1.0;
+    addTearDown(view.reset);
+  });
+
   group('ConnectAiScreen', () {
     testWidgets('lists connections with name, connected date, last used',
         (tester) async {

@@ -213,9 +213,11 @@ void main() {
     });
 
     testWidgets(
-        'bridge error (UNKNOWN): falls back to the not-connected '
-        'card PLUS Juno §3\'s plain failure line — the raw '
-        '[CODE] line is deleted (Phase 2 intended delta)',
+        'bridge error (UNKNOWN): NEUTRAL card — the plain '
+        'failure line only, NO not-connected verdict and NO '
+        'Connect Health Data CTA (sync-settings package, '
+        'superseding the Phase 2 fallback presentation); the '
+        'raw [CODE] line stays deleted',
         (tester) async {
       final backend = r30g.LinkBackend()..pullBody = r29.pull();
       final hc = FakeHCService(
@@ -225,7 +227,11 @@ void main() {
       );
       await pumpSettings(tester, backend: backend, map: {}, hc: hc);
       await openConnectedApps(tester);
-      expect(find.text('Connect Health Data'), findsOneWidget);
+      expect(find.text('Connect Health Data'), findsNothing);
+      expect(
+          find.text(
+              'Connect to grab data from Garmin, Oura, Fitbit and more.'),
+          findsNothing);
       expect(find.text('Health Connect Active'), findsNothing);
       expect(find.text('Health Connect status check failed.'),
           findsOneWidget);

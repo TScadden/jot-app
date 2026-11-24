@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -70,6 +72,28 @@ class ConnectAiCopy {
   static const String confirmButton = 'Disconnect';
   static const String cancelButton = 'Cancel';
   static const String helpLinkLabel = 'How to connect an AI';
+
+  // Sync-settings package — Juno Part 3 (JUNO-COPY.md Items
+  // 5–9), verbatim. The address and ID values are BOUND into
+  // the approved share text: if either value ever changes,
+  // the share text needs Juno's re-approval — it is not a
+  // template with values swapped in silently.
+  static const String connectionAddress = 'https://api.jottracker.com/mcp';
+  static const String copyAddressLabel = 'Copy address';
+  static const String addressCopied = 'Address copied';
+  static const String metaAiIdLabel = 'Meta AI ID';
+  static const String metaAiIdHelper =
+      'Meta AI asks for an ID too. This one is the same for '
+      'everyone, and it is not a password.';
+  static const String metaAiId = '6ESJxB8bNERxr3VtRulg0w';
+  static const String idCopied = 'ID copied';
+  static const String sendStepsLabel = 'Send these steps to a friend';
+  static const String shareStepsText =
+      'Connect your AI to Tabs:\n'
+      '1. In your AI app, add a new connection and paste in this address: https://api.jottracker.com/mcp\n'
+      '2. If it asks for an ID (Meta AI does), use this one, the same for everyone: 6ESJxB8bNERxr3VtRulg0w\n'
+      '3. Sign in with your own Tabs account and tap Approve.\n'
+      'This lets your AI read your own Tabs data. It gives me no access to anything, and nothing connects until you approve it.';
 
   // Premium-gate §c — verbatim (Juno Premium-gate pack §c).
   // The screen title above is unchanged in this state.
@@ -313,6 +337,30 @@ class ShareCopy {
 const String connectAiHelpUrl =
     'https://jottracker.com/use-tabs-with-ai.html';
 
+/// Hands the Juno Item 9 steps text to the system share sheet.
+/// The production implementation is share_plus; tests
+/// substitute a recorder through
+/// [ConnectAiShareService.debugSetShareFn] (the
+/// StreakShareService seam pattern).
+typedef ConnectAiShareFn = Future<void> Function(String text);
+
+class ConnectAiShareService {
+  ConnectAiShareService._();
+
+  static ConnectAiShareFn? _shareOverride;
+
+  @visibleForTesting
+  static void debugSetShareFn(ConnectAiShareFn? share) {
+    _shareOverride = share;
+  }
+
+  static Future<void> shareSteps(String text) async {
+    final override = _shareOverride;
+    if (override != null) return override(text);
+    await SharePlus.instance.share(ShareParams(text: text));
+  }
+}
+
 class ConnectAiScreen extends StatefulWidget {
   final TabsBackend? backend;
 
@@ -350,6 +398,13 @@ class ConnectAiScreen extends StatefulWidget {
   /// services that instance already owns stay threaded).
   static const String upgradeRequestResult = 'upgrade';
 
+  /// Test seam for the copy buttons (Clipboard's platform
+  /// channel is awkward to drive in widget tests). Returns
+  /// true when the text actually reached the clipboard — the
+  /// copied confirmation shows ONLY on true (Juno Item 6).
+  /// Production default: [Clipboard.setData].
+  final Future<bool> Function(String text)? copyToClipboard;
+
   const ConnectAiScreen({
     super.key,
     this.backend,
@@ -357,6 +412,7 @@ class ConnectAiScreen extends StatefulWidget {
     this.isUnlimited,
     this.membershipLoader,
     this.revenueCatPremium,
+    this.copyToClipboard,
   });
 
   @override
@@ -798,6 +854,40 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
     }
   }
 
+  /// Sync-settings package — the copy buttons' shared action
+  /// (Juno Items 5–7): the confirmation snack shows ONLY when
+  /// the copy actually happened. On failure NO success text
+  /// shows (and no failure wording exists in Juno's approved
+  /// set for this action — flagged in the package stage log;
+  /// nothing was invented).
+  Future<void> _copyText(String value, String confirmation) async {
+    var ok = false;
+    try {
+      ok = await (widget.copyToClipboard ??
+          (text) async {
+            await Clipboard.setData(ClipboardData(text: text));
+            return true;
+          })(value);
+    } catch (_) {
+      ok = false;
+    }
+    if (!ok || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(confirmation)),
+    );
+  }
+
+  /// Juno Item 8/9 — sends the approved steps text through the
+  /// system share sheet, verbatim including line breaks.
+  Future<void> _shareSteps() async {
+    try {
+      await ConnectAiShareService.shareSteps(
+          ConnectAiCopy.shareStepsText);
+    } catch (_) {
+      _shareErrorSnack();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final connections = _connections;
@@ -873,6 +963,82 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
           height: 20 / 14,
         ),
       ),
+      const SizedBox(height: 16),
+      // Sync-settings package (Juno Items 5–7) — the address
+      // row and the Meta AI ID row, in the header block under
+      // the blurb: the values a user pastes into their AI app,
+      // each with its own copy action.
+      _ShareCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              ConnectAiCopy.connectionAddress,
+              style: TextStyle(
+                color: NotelColors.textPrimary,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                key: const ValueKey('copy_address_button'),
+                onPressed: () => _copyText(
+                    ConnectAiCopy.connectionAddress,
+                    ConnectAiCopy.addressCopied),
+                child: const Text(ConnectAiCopy.copyAddressLabel),
+              ),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
+      _ShareCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              ConnectAiCopy.metaAiIdLabel,
+              style: TextStyle(
+                color: NotelColors.textPrimary,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              ConnectAiCopy.metaAiIdHelper,
+              style: TextStyle(
+                color: NotelColors.textSecondary,
+                fontSize: 13,
+                height: 18 / 13,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    ConnectAiCopy.metaAiId,
+                    style: TextStyle(
+                      color: NotelColors.textPrimary,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  key: const ValueKey('copy_meta_id_button'),
+                  onPressed: () => _copyText(ConnectAiCopy.metaAiId,
+                      ConnectAiCopy.idCopied),
+                  icon: const Icon(Icons.copy,
+                      color: NotelColors.primary, size: 20),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
       const SizedBox(height: 24),
       const _SectionLabel(ConnectAiCopy.connectedLabel),
       const SizedBox(height: 8),
@@ -912,6 +1078,10 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
       ],
       const SizedBox(height: 24),
       _HelpLinkRow(onTap: _openHelp),
+      const SizedBox(height: 12),
+      // Juno Item 8 — immediately after the help-link row,
+      // same card-row shape.
+      _SendStepsRow(onTap: _shareSteps),
       const SizedBox(height: 32),
       ..._shareMyDataChildren(),
       const SizedBox(height: 32),
@@ -1758,6 +1928,60 @@ class _HelpLinkRow extends StatelessWidget {
                   Icons.open_in_new,
                   color: NotelColors.textSecondary,
                   size: 20,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The "Send these steps to a friend" row (Juno Item 8): the
+/// help-link row's shape, with a share action instead of a
+/// browser hand-off.
+class _SendStepsRow extends StatelessWidget {
+  final VoidCallback onTap;
+  const _SendStepsRow({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: NotelColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: NotelColors.surfaceHigh.withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          key: const ValueKey('send_steps_row'),
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: const Padding(
+            padding: EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.share,
+                  color: NotelColors.primary,
+                  size: 24,
+                ),
+                SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    ConnectAiCopy.sendStepsLabel,
+                    style: TextStyle(
+                      color: NotelColors.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ],
             ),

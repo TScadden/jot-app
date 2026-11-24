@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/hc_availability.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/data/health_history_sync.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/heart_data.dart';
 import 'package:tabs_lab/src/data/heart_data_cache.dart';
@@ -426,6 +427,7 @@ class _HeartScreenState extends State<HeartScreen> {
       _error = null;
     });
     try {
+      final wasConnected = _connected ?? false;
       final granted = await _service.requestPermissions();
       if (!mounted) return;
       // HC Grant Hardening §3.4 — the post-request verdict judges
@@ -440,7 +442,17 @@ class _HeartScreenState extends State<HeartScreen> {
           _error = 'No permissions were granted.';
         }
       });
-      if (connected) await _load(force: true);
+      if (connected) {
+        // Sync-settings package (Nov 23, 2026) — a NEW heart
+        // grant (this screen was not connected before) runs
+        // the post-grant capture, in addition to this screen's
+        // own reload.
+        if (!wasConnected) {
+          unawaited(HealthHistorySync.instance.captureAfterGrant(
+              relevantPermissions: heartPermissions));
+        }
+        await _load(force: true);
+      }
     } on HealthConnectException catch (e) {
       if (mounted) {
         setState(() {
@@ -475,6 +487,12 @@ class _HeartScreenState extends State<HeartScreen> {
       case HcRepairOutcome.stillWedged:
         setState(() => _repairSecondStep = true);
       case HcRepairOutcome.cleared:
+        // Sync-settings package — the shared repair flow's
+        // cleared path runs the post-grant capture too (see
+        // Home's repair handler).
+        unawaited(HealthHistorySync.instance.captureAfterGrant(
+            relevantPermissions:
+                HealthConnectService.requiredPermissions));
         await _checkConnectionAndLoad(forceLoad: true);
         if (mounted && _hrWedged) {
           setState(() => _repairSecondStep = true);
