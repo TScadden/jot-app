@@ -227,7 +227,20 @@ class HealthHistorySync {
   /// (see the factory doc). Null = sync off.
   final DailyBiometricsSync? _biometricsSync;
 
-  final Map<String, CaptureMetricEvidence> _lastCaptureEvidence = {};
+  /// STATIC — shared across ALL instances, like the flight
+  /// state below (Vera Condition 1, sync-settings package):
+  /// production constructs fresh [HealthHistorySync.withDeps]
+  /// instances per call while the single flight is shared, so
+  /// a caller that JOINS another instance's flight (e.g.
+  /// [captureAfterGrant] joining DailyScoreRefresher's forced
+  /// run) must read the evidence THAT run wrote — as an
+  /// instance field it read its own stale/empty map and
+  /// settled on the wrong run's outcome. Replaced leg-by-leg
+  /// as each capture runs; every capture writes every leg, and
+  /// [lastCaptureRowCounts] is replaced whole at run end, so a
+  /// completed run's evidence never mixes with a prior run's.
+  static final Map<String, CaptureMetricEvidence>
+      _lastCaptureEvidence = {};
 
   /// Phase 2 PR-3 — the most recent capture run's per-metric
   /// read evidence (see [CaptureMetricEvidence]), keyed by the
@@ -387,10 +400,27 @@ class HealthHistorySync {
   /// same object of truth for all of them).
   PostGrantCaptureStatus get postGrantStatus => _postGrantStatus;
 
-  /// Test hook: reset the shared post-grant status.
+  /// Test hook: reset the shared post-grant status. Also
+  /// clears the shared capture evidence the status derives
+  /// from (see [debugResetCaptureEvidence]) — resetting one
+  /// without the other would leave a test's settled outcome
+  /// readable from a prior test's run.
   static void debugResetPostGrantStatus() {
     _postGrantStatus =
         const PostGrantCaptureStatus(phase: PostGrantCapturePhase.idle);
+    debugResetCaptureEvidence();
+  }
+
+  /// Test hook (the [debugResetFlight] pattern): clear the
+  /// shared capture evidence + row counts so a test that
+  /// constructs multiple instances cannot inherit a prior
+  /// run's outcome evidence. Production code never calls
+  /// this — a capture run's own writes are the only clearing
+  /// path there (each run replaces the row counts whole and
+  /// rewrites every leg's evidence).
+  static void debugResetCaptureEvidence() {
+    _lastCaptureEvidence.clear();
+    _lastCaptureRowCounts = const {};
   }
 
   /// The most recent completed capture's per-metric row counts
@@ -398,10 +428,13 @@ class HealthHistorySync {
   /// keyed by the capture's metric names. This is the "data
   /// came through" evidence for the post-grant end states: a
   /// clean read that returned zero rows is the no-data state,
-  /// not a success-with-data.
+  /// not a success-with-data. STATIC/shared across instances
+  /// for the same reason as [_lastCaptureEvidence] (Vera
+  /// Condition 1): it describes the shared flight's run, not
+  /// any one instance.
   Map<String, int> get lastCaptureRowCounts =>
       Map.unmodifiable(_lastCaptureRowCounts);
-  Map<String, int> _lastCaptureRowCounts = const {};
+  static Map<String, int> _lastCaptureRowCounts = const {};
 
   /// Pure mapping: the capture metric names a permission set
   /// is relevant to, via [reportMetricPermissions] (the ONE

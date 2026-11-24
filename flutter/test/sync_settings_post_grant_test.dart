@@ -316,6 +316,85 @@ void main() {
     });
   });
 
+  group('cross-instance evidence (Vera Condition 1)', () {
+    // Vera's proof shape: the flight state is static, so
+    // captureAfterGrant (on an instance that never captured)
+    // can JOIN a forced flight owned by a DIFFERENT instance
+    // (DailyScoreRefresher's factory builds a fresh withDeps
+    // instance; its refresh is the other force:true caller).
+    // The settled outcome must derive from the JOINED run's
+    // evidence, not the joining instance's own stale/empty
+    // evidence.
+    test(
+        'captureAfterGrant joining a FOREIGN forced flight derives '
+        'dataCameThrough from the joined run', () async {
+      final hcA = _OutcomeHc()
+        ..restingHrGate = Completer<void>()
+        ..restingHrOutcome = HcReadOutcome(
+            value: const [(date: '2026-11-23', bpm: 61)]);
+      final a = _sync(hcA, _fakeStore());
+      final hcB = _OutcomeHc();
+      final b = _sync(hcB, _fakeStore()); // never captured
+
+      final aFuture = a.capture(force: true);
+      // Wait until A's forced run is in flight and inside its
+      // (gated) resting-HR read.
+      while (hcA.restingHrCalls == 0) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(b.captureInFlight, isTrue);
+
+      // B joins A's forced flight (single-flight: no second
+      // capture starts on B's dependencies).
+      final bFuture = b.captureAfterGrant(relevantPermissions: {
+        'android.permission.health.READ_HEART_RATE',
+      });
+      hcA.restingHrGate!.complete();
+
+      expect(await aFuture, isTrue);
+      final outcome = await bFuture;
+      expect(hcA.restingHrCalls, 1);
+      expect(hcB.restingHrCalls, 0);
+      // The joined run returned a resting-HR row — a metric
+      // READ_HEART_RATE is relevant to — so the outcome is the
+      // joined run's, not readFailed from B's own empty evidence.
+      expect(outcome, PostGrantCaptureOutcome.dataCameThrough);
+      expect(b.postGrantStatus.outcome,
+          PostGrantCaptureOutcome.dataCameThrough);
+    });
+
+    test(
+        'captureAfterGrant joining a FOREIGN forced flight that '
+        'returned no relevant rows does NOT claim dataCameThrough',
+        () async {
+      final hcA = _OutcomeHc()..restingHrGate = Completer<void>();
+      // Every leg clean, zero rows (the _OutcomeHc defaults).
+      final a = _sync(hcA, _fakeStore());
+      final hcB = _OutcomeHc();
+      final b = _sync(hcB, _fakeStore()); // never captured
+
+      final aFuture = a.capture(force: true);
+      while (hcA.restingHrCalls == 0) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      final bFuture = b.captureAfterGrant(relevantPermissions: {
+        'android.permission.health.READ_HEART_RATE',
+      });
+      hcA.restingHrGate!.complete();
+
+      expect(await aFuture, isTrue);
+      final outcome = await bFuture;
+      expect(hcB.restingHrCalls, 0);
+      // The joined run read cleanly but returned no relevant
+      // rows: the honest outcome is noDataYet — never a false
+      // dataCameThrough, and not readFailed either (the joined
+      // run's relevant legs did not fail).
+      expect(outcome, PostGrantCaptureOutcome.noDataYet);
+      expect(
+          b.postGrantStatus.outcome, PostGrantCaptureOutcome.noDataYet);
+    });
+  });
+
   group('resume re-probe', () {
     testWidgets('Connections re-probes on resume', (tester) async {
       final service = _GrantHc(grantResult: const {});
