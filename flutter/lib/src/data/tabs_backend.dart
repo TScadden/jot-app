@@ -180,6 +180,30 @@ class ResendVerificationFailed extends ResendVerificationOutcome {
   const ResendVerificationFailed();
 }
 
+/// One cached sync-pull body plus its memoized entries parse
+/// (Home First-Paint package, Nov 24, 2026, F4). The parse is
+/// computed at most once per cached body: [parsedEntries] is
+/// filled lazily by the first `fetchLogEntryDtos` over this body
+/// and shared by every later consumer of the SAME pull. The entry
+/// itself is replaced wholesale whenever a new body is cached
+/// (TTL expiry, epoch change, invalidation), so a new pull body
+/// always re-parses. Callers never receive [parsedEntries]
+/// directly — `fetchLogEntryDtos` returns a shallow copy per call
+/// so a consumer mutating its list cannot corrupt the shared
+/// parse.
+class _SyncPullCacheEntry {
+  final Map<String, dynamic> body;
+  final DateTime at;
+  final int epoch;
+  List<QuickLogEntry>? parsedEntries;
+
+  _SyncPullCacheEntry({
+    required this.body,
+    required this.at,
+    required this.epoch,
+  });
+}
+
 class TabsBackend {
   static const String defaultBaseUrl = 'https://api.jottracker.com';
   static const Duration requestTimeout = Duration(seconds: 20);
@@ -245,13 +269,8 @@ class TabsBackend {
   /// STARTED (see [_pullMutationEpoch]): a body whose fetch started
   /// before the latest successful profile push or entry write is
   /// never served as fresh, on ANY instance.
-  static final Map<
-      (String, String?),
-      ({
-        Map<String, dynamic> body,
-        DateTime at,
-        int epoch,
-      })> _syncPullCacheBySession = {};
+  static final Map<(String, String?), _SyncPullCacheEntry>
+      _syncPullCacheBySession = {};
 
   /// Counter-mutation durability (Oct 2026) — app-wide profile
   /// mutation epoch. STATIC for the same reason as the Round 31
@@ -769,23 +788,36 @@ class TabsBackend {
   /// cached body unservable, not just this instance's (the pre-fix
   /// per-instance invalidation in `_pushProfile` could not see
   /// other instances).
-  Future<Map<String, dynamic>?> fetchSyncPull() async {
+  Future<Map<String, dynamic>?> fetchSyncPull() async =>
+      (await _fetchSyncPullEntry())?.body;
+
+  /// The cache entry behind [fetchSyncPull] (F4): same TTL +
+  /// epoch discipline, but returns the ENTRY so the entries-parse
+  /// memo (see [_SyncPullCacheEntry]) rides the exact body that
+  /// was served. A fresh fetch replaces the entry wholesale — a
+  /// new pull body (epoch change, TTL expiry, invalidation)
+  /// always re-parses. With no session key the body is served
+  /// uncached as before, wrapped in a throwaway entry whose memo
+  /// dies with the call.
+  Future<_SyncPullCacheEntry?> _fetchSyncPullEntry() async {
     final key = await _sessionKey();
     if (key != null) {
       final entry = _syncPullCacheBySession[key];
       if (entry != null &&
           entry.epoch == _pullMutationEpoch &&
           DateTime.now().difference(entry.at) < syncPullTtl) {
-        return entry.body;
+        return entry;
       }
     }
     final result = await _fetchSyncPullSharedRecord();
     final body = result.body;
-    if (body != null && key != null) {
-      _syncPullCacheBySession[key] =
-          (body: body, at: DateTime.now(), epoch: result.fetchEpoch);
+    if (body == null) return null;
+    final entry = _SyncPullCacheEntry(
+        body: body, at: DateTime.now(), epoch: result.fetchEpoch);
+    if (key != null) {
+      _syncPullCacheBySession[key] = entry;
     }
-    return body;
+    return entry;
   }
 
   /// Round 18 — `profile` object from the sync pull. Null on any failure.
@@ -2125,8 +2157,17 @@ class TabsBackend {
   /// Round 19 — full log-entry rows from the sync pull. Malformed rows
   /// are skipped; never throws.
   Future<List<QuickLogEntry>> fetchLogEntryDtos() async {
-    final body = await fetchSyncPull();
-    final entries = body?['entries'];
+    // F4 (Home First-Paint package, Nov 24, 2026): the parse is
+    // memoized on the pull cache entry — the ~580-row entries[]
+    // walk is paid ONCE per pull body, not once per consumer
+    // (PROFILE.md §4.1). Each call returns a SHALLOW COPY of the
+    // memoized list, so a consumer mutating its list cannot
+    // corrupt the shared parse.
+    final entry = await _fetchSyncPullEntry();
+    if (entry == null) return const [];
+    final memo = entry.parsedEntries;
+    if (memo != null) return List<QuickLogEntry>.of(memo);
+    final entries = entry.body['entries'];
     if (entries is! List) return const [];
     final out = <QuickLogEntry>[];
     for (final e in entries) {
@@ -2138,7 +2179,8 @@ class TabsBackend {
         }
       }
     }
-    return out;
+    entry.parsedEntries = out;
+    return List<QuickLogEntry>.of(out);
   }
 
   /// Round 19 — the account's real category set from the sync pull.
