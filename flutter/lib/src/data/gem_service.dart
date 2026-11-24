@@ -270,6 +270,7 @@ class GemService extends ChangeNotifier {
   @visibleForTesting
   void debugReset() {
     _debugGrantFn = null;
+    _flushInFlight = null;
     _loaded = false;
     _balance = null;
     _pending = [];
@@ -655,8 +656,35 @@ class GemService extends ChangeNotifier {
   /// mismatch clear, reinstall, secure-storage loss): a replayed
   /// completion then re-requests its key and the server answers
   /// `alreadyGranted: true` (Vera B1, Fix Round 1).
+  ///
+  /// Single-flight (celebration-delay package, Nov 23, 2026):
+  /// flushes never overlap. A key leaves [_pending] only AFTER
+  /// its grant returns, so two flushes walking the queue at once
+  /// (a completion claim racing the app-open sync) would each
+  /// fire a grant request for the same key — the server's
+  /// idempotency prevents a double PAY, but the claim discipline
+  /// is exactly one request per key. A call that arrives while a
+  /// flush is in flight chains a fresh pass behind it, so keys
+  /// queued after the in-flight pass's snapshot still get their
+  /// attempt in this call.
+  Future<({List<String> retired, List<String> fresh})>?
+      _flushInFlight;
+
   Future<({List<String> retired, List<String> fresh})>
-      _flushPending() async {
+      _flushPending() {
+    final inFlight = _flushInFlight;
+    if (inFlight != null) {
+      return inFlight.then((_) => _flushPending());
+    }
+    final pass = _doFlushPending();
+    _flushInFlight = pass;
+    return pass.whenComplete(() {
+      if (identical(_flushInFlight, pass)) _flushInFlight = null;
+    });
+  }
+
+  Future<({List<String> retired, List<String> fresh})>
+      _doFlushPending() async {
     final retired = <String>[];
     final fresh = <String>[];
     var droppedGraceKeys = false;
