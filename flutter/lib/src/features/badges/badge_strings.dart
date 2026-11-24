@@ -218,4 +218,26 @@ abstract final class BadgeStrings {
       'badges with 15 rungs each, from Bronze III to Diamond I. New '
       'rungs unlock automatically from your Tabs and Health Connect '
       'history and pay 5 gems each.';
+
+  // ── §14 Badge sharing (Juno badge-share ruling, Nov 23, 2026;
+  // ~/workspace/build-badge-share/JUNO-COPY.md §§1–7 — Vera
+  // byte-compares against THAT file's sections) ─────────────────
+
+  /// Card headline (§1 — one headline, both share surfaces).
+  static const String shareHeadline = 'I earned a badge!';
+
+  /// Detail-view button label (§4b) AND the unlock dialog's
+  /// icon-button tooltip (§4a) — the same string by ruling.
+  static const String shareButtonLabel = 'Share badge';
+
+  /// `Share {badgeName}, {rung}` (§4 semantics, both surfaces;
+  /// the rung binds per surface: the tapped row's rung in the
+  /// dialog, the current topRung in the detail view).
+  static String shareSemantics(String badgeName, int rungIndex) =>
+      'Share $badgeName, ${badgeRungName(rungIndex)}';
+
+  /// Release notes for the badge-share release (§6; carried for
+  /// the release step like §12 — the build does not render them).
+  static const String shareReleaseNotes =
+      'New: Share your badges. Tap Share when a badge unlocks, or open any earned badge and tap Share badge, to make a card with the badge, its rung, and what it took to earn it.';
 }
