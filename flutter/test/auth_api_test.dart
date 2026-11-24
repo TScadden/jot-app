@@ -202,6 +202,66 @@ void main() {
       expect(absent.emailVerified, isTrue);
     });
 
+    test('register: 201 Created (the real server status) is a success, '
+        'not Registration failed', () async {
+      final client = AuthApiClient(
+        client: MockClient((_) async => http.Response(
+              jsonEncode({
+                'token': 'tok',
+                'refreshToken': 'ref',
+                'userId': 'u1',
+                'email': 'a@b.com',
+                'emailVerified': false,
+              }),
+              201,
+            )),
+      );
+      final result = await client.register(
+        email: 'a@b.com',
+        password: 'pw',
+        ageConfirmed: true,
+      );
+      expect(result, isA<LoginSuccess>());
+      final success = result as LoginSuccess;
+      expect(success.token, 'tok');
+      expect(success.refreshToken, 'ref');
+      expect(success.userId, 'u1');
+      expect(success.email, 'a@b.com');
+      expect(success.emailVerified, isFalse);
+    });
+
+    test('register: 201 without a token is still a server failure',
+        () async {
+      final client = AuthApiClient(
+        client: MockClient((_) async => http.Response('{}', 201)),
+      );
+      final result = await client.register(
+        email: 'a@b.com',
+        password: 'pw',
+        ageConfirmed: true,
+      );
+      expect(result, isA<LoginFailure>());
+      expect((result as LoginFailure).kind, LoginFailureKind.server);
+      expect(result.message, 'Registration failed');
+    });
+
+    test('register: a non-200/201 2xx (202) is still a failure — '
+        'no blanket 2xx widening', () async {
+      final client = AuthApiClient(
+        client: MockClient((_) async => http.Response(
+              jsonEncode({'token': 'tok'}),
+              202,
+            )),
+      );
+      final result = await client.register(
+        email: 'a@b.com',
+        password: 'pw',
+        ageConfirmed: true,
+      );
+      expect(result, isA<LoginFailure>());
+      expect((result as LoginFailure).kind, LoginFailureKind.server);
+    });
+
     test('google: force-verified even when the payload says false',
         () async {
       final result =

@@ -138,8 +138,10 @@ class AuthApiClient {
   /// `{"email": ..., "password": ..., "ageConfirmed": ...}`
   /// (`AuthRequest`, JotApi.kt:119-123; endpoint JotApi.kt:559-560).
   ///
-  /// Success: HTTP 200 + non-blank `token` → [LoginSuccess] (the same
-  /// `AuthResponse` shape as login). Native's register does NOT mark
+  /// Success: HTTP 201 + non-blank `token` → [LoginSuccess] (the same
+  /// `AuthResponse` shape as login; the server creates the account
+  /// and returns 201 Created — a 200 is also accepted for safety).
+  /// Native's register does NOT mark
   /// onboarding complete — the new account enters onboarding
   /// (`onboardingCompleteByServer = false` in native) — so callers
   /// must route a register success into onboarding, not home.
@@ -190,7 +192,11 @@ class AuthApiClient {
       );
     }
 
-    if (response.statusCode == 200) {
+    // The server returns 201 Created for a new account (jot-server
+    // POST /register). Checking only 200 made every successful
+    // registration fall through to 'Registration failed' (flagged in
+    // Antigravity's 2026-11-16 second-opinion review). Accept both.
+    if (response.statusCode == 200 || response.statusCode == 201) {
       final body = _decodeJson(response.body);
       final token = body['token']?.toString() ?? '';
       if (token.isNotBlank) {
