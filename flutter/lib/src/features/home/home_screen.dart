@@ -3566,26 +3566,55 @@ class _HomeScreenState extends State<HomeScreen>
             // corner buttons above them (62dp slots). The band
             // therefore runs edge-to-edge (no 16dp side padding);
             // the counters keep their own 12dp horizontal padding.
+            //
+            // Gem pill fit package (Nov 23, 2026, founder
+            // direction: "The gems don't really fit their box we
+            // need to make sure it has enough room to look good"):
+            // the 62dp slot SQUEEZED the pills — the gem pill's
+            // intrinsic width is 66.40dp at his 415 balance
+            // (RenderFlex overflow 4.4dp, the long-open VC 100146
+            // flag), 73.54dp at 1,000 and 80.67dp at 10,000, so
+            // the design's 8dp padding never landed. The band is
+            // now a Stack: the Row below keeps the center slot
+            // (62..width−62) and the Daily Score slot in their
+            // exact layout boxes with a 62dp placeholder carrying
+            // the left slot's height (34dp, or 34+8+34 with the
+            // gem pill — the stack's own height, so the band's
+            // height is unchanged in every state), and the streak
+            // stack overlays it at Positioned(left: 0, top: 0) in
+            // a ConstrainedBox(minWidth: 62). The pills therefore
+            // render at intrinsic width with their padding
+            // honored at any balance: the widest pill's left edge
+            // sits at the screen edge, where the squeezed 415
+            // pill already sat; pills that fit in 62dp keep the
+            // Nov 10 axis verbatim (the column is 62 wide and
+            // centers them on 31dp); wider pills share a center
+            // axis defined by the widest pill and grow rightward
+            // into the center slot's free space — the founder's
+            // room-to-look-good direction supersedes the shared
+            // drawer axis only past 62dp. An overlay at band
+            // level (not an OverflowBox inside the slot) keeps
+            // the widened pills fully tappable: every ancestor
+            // spans the full band width, so no ancestor's bounds
+            // prune their hit region.
             StaggeredEntrance(
               index: 0,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(0, 12, 0, 0),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Stack(
+                  clipBehavior: Clip.none,
                   children: [
-                    SizedBox(
-                      width: 62,
-                      child: HomeStreakStack(
-                        currentStreak: _currentStreak,
-                        animateCountUps: _countUpsAnimate,
-                        onStreakTap: () => unawaited(_openStreakScreen()),
-                        onGemTap: () => unawaited(_openGemsSheet()),
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        gemBalance: _gemBalance,
-                        streakTodayComplete: _streakTodayComplete,
-                      ),
-                    ),
-                    Expanded(
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Left slot placeholder: width and height
+                        // only. The streak stack itself is the
+                        // Positioned overlay below.
+                        SizedBox(
+                          width: 62,
+                          height: _gemBalance == null ? 34 : 76,
+                        ),
+                        Expanded(
                       // The center slot is the check-in BAND
                       // (round 4 Part C, round 5 workstream f).
                       // One tenant at a time, founder's state
@@ -3665,6 +3694,28 @@ class _HomeScreenState extends State<HomeScreen>
                               ),
                             ),
                           ),
+                        ),
+                      ),
+                    ),
+                      ],
+                    ),
+                    // The streak stack overlay (gem pill fit
+                    // package, Nov 23, 2026 — see the band comment
+                    // above): intrinsic pill width, min 62dp so
+                    // fitting pills keep the Nov 10 center axis.
+                    Positioned(
+                      left: 0,
+                      top: 0,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minWidth: 62),
+                        child: HomeStreakStack(
+                          currentStreak: _currentStreak,
+                          animateCountUps: _countUpsAnimate,
+                          onStreakTap: () => unawaited(_openStreakScreen()),
+                          onGemTap: () => unawaited(_openGemsSheet()),
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          gemBalance: _gemBalance,
+                          streakTodayComplete: _streakTodayComplete,
                         ),
                       ),
                     ),
