@@ -947,6 +947,11 @@ class _SettingsScreenState extends State<SettingsScreen>
   /// [report] so failures also surface as a snackbar with the code.
   Future<void> _syncReminders({bool report = false}) async {
     try {
+      // The habit daily reminder gate's input: the live habits
+      // list (its own endpoint, not part of the pull). A failed
+      // read projects from an empty list — the legacy daily alarm
+      // is still cancelled and nothing is armed on a guess.
+      final habits = await _backend.fetchHabitsOrNull() ?? const [];
       await ReminderSync(_notifs).syncAll(
         habitEnabled: _data.habitReminderEnabled,
         projectEnabled: _data.projectReminderEnabled,
@@ -955,6 +960,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         focusTests: _data.focusTests,
         checkedInDayLabels: _data.checkedInDayLabels,
         streakState: _data.streakState,
+        habits: habits,
         events: _counters
             .map((c) => EventReminderRequest(
                   counterId: c.id,

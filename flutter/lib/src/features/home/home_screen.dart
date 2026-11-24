@@ -683,12 +683,12 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// One real Daily Summary completion (the post-PR-#115
   /// deterministic path — the ONLY earn entry point; the dev SIM
-  /// and dev Restore paths never reach this): run the gem earn
-  /// hooks FIRST (their grants are persisted before requesting,
-  /// and a failure queues silently without breaking the flow),
-  /// then hand the celebration to the app-level celebration
-  /// service with Juno §3's earn lines for the grants the server
-  /// confirmed.
+  /// and dev Restore paths never reach this): the pill/cache
+  /// update and the celebration hold run from LOCAL state first
+  /// (below), and the gem earn chain ([_runCompletionClaimChain])
+  /// runs behind them — its grants are persisted before
+  /// requesting, and a failure queues silently without breaking
+  /// the flow.
   ///
   /// Celebration presentation fix (Nov 21, 2026): the pill/cache
   /// update below runs FIRST, synchronously, from the settled
@@ -702,6 +702,12 @@ class _HomeScreenState extends State<HomeScreen>
   /// [StreakCelebrationService] and presented by the app-root
   /// presenter over whatever surface is current (see
   /// streak_celebration_presenter.dart).
+  ///
+  /// Celebration-delay fix (Nov 23, 2026): the hold itself no
+  /// longer waits for the claim chain either — the celebration
+  /// data is built from the settled state plus LOCALLY PROJECTED
+  /// gem lines and held before any network await; the push →
+  /// grant chain runs unawaited behind it (see the hold site).
   Future<void> _presentCompletion(
     StreakCompletionResult result,
     StreakState state,
@@ -746,15 +752,73 @@ class _HomeScreenState extends State<HomeScreen>
       nickname: _nickname,
       now: DateTime.now(),
     ));
-    // Gems bound discipline (Vera server review, Nov 19, 2026):
-    // the server validates grants against the PUSHED streak_state
-    // blob (the day must be in its summaryCompletedDays; milestone
-    // n must not exceed best_streak). recordSummaryComplete's own
-    // push is fire-and-forget, so push the settled record
-    // EXPLICITLY here and await it before any grant is requested
-    // for this completion. A failed push does not block the flow:
-    // the grants then refuse retryably and land at the next
-    // app-open sync, after the record's re-push.
+    // Celebration-delay fix (Nov 23, 2026): PRESENTATION FIRST.
+    // The celebration data is built from LOCAL state — the
+    // settled (result, state) plus the gem lines projected
+    // locally for this completion's keys (deterministic amounts;
+    // grace-completed days project NO lines) — and held with the
+    // celebration service BEFORE any network await. The pre-fix
+    // shape awaited the streak push and then the sequential gem
+    // grant POSTs before this hold, so the founder's celebration
+    // waited on 1 + up-to-3+ network round trips after the last
+    // completing tap. The claim chain (below) now runs unawaited
+    // BEHIND the held celebration with its order and discipline
+    // unchanged. Juno §3a note: the projected lines carry the one
+    // documented alreadyGranted-replay divergence — see
+    // [GemService.projectedCompletionLines], flagged for
+    // Vera/Juno ruling in the package stage log.
+    final projectedLines =
+        await GemService.instance.projectedCompletionLines(
+      summaryTabsDay: summaryTabsDay,
+      previousStreak: gemSettledStreakBefore(state, summaryTabsDay),
+      newStreak: result.newCount,
+      settledState: state,
+    );
+    final data = StreakCelebrationData.fromCompletion(
+      result: result,
+      state: state,
+      // Under grace the celebration's week roll is anchored on the
+      // counted (closing) day: a moment safely inside it.
+      now: graceDayStart?.add(const Duration(hours: 2)) ?? now,
+      gemLines: projectedLines,
+    );
+    StreakCelebrationService.instance.hold(PendingStreakCelebration(
+      data: data,
+      nickname: _nickname,
+      dayKey: summaryTabsDay,
+    ));
+    unawaited(_runCompletionClaimChain(
+      result: result,
+      state: state,
+      summaryTabsDay: summaryTabsDay,
+      now: now,
+    ));
+  }
+
+  /// The gem claim chain for one completion, run BEHIND the held
+  /// celebration (celebration-delay fix, Nov 23, 2026). Shape and
+  /// discipline are exactly the pre-fix chain's: the settled
+  /// record is pushed FIRST and awaited (Gems bound discipline,
+  /// Vera server review, Nov 19, 2026 — the server validates
+  /// grants against the PUSHED streak_state blob; the day must be
+  /// in its summaryCompletedDays and milestone n must not exceed
+  /// best_streak; recordSummaryComplete's own push is
+  /// fire-and-forget, so the explicit push lives here), then the
+  /// SINGLE [GemService.processCompletion] call site claims this
+  /// completion's grants exactly once. A failed push does not
+  /// block the claim: the grants then refuse retryably and land
+  /// at the next app-open sync, after the record's re-push. The
+  /// Home gem-pill mirror updates when the claim returns (the
+  /// service's own listener also mirrors it; both are
+  /// mounted-guarded Home-State writes). Nothing here is gated on
+  /// the celebration: a dropped or delayed presentation can never
+  /// eat a grant, and this chain's outcome never re-presents one.
+  Future<void> _runCompletionClaimChain({
+    required StreakCompletionResult result,
+    required StreakState state,
+    required String summaryTabsDay,
+    required DateTime now,
+  }) async {
     try {
       await _healthRepo.pushStreakRecord(
         result.newCount,
@@ -771,30 +835,11 @@ class _HomeScreenState extends State<HomeScreen>
       settledState: state,
       now: now,
     );
-    // NO mounted gate from here on (celebration fix, Nov 21,
-    // 2026): the claim has landed or queued on its own discipline
-    // above; what remains — building the celebration data and
-    // handing it to the celebration service — needs no Home
-    // State at all, and gating it on mounted is what ate the
-    // founder's celebration when Home unmounted mid-chain.
     if (mounted &&
         gemResult.balance != null &&
         gemResult.balance != _gemBalance) {
       setState(() => _gemBalance = gemResult.balance);
     }
-    final data = StreakCelebrationData.fromCompletion(
-      result: result,
-      state: state,
-      // Under grace the celebration's week roll is anchored on the
-      // counted (closing) day: a moment safely inside it.
-      now: graceDayStart?.add(const Duration(hours: 2)) ?? now,
-      gemLines: gemResult.lines,
-    );
-    StreakCelebrationService.instance.hold(PendingStreakCelebration(
-      data: data,
-      nickname: _nickname,
-      dayKey: summaryTabsDay,
-    ));
   }
 
   /// Evaluations are SERIALIZED through this chain: Home's
@@ -810,6 +855,47 @@ class _HomeScreenState extends State<HomeScreen>
   void _queueSummaryCompletionEvaluation() {
     _completionEvalChain =
         _completionEvalChain.then((_) => _evaluateSummaryCompletion());
+  }
+
+  /// Celebration-delay fix (Nov 23, 2026) — the Today Summary
+  /// surface's direct completion trigger. The card reports every
+  /// landed plan write (habit toggle, reminder toggle, med
+  /// action); this handler chains a REFRESH + evaluation onto the
+  /// same serialized chain as every other trigger, so the fire
+  /// guards (chain serialization + the watcher's fired-day
+  /// marker) govern it identically and it cannot double-fire.
+  ///
+  /// The refresh is load-bearing, not decorative: an evaluation
+  /// resolves its plan evidence from [_mergedEntries], which a
+  /// card write does NOT update (the card posts through its
+  /// loader's direct backend writes, bypassing Home's outbox).
+  /// The loader invalidated the sync pull around its post, so
+  /// re-reading the entries here sees the landed write; deriving
+  /// from them first is what lets the evaluation that follows
+  /// actually observe the completion. The existing triggers
+  /// (outbox commits, Home load settle, app resume) remain as
+  /// backstops.
+  void _onTodayPlanActionLanded() {
+    _completionEvalChain = _completionEvalChain.then((_) async {
+      await _refreshMergedEntriesForEvaluation();
+      await _evaluateSummaryCompletion();
+    });
+  }
+
+  /// Re-reads the pulled entries and re-derives Home's merged
+  /// view (the [_loadCheckInState] derivation) so a completion
+  /// evaluation reads post-write evidence. Fail-safe: on any
+  /// failure the evaluation still runs against the last merged
+  /// view and the backstop triggers retry later.
+  Future<void> _refreshMergedEntriesForEvaluation() async {
+    try {
+      _backend.invalidateSyncPull();
+      final entries = await _backend.fetchLogEntryDtos();
+      if (!mounted) return;
+      _deriveCheckInState(entries);
+    } catch (_) {
+      // See the doc above: degrade to the last merged view.
+    }
   }
 
   /// The resolved inputs of one completeness evaluation for the
@@ -3573,26 +3659,55 @@ class _HomeScreenState extends State<HomeScreen>
             // corner buttons above them (62dp slots). The band
             // therefore runs edge-to-edge (no 16dp side padding);
             // the counters keep their own 12dp horizontal padding.
+            //
+            // Gem pill fit package (Nov 23, 2026, founder
+            // direction: "The gems don't really fit their box we
+            // need to make sure it has enough room to look good"):
+            // the 62dp slot SQUEEZED the pills — the gem pill's
+            // intrinsic width is 66.40dp at his 415 balance
+            // (RenderFlex overflow 4.4dp, the long-open VC 100146
+            // flag), 73.54dp at 1,000 and 80.67dp at 10,000, so
+            // the design's 8dp padding never landed. The band is
+            // now a Stack: the Row below keeps the center slot
+            // (62..width−62) and the Daily Score slot in their
+            // exact layout boxes with a 62dp placeholder carrying
+            // the left slot's height (34dp, or 34+8+34 with the
+            // gem pill — the stack's own height, so the band's
+            // height is unchanged in every state), and the streak
+            // stack overlays it at Positioned(left: 0, top: 0) in
+            // a ConstrainedBox(minWidth: 62). The pills therefore
+            // render at intrinsic width with their padding
+            // honored at any balance: the widest pill's left edge
+            // sits at the screen edge, where the squeezed 415
+            // pill already sat; pills that fit in 62dp keep the
+            // Nov 10 axis verbatim (the column is 62 wide and
+            // centers them on 31dp); wider pills share a center
+            // axis defined by the widest pill and grow rightward
+            // into the center slot's free space — the founder's
+            // room-to-look-good direction supersedes the shared
+            // drawer axis only past 62dp. An overlay at band
+            // level (not an OverflowBox inside the slot) keeps
+            // the widened pills fully tappable: every ancestor
+            // spans the full band width, so no ancestor's bounds
+            // prune their hit region.
             StaggeredEntrance(
               index: 0,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(0, 12, 0, 0),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Stack(
+                  clipBehavior: Clip.none,
                   children: [
-                    SizedBox(
-                      width: 62,
-                      child: HomeStreakStack(
-                        currentStreak: _currentStreak,
-                        animateCountUps: _countUpsAnimate,
-                        onStreakTap: () => unawaited(_openStreakScreen()),
-                        onGemTap: () => unawaited(_openGemsSheet()),
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        gemBalance: _gemBalance,
-                        streakTodayComplete: _streakTodayComplete,
-                      ),
-                    ),
-                    Expanded(
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Left slot placeholder: width and height
+                        // only. The streak stack itself is the
+                        // Positioned overlay below.
+                        SizedBox(
+                          width: 62,
+                          height: _gemBalance == null ? 34 : 76,
+                        ),
+                        Expanded(
                       // The center slot is the check-in BAND
                       // (round 4 Part C, round 5 workstream f).
                       // One tenant at a time, founder's state
@@ -3672,6 +3787,28 @@ class _HomeScreenState extends State<HomeScreen>
                               ),
                             ),
                           ),
+                        ),
+                      ),
+                    ),
+                      ],
+                    ),
+                    // The streak stack overlay (gem pill fit
+                    // package, Nov 23, 2026 — see the band comment
+                    // above): intrinsic pill width, min 62dp so
+                    // fitting pills keep the Nov 10 center axis.
+                    Positioned(
+                      left: 0,
+                      top: 0,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minWidth: 62),
+                        child: HomeStreakStack(
+                          currentStreak: _currentStreak,
+                          animateCountUps: _countUpsAnimate,
+                          onStreakTap: () => unawaited(_openStreakScreen()),
+                          onGemTap: () => unawaited(_openGemsSheet()),
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          gemBalance: _gemBalance,
+                          streakTodayComplete: _streakTodayComplete,
                         ),
                       ),
                     ),
@@ -3770,6 +3907,21 @@ class _HomeScreenState extends State<HomeScreen>
                     StaggeredEntrance(
                       index: 2,
                       child: TodaySummaryCard(
+                        // Celebration-delay fix (Nov 23, 2026):
+                        // the card shares Home's resolved backend
+                        // (one sync-pull session — the pull caches
+                        // are static/shared, so this is the same
+                        // data world the card's own default backend
+                        // would reach, now the SAME instance Home
+                        // evaluates against) and reports every
+                        // landed plan write, so a completion whose
+                        // last item is checked off in the summary
+                        // sheet queues its evaluation immediately
+                        // instead of waiting for an incidental
+                        // trigger.
+                        backend: _backend,
+                        onPlanActionLanded: _onTodayPlanActionLanded,
+                        notificationService: _checkInNotifs,
                         migraineController: widget.migraineController,
                         checkInBuilder: _buildCheckInSection,
                         headerTrailing: _buildWeatherElement(),

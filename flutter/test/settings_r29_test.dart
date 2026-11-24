@@ -51,6 +51,14 @@ class FakeSettingsBackend extends TabsBackend {
   @override
   Future<Map<String, dynamic>?> fetchSyncPull() async => pullBody;
 
+  /// This fake serves no habits endpoint; the habit daily
+  /// reminder gate's input is an empty list. (Without this
+  /// override the real backend's read would reach the secure
+  /// session store, whose channel never answers under FakeAsync,
+  /// and Settings' reminder sync would never run.)
+  @override
+  Future<List<HabitDto>?> fetchHabitsOrNull() async => const [];
+
   @override
   void invalidateSyncPull() {
     invalidateCount++;

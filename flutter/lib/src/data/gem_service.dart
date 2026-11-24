@@ -257,8 +257,20 @@ class GemService extends ChangeNotifier {
     if (delete != null) _delete = delete;
   }
 
+  /// Test seam (celebration-delay package, Nov 23, 2026): when
+  /// set, grant requests route through this function instead of
+  /// the backend's — the Home-level latency harness gates the
+  /// grant transport on a completer to prove the celebration no
+  /// longer waits on it. Production never sets it.
+  GemGrantFn? _debugGrantFn;
+
+  @visibleForTesting
+  void debugSetGrantOverride(GemGrantFn? fn) => _debugGrantFn = fn;
+
   @visibleForTesting
   void debugReset() {
+    _debugGrantFn = null;
+    _flushInFlight = null;
     _loaded = false;
     _balance = null;
     _pending = [];
@@ -644,8 +656,35 @@ class GemService extends ChangeNotifier {
   /// mismatch clear, reinstall, secure-storage loss): a replayed
   /// completion then re-requests its key and the server answers
   /// `alreadyGranted: true` (Vera B1, Fix Round 1).
+  ///
+  /// Single-flight (celebration-delay package, Nov 23, 2026):
+  /// flushes never overlap. A key leaves [_pending] only AFTER
+  /// its grant returns, so two flushes walking the queue at once
+  /// (a completion claim racing the app-open sync) would each
+  /// fire a grant request for the same key — the server's
+  /// idempotency prevents a double PAY, but the claim discipline
+  /// is exactly one request per key. A call that arrives while a
+  /// flush is in flight chains a fresh pass behind it, so keys
+  /// queued after the in-flight pass's snapshot still get their
+  /// attempt in this call.
+  Future<({List<String> retired, List<String> fresh})>?
+      _flushInFlight;
+
   Future<({List<String> retired, List<String> fresh})>
-      _flushPending() async {
+      _flushPending() {
+    final inFlight = _flushInFlight;
+    if (inFlight != null) {
+      return inFlight.then((_) => _flushPending());
+    }
+    final pass = _doFlushPending();
+    _flushInFlight = pass;
+    return pass.whenComplete(() {
+      if (identical(_flushInFlight, pass)) _flushInFlight = null;
+    });
+  }
+
+  Future<({List<String> retired, List<String> fresh})>
+      _doFlushPending() async {
     final retired = <String>[];
     final fresh = <String>[];
     var droppedGraceKeys = false;
@@ -664,7 +703,7 @@ class GemService extends ChangeNotifier {
       }
       GemRequestResult r;
       try {
-        r = await _grantFn(key);
+        r = await (_debugGrantFn ?? _grantFn)(key);
       } catch (e, st) {
         // Never silent (Nov 20, 2026 fix): a transport failure on
         // a grant attempt is recorded for the diagnostics card and
@@ -740,37 +779,20 @@ class GemService extends ChangeNotifier {
 
       // Midnight Grace no-gems: a completion whose day is marked
       // grace-completed queues NO keys — no daily, no milestone,
-      // no week. The streak marker below STILL advances to
-      // [newStreak], so a milestone crossing on a grace day is
-      // consumed permanently, never re-evaluated (and never paid)
-      // by a later completion. The celebration still fires; only
-      // the gems are withheld. Suppression keys off the per-day
-      // marker only, never the window (C3): the new day's own
-      // genuine completion is unmarked and pays normally.
-      final isGraceCompletion =
-          settledState.graceCompletedDays.contains(summaryTabsDay);
-
-      final keys = <String>[];
-      if (!isGraceCompletion) {
-        // Daily — exactly once per Tabs day (queue/granted dedupe;
-        // server idempotency is the backstop).
-        keys.add('daily:$summaryTabsDay');
-        // Milestones — real crossings only: prev < n <= new.
-        for (var n = effectivePrev + 1; n <= newStreak; n++) {
-          if (gemMilestoneBonus(n) != null) keys.add('milestone:$n');
-        }
-        // Perfect week — the summary day's own Mon–Sun week, all
-        // 7 days summary-completed, none grace-completed (the
-        // strict predicate), and the week did not end before the
-        // feature activated (no backfill).
-        final monday = gemWeekMonday(summaryTabsDay);
-        final days = gemWeekDays(monday);
-        final sunday = days.last;
-        if ((_activatedDay == null || sunday.compareTo(_activatedDay!) >= 0) &&
-            _weekPays(settledState, days)) {
-          keys.add('week:$monday');
-        }
-      }
+      // no week (see [_completionKeys]). The streak marker below
+      // STILL advances to [newStreak], so a milestone crossing on
+      // a grace day is consumed permanently, never re-evaluated
+      // (and never paid) by a later completion. The celebration
+      // still fires; only the gems are withheld. Suppression keys
+      // off the per-day marker only, never the window (C3): the
+      // new day's own genuine completion is unmarked and pays
+      // normally.
+      final keys = _completionKeys(
+        summaryTabsDay: summaryTabsDay,
+        effectivePrev: effectivePrev,
+        newStreak: newStreak,
+        settledState: settledState,
+      );
 
       _queue(keys);
       if (newStreak > (_lastStreak ?? 0)) _lastStreak = newStreak;
@@ -793,6 +815,115 @@ class GemService extends ChangeNotifier {
     } catch (_) {
       // A gem failure must never break the completion flow.
       return GemEarnResult(lines: const [], balance: _balance);
+    }
+  }
+
+  /// This completion's grant keys (daily, milestone crossings,
+  /// perfect week) — the ONE computation [processCompletion] and
+  /// [projectedCompletionLines] share, so the projected
+  /// celebration lines can never drift from the keys the claim
+  /// will actually request. [effectivePrev] is the settled streak
+  /// before this completion as the persisted marker reports it
+  /// (the caller resolves it identically for both entry points).
+  /// A grace-completed day (in [StreakState.graceCompletedDays])
+  /// yields NO keys — the grace no-gems rule.
+  List<String> _completionKeys({
+    required String summaryTabsDay,
+    required int effectivePrev,
+    required int newStreak,
+    required StreakState settledState,
+  }) {
+    if (settledState.graceCompletedDays.contains(summaryTabsDay)) {
+      return const [];
+    }
+    final keys = <String>[];
+    // Daily — exactly once per Tabs day (queue/granted dedupe;
+    // server idempotency is the backstop).
+    keys.add('daily:$summaryTabsDay');
+    // Milestones — real crossings only: prev < n <= new.
+    for (var n = effectivePrev + 1; n <= newStreak; n++) {
+      if (gemMilestoneBonus(n) != null) keys.add('milestone:$n');
+    }
+    // Perfect week — the summary day's own Mon–Sun week, all
+    // 7 days summary-completed, none grace-completed (the
+    // strict predicate), and the week did not end before the
+    // feature activated (no backfill).
+    final monday = gemWeekMonday(summaryTabsDay);
+    final days = gemWeekDays(monday);
+    final sunday = days.last;
+    if ((_activatedDay == null || sunday.compareTo(_activatedDay!) >= 0) &&
+        _weekPays(settledState, days)) {
+      keys.add('week:$monday');
+    }
+    return keys;
+  }
+
+  /// LOCAL projection of this completion's Juno §3 earn lines —
+  /// the celebration-delay fix (Nov 23, 2026). Home builds the
+  /// celebration from this projection and presents it BEFORE any
+  /// network await; the real claim ([processCompletion], same
+  /// keys via [_completionKeys]) then runs behind the presented
+  /// celebration and lands on its own discipline. Amounts are
+  /// deterministic (daily +5, the milestone ladder, week +20 —
+  /// [_lineForKey] is the same mapping the confirmed flow uses),
+  /// grace-completed days project NO lines (the shared key
+  /// computation suppresses them), and a key this device already
+  /// knows is granted projects no line (the confirmed flow can
+  /// never earn a fresh line for it either — [_queue] skips it).
+  /// This method performs NO network I/O: [ensureLoaded] is a
+  /// local secure-storage read, and the grace adoption +
+  /// activation below are the same idempotent preamble
+  /// [processCompletion] runs, so projecting first cannot change
+  /// what the claim computes moments later.
+  ///
+  /// §3a DIVERGENCE (flagged for Vera/Juno ruling, Nov 23, 2026):
+  /// Juno §3a defines earn lines as server-confirmed-FRESH — an
+  /// `alreadyGranted` replay earns no line. A projection cannot
+  /// know freshness: it assumes this completion's not-yet-locally-
+  /// granted keys will confirm fresh. It therefore diverges from
+  /// the §3a outcome in exactly one case: a key the server has
+  /// ALREADY granted but this device's local granted-history does
+  /// not record (the history was lost — reinstall, owner-mismatch
+  /// clear, secure-storage loss — after a prior flush granted the
+  /// key, e.g. a crash between that grant landing and any
+  /// presentation of it). The projected celebration then shows a
+  /// line for gems that in fact landed in the earlier flush; the
+  /// background claim still retires the key as a replay, adopts
+  /// the true balance, and never double-pays (server idempotency).
+  /// No shape that keeps network out of the presentation path can
+  /// rule this case out — freshness is server state — so it is
+  /// documented here and in the package stage log for an explicit
+  /// Vera/Juno ruling rather than silently accepted.
+  Future<List<String>> projectedCompletionLines({
+    required String summaryTabsDay,
+    required int previousStreak,
+    required int newStreak,
+    required StreakState settledState,
+  }) async {
+    try {
+      await ensureLoaded();
+      if (!_loaded) return const [];
+      _adoptGraceDays(settledState);
+      _activateIfNeeded(summaryTabsDay, baselineStreak: previousStreak);
+      final effectivePrev = _lastStreak ?? previousStreak;
+      final keys = _completionKeys(
+        summaryTabsDay: summaryTabsDay,
+        effectivePrev: effectivePrev,
+        newStreak: newStreak,
+        settledState: settledState,
+      );
+      final lines = <String>[];
+      for (final k in keys) {
+        if (_granted.contains(k)) continue;
+        final line = _lineForKey(k);
+        if (line != null) lines.add(line);
+      }
+      return lines;
+    } catch (_) {
+      // A projection failure must never break the completion
+      // flow: the celebration simply carries no gem lines and
+      // the claim behind it proceeds unchanged.
+      return const [];
     }
   }
 

@@ -48,11 +48,15 @@ import 'test_helpers.dart';
 /// - Daily Score 78 in an in-memory HealthHistoryStore.
 /// - Today's Plan rows 'SS-31 Peptide' 0.05 Daily and 'Ivabradine'
 ///   7.5mg Daily, served to the production TodaySummaryCard through
-///   its OWN last-known cache (TodaySummaryCache.instance): the
-///   production card constructs its own backend, whose pull fails
-///   honestly in the harness (no session), so it falls back to the
-///   seeded cache exactly as it does offline on device. NO
-///   production plumbing is changed to make this happen.
+///   the sync pull's profile.medications blob on Home's injected
+///   backend. (Celebration-delay adaptation, Nov 23, 2026: the card
+///   used to construct its OWN backend, whose pull failed honestly
+///   in the harness (no session), so the rows arrived through the
+///   seeded last-known cache fallback (TodaySummaryCache.instance,
+///   still seeded below with the identical plan). The fix threads
+///   Home's backend into the card, so the pull now succeeds and the
+///   rows are served through it — the same rows, ids, doses and
+///   slots the cache seed carried.)
 /// - A 61° weather mock and a fake sync pull (for Home's own repo)
 ///   with no check-in entry, no counters, no Hydration category.
 class _RenderServer {
@@ -66,7 +70,13 @@ class _RenderServer {
         {'id': 4, 'name': 'Goals & Habits'},
         {'id': 8, 'name': 'Medication'},
       ],
-      'profile': {'medications': '[]', 'reminders': '[]'},
+      'profile': {
+        'medications': [
+          {'id': 'med-uuid-ss31', 'name': 'SS-31 Peptide', 'dose': '0.05'},
+          {'id': 'med-uuid-iva', 'name': 'Ivabradine', 'dose': '7.5mg'},
+        ],
+        'reminders': '[]',
+      },
       'isUnlimited': true,
       'isAdmin': false,
     };

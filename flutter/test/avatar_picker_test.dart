@@ -494,6 +494,13 @@ void main() {
     });
 
     testWidgets('streak friends tab shows the picked icon', (tester) async {
+      // Friend Streaks (DESIGN §7, Nov 23, 2026) replaced the old
+      // auto-listed friends tab: friends render there as friend
+      // streak PAIR rows carrying the partner's avatarId. This case
+      // now seeds an active pair per friend — Boston with his pick,
+      // Dad with none — and asserts the same contract as before:
+      // the picked catalog image renders, the unpicked friend keeps
+      // the navy initial fallback.
       var s = streakSeed(current: 5, best: 12, now: DateTime(2026, 11, 1, 12));
       s = streakEvaluate(s, DateTime(2026, 11, 3, 12));
       s = streakEvaluate(s, DateTime(2026, 11, 4, 12));
@@ -502,27 +509,33 @@ void main() {
           home: StreakScreen(
             state: s,
             now: DateTime(2026, 11, 4, 12),
-            initialFriends: const [
-              FriendDto(
-                id: 'f-boston',
-                nickname: 'Boston',
-                tag: '91304',
-                status: '',
-                level: 285,
-                gemBalance: 210,
-                currentStreak: 31,
-                avatarId: 'avatar_09',
-              ),
-              FriendDto(
-                id: 'f-dad',
-                nickname: 'Dad',
-                tag: '20517',
-                status: '',
-                level: 190,
-                gemBalance: 85,
-                currentStreak: 12,
-              ),
-            ],
+            initialFriendStreaks: const FriendStreaksDto(
+              pairs: [
+                FriendStreakPairDto(
+                  pairId: 'pair-boston',
+                  partner: FriendStreakPartnerDto(
+                    userId: 'f-boston',
+                    nickname: 'Boston',
+                    tag: '91304',
+                    avatarId: 'avatar_09',
+                  ),
+                  status: 'active',
+                  count: 31,
+                  best: 31,
+                ),
+                FriendStreakPairDto(
+                  pairId: 'pair-dad',
+                  partner: FriendStreakPartnerDto(
+                    userId: 'f-dad',
+                    nickname: 'Dad',
+                    tag: '20517',
+                  ),
+                  status: 'active',
+                  count: 12,
+                  best: 12,
+                ),
+              ],
+            ),
           ),
         ),
       );

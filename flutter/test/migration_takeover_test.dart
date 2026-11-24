@@ -886,6 +886,17 @@ void main() {
       };
       final backend = TabsBackend(
         client: MockClient((request) async {
+          if (request.url.path == '/api/habits') {
+            // One unchecked habit for the habit daily gate.
+            return http.Response(
+              jsonEncode({
+                'habits': [
+                  {'id': 'h1', 'title': 'Stretch', 'logs': <String>[]},
+                ],
+              }),
+              200,
+            );
+          }
           expect(request.url.path, '/api/sync/pull');
           return http.Response(
             jsonEncode({'profile': profile, 'entries': [], 'categories': []}),
@@ -909,14 +920,28 @@ void main() {
         settingsStore: settings,
         notifications: notifs,
       );
-      // Habit daily armed (1003 @19:00); project off; check-in off
-      // (the imported toggle wins — 770001 must NOT be scheduled).
-      expect(notifs.daily[1003], '19:0');
+      // Habit daily fix: the legacy daily (1003) is cancelled,
+      // never armed as a daily; the gated 19:00 one-shot
+      // projection (830000 block) is armed for the one unchecked
+      // habit — 35 or 36 one-shots depending on whether today's
+      // 19:00 is still ahead at run time. Project off; check-in
+      // off (the imported toggle wins — 770001 must NOT be
+      // scheduled).
+      expect(notifs.daily.containsKey(1003), isFalse);
+      expect(notifs.cancelled, contains(1003));
       expect(notifs.daily.containsKey(1004), isFalse);
       expect(notifs.daily.containsKey(770001), isFalse);
+      final habitFires = notifs.once.entries
+          .where((e) => e.key >= 830000 && e.key <= 839999)
+          .toList();
+      expect(habitFires.length, inInclusiveRange(35, 36));
+      for (final e in habitFires) {
+        expect(e.value.hour, 19);
+      }
       // The counter's one-shot 09:00 alarm is armed.
-      expect(notifs.once.length, 1);
-      expect(notifs.once.values.single.hour, 9);
+      final counterFires =
+          notifs.once.values.where((t) => t.hour == 9).toList();
+      expect(counterFires.length, 1);
       // The user reminder's daily slot: 100000 + 5*1500 + 0.
       expect(notifs.daily[107500], '8:30');
     });

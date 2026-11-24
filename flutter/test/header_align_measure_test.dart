@@ -80,6 +80,17 @@ MockClient _mockWeather() => MockClient((request) async {
   );
 });
 
+/// Celebration-delay adaptation (Nov 23, 2026): the Today Summary
+/// card used to construct its own backend, whose pull failed in
+/// this harness, so the seeded TodaySummaryCache plan drove the
+/// progress bar. The fix threads Home's backend into the card, so
+/// the plan now comes from this mock's pull: the two seeded meds
+/// are served as profile.medications rows, and [seedPlan]'s `full`
+/// phase is mirrored by 'Took …' Medication entries in the pull.
+/// The cache seed below is kept (identical plan shape) as the
+/// offline-fallback record.
+bool _mockPlanFull = false;
+
 MockClient _mockBackend() {
   final now = DateTime.now().millisecondsSinceEpoch;
   Map<String, dynamic> entry(
@@ -97,6 +108,8 @@ MockClient _mockBackend() {
   };
   final entries = <Map<String, dynamic>>[
     for (var i = 0; i < 10; i++) entry(100 + i, 1, 'entry $i', '[]'),
+    if (_mockPlanFull) entry(200, 8, 'Took SS-31 Peptide', '[]'),
+    if (_mockPlanFull) entry(201, 8, 'Took Ivabradine', '[]'),
   ];
   return MockClient((request) async {
     if (request.url.path == '/api/sync/pull') {
@@ -112,7 +125,10 @@ MockClient _mockBackend() {
           'profile': {
             'currentStreak': 18,
             'bestStreak': 68,
-            'medications': '[]',
+            'medications': [
+              {'id': 'med-uuid-ss31', 'name': 'SS-31 Peptide', 'dose': '0.05'},
+              {'id': 'med-uuid-iva', 'name': 'Ivabradine', 'dose': '7.5mg'},
+            ],
             'reminders': '[]',
           },
           'isUnlimited': true,
@@ -275,6 +291,7 @@ void main() {
     summaryCache.debugReset();
 
     Future<void> seedPlan({required bool full}) async {
+      _mockPlanFull = full;
       summaryCache.debugReset();
       await summaryCache.save(
         email: null,
