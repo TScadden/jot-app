@@ -12,7 +12,6 @@ import 'package:tabs_lab/src/features/tools/habits_screen.dart';
 import 'package:tabs_lab/src/features/tools/health_coach_screen.dart';
 import 'package:tabs_lab/src/features/tools/key_metrics_screen.dart';
 import 'package:tabs_lab/src/features/tools/lists_screen.dart';
-import 'package:tabs_lab/src/features/tools/medications_screen.dart';
 import 'package:tabs_lab/src/features/tools/notes_screen.dart';
 import 'package:tabs_lab/src/features/tools/project_focus_screen.dart';
 import 'package:tabs_lab/src/features/tools/reminders_screen.dart';
@@ -55,11 +54,13 @@ class ToolTile {
 
 /// The native `DEFAULT_INFO_TILES` order, verbatim — minus
 /// Community, which moved to the Home drawer (added scope #7,
-/// founder direction Nov 20, 2026), and minus Sleep, which moved
+/// founder direction Nov 20, 2026), minus Sleep, which moved
 /// to the heart nav slot (Heart/Sleep toggle, founder direction
-/// Nov 23, 2026). A stale saved order can still carry the
-/// 'community' or 'sleep' id; [applyTileOrder] drops unknown ids,
-/// so it can never resurrect either tile here.
+/// Nov 23, 2026), and minus Medications, which moved to the Home
+/// drawer (founder direction Nov 23, 2026). A stale saved order
+/// can still carry the 'community', 'sleep' or 'medications' id;
+/// [applyTileOrder] drops unknown ids, so it can never resurrect
+/// any of those tiles here.
 const List<ToolTile> defaultToolTiles = [
   ToolTile('habits', 'Habits', Icons.check_circle, 'Daily routine tracking'),
   ToolTile('reminders', 'Reminders', Icons.notifications, 'Scheduled alerts'),
@@ -67,7 +68,6 @@ const List<ToolTile> defaultToolTiles = [
   ToolTile('notes', 'Notes', Icons.edit, 'Quick notes & thoughts'),
   ToolTile('project_focus', 'Project Focus', Icons.science, 'Track experiments'),
   ToolTile('body_info', 'Body Info', Icons.accessibility_new, 'Impact & Side Effects'),
-  ToolTile('medications', 'Medications', Icons.medication, 'Prescriptions & Doses'),
   ToolTile('tips_and_tricks', 'Tips and Tricks', Icons.lightbulb, 'Master your data'),
   ToolTile('health_coach', 'Health Coach', Icons.question_mark, 'Personalized Advice'),
   ToolTile('key_metrics', 'Key Metrics', Icons.bar_chart, 'Your Body Data'),
@@ -237,7 +237,6 @@ class _ToolsScreenState extends State<ToolsScreen>
       'notes' => const NotesScreen(),
       'project_focus' => const ProjectFocusScreen(),
       'body_info' => const BodyInfoScreen(),
-      'medications' => MedicationsScreen(billingService: widget.billingService),
       'tips_and_tricks' => const TipsTricksScreen(),
       'health_coach' => const HealthCoachScreen(),
       'key_metrics' => const KeyMetricsScreen(),

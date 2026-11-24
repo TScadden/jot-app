@@ -338,14 +338,16 @@ void main() {
       expect(find.text('Community'), findsOneWidget);
       expect(find.byIcon(Icons.people), findsOneWidget);
       expect(find.text('Badges'), findsOneWidget);
-      // Exactly four rows: four tappables inside the drawer, AI
+      expect(find.text('Medications'), findsOneWidget);
+      expect(find.byIcon(Icons.medication), findsOneWidget);
+      // Exactly five rows: five tappables inside the drawer, AI
       // Advocate above Event Counters above Community above
-      // Badges (BADGES package, Nov 20, 2026 — founder's final
-      // drawer order).
+      // Badges above Medications (BADGES package, Nov 20, 2026;
+      // Medications appended last, Nov 23, 2026).
       expect(
         find.descendant(
             of: find.byType(Drawer), matching: find.byType(InkWell)),
-        findsNWidgets(4),
+        findsNWidgets(5),
       );
       expect(
         tester
@@ -374,6 +376,15 @@ void main() {
             .dy,
         lessThan(tester
             .getTopLeft(find.byKey(const ValueKey('home_drawer_badges')))
+            .dy),
+      );
+      expect(
+        tester
+            .getTopLeft(find.byKey(const ValueKey('home_drawer_badges')))
+            .dy,
+        lessThan(tester
+            .getTopLeft(
+                find.byKey(const ValueKey('home_drawer_medications')))
             .dy),
       );
     }

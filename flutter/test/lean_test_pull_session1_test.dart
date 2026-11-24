@@ -106,11 +106,13 @@ void main() {
     test('default tile list carries no lean-test tile', () {
       expect(defaultToolTiles.any((t) => t.id == 'lean_test'), isFalse);
       expect(defaultToolTiles.any((t) => t.title == leanS1Label), isFalse);
-      // 14 since the Heart/Sleep toggle (Nov 23, 2026) moved
-      // Sleep out of Tools into the heart nav slot; 15 before
-      // that since added scope #7 (Nov 20, 2026) moved Community
-      // out of Tools into the Home drawer (was 16).
-      expect(defaultToolTiles.length, 14);
+      // 13 since Medications moved out of Tools into the Home
+      // drawer (Nov 23, 2026); 14 before that since the
+      // Heart/Sleep toggle (Nov 23, 2026) moved Sleep out of
+      // Tools into the heart nav slot; 15 before that since
+      // added scope #7 (Nov 20, 2026) moved Community out of
+      // Tools into the Home drawer (was 16).
+      expect(defaultToolTiles.length, 13);
     });
 
     test('a stale saved order cannot resurrect the tile', () {
@@ -118,7 +120,7 @@ void main() {
       // removed id; applyTileOrder drops unknown ids.
       final ordered =
           applyTileOrder(defaultToolTiles, ['lean_test', 'habits']);
-      expect(ordered.length, 14);
+      expect(ordered.length, 13);
       expect(ordered.any((t) => t.id == 'lean_test'), isFalse);
       expect(ordered.first.id, 'habits');
     });
@@ -135,7 +137,7 @@ void main() {
     testWidgets('stale saved-order state: lean id dropped, grid intact',
         (tester) async {
       final store = _memoryOrderStore();
-      await store.saveOrder(['lean_test', 'medications', 'habits']);
+      await store.saveOrder(['lean_test', 'notes', 'habits']);
       await _pumpTools(tester, store);
       // The surviving saved order is still honored (checked before
       // any scrolling moves the lazy grid's built window).
@@ -148,7 +150,7 @@ void main() {
           of: find.byWidget(firstCell),
           matching: find.byType(LongPressDraggable<ToolTile>));
       expect(tester.widget<LongPressDraggable<ToolTile>>(draggable).data?.id,
-          'medications');
+          'notes');
       final ids = await _collectAllTileIds(tester);
       expect(ids, defaultToolTiles.map((t) => t.id).toSet());
       expect(ids.contains('lean_test'), isFalse);

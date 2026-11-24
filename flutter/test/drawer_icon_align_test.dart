@@ -18,7 +18,7 @@ import 'package:tabs_lab/src/features/home/home_screen.dart';
 /// column, every label starts at the same x, and every row is the
 /// same height.
 void main() {
-  testWidgets('drawer: all four rows share the icon column geometry',
+  testWidgets('drawer: all five rows share the icon column geometry',
       (tester) async {
     tester.view.physicalSize = const Size(360 * 3, 800 * 3);
     tester.view.devicePixelRatio = 3.0;
@@ -59,6 +59,7 @@ void main() {
       ValueKey('home_drawer_event_counters'),
       ValueKey('home_drawer_community'),
       ValueKey('home_drawer_badges'),
+      ValueKey('home_drawer_medications'),
     ];
 
     double? sharedCenterDx;
