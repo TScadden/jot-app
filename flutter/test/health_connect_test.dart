@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/data/health_data.dart' show HrSample;
+import 'package:tabs_lab/src/data/health_history_store.dart';
+import 'package:tabs_lab/src/data/health_history_sync.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
 
 /// In-memory SecureStore fake — no platform channels, no real storage.
@@ -20,6 +23,76 @@ class MemorySecureStore implements SecureStore {
   Future<void> delete(String key) async {
     _map.remove(key);
   }
+}
+
+/// Capture fakes for the post-grant capture the sync-settings
+/// package wired into Connections' grant path — the same seam
+/// pattern as sync_settings_post_grant_test.dart's capture
+/// fakes: the shared [HealthHistorySync.instance] is pointed at
+/// an outcome-layer HC fake and an in-memory store via
+/// `debugSetDeps`, because its production deps (the singleton
+/// store's FlutterSecureStorage read) have no platform reply in
+/// this harness, so a capture started with them can never
+/// complete here and the row's working state never clears.
+class _FakeStoreBackend {
+  final Map<String, String> values = {};
+  Future<String?> read(String key) async => values[key];
+  Future<void> write(String key, String value) async {
+    values[key] = value;
+  }
+
+  Future<void> delete(String key) async {
+    values.remove(key);
+  }
+}
+
+HealthHistoryStore _fakeHistoryStore() {
+  final backend = _FakeStoreBackend();
+  final store = HealthHistoryStore.testInstance();
+  store.debugSetStore(
+      read: backend.read, write: backend.write, delete: backend.delete);
+  return store;
+}
+
+/// Outcome-layer HC fake for the capture legs: every leg reads
+/// cleanly and returns no rows (Health Connect holds no data
+/// yet). Resting-HR calls count the capture runs (one per run).
+class _CaptureHcFake extends HealthConnectService {
+  int restingHrCalls = 0;
+
+  @override
+  Future<HcReadOutcome<List<({String date, int bpm})>>>
+      readRestingHrHistoryWithOutcome(int days) async {
+    restingHrCalls++;
+    return HcReadOutcome(value: const []);
+  }
+
+  @override
+  Future<HcReadOutcome<List<({String date, int mins, int deep})>>>
+      readSleepHistoryWithOutcome(int days) async =>
+          HcReadOutcome(value: const []);
+
+  @override
+  Future<HcReadOutcome<List<({int t, double ms, int tier})>>>
+      readHrvSamplesWithOutcome(int days) async =>
+          HcReadOutcome(value: const []);
+
+  @override
+  Future<HcReadOutcome<List<({String date, int kcal})>>>
+      readCaloriesHistoryWithOutcome(int days) async =>
+          HcReadOutcome(value: const []);
+
+  @override
+  Future<HcReadOutcome<List<({String date, int count})>>>
+      readSpikeCountsWithOutcome(int days) async =>
+          HcReadOutcome(value: const []);
+
+  @override
+  Future<HcReadOutcome<List<HrSample>>> readHrSamplesRangeWithOutcome({
+    required int startMs,
+    required int endMs,
+  }) async =>
+      HcReadOutcome(value: const []);
 }
 
 const _channelName = HealthConnectService.channelName;
@@ -241,6 +314,17 @@ void main() {
 
     testWidgets('not connected → Available row; tap grants → Connected',
         (tester) async {
+      // Sync-settings package: a new grant now fires the
+      // post-grant capture on the shared sync instance, and the
+      // row's working state mirrors until it settles. Drive
+      // that capture through the package's capture-fake seam
+      // (see _CaptureHcFake above) so the run completes
+      // honestly in this harness.
+      HealthHistorySync.debugResetFlight();
+      HealthHistorySync.debugResetPostGrantStatus();
+      final captureHc = _CaptureHcFake();
+      HealthHistorySync.instance
+          .debugSetDeps(hc: captureHc, store: _fakeHistoryStore());
       final store = MemorySecureStore();
       var granted = <String>[];
       final service = serviceWith(
@@ -270,6 +354,18 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Connected'), findsOneWidget);
       expect(find.text('No trackers connected yet.'), findsNothing);
+      // The grant fired exactly one post-grant capture, and it
+      // settled (the working state cleared above is what let
+      // pumpAndSettle return at all).
+      expect(captureHc.restingHrCalls, 1);
+      expect(HealthHistorySync.instance.postGrantStatus.phase,
+          PostGrantCapturePhase.settled);
+      // Restore the shared instance's production deps so no
+      // fake leaks into another test in this file.
+      HealthHistorySync.instance.debugSetDeps(
+          hc: HealthConnectService(), store: HealthHistoryStore.instance);
+      HealthHistorySync.debugResetFlight();
+      HealthHistorySync.debugResetPostGrantStatus();
     });
 
     testWidgets('denied (empty grant) shows a visible message',
