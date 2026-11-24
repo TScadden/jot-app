@@ -148,7 +148,19 @@ class HabitsScreen extends StatefulWidget {
   final TabsBackend? backend;
   final ReminderNotificationService? notificationService;
 
-  const HabitsScreen({super.key, this.backend, this.notificationService});
+  /// Test seam for the habit daily aggregate reminder's toggle:
+  /// when non-null it is the value handed to
+  /// [ReminderSync.syncHabitDailyOnly]; when null (production)
+  /// the toggle is read from the sync pull's profile
+  /// (`habitReminderEnabled`) at sync time.
+  final bool? habitReminderEnabled;
+
+  const HabitsScreen({
+    super.key,
+    this.backend,
+    this.notificationService,
+    this.habitReminderEnabled,
+  });
 
   @override
   State<HabitsScreen> createState() => _HabitsScreenState();
@@ -156,7 +168,9 @@ class HabitsScreen extends StatefulWidget {
 
 class _HabitsScreenState extends State<HabitsScreen> {
   late final TabsBackend _backend;
+  late final ReminderNotificationService _notifService;
   late final HabitTimeReminderSync _habitTimeSync;
+  late final ReminderSync _habitDailySync;
   final TextEditingController _addController = TextEditingController();
   bool _loading = true;
   bool _failed = false;
@@ -171,8 +185,10 @@ class _HabitsScreenState extends State<HabitsScreen> {
   void initState() {
     super.initState();
     _backend = widget.backend ?? TabsBackend();
-    _habitTimeSync = HabitTimeReminderSync(
-        widget.notificationService ?? LocalReminderNotificationService());
+    _notifService =
+        widget.notificationService ?? LocalReminderNotificationService();
+    _habitTimeSync = HabitTimeReminderSync(_notifService);
+    _habitDailySync = ReminderSync(_notifService);
     _load();
   }
 
@@ -215,7 +231,44 @@ class _HabitsScreenState extends State<HabitsScreen> {
         // screen over notification bookkeeping.
         debugPrint('HabitTimeReminderSync unexpected failure: $e');
       }
+      // The habit daily aggregate reminder re-projects from the
+      // same list state, in the same chain link (so its ordering
+      // relative to the timed projection follows list-state order
+      // exactly): completing the last habit drops tonight's 19:00
+      // one-shot, un-completing re-arms it. Its failures follow
+      // the same decided rule — logged with the visible code,
+      // swallowed, self-healing at the next sync.
+      try {
+        await _habitDailySync.syncHabitDailyOnly(
+          habitEnabled: await _habitReminderEnabled(),
+          habits: habits,
+        );
+      } on NotificationServiceException catch (e) {
+        debugPrint('HabitDailyReminderSync failed: $e');
+      } catch (e) {
+        debugPrint('HabitDailyReminderSync unexpected failure: $e');
+      }
     });
+  }
+
+  /// The Settings "Habit Reminders" toggle for the aggregate
+  /// daily reminder: the widget override when one was injected
+  /// (tests), else the sync pull's profile flag — the same
+  /// `habitReminderEnabled` value Settings hands [ReminderSync].
+  /// The pull is TTL-cached and [_toggleHabit] invalidates it
+  /// after a write, so this reads live state without a new
+  /// endpoint. An unreadable profile resolves to OFF: the
+  /// projection then cancels only, never arms on a guess.
+  Future<bool> _habitReminderEnabled() async {
+    final override = widget.habitReminderEnabled;
+    if (override != null) return override;
+    try {
+      final profile = await _backend.fetchProfile();
+      final v = profile?['habitReminderEnabled'];
+      return v == true || v == 'true';
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Cancels one deleted habit's scheduled-time window (VC 100137);
@@ -507,6 +560,10 @@ class _HabitsScreenState extends State<HabitsScreen> {
       // pending one-shot; un-completing re-arms today when its
       // time is still ahead. The list synced is the optimistic
       // (server-confirmed) one already on screen.
+      // The same re-projection also re-arms/drops the habit
+      // daily aggregate 19:00 one-shot (see
+      // [_syncHabitNotifications]): completing the LAST habit
+      // drops tonight's aggregate, un-completing re-arms it.
       _syncHabitNotifications(_habits);
     } finally {
       _writing = false;

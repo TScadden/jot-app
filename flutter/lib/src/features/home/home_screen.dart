@@ -3763,6 +3763,7 @@ class _HomeScreenState extends State<HomeScreen>
                     StaggeredEntrance(
                       index: 2,
                       child: TodaySummaryCard(
+                        notificationService: _checkInNotifs,
                         migraineController: widget.migraineController,
                         checkInBuilder: _buildCheckInSection,
                         headerTrailing: _buildWeatherElement(),
