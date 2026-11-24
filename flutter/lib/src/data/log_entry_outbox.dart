@@ -136,6 +136,7 @@ class LogEntryOutbox extends ChangeNotifier {
     _loaded = false;
     _loadFuture = null;
     _flushFuture = null;
+    _signOutGeneration = 0;
   }
 
   final Map<int, LogEntryOutboxRecord> _records = {};
@@ -148,6 +149,26 @@ class LogEntryOutbox extends ChangeNotifier {
   bool _loaded = false;
   Future<void>? _loadFuture;
   Future<bool>? _flushFuture;
+
+  /// Sign-out generation (logout-sync fix, Nov 24, 2026 — H1).
+  /// Bumped by [beginSignOut] when a sign-out abandons a flush at
+  /// its timeout and proceeds to revoke + retain: a flush run that
+  /// captured the previous generation stops at its next iteration
+  /// boundary — it posts nothing further and applies no queue
+  /// mutation for a POST that lands after the bump — so the F2
+  /// retain decision is made against a queue the abandoned run can
+  /// no longer mutate. A flush that STARTS after the bump captures
+  /// the new generation and runs normally (the same account's
+  /// next sign-in flush is exactly that case).
+  int _signOutGeneration = 0;
+
+  /// Marks the start of sign-out's revoke/retain phase: any flush
+  /// run already in flight is abandoned (see [_signOutGeneration]).
+  /// Synchronous and never throws — it only bumps the generation;
+  /// the abandoned run observes it at its next check.
+  void beginSignOut() {
+    _signOutGeneration++;
+  }
 
   /// Highest entry id this blob has ever allocated or staged
   /// (F1). Persisted in the blob and only ever rises: a fresh id
@@ -832,6 +853,8 @@ class LogEntryOutbox extends ChangeNotifier {
   }
 
   Future<bool> _flushInternal(TabsBackend backend) async {
+    final signOutGenerationAtStart = _signOutGeneration;
+    bool signOutBegan() => _signOutGeneration != signOutGenerationAtStart;
     String? email;
     try {
       email = await backend.readEmail();
@@ -847,6 +870,10 @@ class LogEntryOutbox extends ChangeNotifier {
     final attemptedVersions = <String>{};
 
     while (true) {
+      // H1: a sign-out that abandoned this run (its caller-side
+      // timeout fired and the revoke/retain phase began) stops it
+      // here, before any further post or persist.
+      if (signOutBegan()) return false;
       LogEntryOutboxRecord? next;
       for (final record in _records.values) {
         // A row whose delete is being resolved is never carried by
@@ -867,6 +894,11 @@ class LogEntryOutbox extends ChangeNotifier {
       if (next.status == LogEntrySyncStatus.failed) {
         await _setStatusIfCurrent(next, LogEntrySyncStatus.pending);
       }
+      // H1 dispatch-window re-check (the onboarding outbox's
+      // E-condition 1 shape): sign-out may have begun during the
+      // persist await above — do not dispatch a post into the
+      // revoke/retain phase.
+      if (signOutBegan()) return false;
 
       var ok = false;
       _inFlightIds.add(next.entry.id);
@@ -877,6 +909,16 @@ class LogEntryOutbox extends ChangeNotifier {
       } finally {
         _inFlightIds.remove(next.entry.id);
       }
+      // H1: the POST above may have landed after sign-out began
+      // (this run was abandoned at the caller's timeout while the
+      // POST was on the wire). The retain decision is being made
+      // against this queue RIGHT NOW, so the abandoned run must
+      // not mutate it: skip both the removal and the failed-mark
+      // persist. The record keeps its pre-post persisted state
+      // (pending), so retention holds it and the same account's
+      // next flush re-posts it — the entry upsert is idempotent,
+      // so a POST that did land server-side is harmless to replay.
+      if (signOutBegan()) return false;
       if (ok) {
         // The cached sync pull predates this upsert; the next pull
         // must not resurrect the pre-push snapshot.
