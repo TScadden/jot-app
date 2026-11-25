@@ -52,9 +52,15 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// install, an unreadable store, and a stored garbage value all
 /// resolve to it, and the legacy liquid-glass bool's value does
 /// NOT carry over (founder: "Default is Solid for everyone").
-/// [liquidGlass] is the shipped PR #170 dock, selected
-/// explicitly in Settings -> Customize.
-enum NavBarStyle { solid, liquidGlass }
+/// [liquidGlass] is the shipped PR #170 dock (the DARK liquid
+/// glass), selected explicitly in Settings -> Customize.
+/// [liquidGlassLight] (Nav Bar Style Fixes package, Nov 24,
+/// 2026) is the LIGHT liquid glass: the pre-PR #170 milky dock,
+/// mounted by MainShell through NavDockLightGlass on NavDock's
+/// legacy (liquidGlass: false) path — the founder: "There's
+/// only one liquid glass thing when in reality there should be
+/// the light and the dark one."
+enum NavBarStyle { solid, liquidGlass, liquidGlassLight }
 
 class SettingsStore extends ChangeNotifier {
   static const showNavLabelsKey = 'settings_show_nav_labels';
@@ -70,7 +76,10 @@ class SettingsStore extends ChangeNotifier {
   static const liquidGlassKey = 'settings_liquid_glass';
   // Nav Bar Style package (Nov 24, 2026): the style preference
   // superseding the liquid-glass bool. Stored values: 'solid' /
-  // 'liquid_glass'. Device-only like every key in this store,
+  // 'liquid_glass' (dark glass) / 'liquid_glass_light' (light
+  // glass, added by the Nav Bar Style Fixes package — existing
+  // stored values keep their exact meaning). Device-only like
+  // every key in this store,
   // and deliberately NOT in migration_bundle.dart's curated
   // settings list (coordinator ruling, same as PR #170: a
   // device-only appearance pref; the default applies on
@@ -198,6 +207,9 @@ class SettingsStore extends ChangeNotifier {
     try {
       final v = await _read(navBarStyleKey);
       if (v == 'liquid_glass') return NavBarStyle.liquidGlass;
+      if (v == 'liquid_glass_light') {
+        return NavBarStyle.liquidGlassLight;
+      }
       if (v == 'solid') return NavBarStyle.solid;
     } catch (_) {}
     return NavBarStyle.solid;
@@ -209,7 +221,11 @@ class SettingsStore extends ChangeNotifier {
   Future<void> setNavBarStyle(NavBarStyle v) async {
     await _write(
       navBarStyleKey,
-      v == NavBarStyle.liquidGlass ? 'liquid_glass' : 'solid',
+      switch (v) {
+        NavBarStyle.solid => 'solid',
+        NavBarStyle.liquidGlass => 'liquid_glass',
+        NavBarStyle.liquidGlassLight => 'liquid_glass_light',
+      },
     );
     notifyListeners();
   }

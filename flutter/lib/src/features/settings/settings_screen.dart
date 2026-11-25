@@ -4319,39 +4319,55 @@ class _SettingsScreenState extends State<SettingsScreen>
         ),
         const SizedBox(height: 16),
         // Nav Bar Style choice (Nav Bar Style package, Nov 24,
-        // 2026): replaces the PR #170 Liquid Glass on/off toggle
-        // in the same card position, directly under the
-        // nav-labels preference — same feature family. Follows
-        // the Appearance picker's segmented pattern below (Row
-        // of Expanded ElevatedButtons) but ENABLED: a tap writes
-        // the style through the store and MainShell flips the
-        // visible dock live, exactly like the toggle did. Title,
-        // subtitle, and option labels are Juno's FINAL strings
-        // (relayed by the coordinator, Nov 24, 2026) — the
-        // subtitle states the default plainly.
+        // 2026; THREE options since the Nav Bar Style Fixes
+        // package, same day): replaces the PR #170 Liquid Glass
+        // on/off toggle in the same card position, directly
+        // under the nav-labels preference — same feature family.
+        // Follows the Appearance picker's segmented pattern
+        // below (Row of Expanded ElevatedButtons) but ENABLED:
+        // a tap writes the style through the store and MainShell
+        // flips the visible dock live, exactly like the toggle
+        // did.
+        //
+        // JUNO FINAL STRINGS (Nav Bar Style Fixes ruling,
+        // Nov 24, 2026) — the title, subtitle, and option labels
+        // for this control live in THIS block only; change them
+        // nowhere else. The short segment labels are Juno's
+        // ruling (the full 'Liquid Glass' name is carried by
+        // the subtitle): the long forms exceeded the ~14-char
+        // single-line segment budget at 360dp.
         const Text('Navigation Bar Style',
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.w600,
                 fontSize: 14)),
         const SizedBox(height: 2),
-        const Text('Bottom navigation bar only. Solid is the default.',
+        const Text(
+            'Bottom navigation bar only. Solid is the default. '
+            'The glass options are Liquid Glass, in dark and light.',
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
         const SizedBox(height: 10),
         Row(
           children: [
-            for (final (style, label) in const [
-              (NavBarStyle.solid, 'Solid'),
-              (NavBarStyle.liquidGlass, 'Liquid Glass'),
+            for (final (style, label, keyName) in const [
+              (NavBarStyle.solid, 'Solid', 'nav_style_solid'),
+              (
+                NavBarStyle.liquidGlass,
+                'Dark Glass',
+                'nav_style_liquid_glass'
+              ),
+              (
+                NavBarStyle.liquidGlassLight,
+                'Light Glass',
+                'nav_style_liquid_glass_light'
+              ),
             ])
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: ElevatedButton(
-                    key: ValueKey(style == NavBarStyle.solid
-                        ? 'nav_style_solid'
-                        : 'nav_style_liquid_glass'),
+                    key: ValueKey(keyName),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _navBarStyle == style
                           ? NotelColors.primary

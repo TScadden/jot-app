@@ -71,6 +71,29 @@ const Color kNavDockSolidCapsuleColor = Color(0xFF3E3E44);
 /// The capsule's 1dp inset top line: white @ 10%.
 const Color kNavDockSolidCapsuleTopLine = Color(0x1AFFFFFF);
 
+/// The top line's vertical inset below the capsule's top edge.
+///
+/// Founder fix (Nav Bar Style Fixes package, Nov 24, 2026): the
+/// line originally sat FLUSH at the capsule's top edge (inset 0)
+/// as an unclipped child of the capsule's [Container] — so in
+/// both corner wedges (capsule-local x 16–24dp, where the
+/// capsule's rounded corner curves away below the line) it
+/// painted OUTSIDE the capsule fill, over the bar's gradient,
+/// compositing to (64,64,68): indistinguishable from the fill
+/// (62,62,68) and from the bar's own top border row (62,62,67).
+/// The capsule's apparent top edge rose to its bounding-box top
+/// at the corners and the bright flush line drew a hard straight
+/// edge across the top — the selected capsule read as CUT OFF at
+/// the top on the founder's device, even though the capsule's
+/// layout margins measured exactly 5dp top / 5dp bottom in the
+/// real shell at 360 + 390dp, text scale 1.0 and 1.3, all four
+/// tabs (see solid_capsule_shell_geometry_test.dart). The fix
+/// makes the line a true inset: 2dp below the top edge (inside
+/// the fill at every x the line spans — the corner arc boundary
+/// at its ends is at 1.4dp) and clipped to the capsule's rounded
+/// rect, so nothing the capsule paints can leave its shape.
+const double kNavDockSolidCapsuleTopLineInset = 2.0;
+
 /// Body gradient endpoints: #2B2B30 (top) -> #232327 (bottom).
 const Color kNavDockSolidGradientTop = Color(0xFF2B2B30);
 const Color kNavDockSolidGradientBottom = Color(0xFF232327);
@@ -264,19 +287,36 @@ class _NavDockSolidState extends State<NavDockSolid>
                                   Radius.circular(kNavDockSolidCapsuleRadius),
                                 ),
                               ),
-                              child: const Align(
-                                alignment: Alignment.topCenter,
-                                child: Padding(
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                  ),
-                                  child: DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      color: kNavDockSolidCapsuleTopLine,
+                              // Clipped to the capsule's rounded
+                              // rect AND inset below its top edge:
+                              // the top line is an inset highlight
+                              // INSIDE the fill, never an edge line
+                              // and never paint outside the shape
+                              // (founder fix — see
+                              // [kNavDockSolidCapsuleTopLineInset]).
+                              child: const ClipRRect(
+                                borderRadius: BorderRadius.all(
+                                  Radius.circular(
+                                      kNavDockSolidCapsuleRadius),
+                                ),
+                                child: Align(
+                                  alignment: Alignment.topCenter,
+                                  child: Padding(
+                                    padding: EdgeInsets.only(
+                                      left: 16,
+                                      right: 16,
+                                      top:
+                                          kNavDockSolidCapsuleTopLineInset,
                                     ),
-                                    child: SizedBox(
-                                      width: double.infinity,
-                                      height: 1,
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        color:
+                                            kNavDockSolidCapsuleTopLine,
+                                      ),
+                                      child: SizedBox(
+                                        width: double.infinity,
+                                        height: 1,
+                                      ),
                                     ),
                                   ),
                                 ),

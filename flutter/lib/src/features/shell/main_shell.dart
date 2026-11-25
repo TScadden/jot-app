@@ -15,6 +15,7 @@ import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/quicklog/quick_log_screen.dart';
 import 'package:tabs_lab/src/features/shell/heart_sleep_mode.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
+import 'package:tabs_lab/src/features/shell/nav_dock_glass_light.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock_solid.dart';
 import 'package:tabs_lab/src/features/tools/sleep_screen.dart';
 import 'package:tabs_lab/src/features/tools/tools_screen.dart';
@@ -536,16 +537,19 @@ class _MainShellState extends State<MainShell>
                 5,
                 0,
                 // Per-style inset (Nav Bar Style package): the
-                // glass dock's geometry when Liquid Glass is the
-                // active style, the Solid dock's (58dp + its own
-                // float rule) when Solid is.
-                _navBarStyle == NavBarStyle.liquidGlass
-                    ? navDockSnackBarBottomInset(
-                        showLabels: _showNavLabels,
+                // glass dock's geometry when a Liquid Glass style
+                // is active — dark OR light (Nav Bar Style Fixes
+                // package: the light glass is the same NavDock
+                // geometry family, 62dp + the glass float rule) —
+                // the Solid dock's (58dp + its own float rule)
+                // when Solid is.
+                _navBarStyle == NavBarStyle.solid
+                    ? navDockSolidSnackBarBottomInset(
                         viewPaddingBottom:
                             MediaQuery.viewPaddingOf(context).bottom,
                       )
-                    : navDockSolidSnackBarBottomInset(
+                    : navDockSnackBarBottomInset(
+                        showLabels: _showNavLabels,
                         viewPaddingBottom:
                             MediaQuery.viewPaddingOf(context).bottom,
                       ),
@@ -590,31 +594,46 @@ class _MainShellState extends State<MainShell>
               duration: const Duration(milliseconds: 200),
               curve: Curves.easeOut,
               // Nav Bar Style: Solid mounts the new NavDockSolid;
-              // Liquid Glass mounts the shipped PR #170 NavDock
-              // with liquidGlass: true (always true on this path —
-              // nav_dock.dart itself is untouched). The onSelect
-              // reseed is shared by both docks.
-              child: _navBarStyle == NavBarStyle.liquidGlass
-                  ? NavDock(
-                      selected: _tab,
-                      showLabels: _showNavLabels,
-                      liquidGlass: true,
-                      heartSleepMode: _heartSleepMode,
-                      onSelect: (tab) {
-                        _selectTab(tab);
-                        _refreshNavLabels();
-                        _refreshNavBarStyle();
-                      },
-                    )
-                  : NavDockSolid(
-                      selected: _tab,
-                      heartSleepMode: _heartSleepMode,
-                      onSelect: (tab) {
-                        _selectTab(tab);
-                        _refreshNavLabels();
-                        _refreshNavBarStyle();
-                      },
-                    ),
+              // Dark Liquid Glass mounts the shipped PR #170
+              // NavDock with liquidGlass: true (always true on
+              // this path — nav_dock.dart itself is untouched);
+              // Light Liquid Glass mounts NavDockLightGlass,
+              // which builds the same NavDock on its legacy
+              // (liquidGlass: false) path — the pre-#170 milky
+              // glass by construction. The onSelect reseed is
+              // shared by all three docks.
+              child: switch (_navBarStyle) {
+                NavBarStyle.liquidGlass => NavDock(
+                    selected: _tab,
+                    showLabels: _showNavLabels,
+                    liquidGlass: true,
+                    heartSleepMode: _heartSleepMode,
+                    onSelect: (tab) {
+                      _selectTab(tab);
+                      _refreshNavLabels();
+                      _refreshNavBarStyle();
+                    },
+                  ),
+                NavBarStyle.liquidGlassLight => NavDockLightGlass(
+                    selected: _tab,
+                    showLabels: _showNavLabels,
+                    heartSleepMode: _heartSleepMode,
+                    onSelect: (tab) {
+                      _selectTab(tab);
+                      _refreshNavLabels();
+                      _refreshNavBarStyle();
+                    },
+                  ),
+                NavBarStyle.solid => NavDockSolid(
+                    selected: _tab,
+                    heartSleepMode: _heartSleepMode,
+                    onSelect: (tab) {
+                      _selectTab(tab);
+                      _refreshNavLabels();
+                      _refreshNavBarStyle();
+                    },
+                  ),
+              },
             ),
           ),
         ),

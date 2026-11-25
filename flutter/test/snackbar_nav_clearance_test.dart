@@ -4,6 +4,7 @@ import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
+import 'package:tabs_lab/src/features/shell/nav_dock_glass_light.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock_solid.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/notel_theme.dart';
@@ -61,8 +62,11 @@ void main() {
       // the GLASS dock's clearance, so they seed the glass style
       // explicitly (Solid is now the shell's default); the new
       // Solid cases seed solid.
-      SettingsStore.navBarStyleKey:
-          style == NavBarStyle.liquidGlass ? 'liquid_glass' : 'solid',
+      SettingsStore.navBarStyleKey: switch (style) {
+        NavBarStyle.solid => 'solid',
+        NavBarStyle.liquidGlass => 'liquid_glass',
+        NavBarStyle.liquidGlassLight => 'liquid_glass_light',
+      },
     };
     return SettingsStore.withStorage(
       read: (k) async => map[k],
@@ -90,12 +94,17 @@ void main() {
     // Stored preference lands + staggered-entrance delays fire.
     await tester.pump(const Duration(milliseconds: 500));
 
-    final bool? dockLabels = style == NavBarStyle.liquidGlass
-        ? tester.widget<NavDock>(find.byType(NavDock)).showLabels
-        : null;
-    final dockFinder = style == NavBarStyle.liquidGlass
-        ? find.byType(NavDock)
-        : find.byType(NavDockSolid);
+    // Both glass styles mount a NavDock (dark directly, light
+    // through NavDockLightGlass), so the labels read works for
+    // either; Solid has no labels concept (null).
+    final bool? dockLabels = style == NavBarStyle.solid
+        ? null
+        : tester.widget<NavDock>(find.byType(NavDock)).showLabels;
+    final dockFinder = switch (style) {
+      NavBarStyle.solid => find.byType(NavDockSolid),
+      NavBarStyle.liquidGlass => find.byType(NavDock),
+      NavBarStyle.liquidGlassLight => find.byType(NavDockLightGlass),
+    };
 
     // A context inside the shell body (the Home tab's screen).
     final bodyContext = tester.element(find.byType(HomeScreen));
@@ -144,6 +153,21 @@ void main() {
     // The solid dock's own rect: 58dp bar + its float above the
     // 24dp system inset line (max(16, 24+4) = 28) = 86 tall.
     expect(g.dock.height, 58 + 28);
+    expect(g.bar.bottom, closeTo(g.dock.top - 8, 0.5));
+    expect(g.bar.left, 0);
+    expect(g.bar.right, screenSize.width);
+  });
+
+  testWidgets('in shell (light glass style): bar parks 8dp above '
+      'the 62dp glass dock — the light style uses the GLASS inset',
+      (tester) async {
+    final g = await captureInShell(tester,
+        labels: true, style: NavBarStyle.liquidGlassLight);
+    expect(g.dockLabels, isTrue);
+    // The light dock's own rect: 62dp bar + its float above the
+    // 24dp system inset line (max(27, 24+4) = 28) = 90 tall —
+    // the glass geometry family, not Solid's 86.
+    expect(g.dock.height, 62 + 28);
     expect(g.bar.bottom, closeTo(g.dock.top - 8, 0.5));
     expect(g.bar.left, 0);
     expect(g.bar.right, screenSize.width);
