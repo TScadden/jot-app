@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Shrink-keep rules for resources referenced ONLY by name from Dart.
+
+  ic_stat_tabs (the notification status-bar small icon, PR #176) is
+  resolved at runtime by flutter_local_notifications via
+  Resources.getIdentifier: Dart passes the plain string 'ic_stat_tabs'
+  at the AndroidInitializationSettings sites and the per-notification
+  icon: sites. No XML, manifest, or Kotlin code references
+  R.drawable.ic_stat_tabs, so the release resource shrinker cannot
+  see the reference and stripped the drawable file and its
+  resource-table entry from the VC 100188 / Lab 3063 AABs (proven by
+  bundletool dump resources; see the rich-notification stage log).
+  This tools:keep rule is the standard Android mechanism that tells
+  the shrinker to retain the resource anyway.
+
+  Verification is binary-level: bundletool dump resources on the
+  re-cut AAB must show drawable/ic_stat_tabs. Dart tests cannot see
+  this class of failure.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_tabs" />
