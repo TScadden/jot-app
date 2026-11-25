@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'package:tabs_lab/src/data/correlation_engine.dart'
     show deriveFeelingByDay;
 import 'package:tabs_lab/src/data/focus_test.dart';
+import 'package:tabs_lab/src/data/medications.dart';
+import 'package:tabs_lab/src/data/progress_report.dart'
+    show ReportProfileInput;
 import 'package:tabs_lab/src/data/streak_engine.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
@@ -377,6 +380,51 @@ class SettingsProfileData {
     if (v is num) return v != 0;
     return fallback;
   }
+}
+
+/// Builds the report's profile input from the Settings profile
+/// data (the sync pull's decoded blobs, via [SettingsProfileData]).
+///
+/// Medications (report-pdf fix, Juno Ruling 1): the active list is
+/// the shared medication model's own filter —
+/// `!entry.isDeleted && !entry.isArchived`
+/// ([activeMedicationEntries]) — where
+/// [MedicationEntry.isArchived] is the archived stamp OR
+/// `!isPresent` (medications.dart, R35 precedent). Filtering on
+/// `isPresent` alone was the defect: a row carrying
+/// `isArchived == true` with `isPresent == true` passed it and an
+/// archived medication (escitalopram, archived Oct 16, 2026)
+/// rendered as active in the report. Entries keep their stored
+/// record order and their stored name/dose/frequency — nothing is
+/// sorted, deduped, or rewritten here.
+///
+/// (Moved here from progress_reports_page.dart by the Background
+/// Generation package, 2026-11-24: the page-free weekly production
+/// wiring and the background runner both build this input from a
+/// sync pull, and neither may depend on the page.)
+ReportProfileInput reportProfileInputFromSettings(SettingsProfileData d) {
+  final conditions = <String>[
+    for (final row in d.conditions)
+      if ('${row['name'] ?? ''}'.trim().isNotEmpty) '${row['name']}'.trim(),
+  ];
+  final parsed = <MedicationEntry>[];
+  for (final row in d.medications) {
+    final m = MedicationEntry.fromBlobRow(row);
+    if (m != null) parsed.add(m);
+  }
+  return ReportProfileInput(
+    userContext: d.userContext,
+    age: d.age ?? 0,
+    heightCm: d.heightCm ?? 0,
+    weightKg: d.weightKg ?? 0,
+    gender: d.gender,
+    conditions: conditions,
+    activeMedications: activeMedicationEntries(parsed),
+    // Item 3: the full parsed list rides along for the clinician
+    // report's declared-form change derivation ONLY — the active
+    // list above remains the sole source of the printed med list.
+    allMedications: parsed,
+  );
 }
 
 /// One event counter (native `EventCounterDto`, SettingsViewModel.kt:1659).

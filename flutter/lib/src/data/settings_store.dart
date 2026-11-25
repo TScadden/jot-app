@@ -109,6 +109,13 @@ class SettingsStore extends ChangeNotifier {
       'progress_report_appointment_date';
   static const reportAppointmentTypeKey =
       'progress_report_appointment_type';
+  // Background Generation package (2026-11-24, Juno Flag BG-4):
+  // the epoch-ms instant the user last tapped "Not now" on the
+  // weekly background-access ask. The ask is suppressed for
+  // exactly 28 days from this stamp, persisted across restarts.
+  // Device-only like every key in this store.
+  static const weeklyBgAskDismissedAtKey =
+      'weekly_bg_ask_dismissed_at_ms';
   // Counter-mutation durability (Oct 2026) — locally persisted
   // deleted-event-counter tombstones (native parity:
   // `deletedEventCounterIds` in NotelPreferences, filtered in
@@ -364,6 +371,22 @@ class SettingsStore extends ChangeNotifier {
 
   Future<void> setReportAppointmentType(String v) =>
       _write(reportAppointmentTypeKey, v);
+
+  /// The background-access ask's dismissal stamp (epoch ms), or
+  /// null when the ask was never dismissed. A storage failure
+  /// reads as never-dismissed (the ask may show; it can never be
+  /// wrongly suppressed forever by a broken read).
+  Future<int?> getWeeklyBgAskDismissedAtMs() async {
+    try {
+      final v = await _read(weeklyBgAskDismissedAtKey);
+      return v == null ? null : int.tryParse(v);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> setWeeklyBgAskDismissedAtMs(int ms) =>
+      _write(weeklyBgAskDismissedAtKey, '$ms');
 
   // ── Counter delete tombstones (Oct 2026) ──────────────────────
 
@@ -638,6 +661,7 @@ class SettingsStore extends ChangeNotifier {
       reportLastExportKey,
       reportAppointmentDateKey,
       reportAppointmentTypeKey,
+      weeklyBgAskDismissedAtKey,
       deletedCounterIdsKey,
       deletedCounterOwnerKey,
       intakeTargetsKey,
