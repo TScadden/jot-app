@@ -1210,25 +1210,50 @@ const aiDecisionBody =
 const aiDecisionRetryLabel = 'Try AI analysis again';
 const aiDecisionRawLabel = 'Make report without AI analysis';
 
+/// Juno's ruled raw-report Notice texts (Weekly Format package,
+/// Ruling 4a/4b, Nov 25, 2026 — byte-exact; the text after the
+/// `[BOLD]Notice:[BOLD] ` prefix). The Notice is generated from
+/// the SAME ship-time cause as the banner ([RawReportBanner]):
+/// an explicit-choice report carries the neutral choice Notice
+/// and no failure wording anywhere; a no-choice failure report
+/// carries the amended failure Notice. Both share one identical
+/// second sentence. The retired constant — which asserted
+/// unavailability regardless of the recorded cause — appears in
+/// neither.
+const rawReportChoiceNotice =
+    'This report was made without AI analysis. The following report compiles the recorded entries and measurements for the report period directly.';
+const rawReportFailureNotice =
+    'AI summary generation could not be completed. The following report compiles the recorded entries and measurements for the report period directly.';
+
 // ── Raw fallback summary (ReportGenerator.kt, byte format) ────────
 
-/// The fallback summary text native renders when the AI summary is
-/// unavailable, EXACTLY as `ReportGenerator.generateReport` builds
-/// it. Founder delta (Oct 15/16): Flutter-composed report text
-/// renders sleep durations with the shared compact `7h6m` formatter;
-/// native's fallback text contains no sleep duration, so this
-/// string stays byte-identical to native. AI prose is never
-/// post-edited, and the request's health-summary string keeps
-/// native's decimal-hours server format.
-String buildRawFallbackSummary(ReportSnapshot s) {
+/// The fallback summary text rendered for a raw (data-only)
+/// report, in the byte format `ReportGenerator.generateReport`
+/// builds. The Notice is NOT a constant: it is generated from
+/// the ship-time cause [rawBanner] (Weekly Format package,
+/// outcome E; Juno Ruling 4, Nov 25, 2026) so the body can never
+/// contradict the banner pair the same document carries — an
+/// explicit-choice ship gets [rawReportChoiceNotice] (no failure
+/// wording), a no-choice failure ship gets
+/// [rawReportFailureNotice]. The cause is a required parameter:
+/// no caller may default it. Founder delta (Oct 15/16):
+/// Flutter-composed report text renders sleep durations with the
+/// shared compact `7h6m` formatter; the fallback text contains no
+/// sleep duration. AI prose is never post-edited, and the
+/// request's health-summary string keeps native's decimal-hours
+/// server format.
+String buildRawFallbackSummary(ReportSnapshot s,
+    {required RawReportBanner rawBanner}) {
   final conditions =
       s.conditions.isNotEmpty ? s.conditions.join(', ') : 'None listed';
   final meds = s.medications.isNotEmpty
       ? s.medications.map((m) => '${m.name} ${m.dose}').join(', ')
       : 'None listed';
+  final notice = rawBanner == RawReportBanner.explicitChoice
+      ? rawReportChoiceNotice
+      : rawReportFailureNotice;
   return '[SECTION] RAW CLINICAL LOG SUMMARY\n'
-      '[BOLD]Notice:[BOLD] AI summary generation was unavailable or non-responsive. '
-      'The following report compiles raw longitudinal patient entries and measured biometrics snapshot directly.\n\n'
+      '[BOLD]Notice:[BOLD] $notice\n\n'
       '[SECTION] PATIENT OVERVIEW\n'
       '• Total Recorded Entries: ${s.logEntries.length}\n'
       '• Active Conditions: $conditions\n'

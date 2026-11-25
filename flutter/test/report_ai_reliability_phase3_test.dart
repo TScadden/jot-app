@@ -732,9 +732,22 @@ void main() {
       expect(text, contains('RAW DATA REPORT: DATA ONLY, NO AI ANALYSIS'));
       expect(text,
           contains('You chose to make this report without AI analysis.'));
+      // Weekly Format Fix E (Juno Ruling 4a): the body Notice is
+      // generated from the SAME ship-time cause as the banner —
+      // the choice Notice, byte-for-byte.
+      expect(
+          text,
+          contains('Notice: This report was made without AI analysis. '
+              'The following report compiles the recorded entries and '
+              'measurements for the report period directly.'));
       expect(text, isNot(contains('AI ANALYSIS UNAVAILABLE')));
       expect(text, isNot(contains('AI unavailable')));
       expect(text, isNot(contains('no connection')));
+      // NO failure wording anywhere in an explicit-choice
+      // document (Ruling 4a retired-string absences).
+      expect(text, isNot(contains('unavailable')));
+      expect(text, isNot(contains('could not be completed')));
+      expect(text, isNot(contains('non-responsive')));
     });
 
     test('(g2) the no-choice failure banner pair prints for a raw '
@@ -757,6 +770,19 @@ void main() {
           contains(
               'RAW DATA REPORT: AI ANALYSIS UNAVAILABLE AT GENERATION TIME'));
       expect(text, contains('AI analysis could not be completed.'));
+      // Weekly Format Fix E (Juno Ruling 4b): the body Notice is
+      // the AMENDED failure Notice, byte-for-byte — "or
+      // non-responsive" is retired from BOTH causes.
+      expect(
+          text,
+          contains('Notice: AI summary generation could not be '
+              'completed. The following report compiles the recorded '
+              'entries and measurements for the report period '
+              'directly.'));
+      expect(text, isNot(contains('non-responsive')));
+      expect(text, isNot(contains('was unavailable')));
+      expect(
+          text, isNot(contains('This report was made without AI analysis')));
       expect(text, isNot(contains('DATA ONLY')));
       expect(text, isNot(contains('You chose')));
       expect(text, isNot(contains('AI unavailable')));
@@ -840,6 +866,62 @@ void main() {
       expect(second, isNot(same(first)));
       expect((second as ReportAiDecision).aiAttempts, hasLength(4));
       expect(second.aiAttempts.map((a) => a.attempt), [1, 2, 3, 4]);
+    });
+  });
+
+  group('raw Notice follows the ship-time cause (Fix E, Juno Ruling 4)',
+      () {
+    ReportSnapshot snap() => ReportSnapshot(
+          last30Days: false,
+          generationTimestampMs:
+              DateTime(2026, 11, 9, 20, 20).millisecondsSinceEpoch,
+          logEntries: [entry(1, 1, 1000)],
+          categoriesMap: const {1: 'Symptoms'},
+          conditions: const ['POTS'],
+        );
+
+    test('the ruled Notice constants, pinned literally', () {
+      expect(rawReportChoiceNotice,
+          'This report was made without AI analysis. The following '
+          'report compiles the recorded entries and measurements '
+          'for the report period directly.');
+      expect(rawReportFailureNotice,
+          'AI summary generation could not be completed. The '
+          'following report compiles the recorded entries and '
+          'measurements for the report period directly.');
+    });
+
+    test('explicitChoice summary carries the choice Notice '
+        'byte-for-byte and NO failure wording', () {
+      final text = buildRawFallbackSummary(snap(),
+          rawBanner: RawReportBanner.explicitChoice);
+      expect(
+          text,
+          contains('[BOLD]Notice:[BOLD] This report was made without '
+              'AI analysis. The following report compiles the '
+              'recorded entries and measurements for the report '
+              'period directly.'));
+      expect(text, isNot(contains('unavailable')));
+      expect(text, isNot(contains('could not be completed')));
+      expect(text, isNot(contains('non-responsive')));
+    });
+
+    test('noChoiceFailure summary carries the amended failure Notice '
+        'byte-for-byte; the retired constant is absent', () {
+      final text = buildRawFallbackSummary(snap(),
+          rawBanner: RawReportBanner.noChoiceFailure);
+      expect(
+          text,
+          contains('[BOLD]Notice:[BOLD] AI summary generation could '
+              'not be completed. The following report compiles the '
+              'recorded entries and measurements for the report '
+              'period directly.'));
+      // Retired wording (Ruling 4b): "unavailable or
+      // non-responsive" appears in NEITHER cause's output.
+      expect(text, isNot(contains('non-responsive')));
+      expect(text, isNot(contains('was unavailable')));
+      expect(
+          text, isNot(contains('This report was made without AI analysis')));
     });
   });
 

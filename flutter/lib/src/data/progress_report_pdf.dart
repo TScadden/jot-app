@@ -116,14 +116,19 @@ List<InlineRun> parseInlineRuns(String text) {
 
 /// The effective summary text native renders: the AI summary when
 /// present, the raw fallback text when [isRawFallback], else
-/// native's fixed unavailable line.
+/// native's fixed unavailable line. For a raw fallback, [rawBanner]
+/// is the ship-time cause recorded for THIS report: it selects the
+/// raw summary's Notice (Juno Ruling 4) exactly as it selects the
+/// banner pair below, so body and banner can never disagree. It is
+/// required — no caller defaults the cause.
 String effectiveSummaryText(
   ReportSnapshot s, {
   String? aiSummary,
   required bool isRawFallback,
+  required RawReportBanner rawBanner,
 }) {
   if (aiSummary != null && aiSummary.trim().isNotEmpty) return aiSummary;
-  if (isRawFallback) return buildRawFallbackSummary(s);
+  if (isRawFallback) return buildRawFallbackSummary(s, rawBanner: rawBanner);
   return 'Clinical summary unavailable. Analysis based on raw snapshot data.';
 }
 
@@ -439,9 +444,13 @@ Future<List<int>> buildReportPdfBytes(
   required bool isRawFallback,
 
   /// Which banner a raw PDF carries (Phase 3, Juno's ruling
-  /// strings 5/5b). Read only when [isRawFallback]; defaults to
-  /// the no-choice failure pair — a choice is never claimed that
-  /// was not recorded at ship time.
+  /// strings 5/5b) AND which Notice the raw summary body carries
+  /// (Weekly Format package, Juno Ruling 4): one ship-time cause
+  /// drives both, so they can never contradict. Read only when
+  /// [isRawFallback]; defaults to the no-choice failure pair — a
+  /// choice is never claimed that was not recorded at ship time.
+  /// Every production render path passes the banner recorded by
+  /// the pipeline at ship time (see ReportRenderPdf).
   RawReportBanner rawBanner = RawReportBanner.noChoiceFailure,
 
   /// Weekly Report Package 1: the ONE weekly line the PDF
@@ -454,7 +463,9 @@ Future<List<int>> buildReportPdfBytes(
 }) async {
   final doc = pw.Document();
   final blocks = parseSummaryBlocks(effectiveSummaryText(snapshot,
-      aiSummary: aiSummary, isRawFallback: isRawFallback));
+      aiSummary: aiSummary,
+      isRawFallback: isRawFallback,
+      rawBanner: rawBanner));
 
   // Manual flow layout over A4 pages. Native draws text by BASELINE
   // (title baseline at y=50, rule at 62, meta baseline at 82); the

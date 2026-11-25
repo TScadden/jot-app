@@ -336,12 +336,14 @@ void main() {
   });
 
   group('fallback summary + failure reasons', () {
-    test('raw fallback text is byte-identical to native', () {
+    test('raw fallback text: failure-cause Notice is Juno\'s amended '
+        'string, byte-for-byte (Weekly Format Ruling 4b)', () {
       expect(
-        buildRawFallbackSummary(fixtureSnapshot()),
+        buildRawFallbackSummary(fixtureSnapshot(),
+            rawBanner: RawReportBanner.noChoiceFailure),
         '[SECTION] RAW CLINICAL LOG SUMMARY\n'
-        '[BOLD]Notice:[BOLD] AI summary generation was unavailable or non-responsive. '
-        'The following report compiles raw longitudinal patient entries and measured biometrics snapshot directly.\n\n'
+        '[BOLD]Notice:[BOLD] AI summary generation could not be completed. '
+        'The following report compiles the recorded entries and measurements for the report period directly.\n\n'
         '[SECTION] PATIENT OVERVIEW\n'
         '• Total Recorded Entries: 2\n'
         '• Active Conditions: POTS, MCAS\n'
