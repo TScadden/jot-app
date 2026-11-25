@@ -381,6 +381,43 @@ class ReportSnapshot {
   String get rangeTypeName =>
       isWeekly ? 'WEEKLY' : (last30Days ? 'LAST_30_DAYS' : 'FULL');
 
+  /// The report range's concrete calendar endpoints (device-local
+  /// midnights, inclusive): the SAME start/end the report itself
+  /// uses for its data queries.
+  ///
+  /// - Weekly: the snapshot's stored Mon–Sun pair ([weekStart] /
+  ///   [weekEnd]); a missing [weekEnd] resolves to
+  ///   [weekStart] + 6 calendar days, exactly as the collector
+  ///   normalizes it (`_collectInner`'s `weekEndDate`).
+  /// - Standard ranges (30-day / Full 180-day): the inclusive
+  ///   [durationDays]-day span ending on the generation day —
+  ///   the span the collector's Daily Score window and the HC
+  ///   union's `loadDays` window are built on, and the span
+  ///   `ClinicianReportData.range` (clinician_report.dart)
+  ///   derives from this same machinery. Component arithmetic
+  ///   (never Duration subtraction), so DST cannot shift a day.
+  ///
+  /// Every range the shipped build supports has concrete
+  /// endpoints, so this never returns null and the pair is
+  /// always complete — never one endpoint without the other,
+  /// and never derived from entry timestamps.
+  ({DateTime start, DateTime end}) get rangeSpan {
+    if (isWeekly) {
+      final start =
+          DateTime(weekStart!.year, weekStart!.month, weekStart!.day);
+      final end = weekEnd != null
+          ? DateTime(weekEnd!.year, weekEnd!.month, weekEnd!.day)
+          : _calendarDayPlus(start, 6);
+      return (start: start, end: end);
+    }
+    final generated =
+        DateTime.fromMillisecondsSinceEpoch(generationTimestampMs);
+    final end = DateTime(generated.year, generated.month, generated.day);
+    final start =
+        DateTime(end.year, end.month, end.day - (durationDays - 1));
+    return (start: start, end: end);
+  }
+
   final int generationTimestampMs;
   final List<QuickLogEntry> logEntries;
   final Map<int, String> categoriesMap;
@@ -872,6 +909,13 @@ List<String> correlationInsightPrintLines(List<InsightRecord> records) {
 /// snapshot built without it falls back to its active list.
 /// Deleted rows never travel.
 ///
+/// Weekly Format C2 follow-up: `rangeStart` / `rangeEnd` — the
+/// report range's true endpoints as `yyyy-MM-dd` day keys
+/// ([ReportSnapshot.rangeSpan]), sent as top-level body fields
+/// for the server's medication-coverage backstop (jot-server
+/// PR #68), which binds its bullet dates to them and skips the
+/// bullet when they are unknown.
+///
 /// CORRECTION DELTA (founder correction, Nov 13 — supersedes this
 /// function's original R4 doc): `frequency` is the entry's RAW
 /// stored value ([MedicationEntry.rawFrequency]) — `""` for
@@ -918,6 +962,19 @@ Map<String, dynamic> buildAiReportRequest(ReportSnapshot s,
       for (final e in s.categoriesMap.entries) '${e.key}': e.value,
     },
     'userContext': buildReportUserContext(s),
+    // Weekly Format C2 follow-up (server PR #68): the report
+    // range's true endpoints as `yyyy-MM-dd` day keys, from the
+    // snapshot's own range machinery ([ReportSnapshot.rangeSpan])
+    // — the same start/end the report's data queries use. The
+    // server's medication-coverage backstop binds its bullet
+    // dates to these fields and SKIPS the bullet when they are
+    // unknown; a range type + day count cannot determine calendar
+    // endpoints, and entry timestamps must never stand in for
+    // them. Both fields are always sent together: every range
+    // the shipped build supports (weekly Mon–Sun, 30-day, Full
+    // 180-day) has concrete endpoints.
+    'rangeStart': dateStrOf(s.rangeSpan.start),
+    'rangeEnd': dateStrOf(s.rangeSpan.end),
     'knowledgeBase': kb.trim().isEmpty ? null : kb,
     'fitbitData': buildHealthSummary(s),
     'dataAvailability': availability.isEmpty ? null : availability,
@@ -1210,25 +1267,50 @@ const aiDecisionBody =
 const aiDecisionRetryLabel = 'Try AI analysis again';
 const aiDecisionRawLabel = 'Make report without AI analysis';
 
+/// Juno's ruled raw-report Notice texts (Weekly Format package,
+/// Ruling 4a/4b, Nov 25, 2026 — byte-exact; the text after the
+/// `[BOLD]Notice:[BOLD] ` prefix). The Notice is generated from
+/// the SAME ship-time cause as the banner ([RawReportBanner]):
+/// an explicit-choice report carries the neutral choice Notice
+/// and no failure wording anywhere; a no-choice failure report
+/// carries the amended failure Notice. Both share one identical
+/// second sentence. The retired constant — which asserted
+/// unavailability regardless of the recorded cause — appears in
+/// neither.
+const rawReportChoiceNotice =
+    'This report was made without AI analysis. The following report compiles the recorded entries and measurements for the report period directly.';
+const rawReportFailureNotice =
+    'AI summary generation could not be completed. The following report compiles the recorded entries and measurements for the report period directly.';
+
 // ── Raw fallback summary (ReportGenerator.kt, byte format) ────────
 
-/// The fallback summary text native renders when the AI summary is
-/// unavailable, EXACTLY as `ReportGenerator.generateReport` builds
-/// it. Founder delta (Oct 15/16): Flutter-composed report text
-/// renders sleep durations with the shared compact `7h6m` formatter;
-/// native's fallback text contains no sleep duration, so this
-/// string stays byte-identical to native. AI prose is never
-/// post-edited, and the request's health-summary string keeps
-/// native's decimal-hours server format.
-String buildRawFallbackSummary(ReportSnapshot s) {
+/// The fallback summary text rendered for a raw (data-only)
+/// report, in the byte format `ReportGenerator.generateReport`
+/// builds. The Notice is NOT a constant: it is generated from
+/// the ship-time cause [rawBanner] (Weekly Format package,
+/// outcome E; Juno Ruling 4, Nov 25, 2026) so the body can never
+/// contradict the banner pair the same document carries — an
+/// explicit-choice ship gets [rawReportChoiceNotice] (no failure
+/// wording), a no-choice failure ship gets
+/// [rawReportFailureNotice]. The cause is a required parameter:
+/// no caller may default it. Founder delta (Oct 15/16):
+/// Flutter-composed report text renders sleep durations with the
+/// shared compact `7h6m` formatter; the fallback text contains no
+/// sleep duration. AI prose is never post-edited, and the
+/// request's health-summary string keeps native's decimal-hours
+/// server format.
+String buildRawFallbackSummary(ReportSnapshot s,
+    {required RawReportBanner rawBanner}) {
   final conditions =
       s.conditions.isNotEmpty ? s.conditions.join(', ') : 'None listed';
   final meds = s.medications.isNotEmpty
       ? s.medications.map((m) => '${m.name} ${m.dose}').join(', ')
       : 'None listed';
+  final notice = rawBanner == RawReportBanner.explicitChoice
+      ? rawReportChoiceNotice
+      : rawReportFailureNotice;
   return '[SECTION] RAW CLINICAL LOG SUMMARY\n'
-      '[BOLD]Notice:[BOLD] AI summary generation was unavailable or non-responsive. '
-      'The following report compiles raw longitudinal patient entries and measured biometrics snapshot directly.\n\n'
+      '[BOLD]Notice:[BOLD] $notice\n\n'
       '[SECTION] PATIENT OVERVIEW\n'
       '• Total Recorded Entries: ${s.logEntries.length}\n'
       '• Active Conditions: $conditions\n'

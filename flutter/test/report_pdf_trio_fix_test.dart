@@ -336,7 +336,8 @@ void main() {
           'Desvenlafaxine Succinate ER 50mg (Daily)',
         ),
       );
-      final fallback = buildRawFallbackSummary(snap);
+      final fallback = buildRawFallbackSummary(snap,
+          rawBanner: RawReportBanner.noChoiceFailure);
       expect(
         fallback,
         contains(
@@ -399,7 +400,8 @@ void main() {
             );
         expect(snap.medications, isEmpty);
         expect(
-          buildRawFallbackSummary(snap),
+          buildRawFallbackSummary(snap,
+              rawBanner: RawReportBanner.noChoiceFailure),
           contains('Active Medications: None listed'),
         );
         expect(
