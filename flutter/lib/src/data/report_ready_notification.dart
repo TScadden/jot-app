@@ -99,7 +99,7 @@ class LocalReportReadyNotifier implements ReportReadyNotifier {
     } else {
       await _plugin.initialize(
         const InitializationSettings(
-          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+          android: AndroidInitializationSettings('ic_stat_tabs'),
         ),
       );
     }
@@ -126,7 +126,7 @@ class LocalReportReadyNotifier implements ReportReadyNotifier {
             // Juno ruling: title and body are hidden on a secure
             // lock screen.
             visibility: NotificationVisibility.private,
-            icon: '@mipmap/ic_launcher',
+            icon: 'ic_stat_tabs',
           ),
         ),
         payload: payload,

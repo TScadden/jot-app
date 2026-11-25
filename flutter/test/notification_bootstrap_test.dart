@@ -174,5 +174,11 @@ void main() {
     expect(args['payload'], '2026-10-20');
     final specifics = args['platformSpecifics'] as Map<dynamic, dynamic>;
     expect(specifics['visibility'], NotificationVisibility.private.index);
+    // RECON-ICON.md: the Daily Score details were the ONE
+    // notification with no explicit small icon (they inherited
+    // the persisted init default). They now name the Tabs note
+    // silhouette drawable explicitly, like every other
+    // notification in the app.
+    expect(specifics['icon'], 'ic_stat_tabs');
   });
 }

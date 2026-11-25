@@ -1,5 +1,8 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/streak_engine.dart';
@@ -219,15 +222,38 @@ void main() {
     });
   });
 
-  group('Juno copy (NOTIF-COPY.md, byte-for-byte)', () {
-    test('title, body template, channel strings match the '
-        'ruled strings exactly', () {
-      expect(streakCountdownTitle,
+  group('Juno copy (ruling 2026-11-24, byte-for-byte)', () {
+    test('headline, body, big text, action and channel strings '
+        'match the ruled strings exactly', () {
+      // §1/§2 headline — plain and HTML forms, `day` never
+      // pluralizes, the number appears only here.
+      expect(streakCountdownHeadline(1), 'You\'re on a 1 day streak');
+      expect(
+          streakCountdownHeadline(27), 'You\'re on a 27 day streak');
+      expect(streakCountdownHeadline(1000),
+          'You\'re on a 1000 day streak');
+      expect(
+        streakCountdownHeadlineHtml(27),
+        '<b><font color="#7C6EFF">You\'re on a 27 day streak</font></b>',
+      );
+      expect(
+        streakCountdownHeadlineHtml(1),
+        '<b><font color="#7C6EFF">You\'re on a 1 day streak</font></b>',
+      );
+      // §3 collapsed body (the retired title, verbatim) and the
+      // expanded big text; neither carries the streak number.
+      expect(streakCountdownBody,
           'Finish today\'s Daily Summary when you\'re ready');
-      expect(streakCountdownBody(1), 'to extend your 1 day streak');
-      expect(streakCountdownBody(27), 'to extend your 27 day streak');
-      expect(streakCountdownBody(1000),
-          'to extend your 1000 day streak');
+      expect(
+        streakCountdownBigText,
+        'Finish today\'s Daily Summary when you\'re ready. '
+        'There\'s still time tonight to add today to your streak.',
+      );
+      // §4 the one action's label, its id, and the tap payload.
+      expect(streakCountdownActionLabel, 'Open Daily Summary');
+      expect(dailySummaryOpenActionId, 'open_daily_summary');
+      expect(dailySummaryNotificationPayload, 'daily_summary');
+      // Channel strings are UNCHANGED by the ruling.
       expect(streakCountdownChannelId, 'streak_reminders');
       expect(streakCountdownChannelName, 'Streak reminders');
       expect(
@@ -235,6 +261,39 @@ void main() {
         'Shows in the evening when you have a streak going and '
         'today\'s Daily Summary is not finished, with the time '
         'left to extend your streak.',
+      );
+    });
+
+    test('tap predicate: body payload OR action id, nothing else',
+        () {
+      expect(
+        isDailySummaryNotificationTap(
+            payload: dailySummaryNotificationPayload),
+        isTrue,
+      );
+      expect(
+        isDailySummaryNotificationTap(
+            actionId: dailySummaryOpenActionId),
+        isTrue,
+      );
+      expect(
+        isDailySummaryNotificationTap(
+            payload: dailySummaryNotificationPayload,
+            actionId: dailySummaryOpenActionId),
+        isTrue,
+      );
+      // The old channel-id payload no longer routes, and no
+      // other notification's payload/action does either.
+      expect(
+        isDailySummaryNotificationTap(payload: 'streak_reminders'),
+        isFalse,
+      );
+      expect(isDailySummaryNotificationTap(payload: '2026-11-19'),
+          isFalse);
+      expect(isDailySummaryNotificationTap(), isFalse);
+      expect(
+        isDailySummaryNotificationTap(actionId: 'some_other_action'),
+        isFalse,
       );
     });
   });
@@ -271,8 +330,13 @@ void main() {
       expect(today.when, DateTime(2026, 11, 19, 20));
       expect(today.countdownTo, DateTime(2026, 11, 20, 4));
       expect(today.countdownTo, nextTabsDayBoundary(today.when));
-      expect(today.title, streakCountdownTitle);
-      expect(today.body, 'to extend your 5 day streak');
+      // Juno ruling 2026-11-24: the title argument is the HTML
+      // headline for the settled streak (5), the body is the
+      // collapsed body — the number lives in the headline only.
+      expect(today.title, streakCountdownHeadlineHtml(5));
+      expect(today.title,
+          '<b><font color="#7C6EFF">You\'re on a 5 day streak</font></b>');
+      expect(today.body, streakCountdownBody);
       expect(today.channelId, 'streak_reminders');
       expect(today.channelName, 'Streak reminders');
       expect(today.channelDescription,
@@ -464,6 +528,191 @@ void main() {
             .seededCurrent,
         2,
       );
+    });
+  });
+
+  group('rich payload — LocalReminderNotificationService over the '
+      'plugin channel', () {
+    // The REAL service, driven over the mocked plugin method
+    // channel (the notification_bootstrap_test pattern): this is
+    // where the AndroidNotificationDetails the redesign changes
+    // are asserted, field by field, alongside every field the
+    // redesign must NOT change.
+    const notificationsChannel =
+        MethodChannel('dexterous.com/flutter/local_notifications');
+    const timezoneChannel = MethodChannel('flutter_timezone');
+
+    final zonedScheduleCalls = <MethodCall>[];
+    final initializeCalls = <MethodCall>[];
+
+    setUp(() {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      FlutterLocalNotificationsPlatform.instance =
+          AndroidFlutterLocalNotificationsPlugin();
+      NotificationBootstrap.debugReset();
+      zonedScheduleCalls.clear();
+      initializeCalls.clear();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(notificationsChannel, (call) async {
+        switch (call.method) {
+          case 'initialize':
+            initializeCalls.add(call);
+            return true;
+          case 'canScheduleExactNotifications':
+            return true;
+          case 'zonedSchedule':
+            zonedScheduleCalls.add(call);
+            return null;
+          default:
+            return null;
+        }
+      });
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(timezoneChannel, (call) async {
+        if (call.method == 'getLocalTimezone') return 'America/Denver';
+        return null;
+      });
+    });
+
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(notificationsChannel, null);
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(timezoneChannel, null);
+      debugDefaultTargetPlatformOverride = null;
+      NotificationBootstrap.debugReset();
+    });
+
+    test('scheduleStreakCountdownOnce posts the rich details with '
+        'the gating fields unchanged', () async {
+      final service = LocalReminderNotificationService(
+          plugin: FlutterLocalNotificationsPlugin());
+      // Future dates (the plugin validates the fire time is in
+      // the future): tomorrow 20:00 fire, next-midnight boundary.
+      final fire = DateTime.now().add(const Duration(days: 1));
+      final when = DateTime(fire.year, fire.month, fire.day, 20);
+      final countdownTo = DateTime(fire.year, fire.month, fire.day + 1);
+      final id = streakCountdownIdForDate(when);
+      await service.scheduleStreakCountdownOnce(
+        id: id,
+        title: streakCountdownHeadlineHtml(27),
+        body: streakCountdownBody,
+        channelId: streakCountdownChannelId,
+        channelName: streakCountdownChannelName,
+        channelDescription: streakCountdownChannelDescription,
+        when: when,
+        countdownTo: countdownTo,
+        highImportance: true,
+      );
+
+      expect(zonedScheduleCalls, hasLength(1));
+      final args =
+          zonedScheduleCalls.single.arguments as Map<dynamic, dynamic>;
+      // Title/content arguments: Juno's ruled HTML headline and
+      // collapsed body; the distinct tap payload.
+      expect(args['id'], id);
+      expect(args['title'],
+          '<b><font color="#7C6EFF">You\'re on a 27 day streak</font></b>');
+      expect(args['body'],
+          'Finish today\'s Daily Summary when you\'re ready');
+      expect(args['payload'], 'daily_summary');
+
+      final specifics =
+          args['platformSpecifics'] as Map<dynamic, dynamic>;
+      // Channel + importance/priority: unchanged.
+      expect(specifics['channelId'], 'streak_reminders');
+      expect(specifics['channelName'], 'Streak reminders');
+      expect(specifics['channelDescription'],
+          streakCountdownChannelDescription);
+      expect(specifics['importance'], Importance.high.value);
+      expect(specifics['priority'], Priority.high.value);
+      // Small icon (RECON-ICON.md, founder scope addition
+      // 2026-11-24): deliberately CHANGED from
+      // '@mipmap/ic_launcher' — the fully opaque launcher icon
+      // rendered as a solid white disc in the status bar. The
+      // dedicated silhouette drawable replaces it here and at
+      // every other notification site.
+      expect(specifics['icon'], 'ic_stat_tabs');
+      // The bootstrap's ONE foreground initialize persists the
+      // same drawable as the plugin default icon (RECON-ICON
+      // §3a: the persisted default is what icon-less posts use,
+      // and every initialize rewrites it).
+      expect(initializeCalls, hasLength(1));
+      expect(
+        (initializeCalls.single.arguments
+            as Map<dynamic, dynamic>)['defaultIcon'],
+        'ic_stat_tabs',
+      );
+      // Chronometer block: unchanged, byte-for-byte in behavior.
+      expect(specifics['showWhen'], isTrue);
+      expect(specifics['when'], countdownTo.millisecondsSinceEpoch);
+      expect(specifics['usesChronometer'], isTrue);
+      expect(specifics['chronometerCountDown'], isTrue);
+      expect(specifics['timeoutAfter'],
+          countdownTo.difference(when).inMilliseconds);
+      // Exact schedule mode (the mock grants exact alarms; the
+      // mapper serializes the mode by name).
+      expect(specifics['scheduleMode'], 'exactAllowWhileIdle');
+      // Large icon: the bandit_full drawable resource. (The
+      // AndroidBitmapSource enum is hidden from the plugin's
+      // public exports, so the expected serialized index is
+      // taken from the exported bitmap class itself.)
+      expect(specifics['largeIcon'], 'bandit_full');
+      expect(
+        specifics['largeIconBitmapSource'],
+        const DrawableResourceAndroidBitmap('bandit_full').source.index,
+      );
+      // BigText style with Juno's exact strings and HTML flags.
+      expect(specifics['style'], AndroidNotificationStyle.bigText.index);
+      final style =
+          specifics['styleInformation'] as Map<dynamic, dynamic>;
+      expect(style['contentTitle'],
+          '<b><font color="#7C6EFF">You\'re on a 27 day streak</font></b>');
+      expect(style['htmlFormatContentTitle'], isTrue);
+      expect(style['htmlFormatTitle'], isTrue);
+      expect(style['htmlFormatContent'], isFalse);
+      expect(
+        style['bigText'],
+        'Finish today\'s Daily Summary when you\'re ready. '
+        'There\'s still time tonight to add today to your streak.',
+      );
+      expect(style['htmlFormatBigText'], isFalse);
+      // Exactly ONE action: the ruled id/label, UI-showing,
+      // notification-cancelling.
+      final actions = specifics['actions'] as List<dynamic>;
+      expect(actions, hasLength(1));
+      final action = actions.single as Map<dynamic, dynamic>;
+      expect(action['id'], 'open_daily_summary');
+      expect(action['title'], 'Open Daily Summary');
+      expect(action['showsUserInterface'], isTrue);
+      expect(action['cancelNotification'], isTrue);
+    });
+
+    test('the shared reminder details builder (check-in, habit, '
+        'project, event, user reminders) also carries the new '
+        'small icon', () async {
+      final service = LocalReminderNotificationService(
+          plugin: FlutterLocalNotificationsPlugin());
+      final when = DateTime.now().add(const Duration(days: 1));
+      await service.scheduleOnce(
+        id: 810001,
+        title: 'how are you feeling?',
+        body: 'one tap is enough. whenever you\'re ready.',
+        channelId: 'check_in_reminder',
+        channelName: 'Check in reminders',
+        when: DateTime(when.year, when.month, when.day, 20),
+        highImportance: true,
+      );
+      expect(zonedScheduleCalls, hasLength(1));
+      final args =
+          zonedScheduleCalls.single.arguments as Map<dynamic, dynamic>;
+      final specifics =
+          args['platformSpecifics'] as Map<dynamic, dynamic>;
+      expect(specifics['icon'], 'ic_stat_tabs');
+      // The other reminders keep the channel-id payload (no
+      // routing) — only the streak countdown's payload changed.
+      expect(args['payload'], 'check_in_reminder');
     });
   });
 }

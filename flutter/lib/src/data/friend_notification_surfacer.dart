@@ -130,7 +130,7 @@ class LocalFriendNotifier implements FriendLocalNotifier {
     } else {
       await _plugin.initialize(
         const InitializationSettings(
-          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+          android: AndroidInitializationSettings('ic_stat_tabs'),
         ),
       );
     }
@@ -159,7 +159,7 @@ class LocalFriendNotifier implements FriendLocalNotifier {
             importance: Importance.defaultImportance,
             priority: Priority.defaultPriority,
             visibility: NotificationVisibility.private,
-            icon: '@mipmap/ic_launcher',
+            icon: 'ic_stat_tabs',
           ),
         ),
         payload: payloadFor(serverNotificationId),

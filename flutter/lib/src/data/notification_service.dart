@@ -123,8 +123,11 @@ class NotificationServiceException implements Exception {
 /// dispatching callback. A payload matching
 /// [LocalDailyScoreReadyNotifier.isScorePayload] routes to the
 /// score tap handler the notifier registers via
-/// [registerScoreTapHandler]; anything else keeps the reminder
-/// service's previous behavior — no callback, i.e. a no-op.
+/// [registerScoreTapHandler]; the migraine, report-ready, and
+/// Daily Summary payloads (and the Daily Summary action id)
+/// route to their registered handlers the same way; anything
+/// else keeps the reminder service's previous behavior — no
+/// callback, i.e. a no-op.
 /// Both services SKIP their own plugin.initialize once the
 /// bootstrap has run (they call [initialize], which joins the
 /// in-flight run or no-ops). The background isolate never runs
@@ -139,6 +142,7 @@ class NotificationBootstrap {
   static void Function(String date)? _scoreTapHandler;
   static void Function()? _migraineTapHandler;
   static void Function()? _reportReadyTapHandler;
+  static void Function()? _dailySummaryTapHandler;
 
   /// Whether the foreground plugin.initialize has completed.
   static bool get isInitialized => _initialized;
@@ -173,6 +177,39 @@ class NotificationBootstrap {
     _reportReadyTapHandler = handler;
   }
 
+  /// Registers the Daily Summary tap handler (the rich streak
+  /// reminder's tap destination — the app flow's handler, which
+  /// lands the user on Home and asks the Today Summary card to
+  /// open its sheet via [DailySummaryOpenSignal]). Both a tap on
+  /// the notification body (payload
+  /// [dailySummaryNotificationPayload]) and a tap on its
+  /// "Open Daily Summary" action (action id
+  /// [dailySummaryOpenActionId]) route here.
+  static void registerDailySummaryTapHandler(void Function() handler) {
+    _dailySummaryTapHandler = handler;
+  }
+
+  /// Whether the app was LAUNCHED (terminated state) by a Daily
+  /// Summary tap — the cold-start equivalent of the dispatch
+  /// branch below, mirroring
+  /// `LocalDailyScoreReadyNotifier.launchScorePayload` and
+  /// `LocalMigraineNotifier.launchMigrainePayload`. Never throws:
+  /// a launch-details failure simply means no tap to consume.
+  static Future<bool> launchedByDailySummaryTap(
+      FlutterLocalNotificationsPlugin plugin) async {
+    try {
+      final details = await plugin.getNotificationAppLaunchDetails();
+      if (details?.didNotificationLaunchApp != true) return false;
+      final response = details?.notificationResponse;
+      return isDailySummaryNotificationTap(
+        payload: response?.payload,
+        actionId: response?.actionId,
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// The dispatching response callback handed to the plugin —
   /// also directly callable in tests.
   static void dispatchNotificationResponse(NotificationResponse response) {
@@ -183,6 +220,13 @@ class NotificationBootstrap {
     }
     if (LocalReportReadyNotifier.isReportReadyPayload(payload)) {
       _reportReadyTapHandler?.call();
+      return;
+    }
+    if (isDailySummaryNotificationTap(
+      payload: payload,
+      actionId: response.actionId,
+    )) {
+      _dailySummaryTapHandler?.call();
       return;
     }
     if (LocalDailyScoreReadyNotifier.isScorePayload(payload)) {
@@ -211,7 +255,7 @@ class NotificationBootstrap {
     try {
       final ok = await plugin.initialize(
         const InitializationSettings(
-          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+          android: AndroidInitializationSettings('ic_stat_tabs'),
         ),
         onDidReceiveNotificationResponse: dispatchNotificationResponse,
       );
@@ -232,6 +276,7 @@ class NotificationBootstrap {
     _scoreTapHandler = null;
     _migraineTapHandler = null;
     _reportReadyTapHandler = null;
+    _dailySummaryTapHandler = null;
   }
 }
 
@@ -322,6 +367,16 @@ abstract class ReminderNotificationService {
   /// at rollover even if the app never runs again. [when] is the
   /// 20:00 fire time; the chronometer target and the timeout are
   /// both derived from [countdownTo] by the implementation.
+  ///
+  /// Rich payload (Juno ruling 2026-11-24; Mason recon §7): the
+  /// implementation renders [title] — the ruled HTML headline —
+  /// as the base title with the title HTML flag set AND as the
+  /// BigText style's contentTitle, [body] as the collapsed body
+  /// with [streakCountdownBigText] as the expanded big text,
+  /// Bandit as the large icon, and one "Open Daily Summary"
+  /// action; the notification carries the
+  /// [dailySummaryNotificationPayload] payload so taps route to
+  /// the Daily Summary sheet.
   Future<void> scheduleStreakCountdownOnce({
     required int id,
     required String title,
@@ -710,19 +765,71 @@ const String streakCountdownChannelDescription =
     'today\'s Daily Summary is not finished, with the time left '
     'to extend your streak.';
 
-/// The streak countdown title (Juno, NOTIF-COPY.md §1.1 — ship
-/// byte-for-byte; sentence case, no terminal punctuation).
-const String streakCountdownTitle =
+/// The streak countdown headline (Juno ruling 2026-11-24 §1/§2 —
+/// ship byte-for-byte; any change needs Juno's re-sign): the
+/// streak as a present-tense fact about the run so far, in the
+/// BASE title field (with the title HTML flag set) and as the
+/// BigText style's expanded contentTitle, so the headline never
+/// swaps wording between the collapsed and expanded states.
+/// [streak] is the settled current streak at projection time —
+/// the same value the retired body carried — and `day` never
+/// pluralizes (§6: an attributive unit inside a compound
+/// modifier stays singular at every count). The streak number
+/// appears exactly ONCE across the whole notification: here.
+String streakCountdownHeadline(int streak) =>
+    'You\'re on a $streak day streak';
+
+/// The HTML form of [streakCountdownHeadline] (Juno ruling
+/// 2026-11-24 §1/§2): bold, Tabs brand primary #7C6EFF (the
+/// Notel primary token). Alarm red was rejected by the ruling —
+/// no ruled meaning depends on the color surviving OEM
+/// restyling; bold plus the plain words carry the full message.
+String streakCountdownHeadlineHtml(int streak) =>
+    '<b><font color="#7C6EFF">You\'re on a $streak day '
+    'streak</font></b>';
+
+/// The streak countdown collapsed body (Juno ruling 2026-11-24
+/// §3 — ship byte-for-byte): the previously ruled title sentence,
+/// retained verbatim and demoted to the body, where an
+/// instruction belongs under a headline. No streak number, no
+/// terminal punctuation added.
+const String streakCountdownBody =
     'Finish today\'s Daily Summary when you\'re ready';
 
-/// The streak countdown body (Juno, NOTIF-COPY.md §1.2 — ship
-/// byte-for-byte): [streak] is the settled current streak at
-/// projection time; the lowercase `t` and the absent terminal
-/// punctuation are intentional (the body is a continuation
-/// clause composed with the live chronometer), and `day` never
-/// pluralizes (§1.4 — only the numeral changes).
-String streakCountdownBody(int streak) =>
-    'to extend your $streak day streak';
+/// The streak countdown expanded big text (Juno ruling
+/// 2026-11-24 §3 — ship byte-for-byte): the collapsed body plus
+/// the truthful frame for the countdown — time left to finish
+/// today. True for the notification's entire visible life (it
+/// posts at 20:00 and timeoutAfter removes it at the day
+/// boundary). No markup, so no HTML flag is set for it.
+const String streakCountdownBigText =
+    'Finish today\'s Daily Summary when you\'re ready. '
+    'There\'s still time tonight to add today to your streak.';
+
+/// The plugin payload the rich streak reminder carries (Juno /
+/// Mason recon §5): distinct from its channel id so a tap can
+/// route. A body tap arrives with this payload and no action
+/// id; the action tap arrives with this payload AND
+/// [dailySummaryOpenActionId].
+const String dailySummaryNotificationPayload = 'daily_summary';
+
+/// The one notification action's id (Juno ruling 2026-11-24 §4
+/// rules its label, [streakCountdownActionLabel]).
+const String dailySummaryOpenActionId = 'open_daily_summary';
+
+/// The one notification action's label (Juno ruling 2026-11-24
+/// §4 — ship byte-for-byte): names only what the tap actually
+/// does — opens the Daily Summary. "Save Streak" was rejected:
+/// it would claim the streak is lost tonight, which is false
+/// (Midnight Grace, freeze auto-bridge, settlement at app open).
+const String streakCountdownActionLabel = 'Open Daily Summary';
+
+/// Whether a notification response is a Daily Summary tap: a
+/// body tap on the rich streak reminder (its payload) or a tap
+/// on its "Open Daily Summary" action (its action id).
+bool isDailySummaryNotificationTap({String? payload, String? actionId}) =>
+    payload == dailySummaryNotificationPayload ||
+    actionId == dailySummaryOpenActionId;
 
 /// The next Tabs day boundary strictly after [now], derived
 /// ONLY from the streak engine's shared day definition
@@ -1231,8 +1338,12 @@ class ReminderSync {
       for (final fire in countdownFires) {
         await service.scheduleStreakCountdownOnce(
           id: streakCountdownIdForDate(fire),
-          title: streakCountdownTitle,
-          body: streakCountdownBody(streak),
+          // Juno ruling 2026-11-24 §2: the title argument IS the
+          // headline in its HTML form (the details set the title
+          // HTML flag); §3: the body is the collapsed body. The
+          // projection itself (fires, ids, gate) is unchanged.
+          title: streakCountdownHeadlineHtml(streak),
+          body: streakCountdownBody,
           channelId: streakCountdownChannelId,
           channelName: streakCountdownChannelName,
           channelDescription: streakCountdownChannelDescription,
@@ -1502,7 +1613,7 @@ class LocalReminderNotificationService implements ReminderNotificationService {
         importance:
             highImportance ? Importance.high : Importance.defaultImportance,
         priority: highImportance ? Priority.high : Priority.defaultPriority,
-        icon: '@mipmap/ic_launcher',
+        icon: 'ic_stat_tabs',
       ),
     );
   }
@@ -1640,7 +1751,11 @@ class LocalReminderNotificationService implements ReminderNotificationService {
                 : Importance.defaultImportance,
             priority:
                 highImportance ? Priority.high : Priority.defaultPriority,
-            icon: '@mipmap/ic_launcher',
+            // Notification small icon (RECON-ICON.md): the Tabs
+            // note silhouette drawable — the launcher icon is
+            // fully opaque, so its alpha-only small-icon render
+            // was a solid white disc.
+            icon: 'ic_stat_tabs',
             // Juno NOTIF-COPY.md §1.3 — chronometer configuration:
             // `when` is the boundary instant, shown as a LIVE
             // count-down; subText stays unset; no static time
@@ -1652,12 +1767,50 @@ class LocalReminderNotificationService implements ReminderNotificationService {
             usesChronometer: true,
             chronometerCountDown: true,
             timeoutAfter: countdownTo.difference(when).inMilliseconds,
+            // Rich payload (Juno ruling 2026-11-24; Mason recon
+            // §7a — plugin-only BigText route, verified against
+            // the locked flutter_local_notifications 19.5.0
+            // sources): Bandit as the large icon — the
+            // drawable-nodpi byte-twin of the Flutter asset,
+            // already shipped for the home-screen widgets, so
+            // the resource name resolves with no new art.
+            largeIcon: const DrawableResourceAndroidBitmap('bandit_full'),
+            // [title] IS the ruled HTML headline (see
+            // [streakCountdownHeadlineHtml]): it is the base
+            // title (htmlFormatTitle) and the expanded
+            // contentTitle (htmlFormatContentTitle), so the
+            // headline is identical collapsed and expanded.
+            // bigText carries no markup, so its HTML flag
+            // stays unset.
+            styleInformation: BigTextStyleInformation(
+              streakCountdownBigText,
+              contentTitle: title,
+              htmlFormatContentTitle: true,
+              htmlFormatTitle: true,
+            ),
+            // The ONE action (Juno ruling §4): shows the UI so
+            // its tap lands in NotificationBootstrap's dispatch
+            // with this action id; cancelNotification dismisses
+            // the notification on tap (the plugin's default,
+            // set explicitly so the behavior is pinned).
+            actions: const <AndroidNotificationAction>[
+              AndroidNotificationAction(
+                dailySummaryOpenActionId,
+                streakCountdownActionLabel,
+                showsUserInterface: true,
+                cancelNotification: true,
+              ),
+            ],
           ),
         ),
         androidScheduleMode: exact
             ? AndroidScheduleMode.exactAllowWhileIdle
             : AndroidScheduleMode.inexactAllowWhileIdle,
-        payload: channelId,
+        // Distinct from the channel id (which every other
+        // reminder uses as its payload): this notification's
+        // taps route — see [isDailySummaryNotificationTap] and
+        // NotificationBootstrap's dispatch branch.
+        payload: dailySummaryNotificationPayload,
       );
     } on NotificationServiceException {
       rethrow;
