@@ -118,6 +118,7 @@ DataShareDto _share(
   String nickname, {
   required bool outgoing,
   List<String> categories = const ['medications'],
+  List<String> unknownCategories = const [],
   String status = 'pending',
   DateTime? respondedAt,
 }) =>
@@ -127,6 +128,7 @@ DataShareDto _share(
       otherNickname: nickname,
       otherTag: '00001',
       categories: categories,
+      unknownCategories: unknownCategories,
       status: status,
       createdAt: DateTime(2026, 11, 20),
       respondedAt: respondedAt,
@@ -273,6 +275,7 @@ void main() {
         'badges_and_gems': 'Badges and gems',
         'log_entries': 'Log entries',
         'summaries': 'Summaries',
+        'reports': 'Reports',
       };
       for (final entry in names.entries) {
         final key = ValueKey('pick_cat_${entry.key}');
@@ -300,6 +303,27 @@ void main() {
         find.text('Only your sleep numbers: how long you slept, your '
             'Sleep Need, and your sleep score. Nothing else from your '
             'Daily Scores.'),
+        findsOneWidget,
+      );
+      // Juno ruling §5 (Summaries) + §1.1 (Reports), verbatim.
+      await _scrollTo(
+          tester, find.byKey(const ValueKey('pick_cat_summaries')));
+      expect(
+        find.text('Your Daily Summary: which days you finished it, '
+            'and for one day at a time, what was planned and what '
+            'got finished, your 1 to 5 check-in, and your Morning '
+            'Score. Also basic facts about your generated reports '
+            '— when one was made and how many entries it covered. '
+            'The report itself is not part of this one.'),
+        findsOneWidget,
+      );
+      await _scrollTo(
+          tester, find.byKey(const ValueKey('pick_cat_reports')));
+      expect(
+        find.text('Your clinical report PDFs. With this on, their '
+            'AI can make a report PDF from your Tabs data — the '
+            'same kind of report you can make in the app. It starts '
+            'off, and stays off unless you turn it on.'),
         findsOneWidget,
       );
       // §a4 honesty block, verbatim, above the send button.
@@ -460,6 +484,66 @@ void main() {
           findsNothing);
     });
 
+    testWidgets(
+        'last-read: a report generation renders Juno §8\'s '
+        'generated line, not the viewed line', (tester) async {
+      final backend = manageBackend();
+      backend.lastReads = [
+        ShareLastReadDto(
+          recipientId: 'f1',
+          nickname: 'Dad',
+          tag: '00001',
+          category: 'reports',
+          tool: 'generate_report',
+          readAt: DateTime.now(),
+        ),
+      ];
+      await tester.pumpWidget(_wrap(ConnectAiScreen(backend: backend)));
+      await tester.pumpAndSettle();
+
+      await _scrollTo(tester, find.text("Dad's AI last generated a "
+          'report from your data today'));
+      expect(
+        find.text("Dad's AI last generated a report from your data "
+            'today'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('last viewed your Reports'),
+          findsNothing);
+    });
+
+    testWidgets(
+        'last-read: a newer read still wins over an older generation',
+        (tester) async {
+      final backend = manageBackend();
+      final now = DateTime.now();
+      backend.lastReads = [
+        ShareLastReadDto(
+          recipientId: 'f1',
+          nickname: 'Dad',
+          tag: '00001',
+          category: 'reports',
+          tool: 'generate_report',
+          readAt: now.subtract(const Duration(days: 1)),
+        ),
+        ShareLastReadDto(
+          recipientId: 'f1',
+          nickname: 'Dad',
+          tag: '00001',
+          category: 'sleep',
+          tool: 'get_shared_data',
+          readAt: now,
+        ),
+      ];
+      await tester.pumpWidget(_wrap(ConnectAiScreen(backend: backend)));
+      await tester.pumpAndSettle();
+
+      await _scrollTo(
+          tester, find.text("Dad's AI last viewed your Sleep today"));
+      expect(find.text("Dad's AI last viewed your Sleep today"),
+          findsOneWidget);
+    });
+
     testWidgets('last-read line picks the most recent category',
         (tester) async {
       final backend = manageBackend();
@@ -539,6 +623,66 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('confirm_stop_sharing')));
       await tester.pumpAndSettle();
       expect(backend.revokedIds, ['s1']);
+    });
+
+    testWidgets(
+        'manage toggle on a share with an unknown category keeps '
+        'that key in the save payload', (tester) async {
+      final backend = FakeShareBackend(
+        friends: [_friend('f1', 'Dad')],
+        outgoing: [
+          _share('s1', 'f1', 'Dad',
+              outgoing: true,
+              categories: ['medications'],
+              unknownCategories: ['future_scope'],
+              status: 'accepted',
+              respondedAt: DateTime(2026, 11, 20)),
+        ],
+      );
+      await tester.pumpWidget(_wrap(ConnectAiScreen(backend: backend)));
+      await tester.pumpAndSettle();
+
+      await _scrollTo(
+          tester, find.byKey(const ValueKey('manage_share_s1')));
+      await tester.tap(find.byKey(const ValueKey('manage_share_s1')));
+      await tester.pumpAndSettle();
+
+      // The unknown key renders no toggle of its own.
+      expect(find.byKey(const ValueKey('manage_cat_s1_future_scope')),
+          findsNothing);
+
+      await _scrollTo(
+          tester, find.byKey(const ValueKey('manage_cat_s1_sleep')));
+      await tester.tap(find.byKey(const ValueKey('manage_cat_s1_sleep')));
+      await tester.pumpAndSettle();
+
+      // Load → toggle-another-category → save: the unknown grant
+      // is written back untouched, not wiped by the save.
+      expect(backend.categoryUpdates.length, 1);
+      expect(backend.categoryUpdates.single.$2,
+          ['medications', 'sleep', 'future_scope']);
+    });
+
+    testWidgets('manage view shows the Reports toggle',
+        (tester) async {
+      final backend = manageBackend();
+      await tester.pumpWidget(_wrap(ConnectAiScreen(backend: backend)));
+      await tester.pumpAndSettle();
+
+      await _scrollTo(
+          tester, find.byKey(const ValueKey('manage_share_s1')));
+      await tester.tap(find.byKey(const ValueKey('manage_share_s1')));
+      await tester.pumpAndSettle();
+
+      await _scrollTo(
+          tester, find.byKey(const ValueKey('manage_cat_s1_reports')));
+      final tile = tester.widget<SwitchListTile>(
+          find.byKey(const ValueKey('manage_cat_s1_reports')));
+      expect(tile.value, isFalse);
+      await tester.tap(find.byKey(const ValueKey('manage_cat_s1_reports')));
+      await tester.pumpAndSettle();
+      expect(backend.categoryUpdates.single.$2,
+          ['medications', 'sleep', 'reports']);
     });
   });
 
@@ -681,7 +825,11 @@ void main() {
       expect(dto.isPending, isTrue);
     });
 
-    test('unknown category keys are dropped, missing id is null', () {
+    test('unknown category keys are PRESERVED, missing id is null',
+        () {
+      // Hazard fix (MCP Reports package): the pre-fix parse dropped
+      // unknown keys, so a later save could wipe a server-side
+      // grant this build predates. They now ride on the model.
       final dto = DataShareDto.fromJson({
         'id': 'abc',
         'sharer': {'id': 'u2', 'nickname': 'Maya', 'tag': '9'},
@@ -689,9 +837,67 @@ void main() {
         'status': 'pending',
       }, outgoing: false);
       expect(dto!.categories, ['sleep']);
+      expect(dto.unknownCategories, ['bogus_key']);
+      expect(dto.allCategories, ['sleep', 'bogus_key']);
       expect(
         DataShareDto.fromJson({'status': 'pending'}, outgoing: true),
         isNull,
+      );
+    });
+
+    test('reports is a known category (not unknown)', () {
+      expect(dataShareCategoryKeys, contains('reports'));
+      final dto = DataShareDto.fromJson({
+        'id': 'abc',
+        'recipient': {'id': 'u1', 'nickname': 'Dad', 'tag': '1'},
+        'categories': ['reports', 'summaries'],
+        'status': 'accepted',
+      }, outgoing: true);
+      expect(dto!.categories, ['summaries', 'reports']);
+      expect(dto.unknownCategories, isEmpty);
+      expect(ShareCopy.categoryName('reports'), 'Reports');
+    });
+
+    test(
+        'unknown key survives load → toggle another category → save',
+        () {
+      // Load: the server share carries a category this build
+      // predates ('future_scope') alongside a known one.
+      final dto = DataShareDto.fromJson({
+        'id': 'abc',
+        'recipient': {'id': 'u1', 'nickname': 'Dad', 'tag': '1'},
+        'categories': ['future_scope', 'medications'],
+        'status': 'accepted',
+      }, outgoing: true)!;
+      expect(dto.categories, ['medications']);
+      expect(dto.unknownCategories, ['future_scope']);
+
+      // Toggle another category ON (the manage-view save path):
+      // the payload keeps the unknown key untouched, after the
+      // known keys in canonical order.
+      final payloadOn = dto.categoriesForSave({'medications', 'sleep'});
+      expect(payloadOn, ['medications', 'sleep', 'future_scope']);
+
+      // Toggle a known category OFF: unknown key still survives.
+      final payloadOff = dto.categoriesForSave({'sleep'});
+      expect(payloadOff, ['sleep', 'future_scope']);
+
+      // copyWith (the screen's post-save model update, which
+      // passes only the known selection) preserves the unknown
+      // keys by default.
+      final updated = dto.copyWith(categories: ['sleep']);
+      expect(updated.categories, ['sleep']);
+      expect(updated.unknownCategories, ['future_scope']);
+      expect(updated.allCategories, ['sleep', 'future_scope']);
+      expect(updated.categoriesForSave(updated.categories), payloadOff);
+    });
+
+    test('orderedDataShareCategories: known canonical, unknown last',
+        () {
+      expect(
+        orderedDataShareCategories(
+            ['zzz_future', 'sleep', 'medications', 'sleep', 'aaa_future']),
+        ['medications', 'sleep', 'zzz_future', 'aaa_future'],
       );
     });
   });
@@ -782,6 +988,24 @@ void main() {
       final reads = await backend.fetchShareLastReads();
       expect(reads!.single.category, 'sleep');
       expect(reads.single.readAt, isNotNull);
+      // The endpoint's `tool` field is carried on the DTO (Juno
+      // ruling §8 keys the generation line off it).
+      expect(reads.single.tool, 'get_shared_data');
+      expect(reads.single.isReportGeneration, isFalse);
+    });
+
+    test('ShareLastReadDto parses a generate_report row', () {
+      final dto = ShareLastReadDto.fromJson({
+        'recipient_id': 'u1',
+        'nickname': 'Dad',
+        'tag': '1',
+        'category': 'reports',
+        'tool': 'generate_report',
+        'read_at': '2026-11-24T10:00:00.000Z',
+      });
+      expect(dto, isNotNull);
+      expect(dto!.isReportGeneration, isTrue);
+      expect(dto.category, 'reports');
     });
 
     test('lists return null on non-200 (honest failure)', () async {

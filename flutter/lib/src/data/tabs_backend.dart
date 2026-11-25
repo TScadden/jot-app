@@ -2905,11 +2905,13 @@ class TabsBackend {
   }
 }
 
-/// The 8 shareable category keys, in Juno's signed order
-/// (build-mcp-sharing/JUNO-COPY.md §a2). Stable server strings
-/// (jot-server `CATEGORY_KEYS`); the server re-sorts any payload
-/// into this order, and the app renders category lists in this
-/// order too (Juno's {categories} slot rule).
+/// The 9 shareable category keys, in Juno's signed order
+/// (build-mcp-sharing/JUNO-COPY.md §a2, plus 'reports' appended
+/// at the end under the MCP Reports package's Juno ruling §1.1).
+/// Stable server strings (jot-server `CATEGORY_KEYS`); the
+/// server re-sorts any payload into this order, and the app
+/// renders category lists in this order too (Juno's
+/// {categories} slot rule).
 const List<String> dataShareCategoryKeys = [
   'medications',
   'sleep',
@@ -2919,7 +2921,34 @@ const List<String> dataShareCategoryKeys = [
   'badges_and_gems',
   'log_entries',
   'summaries',
+  'reports',
 ];
+
+/// Canonical ordering for a category payload that may carry
+/// keys this build does not know: known keys first, in
+/// [dataShareCategoryKeys] order, then unknown keys in their
+/// first-seen order, duplicates removed. Unknown keys are
+/// PRESERVED, never dropped — a server-side category this app
+/// build predates must survive a load → edit → save round-trip
+/// untouched, or saving the share would silently wipe a grant
+/// the user never saw (the pre-Reports parse did exactly that).
+List<String> orderedDataShareCategories(Iterable<String> keys) {
+  final seen = <String>{};
+  final known = <String>[];
+  final unknown = <String>[];
+  for (final k in keys) {
+    if (k.isEmpty || !seen.add(k)) continue;
+    if (dataShareCategoryKeys.contains(k)) {
+      known.add(k);
+    } else {
+      unknown.add(k);
+    }
+  }
+  known.sort((a, b) => dataShareCategoryKeys
+      .indexOf(a)
+      .compareTo(dataShareCategoryKeys.indexOf(b)));
+  return [...known, ...unknown];
+}
 
 /// Friend data sharing — one grant row from
 /// `GET /api/data-shares/outgoing|incoming` (or the `share`
@@ -2937,8 +2966,17 @@ class DataShareDto {
   final String otherNickname;
   final String otherTag;
 
-  /// Category keys (subset of [dataShareCategoryKeys]).
+  /// Known category keys (subset of [dataShareCategoryKeys]),
+  /// in canonical order. This is the set the toggles render.
   final List<String> categories;
+
+  /// Category keys this build does not know (the server granted
+  /// them; this app predates them). They are never rendered and
+  /// never toggleable here, but they are carried on the model
+  /// and written back untouched on every save — see
+  /// [categoriesForSave]. Dropping them would let an unrelated
+  /// toggle silently revoke a grant the user never saw.
+  final List<String> unknownCategories;
 
   /// pending | accepted | declined | revoked.
   final String status;
@@ -2955,6 +2993,7 @@ class DataShareDto {
     required this.otherTag,
     required this.categories,
     required this.status,
+    this.unknownCategories = const [],
     this.createdAt,
     this.respondedAt,
   });
@@ -2962,14 +3001,31 @@ class DataShareDto {
   bool get isPending => status == 'pending';
   bool get isAccepted => status == 'accepted';
 
+  /// Every category on the share — known keys in canonical
+  /// order, then [unknownCategories] in preserved order.
+  List<String> get allCategories =>
+      orderedDataShareCategories([...categories, ...unknownCategories]);
+
+  /// The payload to send when saving a new known-key selection:
+  /// the selection in canonical order with [unknownCategories]
+  /// appended untouched. Every category save for an existing
+  /// share must go through this (or [allCategories]).
+  List<String> categoriesForSave(Iterable<String> selectedKnown) =>
+      orderedDataShareCategories(
+          [...selectedKnown, ...unknownCategories]);
+
   DataShareDto copyWith(
-      {List<String>? categories, String? status, DateTime? respondedAt}) {
+      {List<String>? categories,
+      List<String>? unknownCategories,
+      String? status,
+      DateTime? respondedAt}) {
     return DataShareDto(
       id: id,
       otherId: otherId,
       otherNickname: otherNickname,
       otherTag: otherTag,
       categories: categories ?? this.categories,
+      unknownCategories: unknownCategories ?? this.unknownCategories,
       status: status ?? this.status,
       createdAt: createdAt,
       respondedAt: respondedAt ?? this.respondedAt,
@@ -2998,10 +3054,17 @@ class DataShareDto {
     }
     final rawCats = json['categories'];
     final cats = <String>[];
+    final unknownCats = <String>[];
     if (rawCats is List) {
       for (final c in rawCats) {
-        if (c is String && dataShareCategoryKeys.contains(c)) {
-          cats.add(c);
+        if (c is! String || c.isEmpty) continue;
+        if (dataShareCategoryKeys.contains(c)) {
+          if (!cats.contains(c)) cats.add(c);
+        } else if (!unknownCats.contains(c)) {
+          // PRESERVE, never drop: a key this build predates is a
+          // live server-side grant. It rides along untouched and
+          // is written back on save (categoriesForSave).
+          unknownCats.add(c);
         }
       }
     }
@@ -3015,6 +3078,7 @@ class DataShareDto {
       otherNickname: nickname,
       otherTag: tag,
       categories: cats,
+      unknownCategories: unknownCats,
       status: '${json['status'] ?? ''}',
       createdAt: AiConnectionDto._parseTimestamp(json['created_at']),
       respondedAt: AiConnectionDto._parseTimestamp(json['responded_at']),
@@ -3032,6 +3096,14 @@ class ShareLastReadDto {
 
   /// Category key (one of [dataShareCategoryKeys]).
   final String category;
+
+  /// The MCP tool that made the access — the endpoint's `tool`
+  /// field (`get_shared_data` for reads; `generate_report` for
+  /// friend-initiated report generations once the server's
+  /// last-read extension lands, ruling R7). Empty when the
+  /// server does not send it (older deploy) — such rows render
+  /// as ordinary reads.
+  final String tool;
   final DateTime? readAt;
 
   const ShareLastReadDto({
@@ -3039,8 +3111,14 @@ class ShareLastReadDto {
     required this.nickname,
     required this.tag,
     required this.category,
+    this.tool = '',
     this.readAt,
   });
+
+  /// True when this row records a report generation rather than
+  /// a data read (Juno ruling §8: it renders with the
+  /// "last generated a report" line, never "last viewed").
+  bool get isReportGeneration => tool == 'generate_report';
 
   static ShareLastReadDto? fromJson(Map<String, dynamic> json) {
     final rawId = json['recipient_id'];
@@ -3053,6 +3131,7 @@ class ShareLastReadDto {
       nickname: '${json['nickname'] ?? ''}',
       tag: '${json['tag'] ?? ''}',
       category: rawCat,
+      tool: '${json['tool'] ?? json['tool_name'] ?? ''}',
       readAt: AiConnectionDto._parseTimestamp(json['read_at']),
     );
   }
