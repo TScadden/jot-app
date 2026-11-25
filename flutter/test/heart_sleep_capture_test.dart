@@ -15,7 +15,7 @@ import 'package:tabs_lab/src/data/migraine_notification.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
-import 'package:tabs_lab/src/features/shell/nav_dock.dart';
+import 'package:tabs_lab/src/features/shell/nav_dock_solid.dart';
 
 /// Heart/Sleep toggle — visual capture harness (modeled on
 /// drawer_nav_fade_capture_test.dart). Frames @ DPR 3.0 at the
@@ -158,8 +158,14 @@ void main() {
     });
   }
 
-  Finder dockIcon(IconData icon) =>
-      find.descendant(of: find.byType(NavDock), matching: find.byIcon(icon));
+  // Nav Bar Style update (Nov 24, 2026): the bare shell mounts
+  // the default Solid dock; its cells carry the same glyphs, so
+  // the tap finder scopes to it. The capture subject under test
+  // is dock-agnostic.
+  Finder dockIcon(IconData icon) => find.descendant(
+    of: find.byType(NavDockSolid),
+    matching: find.byIcon(icon),
+  );
 
   for (final width in [360.0, 390.0]) {
     final tag = width.toInt();
