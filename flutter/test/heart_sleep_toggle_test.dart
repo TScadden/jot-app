@@ -15,7 +15,7 @@ import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/heart/heart_screen.dart';
 import 'package:tabs_lab/src/features/shell/heart_sleep_mode.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
-import 'package:tabs_lab/src/features/shell/nav_dock.dart';
+import 'package:tabs_lab/src/features/shell/nav_dock_solid.dart';
 import 'package:tabs_lab/src/features/tools/sleep_screen.dart';
 
 import 'test_helpers.dart';
@@ -215,7 +215,7 @@ void main() {
 
   group('MainShell heart/sleep slot', () {
     Finder dockIcon(IconData icon) =>
-        find.descendant(of: find.byType(NavDock), matching: find.byIcon(icon));
+        find.descendant(of: find.byType(NavDockSolid), matching: find.byIcon(icon));
 
     Finder appBarIcon(IconData icon) =>
         find.descendant(of: find.byType(AppBar), matching: find.byIcon(icon));

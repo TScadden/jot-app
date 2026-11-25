@@ -301,11 +301,12 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   // Device-only settings (SettingsStore).
   bool _showNavLabels = true;
-  // Liquid Glass switch (Nav Bar Liquid Glass package, Nov 24,
-  // 2026): default ON, seeded from the store in _load like
+  // Nav Bar Style (Nav Bar Style package, Nov 24, 2026):
+  // default Solid, seeded from the store in _load like
   // _showNavLabels; MainShell reads the same store live, so the
-  // dock re-renders on the flip with no restart.
-  bool _liquidGlass = true;
+  // dock re-renders on the flip with no restart. (Supersedes
+  // the PR #170 _liquidGlass bool field.)
+  NavBarStyle _navBarStyle = NavBarStyle.solid;
   // Juno ruling (Oct 2026): no _themeMode view state anymore — the
   // Appearance picker is disabled and Dark is always the shown
   // selection, so this screen never reads the stored theme mode.
@@ -607,7 +608,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       _store.getUserContextHidden(),
       _store.getCheckInReminderEnabled(),
       _store.getLastSyncTimeMs(),
-      _store.getLiquidGlass(),
+      _store.getNavBarStyle(),
     ]);
     if (!mounted) return;
     final body = results[0] as Map<String, dynamic>?;
@@ -640,7 +641,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       _contextHidden = results[2] as bool;
       _checkInEnabled = results[3] as bool;
       _lastSyncMs = results[4] as int;
-      _liquidGlass = results[5] as bool;
+      _navBarStyle = results[5] as NavBarStyle;
       _loaded = true;
       if (!_contextSeeded) {
         _contextController.text = data.userContext;
@@ -4311,22 +4312,62 @@ class _SettingsScreenState extends State<SettingsScreen>
           key: const ValueKey('nav_labels_toggle'),
         ),
         const SizedBox(height: 16),
-        // Liquid Glass switch (Nav Bar Liquid Glass package,
-        // Nov 24, 2026): same row pattern, same card, directly
-        // under the nav-labels preference — same feature family.
-        // Subtitle is Juno's final string (JUNO-NOTES.md): honest
-        // that the switch covers the nav bar only in this build.
-        // OFF renders the pre-package dock; MainShell picks the
-        // flip up live through the shared store.
-        _toggleRow(
-          'Liquid Glass',
-          'Bottom navigation bar only. Off shows the bar as it is now.',
-          _liquidGlass,
-          (v) async {
-            setState(() => _liquidGlass = v);
-            await _store.setLiquidGlass(v);
-          },
-          key: const ValueKey('liquid_glass_toggle'),
+        // Nav Bar Style choice (Nav Bar Style package, Nov 24,
+        // 2026): replaces the PR #170 Liquid Glass on/off toggle
+        // in the same card position, directly under the
+        // nav-labels preference — same feature family. Follows
+        // the Appearance picker's segmented pattern below (Row
+        // of Expanded ElevatedButtons) but ENABLED: a tap writes
+        // the style through the store and MainShell flips the
+        // visible dock live, exactly like the toggle did. Title,
+        // subtitle, and option labels are Juno's FINAL strings
+        // (relayed by the coordinator, Nov 24, 2026) — the
+        // subtitle states the default plainly.
+        const Text('Navigation Bar Style',
+            style: TextStyle(
+                color: NotelColors.textPrimary,
+                fontWeight: FontWeight.w600,
+                fontSize: 14)),
+        const SizedBox(height: 2),
+        const Text('Bottom navigation bar only. Solid is the default.',
+            style:
+                TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            for (final (style, label) in const [
+              (NavBarStyle.solid, 'Solid'),
+              (NavBarStyle.liquidGlass, 'Liquid Glass'),
+            ])
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ElevatedButton(
+                    key: ValueKey(style == NavBarStyle.solid
+                        ? 'nav_style_solid'
+                        : 'nav_style_liquid_glass'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _navBarStyle == style
+                          ? NotelColors.primary
+                          : NotelColors.surfaceHigh,
+                      foregroundColor: _navBarStyle == style
+                          ? Colors.white
+                          : NotelColors.textSecondary,
+                    ),
+                    onPressed: () async {
+                      setState(() => _navBarStyle = style);
+                      await _store.setNavBarStyle(style);
+                    },
+                    child: Text(label,
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: _navBarStyle == style
+                                ? FontWeight.bold
+                                : FontWeight.w500)),
+                  ),
+                ),
+              ),
+          ],
         ),
         // Round 30: the dock consumes this preference now (MainShell
         // passes it to NavDock, which renders native's labeled
