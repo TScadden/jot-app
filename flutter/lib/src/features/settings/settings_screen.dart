@@ -28,6 +28,7 @@ import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/revenuecat_service.dart';
 import 'package:tabs_lab/src/data/onboarding_sync_outbox.dart';
 import 'package:tabs_lab/src/data/report_generation_service.dart';
+import 'package:tabs_lab/src/data/weekly_generation_claim.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/billing/billing_plans_panel.dart';
@@ -1382,6 +1383,11 @@ class _SettingsScreenState extends State<SettingsScreen>
               // this page's disposal (body swap / tab switch) and
               // its completion is presented wherever the user is.
               generationService: ReportGenerationService.instance,
+              // Background Generation package: the file-backed
+              // cross-process claim for the weekly automation
+              // coordinator (races the background runner's claim
+              // for the same due week; Vera ruling 2026-11-24).
+              weeklyClaim: WeeklyGenerationClaim.lazyProduction(),
             ),
         ],
       ),

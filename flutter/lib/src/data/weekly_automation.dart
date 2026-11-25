@@ -1,4 +1,5 @@
 import 'progress_report.dart';
+import 'weekly_generation_claim.dart';
 import 'weekly_notification.dart';
 import 'weekly_report.dart';
 
@@ -20,6 +21,18 @@ import 'weekly_report.dart';
 /// weekly surface opens (and again on lifecycle resume while it
 /// is mounted). A week the app never opens across is never
 /// generated late: see [weeklyDueWeek].
+///
+/// Background Generation package (2026-11-24): the SAME
+/// coordinator now also runs from the WorkManager background
+/// isolate (see weekly_report_background.dart, which piggybacks
+/// on the existing Daily Score dispatcher — no new task
+/// registration). Cross-process idempotency against the
+/// first-open run is the per-week claim (Vera design ruling
+/// 2026-11-24): a [WeeklyGenerationClaim] acquired after
+/// entitlement and before generation, a post-generation archive
+/// re-read before upsert, and a claim-token re-verification
+/// after upsert immediately before the send. The manual
+/// generation path takes NO claim and is untouched.
 
 // ── Trigger ────────────────────────────────────────────────────
 
@@ -166,12 +179,20 @@ class WeeklyAutomationCoordinator {
     required this._store,
     required this._generate,
     required this._notifier,
-  });
+    WeeklyGenerationClaim? claim,
+  }) : _claim = claim ?? WeeklyGenerationClaim.permissive();
 
   final Future<WeeklyEntitlement> Function() _checkEntitlement;
   final WeeklyReportStore _store;
   final WeeklyGenerateFn _generate;
   final WeeklyNotifier _notifier;
+
+  /// The cross-process claim seam (Vera ruling §3). Injectable
+  /// exactly like [WeeklyReportStore.withStorage]; the default
+  /// is the permissive test seam, so every pre-existing suite
+  /// observes no behavior change. Production wiring (page and
+  /// background runner) passes the file-backed claim.
+  final WeeklyGenerationClaim _claim;
 
   bool _inFlight = false;
 
@@ -217,12 +238,28 @@ class WeeklyAutomationCoordinator {
       return WeeklyAutoOutcome(WeeklyAutoKind.notDue, week: week);
     }
     _inFlight = true;
+    WeeklyClaimHandle? claimHandle;
     try {
       // Re-check the archive after the entitlement await: a
       // manual generation of this same week may have landed
       // while the check was in flight.
       final recheck = await _store.readAll();
       if (recheck.any((r) => r.weekStartKey == week.startKey)) {
+        return WeeklyAutoOutcome(WeeklyAutoKind.notDue, week: week);
+      }
+
+      // Vera ruling §3 step 5 — acquire the cross-process claim
+      // AFTER entitlement and BEFORE generation. A fresh claim
+      // held by another engine ⇒ notDue (release nothing — it
+      // is not ours). Claim-infrastructure failure ⇒ FAIL
+      // CLOSED: never generate unclaimed.
+      try {
+        claimHandle = await _claim.tryAcquire(week.startKey, now);
+      } catch (_) {
+        return WeeklyAutoOutcome(WeeklyAutoKind.generationFailed,
+            week: week);
+      }
+      if (claimHandle == null) {
         return WeeklyAutoOutcome(WeeklyAutoKind.notDue, week: week);
       }
 
@@ -233,7 +270,7 @@ class WeeklyAutomationCoordinator {
         // A throwing generation seam is a failed generation:
         // nothing archived, nothing notified, the week stays
         // due for a later open (the finally below re-arms the
-        // guard).
+        // guard and releases the claim).
         result = null;
       }
       if (result == null) {
@@ -241,7 +278,18 @@ class WeeklyAutomationCoordinator {
             week: week);
       }
 
-      final previous = WeeklyReportStore.previousOf(recheck, week);
+      // Vera ruling §3 step 7 — post-generation archive re-read,
+      // BEFORE upsert: a record for this week appearing meanwhile
+      // (the other engine finished first, or a manual generation
+      // landed) suppresses this run entirely — no upsert-over
+      // (the pre-existing record survives byte-for-byte), no
+      // send; the claim is released in the finally below.
+      final postGeneration = await _store.readAll();
+      if (postGeneration.any((r) => r.weekStartKey == week.startKey)) {
+        return WeeklyAutoOutcome(WeeklyAutoKind.notDue, week: week);
+      }
+
+      final previous = WeeklyReportStore.previousOf(postGeneration, week);
       // Juno §d Flag 1: a still-running day is never a complete
       // day. The due week's Sunday is still running only when
       // generation happens ON that Sunday (the 21:00 trigger
@@ -274,7 +322,19 @@ class WeeklyAutomationCoordinator {
         completeDays: evaluation.completeDays,
         avgScoreCompleteDays: evaluation.avgScoreCompleteDays,
       );
-      await _store.upsert(record);
+      try {
+        await _store.upsert(record);
+      } catch (_) {
+        // PKG2 MINOR 2, absorbed: a throwing upsert is a failed
+        // generation outcome, never an escape — on the
+        // background path the runner's never-throws top level is
+        // the second guard, and the claim is released in the
+        // finally below either way. If the write secretly
+        // landed, the next check's archive read returns notDue
+        // (the accepted at-most-one outcome).
+        return WeeklyAutoOutcome(WeeklyAutoKind.generationFailed,
+            week: week);
+      }
 
       // The notification gate (Session #2 honesty policy): the
       // "ready" send exists ONLY on the bar-passing path. A
@@ -282,6 +342,18 @@ class WeeklyAutomationCoordinator {
       // held outcome with zero sends — the notifier is never
       // invoked for them.
       if (evaluation.barMet) {
+        // Vera ruling §3 step 9 — claim-token re-verification,
+        // after upsert and immediately before the send: a
+        // mismatch or an unreadable claim (this run was stolen
+        // from mid-generation) suppresses the send. The record
+        // stays archived; the foreign claim is NOT deleted (the
+        // token-checked release in the finally sees it is not
+        // ours and leaves it).
+        final stillMine = await claimHandle.verifyStillMine();
+        if (!stillMine) {
+          return WeeklyAutoOutcome(WeeklyAutoKind.notDue,
+              week: week, evaluation: evaluation, record: record);
+        }
         try {
           await _notifier.showWeeklyReady();
         } catch (_) {
@@ -295,6 +367,13 @@ class WeeklyAutomationCoordinator {
       return WeeklyAutoOutcome(WeeklyAutoKind.generatedHeld,
           week: week, evaluation: evaluation, record: record);
     } finally {
+      // Vera ruling §4: the claim is released on EVERY exit path
+      // after acquisition, token-checked inside the handle (a
+      // foreign claim is never deleted).
+      final handle = claimHandle;
+      if (handle != null) {
+        await handle.release();
+      }
       _inFlight = false;
     }
   }

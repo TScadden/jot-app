@@ -12,7 +12,6 @@ import 'package:tabs_lab/src/data/downloads_saver.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
-import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/progress_report.dart';
 import 'package:tabs_lab/src/data/progress_report_pdf.dart';
@@ -20,7 +19,9 @@ import 'package:tabs_lab/src/data/report_generation_journal.dart';
 import 'package:tabs_lab/src/data/report_generation_service.dart';
 import 'package:tabs_lab/src/data/report_ready_notification.dart';
 import 'package:tabs_lab/src/data/weekly_automation.dart';
+import 'package:tabs_lab/src/data/weekly_generation_claim.dart';
 import 'package:tabs_lab/src/data/weekly_notification.dart';
+import 'package:tabs_lab/src/data/weekly_production.dart';
 import 'package:tabs_lab/src/data/weekly_report.dart';
 import 'package:tabs_lab/src/features/settings/report_share_flow.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
@@ -126,6 +127,22 @@ class ProgressReportsPage extends StatefulWidget {
   /// notifier, and only when the completeness bar passes.
   final WeeklyNotifier? weeklyAutoNotifier;
 
+  /// Background Generation package: the cross-process claim seam
+  /// for the automation coordinator. Production (Settings) passes
+  /// the file-backed claim; null keeps the coordinator's
+  /// permissive default (the shape every pre-existing page test
+  /// was written against).
+  final WeeklyGenerationClaim? weeklyClaim;
+
+  /// Background Generation package (Juno BG-3): the
+  /// background-access probe for the background-access ask.
+  /// Returns true when the grant is verified present, false when
+  /// verified absent, and null when unknown (probe failure —
+  /// renders nothing). Production defaults to
+  /// [HealthConnectService.hasBackgroundAccess] with a throw
+  /// mapped to null.
+  final Future<bool?> Function()? weeklyBackgroundAccessCheck;
+
   /// Clock seam for the weekly closed-week computation.
   final DateTime Function()? weeklyClock;
 
@@ -150,6 +167,8 @@ class ProgressReportsPage extends StatefulWidget {
     this.weeklyGenerationService,
     this.weeklyNotifier,
     this.weeklyAutoNotifier,
+    this.weeklyClaim,
+    this.weeklyBackgroundAccessCheck,
     this.weeklyClock,
   });
 
@@ -162,46 +181,6 @@ class ProgressReportsPage extends StatefulWidget {
 /// (700000–799998) — the same accepted exposure as check-in 770001,
 /// not its own disjoint block. Kept as native's id regardless.
 const appointmentReminderId = 770002;
-
-/// Builds the report's profile input from the Settings profile
-/// data (the sync pull's decoded blobs, via [SettingsProfileData]).
-///
-/// Medications (report-pdf fix, Juno Ruling 1): the active list is
-/// the shared medication model's own filter —
-/// `!entry.isDeleted && !entry.isArchived`
-/// ([activeMedicationEntries]) — where
-/// [MedicationEntry.isArchived] is the archived stamp OR
-/// `!isPresent` (medications.dart, R35 precedent). Filtering on
-/// `isPresent` alone was the defect: a row carrying
-/// `isArchived == true` with `isPresent == true` passed it and an
-/// archived medication (escitalopram, archived Oct 16, 2026)
-/// rendered as active in the report. Entries keep their stored
-/// record order and their stored name/dose/frequency — nothing is
-/// sorted, deduped, or rewritten here.
-ReportProfileInput reportProfileInputFromSettings(SettingsProfileData d) {
-  final conditions = <String>[
-    for (final row in d.conditions)
-      if ('${row['name'] ?? ''}'.trim().isNotEmpty) '${row['name']}'.trim(),
-  ];
-  final parsed = <MedicationEntry>[];
-  for (final row in d.medications) {
-    final m = MedicationEntry.fromBlobRow(row);
-    if (m != null) parsed.add(m);
-  }
-  return ReportProfileInput(
-    userContext: d.userContext,
-    age: d.age ?? 0,
-    heightCm: d.heightCm ?? 0,
-    weightKg: d.weightKg ?? 0,
-    gender: d.gender,
-    conditions: conditions,
-    activeMedications: activeMedicationEntries(parsed),
-    // Item 3: the full parsed list rides along for the clinician
-    // report's declared-form change derivation ONLY — the active
-    // list above remains the sole source of the printed med list.
-    allMedications: parsed,
-  );
-}
 
 class _ProgressReportsPageState extends State<ProgressReportsPage>
     with WidgetsBindingObserver {
@@ -274,6 +253,21 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
   WeeklyEvaluation? _permissionEval;
   bool _permissionDismissed = false;
 
+  /// Background Generation package: the extracted generation
+  /// executor (weekly_production.dart) — the page's manual and
+  /// automatic weekly runs both drive the weekly service through
+  /// it, and the background runner drives the same executor
+  /// page-free.
+  late final WeeklyGenerationExecutor _weeklyExecutor;
+
+  /// Juno background-access ask state (DISTINCT from the §a
+  /// state above; Flag BG-1): null = unknown / not yet probed
+  /// (renders nothing, BG-3); true = grant verified present
+  /// (silent, BG-5); false = verified absent (the ask may render
+  /// for a Premium user outside the dismissal window).
+  bool? _bgAccess;
+  int? _bgDismissedAtMs;
+
   /// Item 3 Q7 premium gate state: null = check still running;
   /// true = the one-page clinician report is unlocked. Fail-closed:
   /// an unknown or failed check reads as locked, so the premium
@@ -332,15 +326,31 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
     };
     _weeklyService.addListener(_onWeeklyServiceChanged);
     _weeklyService.registerPagePresenter(_weeklyPresenter);
+    // Background Generation package: the extracted executor —
+    // its pipeline builder is THIS page's standard pipeline
+    // (providers wired to the page's standard service, exactly
+    // as the pre-extraction _startWeeklyGeneration used it).
+    _weeklyExecutor = WeeklyGenerationExecutor(
+      weeklyService: _weeklyService,
+      pipelineBuilder: _standardPipeline,
+      categoriesLoader: () async => _categories,
+      profileLoader: () async => _profileInput,
+      recordsLoader: () async => _weeklyRecords,
+      savePdf: widget.savePdf ?? _defaultSave,
+      saveToDownloads: widget.saveToDownloads ?? _defaultSaveToDownloads,
+      otherServiceGenerating: () => _service.isGenerating,
+      fallbackCategories: (_) => _selected,
+    );
     // Weekly Report Package 2: the automation coordinator. Its
-    // generation seam drives THIS page's weekly service (below),
-    // and it — not the service listener — archives automatic
-    // runs and owns the bar-gated weekly notification.
+    // generation seam drives THIS page's weekly service (through
+    // the executor), and it — not the service listener — archives
+    // automatic runs and owns the bar-gated weekly notification.
     _weeklyAutomation = WeeklyAutomationCoordinator(
       checkEntitlement: _resolveWeeklyEntitlement,
       store: _weeklyStore,
       generate: _runAutoGeneration,
       notifier: widget.weeklyAutoNotifier ?? LocalWeeklyNotifier(),
+      claim: widget.weeklyClaim,
     );
     WidgetsBinding.instance.addObserver(this);
     _load();
@@ -384,6 +394,11 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
       // surface mounted is an app open — re-run the automation
       // check (a pure read unless a week is due and ungenerated).
       unawaited(_maybeAutoWeekly());
+      // Background Generation package: a return is also the
+      // re-verify point for the background-access ask (BG-4 —
+      // returning from Health Connect settings with the grant
+      // now present removes the ask in the same render).
+      unawaited(_refreshBgAskState());
     }
   }
 
@@ -677,32 +692,87 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
     final entitlement = await _resolveWeeklyEntitlement();
     if (!mounted) return;
     setState(() => _weeklyEntitlement = entitlement);
+    // Background Generation package: probe the background grant
+    // for the Juno ask (Premium surfaces only need the answer,
+    // but the probe is read-only and fail-closed either way).
+    unawaited(_refreshBgAskState());
     // Weekly Report Package 2: opening this surface is the
     // first-open automation check point.
     unawaited(_maybeAutoWeekly());
   }
 
-  /// The weekly entitlement resolution. The entitlement SOURCE is
-  /// the app's existing one — the server membership's
-  /// `isUnlimited` (the clinician gate's source; a running trial
-  /// counts as Premium while the trial runs, per the server's own
-  /// computation) — no second gate is invented. Fail-closed: an
-  /// unverified check never reads as Premium. A non-Premium user
-  /// WITH archive entries is lapsed (their reports stay readable
-  /// forever); without entries, free.
-  Future<WeeklyEntitlement> _resolveWeeklyEntitlement() async {
+  /// The weekly entitlement resolution — the extracted resolver
+  /// in weekly_production.dart (the background runner resolves
+  /// through the same function). Fail-closed; lapsed derives
+  /// from this page's loaded archive records.
+  Future<WeeklyEntitlement> _resolveWeeklyEntitlement() =>
+      resolveWeeklyEntitlement(
+        overrideCheck: widget.weeklyEntitlementCheck,
+        isUnlimitedCheck: () async =>
+            (await _backend.fetchMembership()).isUnlimited,
+        hasArchiveRecords: () async => _weeklyRecords.isNotEmpty,
+      );
+
+  /// Background Generation package — the background-access ask's
+  /// probe (Juno BG-3): only a VERIFIED absent result may render
+  /// the ask; a probe failure / unknown renders nothing. Also
+  /// loads the persisted dismissal stamp (BG-4).
+  Future<void> _refreshBgAskState() async {
+    final dismissedAt = await widget.store.getWeeklyBgAskDismissedAtMs();
+    bool? access;
     try {
-      if (widget.weeklyEntitlementCheck != null) {
-        return await widget.weeklyEntitlementCheck!();
+      final check = widget.weeklyBackgroundAccessCheck;
+      if (check != null) {
+        access = await check();
+      } else {
+        access = await (widget.healthConnectService ??
+                HealthConnectService())
+            .hasBackgroundAccess();
       }
-      final membership = await _backend.fetchMembership();
-      if (membership.isUnlimited) return WeeklyEntitlement.premium;
     } catch (_) {
-      // Fail-closed: an unknown entitlement is never Premium.
+      access = null; // unknown — never claimed absent (BG-3)
     }
-    return _weeklyRecords.isNotEmpty
-        ? WeeklyEntitlement.lapsed
-        : WeeklyEntitlement.free;
+    if (!mounted) return;
+    setState(() {
+      _bgDismissedAtMs = dismissedAt;
+      _bgAccess = access;
+    });
+  }
+
+  /// Whether the background-access ask renders right now (Juno
+  /// §a notes 2–5): Premium only, verified-absent grant, outside
+  /// the 28-day dismissal window. Granted is silent (BG-5).
+  bool get _bgAskVisible {
+    if (_weeklyEntitlement != WeeklyEntitlement.premium) return false;
+    if (_bgAccess != false) return false;
+    final dismissedAt = _bgDismissedAtMs;
+    if (dismissedAt != null) {
+      final now = widget.weeklyClock?.call() ?? DateTime.now();
+      final dismissed =
+          DateTime.fromMillisecondsSinceEpoch(dismissedAt);
+      if (now.difference(dismissed) < weeklyBgDismissalWindow) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Future<void> _dismissBgAsk() async {
+    final now = widget.weeklyClock?.call() ?? DateTime.now();
+    await widget.store
+        .setWeeklyBgAskDismissedAtMs(now.millisecondsSinceEpoch);
+    if (!mounted) return;
+    setState(() => _bgDismissedAtMs = now.millisecondsSinceEpoch);
+  }
+
+  /// The ask's primary action: the existing Health Connect
+  /// settings route, foreground only (BG-6); on return the grant
+  /// is re-checked and a granted ask is removed in the same
+  /// render (BG-4). Returning without granting is NOT a
+  /// dismissal and starts no window.
+  Future<void> _openBgHealthConnectSettings() async {
+    await _openHealthConnectSettings();
+    await _refreshBgAskState();
   }
 
   void _onWeeklyServiceChanged() {
@@ -822,95 +892,24 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
     });
   }
 
-  /// The coordinator's generation seam: drives the weekly
-  /// service for the DUE week (Package 2's window — the current
-  /// Mon–Sun week on a Sunday-night trigger, not Package 1's
-  /// most recently completed week) and hands back the held ready
-  /// outcome. A failed/cancelled run — or a held outcome for a
-  /// DIFFERENT week (a stale manual completion) — returns null:
-  /// nothing is archived and the week stays due.
+  /// The coordinator's generation seam — the extracted
+  /// executor's seam (weekly_production.dart), which the
+  /// background runner also drives page-free.
   Future<WeeklyGenerationResult?> _runAutoGeneration(
-      WeeklyWeekWindow week, DateTime now) async {
-    if (_weeklyService.isGenerating || _service.isGenerating) return null;
-    await _startWeeklyGeneration(week, now,
-        closedBefore: weeklyClosedBefore(week, now));
-    final ready = _weeklyService.pendingShare;
-    if (ready == null) return null;
-    final start = ready.snapshot.weekStart;
-    final end = ready.snapshot.weekEnd;
-    if (start == null || end == null) return null;
-    if (WeeklyWeekWindow(start, end).startKey != week.startKey) return null;
-    return WeeklyGenerationResult(
-      snapshot: ready.snapshot,
-      fileName: ready.fileName,
-      savedPath: ready.savedPath,
-    );
-  }
+          WeeklyWeekWindow week, DateTime now) =>
+      _weeklyExecutor.runAutoGeneration(week, now);
 
   /// One weekly generation run through the dedicated weekly
   /// service, shared by the manual action (Package 1) and the
-  /// automation (Package 2): forceRawFallback (data pipeline
-  /// only — NO AI narrative, zero Gemini cost) over the fixed
-  /// Mon–Sun [window]. [closedBefore] is the evaluator's Flag 1
-  /// bound for the PDF line; null keeps Package 1's manual
-  /// default (the whole finished week counts), while the
-  /// automation passes [weeklyClosedBefore] so a still-running
-  /// Sunday never counts as a complete day in the PDF either —
-  /// the render evaluation and the coordinator's archive
-  /// evaluation then run on identical inputs.
+  /// automation (Package 2) — the extracted executor's run
+  /// (weekly_production.dart).
   Future<void> _startWeeklyGeneration(
     WeeklyWeekWindow window,
     DateTime now, {
     DateTime? closedBefore,
-  }) async {
-    final weeklyCategories =
-        resolveReportCategories(_categories, ReportFocus.health, {});
-    final selected = weeklyCategories.isNotEmpty ? weeklyCategories : _selected;
-    final pipeline = _standardPipeline();
-    await _weeklyService.start(
-      ({required onStage, required isCancelled}) => pipeline.generate(
-        selectedCategories: selected,
-        last30Days: false,
-        weekStart: window.start,
-        weekEnd: window.end,
-        profile: _profileInput,
-        forceRawFallback: true,
-        forceRawBanner: RawReportBanner.explicitChoice,
-        onStage: onStage,
-        isCancelled: isCancelled,
-        now: now,
-        renderPdf: (snapshot, aiSummary,
-                {required bool isRawFallback, RawReportBanner? rawBanner}) {
-          // The PDF's ONE weekly line, from the same evaluator
-          // the archive record uses (identical inputs at render
-          // time and at archive time).
-          final previous =
-              WeeklyReportStore.previousOf(_weeklyRecords, window);
-          final evaluation = evaluateWeeklyCompleteness(
-            snapshot: snapshot,
-            week: window,
-            generationCompleted: true,
-            closedBefore: closedBefore,
-            previousWeek: previous,
-          );
-          return buildReportPdfBytes(snapshot,
-              aiSummary: aiSummary,
-              isRawFallback: isRawFallback,
-              rawBanner: rawBanner ?? RawReportBanner.explicitChoice,
-              weeklyLine: evaluation.pdfLine);
-        },
-        savePdf: widget.savePdf ?? _defaultSave,
-        saveToDownloads: widget.saveToDownloads ?? _defaultSaveToDownloads,
-      ),
-      request: ReportRequestIdentity(
-        kind: 'weekly',
-        focusKey: ReportFocus.health.key,
-        last30Days: false,
-        categoryIds: selected.map((c) => c.id).toList(),
-        forceRaw: true,
-      ),
-    );
-  }
+  }) =>
+      _weeklyExecutor.startWeeklyGeneration(window, now,
+          closedBefore: closedBefore);
 
   /// Tapping an archive entry opens/shares the stored PDF (the
   /// existing share flow's share function; production defaults
@@ -1293,6 +1292,10 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
           Text(_weeklyService.pendingFailure!.message,
               style: const TextStyle(color: NotelColors.error, fontSize: 12)),
         ],
+        if (_bgAskVisible) ...[
+          const SizedBox(height: 12),
+          _backgroundGenerationAsk(),
+        ],
         const SizedBox(height: 8),
         if (_weeklyRecords.isEmpty)
           const Text(weeklyArchiveEmpty,
@@ -1305,6 +1308,57 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
         ],
       ],
     ]);
+  }
+
+  /// Juno Background Generation ruling §a — the
+  /// background-access ask: a DISTINCT, section-level state on
+  /// the weekly surface (never the §a permission-needed state;
+  /// Flag BG-1). It renders only for a Premium user with a
+  /// verified-absent background grant outside the dismissal
+  /// window (see [_bgAskVisible]); the granted state is silent
+  /// and ships no element at all (BG-5).
+  Widget _backgroundGenerationAsk() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: NotelColors.surfaceHigh,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(weeklyBgTitle,
+              style: TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 6),
+          const Text(weeklyBgBody,
+              style: TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
+          const SizedBox(height: 8),
+          const Text(weeklyBgGuidance,
+              style: TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
+          const SizedBox(height: 8),
+          Row(children: [
+            TextButton(
+              onPressed: () => _openBgHealthConnectSettings(),
+              child: const Text(weeklyBgPrimaryAction,
+                  style: TextStyle(
+                      color: NotelColors.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold)),
+            ),
+            TextButton(
+              onPressed: () => _dismissBgAsk(),
+              child: const Text(weeklyBgSecondaryAction,
+                  style: TextStyle(
+                      color: NotelColors.textSecondary, fontSize: 12)),
+            ),
+          ]),
+        ],
+      ),
+    );
   }
 
   Widget _weeklyEntryRow(WeeklyArchiveRecord r) {

@@ -79,6 +79,7 @@ import 'package:workmanager/workmanager.dart';
 
 import 'correlation_refresh.dart';
 import 'daily_score.dart';
+import 'weekly_report_background.dart';
 import 'daily_score_sync.dart';
 import 'health_connect_service.dart';
 import 'health_history_store.dart';
@@ -213,6 +214,17 @@ void dailyScoreBackgroundDispatcher() {
       // the background task.
       try {
         await CorrelationRefresher.production().refreshIfStale();
+      } catch (_) {}
+      // Background Generation package (2026-11-24): the weekly
+      // report check piggybacks on this same dispatcher (the
+      // CorrelationRefresher precedent — NO new task
+      // registration). Each wake re-projects weeklyDueWeek; the
+      // first wake after Sunday 21:00 local generates the
+      // just-closed week under the background grant. The runner
+      // never throws by construction; the guard is belt-and-braces
+      // so a weekly failure can never fail the background task.
+      try {
+        await WeeklyReportBackgroundRunner.production().run();
       } catch (_) {}
     }
     return true;

@@ -70,6 +70,41 @@ const weeklyPermissionSecondaryAction = 'Not now';
 const weeklyLowDataFraming =
     'Not enough complete days this week to show a trend.';
 
+// ── Juno verbatim strings (Background Generation ruling
+// 2026-11-24, §c rows 3.1–3.5) ────────────────────────────────
+// The background-access ask: a DISTINCT state on the weekly
+// surface — never the §a permission-needed state above, and the
+// two are asserted independently in fixtures (Flag BG-1).
+
+/// Row 3.1 — background-access ask, title.
+const weeklyBgTitle = 'Background generation';
+
+/// Row 3.2 — background-access ask, body. Both sentences ship
+/// together, in this order — no variant.
+const weeklyBgBody =
+    'With background access in Health Connect, Tabs can generate '
+    'your weekly report on Sunday night without you opening the '
+    'app. Without it, your report still generates the first time '
+    'you open Tabs after Sunday night.';
+
+/// Row 3.3 — background-access ask, guidance line (Health
+/// Connect's own labels, verbatim).
+const weeklyBgGuidance =
+    'In Health Connect, go to App permissions, then Tabs, then '
+    'Additional access, and turn on Access data in the background.';
+
+/// Row 3.4 — background-access ask, primary action (the §a
+/// state's label for the same destination, reused verbatim).
+const weeklyBgPrimaryAction = 'Open Health Connect Settings';
+
+/// Row 3.5 — background-access ask, secondary action (§a's
+/// verbatim).
+const weeklyBgSecondaryAction = 'Not now';
+
+/// Flag BG-4: a `Not now` dismissal suppresses the ask for
+/// exactly 28 days from the tap, persisted across restarts.
+const weeklyBgDismissalWindow = Duration(days: 28);
+
 /// Row 1.20 — blocked-week PDF completeness line.
 const weeklyBlockedPdfLine = 'This weekly report is incomplete.';
 
