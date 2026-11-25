@@ -138,7 +138,10 @@ class ShareCopy {
       'pick exactly what they can see. They can only read, never '
       'change anything.';
 
-  // §a2 — the 8 categories, in order, names + descriptions.
+  // §a2 — the categories, in order, names + descriptions.
+  // 'reports' (last) was added by the MCP Reports package under
+  // Juno's ruling §1.1 (JUNO-RULING.md); the 'summaries'
+  // description was replaced under her §5 in the same ruling.
   static const List<(String, String, String)> categories = [
     (
       'medications',
@@ -185,9 +188,25 @@ class ShareCopy {
     (
       'summaries',
       'Summaries',
-      'Basic facts about your generated reports — when one was '
-          'made and how many entries it covered. Never the report '
-          'itself.'
+      // Juno ruling §5 (MCP Reports package): the old text
+      // ("Never the report itself") is replaced — this category
+      // also gates the item-level Daily Summary, and the report
+      // itself now belongs to the separate Reports category.
+      'Your Daily Summary: which days you finished it, and for '
+          'one day at a time, what was planned and what got '
+          'finished, your 1 to 5 check-in, and your Morning '
+          'Score. Also basic facts about your generated reports '
+          '— when one was made and how many entries it covered. '
+          'The report itself is not part of this one.'
+    ),
+    (
+      'reports',
+      'Reports',
+      // Juno ruling §1.1 (MCP Reports package), verbatim.
+      'Your clinical report PDFs. With this on, their AI can '
+          'make a report PDF from your Tabs data — the same kind '
+          'of report you can make in the app. It starts off, and '
+          'stays off unless you turn it on.'
     ),
   ];
 
@@ -276,6 +295,13 @@ class ShareCopy {
   static String lastReadLine(
           String friend, String category, String when) =>
       "$friend's AI last viewed your $category $when";
+
+  // Juno ruling §8 (MCP Reports package) — the generation form
+  // of the last-read line, for rows whose tool is
+  // `generate_report`. The viewed-line's verb misstates a
+  // generation, so the two lines are kept distinct.
+  static String lastReportLine(String friend, String when) =>
+      "$friend's AI last generated a report from your data $when";
   static String neverReadLine(String friend) =>
       "$friend's AI hasn't viewed your data yet";
 
@@ -648,7 +674,11 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
     } else {
       next.remove(key);
     }
-    if (next.isEmpty) {
+    // The save payload always carries the share's unknown keys
+    // back untouched (categoriesForSave) — toggling a known
+    // category must never wipe a grant this build can't render.
+    final payload = share.categoriesForSave(next);
+    if (payload.isEmpty) {
       // The server rejects an empty set (Juno §a3's line is its
       // error verbatim); ending a share is Stop sharing, not an
       // empty category list.
@@ -660,8 +690,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
     setState(() => _manageCategories[share.id] = next);
     var ok = false;
     try {
-      ok = await _backend.updateDataShareCategories(
-          share.id, _orderedKeys(next));
+      ok = await _backend.updateDataShareCategories(share.id, payload);
     } catch (_) {
       ok = false;
     }
@@ -708,13 +737,8 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
     if (!ok) _shareErrorSnack();
   }
 
-  static List<String> _orderedKeys(Set<String> keys) {
-    final list = keys.toList();
-    list.sort((a, b) => dataShareCategoryKeys
-        .indexOf(a)
-        .compareTo(dataShareCategoryKeys.indexOf(b)));
-    return list;
-  }
+  static List<String> _orderedKeys(Set<String> keys) =>
+      orderedDataShareCategories(keys);
 
   /// Resolves the Premium gate (see the widget docs). The
   /// RevenueCat verdict ORs in exactly as on the Membership
@@ -1317,6 +1341,13 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
       ..sort((a, b) => b.readAt!.compareTo(a.readAt!));
     if (rows.isEmpty) return ShareCopy.neverReadLine(name);
     final latest = rows.first;
+    // Juno ruling §8: a report generation is not a view.
+    if (latest.isReportGeneration) {
+      return ShareCopy.lastReportLine(
+        name,
+        _formatShareWhen(latest.readAt!),
+      );
+    }
     return ShareCopy.lastReadLine(
       name,
       ShareCopy.categoryName(latest.category),
