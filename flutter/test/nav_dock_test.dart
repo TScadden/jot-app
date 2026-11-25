@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
-import 'package:tabs_lab/src/features/shell/nav_dock.dart';
-import 'package:tabs_lab/src/theme/lab_black_colors.dart';
+import 'package:tabs_lab/src/features/shell/nav_dock_solid.dart';
 
 /// Round 9 — nav dock tests: all four tabs tappable, home shows the real
 /// home screen, the others show their screens, and the active
@@ -32,8 +31,11 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
   }
 
+  // Nav Bar Style update (Nov 24, 2026): the bare shell mounts
+  // the default Solid dock, whose cells carry the same glyphs —
+  // the finder scopes to it.
   Finder dockIcon(IconData icon) => find.descendant(
-        of: find.byType(NavDock),
+        of: find.byType(NavDockSolid),
         matching: find.byIcon(icon),
       );
 
@@ -106,33 +108,27 @@ void main() {
   testWidgets('active highlight follows the selected tab', (tester) async {
     await tester.pumpWidget(shell());
 
-    // Navbar replica (NAVBAR_SPEC §4): the black capsule is the
-    // ONLY selection signal — every icon is near-white in both
-    // states (no primary tint, no gray dimming). Updated from the
-    // pre-replica primary/secondary expectation for exactly that
-    // intentional change; the selection itself is proven by the
-    // capsule-position tests in lab_navbar_test.dart and the
-    // round-19c pill audit.
-    for (final icon in [
-      Icons.home,
-      Icons.assignment,
-      Icons.edit,
-      Icons.favorite,
-    ]) {
-      expect(iconColor(tester, icon), LabBlackColors.textPrimary);
+    // Nav Bar Style update (Nov 24, 2026): the mounted dock is
+    // the Solid default, whose selection signal is the gliding
+    // #3E3E44 capsule PLUS the foreground color — selected icon
+    // pure white, unselected #C6C6CE (the glass replica's
+    // near-white-in-both-states rule stays pinned on the glass
+    // dock itself by lab_navbar_test.dart). Home starts selected.
+    expect(iconColor(tester, Icons.home), Colors.white);
+    for (final icon in [Icons.assignment, Icons.edit, Icons.favorite]) {
+      expect(iconColor(tester, icon), const Color(0xFFC6C6CE));
     }
 
-    // Select Heart: icon colors do NOT change with selection.
+    // Select Heart: the white highlight follows the selection.
     await tester.tap(dockIcon(Icons.favorite));
     await settleDock(tester);
-    for (final icon in [Icons.home, Icons.favorite]) {
-      expect(iconColor(tester, icon), LabBlackColors.textPrimary);
-    }
+    expect(iconColor(tester, Icons.favorite), Colors.white);
+    expect(iconColor(tester, Icons.home), const Color(0xFFC6C6CE));
 
     // Tapping the active tab again keeps it selected (no-op, no crash).
     await tester.tap(dockIcon(Icons.favorite));
     await settleDock(tester);
-    expect(iconColor(tester, Icons.favorite), LabBlackColors.textPrimary);
+    expect(iconColor(tester, Icons.favorite), Colors.white);
   });
 
   testWidgets('dock stays visible on blank tabs', (tester) async {
@@ -140,7 +136,7 @@ void main() {
     await tester.tap(dockIcon(Icons.assignment));
     await settleDock(tester);
     // The dock (with all four icons) is still on screen.
-    expect(find.byType(NavDock), findsOneWidget);
+    expect(find.byType(NavDockSolid), findsOneWidget);
     expect(dockIcon(Icons.home), findsOneWidget);
   });
 }

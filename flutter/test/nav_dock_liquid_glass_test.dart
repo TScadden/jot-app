@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
+import 'package:tabs_lab/src/features/shell/nav_dock_solid.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock_glass.dart';
 import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 
@@ -115,33 +116,11 @@ void main() {
           delete: (k) async => map.remove(k),
         );
 
-    test('(a) persistence round-trip through SettingsStore', () async {
-      final map = <String, String>{};
-      final store = storeOver(map);
-      // Unset reads as the default: ON.
-      expect(await store.getLiquidGlass(), isTrue);
-      // Write OFF: lands in storage under the settings key, and a
-      // FRESH store over the same storage reads it back (the cold
-      // restart leg).
-      await store.setLiquidGlass(false);
-      expect(map[SettingsStore.liquidGlassKey], 'false');
-      expect(await storeOver(map).getLiquidGlass(), isFalse);
-      // Write ON again: round-trips back.
-      await storeOver(map).setLiquidGlass(true);
-      expect(map[SettingsStore.liquidGlassKey], 'true');
-      expect(await storeOver(map).getLiquidGlass(), isTrue);
-    });
-
-    test('(a2) setLiquidGlass notifies listeners after the write',
-        () async {
-      final map = <String, String>{};
-      final store = storeOver(map);
-      var notified = 0;
-      store.addListener(() => notified++);
-      await store.setLiquidGlass(false);
-      expect(notified, 1);
-      expect(map[SettingsStore.liquidGlassKey], 'false');
-    });
+    // Legs (a)/(a2) — the SettingsStore bool-accessor round-trip
+    // and notify tests — were removed with the accessors
+    // themselves (Vera §7, PR #172): the bool pref is superseded
+    // by the style pref, whose round-trip + notify are pinned by
+    // nav_bar_style_test.dart.
 
     Widget dockWith({required bool liquidGlass}) => MaterialApp(
           home: Scaffold(
@@ -212,8 +191,15 @@ void main() {
       expect(tester.getSize(pill), const Size(190, 52));
     });
 
-    testWidgets('(c) switch ON via MainShell: live flip both ways',
+    testWidgets(
+        '(c) UPDATED (Nav Bar Style package): MainShell mounts the '
+        'glass dock only when the STYLE is liquidGlass, live both ways',
         (tester) async {
+      // The bool wiring this leg originally pinned was superseded
+      // by the style preference (founder: Solid is the default for
+      // everyone, regardless of the legacy bool). The glass dock's
+      // own ON/OFF rendering stays pinned by legs (a)/(b) above
+      // and the direct-NavDock tests below, unchanged.
       final map = <String, String>{
         SettingsStore.liquidGlassKey: 'false',
       };
@@ -223,27 +209,20 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
 
-      // Stored OFF seeds the shell: the dock is on the legacy path.
-      expect(tester.widget<NavDock>(find.byType(NavDock)).liquidGlass,
-          isFalse);
-      final offGradients = tester
-          .widgetList<Container>(
-            find.descendant(
-                of: find.byType(NavDock), matching: find.byType(Container)),
-          )
-          .map((c) => (c.decoration as BoxDecoration?)?.gradient)
-          .whereType<Gradient>()
-          .toList();
-      expect(offGradients, contains(LabBlackColors.navbarGlassGradient));
+      // No style key: Solid is the default even with the legacy
+      // bool present — the glass NavDock is not mounted at all.
+      expect(find.byType(NavDock), findsNothing);
+      expect(find.byType(NavDockSolid), findsOneWidget);
 
-      // Flip ON through the store setter (what the Settings switch
-      // calls): the visible dock switches to the glass path LIVE,
-      // no restart, no tab switch.
-      await store.setLiquidGlass(true);
+      // Flip the STYLE to Liquid Glass through the store setter
+      // (what the Settings choice calls): the shipped glass dock
+      // mounts LIVE, always with liquidGlass: true on this path.
+      await store.setNavBarStyle(NavBarStyle.liquidGlass);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
       expect(tester.widget<NavDock>(find.byType(NavDock)).liquidGlass,
           isTrue);
+      expect(find.byType(NavDockSolid), findsNothing);
       final onGradients = tester
           .widgetList<Container>(
             find.descendant(
@@ -253,6 +232,13 @@ void main() {
           .whereType<Gradient>()
           .toList();
       expect(onGradients, contains(NavDockLiquidGlass.tintGradient));
+
+      // Flip back to Solid live.
+      await store.setNavBarStyle(NavBarStyle.solid);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byType(NavDock), findsNothing);
+      expect(find.byType(NavDockSolid), findsOneWidget);
     });
   });
 

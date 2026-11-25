@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
-import 'package:tabs_lab/src/features/shell/nav_dock.dart';
+import 'package:tabs_lab/src/features/shell/nav_dock_solid.dart';
 
+/// Nav Bar Style update (Nov 24, 2026): the shell's default dock is
+/// now NavDockSolid; the fade wrapper under test is style-agnostic
+/// and wraps either dock identically, so the dock reads below scope
+/// to the Solid dock the bare shell mounts.
+///
 /// Drawer nav fade (founder, Nov 20, 2026) — while the Home drawer
 /// is open, the shell's bottom nav dock fades out and leaves the
 /// hit path; when the drawer closes, it fades back in and is live
@@ -44,7 +49,7 @@ void main() {
     expect(fade(), findsOneWidget);
     expect(fadeTarget(tester), 1.0);
     expect(gateIgnoring(tester), isFalse);
-    final dockSizeAtRest = tester.getSize(find.byType(NavDock));
+    final dockSizeAtRest = tester.getSize(find.byType(NavDockSolid));
 
     await openDrawer(tester);
 
@@ -56,8 +61,8 @@ void main() {
     expect(gateIgnoring(tester), isTrue);
     // The dock stays mounted in its unchanged slot (no layout
     // hole, no jump): same size as at rest.
-    expect(find.byType(NavDock), findsOneWidget);
-    expect(tester.getSize(find.byType(NavDock)), dockSizeAtRest);
+    expect(find.byType(NavDockSolid), findsOneWidget);
+    expect(tester.getSize(find.byType(NavDockSolid)), dockSizeAtRest);
 
     await tester.pump(const Duration(milliseconds: 300));
   });

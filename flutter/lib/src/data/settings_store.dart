@@ -45,15 +45,37 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// and a cold restart re-seeds from storage exactly as before.
 /// Notification is deliberately scoped to the setters whose keys
 /// have a cross-screen live consumer: [setShowNavLabels] and —
-/// since the Nav Bar Liquid Glass package (Nov 24, 2026) — the
-/// identical [setLiquidGlass]; no other key has one today.
+/// since the Nav Bar Style package (Nov 24, 2026) —
+/// [setNavBarStyle]; no other key has one today.
+/// Nav Bar Style (Nov 24, 2026): the bottom navigation bar's
+/// style. [solid] is the NEW default for everyone — a fresh
+/// install, an unreadable store, and a stored garbage value all
+/// resolve to it, and the legacy liquid-glass bool's value does
+/// NOT carry over (founder: "Default is Solid for everyone").
+/// [liquidGlass] is the shipped PR #170 dock, selected
+/// explicitly in Settings -> Customize.
+enum NavBarStyle { solid, liquidGlass }
+
 class SettingsStore extends ChangeNotifier {
   static const showNavLabelsKey = 'settings_show_nav_labels';
   // Nav Bar Liquid Glass package (Nov 24, 2026): the founder's
   // on/off switch for the dock's liquid-glass material. Device-
   // only like every key in this store; default ON (the glass is
   // the new dock look; OFF renders the pre-package dock exactly).
+  // Nav Bar Style package (Nov 24, 2026): SUPERSEDED by
+  // [navBarStyleKey] below — consumers read the style. Vera
+  // adjudicated the legacy accessors in review (PR #172, §7)
+  // and they were removed; this key remains only for clear()'s
+  // wipe list and the legacy-seed reads in tests.
   static const liquidGlassKey = 'settings_liquid_glass';
+  // Nav Bar Style package (Nov 24, 2026): the style preference
+  // superseding the liquid-glass bool. Stored values: 'solid' /
+  // 'liquid_glass'. Device-only like every key in this store,
+  // and deliberately NOT in migration_bundle.dart's curated
+  // settings list (coordinator ruling, same as PR #170: a
+  // device-only appearance pref; the default applies on
+  // migrated installs).
+  static const navBarStyleKey = 'settings_nav_bar_style';
   static const themeModeKey = 'settings_theme_mode';
   static const userContextHiddenKey = 'settings_user_context_hidden';
   static const checkInReminderKey = 'settings_checkin_reminder_enabled';
@@ -159,14 +181,29 @@ class SettingsStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Liquid Glass switch: default ON (Nav Bar Liquid Glass
-  /// package, Nov 24, 2026). Mirrors [getShowNavLabels] /
-  /// [setShowNavLabels] exactly, including the notify-after-write
-  /// live-refresh channel MainShell listens to.
-  Future<bool> getLiquidGlass() => _readBool(liquidGlassKey, true);
+  /// Nav Bar Style: the stored style if present and valid;
+  /// [NavBarStyle.solid] in EVERY other case — absent,
+  /// unreadable, garbage, AND regardless of the legacy
+  /// [liquidGlassKey] value (the founder's default-is-Solid
+  /// ruling supersedes the bool, including glass-on installs).
+  /// Never throws.
+  Future<NavBarStyle> getNavBarStyle() async {
+    try {
+      final v = await _read(navBarStyleKey);
+      if (v == 'liquid_glass') return NavBarStyle.liquidGlass;
+      if (v == 'solid') return NavBarStyle.solid;
+    } catch (_) {}
+    return NavBarStyle.solid;
+  }
 
-  Future<void> setLiquidGlass(bool v) async {
-    await _writeBool(liquidGlassKey, v);
+  /// Writes the style, then notifies listeners (the same live
+  /// channel as [setShowNavLabels]): observers re-read the key
+  /// from storage.
+  Future<void> setNavBarStyle(NavBarStyle v) async {
+    await _write(
+      navBarStyleKey,
+      v == NavBarStyle.liquidGlass ? 'liquid_glass' : 'solid',
+    );
     notifyListeners();
   }
 
@@ -585,6 +622,7 @@ class SettingsStore extends ChangeNotifier {
     for (final k in const [
       showNavLabelsKey,
       liquidGlassKey,
+      navBarStyleKey,
       themeModeKey,
       userContextHiddenKey,
       checkInReminderKey,

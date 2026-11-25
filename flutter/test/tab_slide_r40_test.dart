@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
-import 'package:tabs_lab/src/features/shell/nav_dock.dart';
-import 'package:tabs_lab/src/theme/lab_black_colors.dart';
+import 'package:tabs_lab/src/features/shell/nav_dock_solid.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
 
@@ -61,8 +60,12 @@ void main() {
     );
   }
 
+  // Nav Bar Style update (Nov 24, 2026): the bare shell mounts
+  // the default Solid dock; its cells carry the same glyphs, so
+  // the tap finder scopes to it. The slide machinery under test
+  // is dock-agnostic.
   Finder dockIcon(IconData icon) => find.descendant(
-        of: find.byType(NavDock),
+        of: find.byType(NavDockSolid),
         matching: find.byIcon(icon),
       );
 
@@ -249,10 +252,14 @@ void main() {
     // Navbar replica update: agreement is read off the CAPSULE
     // position (the replica's only selection signal — icons are
     // near-white in both states), not the old primary icon tint.
+    // Nav Bar Style update (Nov 24, 2026): the mounted dock is the
+    // Solid default — the selected icon is pure white and the
+    // capsule carries the solid key; the agreement read-off is the
+    // same in substance.
     final heartIcon = tester.widget<Icon>(dockIcon(Icons.favorite).first);
-    expect(heartIcon.color, LabBlackColors.textPrimary);
+    expect(heartIcon.color, Colors.white);
     final pillCenter = tester
-        .getCenter(find.byKey(const ValueKey('dock_selection_pill')))
+        .getCenter(find.byKey(const ValueKey('solid_dock_selection_pill')))
         .dx;
     final iconCenter = tester.getCenter(dockIcon(Icons.favorite).first).dx;
     expect((pillCenter - iconCenter).abs(), lessThan(1.0),

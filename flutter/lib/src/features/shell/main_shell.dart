@@ -14,6 +14,7 @@ import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/quicklog/quick_log_screen.dart';
 import 'package:tabs_lab/src/features/shell/heart_sleep_mode.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
+import 'package:tabs_lab/src/features/shell/nav_dock_solid.dart';
 import 'package:tabs_lab/src/features/tools/sleep_screen.dart';
 import 'package:tabs_lab/src/features/tools/tools_screen.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
@@ -197,13 +198,14 @@ class _MainShellState extends State<MainShell>
   // none in production; a Round 30 test mutates storage directly).
   bool _showNavLabels = true;
 
-  // Liquid Glass switch (Nav Bar Liquid Glass package, Nov 24,
-  // 2026): wired EXACTLY like _showNavLabels above — seeded from
-  // the shared SettingsStore, refreshed live when the store
-  // notifies (setLiquidGlass notifies after its write, same as
-  // setShowNavLabels), and re-read on dock taps as the same
-  // belt-and-braces reseed. Default ON.
-  bool _liquidGlass = true;
+  // Nav Bar Style (Nov 24, 2026): wired EXACTLY like
+  // _showNavLabels above — seeded from the shared SettingsStore,
+  // refreshed live when the store notifies (setNavBarStyle
+  // notifies after its write, same as setShowNavLabels), and
+  // re-read on dock taps as the same belt-and-braces reseed.
+  // Default SOLID for everyone (the style supersedes the
+  // PR #170 liquid-glass bool; see SettingsStore.getNavBarStyle).
+  NavBarStyle _navBarStyle = NavBarStyle.solid;
   late final SettingsStore _settingsStore;
 
   // Drawer nav fade (founder, Nov 20, 2026) — true while the Home
@@ -253,7 +255,7 @@ class _MainShellState extends State<MainShell>
     _slideCurve =
         CurvedAnimation(parent: _slideController, curve: Curves.easeOut);
     _refreshNavLabels();
-    _refreshLiquidGlass();
+    _refreshNavBarStyle();
   }
 
   @override
@@ -277,7 +279,7 @@ class _MainShellState extends State<MainShell>
   /// already landed in storage, so a plain re-read is the refresh.
   void _onSettingsStoreChanged() {
     _refreshNavLabels();
-    _refreshLiquidGlass();
+    _refreshNavBarStyle();
   }
 
   /// Background-change callback: the token already holds the new
@@ -306,10 +308,10 @@ class _MainShellState extends State<MainShell>
     }
   }
 
-  Future<void> _refreshLiquidGlass() async {
-    final v = await _settingsStore.getLiquidGlass();
-    if (mounted && v != _liquidGlass) {
-      setState(() => _liquidGlass = v);
+  Future<void> _refreshNavBarStyle() async {
+    final v = await _settingsStore.getNavBarStyle();
+    if (mounted && v != _navBarStyle) {
+      setState(() => _navBarStyle = v);
     }
   }
 
@@ -510,11 +512,20 @@ class _MainShellState extends State<MainShell>
                 0,
                 5,
                 0,
-                navDockSnackBarBottomInset(
-                  showLabels: _showNavLabels,
-                  viewPaddingBottom:
-                      MediaQuery.viewPaddingOf(context).bottom,
-                ),
+                // Per-style inset (Nav Bar Style package): the
+                // glass dock's geometry when Liquid Glass is the
+                // active style, the Solid dock's (58dp + its own
+                // float rule) when Solid is.
+                _navBarStyle == NavBarStyle.liquidGlass
+                    ? navDockSnackBarBottomInset(
+                        showLabels: _showNavLabels,
+                        viewPaddingBottom:
+                            MediaQuery.viewPaddingOf(context).bottom,
+                      )
+                    : navDockSolidSnackBarBottomInset(
+                        viewPaddingBottom:
+                            MediaQuery.viewPaddingOf(context).bottom,
+                      ),
               ),
             ),
           ),
@@ -555,17 +566,32 @@ class _MainShellState extends State<MainShell>
               opacity: _homeDrawerOpen ? 0.0 : 1.0,
               duration: const Duration(milliseconds: 200),
               curve: Curves.easeOut,
-              child: NavDock(
-                selected: _tab,
-                showLabels: _showNavLabels,
-                liquidGlass: _liquidGlass,
-                heartSleepMode: _heartSleepMode,
-                onSelect: (tab) {
-                  _selectTab(tab);
-                  _refreshNavLabels();
-                  _refreshLiquidGlass();
-                },
-              ),
+              // Nav Bar Style: Solid mounts the new NavDockSolid;
+              // Liquid Glass mounts the shipped PR #170 NavDock
+              // with liquidGlass: true (always true on this path —
+              // nav_dock.dart itself is untouched). The onSelect
+              // reseed is shared by both docks.
+              child: _navBarStyle == NavBarStyle.liquidGlass
+                  ? NavDock(
+                      selected: _tab,
+                      showLabels: _showNavLabels,
+                      liquidGlass: true,
+                      heartSleepMode: _heartSleepMode,
+                      onSelect: (tab) {
+                        _selectTab(tab);
+                        _refreshNavLabels();
+                        _refreshNavBarStyle();
+                      },
+                    )
+                  : NavDockSolid(
+                      selected: _tab,
+                      heartSleepMode: _heartSleepMode,
+                      onSelect: (tab) {
+                        _selectTab(tab);
+                        _refreshNavLabels();
+                        _refreshNavBarStyle();
+                      },
+                    ),
             ),
           ),
         ),

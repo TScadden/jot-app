@@ -4,6 +4,7 @@ import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
+import 'package:tabs_lab/src/features/shell/nav_dock_solid.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/notel_theme.dart';
 
@@ -52,9 +53,16 @@ void main() {
     addTearDown(tester.view.reset);
   }
 
-  SettingsStore storeFor(bool labels) {
+  SettingsStore storeFor(bool labels,
+      {NavBarStyle style = NavBarStyle.liquidGlass}) {
     final map = <String, String>{
       SettingsStore.showNavLabelsKey: labels ? 'true' : 'false',
+      // Nav Bar Style package: the pre-existing cases below pin
+      // the GLASS dock's clearance, so they seed the glass style
+      // explicitly (Solid is now the shell's default); the new
+      // Solid cases seed solid.
+      SettingsStore.navBarStyleKey:
+          style == NavBarStyle.liquidGlass ? 'liquid_glass' : 'solid',
     };
     return SettingsStore.withStorage(
       read: (k) async => map[k],
@@ -66,22 +74,28 @@ void main() {
   /// Pumps the real shell, shows the snackbar from inside its body,
   /// captures the bar + dock geometry, flushes the dismiss, and
   /// returns the captured rects.
-  Future<({Rect bar, Rect dock, bool dockLabels})> captureInShell(
+  Future<({Rect bar, Rect dock, bool? dockLabels})> captureInShell(
     WidgetTester tester, {
     required bool labels,
+    NavBarStyle style = NavBarStyle.liquidGlass,
   }) async {
     usePhoneView(tester);
     await tester.pumpWidget(
       MaterialApp(
         theme: notelDarkTheme(),
-        home: MainShell(settingsStore: storeFor(labels)),
+        home: MainShell(settingsStore: storeFor(labels, style: style)),
       ),
     );
     await tester.pump();
     // Stored preference lands + staggered-entrance delays fire.
     await tester.pump(const Duration(milliseconds: 500));
 
-    final dockWidget = tester.widget<NavDock>(find.byType(NavDock));
+    final bool? dockLabels = style == NavBarStyle.liquidGlass
+        ? tester.widget<NavDock>(find.byType(NavDock)).showLabels
+        : null;
+    final dockFinder = style == NavBarStyle.liquidGlass
+        ? find.byType(NavDock)
+        : find.byType(NavDockSolid);
 
     // A context inside the shell body (the Home tab's screen).
     final bodyContext = tester.element(find.byType(HomeScreen));
@@ -95,18 +109,18 @@ void main() {
     expect(find.text(message), findsOneWidget);
     expect(snackBarMaterial(), findsOneWidget);
     final bar = tester.getRect(snackBarMaterial());
-    final dock = tester.getRect(find.byType(NavDock));
+    final dock = tester.getRect(dockFinder);
 
     // Flush the auto-dismiss + exit so no timer is pending at
     // teardown, whatever the caller's assertions then do.
     await tester.pump(const Duration(seconds: 5));
     await tester.pump(const Duration(milliseconds: 500));
 
-    return (bar: bar, dock: dock, dockLabels: dockWidget.showLabels);
+    return (bar: bar, dock: dock, dockLabels: dockLabels);
   }
 
-  testWidgets('in shell, labels off: bar parks 8dp above the dock, '
-      'full width', (tester) async {
+  testWidgets('in shell (glass style), labels off: bar parks 8dp '
+      'above the dock, full width', (tester) async {
     final g = await captureInShell(tester, labels: false);
     expect(g.dockLabels, isFalse);
     expect(g.bar.bottom, closeTo(g.dock.top - 8, 0.5));
@@ -114,10 +128,33 @@ void main() {
     expect(g.bar.right, screenSize.width);
   });
 
-  testWidgets('in shell, labels on: bar parks 8dp above the taller '
-      'dock, full width', (tester) async {
+  testWidgets('in shell (glass style), labels on: bar parks 8dp '
+      'above the taller dock, full width', (tester) async {
     final g = await captureInShell(tester, labels: true);
     expect(g.dockLabels, isTrue);
+    expect(g.bar.bottom, closeTo(g.dock.top - 8, 0.5));
+    expect(g.bar.left, 0);
+    expect(g.bar.right, screenSize.width);
+  });
+
+  testWidgets('in shell (solid style, the default): bar parks 8dp '
+      'above the 58dp solid dock, full width', (tester) async {
+    final g = await captureInShell(tester,
+        labels: false, style: NavBarStyle.solid);
+    // The solid dock's own rect: 58dp bar + its float above the
+    // 24dp system inset line (max(16, 24+4) = 28) = 86 tall.
+    expect(g.dock.height, 58 + 28);
+    expect(g.bar.bottom, closeTo(g.dock.top - 8, 0.5));
+    expect(g.bar.left, 0);
+    expect(g.bar.right, screenSize.width);
+  });
+
+  testWidgets('in shell (solid style), labels pref on: same solid '
+      'clearance (the solid dock ignores the labels pref)',
+      (tester) async {
+    final g = await captureInShell(tester,
+        labels: true, style: NavBarStyle.solid);
+    expect(g.dock.height, 58 + 28);
     expect(g.bar.bottom, closeTo(g.dock.top - 8, 0.5));
     expect(g.bar.left, 0);
     expect(g.bar.right, screenSize.width);

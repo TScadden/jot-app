@@ -87,7 +87,14 @@ void main() {
 
   testWidgets('MainShell feeds the stored preference to the dock',
       (tester) async {
-    final map = <String, String>{SettingsStore.showNavLabelsKey: 'false'};
+    // Nav Bar Style update (Nov 24, 2026): this file pins the
+    // showLabels wiring into the GLASS NavDock, so its shell
+    // tests seed the Liquid Glass style (Solid is the shell's
+    // default now and its dock has no showLabels parameter).
+    final map = <String, String>{
+      SettingsStore.showNavLabelsKey: 'false',
+      SettingsStore.navBarStyleKey: 'liquid_glass',
+    };
     final store = SettingsStore.withStorage(
       read: (k) async => map[k],
       write: (k, v) async => map[k] = v,
@@ -129,12 +136,17 @@ void main() {
   //   (c) ON returns live, same screen, no tab switch
   //   (d) ON persists across a simulated cold restart
 
-  SettingsStore storeOver(Map<String, String> map) =>
-      SettingsStore.withStorage(
-        read: (k) async => map[k],
-        write: (k, v) async => map[k] = v,
-        delete: (k) async => map.remove(k),
-      );
+  // Nav Bar Style update: seed the Liquid Glass style into every
+  // shell store in this group (see the note on the first shell
+  // test above) so the glass NavDock under test is mounted.
+  SettingsStore storeOver(Map<String, String> map) {
+    map.putIfAbsent(SettingsStore.navBarStyleKey, () => 'liquid_glass');
+    return SettingsStore.withStorage(
+      read: (k) async => map[k],
+      write: (k, v) async => map[k] = v,
+      delete: (k) async => map.remove(k),
+    );
+  }
 
   // Settings-fullscreen round (V8): while Settings is open it is
   // an OPAQUE pushed route (SlidePageRoute, opaque since Round
