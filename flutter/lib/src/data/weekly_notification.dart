@@ -110,7 +110,7 @@ class LocalWeeklyNotifier implements WeeklyNotifier {
     } else {
       await _plugin.initialize(
         const InitializationSettings(
-          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+          android: AndroidInitializationSettings('ic_stat_tabs'),
         ),
       );
     }
@@ -139,7 +139,7 @@ class LocalWeeklyNotifier implements WeeklyNotifier {
             // the visibility stays private per the PR #55
             // precedent).
             visibility: NotificationVisibility.private,
-            icon: '@mipmap/ic_launcher',
+            icon: 'ic_stat_tabs',
           ),
         ),
         payload: payload,

@@ -372,7 +372,7 @@ class LocalDailyScoreReadyNotifier implements DailyScoreReadyNotifier {
     } else {
       await _plugin.initialize(
         const InitializationSettings(
-          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+          android: AndroidInitializationSettings('ic_stat_tabs'),
         ),
       );
     }
@@ -414,6 +414,14 @@ class LocalDailyScoreReadyNotifier implements DailyScoreReadyNotifier {
           // Juno hardening: the body is hidden on a secure lock
           // screen.
           visibility: NotificationVisibility.private,
+          // Notification small icon (RECON-ICON.md): the Tabs
+          // note silhouette drawable. This was the ONE details
+          // object with no explicit icon — it inherited the
+          // plugin's persisted init default, which is now the
+          // same drawable; naming it explicitly keeps the icon
+          // independent of persisted-default state in either
+          // isolate (foreground or WorkManager background).
+          icon: 'ic_stat_tabs',
         ),
       ),
       payload: date,

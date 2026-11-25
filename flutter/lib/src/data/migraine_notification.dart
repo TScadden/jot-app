@@ -129,7 +129,7 @@ class LocalMigraineNotifier implements MigraineNotifier {
     } else {
       await _plugin.initialize(
         const InitializationSettings(
-          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+          android: AndroidInitializationSettings('ic_stat_tabs'),
         ),
       );
     }
@@ -170,7 +170,7 @@ class LocalMigraineNotifier implements MigraineNotifier {
             autoCancel: false,
             playSound: false,
             enableVibration: false,
-            icon: '@mipmap/ic_launcher',
+            icon: 'ic_stat_tabs',
           ),
         ),
         payload: payload,

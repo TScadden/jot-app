@@ -34,6 +34,7 @@ import 'package:tabs_lab/src/data/migraine_attack_store.dart';
 import 'package:tabs_lab/src/data/migraine_controller.dart';
 import 'package:tabs_lab/src/data/migraine_notification.dart';
 import 'package:tabs_lab/src/data/refresh_keep_alive.dart';
+import 'package:tabs_lab/src/data/daily_summary_open_signal.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/report_generation_service.dart';
 import 'package:tabs_lab/src/data/onboarding_store.dart';
@@ -1256,6 +1257,10 @@ class _AppFlowState extends State<AppFlow>
     // notification tap is delivered on the same landing.
     WidgetsBinding.instance
         .addPostFrameCallback((_) => _deliverPendingScoreTap());
+    // The same landing delivers a stashed Daily Summary tap
+    // (rich streak reminder) — see _deliverPendingDailySummaryOpen.
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _deliverPendingDailySummaryOpen());
   }
 
   Future<void> _runFirstRunResync() async {
@@ -1577,6 +1582,11 @@ class _AppFlowState extends State<AppFlow>
     // score-ready notification tap routing. Both are best-effort
     // and silent: neither may block or break app start.
     unawaited(_initScoreBackground());
+    // Rich streak reminder — arm the Daily Summary tap routing
+    // (body tap + "Open Daily Summary" action) and consume a
+    // terminated-state launch tap. Best-effort and silent, like
+    // the score routing above.
+    unawaited(_initDailySummaryTap());
     // Takeover Phase 2 — production billing sync triggers (native
     // parity: sync on BillingClient connect + on ON_RESUME). Inert
     // unless the runtime package/flavor gate says this is the
@@ -1705,6 +1715,54 @@ class _AppFlowState extends State<AppFlow>
         ),
       ),
     ));
+  }
+
+  // ── Rich streak reminder — Daily Summary tap routing ─────────
+  //
+  // Mirrors the Daily Score tap flow above: the bootstrap's
+  // dispatch routes this notification's body tap (payload
+  // 'daily_summary') and its "Open Daily Summary" action tap to
+  // the handler registered here; a tap that arrives before the
+  // flow is home (welcome/login/onboarding, or the terminated
+  // state) is stashed and delivered on the home landing, never
+  // dropped and never pushed over the auth flow. Delivery raises
+  // the app-level [DailySummaryOpenSignal]: MainShell selects
+  // the Home tab and Home's TodaySummaryCard — the sheet's only
+  // host — consumes the request and opens its sheet. When the
+  // card is not mounted or has no data yet, the tap degrades to
+  // landing on Home.
+  bool _pendingDailySummaryOpen = false;
+
+  Future<void> _initDailySummaryTap() async {
+    NotificationBootstrap.registerDailySummaryTapHandler(
+        _onDailySummaryNotificationTap);
+    try {
+      // Terminated-state tap: the plugin's launch details carry
+      // it (the dispatching callback does not fire for the
+      // launch that started the app).
+      final launched = await NotificationBootstrap.launchedByDailySummaryTap(
+          FlutterLocalNotificationsPlugin());
+      if (launched) _onDailySummaryNotificationTap();
+    } catch (_) {
+      // Silent: the reminder is an enhancement; the app must
+      // start identically without its tap routing.
+    }
+  }
+
+  void _onDailySummaryNotificationTap() {
+    _pendingDailySummaryOpen = true;
+    if (_stage == _FlowStage.home) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _deliverPendingDailySummaryOpen());
+    }
+  }
+
+  void _deliverPendingDailySummaryOpen() {
+    if (!_pendingDailySummaryOpen || !mounted || _stage != _FlowStage.home) {
+      return;
+    }
+    _pendingDailySummaryOpen = false;
+    DailySummaryOpenSignal.instance.requestOpen();
   }
 
   // Takeover Phase 2 — app-lifetime billing sync (start + resume).

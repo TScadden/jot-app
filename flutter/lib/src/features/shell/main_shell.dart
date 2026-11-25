@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/billing_service.dart';
+import 'package:tabs_lab/src/data/daily_summary_open_signal.dart';
 import 'package:tabs_lab/src/data/revenuecat_service.dart';
 import 'package:tabs_lab/src/data/midnight_grace.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
@@ -246,6 +247,13 @@ class _MainShellState extends State<MainShell>
     // bootstrap load (which lands before the shell exists).
     AppBackgroundController.instance
         .addListener(_onAppBackgroundChanged);
+    // Rich streak reminder: a Daily Summary open request (see
+    // DailySummaryOpenSignal) shows the Home tab — the card
+    // that hosts the sheet exists only there. The shell never
+    // consumes the request; the card does, once it is mounted
+    // with data.
+    DailySummaryOpenSignal.instance
+        .addListener(_onDailySummaryOpenSignal);
     // Round 40 — one controller for the paired slide; Round 22's
     // 300ms duration and easeOut curve.
     _slideController = AnimationController(
@@ -269,6 +277,8 @@ class _MainShellState extends State<MainShell>
     // disposes stores anywhere in this codebase — only the
     // listener registration is the shell's to undo.
     _settingsStore.removeListener(_onSettingsStoreChanged);
+    DailySummaryOpenSignal.instance
+        .removeListener(_onDailySummaryOpenSignal);
     AppBackgroundController.instance
         .removeListener(_onAppBackgroundChanged);
     _slideController.dispose();
@@ -288,6 +298,19 @@ class _MainShellState extends State<MainShell>
   /// immediately.
   void _onAppBackgroundChanged() {
     if (mounted) setState(() {});
+  }
+
+  /// Daily Summary open-signal callback (rich streak reminder):
+  /// a pending request selects the Home tab through the ordinary
+  /// tab-switch path. When Home is already showing this is a
+  /// no-op — the mounted card hears the same notification and
+  /// opens its sheet itself. A request raised before this shell
+  /// exists (cold start) is not lost: the pending flag survives
+  /// and the card polls it when its data lands.
+  void _onDailySummaryOpenSignal() {
+    if (!mounted) return;
+    if (!DailySummaryOpenSignal.instance.hasPendingRequest) return;
+    if (_tab != DockTab.home) _selectTab(DockTab.home);
   }
 
   void _onSlideStatus(AnimationStatus status) {

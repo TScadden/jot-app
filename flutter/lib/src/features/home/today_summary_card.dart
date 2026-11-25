@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/data/daily_summary_open_signal.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/migraine_controller.dart';
 import 'package:tabs_lab/src/data/migraine_time_format.dart';
@@ -367,6 +368,13 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
     _migraine = widget.migraineController ??
         MigraineController.production(backend: widget.backend);
     _migraine.addListener(_onMigraineChanged);
+    // Rich streak reminder: subscribe to the app-level Daily
+    // Summary open signal (see DailySummaryOpenSignal) — a
+    // notification tap asks this card, the sheet's only host,
+    // to open its sheet. A request already pending at mount
+    // (cold start) is honored when the first data lands below.
+    DailySummaryOpenSignal.instance
+        .addListener(_onDailySummaryOpenSignal);
     unawaited(_migraine.initialize());
     _syncMigraineTimer();
     // First frame: the in-memory last-known snapshot for this account
@@ -380,6 +388,8 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
   void dispose() {
     _sheetTick.dispose();
     _migraineTimer?.cancel();
+    DailySummaryOpenSignal.instance
+        .removeListener(_onDailySummaryOpenSignal);
     _migraine.removeListener(_onMigraineChanged);
     if (_ownsMigraine) _migraine.dispose();
     super.dispose();
@@ -389,6 +399,27 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
     if (!mounted) return;
     setState(() {});
     _syncMigraineTimer();
+  }
+
+  /// Rich streak reminder — the [DailySummaryOpenSignal]
+  /// listener, also polled directly wherever this card's data
+  /// lands (the cache seed and the plan load below), because a
+  /// request raised before the card mounted or before its data
+  /// arrived notifies nobody at the moment it becomes
+  /// honorable. Honors a pending request only once data is
+  /// present: with no data yet the request stays pending (the
+  /// user has still landed on Home — the ruled degrade), and
+  /// the data-landing polls below pick it up. Consuming is
+  /// one-shot, and [_openSheet] itself refuses to stack a
+  /// second sheet, so a request can never double-open.
+  void _onDailySummaryOpenSignal() => _maybeOpenSheetFromSignal();
+
+  void _maybeOpenSheetFromSignal() {
+    if (!mounted || _data == null) return;
+    if (!DailySummaryOpenSignal.instance.consumePendingRequest()) {
+      return;
+    }
+    unawaited(_openSheet());
   }
 
   /// The 30s elapsed tick runs only while an attack is active.
@@ -417,6 +448,10 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
           _data = TodaySummaryData(
               plan: snap.plan, trends: snap.trends, fromCache: true);
         });
+        // A pending Daily Summary open request (cold-start
+        // notification tap) becomes honorable the moment data —
+        // even cached data — is on the card.
+        _maybeOpenSheetFromSignal();
       }
     } catch (_) {
       // Cache seeding is best-effort; the live load follows anyway.
@@ -439,6 +474,9 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
         pullSucceeded: data.pullSucceeded,
       );
     });
+    // A pending Daily Summary open request (notification tap)
+    // becomes honorable the moment the plan lands.
+    _maybeOpenSheetFromSignal();
     if (includeTrends) {
       final trends = await _loader.loadLiveTrends();
       if (!mounted) return;
@@ -476,6 +514,14 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
       }
     });
   }
+
+  /// The public path to this card's Daily Summary sheet, for
+  /// cross-widget callers (the rich streak reminder's tap
+  /// plumbing, via [DailySummaryOpenSignal]). It only ever
+  /// delegates to [_openSheet] — this card remains the sheet's
+  /// ONLY host, with its one loader and action chain; no caller
+  /// can open a second, competing sheet through here.
+  Future<void> openSheet() => _openSheet();
 
   /// Home redesign — the card tap opens the summary sheet, hosted
   /// BY this state so the sheet shares [_loader], the serialized
