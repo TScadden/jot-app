@@ -116,33 +116,11 @@ void main() {
           delete: (k) async => map.remove(k),
         );
 
-    test('(a) persistence round-trip through SettingsStore', () async {
-      final map = <String, String>{};
-      final store = storeOver(map);
-      // Unset reads as the default: ON.
-      expect(await store.getLiquidGlass(), isTrue);
-      // Write OFF: lands in storage under the settings key, and a
-      // FRESH store over the same storage reads it back (the cold
-      // restart leg).
-      await store.setLiquidGlass(false);
-      expect(map[SettingsStore.liquidGlassKey], 'false');
-      expect(await storeOver(map).getLiquidGlass(), isFalse);
-      // Write ON again: round-trips back.
-      await storeOver(map).setLiquidGlass(true);
-      expect(map[SettingsStore.liquidGlassKey], 'true');
-      expect(await storeOver(map).getLiquidGlass(), isTrue);
-    });
-
-    test('(a2) setLiquidGlass notifies listeners after the write',
-        () async {
-      final map = <String, String>{};
-      final store = storeOver(map);
-      var notified = 0;
-      store.addListener(() => notified++);
-      await store.setLiquidGlass(false);
-      expect(notified, 1);
-      expect(map[SettingsStore.liquidGlassKey], 'false');
-    });
+    // Legs (a)/(a2) — the SettingsStore bool-accessor round-trip
+    // and notify tests — were removed with the accessors
+    // themselves (Vera §7, PR #172): the bool pref is superseded
+    // by the style pref, whose round-trip + notify are pinned by
+    // nav_bar_style_test.dart.
 
     Widget dockWith({required bool liquidGlass}) => MaterialApp(
           home: Scaffold(

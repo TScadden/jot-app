@@ -84,7 +84,7 @@ void main() {
       final map = <String, String>{};
       final store = storeOver(map);
       await store.setNavBarStyle(NavBarStyle.liquidGlass);
-      await store.setLiquidGlass(true);
+      map[SettingsStore.liquidGlassKey] = 'true';
       await store.clear();
       expect(map.containsKey(SettingsStore.navBarStyleKey), isFalse);
       expect(map.containsKey(SettingsStore.liquidGlassKey), isFalse);

@@ -45,8 +45,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// and a cold restart re-seeds from storage exactly as before.
 /// Notification is deliberately scoped to the setters whose keys
 /// have a cross-screen live consumer: [setShowNavLabels] and —
-/// since the Nav Bar Liquid Glass package (Nov 24, 2026) — the
-/// identical [setLiquidGlass]; no other key has one today.
+/// since the Nav Bar Style package (Nov 24, 2026) —
+/// [setNavBarStyle]; no other key has one today.
 /// Nav Bar Style (Nov 24, 2026): the bottom navigation bar's
 /// style. [solid] is the NEW default for everyone — a fresh
 /// install, an unreadable store, and a stored garbage value all
@@ -63,8 +63,10 @@ class SettingsStore extends ChangeNotifier {
   // only like every key in this store; default ON (the glass is
   // the new dock look; OFF renders the pre-package dock exactly).
   // Nav Bar Style package (Nov 24, 2026): SUPERSEDED by
-  // [navBarStyleKey] below — the accessors stay for now (Vera
-  // adjudicates removal in review); consumers read the style.
+  // [navBarStyleKey] below — consumers read the style. Vera
+  // adjudicated the legacy accessors in review (PR #172, §7)
+  // and they were removed; this key remains only for clear()'s
+  // wipe list and the legacy-seed reads in tests.
   static const liquidGlassKey = 'settings_liquid_glass';
   // Nav Bar Style package (Nov 24, 2026): the style preference
   // superseding the liquid-glass bool. Stored values: 'solid' /
@@ -179,17 +181,6 @@ class SettingsStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Liquid Glass switch: default ON (Nav Bar Liquid Glass
-  /// package, Nov 24, 2026). Mirrors [getShowNavLabels] /
-  /// [setShowNavLabels] exactly, including the notify-after-write
-  /// live-refresh channel MainShell listens to.
-  Future<bool> getLiquidGlass() => _readBool(liquidGlassKey, true);
-
-  Future<void> setLiquidGlass(bool v) async {
-    await _writeBool(liquidGlassKey, v);
-    notifyListeners();
-  }
-
   /// Nav Bar Style: the stored style if present and valid;
   /// [NavBarStyle.solid] in EVERY other case — absent,
   /// unreadable, garbage, AND regardless of the legacy
@@ -206,8 +197,8 @@ class SettingsStore extends ChangeNotifier {
   }
 
   /// Writes the style, then notifies listeners (the same live
-  /// channel as [setShowNavLabels] / [setLiquidGlass]):
-  /// observers re-read the key from storage.
+  /// channel as [setShowNavLabels]): observers re-read the key
+  /// from storage.
   Future<void> setNavBarStyle(NavBarStyle v) async {
     await _write(
       navBarStyleKey,
