@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
+import 'package:tabs_lab/src/features/shell/nav_dock_glass_light.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock_solid.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock_glass.dart';
 import 'package:tabs_lab/src/theme/lab_black_colors.dart';
@@ -239,6 +240,87 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
       expect(find.byType(NavDock), findsNothing);
       expect(find.byType(NavDockSolid), findsOneWidget);
+    });
+
+    testWidgets(
+        '(d) NEW (Nav Bar Style Fixes package): MainShell mounts '
+        'the LIGHT glass through NavDockLightGlass — the legacy '
+        'path by construction, labels pref forwarded', (tester) async {
+      final map = <String, String>{
+        SettingsStore.navBarStyleKey: 'liquid_glass_light',
+        SettingsStore.showNavLabelsKey: 'true',
+      };
+      final store = storeOver(map);
+      await tester.pumpWidget(
+          MaterialApp(home: MainShell(settingsStore: store)));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // The named wrapper is mounted (the binary marker), Solid
+      // is not, and the wrapper builds exactly one NavDock with
+      // liquidGlass hardcoded false.
+      expect(find.byType(NavDockLightGlass), findsOneWidget);
+      expect(find.byType(NavDockSolid), findsNothing);
+      expect(find.byType(NavDock), findsOneWidget);
+      final dock = tester.widget<NavDock>(find.byType(NavDock));
+      expect(dock.liquidGlass, isFalse);
+      // The labels preference reaches BOTH glass styles: the
+      // wrapper forwards it to NavDock exactly as the dark path
+      // does (NavDock takes showLabels on both render paths).
+      expect(
+          tester
+              .widget<NavDockLightGlass>(find.byType(NavDockLightGlass))
+              .showLabels,
+          isTrue);
+      expect(dock.showLabels, isTrue);
+
+      // Legacy material values, shell-mounted (leg (b)'s
+      // OFF-path assertions, re-run against the light style):
+      // the milky gradient is painted, the dark tint is not.
+      final gradients = tester
+          .widgetList<Container>(
+            find.descendant(
+                of: find.byType(NavDock), matching: find.byType(Container)),
+          )
+          .map((c) => (c.decoration as BoxDecoration?)?.gradient)
+          .whereType<Gradient>()
+          .toList();
+      expect(gradients, contains(LabBlackColors.navbarGlassGradient));
+      expect(gradients, isNot(contains(NavDockLiquidGlass.tintGradient)));
+
+      // The flat white-20% 1dp rim rides the Material side.
+      final material = tester.widget<Material>(
+        find
+            .descendant(
+                of: find.byType(NavDock), matching: find.byType(Material))
+            .first,
+      );
+      final shape = material.shape! as RoundedRectangleBorder;
+      expect(shape.side.color, LabBlackColors.glassEdge);
+      expect(shape.side.width, 1);
+
+      // No gradient-rim painter (that layer exists only on the
+      // dark path).
+      expect(
+        tester
+            .widgetList<CustomPaint>(
+              find.descendant(
+                  of: find.byType(NavDock),
+                  matching: find.byType(CustomPaint)),
+            )
+            .map((p) => p.painter)
+            .whereType<NavDockGlassRimPainter>(),
+        isEmpty,
+      );
+
+      // Shared glass geometry: 62dp pill + the glass float, and
+      // the #050505 capsule at its legacy size.
+      expect(tester.getSize(find.byType(NavDock)).height, 62 + 27);
+      final pill = find.byKey(const ValueKey('dock_selection_pill'));
+      expect(tester.getSize(pill).height, kNavDockCapsuleHeight);
+      final pillDeco =
+          tester.widget<Container>(pill).decoration! as BoxDecoration;
+      expect(pillDeco.color, LabBlackColors.navbarCapsuleFill);
     });
   });
 

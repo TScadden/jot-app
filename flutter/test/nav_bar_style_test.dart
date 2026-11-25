@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
+import 'package:tabs_lab/src/features/shell/nav_dock_glass_light.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock_solid.dart';
 
 /// Nav Bar Style package — the style preference that supersedes
@@ -80,6 +81,39 @@ void main() {
           NavBarStyle.liquidGlass);
     });
 
+    // Nav Bar Style Fixes package: the third stored value. The
+    // two legacy values above keep their exact meaning — dark
+    // glass is still 'liquid_glass', never remapped.
+    test('stored liquid_glass_light -> liquidGlassLight', () async {
+      final map = <String, String>{
+        SettingsStore.navBarStyleKey: 'liquid_glass_light',
+      };
+      expect(await storeOver(map).getNavBarStyle(),
+          NavBarStyle.liquidGlassLight);
+    });
+
+    test('liquidGlassLight round-trip + notify through SettingsStore',
+        () async {
+      final map = <String, String>{};
+      final store = storeOver(map);
+      var notified = 0;
+      store.addListener(() => notified++);
+
+      await store.setNavBarStyle(NavBarStyle.liquidGlassLight);
+      expect(map[SettingsStore.navBarStyleKey], 'liquid_glass_light');
+      expect(notified, 1);
+      // A FRESH store over the same storage reads it back (the
+      // cold-restart leg).
+      expect(await storeOver(map).getNavBarStyle(),
+          NavBarStyle.liquidGlassLight);
+
+      await store.setNavBarStyle(NavBarStyle.liquidGlass);
+      expect(map[SettingsStore.navBarStyleKey], 'liquid_glass');
+      expect(notified, 2);
+      expect(await storeOver(map).getNavBarStyle(),
+          NavBarStyle.liquidGlass);
+    });
+
     test('clear() wipes the style key (and the legacy key)', () async {
       final map = <String, String>{};
       final store = storeOver(map);
@@ -138,6 +172,53 @@ void main() {
       expect(find.byType(NavDockSolid), findsOneWidget);
       expect(find.byType(NavDock), findsNothing);
     });
+
+    testWidgets('renders NavDockLightGlass when style is '
+        'liquidGlassLight, inner NavDock on the legacy path',
+        (tester) async {
+      final map = <String, String>{
+        SettingsStore.navBarStyleKey: 'liquid_glass_light',
+      };
+      await pumpShell(tester, storeOver(map));
+      expect(find.byType(NavDockLightGlass), findsOneWidget);
+      expect(find.byType(NavDockSolid), findsNothing);
+      // The wrapper mounts exactly one NavDock, hardcoded to the
+      // legacy (light) path.
+      expect(find.byType(NavDock), findsOneWidget);
+      expect(tester.widget<NavDock>(find.byType(NavDock)).liquidGlass,
+          isFalse);
+      expect(kNavDockLightGlassMarker, 'NavDockLightGlass');
+    });
+
+    testWidgets('flips live across all three styles through the '
+        'store', (tester) async {
+      final map = <String, String>{};
+      final store = storeOver(map);
+      await pumpShell(tester, store);
+      expect(find.byType(NavDockSolid), findsOneWidget);
+
+      await store.setNavBarStyle(NavBarStyle.liquidGlassLight);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byType(NavDockLightGlass), findsOneWidget);
+      expect(find.byType(NavDockSolid), findsNothing);
+      expect(tester.widget<NavDock>(find.byType(NavDock)).liquidGlass,
+          isFalse);
+
+      await store.setNavBarStyle(NavBarStyle.liquidGlass);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byType(NavDockLightGlass), findsNothing);
+      expect(find.byType(NavDock), findsOneWidget);
+      expect(tester.widget<NavDock>(find.byType(NavDock)).liquidGlass,
+          isTrue);
+
+      await store.setNavBarStyle(NavBarStyle.solid);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byType(NavDockSolid), findsOneWidget);
+      expect(find.byType(NavDock), findsNothing);
+    });
   });
 
   group('Settings Customize style choice', () {
@@ -183,6 +264,10 @@ void main() {
             find
                 .byKey(const ValueKey('nav_style_liquid_glass'))
                 .evaluate()
+                .isNotEmpty &&
+            find
+                .byKey(const ValueKey('nav_style_liquid_glass_light'))
+                .evaluate()
                 .isNotEmpty) {
           break;
         }
@@ -194,29 +279,38 @@ void main() {
       expect(find.byKey(const ValueKey('nav_style_solid')), findsOneWidget);
       expect(find.byKey(const ValueKey('nav_style_liquid_glass')),
           findsOneWidget);
+      expect(find.byKey(const ValueKey('nav_style_liquid_glass_light')),
+          findsOneWidget);
     }
 
     ElevatedButton button(WidgetTester tester, String key) =>
         tester.widget<ElevatedButton>(find.byKey(ValueKey(key)));
 
-    testWidgets('renders both options with Juno copy, solid selected '
-        'by default, and writes on tap', (tester) async {
+    testWidgets('renders all three options with Juno copy, solid '
+        'selected by default, and writes on tap', (tester) async {
       final map = <String, String>{};
       final store = storeOver(map);
       await openCustomize(tester, store);
 
-      // Juno's final strings, verbatim.
+      // Juno's final strings, verbatim (Nav Bar Style Fixes
+      // ruling: short segment labels 'Dark Glass' / 'Light
+      // Glass'; the full Liquid Glass name rides in the
+      // subtitle).
       expect(find.text('Navigation Bar Style'), findsOneWidget);
       expect(
-          find.text('Bottom navigation bar only. Solid is the default.'),
+          find.text('Bottom navigation bar only. Solid is the '
+              'default. The glass options are Liquid Glass, in '
+              'dark and light.'),
           findsOneWidget);
       expect(find.text('Solid'), findsWidgets);
-      expect(find.text('Liquid Glass'), findsOneWidget);
+      expect(find.text('Dark Glass'), findsOneWidget);
+      expect(find.text('Light Glass'), findsOneWidget);
       // The old toggle is gone.
       expect(find.byKey(const ValueKey('liquid_glass_toggle')),
           findsNothing);
 
-      // Default: Solid carries the selected (primary) styling.
+      // Default: Solid carries the selected (primary) styling,
+      // distinct from both glass options.
       expect(button(tester, 'nav_style_solid').style?.backgroundColor
           ?.resolve({}), isNotNull);
       final solidBg = button(tester, 'nav_style_solid')
@@ -227,13 +321,26 @@ void main() {
           .style
           ?.backgroundColor
           ?.resolve(<WidgetState>{});
+      final lightBg = button(tester, 'nav_style_liquid_glass_light')
+          .style
+          ?.backgroundColor
+          ?.resolve(<WidgetState>{});
       expect(solidBg, isNot(equals(glassBg)));
+      expect(solidBg, isNot(equals(lightBg)));
 
-      // Tap Liquid Glass: the store write lands.
+      // Tap Dark Glass: the store write lands (the legacy stored
+      // value — its meaning is unchanged by the third option).
       await tester.tap(find.byKey(const ValueKey('nav_style_liquid_glass')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       expect(map[SettingsStore.navBarStyleKey], 'liquid_glass');
+
+      // Tap Light Glass: writes the new stored value.
+      await tester
+          .tap(find.byKey(const ValueKey('nav_style_liquid_glass_light')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(map[SettingsStore.navBarStyleKey], 'liquid_glass_light');
 
       // Tap Solid: writes back.
       await tester.tap(find.byKey(const ValueKey('nav_style_solid')));
@@ -261,6 +368,27 @@ void main() {
       // And the shell underneath mounted the glass dock.
       expect(
           find.byType(NavDock, skipOffstage: false), findsOneWidget);
+    });
+
+    testWidgets('reflects a stored liquidGlassLight value on open',
+        (tester) async {
+      final map = <String, String>{
+        SettingsStore.navBarStyleKey: 'liquid_glass_light',
+      };
+      final store = storeOver(map);
+      await openCustomize(tester, store);
+      final solidBg = button(tester, 'nav_style_solid')
+          .style
+          ?.backgroundColor
+          ?.resolve(<WidgetState>{});
+      final lightBg = button(tester, 'nav_style_liquid_glass_light')
+          .style
+          ?.backgroundColor
+          ?.resolve(<WidgetState>{});
+      expect(lightBg, isNot(equals(solidBg)));
+      // And the shell underneath mounted the light glass dock.
+      expect(find.byType(NavDockLightGlass, skipOffstage: false),
+          findsOneWidget);
     });
   });
 }
