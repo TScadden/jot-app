@@ -223,32 +223,28 @@ class _FileClaim implements WeeklyGenerationClaim {
       // arbitrates.
     }
     if (moved) {
-      // Guard the stat→rename window: if the file we actually
+      // Stat→rename window (Vera C1): if the file we actually
       // moved is NOT the stale file we statted (a fresh claim
       // landed at the path in between — its mtime differs from
-      // the stale mtime), we moved another run's live claim.
-      // Put it back when the path is still free and stand down;
-      // never proceed on a stolen live claim.
+      // the stale mtime), displacement is permanent: delete the
+      // trash and stand down WITHOUT resurrecting the moved
+      // claim and WITHOUT an exclusive-create in this branch.
+      // The displaced holder then fails its step-9 token check,
+      // exactly as ruled (§3).
       DateTime? trashMtime;
       try {
         trashMtime = await trash.lastModified();
       } catch (_) {}
-      if (trashMtime != null && trashMtime != mtime) {
-        try {
-          await trash.rename(file.path);
-        } catch (_) {
-          // The path is occupied again (another create landed):
-          // the moved holder's step-9 verification will fail
-          // against the occupant and suppress its send — the
-          // at-most-one guarantee is the guards', per the ruling.
-        }
-        return null;
-      }
+      final mismatched =
+          trashMtime != null && trashMtime != mtime;
       try {
         await trash.delete();
       } catch (_) {
         // The trash file is inert either way; the create below
         // is the proof, not the cleanup.
+      }
+      if (mismatched) {
+        return null;
       }
     }
     if (await _createExclusive(file, token, weekStartKey, now)) {
