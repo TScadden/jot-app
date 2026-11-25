@@ -155,6 +155,78 @@ void main() {
     });
   });
 
+  group('C2 follow-up — rangeStart/rangeEnd ride the AI request '
+      '(server PR #68 coverage backstop)', () {
+    // The server binds its medication-coverage bullet dates to
+    // these top-level body fields and skips the bullet when they
+    // are unknown; they must be the report's own range endpoints
+    // (snapshot range machinery), never entry-derived.
+    final dayKey = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+
+    test('weekly generation: the stored Mon–Sun pair, exactly', () {
+      final snap = ReportSnapshot(
+        last30Days: false,
+        weekStart: DateTime(2026, 11, 16),
+        weekEnd: DateTime(2026, 11, 22),
+        // Generation happens AFTER the closed week — the
+        // endpoints must still be the week's own first/last days,
+        // not days anchored on the generation day.
+        generationTimestampMs:
+            DateTime(2026, 11, 24, 9).millisecondsSinceEpoch,
+        logEntries: const [],
+        categoriesMap: const {},
+      );
+      final body = buildAiReportRequest(snap);
+      expect(body['rangeStart'], '2026-11-16');
+      expect(body['rangeEnd'], '2026-11-22');
+      expect(dayKey.hasMatch(body['rangeStart'] as String), isTrue);
+      expect(dayKey.hasMatch(body['rangeEnd'] as String), isTrue);
+    });
+
+    test('weekly generation without a stored weekEnd resolves '
+        'start + 6, as the collector normalizes it', () {
+      final snap = ReportSnapshot(
+        last30Days: false,
+        weekStart: DateTime(2026, 11, 16),
+        generationTimestampMs:
+            DateTime(2026, 11, 24, 9).millisecondsSinceEpoch,
+        logEntries: const [],
+        categoriesMap: const {},
+      );
+      final body = buildAiReportRequest(snap);
+      expect(body['rangeStart'], '2026-11-16');
+      expect(body['rangeEnd'], '2026-11-22');
+    });
+
+    test('30-day generation: the inclusive 30-day span ending on '
+        'the generation day', () {
+      final snap = ReportSnapshot(
+        last30Days: true,
+        generationTimestampMs:
+            DateTime(2026, 11, 22, 15).millisecondsSinceEpoch,
+        logEntries: const [],
+        categoriesMap: const {},
+      );
+      final body = buildAiReportRequest(snap);
+      expect(body['rangeStart'], '2026-10-24');
+      expect(body['rangeEnd'], '2026-11-22');
+    });
+
+    test('Full (All Time) generation: the inclusive 180-day span '
+        'ending on the generation day', () {
+      final snap = ReportSnapshot(
+        last30Days: false,
+        generationTimestampMs:
+            DateTime(2026, 11, 22, 15).millisecondsSinceEpoch,
+        logEntries: const [],
+        categoriesMap: const {},
+      );
+      final body = buildAiReportRequest(snap);
+      expect(body['rangeStart'], '2026-05-27');
+      expect(body['rangeEnd'], '2026-11-22');
+    });
+  });
+
   group('P2 — Daily Score (Juno Ruling 1 states)', () {
     test('present: success with the real in-range count, series '
         'in the snapshot, template line in the summary, retrieval '

@@ -381,6 +381,43 @@ class ReportSnapshot {
   String get rangeTypeName =>
       isWeekly ? 'WEEKLY' : (last30Days ? 'LAST_30_DAYS' : 'FULL');
 
+  /// The report range's concrete calendar endpoints (device-local
+  /// midnights, inclusive): the SAME start/end the report itself
+  /// uses for its data queries.
+  ///
+  /// - Weekly: the snapshot's stored Mon–Sun pair ([weekStart] /
+  ///   [weekEnd]); a missing [weekEnd] resolves to
+  ///   [weekStart] + 6 calendar days, exactly as the collector
+  ///   normalizes it (`_collectInner`'s `weekEndDate`).
+  /// - Standard ranges (30-day / Full 180-day): the inclusive
+  ///   [durationDays]-day span ending on the generation day —
+  ///   the span the collector's Daily Score window and the HC
+  ///   union's `loadDays` window are built on, and the span
+  ///   `ClinicianReportData.range` (clinician_report.dart)
+  ///   derives from this same machinery. Component arithmetic
+  ///   (never Duration subtraction), so DST cannot shift a day.
+  ///
+  /// Every range the shipped build supports has concrete
+  /// endpoints, so this never returns null and the pair is
+  /// always complete — never one endpoint without the other,
+  /// and never derived from entry timestamps.
+  ({DateTime start, DateTime end}) get rangeSpan {
+    if (isWeekly) {
+      final start =
+          DateTime(weekStart!.year, weekStart!.month, weekStart!.day);
+      final end = weekEnd != null
+          ? DateTime(weekEnd!.year, weekEnd!.month, weekEnd!.day)
+          : _calendarDayPlus(start, 6);
+      return (start: start, end: end);
+    }
+    final generated =
+        DateTime.fromMillisecondsSinceEpoch(generationTimestampMs);
+    final end = DateTime(generated.year, generated.month, generated.day);
+    final start =
+        DateTime(end.year, end.month, end.day - (durationDays - 1));
+    return (start: start, end: end);
+  }
+
   final int generationTimestampMs;
   final List<QuickLogEntry> logEntries;
   final Map<int, String> categoriesMap;
@@ -872,6 +909,13 @@ List<String> correlationInsightPrintLines(List<InsightRecord> records) {
 /// snapshot built without it falls back to its active list.
 /// Deleted rows never travel.
 ///
+/// Weekly Format C2 follow-up: `rangeStart` / `rangeEnd` — the
+/// report range's true endpoints as `yyyy-MM-dd` day keys
+/// ([ReportSnapshot.rangeSpan]), sent as top-level body fields
+/// for the server's medication-coverage backstop (jot-server
+/// PR #68), which binds its bullet dates to them and skips the
+/// bullet when they are unknown.
+///
 /// CORRECTION DELTA (founder correction, Nov 13 — supersedes this
 /// function's original R4 doc): `frequency` is the entry's RAW
 /// stored value ([MedicationEntry.rawFrequency]) — `""` for
@@ -918,6 +962,19 @@ Map<String, dynamic> buildAiReportRequest(ReportSnapshot s,
       for (final e in s.categoriesMap.entries) '${e.key}': e.value,
     },
     'userContext': buildReportUserContext(s),
+    // Weekly Format C2 follow-up (server PR #68): the report
+    // range's true endpoints as `yyyy-MM-dd` day keys, from the
+    // snapshot's own range machinery ([ReportSnapshot.rangeSpan])
+    // — the same start/end the report's data queries use. The
+    // server's medication-coverage backstop binds its bullet
+    // dates to these fields and SKIPS the bullet when they are
+    // unknown; a range type + day count cannot determine calendar
+    // endpoints, and entry timestamps must never stand in for
+    // them. Both fields are always sent together: every range
+    // the shipped build supports (weekly Mon–Sun, 30-day, Full
+    // 180-day) has concrete endpoints.
+    'rangeStart': dateStrOf(s.rangeSpan.start),
+    'rangeEnd': dateStrOf(s.rangeSpan.end),
     'knowledgeBase': kb.trim().isEmpty ? null : kb,
     'fitbitData': buildHealthSummary(s),
     'dataAvailability': availability.isEmpty ? null : availability,
