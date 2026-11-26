@@ -1,19 +1,176 @@
-name: tmp-flutter-apk
+# TEMP: Tabs Lab Play AAB — archive-only, one-off CI build.
+#
+# Local Gradle is broken in the build VM (daemon channel EOF), so this
+# TEMP workflow follows the proven production AAB TEMP pattern
+# (tmp-flutter-apk.yml transformation used for prod cuts): same
+# JDK 17 + Flutter 3.47.7 toolchain, workflow_dispatch only, AAB
+# archived as a workflow artifact, temp branch deleted after use.
+#
+# What it does:
+#   1. Recreates the Lab signing home exactly where the committed
+#      Gradle loader looks for it:
+#        $HOME/workspace/tabs-lab-signing/
+#          tabs-lab-upload.jks   (decoded from TABS_LAB_KEYSTORE_B64)
+#          lab-signing.properties (storeFile=<that absolute CI path>,
+#            storePassword/keyPassword from TABS_LAB_KEYSTORE_PASSWORD,
+#            keyAlias=tabs-lab-upload)
+#      No extra Gradle properties are passed — the committed code in
+#      flutter/android/app/build.gradle.kts resolves that default
+#      location itself and fails closed if it is missing/incomplete.
+#   2. Verifies the decoded keystore's certificate SHA-256 fingerprint
+#      (fingerprint only — secret values are never printed).
+#   3. Builds: flutter build appbundle --flavor labplay
+#        --build-number=<build_number input>
+#   4. Uploads the resulting .aab as a workflow artifact.
+#
+# There is deliberately NO Play upload step in this workflow.
+#
+# Required repository SECRETS (Lab-only, distinct from production):
+#   TABS_LAB_KEYSTORE_B64       base64 of tabs-lab-upload.jks
+#   TABS_LAB_KEYSTORE_PASSWORD  Lab keystore password (store == key)
+
+name: tmp-labplay-aab
+
 on:
   workflow_dispatch:
+    inputs:
+      build_number:
+        description: "versionCode / build number for the Lab Play AAB (3001+ band)"
+        required: true
+        default: "3001"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tmp-labplay-aab
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: "3.47.7"
+  EXPECTED_CERT_SHA256: "F7:33:40:A5:33:8B:AE:3E:53:C1:37:10:DC:4E:40:9B:10:0B:CA:D6:B7:5E:BD:27:8F:3D:33:9C:72:2B:B2:EA"
+  AAB_PATH: flutter/build/app/outputs/bundle/labplayRelease/app-labplay-release.aab
+
 jobs:
-  verify:
+  build-labplay-aab:
+    name: Build and archive Tabs Lab Play AAB (archive-only)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Validate build_number input
+        env:
+          BUILD_NUMBER: ${{ inputs.build_number }}
+        run: |
+          set -eu
+          case "$BUILD_NUMBER" in
+            ''|*[!0-9]*)
+              echo "::error::build_number '$BUILD_NUMBER' is not an integer."
+              exit 1
+              ;;
+          esac
+          if [ "$BUILD_NUMBER" -lt 3001 ]; then
+            echo "::error::build_number $BUILD_NUMBER is below the Lab Play band floor 3001."
+            exit 1
+          fi
+          if [ "$BUILD_NUMBER" -ge 100000 ]; then
+            echo "::error::build_number $BUILD_NUMBER is in the production 100xxx sequence."
+            exit 1
+          fi
+          echo "Building Tabs Lab Play AAB: build_number=$BUILD_NUMBER"
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
-      - uses: subosito/flutter-action@v2
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.47.7'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
-      - run: cd flutter && flutter pub get
-      - run: cd flutter && flutter analyze
-      - run: cd flutter && flutter test
+
+      - name: Recreate Lab signing home
+        env:
+          TABS_LAB_KEYSTORE_B64: ${{ secrets.TABS_LAB_KEYSTORE_B64 }}
+          TABS_LAB_KEYSTORE_PASSWORD: ${{ secrets.TABS_LAB_KEYSTORE_PASSWORD }}
+        run: |
+          set -eu
+          if [ -z "$TABS_LAB_KEYSTORE_B64" ]; then
+            echo "::error::TABS_LAB_KEYSTORE_B64 secret is not set."
+            exit 1
+          fi
+          if [ -z "$TABS_LAB_KEYSTORE_PASSWORD" ]; then
+            echo "::error::TABS_LAB_KEYSTORE_PASSWORD secret is not set."
+            exit 1
+          fi
+          SIGNING_DIR="$HOME/workspace/tabs-lab-signing"
+          mkdir -p "$SIGNING_DIR"
+          printf '%s' "$TABS_LAB_KEYSTORE_B64" | base64 -d > "$SIGNING_DIR/tabs-lab-upload.jks"
+          chmod 600 "$SIGNING_DIR/tabs-lab-upload.jks"
+          {
+            printf 'storeFile=%s/tabs-lab-upload.jks\n' "$SIGNING_DIR"
+            printf 'storePassword=%s\n' "$TABS_LAB_KEYSTORE_PASSWORD"
+            printf 'keyAlias=tabs-lab-upload\n'
+            printf 'keyPassword=%s\n' "$TABS_LAB_KEYSTORE_PASSWORD"
+          } > "$SIGNING_DIR/lab-signing.properties"
+          chmod 600 "$SIGNING_DIR/lab-signing.properties"
+          echo "Lab signing home recreated at $SIGNING_DIR (values not printed)."
+
+      - name: Verify Lab keystore fingerprint
+        env:
+          TABS_LAB_KEYSTORE_PASSWORD: ${{ secrets.TABS_LAB_KEYSTORE_PASSWORD }}
+        run: |
+          set -eu
+          SIGNING_DIR="$HOME/workspace/tabs-lab-signing"
+          ACTUAL="$(keytool -list -v -keystore "$SIGNING_DIR/tabs-lab-upload.jks" -alias tabs-lab-upload -storepass "$TABS_LAB_KEYSTORE_PASSWORD" | grep -i 'SHA256:' | awk '{print $2}')"
+          echo "Lab upload certificate SHA-256: $ACTUAL"
+          echo "Lab upload certificate SHA-256: $ACTUAL" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$ACTUAL" != "$EXPECTED_CERT_SHA256" ]; then
+            echo "::error::Lab keystore fingerprint mismatch: got $ACTUAL"
+            exit 1
+          fi
+          echo "Lab keystore fingerprint matches the expected Lab upload certificate."
+
+      - name: Install dependencies
+        working-directory: flutter
+        run: flutter pub get
+
+      # NO runner-local workaround in this proof run: the committed
+      # flutter/android/app/build.gradle.kts (fix commit) compiles as written.
+
+      - name: Build Lab Play AAB
+        working-directory: flutter
+        run: flutter build appbundle --flavor labplay --build-number="$BUILD_NUMBER"
+
+      - name: Verify AAB exists
+        run: |
+          set -eu
+          if [ ! -s "$AAB_PATH" ]; then
+            echo "::error::AAB not found or empty: $AAB_PATH"
+            ls -R flutter/build/app/outputs/bundle/ || true
+            exit 1
+          fi
+          echo "AAB: $AAB_PATH ($(stat -c%s "$AAB_PATH") bytes)"
+          ACTUAL_CERT="$(keytool -printcert -jarfile "$AAB_PATH" | grep -i 'SHA256:' | awk '{print $2}')"
+          echo "Built AAB signing certificate SHA-256: $ACTUAL_CERT"
+          if [ "$ACTUAL_CERT" != "$EXPECTED_CERT_SHA256" ]; then
+            echo "::error::Built AAB is not signed with the Lab upload key: got $ACTUAL_CERT"
+            exit 1
+          fi
+
+      - name: Upload Lab Play AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tabs-labplay-aab-${{ inputs.build_number }}
+          path: ${{ env.AAB_PATH }}
+          if-no-files-found: error
+
+      - name: Remove Lab signing home
+        if: always()
+        run: |
+          rm -rf "$HOME/workspace/tabs-lab-signing"
