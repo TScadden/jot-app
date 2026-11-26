@@ -549,6 +549,10 @@ void main() {
         // path's previously silent catches.
         'lib/src/data/gem_service.dart',
         'lib/src/data/badge_store.dart',
+        // Chests (Nov 26, 2026): allowlist row #10 in
+        // CRASH_REPORTING_CALLSITES.md — the chest open path's
+        // transport catch.
+        'lib/src/data/chest_service.dart',
         'lib/src/features/home/home_screen.dart',
       };
       final libDir = Directory('lib');

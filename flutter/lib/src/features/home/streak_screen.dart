@@ -2573,7 +2573,7 @@ class _StreakScreenState extends State<StreakScreen> {
   /// - Gem button (B-20): `GemCopy.freezePrice` GEMS — hidden when
   ///   total cover is at cap (shipped rule, unchanged), hidden
   ///   until a server balance has loaded, present but disabled
-  ///   under 100 gems with the §2d line under it.
+  ///   under 300 gems with the §2d line under it.
   /// - Money button (B-21): the live Play listing price — never a
   ///   typed literal; §1c already-held text takes its place while
   ///   a purchased freeze is held; §5a takes its place while Play

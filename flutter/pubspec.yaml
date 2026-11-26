@@ -159,6 +159,10 @@ flutter:
         - asset: assets/fonts/Nunito-Variable.ttf
 
   assets:
+    # Chests (Nov 26, 2026) — the six pre-rendered chest sprites
+    # (normal + gold per tier) from the founder-approved mock v5
+    # pipeline; do not recolor at runtime.
+    - assets/chests/
     - assets/fonts/Roboto-Regular.ttf
     - assets/fonts/Roboto-Bold.ttf
     - assets/fonts/Nunito-Variable.ttf

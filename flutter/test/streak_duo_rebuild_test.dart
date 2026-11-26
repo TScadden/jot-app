@@ -202,7 +202,7 @@ void main() {
   });
 
   group('gem buy disabled reasons', () {
-    testWidgets('balance < 100: button disabled + §2d line', (tester) async {
+    testWidgets('balance < 300: button disabled + §2d line', (tester) async {
       final s = streakSeed(current: 5, best: 12, now: at(2026, 11, 19));
       await pumpScreen(tester, s, gems: fakeGems(balance: 35));
       await tester.scrollUntilVisible(
@@ -216,7 +216,7 @@ void main() {
       expect(button.onPressed, isNull);
       expect(
         find.text(
-          'you need 65 more gems for a freeze — you earn 5 gems '
+          'you need 265 more gems for a freeze — you earn 5 gems '
           'each time you finish your daily summary.',
         ),
         findsOneWidget,
