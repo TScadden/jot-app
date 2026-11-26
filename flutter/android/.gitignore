@@ -10,5 +10,9 @@ GeneratedPluginRegistrant.java
 # Remember to never publicly share your keystore.
 # See https://flutter.dev/to/reference-keystore
 key.properties
+# Lab Play signing properties live OUTSIDE the repo
+# (~/workspace/tabs-lab-signing/lab-signing.properties); ignore the
+# filename everywhere so a copy can never be committed by accident.
+lab-signing.properties
 **/*.keystore
 **/*.jks
