@@ -242,7 +242,7 @@ void main() {
       expect(find.byKey(const Key('gemBuySection')), findsOneWidget);
       expect(find.textContaining('· Gems: 35'), findsOneWidget);
       expect(find.byKey(const Key('gemBuyButton')), findsOneWidget);
-      expect(find.text('100 GEMS'), findsOneWidget);
+      expect(find.text('300 GEMS'), findsOneWidget);
     });
 
     testWidgets('insufficient balance: balance line, DISABLED '
@@ -253,11 +253,11 @@ void main() {
       final button = tester.widget<ElevatedButton>(
         find.byKey(const Key('gemBuyButton')),
       );
-      expect(button.onPressed, isNull, reason: 'disabled under 100');
-      expect(find.text('100 GEMS'), findsOneWidget);
+      expect(button.onPressed, isNull, reason: 'disabled under 300');
+      expect(find.text('300 GEMS'), findsOneWidget);
       expect(
         find.text(
-          'you need 65 more gems for a freeze — you earn 5 gems '
+          'you need 265 more gems for a freeze — you earn 5 gems '
           'each time you finish your daily summary.',
         ),
         findsOneWidget,
@@ -270,7 +270,7 @@ void main() {
       expect(find.textContaining('· Gems: 1'), findsOneWidget);
       expect(
         find.text(
-          'you need 99 more gems for a freeze — you earn 5 gems '
+          'you need 299 more gems for a freeze — you earn 5 gems '
           'each time you finish your daily summary.',
         ),
         findsOneWidget,
@@ -280,7 +280,7 @@ void main() {
     testWidgets('spend success: §2c fires only on the verified '
         'spend, with the post-spend balance', (tester) async {
       final gems = fakeGems(
-        balance: 150,
+        balance: 350,
         onSpend: () => const GemSpendResult(
           status: GemSpendStatus.success,
           balance: 50,
@@ -289,7 +289,7 @@ void main() {
       );
       await pumpScreen(tester, baseState(), gems);
       await scrollToGemSection(tester);
-      expect(find.textContaining('· Gems: 150'), findsOneWidget);
+      expect(find.textContaining('· Gems: 350'), findsOneWidget);
       final button = tester.widget<ElevatedButton>(
         find.byKey(const Key('gemBuyButton')),
       );
@@ -318,11 +318,11 @@ void main() {
       expect(
         afterButton.onPressed,
         isNull,
-        reason: 'visible but disabled under 100 after the spend',
+        reason: 'visible but disabled under 300 after the spend',
       );
       expect(
         find.text(
-          'you need 50 more gems for a freeze — you earn 5 gems '
+          'you need 250 more gems for a freeze — you earn 5 gems '
           'each time you finish your daily summary.',
         ),
         findsOneWidget,
@@ -332,7 +332,7 @@ void main() {
     testWidgets('spend answered insufficient (balance moved): no '
         'success copy, refreshed balance, §2d state', (tester) async {
       final gems = fakeGems(
-        balance: 150,
+        balance: 350,
         onSpend: () => const GemSpendResult(
           status: GemSpendStatus.insufficient,
           balance: 40,
@@ -349,7 +349,7 @@ void main() {
       expect(find.textContaining('· Gems: 40'), findsOneWidget);
       expect(
         find.text(
-          'you need 60 more gems for a freeze — you earn 5 gems '
+          'you need 260 more gems for a freeze — you earn 5 gems '
           'each time you finish your daily summary.',
         ),
         findsOneWidget,
@@ -363,7 +363,7 @@ void main() {
         'which GemService now maps to capReached): the adopted '
         'state lands silently — no success copy, no raw error, '
         'and the buy rows re-derive under the new rule (2 of 3, '
-        'balance ≥ 100 → still offered)', (tester) async {
+        'balance ≥ 300 → still offered)', (tester) async {
       final gems = fakeGems(
         balance: 500,
         onSpend: () => const GemSpendResult(
@@ -424,7 +424,7 @@ void main() {
     });
 
     testWidgets('gem-buy rule change: a held purchased freeze '
-        '(1 of 3) with balance ≥ 100 — the gem buy is VISIBLE and '
+        '(1 of 3) with balance ≥ 300 — the gem buy is VISIBLE and '
         'ENABLED, while the \$0.99 affordance stays hidden behind '
         'its §1c already-held line', (tester) async {
       await pumpScreen(
@@ -448,7 +448,7 @@ void main() {
         isNotNull,
         reason: 'gem buy enabled while a purchased freeze is held',
       );
-      expect(find.text('100 GEMS'), findsOneWidget);
+      expect(find.text('300 GEMS'), findsOneWidget);
       // The $0.99 money buy keeps its own rule (unchanged): hidden
       // while a purchased freeze is held, §1c line in its place.
       expect(find.byKey(const Key('streakBuyButton')), findsNothing);
@@ -460,7 +460,7 @@ void main() {
     });
 
     testWidgets('gem-buy rule change: held purchased freeze with '
-        'balance < 100 — button present but DISABLED with the '
+        'balance < 300 — button present but DISABLED with the '
         '§2d shortfall line', (tester) async {
       await pumpScreen(
         tester,
@@ -472,10 +472,10 @@ void main() {
       final button = tester.widget<ElevatedButton>(
         find.byKey(const Key('gemBuyButton')),
       );
-      expect(button.onPressed, isNull, reason: 'disabled under 100');
+      expect(button.onPressed, isNull, reason: 'disabled under 300');
       expect(
         find.text(
-          'you need 65 more gems for a freeze — you earn 5 gems '
+          'you need 265 more gems for a freeze — you earn 5 gems '
           'each time you finish your daily summary.',
         ),
         findsOneWidget,
@@ -599,23 +599,23 @@ void main() {
         tester
             .widget<Text>(find.byKey(const Key('gemsSheetExplainerLine4')))
             .data,
-        '100 gems buys one streak freeze.',
+        '300 gems buys one streak freeze.',
       );
       expect(
         find.text(
-          '100 gems buys one streak freeze — the freeze on '
+          '300 gems buys one streak freeze — the freeze on '
           'this screen.',
         ),
         findsNothing,
       );
     });
 
-    testWidgets('buy-with-gems from the sheet succeeds at ≥100: '
+    testWidgets('buy-with-gems from the sheet succeeds at ≥300: '
         '§2c copy, service balance moves, buy control then stays '
-        '— disabled under 100 with the §2d line (rule change)', (tester) async {
+        '— disabled under 300 with the §2d line (rule change)', (tester) async {
       final spendIds = <String>[];
       final gems = fakeGems(
-        balance: 150,
+        balance: 350,
         spendIds: spendIds,
         onSpend: () => const GemSpendResult(
           status: GemSpendStatus.success,
@@ -628,7 +628,7 @@ void main() {
         find.byKey(const Key('gemsSheetBuyButton')),
       );
       expect(button.onPressed, isNotNull);
-      expect(find.text('GET ONE MORE FREEZE · 100 GEMS'), findsOneWidget);
+      expect(find.text('GET ONE MORE FREEZE · 300 GEMS'), findsOneWidget);
       await tester.tap(find.byKey(const Key('gemsSheetBuyButton')));
       for (var i = 0; i < 12; i++) {
         await tester.pump(const Duration(milliseconds: 50));
@@ -655,11 +655,11 @@ void main() {
       expect(
         afterButton.onPressed,
         isNull,
-        reason: 'visible but disabled under 100 after the spend',
+        reason: 'visible but disabled under 300 after the spend',
       );
       expect(
         find.text(
-          'you need 50 more gems for a freeze — you earn 5 gems '
+          'you need 250 more gems for a freeze — you earn 5 gems '
           'each time you finish your daily summary.',
         ),
         findsOneWidget,
@@ -673,7 +673,7 @@ void main() {
       );
     });
 
-    testWidgets('below 100: button present but DISABLED with the '
+    testWidgets('below 300: button present but DISABLED with the '
         '§2d line under it', (tester) async {
       await pumpHostAndTapPill(
         tester,
@@ -685,11 +685,11 @@ void main() {
       final button = tester.widget<ElevatedButton>(
         find.byKey(const Key('gemsSheetBuyButton')),
       );
-      expect(button.onPressed, isNull, reason: 'disabled under 100');
-      expect(find.text('GET ONE MORE FREEZE · 100 GEMS'), findsOneWidget);
+      expect(button.onPressed, isNull, reason: 'disabled under 300');
+      expect(find.text('GET ONE MORE FREEZE · 300 GEMS'), findsOneWidget);
       expect(
         find.text(
-          'you need 65 more gems for a freeze — you earn 5 gems '
+          'you need 265 more gems for a freeze — you earn 5 gems '
           'each time you finish your daily summary.',
         ),
         findsOneWidget,
@@ -718,7 +718,7 @@ void main() {
     });
 
     testWidgets('gem-buy rule change: held purchased freeze '
-        '(1 held, 2 of 3 cover) with balance ≥ 100 — buy control '
+        '(1 held, 2 of 3 cover) with balance ≥ 300 — buy control '
         'PRESENT and ENABLED', (tester) async {
       await pumpHostAndTapPill(
         tester,
@@ -738,7 +738,7 @@ void main() {
     });
 
     testWidgets('gem-buy rule change: held purchased freeze with '
-        'balance < 100 — buy control present but DISABLED with '
+        'balance < 300 — buy control present but DISABLED with '
         'the §2d line', (tester) async {
       await pumpHostAndTapPill(
         tester,
@@ -749,10 +749,10 @@ void main() {
       final button = tester.widget<ElevatedButton>(
         find.byKey(const Key('gemsSheetBuyButton')),
       );
-      expect(button.onPressed, isNull, reason: 'disabled under 100');
+      expect(button.onPressed, isNull, reason: 'disabled under 300');
       expect(
         find.text(
-          'you need 65 more gems for a freeze — you earn 5 gems '
+          'you need 265 more gems for a freeze — you earn 5 gems '
           'each time you finish your daily summary.',
         ),
         findsOneWidget,

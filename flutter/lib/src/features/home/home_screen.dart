@@ -64,7 +64,9 @@ import 'package:tabs_lab/src/features/home/hc_repair_card.dart';
 import 'package:tabs_lab/src/features/home/health_connect_banner.dart';
 import 'package:tabs_lab/src/features/home/home_checkin_strip.dart';
 import 'package:tabs_lab/src/features/home/migraine_block.dart';
-import 'package:tabs_lab/src/features/home/gems_sheet.dart';
+import 'package:tabs_lab/src/data/chest_service.dart';
+import 'package:tabs_lab/src/features/home/chest_drop_presenter.dart';
+import 'package:tabs_lab/src/features/home/chests_sheet.dart';
 import 'package:tabs_lab/src/features/home/streak_screen.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
@@ -667,6 +669,17 @@ class _HomeScreenState extends State<HomeScreen>
   /// server payload) plus the streak-record pulls below.
   int? _gemBalance;
 
+  /// Chests — the unopened-chest count for the gem pill badge.
+  /// Kept in step by the [ChestService] listener; 0 hides the
+  /// badge (the pre-chests pill exactly).
+  int _chestCount = 0;
+
+  void _onChestInventoryChanged() {
+    final next = ChestService.instance.totalCount;
+    if (!mounted || next == _chestCount) return;
+    setState(() => _chestCount = next);
+  }
+
   void _onGemBalanceChanged() {
     final next = GemService.instance.balance;
     if (!mounted || next == null || next == _gemBalance) return;
@@ -852,6 +865,22 @@ class _HomeScreenState extends State<HomeScreen>
         gemResult.balance != null &&
         gemResult.balance != _gemBalance) {
       setState(() => _gemBalance = gemResult.balance);
+    }
+    // Chests (Nov 26, 2026): the server rolls the chest drop at
+    // THIS settlement (the pushed record above is what it
+    // validates against) — sync the inventory with drop detection
+    // armed and hand any fresh drop to the drop presenter, which
+    // shows the prompt after the celebration clears. A grace or
+    // freeze day never reaches this chain's completion path with
+    // a counted day, and the server never rolls on one anyway.
+    try {
+      final drop = await ChestService.instance.syncAfterSettlement();
+      if (drop != null) {
+        ChestDropService.instance.hold(drop);
+      }
+    } catch (_) {
+      // A failed chest sync never touches the completion; the
+      // chest (if any) surfaces at the next inventory sync.
     }
   }
 
@@ -1205,9 +1234,11 @@ class _HomeScreenState extends State<HomeScreen>
       }
     }
     GemService.instance.addListener(_onGemBalanceChanged);
+    ChestService.instance.addListener(_onChestInventoryChanged);
     // A cached server balance from an earlier payload paints the
     // gem pill on the first frame; the settle below refreshes it.
     _gemBalance = GemService.instance.balance;
+    _chestCount = ChestService.instance.totalCount;
     _checkInNotifs =
         widget.notificationService ?? LocalReminderNotificationService();
     _healthRepo = widget.healthRepository ??
@@ -1316,6 +1347,7 @@ class _HomeScreenState extends State<HomeScreen>
     }
     WidgetsBinding.instance.removeObserver(this);
     GemService.instance.removeListener(_onGemBalanceChanged);
+    ChestService.instance.removeListener(_onChestInventoryChanged);
     _completionWatcher?.dispose();
     widget.migraineController?.removeListener(_onMigraineChanged);
     _outbox.removeListener(_onCheckInOutboxChanged);
@@ -2889,6 +2921,10 @@ class _HomeScreenState extends State<HomeScreen>
         state: engineState,
         now: DateTime.now(),
       );
+      // Chests app-open sync: refresh the pill badge + inbox.
+      // Plain sync (no drop detection): a backlog discovered here
+      // never prompts — prompts belong to live settlements only.
+      unawaited(ChestService.instance.syncInventory());
     } catch (e, st) {
       // The last server balance stands; the next open retries.
       // The failure is recorded in the service's diagnostics
@@ -3013,20 +3049,15 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  /// Gem pill tap (added scope #6, Nov 20, 2026): open the Gems
-  /// sheet — the moved About-gems explainer, the current balance,
-  /// and the buy-a-freeze-with-gems action. The sheet reads the
-  /// SAME [GemService.instance] balance the pill displays and the
-  /// settled streak record for its cap rule; a spend there moves
-  /// the shared service balance, which this screen's listener
-  /// already mirrors into the pill (plus the re-pull on close,
-  /// mirroring [_openStreakScreen]'s return path).
-  Future<void> _openGemsSheet() async {
-    await showGemsSheet(
-      context: context,
-      streakState: StreakStore.instance.state,
-      nickname: _nickname,
-    );
+  /// Gem pill tap: CHESTS (Nov 26, 2026) retargets the pill to
+  /// the Chests inbox sheet (the UX decision's entry point — the
+  /// pill also carries the unopened-count badge). The Gems sheet
+  /// stays reachable from the inbox's "About gems" footer, so the
+  /// scope-#6 surfaces (explainer, balance, freeze buy) are not
+  /// orphaned. On close the gem balance re-pulls, mirroring
+  /// [_openStreakScreen]'s return path.
+  Future<void> _openChestsSheet() async {
+    await showChestsSheet(context: context);
     if (!mounted) return;
     unawaited(GemService.instance.refreshBalance());
   }
@@ -3943,9 +3974,10 @@ class _HomeScreenState extends State<HomeScreen>
                           currentStreak: _currentStreak,
                           animateCountUps: _countUpsAnimate,
                           onStreakTap: () => unawaited(_openStreakScreen()),
-                          onGemTap: () => unawaited(_openGemsSheet()),
+                          onGemTap: () => unawaited(_openChestsSheet()),
                           crossAxisAlignment: CrossAxisAlignment.center,
                           gemBalance: _gemBalance,
+                          chestCount: _chestCount,
                           streakTodayComplete: _streakTodayComplete,
                         ),
                       ),

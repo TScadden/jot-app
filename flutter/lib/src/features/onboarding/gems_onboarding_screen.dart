@@ -102,7 +102,7 @@ class GemsOnboardingScreen extends StatelessWidget {
                         title: 'Gems',
                         body: 'Finish your day to earn 5 gems. Streak '
                             'milestones and perfect weeks pay bonus '
-                            'gems. Trade 100 gems for a streak freeze.',
+                            'gems. Trade 300 gems for a streak freeze.',
                       ),
                       const SizedBox(height: 24),
                     ],

@@ -1867,6 +1867,25 @@ class TabsBackend {
   ) =>
       _postAuthedWithStatus('/api/gems/spend/freeze', {'spendId': spendId});
 
+  /// Chests inventory (CHESTS package, Nov 26, 2026):
+  /// `GET /api/chests` → 200 `{chests: [{id, tier, createdAt}],
+  /// counts: {daily, streak, mega, total}}` (unopened only; tier
+  /// strings lowercase). Raw body out; [ChestService] owns parsing.
+  /// Null on any failure — the caller keeps its last inventory.
+  Future<Map<String, dynamic>?> fetchChestsRaw() => _getJson('/api/chests');
+
+  /// Open one chest (CHESTS package, Nov 26, 2026):
+  /// `POST /api/chests/:id/open` — ONE idempotent call: the server
+  /// rolls the 3 tap outcomes, grants the gems in the same
+  /// transaction, and returns the recorded script
+  /// `{tapOutcomes, finalTier, gemsGranted, newBalance}` (finalTier
+  /// lowercase). A replay (retry, double-tap) returns the SAME
+  /// recorded outcome and grants nothing twice; an unknown or
+  /// other-user chest answers 404 `chest_not_found`, which surfaces
+  /// here as null. Raw body out; null on failure.
+  Future<Map<String, dynamic>?> openChestRaw(String chestId) =>
+      _postJsonMap('/api/chests/${Uri.encodeComponent(chestId)}/open', const {});
+
   /// Push one settled streak record to the profile (VC 100115):
   /// counters + day-level blob in a single partial profile push —
   /// the server's COALESCE upsert means no other field is touched.

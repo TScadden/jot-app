@@ -251,7 +251,7 @@ void main() {
     expect(find.text('About gems'), findsOneWidget);
     expect(find.text('You have 150 gems.'), findsOneWidget);
     expect(
-      find.text('100 gems buys one streak freeze.'),
+      find.text('300 gems buys one streak freeze.'),
       findsOneWidget,
     );
     expect(find.byKey(const Key('gemsSheetBuyButton')), findsOneWidget);

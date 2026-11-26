@@ -67,6 +67,11 @@ class StreakCelebrationService {
 
   PendingStreakCelebration? get pending => _pending;
 
+  /// True while a celebration route is on stage (CHESTS package:
+  /// the chest drop prompt waits for this to clear so it lands
+  /// after the celebration, never over it).
+  bool get isShowing => _showingDayKey != null;
+
   @visibleForTesting
   String? get debugShowingDayKey => _showingDayKey;
 

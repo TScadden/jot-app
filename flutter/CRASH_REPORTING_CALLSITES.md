@@ -29,6 +29,7 @@ Rules for every call site (C7):
 | 7 | `lib/src/data/badge_store.dart` — `BadgeService._flushPending` grant-request catch | `badges grant request failed` | Grants fix (Nov 20, 2026): same invisible-queue failure as #5, on the badge grant path. The grant key is never passed to the helper. |
 | 8 | `lib/src/features/home/home_screen.dart` — `_syncGemsOnOpen` catch | `gems app-open sync failed` | Grants fix (Nov 20, 2026): the app-open gems sync is fail-soft by design (unawaited from the settle); its catch-all previously swallowed every escaped error. The error is also recorded in GemService's diagnostics state. |
 | 9 | `lib/src/features/home/home_screen.dart` — `_syncBadgesOnOpen` catch | `badges app-open sync failed` | Grants fix (Nov 20, 2026): same fail-soft app-open wrapper as #8, on the badge path; also recorded in BadgeService's diagnostics state. |
+| 10 | `lib/src/data/chest_service.dart` — `ChestService.openChest` transport catch | `chest open failed` | Chests (Nov 26, 2026): a thrown open request previously left no trace; the chest stays in the inbox and the retry replays the idempotent server call. Only the exception type is sent — the chest id is never passed to the helper. |
 
 Global handlers (FlutterError.onError, PlatformDispatcher.onError,
 runZonedGuarded) are NOT call sites on this list: they are the C6

@@ -240,7 +240,7 @@ void main() {
       expect(
         find.text('Finish your day to earn 5 gems. Streak '
             'milestones and perfect weeks pay bonus gems. Trade '
-            '100 gems for a streak freeze.'),
+            '300 gems for a streak freeze.'),
         findsOneWidget,
       );
       // No progress dots: the only progress indicator is the

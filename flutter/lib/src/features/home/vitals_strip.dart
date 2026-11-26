@@ -311,7 +311,18 @@ class HomeGemPill extends StatelessWidget {
   final int gemBalance;
   final VoidCallback? onTap;
 
-  const HomeGemPill({super.key, required this.gemBalance, this.onTap});
+  /// Chests (Nov 26, 2026): the unopened-chest count. When > 0 the
+  /// pill carries a small count badge at its top-right corner —
+  /// the inbox is non-empty. 0 (the default) renders the pre-chests
+  /// pill exactly.
+  final int chestCount;
+
+  const HomeGemPill({
+    super.key,
+    required this.gemBalance,
+    this.onTap,
+    this.chestCount = 0,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -356,12 +367,55 @@ class HomeGemPill extends StatelessWidget {
         ),
       ),
     );
-    if (onTap == null) return pill;
+    Widget result = pill;
+    if (chestCount > 0) {
+      result = Stack(
+        clipBehavior: Clip.none,
+        children: [
+          pill,
+          Positioned(
+            top: -6,
+            right: -6,
+            child: Semantics(
+              container: true,
+              label: chestCount == 1
+                  ? '1 unopened chest'
+                  : '$chestCount unopened chests',
+              child: ExcludeSemantics(
+                child: Container(
+                  key: const Key('homeGemPillChestBadge'),
+                  constraints: const BoxConstraints(
+                    minWidth: 18,
+                    minHeight: 18,
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFE39A3B),
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    '$chestCount',
+                    key: const Key('homeGemPillChestBadgeCount'),
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF121B20),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+    if (onTap == null) return result;
     return GestureDetector(
       key: const Key('homeGemPillTap'),
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: pill,
+      child: result,
     );
   }
 }
@@ -408,6 +462,10 @@ class HomeStreakStack extends StatelessWidget {
   /// pills; null hides the pill (no server value yet).
   final int? gemBalance;
 
+  /// Chests (Nov 26, 2026): unopened-chest count forwarded to the
+  /// gem pill's badge; 0 hides the badge.
+  final int chestCount;
+
   /// Header alignment package (Nov 10, 2026) — the Home corner
   /// band centers the pills in their 62dp slot so both pills share
   /// the slot's center axis (the drawer button's axis) whatever
@@ -424,6 +482,7 @@ class HomeStreakStack extends StatelessWidget {
     this.crossAxisAlignment = CrossAxisAlignment.start,
     this.gemBalance,
     this.streakTodayComplete = false,
+    this.chestCount = 0,
   });
 
   @override
@@ -451,7 +510,11 @@ class HomeStreakStack extends StatelessWidget {
         ),
         if (gemBalance != null) ...[
           const SizedBox(height: 8),
-          HomeGemPill(gemBalance: gemBalance!, onTap: onGemTap),
+          HomeGemPill(
+              gemBalance: gemBalance!,
+              onTap: onGemTap,
+              chestCount: chestCount,
+            ),
         ],
       ],
     );
@@ -525,7 +588,11 @@ class HomeStreakRow extends StatelessWidget {
       this.onStreakTap,
       this.gemBalance,
       this.onGemTap,
+      this.chestCount = 0,
       this.streakTodayComplete = false});
+
+  /// Chests (Nov 26, 2026): see [HomeStreakStack.chestCount].
+  final int chestCount;
 
   @override
   Widget build(BuildContext context) {
@@ -565,7 +632,11 @@ class HomeStreakRow extends StatelessWidget {
               // streak pill's.
               if (gemBalance != null) ...[
                 const SizedBox(width: 8),
-                HomeGemPill(gemBalance: gemBalance!, onTap: onGemTap),
+                HomeGemPill(
+              gemBalance: gemBalance!,
+              onTap: onGemTap,
+              chestCount: chestCount,
+            ),
               ],
             ],
           ),

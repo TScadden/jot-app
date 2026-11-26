@@ -536,11 +536,11 @@ void main() {
       gems = buildService();
     });
 
-    test('success: -100, +1 freeze, balance adopted from server',
+    test('success: -300, +1 freeze, balance adopted from server',
         () async {
-      server.balance = 150;
+      server.balance = 350;
       await gems.refreshBalance();
-      expect(gems.balance, 150);
+      expect(gems.balance, 350);
       final r = await gems.spendOnFreeze();
       expect(r.status, GemSpendStatus.success);
       expect(r.balance, 50);
@@ -551,7 +551,7 @@ void main() {
     });
 
     test('each spend intent generates a unique spendId', () async {
-      server.balance = 300;
+      server.balance = 700;
       await gems.spendOnFreeze();
       await gems.spendOnFreeze();
       // Both spends succeed under the current server rule (a held
@@ -563,22 +563,22 @@ void main() {
     test('gem-buy rule change: a spend succeeds while a '
         'purchased-class freeze is held — the count rises 1 → 2 '
         '→ 3 in the same bucket', () async {
-      server.balance = 500;
+      server.balance = 800;
       server.purchasedFreezes = 1;
       final r1 = await gems.spendOnFreeze();
       expect(r1.status, GemSpendStatus.success);
       expect(r1.purchasedFreezes, 2);
-      expect(r1.balance, 400);
+      expect(r1.balance, 500);
       final r2 = await gems.spendOnFreeze();
       expect(r2.status, GemSpendStatus.success);
       expect(r2.purchasedFreezes, 3);
-      expect(r2.balance, 300);
+      expect(r2.balance, 200);
       expect(server.purchasedFreezes, 3);
     });
 
     test('replay of the same spendId is a replay, never a double '
         'charge', () async {
-      server.balance = 150;
+      server.balance = 350;
       final a = await gems.spendOnFreeze(spendId: 'intent-1');
       final b = await gems.spendOnFreeze(spendId: 'intent-1');
       expect(a.status, GemSpendStatus.success);
@@ -642,7 +642,7 @@ void main() {
     });
 
     test('§2 buy surface strings', () {
-      expect(GemCopy.buyButtonLabel, 'GET ONE MORE FREEZE · 100 GEMS');
+      expect(GemCopy.buyButtonLabel, 'GET ONE MORE FREEZE · 300 GEMS');
       expect(GemCopy.buyButtonLabel.length, 30);
       expect(GemCopy.balanceLine(35), 'You have 35 gems.');
       expect(GemCopy.balanceLine(1), 'You have 1 gem.');
@@ -681,20 +681,20 @@ void main() {
         'Finish your Daily Summary: +5 gems.',
         'Streak bonuses pay when you reach them: +25 gems at 7 days, +50 at 30 days, +100 at 100 days, and +100 at each 100 days after that.',
         'Perfect week: +20 gems when you finish your Daily Summary all 7 days of a Monday–Sunday week.',
-        '100 gems buys one streak freeze — the freeze on this screen.',
+        '300 gems buys one streak freeze — the freeze on this screen.',
       ]);
     });
 
     test('scope #6 sheet explainer: lines 1–4 verbatim + the '
         'approved line 5 (GEMS-MOVE-COPY §1.3 Proposal A)', () {
       expect(GemCopy.sheetExplainerLine5,
-          '100 gems buys one streak freeze.');
+          '300 gems buys one streak freeze.');
       expect(GemCopy.sheetExplainerLines, [
         "Gems are earned in Tabs. You can't buy them, and they have no cash value.",
         'Finish your Daily Summary: +5 gems.',
         'Streak bonuses pay when you reach them: +25 gems at 7 days, +50 at 30 days, +100 at 100 days, and +100 at each 100 days after that.',
         'Perfect week: +20 gems when you finish your Daily Summary all 7 days of a Monday–Sunday week.',
-        '100 gems buys one streak freeze.',
+        '300 gems buys one streak freeze.',
       ]);
     });
   });
@@ -777,11 +777,11 @@ class _FakeGemServer {
     if (capReached) {
       return (statusCode: 409, body: refusal('freeze_cap_reached'));
     }
-    if (balance < 100) {
+    if (balance < 300) {
       return (statusCode: 409, body: refusal('insufficient_gems'));
     }
     _spentIds.add(spendId);
-    balance -= 100;
+    balance -= 300;
     purchasedFreezes += 1;
     return (
       statusCode: 200,

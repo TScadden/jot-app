@@ -47,14 +47,16 @@ abstract final class GemCopy {
   static const String iconAsset =
       'assets/images/tabs_gem_icon_v1_20261119.png';
 
-  /// The fixed gem price of one streak freeze (Juno §2a literal).
-  static const int freezePrice = 100;
+  /// The fixed gem price of one streak freeze (Juno §2a literal;
+  /// amount raised 100 -> 300 by the founder, Nov 25, 2026 — the
+  /// $0.99 cash price is unchanged).
+  static const int freezePrice = 300;
 
   // ── §1 Home pill accessibility label ──────────────────────────
   static String pillLabel(int count) => count == 1 ? '1 gem' : '$count gems';
 
   // ── §2 Buy-with-gems surface ──────────────────────────────────
-  static const String buyButtonLabel = 'GET ONE MORE FREEZE · 100 GEMS';
+  static const String buyButtonLabel = 'GET ONE MORE FREEZE · 300 GEMS';
 
   static String balanceLine(int balance) =>
       balance == 1 ? 'You have 1 gem.' : 'You have $balance gems.';
@@ -67,7 +69,7 @@ abstract final class GemCopy {
       ? "you've got a freeze now. it covers one missed day. you have 1 gem left."
       : "you've got a freeze now. it covers one missed day. you have $balance gems left.";
 
-  /// §2d insufficient-balance line; [needed] is 100 − balance.
+  /// §2d insufficient-balance line; [needed] is 300 − balance.
   static String insufficientLine(int needed) => needed == 1
       ? 'you need 1 more gem for a freeze — you earn 5 gems each time you finish your daily summary.'
       : 'you need $needed more gems for a freeze — you earn 5 gems each time you finish your daily summary.';
@@ -97,14 +99,14 @@ abstract final class GemCopy {
     'Finish your Daily Summary: +5 gems.',
     'Streak bonuses pay when you reach them: +25 gems at 7 days, +50 at 30 days, +100 at 100 days, and +100 at each 100 days after that.',
     'Perfect week: +20 gems when you finish your Daily Summary all 7 days of a Monday–Sunday week.',
-    '100 gems buys one streak freeze — the freeze on this screen.',
+    '300 gems buys one streak freeze — the freeze on this screen.',
   ];
 
   /// The sheet's line 5 (GEMS-MOVE-COPY §1.3 Proposal A, approved):
   /// the original line with only the broken streak-screen referent
   /// dropped — no amount, term, or claim changed.
   static const String sheetExplainerLine5 =
-      '100 gems buys one streak freeze.';
+      '300 gems buys one streak freeze.';
 
   /// The explainer lines as rendered in the Gems sheet: lines 1–4
   /// verbatim from [explainerLines], then [sheetExplainerLine5].
@@ -984,7 +986,7 @@ class GemService extends ChangeNotifier {
     return _balance;
   }
 
-  /// Spend 100 gems on one streak freeze (POST /api/gems/spend/
+  /// Spend 300 gems on one streak freeze (POST /api/gems/spend/
   /// freeze). A unique spendId is generated per user intent; the
   /// server makes a replayed spendId a replay, never a double
   /// charge. Every server answer (success AND the 409s) carries
