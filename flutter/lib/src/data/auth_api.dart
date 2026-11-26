@@ -431,6 +431,84 @@ class AuthApiClient {
     );
   }
 
+  /// Password reset request — wires the login screen's
+  /// "Send Reset Link" button to the existing server endpoint
+  /// (audit GAP-2 fix). Mirrors the native client
+  /// (`TabsApi.forgotPassword`, JotApi.kt:568-569):
+  /// `POST https://api.jottracker.com/api/auth/forgot-password`
+  /// with `{"email": ...}` (`ForgotPasswordRequest`, JotApi.kt).
+  ///
+  /// Server contract (jot-server `POST /api/auth/forgot-password`):
+  /// the endpoint ALWAYS answers the same generic success response
+  /// whether or not the account exists (anti-enumeration), rate
+  /// limited to 5/hour per account. The emailed link lands on the
+  /// server-hosted reset page, where the user sets the new
+  /// password; this method only requests the email.
+  ///
+  /// Result taxonomy:
+  /// - HTTP 200 → [ForgotPasswordSuccess]. The body is deliberately
+  ///   NOT inspected for account existence — there is nothing in it
+  ///   that may distinguish an existing account from a missing one,
+  ///   and the client must never surface "account not found".
+  /// - Any non-200 → [ForgotPasswordFailure] with
+  ///   [LoginFailureKind.server], surfacing the server's
+  ///   `{"error": "..."}` message when present (e.g. the rate
+  ///   limiter's message), otherwise the generic fallback.
+  /// - Transport failure → [ForgotPasswordFailure] with
+  ///   [LoginFailureKind.network] and the same generic network
+  ///   message as [login]. The email is never logged or included
+  ///   in any error (Vera rule).
+  Future<ForgotPasswordResult> forgotPassword({
+    required String email,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/api/auth/forgot-password');
+    http.Response response;
+    try {
+      response = await _client
+          .post(
+            uri,
+            headers: const {'Content-Type': 'application/json'},
+            body: jsonEncode({'email': email}),
+          )
+          .timeout(const Duration(seconds: 20));
+    } on TimeoutException {
+      return const ForgotPasswordFailure(
+        LoginFailureKind.network,
+        "Couldn't reach the server. Check your connection and try again.",
+      );
+    } on SocketException {
+      return const ForgotPasswordFailure(
+        LoginFailureKind.network,
+        "Couldn't reach the server. Check your connection and try again.",
+      );
+    } on HttpException {
+      return const ForgotPasswordFailure(
+        LoginFailureKind.network,
+        "Couldn't reach the server. Check your connection and try again.",
+      );
+    } catch (_) {
+      // Deliberately generic: never leak transport details.
+      return const ForgotPasswordFailure(
+        LoginFailureKind.network,
+        "Couldn't reach the server. Check your connection and try again.",
+      );
+    }
+
+    if (response.statusCode == 200) {
+      // Anti-enumeration: identical success for existing and
+      // non-existing accounts — nothing further to parse.
+      return const ForgotPasswordSuccess();
+    }
+
+    final serverMessage = _decodeJson(response.body)['error']?.toString();
+    return ForgotPasswordFailure(
+      LoginFailureKind.server,
+      (serverMessage?.isNotBlank ?? false)
+          ? serverMessage!
+          : 'Something went wrong. Please try again.',
+    );
+  }
+
   /// Round 31 — refresh-token exchange, mirroring the native
   /// `AuthInterceptor.performRefresh` taxonomy exactly.
   ///
@@ -577,6 +655,29 @@ class LoginFailure extends LoginResult {
   final String message;
 
   const LoginFailure(this.kind, this.message);
+}
+
+/// Outcome of [AuthApiClient.forgotPassword]. Carries no account
+/// information: success means only that the request was accepted
+/// (the server answers identically whether or not the email has
+/// an account — anti-enumeration).
+sealed class ForgotPasswordResult {
+  const ForgotPasswordResult();
+}
+
+/// The reset request was accepted. A reset link is on its way IF
+/// the email has an account; the UI wording must keep that "if".
+class ForgotPasswordSuccess extends ForgotPasswordResult {
+  const ForgotPasswordSuccess();
+}
+
+/// The reset request failed. [message] is the exact user-facing
+/// string to show, with a retry path (the send button re-enables).
+class ForgotPasswordFailure extends ForgotPasswordResult {
+  final LoginFailureKind kind;
+  final String message;
+
+  const ForgotPasswordFailure(this.kind, this.message);
 }
 
 /// Outcome of [AuthApiClient.refreshSession]. Never carries error
