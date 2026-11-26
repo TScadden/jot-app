@@ -375,10 +375,12 @@ void main() {
     });
 
     test('tally sentence accounts for all 10 measures', () {
+      // Juno fix-round addendum A.4 byte-exact form: EVERY
+      // category agrees in number — singular at count 1.
       expect(
         metrics.tallySentence,
         'Of the 10 measures on the scorecard, 7 are worse, '
-        '1 are the same, 1 are mixed, and 1 has no data this week '
+        '1 is the same, 1 is mixed, and 1 has no data this week '
         '(blood pressure).',
       );
       // The tally sentence is the verdict block's last sentence
@@ -390,9 +392,20 @@ void main() {
 
     test('supporting passage cites scorecard displays only', () {
       final p = metrics.supportingPassage;
-      expect(p, contains('His Daily Score averaged 45, against his normal of 58 (89-day avg).'));
-      expect(p, contains('He logged 4 flare days.'));
-      expect(p, contains('He logged 2 headache days.'));
+      // Juno fix-round addendum A.2 per-measure templates,
+      // byte-exact on this fixture's displays (the A.3 golden is
+      // the same passage on the server fixture, whose headache
+      // normal slot carries its own display value).
+      expect(
+        p,
+        'His Daily Score averaged 45, against his normal of '
+        '58 (89-day avg). He logged flares on 4 days, against his '
+        'normal of 1.2 days (30-day avg, per week). He logged '
+        'headaches on 2 days, against his normal of 0.7 days '
+        '(30-day avg, per week). His resting heart rate averaged '
+        '65 bpm, against his normal of 61 bpm. The hardest days '
+        'were Nov 17 and Nov 22.',
+      );
       for (final banned in [
         'because', 'due to', 'caused', 'led to', 'resulted in',
         'triggered', 'thanks to', 'after starting', 'since starting',
@@ -605,6 +618,305 @@ void main() {
       // The known gap, pinned so it is a decision, not a surprise:
       expect(ptPattern.hasMatch('PT session'), isFalse);
       expect(coldPattern.hasMatch('PT session'), isFalse);
+    });
+  });
+
+  group('fallback builders — Vera F-1–F-4 fix round', () {
+    // Vera's probe method as the self-check: strip EVERY
+    // server-rendered string from the fixture (verdict block,
+    // top-level headline/tallySentence, anchor text, change
+    // phrasing, latestPriorNamed) and shape the extreme-day
+    // anchor as the server actually emits it (values =
+    // {minutesOver100, peakHr} numbers, NO symptom slot — the
+    // symptom lives in the notable day's facts.palpitationsText).
+    // Every surviving string must be a ruled form or absent.
+    Map<String, dynamic> strippedFixture() {
+      final j =
+          jsonDecode(jsonEncode(fixtureComputedMetrics()))
+              as Map<String, dynamic>;
+      j.remove('verdict');
+      j.remove('headline');
+      j.remove('tallySentence');
+      final med = j['medChanges'] as Map<String, dynamic>;
+      med.remove('latestPriorNamed');
+      for (final key in ['inWindow', 'latestPrior']) {
+        for (final e in (med[key] as List)) {
+          (e as Map).remove('phrasing');
+          e.remove('display');
+        }
+      }
+      for (final a in (j['questionAnchors'] as List)) {
+        final am = a as Map<String, dynamic>;
+        am.remove('text');
+        if (am['kind'] == 'extremeDay') {
+          am['values'] = {'minutesOver100': 294, 'peakHr': 179};
+        }
+      }
+      return j;
+    }
+
+    test('strip-probe: fallbacks produce only ruled forms (F-1–F-4)',
+        () {
+      final m = ComputedMetrics.tryParse(strippedFixture())!;
+      // F-1: A.4 byte-exact tally (singular for every category).
+      expect(
+        m.tallySentence,
+        'Of the 10 measures on the scorecard, 7 are worse, '
+        '1 is the same, 1 is mixed, and 1 has no data this week '
+        '(blood pressure).',
+      );
+      // F-2: A.2 per-measure templates with the normal citations.
+      expect(
+        m.supportingPassage,
+        'His Daily Score averaged 45, against his normal of '
+        '58 (89-day avg). He logged flares on 4 days, against his '
+        'normal of 1.2 days (30-day avg, per week). He logged '
+        'headaches on 2 days, against his normal of 0.7 days '
+        '(30-day avg, per week). His resting heart rate averaged '
+        '65 bpm, against his normal of 61 bpm. The hardest days '
+        'were Nov 17 and Nov 22.',
+      );
+      // F-3: doseWithSpace + MC-5 paired ranking in the fallback
+      // most-recent line (latestPriorNamed was stripped).
+      expect(
+        m.mostRecentChangeLine,
+        'Most recent change before this week: Desvenlafaxine: '
+        'dose increased, 50 mg → 100 mg, November 11, 2026.',
+      );
+      final strippedText = buildWeeklyReportV2Text(m);
+      // F-4: the extreme-day question's symptom is sourced from
+      // the notable day's facts.palpitationsText.
+      expect(
+        strippedText,
+        contains('1. On November 17, 2026, Tyson logged strong '
+            'palpitations and his heart rate was over 100 bpm for '
+            '294 minutes, with a peak of 179 bpm.'),
+      );
+      // None of the pre-fix divergent forms survive anywhere.
+      for (final banned in [
+        '1 are the same',
+        '1 are mixed',
+        'He logged 4 flare days.',
+        'He logged 2 headache days.',
+        '(normal 61 bpm)',
+        '50mg → 100mg',
+        'Tyson logged  and',
+      ]) {
+        expect(strippedText, isNot(contains(banned)),
+            reason: 'divergent fallback form survived: $banned');
+      }
+    });
+
+    test('F-3: med-change fallback matches the server phrasing forms',
+        () {
+      expect(doseWithSpace('50mg'), '50 mg');
+      expect(doseWithSpace('50 mg'), '50 mg');
+      expect(doseWithSpace('0.5'), '0.5');
+      expect(
+        medChangePhrase(const ComputedMedChange(
+            drugName: 'Desvenlafaxine',
+            kind: 'doseChange',
+            fromDose: '50mg',
+            toDose: '100mg')),
+        'Desvenlafaxine: dose increased, 50 mg → 100 mg',
+      );
+      expect(
+        medChangePhrase(const ComputedMedChange(
+            drugName: 'Example',
+            kind: 'frequencyChange',
+            fromFrequency: '',
+            toFrequency: 'once daily')),
+        'Example: frequency changed, frequency not recorded → once daily',
+      );
+      expect(
+        medChangePhrase(const ComputedMedChange(
+            drugName: 'Example',
+            kind: 'frequencyChange',
+            fromFrequency: '',
+            toFrequency: '')),
+        'Example: frequency changed, frequency not recorded → '
+        'frequency not recorded',
+      );
+      expect(
+        medChangePhrase(const ComputedMedChange(
+            drugName: 'MOTS-c', kind: 'start', toDose: '10mg')),
+        'MOTS-c 10 mg: started',
+      );
+      expect(
+        medChangePhrase(const ComputedMedChange(
+            drugName: 'Example', kind: 'stop', fromDose: '5mg')),
+        'Example 5 mg: stopped',
+      );
+    });
+
+    test('F-3: MC-5 ranks a paired dose change first, then earliest '
+        'recordedAt', () {
+      final picked = selectLatestPriorChange(const [
+        ComputedMedChange(
+            drugName: 'Unpaired Drug',
+            kind: 'doseChange',
+            fromDose: '10mg',
+            toDose: '20mg',
+            recordedAt: 100),
+        ComputedMedChange(
+            drugName: 'Paired Drug',
+            kind: 'doseChange',
+            fromDose: '50mg',
+            toDose: '100mg',
+            paired: true,
+            recordedAt: 200),
+        ComputedMedChange(
+            drugName: 'Starter', kind: 'start', toDose: '5 mg', recordedAt: 50),
+      ]);
+      expect(picked?.drugName, 'Paired Drug');
+      final tie = selectLatestPriorChange(const [
+        ComputedMedChange(
+            drugName: 'Later',
+            kind: 'doseChange',
+            paired: true,
+            recordedAt: 300),
+        ComputedMedChange(
+            drugName: 'Earlier',
+            kind: 'doseChange',
+            paired: true,
+            recordedAt: 100),
+      ]);
+      expect(tie?.drugName, 'Earlier');
+    });
+
+    test('F-2: same headline cites largest |Δ vs normal|, presented '
+        'in scorecard order, no day sentence', () {
+      final m = ComputedMetrics.tryParse({
+        'range': {'start': '2026-11-16', 'end': '2026-11-22', 'days': 7},
+        'scorecard': [
+          _row('dailyScore', _cell(90, 7, '90'), _cell(80, 7, '80'),
+              _cell(50, 30, '50'), 'Better'),
+          _row('flareDays', _cell(1, 7, '1 day'), _cell(1, 7, '1 day'),
+              _cell(1.2, 5, '1.2 days (30-day avg, per week)'), 'Same'),
+          _row('headacheDays', _cell(2, 7, '2 days'),
+              _cell(1, 7, '1 day'),
+              _cell(0.7, 3, '0.7 days (30-day avg, per week)'), 'Worse'),
+          _row('restingHr', _cell(61, 7, '61 bpm'),
+              _cell(61, 7, '61 bpm'), _cell(61, 30, '61 bpm'), 'Same'),
+          _row('hrv', _cell(100, 7, '100 ms'), _cell(90, 7, '90 ms'),
+              _cell(40, 30, '40 ms'), 'Better'),
+          _row(
+              'sleepVsNeed',
+              _sleepCell(600, 600, 100, '10h00m (100% of his need)'),
+              _sleepCell(600, 600, 100, '10h00m (100% of his need)'),
+              {
+                'value': 600,
+                'n': 7,
+                'display': '10h00m (his Sleep Need)',
+                'statistic': 'pctOfNeed',
+                'needMinutes': 600,
+              },
+              'Same'),
+          _row('minutesOver100', _cell(200, 7, '200 min'),
+              _cell(150, 7, '150 min'), _cell(100, 23, '100 min'), 'Worse'),
+          _row('minutesOver120', _cell(30, 7, '30 min'),
+              _cell(30, 7, '30 min'), _cell(31, 23, '31 min'), 'Same'),
+          _row('peakHr', _cell(150, 7, '150 bpm'),
+              _cell(145, 7, '145 bpm'), _cell(140, 30, '140 bpm'), 'Worse'),
+          _row('bloodPressure', _cell(null, 0, '—'), _cell(null, 0, '—'),
+              _cell(null, 0, '—'), 'No data'),
+        ],
+        'tally': {
+          'worse': 3,
+          'better': 2,
+          'same': 4,
+          'mixed': 0,
+          'noData': 1,
+          'total': 10,
+          'noDataRowLabels': ['blood pressure'],
+        },
+        'headlineKey': 4,
+      })!;
+      expect(m.headline, 'About the same as his usual week.');
+      // Largest deltas: minutesOver100 (100), HRV (60), Daily
+      // Score (40), peak HR (10) — the first four scorecard rows
+      // are NOT the cited set; blood pressure is ineligible
+      // (No data / null values) and never cited.
+      expect(
+        m.supportingPassage,
+        'His Daily Score averaged 90, against his normal of 50. '
+        'His HRV averaged 100 ms, against his normal of 40 ms. '
+        'His heart rate was over 100 bpm for an average of 200 min '
+        'a day, against his normal of 100 min. His peak heart rate '
+        'reached 150 bpm, against his normal of 140 bpm.',
+      );
+    });
+
+    test('F-2: mixed headline uses the sleep, minutes-over-120 and '
+        'blood-pressure A.2 templates', () {
+      final m = ComputedMetrics.tryParse({
+        'range': {'start': '2026-11-16', 'end': '2026-11-22', 'days': 7},
+        'scorecard': [
+          _row('dailyScore', _cell(45, 7, '45'), _cell(66, 7, '66'),
+              _cell(58, 30, '58'), 'Worse'),
+          _row('restingHr', _cell(61, 7, '61 bpm'),
+              _cell(61, 7, '61 bpm'), _cell(61, 30, '61 bpm'), 'Same'),
+          _row(
+              'sleepVsNeed',
+              _sleepCell(461, 656, 70, '7h41m (70% of his need)'),
+              _sleepCell(480, 650, 74, '8h00m (74% of his need)'),
+              {
+                'value': 656,
+                'n': 7,
+                'display': '10h56m (his Sleep Need)',
+                'statistic': 'pctOfNeed',
+                'needMinutes': 656,
+              },
+              'Mixed'),
+          _row('minutesOver120', _cell(50, 7, '50 min'),
+              _cell(40, 7, '40 min'), _cell(10, 23, '10 min'), 'Better'),
+          _row(
+              'bloodPressure',
+              _cell({'systolic': 130, 'diastolic': 85}, 1, '130/85 mmHg'),
+              _cell({'systolic': 120, 'diastolic': 82}, 1, '120/82 mmHg'),
+              _cell({'systolic': 110, 'diastolic': 80}, 2, '110/80 mmHg'),
+              'Mixed'),
+        ],
+        'tally': {
+          'worse': 1,
+          'better': 1,
+          'same': 1,
+          'mixed': 2,
+          'noData': 5,
+          'total': 10,
+          'noDataRowLabels': <String>[],
+        },
+        'headlineKey': 5,
+      })!;
+      expect(m.headline, 'A mixed week against his usual.');
+      // Deltas: minutesOver120 (40), sleep |70−100| (30), blood
+      // pressure larger component (20), Daily Score (13); resting
+      // HR (0) is eligible but not selected.
+      expect(
+        m.supportingPassage,
+        'His Daily Score averaged 45, against his normal of 58. '
+        'His sleep averaged 7h41m (70% of his need); his Sleep Need '
+        'is 10h56m. His heart rate was over 120 bpm for an average '
+        'of 50 min a day, against his normal of 10 min. His blood '
+        'pressure was 130/85 mmHg, against his normal of 110/80 mmHg.',
+      );
+    });
+
+    test('F-4: extreme-day question is omitted when no symptom is '
+        'carried anywhere', () {
+      final j = strippedFixture();
+      // Remove the symptom from the only other shape that carries
+      // it (the notable day's facts) — nothing may be manufactured.
+      for (final d in (j['notableDays'] as List)) {
+        ((d as Map)['facts'] as Map).remove('palpitationsText');
+      }
+      final m = ComputedMetrics.tryParse(j)!;
+      final qs = weeklyV2MirrorSections(m)
+          .firstWhere((s) => s.title == 'Questions for Brad');
+      expect(qs.lines.length, 1 + 4);
+      expect(qs.lines.join('\n'), isNot(contains('ECG')));
+      expect(qs.lines.join('\n'), isNot(contains('Tyson logged')));
+      expect(buildWeeklyReportV2Text(m), isNot(contains('logged  and')));
     });
   });
 

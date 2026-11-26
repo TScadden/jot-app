@@ -15,8 +15,15 @@
 /// All reader-facing strings in this file are byte-exact per
 /// JUNO-RULINGS-V2.md (16 rulings, FINAL, Nov 26, 2026) including
 /// the P3 addendum (day-count normal cell form; BP single-reading
-/// normal cell form). No improvised copy: where a ruled template
-/// has slots, the slots are filled only from the object's fields.
+/// normal cell form) and the fix-round addendum (A.2 per-measure
+/// verdict templates, A.4 tally agreement). The local fallback
+/// builders for server-rendered strings are byte-aligned with
+/// the server builder (reportV2.js) — Vera's Phase 2 app-review
+/// fix round F-1–F-4: where a fallback cannot produce the ruled
+/// form from the object's carried shape, the element is omitted
+/// rather than manufactured. No improvised copy: where a ruled
+/// template has slots, the slots are filled only from the
+/// object's fields.
 library;
 
 // ── Ruled constants (Juno, byte-exact) ───────────────────────────
@@ -169,8 +176,19 @@ class ComputedCell {
   final String display;
   final String? statistic;
   final int? windowDays;
+
+  /// The sleep row's percent-of-need, carried as a cell-level
+  /// extra by the server builder (reportV2.js sleepCell); the
+  /// verdict fallback's |Δ vs normal| for sleep is |pct − 100|
+  /// (the server's verdictDelta rule).
+  final double? pct;
   const ComputedCell(
-      {this.value, this.n = 0, this.display = '—', this.statistic, this.windowDays});
+      {this.value,
+      this.n = 0,
+      this.display = '—',
+      this.statistic,
+      this.windowDays,
+      this.pct});
 
   factory ComputedCell.fromJson(Map<String, dynamic> j) => ComputedCell(
         value: j['value'],
@@ -178,6 +196,7 @@ class ComputedCell {
         display: _asString(j['display']).isEmpty ? '—' : _asString(j['display']),
         statistic: j['statistic'] as String?,
         windowDays: (j['windowDays'] as num?)?.toInt(),
+        pct: (j['pct'] as num?)?.toDouble(),
       );
 }
 
@@ -253,6 +272,15 @@ class ComputedMedChange {
   /// `phrasing` (reportV2.js changePhrasing) — preferred verbatim
   /// over the local template fill.
   final String? phrasing;
+
+  /// Whether this change pairs a stop record with a start record
+  /// for the same drug (reportV2.js buildMedChanges `paired`).
+  /// MC-5 ranks PAIRED dose changes first (Vera F-3).
+  final bool paired;
+
+  /// The change event's recorded-at timestamp (server
+  /// `recordedAt`); MC-5's tie-break is earliest recorded first.
+  final int recordedAt;
   const ComputedMedChange({
     this.drugKey = '',
     this.drugName = '',
@@ -264,6 +292,8 @@ class ComputedMedChange {
     this.changeDate = '',
     this.display,
     this.phrasing,
+    this.paired = false,
+    this.recordedAt = 0,
   });
 
   factory ComputedMedChange.fromJson(Map<String, dynamic> j) =>
@@ -278,13 +308,29 @@ class ComputedMedChange {
         changeDate: _asString(j['changeDate']),
         display: j['display'] as String?,
         phrasing: j['phrasing'] as String?,
+        paired: j['paired'] == true,
+        recordedAt: (j['recordedAt'] as num?)?.toInt() ?? 0,
       );
 }
 
-/// Ruling 6.2 change phrasing for one change. A server-carried
-/// [ComputedMedChange.display] wins verbatim; otherwise the ruled
-/// templates are filled from the recorded fields. Doses print as
-/// recorded (dose + space + unit, as the record carries them).
+/// Ruling 6.2's table form for a dose: dose + space + unit
+/// (`50mg` → `50 mg`), exactly the server's `doseWithSpace`
+/// (reportV2.js). A dose with no unit letters is unchanged.
+String doseWithSpace(String dose) {
+  final t = dose.trim();
+  return t.replaceFirstMapped(
+    RegExp(r'^(\d+(?:\.\d+)?)\s*([a-zA-Z]+.*)$'),
+    (m) => '${m[1]} ${m[2]}',
+  );
+}
+
+/// Ruling 6.2 change phrasing for one change — byte-aligned with
+/// the server's `changePhrasing` (reportV2.js), Vera F-3. A
+/// server-carried [ComputedMedChange.display] /
+/// [ComputedMedChange.phrasing] wins verbatim; the fallback fill
+/// applies [doseWithSpace] to every dose slot and prints
+/// `frequency not recorded` for an empty frequency side (Ruling
+/// 3's recorded-frequency discipline).
 String medChangePhrase(ComputedMedChange c) {
   if (c.display != null && c.display!.isNotEmpty) return c.display!;
   if (c.phrasing != null && c.phrasing!.isNotEmpty) return c.phrasing!;
@@ -292,16 +338,21 @@ String medChangePhrase(ComputedMedChange c) {
     case 'doseChange':
       final increased = _doseNumber(c.toDose) >= _doseNumber(c.fromDose);
       return '${c.drugName}: dose ${increased ? 'increased' : 'decreased'}, '
-          '${c.fromDose} → ${c.toDose}';
+          '${doseWithSpace(c.fromDose)} → ${doseWithSpace(c.toDose)}';
     case 'frequencyChange':
-      return '${c.drugName}: frequency changed, '
-          '${c.fromFrequency} → ${c.toFrequency}';
-    case 'start':
-      return '${c.drugName} ${c.toDose.isNotEmpty ? c.toDose : c.fromDose}: started';
+      final from = c.fromFrequency.isEmpty
+          ? 'frequency not recorded'
+          : c.fromFrequency;
+      final to =
+          c.toFrequency.isEmpty ? 'frequency not recorded' : c.toFrequency;
+      return '${c.drugName}: frequency changed, $from → $to';
     case 'stop':
-      return '${c.drugName} ${c.fromDose.isNotEmpty ? c.fromDose : c.toDose}: stopped';
+      return '${'${c.drugName} ${doseWithSpace(c.fromDose.isNotEmpty ? c.fromDose : c.toDose)}'.trim()}: stopped';
+    case 'start':
     default:
-      return '${c.drugName}: ${c.kind}';
+      // The server's fallthrough: any non-dose/frequency/stop
+      // kind phrases as a start, from the to-dose only.
+      return '${'${c.drugName} ${doseWithSpace(c.toDose)}'.trim()}: started';
   }
 }
 
@@ -309,16 +360,25 @@ double _doseNumber(String dose) =>
     double.tryParse(RegExp(r'[0-9]+(?:\.[0-9]+)?').firstMatch(dose)?.group(0) ?? '') ??
     0;
 
-/// MC-5 precedence for the single "Most recent change" line:
-/// paired dose change first, then dose/frequency change, then
-/// start, then stop; ties keep list order (the server orders
-/// same-date entries by earliest recorded_at, SPEC §3.2 MC-5).
+/// MC-5 precedence for the single "Most recent change" line,
+/// exactly the server's ranking (reportV2.js buildMedChanges,
+/// Vera F-3): a PAIRED dose change ranks first, then any
+/// dose/frequency change, then start, then stop; ties break by
+/// earliest recordedAt, then list order (SPEC §3.2 MC-5).
 ComputedMedChange? selectLatestPriorChange(List<ComputedMedChange> latestPrior) {
   if (latestPrior.isEmpty) return null;
-  const rank = {'doseChange': 0, 'frequencyChange': 1, 'start': 2, 'stop': 3};
+  int rank(ComputedMedChange c) {
+    if (c.kind == 'doseChange' && c.paired) return 0;
+    if (c.kind == 'doseChange' || c.kind == 'frequencyChange') return 1;
+    if (c.kind == 'start') return 2;
+    return 3;
+  }
+
   var best = latestPrior.first;
   for (final c in latestPrior.skip(1)) {
-    if ((rank[c.kind] ?? 4) < (rank[best.kind] ?? 4)) best = c;
+    final r = rank(c);
+    final br = rank(best);
+    if (r < br || (r == br && c.recordedAt < best.recordedAt)) best = c;
   }
   return best;
 }
@@ -531,10 +591,26 @@ class ComputedQuestionAnchor {
             '${s('value')}, against his normal of ${s('normal')}. '
             'Is any change needed, or should this dose continue?';
       case 'extremeDay':
+        // Vera F-4: the server's extreme-day anchor carries NO
+        // symptom slot — its values are {minutesOver100, peakHr}
+        // only, and the symptom lives in the anchor's rendered
+        // text and in the matching notable day's
+        // facts.palpitationsText (the parser resolves that into
+        // `palpitationsText` here, see ComputedMetrics.tryParse).
+        // A legacy `symptom` slot is still honoured when present.
+        // When no symptom can be sourced from either shape — or
+        // the carried numbers are absent — the question is
+        // OMITTED (empty string; the section renderer drops it)
+        // rather than rendered with an empty symptom.
+        var symptom = s('symptom');
+        if (symptom.isEmpty) symptom = s('palpitationsText');
+        final minutes = s('minutesOver100');
+        final peak = s('peakHr');
+        if (symptom.isEmpty || minutes.isEmpty || peak.isEmpty) return '';
         return 'On ${fullDateLabel(date ?? s('date'))}, Tyson logged '
-            '${s('symptom')} and his heart rate was over 100 bpm for '
-            '${s('minutesOver100')} minutes, with a peak of '
-            '${s('peakHr')} bpm. Should an ECG or any other check be '
+            '$symptom and his heart rate was over 100 bpm for '
+            '$minutes minutes, with a peak of '
+            '$peak bpm. Should an ECG or any other check be '
             'done for an event like that?';
       case 'sleepVsNeed':
         return 'Tyson averaged ${s('duration')} of sleep this week, '
@@ -599,6 +675,36 @@ class ComputedMetrics {
     final tallyRaw = _asMap(j['tally']) ?? const {};
     int t(String k) => (tallyRaw[k] as num?)?.toInt() ?? 0;
     final med = _asMap(j['medChanges']) ?? const {};
+    // Vera F-4: resolve the extreme-day anchor's symptom from the
+    // shape the server actually emits — the notable day on the
+    // anchor's date carries facts.palpitationsText. Anchors whose
+    // own values already carry a symptom are left untouched.
+    final parsedNotableDays = <ComputedNotableDay>[
+      for (final r in _asList(j['notableDays']))
+        if (_asMap(r) != null) ComputedNotableDay.fromJson(_asMap(r)!),
+    ];
+    ComputedQuestionAnchor enrichAnchor(ComputedQuestionAnchor a) {
+      if (a.kind != 'extremeDay') return a;
+      if (_asString(a.values['symptom']).isNotEmpty ||
+          _asString(a.values['palpitationsText']).isNotEmpty) {
+        return a;
+      }
+      for (final d in parsedNotableDays) {
+        if (d.date != (a.date ?? _asString(a.values['date']))) continue;
+        final text = d.facts['palpitationsText'];
+        if (text is String && text.isNotEmpty) {
+          return ComputedQuestionAnchor(
+            kind: a.kind,
+            scorecardKey: a.scorecardKey,
+            date: a.date,
+            values: {...a.values, 'palpitationsText': text},
+            text: a.text,
+          );
+        }
+      }
+      return a;
+    }
+
     return ComputedMetrics(
       rangeStart: _asString(range['start']),
       rangeEnd: _asString(range['end']),
@@ -618,10 +724,7 @@ class ComputedMetrics {
         for (final s in _asList(tallyRaw['noDataRowLabels'])) _asString(s),
       ],
       headlineKey: (j['headlineKey'] as num?)?.toInt() ?? 0,
-      notableDays: [
-        for (final r in _asList(j['notableDays']))
-          if (_asMap(r) != null) ComputedNotableDay.fromJson(_asMap(r)!),
-      ],
+      notableDays: parsedNotableDays,
       medChangesInWindow: [
         for (final r in _asList(med['inWindow']))
           if (_asMap(r) != null) ComputedMedChange.fromJson(_asMap(r)!),
@@ -643,7 +746,8 @@ class ComputedMetrics {
       ],
       questionAnchors: [
         for (final r in _asList(j['questionAnchors']))
-          if (_asMap(r) != null) ComputedQuestionAnchor.fromJson(_asMap(r)!),
+          if (_asMap(r) != null)
+            enrichAnchor(ComputedQuestionAnchor.fromJson(_asMap(r)!)),
       ],
       charts: _asMap(j['charts']) ?? const {},
       correlations: _asMap(j['correlations']) ?? const {},
@@ -705,23 +809,30 @@ class ComputedMetrics {
     return 'A mixed week against his usual.';
   }
 
-  /// Ruling 4.2 tally sentence — the LAST sentence of the verdict
-  /// block. Categories in fixed order, zero counts omitted, the
-  /// no-data clause names the no-data rows lowercased, singular
-  /// `has` at n = 1.
+  /// Ruling 4.2 tally sentence, as amended by Juno's fix-round
+  /// addendum A.4 — the LAST sentence of the verdict block and
+  /// byte-aligned with the server's `buildTallySentence`
+  /// (reportV2.js), Vera F-1: EVERY category agrees in number
+  /// (singular at count 1: `1 is worse / is better / is the same /
+  /// is mixed / has no data this week`; plural otherwise),
+  /// categories in fixed order, zero counts omitted, the no-data
+  /// clause names the no-data rows lowercased.
   String get tallySentence {
     final server = serverVerdict?['tallySentence'] ?? raw['tallySentence'];
     if (server is String && server.isNotEmpty) return server;
+    String cat(int n, String singular, String plural) =>
+        '$n ${n == 1 ? singular : plural}';
+    final parts = <String>[];
     final w = tally['worse'] ?? 0;
     final b = tally['better'] ?? 0;
     final s = tally['same'] ?? 0;
     final m = tally['mixed'] ?? 0;
     final n = tally['noData'] ?? 0;
-    final parts = <String>[];
-    if (w > 0) parts.add('$w are worse');
-    if (b > 0) parts.add('$b are better');
-    if (s > 0) parts.add('$s are the same');
-    if (m > 0) parts.add('$m are mixed');
+    if (w > 0) parts.add(cat(w, 'is worse', 'are worse'));
+    if (b > 0) parts.add(cat(b, 'is better', 'are better'));
+    if (s > 0) parts.add(cat(s, 'is the same', 'are the same'));
+    if (m > 0) parts.add(cat(m, 'is mixed', 'are mixed'));
+    var sentence = 'Of the 10 measures on the scorecard, ${parts.join(', ')}';
     if (n > 0) {
       final names = noDataRowLabels.isNotEmpty
           ? noDataRowLabels
@@ -729,74 +840,74 @@ class ComputedMetrics {
               for (final r in scorecard)
                 if (r.trend == 'No data') r.label.toLowerCase(),
             ];
-      final joined = names.length <= 1
-          ? names.join()
-          : names.length == 2
-              ? names.join(' and ')
-              : '${names.sublist(0, names.length - 1).join(', ')} and ${names.last}';
-      // Ruling 4.2's frame joins the no-data clause with "and".
-      parts.add(n == 1
-          ? 'and 1 has no data this week ($joined)'
-          : 'and $n have no data this week ($joined)');
+      final joined = names.length <= 2
+          ? names.join(' and ')
+          : '${names.sublist(0, names.length - 1).join(', ')} and ${names.last}';
+      final clause = '$n ${n == 1 ? 'has' : 'have'} no data this week ($joined)';
+      sentence += parts.isNotEmpty ? ', and $clause' : clause;
     }
-    return 'Of the 10 measures on the scorecard, ${parts.join(', ')}.';
+    return '$sentence.';
   }
 
-  /// Ruling 1.2 supporting passage: scorecard cells only, at most
-  /// four measures in scorecard order (worse measures on a harder
-  /// headline, better on an easier one, non-same measures on a
-  /// same/mixed headline), plus at most two hardest/best days
-  /// named from the notable days. No banned causal word appears
-  /// in any template here.
+  /// Ruling 1.2 supporting passage, as amended by Juno's fix-round
+  /// addendum A — byte-aligned with the server's `buildVerdict`
+  /// (reportV2.js), Vera F-2:
+  /// * each cited measure's sentence comes from the A.2
+  ///   per-measure template table, keyed by measure (see
+  ///   [_verdictSentence]); the A.1-banned generic template
+  ///   (`His [label] averaged …`) does not exist in any branch —
+  ///   an unknown measure key is omitted, never templated;
+  /// * A.1 rule 4 eligibility on every branch: a measure is cited
+  ///   only when BOTH its displays exist (neither is `—`, neither
+  ///   value null) and its Trend is not `No data` — a no-data
+  ///   measure is never cited;
+  /// * selection: harder headlines cite worse measures, easier
+  ///   headlines cite better measures (scorecard order, at most
+  ///   four); same/mixed headlines cite the eligible measures
+  ///   with the largest |Δ vs normal| (Ruling 1.2, the server's
+  ///   `verdictDelta`), presented in scorecard order;
+  /// * the closing day sentence follows the server: hardest days
+  ///   on harder/mixed headlines, best days on easier, none on a
+  ///   same headline. No banned causal word appears in any
+  ///   template here.
   String get supportingPassage {
     final server = serverVerdict?['supporting'];
     if (server is String && server.isNotEmpty) return server;
     final head = headline;
-    final harder = head.startsWith('Harder');
-    final easier = head.startsWith('Easier');
-    final wanted = harder
-        ? 'Worse'
-        : easier
-            ? 'Better'
-            : null;
+    final harder = head == 'Harder week than his usual.';
+    final easier = head == 'Easier week than his usual.';
+    final mixed = head == 'A mixed week against his usual.';
+    final same = head == 'About the same as his usual week.';
     final cited = <ComputedScorecardRow>[];
-    for (final row in scorecard) {
-      if (cited.length >= 4) break;
-      if (wanted != null ? row.trend == wanted : (row.trend == 'Worse' || row.trend == 'Better')) {
-        cited.add(row);
+    if (harder || easier) {
+      final wanted = harder ? 'Worse' : 'Better';
+      for (final row in scorecard) {
+        if (cited.length >= 4) break;
+        if (row.trend == wanted && _verdictEligible(row)) cited.add(row);
       }
+    } else if (same || mixed) {
+      final ranked = <(int, ComputedScorecardRow, double)>[];
+      for (var i = 0; i < scorecard.length; i++) {
+        final row = scorecard[i];
+        if (!_verdictEligible(row)) continue;
+        final d = _verdictDelta(row);
+        if (d == null) continue;
+        ranked.add((i, row, d));
+      }
+      ranked.sort((a, b) {
+        final byDelta = b.$3.compareTo(a.$3);
+        return byDelta != 0 ? byDelta : a.$1.compareTo(b.$1);
+      });
+      final picked = ranked.take(4).toList()
+        ..sort((a, b) => a.$1.compareTo(b.$1));
+      cited.addAll([for (final e in picked) e.$2]);
     }
     final sentences = <String>[];
     for (final row in cited) {
-      // Sentence forms follow Ruling 1.2's ruled template shape
-      // (the ruling's own example sentences for score / resting
-      // heart rate / HRV / flare days; the remaining measures use
-      // the same averaged-against-normal shape).
-      switch (row.key) {
-        case 'dailyScore':
-          sentences.add('His Daily Score averaged '
-              '${row.thisWeek.display}, against his normal of '
-              '${row.displayNormal.display}.');
-        case 'restingHr':
-          sentences.add('His resting heart rate averaged '
-              '${row.thisWeek.display} (normal ${row.displayNormal.display}).');
-        case 'hrv':
-          sentences.add('His HRV averaged ${row.thisWeek.display} '
-              '(normal ${row.displayNormal.display}).');
-        case 'flareDays':
-        case 'headacheDays':
-          final count = row.thisWeek.display
-              .replaceAll(RegExp(r' days?$'), '');
-          final noun = row.key == 'flareDays' ? 'flare' : 'headache';
-          sentences.add('He logged $count $noun '
-              '${count == '1' ? 'day' : 'days'}.');
-        default:
-          sentences.add('His ${row.label.toLowerCase()} averaged '
-              '${row.thisWeek.display}, against his normal of '
-              '${row.displayNormal.display}.');
-      }
+      final sentence = _verdictSentence(row);
+      if (sentence != null) sentences.add(sentence);
     }
-    if (notableDays.isNotEmpty && (harder || easier || head.startsWith('A mixed'))) {
+    if (notableDays.isNotEmpty && (harder || easier || mixed)) {
       final days = notableDays.take(2).toList();
       final label = easier ? 'best' : 'hardest';
       if (days.length == 1) {
@@ -839,6 +950,88 @@ class ComputedMetrics {
     if (name.isEmpty || dateText.isEmpty) return null;
     return 'Next appointment: $name${cred.isEmpty ? '' : ', $cred'}, '
         '$dateText.';
+  }
+}
+
+/// Juno fix-round addendum A.1 rule 4 eligibility (the server's
+/// `verdictEligible`): a measure may be cited in the supporting
+/// passage only when both its displays exist (neither value null,
+/// neither display the dash) and its Trend is not `No data`.
+bool _verdictEligible(ComputedScorecardRow r) =>
+    r.trend != 'No data' &&
+    r.thisWeek.value != null &&
+    r.displayNormal.value != null &&
+    r.thisWeek.display != '—' &&
+    r.displayNormal.display != '—';
+
+/// |Δ vs His normal| in the row's own printed comparison terms
+/// (the server's `verdictDelta`): sleep compares its
+/// percent-of-need against 100% (its normal is the need itself);
+/// blood pressure takes the larger component delta; every other
+/// measure takes the numeric difference of the carried values.
+double? _verdictDelta(ComputedScorecardRow r) {
+  if (r.key == 'sleepVsNeed') {
+    final pct = r.thisWeek.pct;
+    return pct == null ? null : (pct - 100).abs();
+  }
+  if (r.key == 'bloodPressure') {
+    final a = r.thisWeek.value;
+    final b = r.displayNormal.value;
+    if (a is Map && b is Map) {
+      final aSys = a['systolic'];
+      final aDia = a['diastolic'];
+      final bSys = b['systolic'];
+      final bDia = b['diastolic'];
+      if (aSys is num && aDia is num && bSys is num && bDia is num) {
+        final dSys = (aSys - bSys).abs().toDouble();
+        final dDia = (aDia - bDia).abs().toDouble();
+        return dSys > dDia ? dSys : dDia;
+      }
+    }
+    return null;
+  }
+  final a = r.thisWeek.value;
+  final b = r.displayNormal.value;
+  if (a is num && b is num) return (a - b).abs().toDouble();
+  return null;
+}
+
+/// Juno fix-round addendum A.2 per-measure verdict templates,
+/// keyed by measure — byte-exact, direction-neutral. Slots are
+/// the scorecard's own display strings exactly as printed; sleep's
+/// need slot is its His-normal display with the trailing
+/// ` (his Sleep Need)` removed. An unknown measure key returns
+/// null and is omitted: the A.1-banned generic template
+/// (`His [row label] averaged …`) exists in NO branch (Vera F-2).
+String? _verdictSentence(ComputedScorecardRow r) {
+  final tw = r.thisWeek.display;
+  final n = r.displayNormal.display;
+  switch (r.key) {
+    case 'dailyScore':
+      return 'His Daily Score averaged $tw, against his normal of $n.';
+    case 'flareDays':
+      return 'He logged flares on $tw, against his normal of $n.';
+    case 'headacheDays':
+      return 'He logged headaches on $tw, against his normal of $n.';
+    case 'restingHr':
+      return 'His resting heart rate averaged $tw, against his normal of $n.';
+    case 'hrv':
+      return 'His HRV averaged $tw, against his normal of $n.';
+    case 'sleepVsNeed':
+      final need = n.replaceFirst(RegExp(r' \(his Sleep Need\)$'), '');
+      return 'His sleep averaged $tw; his Sleep Need is $need.';
+    case 'minutesOver100':
+      return 'His heart rate was over 100 bpm for an average of $tw a day, '
+          'against his normal of $n.';
+    case 'minutesOver120':
+      return 'His heart rate was over 120 bpm for an average of $tw a day, '
+          'against his normal of $n.';
+    case 'peakHr':
+      return 'His peak heart rate reached $tw, against his normal of $n.';
+    case 'bloodPressure':
+      return 'His blood pressure was $tw, against his normal of $n.';
+    default:
+      return null;
   }
 }
 
@@ -895,10 +1088,17 @@ List<WeeklyV2Section> weeklyV2MirrorSections(ComputedMetrics m) {
     for (final d in m.notableDays) d.line,
   ]);
 
+  // A question whose fallback cannot be built from the anchor's
+  // carried shape renders as '' and is OMITTED here (no
+  // placeholder copy, remaining questions renumbered) — Vera F-4.
+  final renderedQuestions = <String>[
+    for (final a in m.questionAnchors)
+      if (a.question.isNotEmpty) a.question,
+  ];
   final questions = WeeklyV2Section('Questions for Brad', [
     weeklyV2QuestionsForLine,
-    for (var i = 0; i < m.questionAnchors.length; i++)
-      '${i + 1}. ${m.questionAnchors[i].question}',
+    for (var i = 0; i < renderedQuestions.length; i++)
+      '${i + 1}. ${renderedQuestions[i]}',
   ]);
 
   final gridLines = <String>[
