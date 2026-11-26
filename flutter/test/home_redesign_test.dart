@@ -12,6 +12,7 @@ import 'package:tabs_lab/src/data/health_history_queries.dart'
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
+import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/today_plan_store.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
@@ -1000,10 +1001,12 @@ void main() {
     testWidgets(
         'skipped dose counts as resolved: planned 4 with 2 open '
         'items puts the marker at the track midpoint', (tester) async {
-      // remainingCount is 3 by the subtitle's pre-existing
-      // semantics (the skipped dose still counts as remaining
-      // there); the BAR's resolved = planned − open items = 2
-      // (one taken + one skipped), so progress is exactly 0.5.
+      // This plan is hand-constructed to isolate the BAR: its
+      // resolved = planned − open items = 2 (one taken + one
+      // skipped), so progress is exactly 0.5. (The remainingCount
+      // literal here is inert for the bar; plans built by
+      // buildTodayPlan now count a skipped dose as resolved in
+      // remainingCount too — founder ruling, Nov 25, 2026.)
       await pumpSeededCard(
         tester,
         plan: const TodayPlanData(
@@ -1047,6 +1050,65 @@ void main() {
       expect(find.byKey(const ValueKey('todaySummaryProgressFinish')),
           findsOneWidget);
       expect(find.byIcon(Icons.sports_score), findsOneWidget);
+    });
+
+    testWidgets(
+        'skip-only plan: card subtitle, sheet header, and sheet '
+        'plan line ALL read complete and progress is 1.0 (the '
+        'founder\'s Nov 25, 2026 screenshots as a regression test)',
+        (tester) async {
+      // The founder's evening: the only open item was a
+      // deliberately SKIPPED dose. Before the ruling fix the card
+      // read "1 item remaining" over a FULL progress bar and the
+      // sheet contradicted itself the same way.
+      final now = DateTime.now();
+      final plan = buildTodayPlan(
+        medications: const [
+          SummaryMedication(key: 'uuid-1', name: 'Ivabradine', dose: '7.5 mg'),
+        ],
+        reminders: const [],
+        habits: const [],
+        localState: const TodayPlanLocalState(),
+        entries: [
+          QuickLogEntry(
+            id: 10,
+            categoryId: 8,
+            body: '[Corrected to Skipped] Took Ivabradine 7.5 mg',
+            chips: '[]',
+            manualText: '',
+            timestamp:
+                now.subtract(const Duration(minutes: 5)).millisecondsSinceEpoch,
+          ),
+        ],
+        medicationCategoryId: 8,
+        now: now,
+      );
+      expect(plan.remainingCount, 0);
+      expect(plan.items, isEmpty);
+      await pumpSeededCard(tester, plan: plan);
+
+      // Card face: subtitle complete, progress full (marker at
+      // the track's right edge = progress 1.0).
+      expect(find.text('Everything planned for today is complete'),
+          findsOneWidget);
+      expect(find.text('1 item remaining'), findsNothing);
+      final track = tester
+          .getRect(find.byKey(const ValueKey('todaySummaryProgressTrack')));
+      final marker = tester
+          .getRect(find.byKey(const ValueKey('todaySummaryProgressMarker')));
+      expect(marker.right, closeTo(track.right, 1.0));
+
+      // Sheet: header subtitle AND the Today's Plan line agree —
+      // three copies of the complete line in total (card subtitle,
+      // sheet header, sheet plan body), none reading remaining.
+      await tester.tap(find.text('Today Summary'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pump();
+      expect(find.text("Today's Plan"), findsOneWidget);
+      expect(find.text('Everything planned for today is complete'),
+          findsNWidgets(3));
+      expect(find.text('1 item remaining'), findsNothing);
     });
 
     testWidgets(

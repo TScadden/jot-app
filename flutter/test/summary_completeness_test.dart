@@ -11,8 +11,10 @@ import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
 
 /// Summary completeness (D11 + Vera's two binding conditions):
 /// plan RESOLVED (never a default) + nothing remaining under the
-/// subtitle evidence rules (a skipped dose does NOT resolve) +
-/// the feeling check-in; firing is open-day only, exactly once.
+/// ONE resolved definition (founder ruling, Nov 25, 2026: a
+/// deliberately skipped dose DOES resolve its item for completion
+/// counting) + the feeling check-in; firing is open-day only,
+/// exactly once.
 void main() {
   const medCat = 8;
   const moodCat = 6;
@@ -122,8 +124,9 @@ void main() {
       expect(complete(plan: plan, resolved: true, entries: entries), isTrue);
     });
 
-    test('a SKIPPED dose does NOT resolve the day (subtitle rule, '
-        'not the progress-bar rule)', () {
+    test('a SKIPPED dose resolves the day with check-in (founder '
+        'ruling, Nov 25, 2026: a deliberately skipped dose counts '
+        'as completed for completion counting)', () {
       final entries = [
         entry(
           id: 1,
@@ -134,7 +137,41 @@ void main() {
         checkIn(onNov5(9)),
       ];
       final plan = planFor(entries, meds: const [med]);
-      expect(plan.remainingCount, 1);
+      expect(plan.remainingCount, 0);
+      expect(complete(plan: plan, resolved: true, entries: entries), isTrue);
+      // Per-item records unchanged: the dose still reads skipped,
+      // never taken — only the completion count moved.
+      expect(plan.items, isEmpty); // resolved items do not render
+      expect(
+        medSkippedFromEntries(
+          medName: 'MedA',
+          todayEntries: entries,
+          medicationCategoryId: medCat,
+        ),
+        isTrue,
+      );
+      expect(
+        medTakenFromEntries(
+          medName: 'MedA',
+          todayEntries: entries,
+          medicationCategoryId: medCat,
+        ),
+        isFalse,
+      );
+    });
+
+    test('a SKIPPED dose WITHOUT the check-in is still NOT '
+        'complete (the ruling keeps the check-in term)', () {
+      final entries = [
+        entry(
+          id: 1,
+          cat: medCat,
+          body: '[Corrected to Skipped] Took MedA 5mg',
+          at: onNov5(8),
+        ),
+      ];
+      final plan = planFor(entries, meds: const [med]);
+      expect(plan.remainingCount, 0);
       expect(complete(plan: plan, resolved: true, entries: entries), isFalse);
     });
 
@@ -188,12 +225,13 @@ void main() {
     SummaryCompletionContext ctxFor(
       List<QuickLogEntry> entries, {
       DateTime? start,
+      List<SummaryMedication> meds = const [],
     }) => SummaryCompletionContext(
       // P0 adaptation (flagged): fully-attested plan wrapper.
       attestedPlan: AttestedPlan(
         plan: buildPlanForFeelingDay(
           feelingDayStart: start ?? dayStart,
-          medications: const [],
+          medications: meds,
           reminders: const [],
           habits: const [],
           localState: const TodayPlanLocalState(),
@@ -265,6 +303,46 @@ void main() {
 
       final again = await watcher.maybeFireSummaryCompletion(
         context: ctxFor(entries),
+        pullSucceeded: true,
+        seedCurrent: null,
+        seedBest: null,
+        seedStateJson: null,
+        push: push,
+        now: onNov5(11),
+      );
+      expect(again, isFalse);
+      expect(events, hasLength(1));
+    });
+
+    test('a skip-completed day fires exactly once (the YAY path): '
+        'the skipped dose resolves the plan, the watcher records '
+        'the day and emits one completion', () async {
+      final entries = [
+        entry(
+          id: 1,
+          cat: medCat,
+          body: '[Corrected to Skipped] Took MedA 5mg',
+          at: onNov5(8),
+        ),
+        checkIn(onNov5(9)),
+      ];
+      final fired = await watcher.maybeFireSummaryCompletion(
+        context: ctxFor(entries, meds: const [med]),
+        pullSucceeded: true,
+        seedCurrent: null,
+        seedBest: null,
+        seedStateJson: null,
+        push: push,
+        now: onNov5(10),
+      );
+      expect(fired, isTrue);
+      expect(events, hasLength(1));
+      expect(events.single.newCount, 1);
+      expect(store.state!.countedDays, {'2026-11-05'});
+      expect(store.state!.summaryCompletedDays, {'2026-11-05'});
+
+      final again = await watcher.maybeFireSummaryCompletion(
+        context: ctxFor(entries, meds: const [med]),
         pullSucceeded: true,
         seedCurrent: null,
         seedBest: null,

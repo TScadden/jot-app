@@ -360,6 +360,38 @@ int? resolveSummaryCategoryId(
 
 // ── Plan computation (port of the TodayViewModel combine block) ─────
 
+/// Whether a plan item is RESOLVED for completion counting: it is
+/// completed, OR it is a medication dose the user deliberately
+/// SKIPPED (founder ruling, Nov 25, 2026 — a skipped Daily Summary
+/// item counts as completed everywhere completion is computed:
+/// the items-remaining count + subtitle, Daily Summary day
+/// completion, streak credit, and the YAY celebration).
+///
+/// This is the ONE resolved definition for the whole client:
+/// [buildTodayPlan] uses it for BOTH the rendered-items filter and
+/// `remainingCount`, so the card subtitle, the sheet header, the
+/// sheet plan line, the progress bar, and `isSummaryComplete` can
+/// never disagree again (the Nov 25 founder screenshots: progress
+/// full + "Everything planned for today is complete" beside
+/// "1 item remaining" — the rendered list used this rule while the
+/// count used taken-only `isCompleted`).
+///
+/// Per-item records are NOT changed by this predicate: a skipped
+/// dose's `isCompleted` stays false (taken-only) and its `status`
+/// stays [DoseStatus.skipped], so adherence / medication views
+/// still read it as skipped, never taken. A SNOOZED dose is not
+/// resolved — it stays remaining and keeps rendering.
+///
+/// The `vm:never-inline` pragma keeps this function a standalone
+/// symbol in the AOT snapshot: its name is the shipped-binary
+/// marker for this ruling (verified by `strings` on the built
+/// libapp.so) — inlined, the name disappears from the binary even
+/// though the logic ships.
+@pragma('vm:never-inline')
+bool todayPlanItemResolved(TodayPlanItem i) =>
+    i.isCompleted ||
+    (i.kind == PlanItemKind.medication && i.status == DoseStatus.skipped);
+
 class TodayPlanData {
   /// The RENDERED plan (Round 41 founder rule): completed/resolved
   /// items are excluded entirely — no dimmed or struck-through rows.
@@ -652,17 +684,21 @@ TodayPlanData buildTodayPlan({
     return a.timeDisplay.compareTo(b.timeDisplay);
   });
 
-  final remainingCount = plan.where((i) => !i.isCompleted).length;
+  // Founder ruling (Nov 25, 2026): remaining counts UNRESOLVED
+  // items under the ONE resolved definition ([todayPlanItemResolved])
+  // — a deliberately skipped dose resolves the item here exactly as
+  // it does in the rendered-items filter below, so the subtitle,
+  // day completion, streak credit, and the celebration all agree
+  // with what the user sees rendered.
+  final remainingCount =
+      plan.where((i) => !todayPlanItemResolved(i)).length;
 
   // Native's summary overdue count (NOT the per-row badge rule):
   // meds count only a missed Morning slot at/after noon, reminders
-  // when their hour has passed, habits never; skipped meds exempt.
+  // when their hour has passed, habits never; resolved items
+  // (completed or skipped) exempt.
   final overdueCount = plan.where((item) {
-    if (item.isCompleted) return false;
-    if (item.kind == PlanItemKind.medication &&
-        item.status == DoseStatus.skipped) {
-      return false;
-    }
+    if (todayPlanItemResolved(item)) return false;
     return switch (item.kind) {
       PlanItemKind.medication =>
         item.slot == 'Morning' && now.hour >= 12,
@@ -681,13 +717,11 @@ TodayPlanData buildTodayPlan({
   // Round 41 rendering rule: completed/resolved items do not
   // render at all. A skipped dose is resolved (an intentional
   // action, never an open task), so it leaves the rendered plan
-  // alongside taken doses and completed reminders/habits.
-  bool resolved(TodayPlanItem i) =>
-      i.isCompleted ||
-      (i.kind == PlanItemKind.medication && i.status == DoseStatus.skipped);
-
+  // alongside taken doses and completed reminders/habits. The
+  // filter uses the SAME top-level predicate as the counts above
+  // ([todayPlanItemResolved]) — one definition, by construction.
   return TodayPlanData(
-    items: plan.where((i) => !resolved(i)).toList(),
+    items: plan.where((i) => !todayPlanItemResolved(i)).toList(),
     plannedCount: plan.length,
     remainingCount: remainingCount,
     overdueCount: overdueCount,
