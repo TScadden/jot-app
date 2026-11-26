@@ -681,6 +681,19 @@ class _HomeScreenState extends State<HomeScreen>
         },
       );
 
+  // ── Bounded re-settlement (skip-counts-complete, Nov 25, 2026) ──
+  /// The one-shot predicate-transition heal (see
+  /// [SummaryResettlement]): runs inside the app-open settlement,
+  /// after the streak record is pulled and BEFORE [recordOpen]'s
+  /// rollover settlement — a skip-completed past day must count
+  /// through its summary, not be freeze-bridged by the rollover
+  /// that follows. It never presents a celebration; its only
+  /// follow-on is the gem claim chain (see
+  /// [_maybeResettleSkippedDays]).
+  SummaryResettlement? _resettlement;
+  SummaryResettlement get _resettler =>
+      _resettlement ??= SummaryResettlement();
+
   /// One real Daily Summary completion (the post-PR-#115
   /// deterministic path — the ONLY earn entry point; the dev SIM
   /// and dev Restore paths never reach this): the pill/cache
@@ -2652,6 +2665,87 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
+  /// The bounded re-settlement hook for [_settleStreakWithEngine]
+  /// (Nov 25, 2026): resolves each candidate past day's inputs
+  /// through the SAME resolution path as a live completeness
+  /// evaluation ([_resolveCompletionInputs], per-day), and heals
+  /// through [SummaryResettlement]. NO celebration is presented
+  /// for a healed day — the resettlement calls the store directly,
+  /// never the watcher, so [_presentCompletion] cannot run for it.
+  /// The healed day's gem claim goes through the existing claim
+  /// chain ([_runCompletionClaimChain]: awaited record push, then
+  /// the single [GemService.processCompletion] call site) — that
+  /// chain is day-agnostic (its keys are built from the counted
+  /// day string and validated server-side against the pushed
+  /// blob's summaryCompletedDays, which the heal just extended),
+  /// so a past day's daily grant claims exactly like today's.
+  /// Fail-soft: any failure leaves settlement to proceed exactly
+  /// as shipped, and the version marker (advanced only on a
+  /// definitive scan) lets a later start retry.
+  Future<void> _maybeResettleSkippedDays(
+    ({
+      bool succeeded,
+      int? current,
+      int? best,
+      String? stateJson,
+      int? purchasedFreezes
+    }) rec,
+  ) async {
+    try {
+      final store = StreakStore.instance;
+      await store.ensureLoaded();
+      StreakState? recordState;
+      final blob = rec.stateJson;
+      if (blob != null && blob.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(blob);
+          if (decoded is Map<String, dynamic>) {
+            recordState = StreakState.fromJson(decoded);
+          }
+        } catch (_) {
+          recordState = null;
+        }
+      }
+      // The merged-entries refresh is LAZY — paid only when the
+      // resettlement actually resolves a candidate day (its cheap
+      // gate returns first on gap-free launches, so the settle
+      // path's pull discipline and first-paint latency are
+      // untouched). A cold-start settle can race the check-in
+      // load that fills [_mergedEntries]; the first candidate
+      // resolution refreshes it (the same refresh the plan-action
+      // completion trigger uses) before reading it.
+      var refreshed = false;
+      await _resettler.maybeResettle(
+        recordState: recordState,
+        now: DateTime.now(),
+        resolveContext: (dayStart) async {
+          if (!refreshed) {
+            refreshed = true;
+            await _refreshMergedEntriesForEvaluation();
+          }
+          final inputs = await _resolveCompletionInputs(dayStart: dayStart);
+          return inputs.context;
+        },
+        pullSucceeded: rec.succeeded,
+        seedCurrent: rec.current,
+        seedBest: rec.best,
+        seedStateJson: rec.stateJson,
+        seedPurchasedFreezes: rec.purchasedFreezes,
+        push: _healthRepo.pushStreakRecord,
+        onResettled: (healed) async {
+          await _runCompletionClaimChain(
+            result: healed.result,
+            state: healed.state,
+            summaryTabsDay: healed.day,
+            now: DateTime.now(),
+          );
+        },
+      );
+    } catch (_) {
+      // Fail-soft: the rollover settlement proceeds as shipped.
+    }
+  }
+
   /// Settle the streak engine for this app open against the
   /// authoritative server record, off the load's critical path.
   /// The engine records today (consuming the monthly save for a
@@ -2697,6 +2791,15 @@ class _HomeScreenState extends State<HomeScreen>
         // re-runs this settle when the window resolves.
         return StreakStore.instance.state;
       }
+      // Bounded re-settlement (Nov 25, 2026): heal a settled-but-
+      // uncounted skip-completed day (in practice the founder's
+      // Nov 25) under the new resolved predicate BEFORE the
+      // rollover below settles the gap since the last counted
+      // day — otherwise recordOpen's settlement would bridge that
+      // day with a freeze (or break the run) instead of counting
+      // the summary the user actually completed. One-shot via the
+      // predicate-version marker; fail-soft like everything here.
+      await _maybeResettleSkippedDays(rec);
       final engineState = await StreakStore.instance.recordOpen(
         pullSucceeded: rec.succeeded,
         seedCurrent: rec.current,

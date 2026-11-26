@@ -199,6 +199,87 @@ void main() {
       expect(data.remainingCount, 0);
     });
 
+    test('skip-counts-complete (founder ruling, Nov 25, 2026): '
+        'skip-only plan → remaining 0, complete subtitle, nothing '
+        'renders', () {
+      final data = build(
+        meds: const [
+          SummaryMedication(key: 'm1', name: 'MedA', dose: '5mg'),
+        ],
+        medCategoryId: 8,
+        entries: [
+          entry(1, 8, '[Corrected to Skipped] Took MedA 5mg',
+              DateTime(2026, 10, 13, 8)),
+        ],
+      );
+      expect(data.plannedCount, 1);
+      expect(data.items, isEmpty);
+      expect(data.remainingCount, 0);
+      expect(data.summaryText, 'Everything planned for today is complete');
+    });
+
+    test('skip-counts-complete: taken + skipped mix → remaining 0',
+        () {
+      final data = build(
+        meds: const [
+          SummaryMedication(key: 'm1', name: 'MedA', dose: '5mg'),
+          SummaryMedication(key: 'm2', name: 'MedB', dose: '10mg'),
+        ],
+        medCategoryId: 8,
+        entries: [
+          entry(1, 8, 'Took MedA 5mg', DateTime(2026, 10, 13, 8)),
+          entry(2, 8, '[Corrected to Skipped] Took MedB 10mg',
+              DateTime(2026, 10, 13, 8, 5)),
+        ],
+      );
+      expect(data.plannedCount, 2);
+      expect(data.items, isEmpty);
+      expect(data.remainingCount, 0);
+      expect(data.summaryText, 'Everything planned for today is complete');
+    });
+
+    test('skip-counts-complete: skipped + SNOOZED → remaining 1 '
+        '(a snooze is not a resolution)', () {
+      final data = build(
+        meds: const [
+          SummaryMedication(key: 'm1', name: 'MedA', dose: '5mg'),
+          SummaryMedication(key: 'm2', name: 'MedB', dose: '10mg'),
+        ],
+        medCategoryId: 8,
+        local: const TodayPlanLocalState(medActions: {
+          'm2|Daily': DoseStatus.snoozed,
+        }),
+        entries: [
+          entry(1, 8, '[Corrected to Skipped] Took MedA 5mg',
+              DateTime(2026, 10, 13, 8)),
+        ],
+      );
+      expect(data.plannedCount, 2);
+      expect(data.remainingCount, 1);
+      expect(data.summaryText, '1 item remaining');
+      expect(data.items.single.title, 'MedB');
+      expect(data.items.single.status, DoseStatus.snoozed);
+    });
+
+    test('skip-counts-complete: skipped + pending habit → '
+        'remaining 1 (only the skip resolved)', () {
+      final data = build(
+        meds: const [
+          SummaryMedication(key: 'm1', name: 'MedA', dose: '5mg'),
+        ],
+        habits: [habit('h1', 'Stretch')],
+        medCategoryId: 8,
+        entries: [
+          entry(1, 8, '[Corrected to Skipped] Took MedA 5mg',
+              DateTime(2026, 10, 13, 8)),
+        ],
+      );
+      expect(data.plannedCount, 2);
+      expect(data.remainingCount, 1);
+      expect(data.summaryText, '1 item remaining');
+      expect(data.items.single.title, 'Stretch');
+    });
+
     test('overdue suffix joins with " · "', () {
       // 09:00 now; an 08:00 reminder is overdue by the summary rule
       // (fixedHour < currentHour), a 23:00 one is not.
@@ -354,14 +435,42 @@ void main() {
       ]);
       expect(data.items, isEmpty);
       expect(data.plannedCount, 1);
-      // Native's count formula counts a skipped dose as not
-      // completed, so the subtitle still reads "1 item remaining"
-      // even though the resolved dose renders nowhere (counts kept
-      // verbatim per the R41 brief).
-      expect(data.summaryText, '1 item remaining');
+      // Founder ruling (Nov 25, 2026): a deliberately skipped dose
+      // RESOLVES the item for completion counting — the subtitle
+      // agrees with the rendered plan and the progress bar, which
+      // already read this dose as resolved. (The pre-ruling native
+      // count formula counted a skipped dose as not completed and
+      // read "1 item remaining" here; that divergence is the bug
+      // the ruling fixes.) The per-item record is unchanged: the
+      // dose's status is SKIPPED, never taken.
+      expect(data.remainingCount, 0);
+      expect(data.summaryText, 'Everything planned for today is complete');
       // Deleting the corrected entry restores the dose to pending.
       final restored = build(entries: const []);
       expect(restored.items.single.status, DoseStatus.pending);
+    });
+
+    test('per-item record unchanged: skipped evidence stands as '
+        'skipped and never as taken (adherence views unaffected)', () {
+      final entries = [
+        entry(10, 8, '[Corrected to Skipped] Took Ivabradine 7.5 mg', _now),
+      ];
+      expect(
+        medSkippedFromEntries(
+          medName: 'Ivabradine',
+          todayEntries: entries,
+          medicationCategoryId: 8,
+        ),
+        isTrue,
+      );
+      expect(
+        medTakenFromEntries(
+          medName: 'Ivabradine',
+          todayEntries: entries,
+          medicationCategoryId: 8,
+        ),
+        isFalse,
+      );
     });
 
     test('yesterday\'s "Took …" entry does not leak into today', () {
