@@ -186,14 +186,30 @@ class ChestOpenController extends ChangeNotifier {
 
 /// Push the open flow for [chest]. [service] is injectable for
 /// tests; production uses [ChestService.instance].
+///
+/// [opener] / [onBalance] are the dev-SIM seam (chest popup test,
+/// Nov 26, 2026): when supplied they replace the production wiring
+/// wholesale — the opener fabricates the script locally and the
+/// balance sink updates ONLY the caller's in-memory simulated
+/// balance. Production call sites pass NEITHER, and with both
+/// absent the wiring is exactly the pre-seam behavior (opener:
+/// the service's open call; onBalance: adopt the server balance
+/// into the real gem balance).
 Future<void> showChestOpenFlow(
   BuildContext context, {
   required ChestItem chest,
   ChestService? service,
+  Future<ChestOpenResult?> Function(String chestId)? opener,
+  void Function(int newBalance)? onBalance,
 }) {
   return Navigator.of(context).push<void>(
     MaterialPageRoute<void>(
-      builder: (_) => ChestOpenScreen(chest: chest, service: service),
+      builder: (_) => ChestOpenScreen(
+        chest: chest,
+        service: service,
+        opener: opener,
+        onBalance: onBalance,
+      ),
       fullscreenDialog: true,
     ),
   );
@@ -203,7 +219,17 @@ class ChestOpenScreen extends StatefulWidget {
   final ChestItem chest;
   final ChestService? service;
 
-  const ChestOpenScreen({super.key, required this.chest, this.service});
+  /// Dev-SIM seam: see [showChestOpenFlow]. Null in production.
+  final Future<ChestOpenResult?> Function(String chestId)? opener;
+  final void Function(int newBalance)? onBalance;
+
+  const ChestOpenScreen({
+    super.key,
+    required this.chest,
+    this.service,
+    this.opener,
+    this.onBalance,
+  });
 
   @override
   State<ChestOpenScreen> createState() => _ChestOpenScreenState();
@@ -211,7 +237,6 @@ class ChestOpenScreen extends StatefulWidget {
 
 class _ChestOpenScreenState extends State<ChestOpenScreen>
     with TickerProviderStateMixin {
-  late final ChestService _service;
   late final ChestOpenController _controller;
 
   /// Idle rock clock: continuous, drives the ±2.5° rock, the
@@ -238,11 +263,16 @@ class _ChestOpenScreenState extends State<ChestOpenScreen>
   @override
   void initState() {
     super.initState();
-    _service = widget.service ?? ChestService.instance;
     _controller = ChestOpenController(
       chest: widget.chest,
-      opener: _service.openChest,
-      onBalance: (b) => GemService.instance.adoptServerBalance(b),
+      // Seam resolution: an injected opener wins outright (the
+      // production service is never even resolved on that path);
+      // with no injection this is the pre-seam wiring, unchanged.
+      opener:
+          widget.opener ?? (widget.service ?? ChestService.instance).openChest,
+      onBalance:
+          widget.onBalance ??
+          (b) => GemService.instance.adoptServerBalance(b),
     )..addListener(_onPhase);
     _clock = AnimationController(
       vsync: this,
