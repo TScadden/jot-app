@@ -9,6 +9,7 @@ import 'package:tabs_lab/src/data/hc_availability.dart';
 import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/data/weekly_report_v2.dart';
 
 /// Round 66 — Progress Reports: the Flutter port of the native
 /// clinical-report pipeline.
@@ -470,6 +471,15 @@ class ReportSnapshot {
   final List<InsightRecord> correlationInsights;
   final bool correlationInsightsLoadFailed;
 
+  /// Weekly Report v2 (SPEC §5.6): the SERVER's computedMetrics
+  /// object from the /api/ai/report response, parsed by
+  /// weekly_report_v2.dart. Null at collection time — the collector
+  /// never computes report numbers on-device for a v2 report; the
+  /// AI leg attaches the server's object via [withComputedMetrics]
+  /// before rendering, and renderers read report numbers ONLY
+  /// from it. Null for legacy/raw reports (v1 rendering).
+  final ComputedMetrics? computedMetrics;
+
   const ReportSnapshot({
     required this.last30Days,
     this.weekStart,
@@ -497,6 +507,7 @@ class ReportSnapshot {
     this.sectionMetadata = const {},
     this.correlationInsights = const [],
     this.correlationInsightsLoadFailed = false,
+    this.computedMetrics,
   });
 
   /// Native `hasAnyData`.
@@ -563,6 +574,42 @@ class ReportSnapshot {
       sectionMetadata: updatedMetadata,
       correlationInsights: correlationInsights,
       correlationInsightsLoadFailed: correlationInsightsLoadFailed,
+      computedMetrics: computedMetrics,
+    );
+  }
+
+  /// Returns a copy carrying the server's [ComputedMetrics] (the
+  /// AI leg's attach point — see the field's doc). Every other
+  /// field is carried unchanged.
+  ReportSnapshot withComputedMetrics(ComputedMetrics? metrics) {
+    return ReportSnapshot(
+      last30Days: last30Days,
+      weekStart: weekStart,
+      weekEnd: weekEnd,
+      generationTimestampMs: generationTimestampMs,
+      logEntries: logEntries,
+      categoriesMap: categoriesMap,
+      userContext: userContext,
+      userAge: userAge,
+      userHeightIn: userHeightIn,
+      userWeightLbs: userWeightLbs,
+      userGender: userGender,
+      conditions: conditions,
+      medications: medications,
+      profileMedications: profileMedications,
+      dailyScoreSeries: dailyScoreSeries,
+      knowledgeDocuments: knowledgeDocuments,
+      heartRateSeries: heartRateSeries,
+      sleepSeries: sleepSeries,
+      deepSleepSeries: deepSleepSeries,
+      caloriesSeries: caloriesSeries,
+      hrvSeries: hrvSeries,
+      heartRateSpikes: heartRateSpikes,
+      bloodPressureSeries: bloodPressureSeries,
+      sectionMetadata: sectionMetadata,
+      correlationInsights: correlationInsights,
+      correlationInsightsLoadFailed: correlationInsightsLoadFailed,
+      computedMetrics: metrics,
     );
   }
 }
@@ -2045,6 +2092,14 @@ class ReportReady extends ReportOutcome {
   /// journal's terminal record (heldCompletedAtMs) by the
   /// service. Never displayed (Juno silent pickup).
   final int? heldCompletedAtMs;
+
+  /// Weekly Report v2: the server computedMetrics this report was
+  /// rendered from (also carried on the rendered snapshot). Null
+  /// when the server response carried no object (legacy report,
+  /// raw fallback, or a pickup-collected narrative — the pickup
+  /// payload carries narrative text only today; see the package
+  /// stage log's contract note).
+  final ComputedMetrics? computedMetrics;
   const ReportReady({
     required this.snapshot,
     required this.pdfBytes,
@@ -2056,6 +2111,7 @@ class ReportReady extends ReportOutcome {
     this.aiAttempts = const [],
     this.downloadsSaved,
     this.heldCompletedAtMs,
+    this.computedMetrics,
   });
 }
 
@@ -2202,11 +2258,18 @@ class _AiLegResult {
   /// POST-delivered success.
   final DateTime? heldCompletedAt;
 
+  /// Weekly Report v2: the server computedMetrics parsed from
+  /// the POST response body (success only). Pickup-collected
+  /// successes carry none — the pickup payload is narrative-only
+  /// today (contract note in the package stage log).
+  final ComputedMetrics? computedMetrics;
+
   const _AiLegResult(this.kind,
       {this.summary,
       this.attempts = const [],
       this.failure,
-      this.heldCompletedAt});
+      this.heldCompletedAt,
+      this.computedMetrics});
 }
 
 /// Runs the native snapshot pipeline: collect → (unless forced raw)
@@ -2580,6 +2643,7 @@ class ReportGenerationPipeline {
           onStage: onStage,
           isCancelled: isCancelled,
           heldCompletedAtMs: leg.heldCompletedAt?.millisecondsSinceEpoch,
+          computedMetrics: leg.computedMetrics,
         );
       case _AiLegKind.fatal:
         // A fatal class surfaces its honest failure state through
@@ -2987,7 +3051,14 @@ class ReportGenerationPipeline {
           at: clock(),
         ));
         return _AiLegResult(_AiLegKind.success,
-            summary: result, attempts: attempts);
+            summary: result,
+            attempts: attempts,
+            // Weekly Report v2 (SPEC §5.5/§5.6): the SAME response
+            // carries the server's computedMetrics object; the app
+            // renders its v2 sections from it and recomputes
+            // nothing. Absent → null → legacy rendering.
+            computedMetrics:
+                ComputedMetrics.tryParse(res.body?['computedMetrics']));
       }
       // THE classification: one object, from which the retry
       // decision below and the recorded reason both read.
@@ -3041,14 +3112,21 @@ class ReportGenerationPipeline {
     required void Function(ReportStage stage)? onStage,
     required bool Function() isCancelled,
     int? heldCompletedAtMs,
+    ComputedMetrics? computedMetrics,
   }) async {
     bool cancelled() => isCancelled();
     if (cancelled()) return const ReportFailed('Cancelled');
     final isRaw = aiSummary == null;
+    // Weekly Report v2: the render step receives the snapshot
+    // WITH the server's computedMetrics attached, so the PDF
+    // renderer mirrors the server report from the object alone.
+    final renderSnapshot = computedMetrics == null
+        ? snapshot
+        : snapshot.withComputedMetrics(computedMetrics);
     onStage?.call(ReportStage.renderingPdf);
     List<int> bytes;
     try {
-      bytes = await renderPdf(snapshot, aiSummary,
+      bytes = await renderPdf(renderSnapshot, aiSummary,
           isRawFallback: isRaw, rawBanner: rawBanner);
     } catch (_) {
       return ReportFailed(
@@ -3108,6 +3186,7 @@ class ReportGenerationPipeline {
       aiAttempts: aiAttempts,
       downloadsSaved: downloadsSaved,
       heldCompletedAtMs: heldCompletedAtMs,
+      computedMetrics: computedMetrics,
     );
   }
 }
