@@ -41,9 +41,27 @@ import 'package:url_launcher/url_launcher.dart';
 /// The password is never logged or stored — it lives in memory only for
 /// the request duration.
 ///
-/// "Sign Up" and "Send Reset Link" stay no-ops this round.
+/// "Sign Up" was a no-op in this round (implemented in Round 32);
+/// "Send Reset Link" stayed a no-op until the audit GAP-2 fix below.
 /// The login/register/forgot mode switch is live UI state, as is the
 /// password-visibility toggle.
+///
+/// Audit GAP-2 fix — REAL password reset ("Send Reset Link"):
+/// tapping the button in forgot-password mode calls
+/// `AuthApiClient.forgotPassword` (`POST /api/auth/forgot-password`)
+/// with the email in the (shared) email field, so an email typed on
+/// the login form carries into the reset form. While the request is
+/// in flight the shared loading state disables the button (no
+/// double-submit). On success an inline confirmation shows — worded
+/// so it is true whether or not the account exists
+/// (anti-enumeration: the server answers identically either way,
+/// and this screen never shows "account not found"). The emailed
+/// link opens the server-hosted reset page where the user sets the
+/// new password; from there the "Back to Log In" toggle returns
+/// them here to log in. On failure the error line shows with the
+/// button re-enabled, so tapping again is the retry. All
+/// user-facing strings in this flow are DRAFT copy pending Juno's
+/// ruling (see the PR description).
 ///
 /// Round 24 — REAL Google sign-in (both modes): tapping the Google
 /// button runs `GoogleSignInService.signInForIdToken()` (native
@@ -164,6 +182,12 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   String? _errorMessage;
 
+  /// Audit GAP-2 fix — true once a reset request has been accepted
+  /// in forgot-password mode. Drives the inline confirmation under
+  /// the button; reset whenever the mode changes or a new request
+  /// starts, so a stale confirmation can never sit over a new form.
+  bool _resetSent = false;
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -206,6 +230,56 @@ class _LoginScreenState extends State<LoginScreen> {
             (email: result.email, emailVerified: result.emailVerified),
           );
         case LoginFailure(:final message):
+          setState(() {
+            _isLoading = false;
+            _errorMessage = message;
+          });
+      }
+    } catch (_) {
+      // The API client already maps transport failures; this is a
+      // last-resort guard so the button can never wedge loading.
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Something went wrong. Please try again.';
+      });
+    }
+  }
+
+  /// Audit GAP-2 fix: real password-reset request. Blank email →
+  /// an inline prompt and NO request (native parity:
+  /// `LoginViewModel.forgotPassword`). Otherwise the shared
+  /// loading state runs (button disabled + spinner, so a second
+  /// tap cannot double-submit), then either the anti-enumeration
+  /// confirmation ([_resetSent]) or the failure's message on the
+  /// error line with the button re-enabled for retry. The DRAFT
+  /// strings below are pending Juno's copy ruling.
+  Future<void> _onForgotPasswordPressed() async {
+    if (_isLoading) return;
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      setState(() {
+        _resetSent = false;
+        _errorMessage = 'Please enter your email first.';
+      });
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+      _resetSent = false;
+    });
+    try {
+      final api = widget.authApi ?? AuthApiClient();
+      final result = await api.forgotPassword(email: email);
+      if (!mounted) return;
+      switch (result) {
+        case ForgotPasswordSuccess():
+          setState(() {
+            _isLoading = false;
+            _resetSent = true;
+          });
+        case ForgotPasswordFailure(:final message):
           setState(() {
             _isLoading = false;
             _errorMessage = message;
@@ -524,6 +598,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void _onToggleMode() {
     setState(() {
       _errorMessage = null;
+      _resetSent = false;
       if (_isForgotPasswordMode) {
         _isForgotPasswordMode = false;
       } else {
@@ -675,6 +750,21 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
             const SizedBox(height: 4),
           ],
+          // Forgot-password explainer (DRAFT copy, pending Juno):
+          // what happens next, in one plain line above the email
+          // field (which keeps whatever email was typed on the
+          // login form — the controller is shared across modes).
+          if (_isForgotPasswordMode) ...[
+            const Text(
+              "Enter your email and we'll send you a link to set a new password.",
+              style: TextStyle(
+                fontSize: 13,
+                color: NotelColors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+          ],
           _buildEmailField(),
           const SizedBox(height: 14),
           if (!_isForgotPasswordMode) ...[
@@ -686,8 +776,11 @@ class _LoginScreenState extends State<LoginScreen> {
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
-                onPressed: () =>
-                    setState(() => _isForgotPasswordMode = true),
+                onPressed: () => setState(() {
+                  _isForgotPasswordMode = true;
+                  _errorMessage = null;
+                  _resetSent = false;
+                }),
                 style: TextButton.styleFrom(
                   padding: EdgeInsets.zero,
                   minimumSize: Size.zero,
@@ -706,8 +799,10 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(height: 8),
           // Main action button. "Log In" (login mode) performs the real
           // login (Round 5); "Sign Up" (register mode) performs the
-          // real registration (Round 32); "Send Reset Link" stays a
-          // no-op (its real destination doesn't exist yet).
+          // real registration (Round 32); "Send Reset Link"
+          // (forgot-password mode) performs the real reset request
+          // (audit GAP-2 fix). Disabled with a spinner while any of
+          // them is in flight, so none can double-submit.
           SizedBox(
             width: double.infinity,
             height: 50,
@@ -716,7 +811,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ? null
                   : () {
                       if (_isForgotPasswordMode) {
-                        // Send Reset Link: still a no-op.
+                        _onForgotPasswordPressed();
                       } else if (_isRegisterMode) {
                         _onRegisterPressed();
                       } else {
@@ -749,6 +844,24 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
             ),
           ),
+          // Reset confirmation (audit GAP-2 fix, DRAFT copy pending
+          // Juno): shown after an accepted reset request. The
+          // wording is deliberately conditional — it is identical
+          // whether or not the email has an account
+          // (anti-enumeration), and the path back is the
+          // "Back to Log In" toggle directly below.
+          if (_isForgotPasswordMode && _resetSent) ...[
+            const SizedBox(height: 10),
+            const Text(
+              "If there's an account for that email, a reset link is on its way. Check your inbox, then come back and log in with your new password.",
+              key: ValueKey('forgot_password_success'),
+              style: TextStyle(
+                fontSize: 13,
+                color: NotelColors.success,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
           // Inline auth error (Round 5): credential failure / network.
           // Cleared on mode switch and on each new attempt.
           if (_errorMessage != null) ...[

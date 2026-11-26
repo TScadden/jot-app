@@ -533,4 +533,95 @@ void main() {
       expect(failure.message, contains("Couldn't reach the server"));
     });
   });
+
+  group('AuthApiClient.forgotPassword (audit GAP-2)', () {
+    test('posts to the forgot-password endpoint with only the email '
+        '(native ForgotPasswordRequest parity)', () async {
+      late http.Request captured;
+      final client = AuthApiClient(
+        client: MockClient((request) async {
+          captured = request;
+          return http.Response(
+            jsonEncode({
+              'success': true,
+              'message': 'If that email exists, a reset link has been sent.',
+            }),
+            200,
+          );
+        }),
+      );
+
+      final result = await client.forgotPassword(email: 'a@b.com');
+
+      expect(captured.url.toString(),
+          'https://api.jottracker.com/api/auth/forgot-password');
+      expect(captured.method, 'POST');
+      expect(captured.headers['Content-Type'], 'application/json');
+      final body = jsonDecode(captured.body) as Map<String, dynamic>;
+      expect(body, {'email': 'a@b.com'});
+      expect(result, isA<ForgotPasswordSuccess>());
+    });
+
+    test('200 is success regardless of body — the anti-enumeration '
+        'response carries no account signal to parse', () async {
+      final client = AuthApiClient(
+        client: MockClient((_) async => http.Response(
+              jsonEncode({
+                'success': true,
+                'message':
+                    'If that email exists, a reset link has been sent.',
+              }),
+              200,
+            )),
+      );
+
+      final result = await client.forgotPassword(email: 'ghost@b.com');
+
+      expect(result, isA<ForgotPasswordSuccess>());
+    });
+
+    test('non-200 surfaces the server error verbatim as a server '
+        'failure (e.g. the rate limiter)', () async {
+      final client = AuthApiClient(
+        client: MockClient((_) async => http.Response(
+              jsonEncode({'error': 'Too many requests. Try again later.'}),
+              429,
+            )),
+      );
+
+      final result = await client.forgotPassword(email: 'a@b.com');
+
+      expect(result, isA<ForgotPasswordFailure>());
+      final failure = result as ForgotPasswordFailure;
+      expect(failure.kind, LoginFailureKind.server);
+      expect(failure.message, 'Too many requests. Try again later.');
+    });
+
+    test('non-200 without a server error uses the generic message',
+        () async {
+      final client = AuthApiClient(
+        client: MockClient((_) async => http.Response('oops', 500)),
+      );
+
+      final result = await client.forgotPassword(email: 'a@b.com');
+
+      final failure = result as ForgotPasswordFailure;
+      expect(failure.kind, LoginFailureKind.server);
+      expect(failure.message, 'Something went wrong. Please try again.');
+    });
+
+    test('transport failure maps to the network kind and message',
+        () async {
+      final client = AuthApiClient(
+        client: MockClient((_) async => throw const SocketException('nope')),
+      );
+
+      final result = await client.forgotPassword(email: 'a@b.com');
+
+      expect(result, isA<ForgotPasswordFailure>());
+      final failure = result as ForgotPasswordFailure;
+      expect(failure.kind, LoginFailureKind.network);
+      expect(failure.message, contains("Couldn't reach the server"));
+    });
+  });
 }
