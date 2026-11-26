@@ -251,9 +251,10 @@ class _LoginScreenState extends State<LoginScreen> {
   /// `LoginViewModel.forgotPassword`). Otherwise the shared
   /// loading state runs (button disabled + spinner, so a second
   /// tap cannot double-submit), then either the anti-enumeration
-  /// confirmation ([_resetSent]) or the failure's message on the
-  /// error line with the button re-enabled for retry. The DRAFT
-  /// strings below are pending Juno's copy ruling.
+  /// confirmation ([_resetSent]) or Juno's fixed failure line on the
+  /// error line with the button re-enabled for retry. The server's
+  /// own error message is never shown in reset mode (Juno ruling,
+  /// audit-fixes package JUNO-COPY.md, Nov 26, 2026).
   Future<void> _onForgotPasswordPressed() async {
     if (_isLoading) return;
     final email = _emailController.text.trim();
@@ -279,10 +280,11 @@ class _LoginScreenState extends State<LoginScreen> {
             _isLoading = false;
             _resetSent = true;
           });
-        case ForgotPasswordFailure(:final message):
+        case ForgotPasswordFailure():
           setState(() {
             _isLoading = false;
-            _errorMessage = message;
+            _errorMessage =
+                "Couldn't send that right now. Check your connection and try again in a bit.";
           });
       }
     } catch (_) {
@@ -291,7 +293,8 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Something went wrong. Please try again.';
+        _errorMessage =
+            "Couldn't send that right now. Check your connection and try again in a bit.";
       });
     }
   }
@@ -750,13 +753,14 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
             const SizedBox(height: 4),
           ],
-          // Forgot-password explainer (DRAFT copy, pending Juno):
-          // what happens next, in one plain line above the email
+          // Forgot-password explainer (copy ruled by Juno,
+          // audit-fixes JUNO-COPY.md): what happens next, in one
+          // plain line above the email
           // field (which keeps whatever email was typed on the
           // login form — the controller is shared across modes).
           if (_isForgotPasswordMode) ...[
             const Text(
-              "Enter your email and we'll send you a link to set a new password.",
+              "Enter your email. If there's an account for it, we'll send you a link to set a new password.",
               style: TextStyle(
                 fontSize: 13,
                 color: NotelColors.textSecondary,
@@ -853,7 +857,7 @@ class _LoginScreenState extends State<LoginScreen> {
           if (_isForgotPasswordMode && _resetSent) ...[
             const SizedBox(height: 10),
             const Text(
-              "If there's an account for that email, a reset link is on its way. Check your inbox, then come back and log in with your new password.",
+              "If there's an account for that email, a reset link is on its way. Check your inbox, open the link to set your new password, then come back and log in with your new password.",
               key: ValueKey('forgot_password_success'),
               style: TextStyle(
                 fontSize: 13,

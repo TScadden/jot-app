@@ -125,10 +125,14 @@ void main() {
     expect(api.forgotCalls, 1);
     final error = find.byKey(const ValueKey('login_error'));
     expect(error, findsOneWidget);
+    // Juno ruling (audit-fixes JUNO-COPY.md): reset mode never shows
+    // the server's or data layer's raw failure message — only the
+    // fixed line, whatever the failure was.
     expect(
       tester.widget<Text>(error).data,
-      contains("Couldn't reach the server"),
+      "Couldn't send that right now. Check your connection and try again in a bit.",
     );
+    expect(find.textContaining("Couldn't reach the server"), findsNothing);
     expect(find.byKey(const ValueKey('forgot_password_success')),
         findsNothing);
 
