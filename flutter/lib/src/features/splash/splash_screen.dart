@@ -116,17 +116,17 @@ class _SplashContentBody extends StatelessWidget {
               style: TextStyle(
                 fontSize: 36,
                 fontWeight: FontWeight.w900,
-                color: Color(0xFF7C6EFF),
+                color: NotelColors.primary,
                 letterSpacing: 2,
               ),
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Health & Symptom Intelligence',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: Color(0xFF7A8FAF),
+                color: NotelColors.textSecondary,
               ),
             ),
           ],
