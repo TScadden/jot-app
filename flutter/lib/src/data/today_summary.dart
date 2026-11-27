@@ -491,7 +491,7 @@ bool medTakenFromEntries({
 bool medSkippedFromEntries({
   required String medName,
   required List<QuickLogEntry> todayEntries,
-  required int? medicationCategoryId,
+  required String? medicationCategoryId,
 }) {
   if (medicationCategoryId == null) return false;
   const prefix = '[Corrected to Skipped] Took ';
@@ -532,7 +532,7 @@ String reminderCompletionBody(String reminderTitle) =>
 bool _completionEntryPresent({
   required String body,
   required List<QuickLogEntry> todayEntries,
-  required int? goalsCategoryId,
+  required String? goalsCategoryId,
 }) {
   if (goalsCategoryId == null) return false;
   for (final e in todayEntries) {
@@ -547,7 +547,7 @@ bool _completionEntryPresent({
 bool habitCompletedFromEntries({
   required String habitTitle,
   required List<QuickLogEntry> todayEntries,
-  required int? goalsCategoryId,
+  required String? goalsCategoryId,
 }) =>
     _completionEntryPresent(
       body: habitCompletionBody(habitTitle),
@@ -561,7 +561,7 @@ bool habitCompletedFromEntries({
 bool reminderCompletedFromEntries({
   required String reminderTitle,
   required List<QuickLogEntry> todayEntries,
-  required int? goalsCategoryId,
+  required String? goalsCategoryId,
 }) =>
     _completionEntryPresent(
       body: reminderCompletionBody(reminderTitle),

@@ -258,8 +258,7 @@ class ReportRequestIdentity {
               // GAP-18: ids are strings now; journals written by
               // older builds hold ints — both parse to the string
               // form.
-              if (e is num) '${e.toInt()}',
-              if (e is String) e,
+              e is num ? '${e.toInt()}' : '$e',
         ],
         forceRaw: raw['forceRaw'] == true,
       );
