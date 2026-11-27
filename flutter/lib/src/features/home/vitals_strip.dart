@@ -263,7 +263,11 @@ class StreakPillFlame extends StatelessWidget {
   static const Color litColor = Color(0xFFFF6A3D);
 
   /// StreakFlame's unlit icon color (before desaturation).
-  static const Color unlitColor = Color(0xFF8E97B8);
+  /// Theme sweep A: a getter, not a const — the raw #8E97B8 literal
+  /// measured ~2.9:1 against the light background, so the unlit
+  /// glyph resolves through the muted-text token, which passes
+  /// WCAG AA in both palettes (same fix as streak_flame.dart).
+  static Color get unlitColor => NotelColors.textSecondary;
 
   /// StreakFlame's unlit opacity.
   static const double unlitOpacity = 0.45;
