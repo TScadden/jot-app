@@ -812,7 +812,7 @@ String energyDayLabel(int timestampMs) =>
 /// Category resolution with resolveSummaryCategoryId's semantics
 /// (today_summary.dart): exact name first (case-insensitive),
 /// then the fallback id ONLY when a pulled category carries it.
-int? resolveCorrelationCategoryId(
+String? resolveCorrelationCategoryId(
   List<QuickLogCategory> categories, {
   required String name,
   required int fallbackId,
@@ -821,7 +821,7 @@ int? resolveCorrelationCategoryId(
     if (c.name.trim().toLowerCase() == name.toLowerCase()) return c.id;
   }
   for (final c in categories) {
-    if (c.id == fallbackId) return c.id;
+    if (c.id == '$fallbackId') return c.id;
   }
   return null;
 }

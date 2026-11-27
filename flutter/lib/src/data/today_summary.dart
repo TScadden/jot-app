@@ -9,6 +9,7 @@ import 'package:tabs_lab/src/data/health_history_queries.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
+import 'package:tabs_lab/src/data/uuid_v4.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/today_plan_store.dart';
@@ -467,7 +468,7 @@ class TodayPlanData {
 bool medTakenFromEntries({
   required String medName,
   required List<QuickLogEntry> todayEntries,
-  required int? medicationCategoryId,
+  required String? medicationCategoryId,
 }) {
   if (medicationCategoryId == null) return false;
   for (final e in todayEntries) {
@@ -598,8 +599,8 @@ TodayPlanData buildTodayPlan({
   required List<HabitDto> habits,
   required TodayPlanLocalState localState,
   required List<QuickLogEntry> entries,
-  required int? medicationCategoryId,
-  int? goalsCategoryId,
+  required String? medicationCategoryId,
+  String? goalsCategoryId,
   required DateTime now,
 }) {
   final todayStr = dateStrOf(now);
@@ -781,7 +782,7 @@ class TrendComparison {
 /// whose body names headache/nausea/fatigue.
 int countSymptomLogs({
   required List<QuickLogEntry> entries,
-  required int? symptomsCategoryId,
+  required String? symptomsCategoryId,
   required DateTime now,
 }) {
   final today = DateTime(now.year, now.month, now.day);
@@ -1455,8 +1456,8 @@ class TodaySummaryLoader {
 
   /// Posts one Round 41 completion entry ([body]) into the
   /// "Goals & Habits" category through the entries write path
-  /// (`POST /api/sync/entries`, fresh id = max + 1 — the round-19
-  /// discipline the med take uses). Idempotent per body: an entry
+  /// (`POST /api/sync/entries`, fresh id = a random v4 UUID since
+  /// GAP-18; previously max + 1). Idempotent per body: an entry
   /// that already stands is not duplicated. False when the category
   /// cannot be resolved or the post fails — the caller then treats
   /// the check-off as NOT landed (no phantom completion).
@@ -1482,13 +1483,11 @@ class TodaySummaryLoader {
         return true; // Already logged — exactly one entry stands.
       }
     }
-    var maxId = 0;
-    for (final e in entries) {
-      if (e.id > maxId) maxId = e.id;
-    }
+    // GAP-18: fresh id = a random v4 UUID (was max + 1, the
+    // per-device scheme that collided across phones).
     final ok = await backend.postLogEntries([
       QuickLogEntry(
-        id: maxId + 1,
+        id: generateUuidV4(),
         categoryId: goalsCategoryId,
         body: body,
         chips: '[]',
@@ -1822,7 +1821,7 @@ class TodaySummaryLoader {
   }
 
   QuickLogEntry? _findTookEntry(String medName, List<QuickLogEntry> entries,
-      int medCategoryId, DateTime now) {
+      String medCategoryId, DateTime now) {
     final todayStr = dateStrOf(now);
     for (final e in entries) {
       if (e.categoryId != medCategoryId) continue;

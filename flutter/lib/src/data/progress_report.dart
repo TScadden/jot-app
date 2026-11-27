@@ -421,7 +421,7 @@ class ReportSnapshot {
 
   final int generationTimestampMs;
   final List<QuickLogEntry> logEntries;
-  final Map<int, String> categoriesMap;
+  final Map<String, String> categoriesMap;
   final String userContext;
   final int userAge;
 

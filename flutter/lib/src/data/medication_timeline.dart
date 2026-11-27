@@ -831,7 +831,7 @@ MedicationTimelineData buildMedicationTimeline({
     name: 'Symptoms',
     fallbackId: 1,
   );
-  int? migraineCategoryId;
+  String? migraineCategoryId;
   for (final c in categories) {
     if (c.name.trim().toLowerCase() == 'migraine symptoms & triggers') {
       migraineCategoryId = c.id;

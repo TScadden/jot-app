@@ -179,14 +179,14 @@ int? feelingRankingOf(QuickLogEntry entry) {
 /// first, then the native fallback id when a category carries it.
 /// Null when neither resolves — the caller hides the card rather than
 /// writing into an unknown category.
-int? resolveFeelingCategoryId(List<QuickLogCategory> categories) {
+String? resolveFeelingCategoryId(List<QuickLogCategory> categories) {
   for (final c in categories) {
     if (c.name.trim().toLowerCase() == feelingCategoryName.toLowerCase()) {
       return c.id;
     }
   }
   for (final c in categories) {
-    if (c.id == feelingCategoryFallbackId) return c.id;
+    if (c.id == '$feelingCategoryFallbackId') return c.id;
   }
   return null;
 }
@@ -201,8 +201,8 @@ int? resolveFeelingCategoryId(List<QuickLogCategory> categories) {
 /// fallback form of this builder.
 QuickLogEntry buildFeelingEntry({
   required int level,
-  required int categoryId,
-  required int id,
+  required String categoryId,
+  required String id,
   DateTime? now,
 }) {
   return QuickLogEntry(

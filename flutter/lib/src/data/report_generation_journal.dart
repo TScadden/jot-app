@@ -225,7 +225,7 @@ class ReportRequestIdentity {
   final String kind;
   final String focusKey;
   final bool last30Days;
-  final List<int> categoryIds;
+  final List<String> categoryIds;
   final bool forceRaw;
 
   const ReportRequestIdentity({
@@ -255,7 +255,11 @@ class ReportRequestIdentity {
         categoryIds: [
           if (ids is List)
             for (final e in ids)
-              if (e is num) e.toInt(),
+              // GAP-18: ids are strings now; journals written by
+              // older builds hold ints — both parse to the string
+              // form.
+              if (e is num) '${e.toInt()}',
+              if (e is String) e,
         ],
         forceRaw: raw['forceRaw'] == true,
       );
