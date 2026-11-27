@@ -56,9 +56,19 @@ class ThemeModeController extends ChangeNotifier
       };
 
   /// The platform's current brightness (read live, so a stale
-  /// cached value can never disagree with the device).
-  Brightness get platformBrightness =>
-      ui.PlatformDispatcher.instance.platformBrightness;
+  /// cached value can never disagree with the device). Read
+  /// through the binding's dispatcher — the same source
+  /// WidgetsApp resolves SYSTEM from — so the controller and
+  /// MaterialApp can never disagree (and tests drive it through
+  /// the test dispatcher's override).
+  Brightness get platformBrightness {
+    try {
+      return WidgetsBinding.instance.platformDispatcher
+          .platformBrightness;
+    } catch (_) {
+      return ui.PlatformDispatcher.instance.platformBrightness;
+    }
+  }
 
   /// The brightness the app should render at for the current mode.
   Brightness get resolvedBrightness => switch (_mode) {

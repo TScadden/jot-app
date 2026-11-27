@@ -54,6 +54,9 @@ Future<void> _pumpApp(
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 300));
   await tester.pump(const Duration(milliseconds: 600));
+  // Advance past AppFlow's splash timers (650 + 1200 + 650ms) so
+  // no fake timer is left pending at test end.
+  await tester.pump(const Duration(seconds: 3));
 }
 
 ThemeData _appTheme(WidgetTester tester) =>
@@ -232,6 +235,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump(const Duration(seconds: 3));
 
       expect(map[SettingsStore.themeModeKey], 'LIGHT');
       final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
@@ -268,6 +272,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump(const Duration(seconds: 3));
 
       expect(_appTheme(tester).brightness, Brightness.dark);
       expect(NotelColors.brightness, Brightness.dark);
