@@ -60,7 +60,7 @@ void showTempInfoSheet(BuildContext context) {
         const SizedBox(height: 24),
         Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF1A1C1E),
+            color: NotelColors.surface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: NotelColors.success.withValues(alpha: 0.2),
@@ -77,7 +77,7 @@ void showTempInfoSheet(BuildContext context) {
                   Text(
                     'Workout Performance Guidance',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: NotelColors.textPrimary,
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
                     ),
@@ -161,7 +161,7 @@ void showHumidityInfoSheet(BuildContext context) {
                   Text(
                     'Hydration & Air Quality Tips',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: NotelColors.textPrimary,
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
                     ),
@@ -209,10 +209,10 @@ void showInfoSheet({
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w900,
-                    color: Colors.white,
+                    color: NotelColors.textPrimary,
                     letterSpacing: 2,
                   ),
                 ),
@@ -233,7 +233,7 @@ Widget darkCard({required Widget child}) {
     decoration: BoxDecoration(
       color: NotelColors.surface,
       borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+      border: Border.all(color: NotelColors.legacyDarkHairlineFaint),
     ),
     padding: const EdgeInsets.all(16),
     child: child,
@@ -255,7 +255,7 @@ Text whiteBold(String text, double size) {
   return Text(
     text,
     style: TextStyle(
-      color: Colors.white,
+      color: NotelColors.textPrimary,
       fontWeight: FontWeight.bold,
       fontSize: size,
     ),
@@ -266,7 +266,7 @@ Text whiteFaint(String text, double size, double lineHeight) {
   return Text(
     text,
     style: TextStyle(
-      color: Colors.white.withValues(alpha: 0.7),
+      color: NotelColors.textSecondary,
       fontSize: size,
       height: lineHeight / size,
     ),
@@ -286,7 +286,7 @@ Widget emojiRangeRow({
         child: Text(
           label,
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.8),
+            color: NotelColors.textPrimary,
             fontSize: 14,
           ),
         ),
@@ -294,7 +294,7 @@ Widget emojiRangeRow({
       Text(
         value,
         style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.6),
+          color: NotelColors.textSecondary,
           fontSize: 12,
         ),
         textAlign: TextAlign.end,
@@ -327,7 +327,7 @@ Widget dotRangeRow({
         child: Text(
           label,
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.8),
+            color: NotelColors.textPrimary,
             fontSize: 14,
           ),
         ),
@@ -335,7 +335,7 @@ Widget dotRangeRow({
       Text(
         value,
         style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.6),
+          color: NotelColors.textSecondary,
           fontSize: 14,
         ),
       ),

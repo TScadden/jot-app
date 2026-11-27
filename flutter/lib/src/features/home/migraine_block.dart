@@ -501,8 +501,8 @@ class ReliefOption extends StatelessWidget {
         alignment: Alignment.center,
         child: Text(
           '$value',
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: selected ? Colors.white : NotelColors.textPrimary,
             fontSize: 19,
             fontWeight: FontWeight.bold,
           ),

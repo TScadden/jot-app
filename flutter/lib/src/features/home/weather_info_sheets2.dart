@@ -99,14 +99,14 @@ void showUvInfoSheet(BuildContext context) {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 children: [
                   Text('🔄', style: TextStyle(fontSize: 18)),
                   SizedBox(width: 8),
                   Text(
                     'Reapplication',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: NotelColors.textPrimary,
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
                     ),
@@ -228,14 +228,14 @@ void showPressureInfoSheet(BuildContext context) {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 children: [
                   Text('⚠️', style: TextStyle(fontSize: 18)),
                   SizedBox(width: 8),
                   Text(
                     'Vulnerability Warning',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: NotelColors.textPrimary,
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
                     ),
@@ -275,7 +275,7 @@ Widget _uvRangeRow(Color dotColor, String label, String value) {
         child: Text(
           label,
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.8),
+            color: NotelColors.textPrimary,
             fontSize: 14,
           ),
         ),
@@ -283,7 +283,7 @@ Widget _uvRangeRow(Color dotColor, String label, String value) {
       Text(
         value,
         style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.6),
+          color: NotelColors.textSecondary,
           fontSize: 14,
         ),
       ),
@@ -302,7 +302,7 @@ Widget _protectionLevelCard({
     decoration: BoxDecoration(
       color: NotelColors.surface,
       borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+      border: Border.all(color: NotelColors.legacyDarkHairlineFaint),
     ),
     padding: const EdgeInsets.all(16),
     child: Column(
@@ -322,8 +322,8 @@ Widget _protectionLevelCard({
             Expanded(
               child: Text(
                 title,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: NotelColors.textPrimary,
                   fontWeight: FontWeight.bold,
                   fontSize: 14,
                 ),
@@ -335,7 +335,7 @@ Widget _protectionLevelCard({
         Text(
           description,
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.6),
+            color: NotelColors.textSecondary,
             fontSize: 13,
             height: 1.4,
           ),
