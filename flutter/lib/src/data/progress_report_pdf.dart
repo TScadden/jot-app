@@ -2,6 +2,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import 'package:tabs_lab/src/data/progress_report.dart';
+import 'package:tabs_lab/src/data/weekly_report_v2.dart';
 
 /// Round 66 — the pure-Dart port of native `util/ReportGenerator.kt`
 /// (the snapshot `generateReport` path only; the separate graph-PDF
@@ -460,12 +461,26 @@ Future<List<int>> buildReportPdfBytes(
   /// directly under the meta line. Null for standard reports and
   /// for complete weeks with no receipt.
   String? weeklyLine,
+
+  /// Weekly Report v2 (SPEC §5.6 A2): when the server's
+  /// computedMetrics object is present (here or on the snapshot),
+  /// the PDF renders the v2 layout — the ruled snapshot title and
+  /// the v2 sections from weekly_report_v2.dart, in ruled order —
+  /// instead of the v1 narrative flow, and the legacy chart pages
+  /// are replaced by the v2 Charts section's data lines (the
+  /// server PDF remains the graphical-chart surface; SPEC §5.3).
+  /// Every number printed comes from the object's display
+  /// strings, so this PDF cannot disagree with the server PDF.
+  ComputedMetrics? computedMetrics,
 }) async {
   final doc = pw.Document();
-  final blocks = parseSummaryBlocks(effectiveSummaryText(snapshot,
-      aiSummary: aiSummary,
-      isRawFallback: isRawFallback,
-      rawBanner: rawBanner));
+  final v2 = isRawFallback ? null : (computedMetrics ?? snapshot.computedMetrics);
+  final blocks = v2 != null
+      ? parseSummaryBlocks(_v2Markup(v2))
+      : parseSummaryBlocks(effectiveSummaryText(snapshot,
+          aiSummary: aiSummary,
+          isRawFallback: isRawFallback,
+          rawBanner: rawBanner));
 
   // Manual flow layout over A4 pages. Native draws text by BASELINE
   // (title baseline at y=50, rule at 62, meta baseline at 82); the
@@ -490,8 +505,14 @@ Future<List<int>> buildReportPdfBytes(
     y += height;
   }
 
-  // Header (page 1 only in native).
-  place(pw.Text('Tabs Clinical Audit Report', style: _titleStyle), 34);
+  // Header (page 1 only in native). Weekly Report v2: the ruled
+  // snapshot title (Ruling 16.1) replaces the legacy title.
+  place(
+      pw.Text(
+          v2?.snapshotTitle.replaceAll('–', '-') ??
+              'Tabs Clinical Audit Report',
+          style: _titleStyle),
+      34);
   current.add(pw.Positioned(
     left: _margin,
     top: y,
@@ -682,19 +703,47 @@ Future<List<int>> buildReportPdfBytes(
     ));
   }
 
-  // Charts pages (fixed layout, native positions).
-  doc.addPage(_chartsPage(
-    title: 'Longitudinal Health Metrics & Charts',
-    series: chartPage1Series(snapshot),
-    withDisclaimer: false,
-  ));
-  doc.addPage(_chartsPage(
-    title: 'Longitudinal Health Metrics & Charts (Cont.)',
-    series: chartPage2Series(snapshot),
-    withDisclaimer: true,
-  ));
+  // Charts pages (fixed layout, native positions). Weekly
+  // Report v2 renders its Charts section in the flow above (data
+  // lines from the server object), so the legacy chart pages are
+  // legacy-only.
+  if (v2 == null) {
+    doc.addPage(_chartsPage(
+      title: 'Longitudinal Health Metrics & Charts',
+      series: chartPage1Series(snapshot),
+      withDisclaimer: false,
+    ));
+    doc.addPage(_chartsPage(
+      title: 'Longitudinal Health Metrics & Charts (Cont.)',
+      series: chartPage2Series(snapshot),
+      withDisclaimer: true,
+    ));
+  }
 
   return doc.save();
+}
+
+/// Weekly Report v2 markup for [parseSummaryBlocks]: the range
+/// label line, then each section as a `[SECTION]` header followed
+/// by its lines — the single rendering from weekly_report_v2.dart
+/// (mirror sections, then charts/appendix sections), so the PDF
+/// and the in-app mirror print identical strings.
+String _v2Markup(ComputedMetrics m) {
+  // The pdf package's core Helvetica has no glyphs for —, – or →
+  // (they render as notdef boxes — the same limit that made
+  // _spanFor substitute · for •). The PDF flow substitutes the
+  // closest core-font forms; the ruled byte-exact strings live in
+  // weekly_report_v2.dart and in the in-app rendering, and the
+  // server PDF (SPEC §5.3) is the typographic surface.
+  String pdfSafe(String s) =>
+      s.replaceAll('—', '-').replaceAll('–', '-').replaceAll('→', '->');
+  final b = StringBuffer()..writeln(weeklyV2RangeLabel);
+  for (final s in [...weeklyV2MirrorSections(m), ...weeklyV2AppendixSections(m)]) {
+    b
+      ..writeln('[SECTION] ${s.title}')
+      ..writeln(pdfSafe(s.lines.join('\n')));
+  }
+  return b.toString();
 }
 
 /// Splits [text] into word-boundary chunks whose estimated height
