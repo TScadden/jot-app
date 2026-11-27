@@ -869,7 +869,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
   // Figure palette (founder-approved mock, Nov 20, 2026): med/lab
   // impact = Tabs purple family, mild impact = muted teal, workout
   // = warm amber, unlit body = the art's grey-lavender.
-  static const _impactColor = Color(0xFF7C6EFF);
+  static const _impactColor = NotelColors.primary;
   static const _mildColor = Color(0xFF4FB3A9);
   static const _workoutColor = Color(0xFFFFB020);
   static const _panelColor = Color(0xFF0C1429);
@@ -881,7 +881,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
       decoration: BoxDecoration(
         color: NotelColors.surface.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        border: Border.all(color: NotelColors.legacyDarkHairline),
       ),
       child: Column(
         children: [
@@ -961,9 +961,9 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
+        color: NotelColors.legacyDarkHairlineFaint,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        border: Border.all(color: NotelColors.legacyDarkHairline),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1177,7 +1177,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
       decoration: BoxDecoration(
         color: NotelColors.surface.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        border: Border.all(color: NotelColors.legacyDarkHairline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1257,7 +1257,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
                       color: NotelColors.textSecondary,
                     ),
                     filled: true,
-                    fillColor: Colors.white.withValues(alpha: 0.05),
+                    fillColor: NotelColors.legacyDarkHairlineFaint,
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 14,
                       vertical: 12,
@@ -1265,13 +1265,13 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
                       borderSide: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.08),
+                        color: NotelColors.legacyDarkHairline,
                       ),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
                       borderSide: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.08),
+                        color: NotelColors.legacyDarkHairline,
                       ),
                     ),
                     focusedBorder: OutlineInputBorder(
@@ -1314,8 +1314,8 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: _workoutMsgIsError
-                    ? const Color(0xFFEF5350)
-                    : const Color(0xFF66BB6A),
+                    ? NotelColors.error
+                    : NotelColors.success,
               ),
             ),
           ],
@@ -1476,7 +1476,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
         decoration: BoxDecoration(
           color: NotelColors.surface.withValues(alpha: 0.8),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          border: Border.all(color: NotelColors.legacyDarkHairlineFaint),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1666,7 +1666,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
             border: Border.all(
               color: expanded
                   ? impact.color
-                  : Colors.white.withValues(alpha: 0.05),
+                  : NotelColors.legacyDarkHairlineFaint,
               width: expanded ? 2 : 1,
             ),
           ),
@@ -1859,7 +1859,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
         decoration: BoxDecoration(
           color: NotelColors.surface,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          border: Border.all(color: NotelColors.legacyDarkHairlineFaint),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
