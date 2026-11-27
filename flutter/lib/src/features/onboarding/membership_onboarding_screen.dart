@@ -235,9 +235,9 @@ class _MembershipOnboardingScreenState
                             ],
                           ),
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.workspace_premium,
-                          color: Colors.white,
+                          color: NotelColors.textPrimary,
                           size: 48,
                         ),
                       ),
@@ -423,8 +423,8 @@ class _MembershipOnboardingScreenState
         Text(
           billedByLine,
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Color(0xBF7A8FAF),
+          style: TextStyle(
+            color: NotelColors.textSecondary,
             fontSize: 11,
           ),
         ),
@@ -458,11 +458,11 @@ class _MembershipOnboardingScreenState
           onTap: () => setState(() => _selectedPlan = 'yearly'),
         ),
         const SizedBox(height: 10),
-        const Text(
+        Text(
           'Auto-renews until canceled. Billed by the App Store.',
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: Color(0xBF7A8FAF),
+            color: NotelColors.textSecondary,
             fontSize: 11,
           ),
         ),
@@ -486,7 +486,7 @@ class _CompareTable extends StatelessWidget {
 
   Widget _mark(bool included) {
     if (included) {
-      return const Icon(Icons.check, color: Color(0xFF4CAF50), size: 20);
+      return Icon(Icons.check, color: NotelColors.success, size: 20);
     }
     return Container(
       width: 14,

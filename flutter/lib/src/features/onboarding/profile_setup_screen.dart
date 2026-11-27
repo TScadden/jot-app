@@ -95,16 +95,16 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       0 => ('Provide more context for better AI.', NotelColors.textSecondary),
       < 10 => (
           'Keep typing ($count/10 words min)...',
-          const Color(0xFFFF9800)
+          NotelColors.warning
         ),
       < 30 => ('Good start! Add more details.', NotelColors.primary),
       < 60 => (
           'More detail helps AI personalize results.',
-          const Color(0xFF0288D1)
+          NotelColors.info
         ),
       < 100 => (
           'Great context! Almost at 100 words.',
-          const Color(0xFF689F38)
+          NotelColors.success
         ),
       _ => ('Optimal AI context reached!', NotelColors.success),
     };
