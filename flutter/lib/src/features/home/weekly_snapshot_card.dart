@@ -111,8 +111,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
     // no loading state, and revalidate in the background. A miss —
     // including an entry stamped for a previous day/week — runs the
     // normal foreground flow, unchanged.
-    final cached =
-        widget.loadData == null ? null : _cache.lookup(_selected);
+    final cached = widget.loadData == null ? null : _cache.lookup(_selected);
     if (cached == null) {
       _reload();
     } else {
@@ -144,8 +143,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
   ///
   /// A successful load is written to [_cache]; a throwing loader is
   /// NOT cached (see [_cache]).
-  Future<void> _load(SnapshotMetric metric,
-      {required bool background}) async {
+  Future<void> _load(SnapshotMetric metric, {required bool background}) async {
     final loader = widget.loadData;
     if (loader == null) return;
     final generation = ++_loadGeneration;
@@ -240,10 +238,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
           children: [
             _header(),
             const SizedBox(height: 8),
-            _MetricSelector(
-              selected: _selected,
-              onSelect: _selectMetric,
-            ),
+            _MetricSelector(selected: _selected, onSelect: _selectMetric),
             const SizedBox(height: 12),
             if (!data.isEmpty) ...[
               _avgRow(data),
@@ -272,8 +267,10 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
   /// [emptyStateDelay]); same box height as the empty state so the card
   /// does not jump when content or the empty state lands.
   Widget _loadingState() {
-    return const SizedBox(
-      height: 140,
+    // GAP-13: 140dp is the minimum box height (same no-jump
+    // guarantee); the box grows when the scaled text needs it.
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 140),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -289,10 +286,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
             SizedBox(height: 12),
             Text(
               'Loading your week...',
-              style: TextStyle(
-                fontSize: 13,
-                color: NotelColors.textSecondary,
-              ),
+              style: TextStyle(fontSize: 13, color: NotelColors.textSecondary),
               textAlign: TextAlign.center,
             ),
           ],
@@ -305,29 +299,38 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Row(
-          children: [
-            Icon(Icons.bar_chart, size: 20, color: NotelColors.primary),
-            SizedBox(width: 8),
-            Text(
-              'Weekly Snapshot',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: NotelColors.textPrimary,
+        // GAP-13: the title shrinks to fit (scaleDown — a no-op
+        // at normal scales) instead of pushing the refresh
+        // button off the card at 2.0x/3.0x (+33px / +157px
+        // right overflows in the audit).
+        Expanded(
+          child: Row(
+            children: [
+              const Icon(Icons.bar_chart, size: 20, color: NotelColors.primary),
+              const SizedBox(width: 8),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: const Text(
+                    'Weekly Snapshot',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: NotelColors.textPrimary,
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         // Refresh: reloads the current metric's data via [loadData].
         // No loader → no-op (round-8 behavior).
         IconButton(
           onPressed: () => _reload(),
           padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(
-            minWidth: 48,
-            minHeight: 48,
-          ),
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
           tooltip: 'Refresh weekly snapshot',
           icon: const Icon(
             Icons.refresh,
@@ -340,8 +343,11 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
   }
 
   Widget _emptyState(WeeklySnapshotMetricData data) {
-    return SizedBox(
-      height: 140,
+    // GAP-13: minimum height 140 (see _loadingState) — the
+    // empty message wraps and grows the box at large scales
+    // instead of overflowing it.
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 140),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -382,15 +388,23 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
             children: [
               _LegendDot(color: NotelColors.error),
               SizedBox(width: 4),
-              Text('Sys',
-                  style: TextStyle(
-                      fontSize: 10, color: NotelColors.textSecondary)),
+              Text(
+                'Sys',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: NotelColors.textSecondary,
+                ),
+              ),
               SizedBox(width: 8),
               _LegendDot(color: NotelColors.info),
               SizedBox(width: 4),
-              Text('Dia',
-                  style: TextStyle(
-                      fontSize: 10, color: NotelColors.textSecondary)),
+              Text(
+                'Dia',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: NotelColors.textSecondary,
+                ),
+              ),
             ],
           ),
       ],
@@ -427,10 +441,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
           IconButton(
             onPressed: () => setState(() => _selectedPoint = null),
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(
-              minWidth: 48,
-              minHeight: 48,
-            ),
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
             tooltip: 'Dismiss Tooltip',
             icon: const Icon(
               Icons.close,
@@ -464,8 +475,11 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
     }
     final todayStr = DateTime.now().toIso8601String().substring(0, 10);
     if (pt.dateStr == todayStr &&
-        const {'Resting Heart Rate', 'Sleep Hours', 'Active Calories'}
-            .contains(data.metric.displayName)) {
+        const {
+          'Resting Heart Rate',
+          'Sleep Hours',
+          'Active Calories',
+        }.contains(data.metric.displayName)) {
       final noun = switch (data.metric) {
         SnapshotMetric.restingHeartRate => 'resting heart rate',
         SnapshotMetric.sleepHours => 'sleep data',
@@ -545,15 +559,18 @@ class _MetricSelectorState extends State<_MetricSelector> {
     // cap collapsed the panel to zero height there.
     final view = View.of(context);
     final devicePixelRatio = view.devicePixelRatio;
-    final anchorBottom = (renderBox?.localToGlobal(Offset.zero).dy ?? 0) +
+    final anchorBottom =
+        (renderBox?.localToGlobal(Offset.zero).dy ?? 0) +
         (renderBox?.size.height ?? 0);
-    final availableBelow = view.physicalSize.height / devicePixelRatio -
+    final availableBelow =
+        view.physicalSize.height / devicePixelRatio -
         view.viewPadding.bottom / devicePixelRatio -
         anchorBottom -
         4 -
         16;
-    final maxPanelHeight =
-        availableBelow.clamp(0.0, double.infinity).toDouble();
+    final maxPanelHeight = availableBelow
+        .clamp(0.0, double.infinity)
+        .toDouble();
     _entry = OverlayEntry(
       builder: (ctx) => Stack(
         children: [
@@ -601,8 +618,7 @@ class _MetricSelectorState extends State<_MetricSelector> {
           decoration: BoxDecoration(
             color: NotelColors.surfaceHigh,
             borderRadius: BorderRadius.circular(10),
-            border:
-                Border.all(color: NotelColors.legacyDarkDivider, width: 1),
+            border: Border.all(color: NotelColors.legacyDarkDivider, width: 1),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 12.0),
           child: Row(
@@ -616,10 +632,7 @@ class _MetricSelectorState extends State<_MetricSelector> {
                   color: NotelColors.primaryText,
                 ),
               ),
-              const Icon(
-                Icons.arrow_drop_down,
-                color: NotelColors.primary,
-              ),
+              const Icon(Icons.arrow_drop_down, color: NotelColors.primary),
             ],
           ),
         ),
@@ -742,36 +755,38 @@ class _MetricDropdownPanelState extends State<_MetricDropdownPanel> {
                   final isCurrent = m == widget.selected;
                   return InkWell(
                     onTap: () => widget.onSelect(m),
-                      // Audit 6a (Oct 27, 2026) — rows measured
-                      // ~41-44dp (12dp vertical padding + 14sp text);
-                      // expand ONLY the hit area to the 48dp floor
-                      // with the in-app ConstrainedBox(minHeight: 48)
-                      // pattern. Row look is unchanged: same padding,
-                      // same text, centered in the taller hit box.
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(minHeight: 48),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12.0, vertical: 12.0),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              m.displayName,
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: isCurrent
-                                    ? FontWeight.bold
-                                    : FontWeight.normal,
-                                color: isCurrent
-                                    ? NotelColors.primaryText
-                                    : NotelColors.textPrimary,
-                              ),
+                    // Audit 6a (Oct 27, 2026) — rows measured
+                    // ~41-44dp (12dp vertical padding + 14sp text);
+                    // expand ONLY the hit area to the 48dp floor
+                    // with the in-app ConstrainedBox(minHeight: 48)
+                    // pattern. Row look is unchanged: same padding,
+                    // same text, centered in the taller hit box.
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 48),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12.0,
+                          vertical: 12.0,
+                        ),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            m.displayName,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: isCurrent
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                              color: isCurrent
+                                  ? NotelColors.primaryText
+                                  : NotelColors.textPrimary,
                             ),
                           ),
                         ),
                       ),
-                    );
-                  }).toList(),
+                    ),
+                  );
+                }).toList(),
               ),
             ),
           ),
@@ -787,8 +802,7 @@ class _MetricDropdownPanelState extends State<_MetricDropdownPanel> {
               bottom: 0,
               child: IgnorePointer(
                 child: Container(
-                  key: const ValueKey(
-                      'weekly_snapshot_metric_bottom_fade'),
+                  key: const ValueKey('weekly_snapshot_metric_bottom_fade'),
                   height: 24,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -857,8 +871,7 @@ class _SnapshotChartState extends State<_SnapshotChart>
   Widget build(BuildContext context) {
     // Reduced motion: no controller animation — the painter draws the
     // full chart (progress 1) with no repaint subscription.
-    final progress =
-        animationsDisabled(context) ? null : _controller;
+    final progress = animationsDisabled(context) ? null : _controller;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapUp: (details) {
@@ -868,8 +881,10 @@ class _SnapshotChartState extends State<_SnapshotChart>
         // The painter reserves 20dp for labels; taps map over the chart area.
         final chartWidth = box.size.width;
         final stepX = chartWidth / widget.data.points.length;
-        final idx =
-            (local.dx / stepX).floor().clamp(0, widget.data.points.length - 1);
+        final idx = (local.dx / stepX).floor().clamp(
+          0,
+          widget.data.points.length - 1,
+        );
         widget.onSelectIndex(idx == widget.selectedIndex ? null : idx);
       },
       child: SizedBox(
@@ -965,10 +980,8 @@ class _SnapshotChartPainter extends CustomPainter {
     // Bounded-scale metrics (Morning Score, 1–5) draw against their
     // fixed domain so the line's height means the same thing every
     // week; every other metric keeps the native data-range scaling.
-    final minV = data.metric.chartMin ??
-        valid.reduce((a, b) => a < b ? a : b);
-    final maxV = data.metric.chartMax ??
-        valid.reduce((a, b) => a > b ? a : b);
+    final minV = data.metric.chartMin ?? valid.reduce((a, b) => a < b ? a : b);
+    final maxV = data.metric.chartMax ?? valid.reduce((a, b) => a > b ? a : b);
     final range = (maxV - minV) == 0 ? 1.0 : (maxV - minV);
 
     double cx(int i) => (i + 0.5) * stepX;
@@ -1051,9 +1064,7 @@ class _SnapshotChartPainter extends CustomPainter {
             const Radius.circular(4),
           ),
           Paint()
-            ..color = isSel
-                ? lineColor
-                : lineColor.withValues(alpha: 0.75),
+            ..color = isSel ? lineColor : lineColor.withValues(alpha: 0.75),
         );
       } else if (v == 0) {
         // Native: zero draws a small baseline dot, not a bar.
@@ -1069,13 +1080,23 @@ class _SnapshotChartPainter extends CustomPainter {
   void _paintBloodPressure(Canvas canvas, double chartH, double stepX) {
     final points = data.points;
     final sysVals = points.map((p) => p.value).whereType<double>().toList();
-    final diaVals =
-        points.map((p) => p.secondaryValue).whereType<double>().toList();
+    final diaVals = points
+        .map((p) => p.secondaryValue)
+        .whereType<double>()
+        .toList();
     if (sysVals.isEmpty && diaVals.isEmpty) return;
     final maxVal =
-        (sysVals.isEmpty ? 140.0 : sysVals.reduce((a, b) => a > b ? a : b).clamp(140.0, double.infinity)) + 10;
+        (sysVals.isEmpty
+            ? 140.0
+            : sysVals
+                  .reduce((a, b) => a > b ? a : b)
+                  .clamp(140.0, double.infinity)) +
+        10;
     final minVal =
-        (diaVals.isEmpty ? 60.0 : diaVals.reduce((a, b) => a < b ? a : b).clamp(0.0, 60.0)) - 10;
+        (diaVals.isEmpty
+            ? 60.0
+            : diaVals.reduce((a, b) => a < b ? a : b).clamp(0.0, 60.0)) -
+        10;
     final valRange = (maxVal - minVal).clamp(1.0, double.infinity);
 
     double cx(int i) => (i + 0.5) * stepX;
@@ -1102,7 +1123,11 @@ class _SnapshotChartPainter extends CustomPainter {
         } else {
           sysPath.lineTo(pt.dx, pt.dy);
         }
-        canvas.drawCircle(pt, isSel ? 5 : 3, Paint()..color = NotelColors.error);
+        canvas.drawCircle(
+          pt,
+          isSel ? 5 : 3,
+          Paint()..color = NotelColors.error,
+        );
       } else if (sysPath != null) {
         // Native: break the segment at null days — never interpolate
         // across missing values.

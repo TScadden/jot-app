@@ -66,20 +66,49 @@ const List<ToolTile> defaultToolTiles = [
   ToolTile('reminders', 'Reminders', Icons.notifications, 'Scheduled alerts'),
   ToolTile('lists', 'Lists', Icons.list, 'Checklists & Tasks'),
   ToolTile('notes', 'Notes', Icons.edit, 'Quick notes & thoughts'),
-  ToolTile('project_focus', 'Project Focus', Icons.science, 'Track experiments'),
-  ToolTile('body_info', 'Body Info', Icons.accessibility_new, 'Impact & Side Effects'),
-  ToolTile('tips_and_tricks', 'Tips and Tricks', Icons.lightbulb, 'Master your data'),
-  ToolTile('health_coach', 'Health Coach', Icons.question_mark, 'Personalized Advice'),
+  ToolTile(
+    'project_focus',
+    'Project Focus',
+    Icons.science,
+    'Track experiments',
+  ),
+  ToolTile(
+    'body_info',
+    'Body Info',
+    Icons.accessibility_new,
+    'Impact & Side Effects',
+  ),
+  ToolTile(
+    'tips_and_tricks',
+    'Tips and Tricks',
+    Icons.lightbulb,
+    'Master your data',
+  ),
+  ToolTile(
+    'health_coach',
+    'Health Coach',
+    Icons.question_mark,
+    'Personalized Advice',
+  ),
   ToolTile('key_metrics', 'Key Metrics', Icons.bar_chart, 'Your Body Data'),
   ToolTile('trends', 'Trends', Icons.trending_up, 'Patterns over time'),
-  ToolTile('blood_pressure', 'Blood Pressure', Icons.favorite, 'Systolic & Diastolic'),
+  ToolTile(
+    'blood_pressure',
+    'Blood Pressure',
+    Icons.favorite,
+    'Systolic & Diastolic',
+  ),
   ToolTile('food', 'Food', Icons.restaurant, 'Sensitivity Checker'),
   ToolTile('research', 'Research', Icons.menu_book, 'Health research library'),
 ];
 
 /// Pure reorder helper: moves [draggedId] to [targetId]'s position.
 /// Returns the original list (same instance) when the move is a no-op.
-List<ToolTile> moveTile(List<ToolTile> tiles, String draggedId, String targetId) {
+List<ToolTile> moveTile(
+  List<ToolTile> tiles,
+  String draggedId,
+  String targetId,
+) {
   final from = tiles.indexWhere((t) => t.id == draggedId);
   final to = tiles.indexWhere((t) => t.id == targetId);
   if (from < 0 || to < 0 || from == to) return tiles;
@@ -108,10 +137,10 @@ List<ToolTile> applyTileOrder(List<ToolTile> defaults, List<String> savedIds) {
 class ToolOrderStore {
   static const String storageKey = 'tools_tile_order_v1';
 
-  Future<String?> Function(String key) _read =
-      (key) => const FlutterSecureStorage().read(key: key);
-  Future<void> Function(String key, String value) _write =
-      (key, value) => const FlutterSecureStorage().write(key: key, value: value);
+  Future<String?> Function(String key) _read = (key) =>
+      const FlutterSecureStorage().read(key: key);
+  Future<void> Function(String key, String value) _write = (key, value) =>
+      const FlutterSecureStorage().write(key: key, value: value);
 
   /// Test seam.
   void debugSetIO({
@@ -165,11 +194,12 @@ class ToolsScreen extends StatefulWidget {
   /// Settings screen.
   final RevenueCatService? revenueCatService;
 
-  const ToolsScreen(
-      {super.key,
-      this.orderStore,
-      this.billingService,
-      this.revenueCatService});
+  const ToolsScreen({
+    super.key,
+    this.orderStore,
+    this.billingService,
+    this.revenueCatService,
+  });
 
   @override
   State<ToolsScreen> createState() => _ToolsScreenState();
@@ -244,8 +274,9 @@ class _ToolsScreenState extends State<ToolsScreen>
       'blood_pressure' => const BloodPressureToolScreen(),
       'food' => const FoodToolScreen(),
       'research' => ResearchToolScreen(
-          billingService: widget.billingService,
-          revenueCatService: widget.revenueCatService),
+        billingService: widget.billingService,
+        revenueCatService: widget.revenueCatService,
+      ),
       _ => ToolPlaceholderScreen(tile: tile),
     };
     Navigator.of(context).push(
@@ -305,7 +336,9 @@ class _ToolsScreenState extends State<ToolsScreen>
                       widthFactor: 1,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 6),
+                          horizontal: 14,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: NotelColors.primary,
                           borderRadius: BorderRadius.circular(12),
@@ -349,15 +382,29 @@ class _ToolsScreenState extends State<ToolsScreen>
             child: _InfoBanner(editMode: _editMode),
           ),
           Expanded(
-            child: GridView.count(
-              crossAxisCount: 2,
-              mainAxisSpacing: 14,
-              crossAxisSpacing: 14,
-              childAspectRatio: 1.0,
+            child: GridView(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                mainAxisSpacing: 14,
+                crossAxisSpacing: 14,
+                // GAP-13: tiles are square at 1.0x text scale, but
+                // the tile's title/description block grows with the
+                // system text scale — a fixed square overflows its
+                // Column (+19 exceptions at 3.0x in the audit). The
+                // row extent grows by the measured text-block growth
+                // (~100dp per 1.0 of scale: wrapped title lines plus
+                // the 2-line description at the scaled line height);
+                // the grid scrolls, so taller rows stay usable.
+                mainAxisExtent: () {
+                  final width = MediaQuery.sizeOf(context).width;
+                  final cellWidth = (width - 32 - 14) / 2;
+                  final scale = MediaQuery.textScalerOf(context).scale(15) / 15;
+                  final extra = (scale - 1).clamp(0.0, 2.0) * 100;
+                  return cellWidth + extra;
+                }(),
+              ),
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 110),
-              children: [
-                for (final tile in _tiles) _reorderableCell(tile),
-              ],
+              children: [for (final tile in _tiles) _reorderableCell(tile)],
             ),
           ),
         ],
@@ -438,8 +485,7 @@ class _InfoBanner extends StatelessWidget {
                   : 'Explore your health resources. Long-press to reorder.',
               style: TextStyle(
                 fontSize: 12,
-                fontWeight:
-                    editMode ? FontWeight.bold : FontWeight.w500,
+                fontWeight: editMode ? FontWeight.bold : FontWeight.w500,
                 color: editMode
                     ? NotelColors.primaryText
                     : NotelColors.textSecondary,
@@ -470,17 +516,14 @@ class _ToolCard extends StatelessWidget {
     final borderColor = dragging
         ? NotelColors.primary
         : editMode
-            ? NotelColors.primary.withValues(alpha: 0.45)
-            : NotelColors.cardBorder;
+        ? NotelColors.primary.withValues(alpha: 0.45)
+        : NotelColors.cardBorder;
     final card = Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: NotelColors.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: borderColor,
-          width: dragging ? 2 : 1,
-        ),
+        border: Border.all(color: borderColor, width: dragging ? 2 : 1),
         boxShadow: dragging
             ? [
                 BoxShadow(
@@ -553,9 +596,7 @@ class _ToolCard extends StatelessWidget {
       ),
     );
 
-    final scaled = dragging
-        ? Transform.scale(scale: 1.05, child: card)
-        : card;
+    final scaled = dragging ? Transform.scale(scale: 1.05, child: card) : card;
 
     if (onTap == null || editMode) return scaled;
     return GestureDetector(onTap: onTap, child: scaled);

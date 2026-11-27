@@ -136,17 +136,15 @@ const double kNavDockSolidSnackBarGap = 8.0;
 /// The dock's bottom padding (from the screen edge) for a given
 /// system bottom view-padding: max(16dp, viewPadding + 4dp).
 double navDockSolidBottomPadding(double viewPaddingBottom) => math.max(
-      kNavDockSolidBottomFloat,
-      viewPaddingBottom + kNavDockSolidBottomInsetSlack,
-    );
+  kNavDockSolidBottomFloat,
+  viewPaddingBottom + kNavDockSolidBottomInsetSlack,
+);
 
 /// Bottom inset (from the system-inset line) for a floating
 /// snackbar inside the shell when the Solid dock is active:
 /// the dock's float above that line + the pill's height + the
 /// gap above the pill. Mirrors [navDockSnackBarBottomInset].
-double navDockSolidSnackBarBottomInset({
-  double viewPaddingBottom = 0,
-}) =>
+double navDockSolidSnackBarBottomInset({double viewPaddingBottom = 0}) =>
     (navDockSolidBottomPadding(viewPaddingBottom) - viewPaddingBottom) +
     kNavDockSolidHeight +
     kNavDockSolidSnackBarGap;
@@ -177,11 +175,11 @@ class _NavDockSolidState extends State<NavDockSolid>
   late final AnimationController _controller;
 
   static double _slotFor(DockTab tab) => switch (tab) {
-        DockTab.home => 0,
-        DockTab.tools => 1,
-        DockTab.quickLog => 2,
-        DockTab.heart => 3,
-      };
+    DockTab.home => 0,
+    DockTab.tools => 1,
+    DockTab.quickLog => 2,
+    DockTab.heart => 3,
+  };
 
   @override
   void initState() {
@@ -234,21 +232,22 @@ class _NavDockSolidState extends State<NavDockSolid>
       // on — the same arrangement as NavDock.
       child: DecoratedBox(
         decoration: const BoxDecoration(
-          borderRadius:
-              BorderRadius.all(Radius.circular(kNavDockSolidRadius)),
+          borderRadius: BorderRadius.all(Radius.circular(kNavDockSolidRadius)),
           boxShadow: [kNavDockSolidShadow],
         ),
         child: ClipRRect(
-          borderRadius:
-              const BorderRadius.all(Radius.circular(kNavDockSolidRadius)),
+          borderRadius: const BorderRadius.all(
+            Radius.circular(kNavDockSolidRadius),
+          ),
           child: Material(
             color: Colors.transparent,
             // The 1dp border rides the Material shape (the NavDock
             // OFF-path pattern): a border on the inner Container's
             // decoration would eat 2dp of the cells' inner width.
             shape: const RoundedRectangleBorder(
-              borderRadius:
-                  BorderRadius.all(Radius.circular(kNavDockSolidRadius)),
+              borderRadius: BorderRadius.all(
+                Radius.circular(kNavDockSolidRadius),
+              ),
               side: BorderSide(color: kNavDockSolidBorderColor, width: 1),
             ),
             child: Container(
@@ -256,9 +255,7 @@ class _NavDockSolidState extends State<NavDockSolid>
               padding: const EdgeInsets.symmetric(
                 horizontal: kNavDockSolidInnerPadding,
               ),
-              decoration: const BoxDecoration(
-                gradient: kNavDockSolidGradient,
-              ),
+              decoration: const BoxDecoration(gradient: kNavDockSolidGradient),
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final slotWidth = constraints.maxWidth / 4;
@@ -277,8 +274,7 @@ class _NavDockSolidState extends State<NavDockSolid>
                             left: left,
                             top: (dockHeight - kNavDockSolidCapsuleHeight) / 2,
                             child: Container(
-                              key: const ValueKey(
-                                  'solid_dock_selection_pill'),
+                              key: const ValueKey('solid_dock_selection_pill'),
                               width: slotWidth,
                               height: kNavDockSolidCapsuleHeight,
                               decoration: const BoxDecoration(
@@ -296,8 +292,7 @@ class _NavDockSolidState extends State<NavDockSolid>
                               // [kNavDockSolidCapsuleTopLineInset]).
                               child: const ClipRRect(
                                 borderRadius: BorderRadius.all(
-                                  Radius.circular(
-                                      kNavDockSolidCapsuleRadius),
+                                  Radius.circular(kNavDockSolidCapsuleRadius),
                                 ),
                                 child: Align(
                                   alignment: Alignment.topCenter,
@@ -305,13 +300,11 @@ class _NavDockSolidState extends State<NavDockSolid>
                                     padding: EdgeInsets.only(
                                       left: 16,
                                       right: 16,
-                                      top:
-                                          kNavDockSolidCapsuleTopLineInset,
+                                      top: kNavDockSolidCapsuleTopLineInset,
                                     ),
                                     child: DecoratedBox(
                                       decoration: BoxDecoration(
-                                        color:
-                                            kNavDockSolidCapsuleTopLine,
+                                        color: kNavDockSolidCapsuleTopLine,
                                       ),
                                       child: SizedBox(
                                         width: double.infinity,
@@ -390,25 +383,29 @@ class _SolidDockCell extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(kNavDockSolidCapsuleRadius),
         onTap: onTap,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 20,
-              semanticLabel: label,
-              color: color,
-            ),
-            const SizedBox(height: 2.5),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w600,
-                color: color,
+        // GAP-13: the dock height is fixed (58dp bar / 48dp
+        // capsule), so at large system text scales the icon+label
+        // column cannot grow — it shrinks to fit instead
+        // (scaleDown is a no-op at normal scales, so the shipped
+        // geometry is unchanged until the text actually needs
+        // the room).
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 20, semanticLabel: label, color: color),
+              const SizedBox(height: 2.5),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -115,14 +115,15 @@ class HeartScreen extends StatefulWidget {
   /// the AppBar calls it to switch the slot to the Sleep screen.
   final VoidCallback? onShowSleep;
 
-  const HeartScreen(
-      {super.key,
-      this.email,
-      this.healthConnectService,
-      this.cache,
-      this.historyStore,
-      this.initialDate,
-      this.onShowSleep});
+  const HeartScreen({
+    super.key,
+    this.email,
+    this.healthConnectService,
+    this.cache,
+    this.historyStore,
+    this.initialDate,
+    this.onShowSleep,
+  });
 
   @override
   State<HeartScreen> createState() => _HeartScreenState();
@@ -208,8 +209,9 @@ class _HeartScreenState extends State<HeartScreen> {
   bool get _hrWedged {
     final snapshot = _lastSnapshot;
     if (snapshot == null || !snapshot.grantKnown) return false;
-    if (snapshot.missingPermissions
-        .contains('android.permission.health.READ_HEART_RATE')) {
+    if (snapshot.missingPermissions.contains(
+      'android.permission.health.READ_HEART_RATE',
+    )) {
       return false;
     }
     final blocked = _hrReadBlocked;
@@ -334,16 +336,18 @@ class _HeartScreenState extends State<HeartScreen> {
     // disk blob may hold the selected date's summary even when
     // memory started empty); live samples on screen are never
     // replaced by a seed.
-    unawaited(_store.warmFromDisk(currentEmail: widget.email).then((_) {
-      if (!mounted) return;
-      final d = _data;
-      if (d == null || d.storedSummaryOnly || d.samples.isEmpty) {
-        setState(() {
-          _seedFromLocalSources();
-          _lastSyncAt = _effectiveLastSyncAt() ?? _lastSyncAt;
-        });
-      }
-    }));
+    unawaited(
+      _store.warmFromDisk(currentEmail: widget.email).then((_) {
+        if (!mounted) return;
+        final d = _data;
+        if (d == null || d.storedSummaryOnly || d.samples.isEmpty) {
+          setState(() {
+            _seedFromLocalSources();
+            _lastSyncAt = _effectiveLastSyncAt() ?? _lastSyncAt;
+          });
+        }
+      }),
+    );
     await _checkConnectionAndLoad();
   }
 
@@ -391,9 +395,9 @@ class _HeartScreenState extends State<HeartScreen> {
     // fallback exactly like any other failure.
     HcAvailability snapshot;
     try {
-      snapshot = await _service
-          .probeAvailability()
-          .timeout(HealthConnectService.readTimeout);
+      snapshot = await _service.probeAvailability().timeout(
+        HealthConnectService.readTimeout,
+      );
     } catch (_) {
       // Timeout or throw: an unknown snapshot, which falls
       // through to the persisted fallback exactly like the old
@@ -415,7 +419,7 @@ class _HeartScreenState extends State<HeartScreen> {
       // Verified-missing HR → the Link layout; granted HR → body.
       connected =
           hcGrantStateFor(heartPermissions, snapshot.missingIfKnown) !=
-              HcGrantState.none;
+          HcGrantState.none;
     } else {
       // Grant layer unknown (bridge error): fall back to persisted
       // state, like the connections screen. The fallback only
@@ -522,14 +526,17 @@ class _HeartScreenState extends State<HeartScreen> {
       // futures are theirs alone.)
       final outcome = await _service
           .readHeartRateSamplesWithOutcome(dateStr)
-          .timeout(HealthConnectService.readTimeout, onTimeout: () {
-        return const HcReadOutcome<List<HrSample>>(
-          value: <HrSample>[],
-          errorCode: 'READ_TIMEOUT',
-          errorDetails:
-              'Health Connect did not respond in time. Please try again.',
-        );
-      });
+          .timeout(
+            HealthConnectService.readTimeout,
+            onTimeout: () {
+              return const HcReadOutcome<List<HrSample>>(
+                value: <HrSample>[],
+                errorCode: 'READ_TIMEOUT',
+                errorDetails:
+                    'Health Connect did not respond in time. Please try again.',
+              );
+            },
+          );
       raw = outcome.value;
       errCode = outcome.errorCode;
       partialCode = outcome.partialCode;
@@ -564,12 +571,17 @@ class _HeartScreenState extends State<HeartScreen> {
     if (threw) {
       // Keep whatever local data the date already has — the cache's
       // series or the store seed — instead of swapping in empties.
-      data = _cache.snapshot(dateStr) ??
+      data =
+          _cache.snapshot(dateStr) ??
           _storeSeedFor(dateStr, _store.peekDay(dateStr)) ??
           HeartDayData.empty;
     } else {
-      data = _cache.apply(dateStr, raw,
-          ownerEmail: widget.email, succeeded: countsAsSync);
+      data = _cache.apply(
+        dateStr,
+        raw,
+        ownerEmail: widget.email,
+        succeeded: countsAsSync,
+      );
       if (countsAsSync) unawaited(_cache.persist());
       // A failed (or honestly empty) apply with nothing cached
       // falls back to the store seed for THIS date, so stored data
@@ -585,11 +597,13 @@ class _HeartScreenState extends State<HeartScreen> {
     // failure only, from THIS load's outcome object (Condition 2):
     // a partial read — even a partial-empty one — is not a failed
     // read diagnostically, exactly as before.
-    unawaited(_recordHeartRead(
-      failed: hardFailed,
-      errorCode: threw ? 'HEART_READ_FAILED' : errCode,
-      sampleCount: raw.length,
-    ));
+    unawaited(
+      _recordHeartRead(
+        failed: hardFailed,
+        errorCode: threw ? 'HEART_READ_FAILED' : errCode,
+        sampleCount: raw.length,
+      ),
+    );
     _inFlightDates.remove(dateStr);
     if (!mounted) return;
     setState(() {
@@ -627,8 +641,8 @@ class _HeartScreenState extends State<HeartScreen> {
         // is a SecurityException is the granted-but-blocked
         // signature for THIS screen's type; any completed read
         // (data, honest empty, or partial) clears it.
-        _hrReadBlocked = hardFailed &&
-            (errDetails?.contains('SecurityException') ?? false);
+        _hrReadBlocked =
+            hardFailed && (errDetails?.contains('SecurityException') ?? false);
         if (!_hrWedged) _repairSecondStep = false;
         if (hardFailed) {
           _error = 'Could not read heart rate data.';
@@ -646,8 +660,11 @@ class _HeartScreenState extends State<HeartScreen> {
 
   Future<void> _pickDate() async {
     final today = DateTime.now();
-    final firstDate = DateTime(today.year, today.month, today.day)
-        .subtract(const Duration(days: 180));
+    final firstDate = DateTime(
+      today.year,
+      today.month,
+      today.day,
+    ).subtract(const Duration(days: 180));
     final lastDate = DateTime(today.year, today.month, today.day);
     final initialDate = _selectedDate.isBefore(firstDate)
         ? firstDate
@@ -660,8 +677,11 @@ class _HeartScreenState extends State<HeartScreen> {
     );
     if (picked == null || !mounted) return;
     final pickedDay = DateTime(picked.year, picked.month, picked.day);
-    final currentDay =
-        DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+    final currentDay = DateTime(
+      _selectedDate.year,
+      _selectedDate.month,
+      _selectedDate.day,
+    );
     if (pickedDay == currentDay) return;
     setState(() {
       _selectedDate = pickedDay;
@@ -740,8 +760,11 @@ class _HeartScreenState extends State<HeartScreen> {
         // the post-grant capture, in addition to this screen's
         // own reload.
         if (!wasConnected) {
-          unawaited(HealthHistorySync.instance.captureAfterGrant(
-              relevantPermissions: heartPermissions));
+          unawaited(
+            HealthHistorySync.instance.captureAfterGrant(
+              relevantPermissions: heartPermissions,
+            ),
+          );
         }
         await _load(force: true);
       }
@@ -782,9 +805,11 @@ class _HeartScreenState extends State<HeartScreen> {
         // Sync-settings package — the shared repair flow's
         // cleared path runs the post-grant capture too (see
         // Home's repair handler).
-        unawaited(HealthHistorySync.instance.captureAfterGrant(
-            relevantPermissions:
-                HealthConnectService.requiredPermissions));
+        unawaited(
+          HealthHistorySync.instance.captureAfterGrant(
+            relevantPermissions: HealthConnectService.requiredPermissions,
+          ),
+        );
         await _checkConnectionAndLoad(forceLoad: true);
         if (mounted && _hrWedged) {
           setState(() => _repairSecondStep = true);
@@ -826,7 +851,10 @@ class _HeartScreenState extends State<HeartScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Got it', style: TextStyle(color: NotelColors.primary)),
+            child: const Text(
+              'Got it',
+              style: TextStyle(color: NotelColors.primary),
+            ),
           ),
         ],
       ),
@@ -841,8 +869,7 @@ class _HeartScreenState extends State<HeartScreen> {
     // stored count, and the review renders Juno §4's
     // detail-unavailable state instead of wording the empty list
     // as an all-clear.
-    final storedCount =
-        data?.storedSpikeCount ?? _storeRow?.spikeCount;
+    final storedCount = data?.storedSpikeCount ?? _storeRow?.spikeCount;
     await Navigator.of(context).push(
       SlidePageRoute(
         reducedMotion: animationsDisabled(context),
@@ -913,7 +940,9 @@ class _HeartScreenState extends State<HeartScreen> {
                     constraints: const BoxConstraints(minHeight: 48),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -946,17 +975,22 @@ class _HeartScreenState extends State<HeartScreen> {
           // to Sleep in the not-connected state too.
           IconButton(
             onPressed: widget.onShowSleep,
-            icon: const Icon(Icons.bedtime,
-                size: 24,
-                color: NotelColors.textSecondary,
-                semanticLabel: 'Sleep'),
+            icon: const Icon(
+              Icons.bedtime,
+              size: 24,
+              color: NotelColors.textSecondary,
+              semanticLabel: 'Sleep',
+            ),
             tooltip: 'Sleep',
           ),
           if (connected == true)
             IconButton(
               onPressed: _loading ? null : () => unawaited(_load(force: true)),
-              icon: const Icon(Icons.refresh,
-                  size: 24, color: NotelColors.textSecondary),
+              icon: const Icon(
+                Icons.refresh,
+                size: 24,
+                color: NotelColors.textSecondary,
+              ),
               tooltip: 'Refresh',
             ),
         ],
@@ -964,8 +998,8 @@ class _HeartScreenState extends State<HeartScreen> {
       body: _service.isIOS
           ? _iosBody()
           : connected == false
-              ? _notConnectedBody()
-              : _connectedBody(),
+          ? _notConnectedBody()
+          : _connectedBody(),
     );
   }
 
@@ -1016,8 +1050,11 @@ class _HeartScreenState extends State<HeartScreen> {
                     ),
                   ),
                 ),
-                const Icon(Icons.favorite,
-                    size: 64, color: NotelColors.primary),
+                const Icon(
+                  Icons.favorite,
+                  size: 64,
+                  color: NotelColors.primary,
+                ),
               ],
             ),
           ),
@@ -1114,7 +1151,8 @@ class _HeartScreenState extends State<HeartScreen> {
   Widget _iosState3Body() {
     return _iosStateBody(
       headline: 'No data yet',
-      body: 'Tabs has asked Apple Health for your health data, and '
+      body:
+          'Tabs has asked Apple Health for your health data, and '
           'nothing has come back yet. That is normal if you do not '
           'have an Apple Watch or another app writing to Apple '
           'Health: heart rate, resting heart rate, and heart rate '
@@ -1123,13 +1161,13 @@ class _HeartScreenState extends State<HeartScreen> {
           'energy from your iPhone can take a little while to '
           'appear. Your logging, check-ins, and notes in Tabs work '
           'either way.',
-      secondary: 'If you expected data to be here, check that Tabs '
+      secondary:
+          'If you expected data to be here, check that Tabs '
           'is allowed to read it: open the Health app, tap your '
           'profile, tap Apps, tap Tabs, and make sure the data '
           'types you want are on.',
       buttonLabel: 'Check again',
-      onButtonTap: () =>
-          unawaited(_checkConnectionAndLoad(forceLoad: true)),
+      onButtonTap: () => unawaited(_checkConnectionAndLoad(forceLoad: true)),
     );
   }
 
@@ -1138,7 +1176,8 @@ class _HeartScreenState extends State<HeartScreen> {
   Widget _iosState4Body() {
     return _iosStateBody(
       headline: 'Not available on this device',
-      body: 'Apple Health is not available on this device, so Tabs '
+      body:
+          'Apple Health is not available on this device, so Tabs '
           'cannot read health data from it here. Your logging, '
           'check-ins, and notes in Tabs still work.',
     );
@@ -1168,8 +1207,11 @@ class _HeartScreenState extends State<HeartScreen> {
                     ),
                   ),
                 ),
-                const Icon(Icons.favorite,
-                    size: 64, color: NotelColors.primary),
+                const Icon(
+                  Icons.favorite,
+                  size: 64,
+                  color: NotelColors.primary,
+                ),
               ],
             ),
           ),
@@ -1282,10 +1324,7 @@ class _HeartScreenState extends State<HeartScreen> {
           SizedBox(height: 4),
           Text(
             heartNoDataBody,
-            style: TextStyle(
-              color: NotelColors.textSecondary,
-              fontSize: 13,
-            ),
+            style: TextStyle(color: NotelColors.textSecondary, fontSize: 13),
             textAlign: TextAlign.center,
           ),
         ],
@@ -1314,8 +1353,7 @@ class _HeartScreenState extends State<HeartScreen> {
                 color: NotelColors.surface.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(12),
               ),
-              padding:
-                  const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -1374,8 +1412,7 @@ class _HeartScreenState extends State<HeartScreen> {
             HcRepairCard(
               secondStep: _repairSecondStep,
               requesting: _repairing,
-              onRepairTap:
-                  _repairing ? null : () => unawaited(_onRepairTap()),
+              onRepairTap: _repairing ? null : () => unawaited(_onRepairTap()),
             ),
             const SizedBox(height: 16),
           ],
@@ -1390,8 +1427,9 @@ class _HeartScreenState extends State<HeartScreen> {
               HcRepairCard(
                 secondStep: _repairSecondStep,
                 requesting: _repairing,
-                onRepairTap:
-                    _repairing ? null : () => unawaited(_onRepairTap()),
+                onRepairTap: _repairing
+                    ? null
+                    : () => unawaited(_onRepairTap()),
               ),
             ],
             const SizedBox(height: 16),
@@ -1418,8 +1456,7 @@ class _HeartScreenState extends State<HeartScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.favorite,
-                  color: NotelColors.primary, size: 48),
+              const Icon(Icons.favorite, color: NotelColors.primary, size: 48),
               const SizedBox(width: 16),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1541,12 +1578,21 @@ class _HeartScreenState extends State<HeartScreen> {
         children: [
           Row(
             children: [
-              const Text(
-                'Today’s pattern',
-                style: TextStyle(
-                  color: NotelColors.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+              // GAP-13: title shrinks to fit beside the 48dp
+              // info target at large text scales (scaleDown is
+              // a no-op until the text actually needs the room).
+              const Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Today’s pattern',
+                    style: TextStyle(
+                      color: NotelColors.textPrimary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 6),
@@ -1559,8 +1605,11 @@ class _HeartScreenState extends State<HeartScreen> {
                   width: 48,
                   height: 48,
                   child: Center(
-                    child: Icon(Icons.info,
-                        size: 16, color: NotelColors.textSecondary),
+                    child: Icon(
+                      Icons.info,
+                      size: 16,
+                      color: NotelColors.textSecondary,
+                    ),
                   ),
                 ),
               ),
@@ -1568,10 +1617,7 @@ class _HeartScreenState extends State<HeartScreen> {
           ),
           const Text(
             'Heart rate from 12 AM to 11:59 PM',
-            style: TextStyle(
-              color: NotelColors.textSecondary,
-              fontSize: 12,
-            ),
+            style: TextStyle(color: NotelColors.textSecondary, fontSize: 12),
           ),
           const SizedBox(height: 16),
           SizedBox(
@@ -1598,10 +1644,7 @@ class _HeartScreenState extends State<HeartScreen> {
             const SizedBox(height: 8),
             const Text(
               heartChartSummaryOnlyMessage,
-              style: TextStyle(
-                color: NotelColors.textSecondary,
-                fontSize: 12,
-              ),
+              style: TextStyle(color: NotelColors.textSecondary, fontSize: 12),
             ),
           ],
           const SizedBox(height: 16),
@@ -1623,9 +1666,17 @@ class _HeartScreenState extends State<HeartScreen> {
                     ),
                   ),
                   const SizedBox(width: 6),
-                  const Text('Heart rate',
+                  // GAP-13: legend labels wrap within the item
+                  // instead of overflowing the card at scale.
+                  const Flexible(
+                    child: Text(
+                      'Heart rate',
                       style: TextStyle(
-                          color: NotelColors.textSecondary, fontSize: 11)),
+                        color: NotelColors.textSecondary,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
                 ],
               ),
               Row(
@@ -1640,9 +1691,15 @@ class _HeartScreenState extends State<HeartScreen> {
                     ),
                   ),
                   const SizedBox(width: 6),
-                  const Text('Resting range (45 to 70 bpm)',
+                  const Flexible(
+                    child: Text(
+                      'Resting range (45 to 70 bpm)',
                       style: TextStyle(
-                          color: NotelColors.textSecondary, fontSize: 11)),
+                        color: NotelColors.textSecondary,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
                 ],
               ),
               Row(
@@ -1657,12 +1714,16 @@ class _HeartScreenState extends State<HeartScreen> {
                     ),
                   ),
                   const SizedBox(width: 6),
-                  Text(
-                    data.peakBpm != null
-                        ? 'Peak ${data.peakBpm} bpm'
-                        : 'Peak --',
-                    style: const TextStyle(
-                        color: NotelColors.textSecondary, fontSize: 11),
+                  Flexible(
+                    child: Text(
+                      data.peakBpm != null
+                          ? 'Peak ${data.peakBpm} bpm'
+                          : 'Peak --',
+                      style: const TextStyle(
+                        color: NotelColors.textSecondary,
+                        fontSize: 11,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -1693,7 +1754,8 @@ class _HeartScreenState extends State<HeartScreen> {
     //   §1b.3): no spike claims at all — the header shows only the
     //   loading spinner until the load resolves.
     final examined = data.hasExaminedSpikeData;
-    final noReadings = !examined &&
+    final noReadings =
+        !examined &&
         !data.storedSummaryOnly &&
         !_loading &&
         _failedDateStr != _dateStr &&
@@ -1724,8 +1786,11 @@ class _HeartScreenState extends State<HeartScreen> {
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
-                child: const Icon(Icons.whatshot,
-                    color: NotelColors.error, size: 20),
+                child: const Icon(
+                  Icons.whatshot,
+                  color: NotelColors.error,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1774,12 +1839,20 @@ class _HeartScreenState extends State<HeartScreen> {
                       // only — no count, no load level, no claim.
                       Row(
                         children: [
-                          const Text(
-                            'Significant spikes',
-                            style: TextStyle(
-                              color: NotelColors.textPrimary,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                          // GAP-13: label shrinks to fit the
+                          // header column at large text scales.
+                          const Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                'Significant spikes',
+                                style: TextStyle(
+                                  color: NotelColors.textPrimary,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
                           ),
                           if (_loading) ...[
@@ -1804,8 +1877,10 @@ class _HeartScreenState extends State<HeartScreen> {
                     color: NotelColors.errorTintStrong,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   child: Text(
                     loadLevel,
                     style: const TextStyle(
@@ -1822,13 +1897,17 @@ class _HeartScreenState extends State<HeartScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _spikeMetric('Peak',
-                    card.maxBpm > 0 ? '${card.maxBpm}' : '--', 'bpm',
-                    color: NotelColors.error),
                 _spikeMetric(
-                    'Largest jump',
-                    card.maxDelta > 0 ? '+${card.maxDelta}' : '--',
-                    'bpm'),
+                  'Peak',
+                  card.maxBpm > 0 ? '${card.maxBpm}' : '--',
+                  'bpm',
+                  color: NotelColors.error,
+                ),
+                _spikeMetric(
+                  'Largest jump',
+                  card.maxDelta > 0 ? '+${card.maxDelta}' : '--',
+                  'bpm',
+                ),
                 _spikeMetric('Total', '${card.spikeCount}', 'events'),
               ],
             ),
@@ -1841,13 +1920,17 @@ class _HeartScreenState extends State<HeartScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _spikeMetric('Peak',
-                    card.maxBpm > 0 ? '${card.maxBpm}' : '--', 'bpm',
-                    color: NotelColors.error),
                 _spikeMetric(
-                    'Largest jump',
-                    card.maxDelta > 0 ? '+${card.maxDelta}' : '--',
-                    'bpm'),
+                  'Peak',
+                  card.maxBpm > 0 ? '${card.maxBpm}' : '--',
+                  'bpm',
+                  color: NotelColors.error,
+                ),
+                _spikeMetric(
+                  'Largest jump',
+                  card.maxDelta > 0 ? '+${card.maxDelta}' : '--',
+                  'bpm',
+                ),
               ],
             ),
           ],
@@ -1865,10 +1948,16 @@ class _HeartScreenState extends State<HeartScreen> {
               children: [
                 if (data.storedMinutesOver100 != null)
                   _spikeMetric(
-                      'Over 100', '${data.storedMinutesOver100}', 'min'),
+                    'Over 100',
+                    '${data.storedMinutesOver100}',
+                    'min',
+                  ),
                 if (data.storedMinutesOver120 != null)
                   _spikeMetric(
-                      'Over 120', '${data.storedMinutesOver120}', 'min'),
+                    'Over 120',
+                    '${data.storedMinutesOver120}',
+                    'min',
+                  ),
                 if (data.storedRestingHrBpm != null)
                   _spikeMetric('Resting', '${data.storedRestingHrBpm}', 'bpm'),
               ],
@@ -1881,15 +1970,27 @@ class _HeartScreenState extends State<HeartScreen> {
             child: const Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Review spikes',
-                  style: TextStyle(
-                    color: NotelColors.textPrimary,
-                    fontWeight: FontWeight.w600,
+                // GAP-13: label shrinks to fit beside the arrow
+                // at large text scales instead of overflowing
+                // the button row.
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Review spikes',
+                      style: TextStyle(
+                        color: NotelColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ),
-                Icon(Icons.arrow_forward,
-                    size: 18, color: NotelColors.textSecondary),
+                Icon(
+                  Icons.arrow_forward,
+                  size: 18,
+                  color: NotelColors.textSecondary,
+                ),
               ],
             ),
           ),
@@ -1898,8 +1999,12 @@ class _HeartScreenState extends State<HeartScreen> {
     );
   }
 
-  Widget _spikeMetric(String label, String value, String unit,
-      {Color color = NotelColors.textPrimary}) {
+  Widget _spikeMetric(
+    String label,
+    String value,
+    String unit, {
+    Color color = NotelColors.textPrimary,
+  }) {
     return Column(
       children: [
         Text(
@@ -1953,14 +2058,20 @@ class _HeartScreenState extends State<HeartScreen> {
             // glyph the errorBuilder below uses, so the layout is
             // unchanged in shape); Android keeps the asset exactly.
             child: _service.isIOS
-                ? const Icon(Icons.favorite,
-                    color: NotelColors.primary, size: 20)
+                ? const Icon(
+                    Icons.favorite,
+                    color: NotelColors.primary,
+                    size: 20,
+                  )
                 : Image.asset(
                     'assets/images/ic_health_connect.png',
                     width: 24,
                     height: 24,
-                    errorBuilder: (_, _, _) => const Icon(Icons.favorite,
-                        color: NotelColors.primary, size: 20),
+                    errorBuilder: (_, _, _) => const Icon(
+                      Icons.favorite,
+                      color: NotelColors.primary,
+                      size: 20,
+                    ),
                   ),
           ),
           const SizedBox(width: 12),
@@ -1992,8 +2103,11 @@ class _HeartScreenState extends State<HeartScreen> {
               ],
             ),
           ),
-          const Icon(Icons.arrow_forward,
-              color: NotelColors.textSecondary, size: 18),
+          const Icon(
+            Icons.arrow_forward,
+            color: NotelColors.textSecondary,
+            size: 18,
+          ),
         ],
       ),
     );
@@ -2110,9 +2224,9 @@ class _HeartPatternPainter extends CustomPainter {
 
     final dayStart = DateTime(date.year, date.month, date.day);
     final startMs = dayStart.millisecondsSinceEpoch;
-    final endMs =
-        dayStart.add(const Duration(hours: 23, minutes: 59, seconds: 59))
-            .millisecondsSinceEpoch;
+    final endMs = dayStart
+        .add(const Duration(hours: 23, minutes: 59, seconds: 59))
+        .millisecondsSinceEpoch;
 
     double yToPx(double bpm) {
       final clamped = bpm.clamp(minY, maxY);
@@ -2126,23 +2240,32 @@ class _HeartPatternPainter extends CustomPainter {
       return leftPad + graphW * ratio;
     }
 
-    void drawLabel(String text, Offset topLeft,
-        {double fontSize = 10,
-        FontWeight weight = FontWeight.normal,
-        Color color = NotelColors.textSecondary}) {
+    void drawLabel(
+      String text,
+      Offset topLeft, {
+      double fontSize = 10,
+      FontWeight weight = FontWeight.normal,
+      Color color = NotelColors.textSecondary,
+    }) {
       final painter = TextPainter(
         text: TextSpan(
           text: text,
           style: TextStyle(
-              color: color, fontSize: fontSize, fontWeight: weight),
+            color: color,
+            fontSize: fontSize,
+            fontWeight: weight,
+          ),
         ),
         textDirection: TextDirection.ltr,
       )..layout();
       painter.paint(canvas, topLeft);
     }
 
-    Size measureLabel(String text,
-        {double fontSize = 10, FontWeight weight = FontWeight.normal}) {
+    Size measureLabel(
+      String text, {
+      double fontSize = 10,
+      FontWeight weight = FontWeight.normal,
+    }) {
       final painter = TextPainter(
         text: TextSpan(
           text: text,
@@ -2184,8 +2307,10 @@ class _HeartPatternPainter extends CustomPainter {
       final y = yToPx(tick.toDouble());
       dashedHLine(y, NotelColors.heartChartGridY, 6, 6);
       final labelSize = measureLabel('$tick');
-      drawLabel('$tick',
-          Offset(leftPad - labelSize.width - 8, y - labelSize.height / 2));
+      drawLabel(
+        '$tick',
+        Offset(leftPad - labelSize.width - 8, y - labelSize.height / 2),
+      );
     }
 
     // 2. Resting band 45–70.
@@ -2203,9 +2328,7 @@ class _HeartPatternPainter extends CustomPainter {
       dashedVLine(x, NotelColors.heartChartGridX, 4, 4);
       final String label;
       if (use24Hour) {
-        label = hr == 24
-            ? '00:00'
-            : '${hr.toString().padLeft(2, '0')}:00';
+        label = hr == 24 ? '00:00' : '${hr.toString().padLeft(2, '0')}:00';
       } else {
         label = switch (hr) {
           0 || 24 => '12 AM',
@@ -2215,10 +2338,15 @@ class _HeartPatternPainter extends CustomPainter {
         };
       }
       final labelSize = measureLabel(label, weight: FontWeight.w500);
-      final clampedX = (x - labelSize.width / 2)
-          .clamp(leftPad, size.width - rightPad - labelSize.width);
-      drawLabel(label, Offset(clampedX, size.height - bottomPad + 6),
-          weight: FontWeight.w500);
+      final clampedX = (x - labelSize.width / 2).clamp(
+        leftPad,
+        size.width - rightPad - labelSize.width,
+      );
+      drawLabel(
+        label,
+        Offset(clampedX, size.height - bottomPad + 6),
+        weight: FontWeight.w500,
+      );
     }
 
     // 4. HR polyline (≥ 2 samples, native rule). Samples are already
@@ -2256,12 +2384,22 @@ class _HeartPatternPainter extends CustomPainter {
       canvas.drawCircle(Offset(px, py), 5, Paint()..color = NotelColors.error);
       canvas.drawCircle(Offset(px, py), 2, Paint()..color = Colors.white);
       final label = '${peak.bpm}';
-      final labelSize =
-          measureLabel(label, fontSize: 12, weight: FontWeight.bold);
-      final clampedX = (px - labelSize.width / 2)
-          .clamp(leftPad, size.width - rightPad - labelSize.width);
-      drawLabel(label, Offset(clampedX, py - labelSize.height - 6),
-          fontSize: 12, weight: FontWeight.bold, color: NotelColors.error);
+      final labelSize = measureLabel(
+        label,
+        fontSize: 12,
+        weight: FontWeight.bold,
+      );
+      final clampedX = (px - labelSize.width / 2).clamp(
+        leftPad,
+        size.width - rightPad - labelSize.width,
+      );
+      drawLabel(
+        label,
+        Offset(clampedX, py - labelSize.height - 6),
+        fontSize: 12,
+        weight: FontWeight.bold,
+        color: NotelColors.error,
+      );
     }
   }
 
