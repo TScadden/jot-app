@@ -163,6 +163,15 @@ flutter:
     # (normal + gold per tier) from the founder-approved mock v5
     # pipeline; do not recolor at runtime.
     - assets/chests/
+    # Gem Store (Nov 27, 2026) — Bandit's layered cosmetics:
+    # chair_{classic,ocean,crimson,midnight}.webp,
+    # bandit_{original,rose,sky,mint,sunset}.webp (base),
+    # bandit_eyes_<colorway>_<blink state 1-4>.webp (eye-band
+    # patches), book_{purple,teal,scarlet,gold}.webp,
+    # shades_{black,rose,gold}.webp. All 832x992 full-frame
+    # except the eye patches (band rect). Produced by the art
+    # package's segmentation pipeline; do not recolor at runtime.
+    - assets/bandit_store/
     - assets/fonts/Roboto-Regular.ttf
     - assets/fonts/Roboto-Bold.ttf
     - assets/fonts/Nunito-Variable.ttf

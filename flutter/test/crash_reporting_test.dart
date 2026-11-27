@@ -553,6 +553,10 @@ void main() {
         // CRASH_REPORTING_CALLSITES.md — the chest open path's
         // transport catch.
         'lib/src/data/chest_service.dart',
+        // Gem Store (Nov 27, 2026): allowlist rows #11–#13 in
+        // CRASH_REPORTING_CALLSITES.md — the cosmetics profile
+        // refresh + store purchase/equip transport catches.
+        'lib/src/data/cosmetics_service.dart',
         'lib/src/features/home/home_screen.dart',
       };
       final libDir = Directory('lib');

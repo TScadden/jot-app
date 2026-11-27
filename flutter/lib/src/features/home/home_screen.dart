@@ -14,6 +14,7 @@ import 'package:tabs_lab/src/data/daily_score_refresh.dart'
     show ScoreCapture;
 import 'package:tabs_lab/src/data/daily_score_sync.dart';
 import 'package:tabs_lab/src/data/badge_store.dart';
+import 'package:tabs_lab/src/data/cosmetics_service.dart';
 import 'package:tabs_lab/src/data/gem_service.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart'
@@ -67,6 +68,7 @@ import 'package:tabs_lab/src/features/home/migraine_block.dart';
 import 'package:tabs_lab/src/data/chest_service.dart';
 import 'package:tabs_lab/src/features/home/chest_drop_presenter.dart';
 import 'package:tabs_lab/src/features/home/chests_sheet.dart';
+import 'package:tabs_lab/src/features/home/gem_store_screen.dart';
 import 'package:tabs_lab/src/features/home/streak_screen.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
@@ -2925,6 +2927,11 @@ class _HomeScreenState extends State<HomeScreen>
       // Plain sync (no drop detection): a backlog discovered here
       // never prompts — prompts belong to live settlements only.
       unawaited(ChestService.instance.syncInventory());
+      // Gem Store cosmetics app-open sync: the equipped look the
+      // Bandit slot renders comes from the profile payload (the
+      // shared TTL pull — no extra fetch). Fail-soft: the last
+      // adopted look stands.
+      unawaited(CosmeticsService.instance.refreshFromProfile());
     } catch (e, st) {
       // The last server balance stands; the next open retries.
       // The failure is recorded in the service's diagnostics
@@ -3049,15 +3056,21 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  /// Gem pill tap: CHESTS (Nov 26, 2026) retargets the pill to
-  /// the Chests inbox sheet (the UX decision's entry point — the
-  /// pill also carries the unopened-count badge). The Gems sheet
-  /// stays reachable from the inbox's "About gems" footer, so the
-  /// scope-#6 surfaces (explainer, balance, freeze buy) are not
-  /// orphaned. On close the gem balance re-pulls, mirroring
-  /// [_openStreakScreen]'s return path.
-  Future<void> _openChestsSheet() async {
-    await showChestsSheet(context: context);
+  /// Gem pill tap: GEM STORE (Nov 27, 2026) retargets the pill
+  /// to the Gem Store screen, which carries the chest inbox row
+  /// ("Your Chests" → [showChestsSheet]), the Streak Freeze card
+  /// and the About-gems footer — so the CHESTS retarget's inbox
+  /// and the scope-#6 surfaces (explainer, balance, freeze buy)
+  /// are not orphaned. The pill itself + its balance display and
+  /// chest badge stay exactly as shipped. On close the gem
+  /// balance re-pulls, mirroring [_openStreakScreen]'s return
+  /// path.
+  Future<void> _openGemStore() async {
+    await GemStoreScreen.show(
+      context,
+      nickname: _nickname,
+      streakState: StreakStore.instance.state,
+    );
     if (!mounted) return;
     unawaited(GemService.instance.refreshBalance());
   }
@@ -3974,7 +3987,7 @@ class _HomeScreenState extends State<HomeScreen>
                           currentStreak: _currentStreak,
                           animateCountUps: _countUpsAnimate,
                           onStreakTap: () => unawaited(_openStreakScreen()),
-                          onGemTap: () => unawaited(_openChestsSheet()),
+                          onGemTap: () => unawaited(_openGemStore()),
                           crossAxisAlignment: CrossAxisAlignment.center,
                           gemBalance: _gemBalance,
                           chestCount: _chestCount,

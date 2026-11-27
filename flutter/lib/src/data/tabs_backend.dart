@@ -1886,6 +1886,34 @@ class TabsBackend {
   Future<Map<String, dynamic>?> openChestRaw(String chestId) =>
       _postJsonMap('/api/chests/${Uri.encodeComponent(chestId)}/open', const {});
 
+  /// Gem Store purchase (Nov 27, 2026; Otto's fixed contract):
+  /// `POST /api/store/purchase {itemId, idempotencyKey}` → 200
+  /// `{balance, cosmetics}`; 409 `{error: 'insufficient_gems',
+  /// balance, cosmetics}`. The idempotency key is minted once per
+  /// user purchase attempt (see CosmeticsService): a retry with
+  /// the same key replays the recorded outcome, never a second
+  /// debit. Status-carrying shape like the gems spend — the
+  /// service owns outcome mapping; raw body out.
+  Future<({int? statusCode, Map<String, dynamic>? body})> purchaseStoreItem({
+    required String itemId,
+    required String idempotencyKey,
+  }) => _postAuthedWithStatus('/api/store/purchase', {
+    'itemId': itemId,
+    'idempotencyKey': idempotencyKey,
+  });
+
+  /// Gem Store equip (Nov 27, 2026): `POST /api/store/equip
+  /// {slot, itemId}` → 200 `{cosmetics}`. [itemId] is null only
+  /// for the shades slot (the None / unequip path). Status-
+  /// carrying shape; the service owns outcome mapping.
+  Future<({int? statusCode, Map<String, dynamic>? body})> equipStoreItem({
+    required String slot,
+    required String? itemId,
+  }) => _postAuthedWithStatus('/api/store/equip', {
+    'slot': slot,
+    'itemId': itemId,
+  });
+
   /// Push one settled streak record to the profile (VC 100115):
   /// counters + day-level blob in a single partial profile push —
   /// the server's COALESCE upsert means no other field is touched.
