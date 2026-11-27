@@ -539,13 +539,13 @@ class _ToolCard extends StatelessWidget {
             ],
           ),
           if (editMode && !dragging)
-            const Positioned(
+            Positioned(
               top: 0,
               right: 0,
               child: Icon(
                 Icons.drag_handle,
                 size: 20,
-                color: Color(0x997C6EFF),
+                color: NotelColors.primary.withValues(alpha: 0.6),
                 semanticLabel: 'Drag handle',
               ),
             ),
