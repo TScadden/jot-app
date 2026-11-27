@@ -203,17 +203,17 @@ class _RevenueCatPlansPanelState extends State<RevenueCatPlansPanel> {
         // panel's F-4 rule, with the store name corrected for iOS.
         // TODO_JUNO: confirm this line in the Juno pass (the Play
         // wording is register-verified; this is its iOS twin).
-        const Text(
+        Text(
           'Cancel anytime in the App Store',
           key: ValueKey('rc_paywall_cancel_method'),
           textAlign: TextAlign.center,
-          style: TextStyle(color: Color(0xBF7A8FAF), fontSize: 11),
+          style: TextStyle(color: NotelColors.textSecondary, fontSize: 11),
         ),
         const SizedBox(height: 4),
         Text(
           _termsLine(selected),
           textAlign: TextAlign.center,
-          style: const TextStyle(color: Color(0xBF7A8FAF), fontSize: 11),
+          style: TextStyle(color: NotelColors.textSecondary, fontSize: 11),
         ),
         const SizedBox(height: 8),
         // Restore Purchases — always visible on this surface,

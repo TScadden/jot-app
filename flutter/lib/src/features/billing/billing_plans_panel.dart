@@ -277,17 +277,17 @@ class _BillingPlansPanelState extends State<BillingPlansPanel> {
         // legal copy. It renders unconditionally (with or without
         // offer data) at the same size/contrast as the terms line
         // below it, so the block's conspicuousness is uniform.
-        const Text(
+        Text(
           'Cancel anytime in the Play Store',
           key: ValueKey('paywall_cancel_method'),
           textAlign: TextAlign.center,
-          style: TextStyle(color: Color(0xBF7A8FAF), fontSize: 11),
+          style: TextStyle(color: NotelColors.textSecondary, fontSize: 11),
         ),
         const SizedBox(height: 4),
         Text(
           _termsLine(offer),
           textAlign: TextAlign.center,
-          style: const TextStyle(color: Color(0xBF7A8FAF), fontSize: 11),
+          style: TextStyle(color: NotelColors.textSecondary, fontSize: 11),
         ),
         if (state.errorMessage != null) ...[
           const SizedBox(height: 10),

@@ -533,12 +533,12 @@ class _ConnectionsScreenState extends State<ConnectionsScreen>
                 onTap: _openIosSheet,
               )
             else
-              const Padding(
+              Padding(
                 padding: EdgeInsets.only(left: 4),
                 child: Text(
                   'No trackers connected yet.',
                   style: TextStyle(
-                    color: Color(0x807A8FAF),
+                    color: NotelColors.textSecondary,
                     fontSize: 14,
                   ),
                 ),
@@ -587,12 +587,12 @@ class _ConnectionsScreenState extends State<ConnectionsScreen>
                 ),
               ),
             ] else
-              const Padding(
+              Padding(
                 padding: EdgeInsets.symmetric(vertical: 16),
                 child: Text(
                   "You've connected every supported tracker.",
                   style: TextStyle(
-                    color: Color(0x807A8FAF),
+                    color: NotelColors.textSecondary,
                     fontSize: 14,
                   ),
                   textAlign: TextAlign.center,
@@ -683,12 +683,12 @@ class _ConnectionsScreenState extends State<ConnectionsScreen>
                 onTap: _openManageSheet,
               )
             else
-              const Padding(
+              Padding(
                 padding: EdgeInsets.only(left: 4),
                 child: Text(
                   'No trackers connected yet.',
                   style: TextStyle(
-                    color: Color(0x807A8FAF),
+                    color: NotelColors.textSecondary,
                     fontSize: 14,
                   ),
                 ),
@@ -727,12 +727,12 @@ class _ConnectionsScreenState extends State<ConnectionsScreen>
                     : null,
               )
             else
-              const Padding(
+              Padding(
                 padding: EdgeInsets.symmetric(vertical: 16),
                 child: Text(
                   "You've connected every supported tracker.",
                   style: TextStyle(
-                    color: Color(0x807A8FAF),
+                    color: NotelColors.textSecondary,
                     fontSize: 14,
                   ),
                   textAlign: TextAlign.center,

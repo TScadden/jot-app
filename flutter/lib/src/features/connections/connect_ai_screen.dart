@@ -1054,12 +1054,12 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
       if (connections == null)
         const _LoadingRow()
       else if (connections.isEmpty && _loadError == null)
-        const Padding(
+        Padding(
           padding: EdgeInsets.only(left: 4),
           child: Text(
             ConnectAiCopy.emptyState,
             style: TextStyle(
-              color: Color(0x807A8FAF),
+              color: NotelColors.textSecondary,
               fontSize: 14,
               height: 20 / 14,
             ),
@@ -1134,12 +1134,12 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
     final active =
         outgoing.where((s) => s.isPending || s.isAccepted).toList();
     if (active.isEmpty) {
-      children.add(const Padding(
+      children.add(Padding(
         padding: EdgeInsets.only(left: 4),
         child: Text(
           ShareCopy.noSharesEmpty,
           style: TextStyle(
-            color: Color(0x807A8FAF),
+            color: NotelColors.textSecondary,
             fontSize: 14,
             height: 20 / 14,
           ),
@@ -1351,12 +1351,12 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
       const SizedBox(height: 8),
     ];
     if (friends.isEmpty) {
-      children.add(const Padding(
+      children.add(Padding(
         padding: EdgeInsets.only(left: 4),
         child: Text(
           ShareCopy.pickerEmpty,
           style: TextStyle(
-            color: Color(0x807A8FAF),
+            color: NotelColors.textSecondary,
             fontSize: 14,
             height: 20 / 14,
           ),
@@ -1491,7 +1491,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
           key: const ValueKey('send_share_request'),
           style: ElevatedButton.styleFrom(
             backgroundColor: NotelColors.primary,
-            foregroundColor: const Color(0xFF0A0A0E),
+            foregroundColor: NotelColors.onPrimary,
             minimumSize: const Size(64, 48),
           ),
           onPressed: _sending ? null : _sendShare,
@@ -1622,7 +1622,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
                 key: ValueKey('accept_share_${share.id}'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: NotelColors.primary,
-                  foregroundColor: const Color(0xFF0A0A0E),
+                  foregroundColor: NotelColors.onPrimary,
                   minimumSize: const Size(64, 48),
                 ),
                 onPressed: _shareBusy.contains(share.id)
@@ -1729,7 +1729,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
             backgroundColor: NotelColors.primary,
             // Dark ink on primary, the Membership CTA pairing
             // (5.21:1; settings_screen.dart's _chipInk).
-            foregroundColor: const Color(0xFF0A0A0E),
+            foregroundColor: NotelColors.onPrimary,
             minimumSize: const Size(64, 48),
           ),
           onPressed: () => Navigator.of(context)
