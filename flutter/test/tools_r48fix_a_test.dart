@@ -34,7 +34,7 @@ import 'test_helpers.dart';
 ///   frequency-correct active window).
 
 const medCategory = QuickLogCategory(
-  id: 8,
+  id: '8',
   name: 'Medication',
   icon: 'pill',
   colorHex: '#7C6EFF',

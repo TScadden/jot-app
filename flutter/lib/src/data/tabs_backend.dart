@@ -2280,7 +2280,17 @@ class TabsBackend {
   Future<bool> postLogCategories(List<QuickLogCategory> categories) {
     return _postJson(
       '/api/sync/categories',
-      {'categories': categories.map((c) => c.toSyncJson()).toList()},
+      {
+        'categories': categories.map((c) => c.toSyncJson()).toList(),
+        // GAP-18: the server's delete-missing pass runs only
+        // when the client asserts the payload is its complete,
+        // fully-loaded list (the S2-01 gate). Every caller of
+        // this method sends exactly that (see the doc above),
+        // so assert it — without the assertion a category
+        // deletion never reaches the server and the row
+        // resurrects on the next pull.
+        'complete': true,
+      },
     );
   }
 
@@ -2290,7 +2300,7 @@ class TabsBackend {
   /// as a post does, so it bumps the same entries-mutation epoch:
   /// a pull that started before the delete must never resurrect
   /// the deleted row as fresh state.
-  Future<bool> deleteLogEntry(int id) async {
+  Future<bool> deleteLogEntry(String id) async {
     final ok = await _delete('/api/sync/entries/$id');
     if (ok) _entriesMutationEpoch++;
     return ok;
@@ -2366,6 +2376,42 @@ class TabsBackend {
     final ok = await _postJson('/api/sync/profile', fields);
     if (ok) _profileMutationEpoch++;
     return ok;
+  }
+
+  /// GAP-9 (Juno §2) — error-carrying variant of [postSyncProfile]:
+  /// on a non-200 the server's `error` string is returned so the
+  /// caller can surface it VERBATIM (a length rejection must never
+  /// be replaced with a generic "sync failed", and the local field
+  /// keeps the user's text — only the push is refused). Success
+  /// semantics are identical to [postSyncProfile] (HTTP 200, epoch
+  /// bump).
+  Future<({bool ok, String? serverError})> postSyncProfileDetailed(
+      Map<String, dynamic> fields) async {
+    final response = await _sendAuthed((token) => _client.post(
+          Uri.parse('$_baseUrl/api/sync/profile'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(fields),
+        ));
+    if (response?.statusCode == 200) {
+      _profileMutationEpoch++;
+      return (ok: true, serverError: null);
+    }
+    String? serverError;
+    if (response != null) {
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map && decoded['error'] != null) {
+          serverError = '${decoded['error']}';
+        }
+      } catch (_) {
+        // Not a JSON error body — the caller falls back to its
+        // generic failure surface.
+      }
+    }
+    return (ok: false, serverError: serverError);
   }
 
   /// Phase 1, item 2a — append-only medication change events via

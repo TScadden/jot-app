@@ -166,15 +166,15 @@ void main() {
 
   group('pure edit helpers (native EntryDetailViewModel ports)', () {
     const entry = QuickLogEntry(
-      id: 42,
-      categoryId: 3,
+      id: '42',
+      categoryId: '3',
       body: 'Brain fog',
       chips: '["Symptoms"]',
       manualText: 'extra note',
       timestamp: 123456,
     );
     const general = QuickLogCategory(
-      id: 7,
+      id: '7',
       name: 'General',
       icon: 'circle',
       colorHex: '#CCCCCC',
@@ -221,8 +221,8 @@ void main() {
     test('dedupe: intake entry shows body only, payload never renders',
         () {
       const intake = QuickLogEntry(
-        id: 77,
-        categoryId: 3,
+        id: '77',
+        categoryId: '3',
         body: 'Water · 16 fl oz',
         chips: '["Intake","Water"]',
         manualText: '{"v":1,"kind":"Water","fluidMl":473}',
@@ -259,10 +259,10 @@ void main() {
     test('picker order is sortOrder ASC (native CategoryDao)', () {
       final cats = [
         const QuickLogCategory(
-            id: 6, name: 'Mood & Energy', icon: '', colorHex: '',
+            id: '6', name: 'Mood & Energy', icon: '', colorHex: '',
             isDefault: true, sortOrder: 5),
         const QuickLogCategory(
-            id: 3, name: 'Symptoms', icon: '', colorHex: '',
+            id: '3', name: 'Symptoms', icon: '', colorHex: '',
             isDefault: true, sortOrder: 1),
         general,
       ];
@@ -274,7 +274,7 @@ void main() {
 
     test('check-in detection: mood category + Daily Ranking chip', () {
       final cats = [general, const QuickLogCategory(
-          id: 6, name: 'Mood & Energy', icon: '', colorHex: '',
+          id: '6', name: 'Mood & Energy', icon: '', colorHex: '',
           isDefault: true, sortOrder: 5)];
       final checkIn = entry.copyWith(
           categoryId: 6, chips: '["Daily Ranking"]');

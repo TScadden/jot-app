@@ -30,6 +30,7 @@ import 'package:tabs_lab/src/data/onboarding_sync_outbox.dart';
 import 'package:tabs_lab/src/data/report_generation_service.dart';
 import 'package:tabs_lab/src/data/weekly_generation_claim.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
+import 'package:tabs_lab/src/data/text_caps.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/billing/billing_plans_panel.dart';
 import 'package:tabs_lab/src/features/billing/revenuecat_plans_panel.dart';
@@ -1172,7 +1173,12 @@ class _SettingsScreenState extends State<SettingsScreen>
   /// success (the Tools Medications tab already does), so the next
   /// read re-fetches instead of serving pre-push state.
   Future<bool> _pushProfile(Map<String, dynamic> fields) async {
-    final ok = await _backend.postSyncProfile(fields);
+    // GAP-9 (Juno §2): the detailed variant carries the server's
+    // error string so a length rejection surfaces VERBATIM in the
+    // snack below — never a generic message, and the local field
+    // keeps the user's text (only the push is refused).
+    final result = await _backend.postSyncProfileDetailed(fields);
+    final ok = result.ok;
     if (ok) {
       _backend.invalidateSyncPull();
       // Juno P4 supersession (VC 100133, BINDING condition on
@@ -1218,7 +1224,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       _syncConfirmed = _hasRealData;
     } else {
       _syncConfirmed = false;
-      _snack('Could not save. Check your connection and try again.');
+      _snack(result.serverError ??
+          'Could not save. Check your connection and try again.');
       // The save error above IS the honest surface for this
       // failure; the reload's own load-failure snack is suppressed
       // so the user never gets two queued errors for one failure.
@@ -1774,21 +1781,36 @@ class _SettingsScreenState extends State<SettingsScreen>
             style: TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
         const SizedBox(height: 8),
         if (!_contextHidden || _data.userContext.isEmpty)
-          TextField(
-            key: const ValueKey('personal_context_field'),
-            controller: _contextController,
-            minLines: 2,
-            maxLines: 4,
-            style: const TextStyle(
-                color: NotelColors.textPrimary, fontSize: 13),
-            decoration: const InputDecoration(
-              hintText: 'Add background info here…',
-              hintStyle:
-                  TextStyle(color: NotelColors.textSecondary, fontSize: 12),
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(12))),
-            ),
-            onChanged: (text) {
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                key: const ValueKey('personal_context_field'),
+                controller: _contextController,
+                minLines: 2,
+                maxLines: 4,
+                // GAP-9 (Juno §1a/§2): 10,000-char cap, enforced
+                // by the formatter; the counter + at-cap line
+                // render below via CapCounter (the built-in
+                // counter is suppressed so the format is exactly
+                // Juno's). Typed text is never silently cut: a
+                // paste over the cap stops AT the cap with the
+                // counter full and the at-cap line showing.
+                maxLength: TextCaps.personalContext,
+                inputFormatters: [
+                  LengthLimitingTextInputFormatter(TextCaps.personalContext),
+                ],
+                style: const TextStyle(
+                    color: NotelColors.textPrimary, fontSize: 13),
+                decoration: const InputDecoration(
+                  hintText: 'Add background info here…',
+                  hintStyle: TextStyle(
+                      color: NotelColors.textSecondary, fontSize: 12),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(12))),
+                  counterText: '',
+                ),
+                onChanged: (text) {
               // Native saves on every change and pushes debounced
               // (SettingsViewModel.saveUserContext, 3 s debounce).
               _contextDebounce?.cancel();
@@ -1796,6 +1818,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                 _pushProfile({'userContext': text});
               });
             },
+              ),
+              CapCounter(
+                controller: _contextController,
+                cap: TextCaps.personalContext,
+              ),
+            ],
           )
         else
           GestureDetector(
@@ -2847,10 +2875,25 @@ class _SettingsScreenState extends State<SettingsScreen>
               TextField(
                 key: const ValueKey('nickname_field'),
                 controller: controller,
+                // GAP-9 (Juno §1g/§2): nickname cap 50 (the
+                // existing minimum of 2 and the letters/spaces
+                // validations below are unchanged). Label-field
+                // counter rules: CapCounter shows the count only
+                // within 20 of the cap, plus the at-cap line.
+                maxLength: TextCaps.nickname,
+                inputFormatters: [
+                  LengthLimitingTextInputFormatter(TextCaps.nickname),
+                ],
                 style: const TextStyle(color: NotelColors.textPrimary),
                 decoration: const InputDecoration(
                     hintText: 'Enter nickname...',
-                    hintStyle: TextStyle(color: NotelColors.textSecondary)),
+                    hintStyle: TextStyle(color: NotelColors.textSecondary),
+                    counterText: ''),
+              ),
+              CapCounter(
+                controller: controller,
+                cap: TextCaps.nickname,
+                labelStyle: true,
               ),
               if (error != null)
                 Padding(
@@ -3739,9 +3782,20 @@ class _SettingsScreenState extends State<SettingsScreen>
                 key: const ValueKey('note_title_field'),
                 controller: titleC,
                 onChanged: (_) => setLocal(() {}),
+                // GAP-9 (Juno §1d): note title cap 200, label
+                // counter rules.
+                maxLength: TextCaps.noteTitle,
+                inputFormatters: [
+                  LengthLimitingTextInputFormatter(TextCaps.noteTitle),
+                ],
                 style: const TextStyle(color: NotelColors.textPrimary),
-                decoration:
-                    const InputDecoration(labelText: 'Title (Optional)'),
+                decoration: const InputDecoration(
+                    labelText: 'Title (Optional)', counterText: ''),
+              ),
+              CapCounter(
+                controller: titleC,
+                cap: TextCaps.noteTitle,
+                labelStyle: true,
               ),
               const SizedBox(height: 8),
               TextField(
@@ -3750,9 +3804,20 @@ class _SettingsScreenState extends State<SettingsScreen>
                 minLines: 3,
                 maxLines: 6,
                 onChanged: (_) => setLocal(() {}),
+                // GAP-9 (Juno §1c3): note body cap 10,000, prose
+                // counter rules.
+                maxLength: TextCaps.noteBody,
+                inputFormatters: [
+                  LengthLimitingTextInputFormatter(TextCaps.noteBody),
+                ],
                 style: const TextStyle(color: NotelColors.textPrimary),
                 decoration: const InputDecoration(
-                    labelText: 'Note content / Text message'),
+                    labelText: 'Note content / Text message',
+                    counterText: ''),
+              ),
+              CapCounter(
+                controller: bodyC,
+                cap: TextCaps.noteBody,
               ),
             ],
           ),
@@ -4221,13 +4286,31 @@ class _SettingsScreenState extends State<SettingsScreen>
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.bold)),
-        content: TextField(
-          key: const ValueKey('protocol_note_field'),
-          controller: noteC,
-          minLines: 2,
-          maxLines: 4,
-          style: const TextStyle(color: NotelColors.textPrimary),
-          decoration: const InputDecoration(labelText: 'What did they say?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              key: const ValueKey('protocol_note_field'),
+              controller: noteC,
+              minLines: 2,
+              maxLines: 4,
+              // GAP-9 (Juno §1b2): the note joins
+              // professionalUpdates, capped at 20,000 — a single
+              // entry can never legitimately exceed the field cap.
+              maxLength: TextCaps.professionalUpdates,
+              inputFormatters: [
+                LengthLimitingTextInputFormatter(
+                    TextCaps.professionalUpdates),
+              ],
+              style: const TextStyle(color: NotelColors.textPrimary),
+              decoration: const InputDecoration(
+                  labelText: 'What did they say?', counterText: ''),
+            ),
+            CapCounter(
+              controller: noteC,
+              cap: TextCaps.professionalUpdates,
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -4272,6 +4355,10 @@ class _SettingsScreenState extends State<SettingsScreen>
     required void Function(String text) onSave,
     required String fieldKey,
     required String saveKey,
+    // GAP-9: the joined-field cap for the entry being edited
+    // (professionalUpdates / knowledgeBase), when the caller
+    // edits a capped profile field.
+    int? cap,
   }) async {
     final c = TextEditingController(text: initial);
     await showDialog<void>(
@@ -4282,12 +4369,24 @@ class _SettingsScreenState extends State<SettingsScreen>
             style: const TextStyle(
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.bold)),
-        content: TextField(
-          key: ValueKey(fieldKey),
-          controller: c,
-          minLines: 2,
-          maxLines: 5,
-          style: const TextStyle(color: NotelColors.textPrimary),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              key: ValueKey(fieldKey),
+              controller: c,
+              minLines: 2,
+              maxLines: 5,
+              maxLength: cap,
+              inputFormatters: [
+                if (cap != null) LengthLimitingTextInputFormatter(cap),
+              ],
+              style: const TextStyle(color: NotelColors.textPrimary),
+              decoration:
+                  cap == null ? null : const InputDecoration(counterText: ''),
+            ),
+            if (cap != null) CapCounter(controller: c, cap: cap),
+          ],
         ),
         actions: [
           TextButton(
@@ -5593,6 +5692,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                                         initial: e.value,
                                         fieldKey: 'protocol_edit_field',
                                         saveKey: 'protocol_edit_save',
+                                        cap: TextCaps.professionalUpdates,
                                         onSave: (text) {
                                           final list = [...updates];
                                           list[e.key] = text;
@@ -5751,6 +5851,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                               initial: e.value,
                               fieldKey: 'fact_edit_field',
                               saveKey: 'fact_edit_save',
+                              cap: TextCaps.knowledgeBase,
                               onSave: (text) {
                                 final list = [...facts];
                                 list[e.key] = text;

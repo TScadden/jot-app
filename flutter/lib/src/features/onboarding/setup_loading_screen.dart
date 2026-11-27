@@ -7,6 +7,7 @@ import 'package:tabs_lab/src/data/onboarding_store.dart';
 import 'package:tabs_lab/src/data/onboarding_sync_outbox.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/data/uuid_v4.dart';
 import 'package:tabs_lab/src/features/onboarding/onboarding_header.dart';
 import 'package:tabs_lab/src/features/tools/coach_mascot.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
@@ -22,8 +23,9 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///    empty context, falls back to Sleep / Energy / Mood / Diet /
 ///    Activity.
 /// 2. Replaces the account's CUSTOM categories with up to 5 generated
-///    ones (ids from 8 upward, native's color/icon cycles) — the
-///    built-in default categories are never touched.
+///    ones (GAP-18: random v4 UUID ids — native allocated ints from
+///    8 upward; native's color/icon cycles kept) — the built-in
+///    default categories are never touched.
 /// 3. Waits 2s, sets `onboarding_complete` true, pushes categories
 ///    and the profile, then shows "Your profile is all set up!" with
 ///    the "Start keeping Tabs" button.
@@ -156,10 +158,10 @@ class _SetupLoadingScreenState extends State<SetupLoadingScreen> {
     try {
       final existing = await _backend.fetchLogCategories();
       final kept = existing
-          .where((c) => c.isDefault || c.id < 8)
+          .where((c) =>
+              c.isDefault ||
+              (isNumericSyncId(c.id) && int.parse(c.id) < 8))
           .toList();
-      final maxId = existing.fold<int>(0, (m, c) => math.max(m, c.id));
-      var nextId = maxId < 7 ? 8 : maxId + 1;
       final merged = List<QuickLogCategory>.of(kept);
       final takenNames = merged.map((c) => c.name.toLowerCase()).toSet();
       final addedCategories = <QuickLogCategory>[];
@@ -167,12 +169,16 @@ class _SetupLoadingScreenState extends State<SetupLoadingScreen> {
         if (addedCategories.length >= 5) break;
         if (takenNames.contains(name.toLowerCase())) continue;
         final category = QuickLogCategory(
-          id: nextId++,
+          // GAP-18: new categories get random v4 UUIDs (never a
+          // maxId+1 int — see quick_log_screen's add-category)
+          // and a real updatedAt for the server's guard.
+          id: generateUuidV4(),
           name: name,
           icon: _icons[addedCategories.length % _icons.length],
           colorHex: _colors[addedCategories.length % _colors.length],
           isDefault: false,
           sortOrder: addedCategories.length,
+          updatedAt: DateTime.now().millisecondsSinceEpoch,
         );
         merged.add(category);
         addedCategories.add(category);

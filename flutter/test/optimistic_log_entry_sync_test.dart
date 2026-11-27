@@ -579,7 +579,7 @@ void main() {
       final edited = editedEntryCategory(
         _entry(),
         const QuickLogCategory(
-          id: 7,
+          id: '7',
           name: 'General',
           icon: 'circle',
           colorHex: '#CCCCCC',

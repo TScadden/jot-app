@@ -165,16 +165,16 @@ void main() {
   group('filterCategoriesForPicker (pure)', () {
     const cats = <QuickLogCategory>[
       QuickLogCategory(
-          id: 7, name: 'General', icon: '', colorHex: '',
+          id: '7', name: 'General', icon: '', colorHex: '',
           isDefault: true, sortOrder: 0),
       QuickLogCategory(
-          id: 3, name: 'Symptoms', icon: '', colorHex: '',
+          id: '3', name: 'Symptoms', icon: '', colorHex: '',
           isDefault: true, sortOrder: 1),
       QuickLogCategory(
-          id: 8, name: 'Food & Eating', icon: '', colorHex: '',
+          id: '8', name: 'Food & Eating', icon: '', colorHex: '',
           isDefault: true, sortOrder: 2),
       QuickLogCategory(
-          id: 6, name: 'Mood & Energy', icon: '', colorHex: '',
+          id: '6', name: 'Mood & Energy', icon: '', colorHex: '',
           isDefault: true, sortOrder: 5),
     ];
 

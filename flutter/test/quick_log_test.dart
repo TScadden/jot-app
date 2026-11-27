@@ -110,11 +110,11 @@ void main() {
     test('most-logged first, ties by recency, then sortOrder', () {
       const cats = [
         QuickLogCategory(
-            id: 1, name: 'A', icon: '', colorHex: '#fff', isDefault: true, sortOrder: 0),
+            id: '1', name: 'A', icon: '', colorHex: '#fff', isDefault: true, sortOrder: 0),
         QuickLogCategory(
-            id: 2, name: 'B', icon: '', colorHex: '#fff', isDefault: true, sortOrder: 1),
+            id: '2', name: 'B', icon: '', colorHex: '#fff', isDefault: true, sortOrder: 1),
         QuickLogCategory(
-            id: 3, name: 'C', icon: '', colorHex: '#fff', isDefault: true, sortOrder: 2),
+            id: '3', name: 'C', icon: '', colorHex: '#fff', isDefault: true, sortOrder: 2),
       ];
       final entries = [
         _entry(id: 1, categoryId: 2, timestamp: 100),
@@ -128,9 +128,9 @@ void main() {
     test('recency breaks frequency ties', () {
       const cats = [
         QuickLogCategory(
-            id: 1, name: 'A', icon: '', colorHex: '#fff', isDefault: true, sortOrder: 0),
+            id: '1', name: 'A', icon: '', colorHex: '#fff', isDefault: true, sortOrder: 0),
         QuickLogCategory(
-            id: 2, name: 'B', icon: '', colorHex: '#fff', isDefault: true, sortOrder: 1),
+            id: '2', name: 'B', icon: '', colorHex: '#fff', isDefault: true, sortOrder: 1),
       ];
       final entries = [
         _entry(id: 1, categoryId: 1, timestamp: 100),

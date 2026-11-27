@@ -61,14 +61,14 @@ int _tsFor(String dayKey, {int hour = 12}) {
 
 const _categories = [
   QuickLogCategory(
-      id: 1,
+      id: '1',
       name: 'Symptoms',
       icon: 'circle',
       colorHex: '#CCCCCC',
       isDefault: true,
       sortOrder: 0),
   QuickLogCategory(
-      id: 6,
+      id: '6',
       name: 'Mood & Energy',
       icon: 'circle',
       colorHex: '#CCCCCC',
@@ -95,7 +95,7 @@ List<QuickLogEntry> _richEntries() {
   for (var i = 0; i < 20; i++) {
     out.add(QuickLogEntry(
       id: id++,
-      categoryId: 6,
+      categoryId: '6',
       body: 'Feeling: ${i.isEven ? 5 : 1}/5 Today',
       chips: '["Daily Ranking"]',
       manualText: '',
@@ -106,7 +106,7 @@ List<QuickLogEntry> _richEntries() {
   for (final i in [2, 5, 8]) {
     out.add(QuickLogEntry(
       id: id++,
-      categoryId: 1,
+      categoryId: '1',
       body: 'Flare',
       chips: '["Flare Day"]',
       manualText: '',
@@ -119,7 +119,7 @@ List<QuickLogEntry> _richEntries() {
   for (var i = 0; i < 14; i++) {
     out.add(QuickLogEntry(
       id: id++,
-      categoryId: 7,
+      categoryId: '7',
       body: 'Water',
       chips: '["Intake", "Water"]',
       manualText: jsonEncode(

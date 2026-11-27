@@ -696,7 +696,7 @@ void main() {
   group('calendar-continuous axis + series (tests 13–14, 16)', () {
     const categories = [
       QuickLogCategory(
-        id: 1,
+        id: '1',
         name: 'Symptoms',
         icon: 'circle',
         colorHex: '#CCCCCC',

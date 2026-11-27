@@ -197,7 +197,7 @@ void main() {
   group('downstream effect: recentSuggestions', () {
     QuickLogEntry medEntry(int id, String body) => QuickLogEntry(
           id: id,
-          categoryId: 8,
+          categoryId: '8',
           body: body,
           chips: '',
           manualText: '',

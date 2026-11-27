@@ -167,7 +167,7 @@ void seedRealCaches() {
   QuickLogCache.instance.applyLoad(
     categories: const [
       QuickLogCategory(
-          id: 1,
+          id: '1',
           name: 'Mood',
           icon: '',
           colorHex: '',

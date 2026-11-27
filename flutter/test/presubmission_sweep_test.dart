@@ -34,7 +34,7 @@ import 'test_helpers.dart';
 /// verifies foundation debug vars are unset before tearDown runs).
 
 const _cat = QuickLogCategory(
-  id: 3,
+  id: '3',
   name: 'Symptoms',
   icon: 'circle',
   colorHex: '#4ECDC4',

@@ -293,8 +293,8 @@ void main() {
       expect(fromEdited.single.valueLines(), result.valueLines());
       // Non-lean entries are ignored by the past-tests derivation.
       final other = QuickLogEntry(
-        id: 6,
-        categoryId: 7,
+        id: '6',
+        categoryId: '7',
         body: 'x',
         chips: jsonEncode(['Headache']),
         manualText: entry.manualText,

@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:tabs_lab/src/data/quick_log_models.dart';
+import 'package:tabs_lab/src/data/uuid_v4.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
 
@@ -827,20 +828,10 @@ bool isDoseValid(MedicationEntry med) {
 
 /// A fresh UUID v4 for a newly added medication — native
 /// `addMedication` assigns `UUID.randomUUID().toString()`.
-/// Hand-rolled over [Random.secure] (the codebase carries no
-/// uuid package dependency); the version (4) and variant bits
-/// are set per RFC 4122.
-String generateMedicationUuid() {
-  final random = Random.secure();
-  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
-  bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
-  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10xx
-  String hex(int i) => bytes[i].toRadixString(16).padLeft(2, '0');
-  return '${hex(0)}${hex(1)}${hex(2)}${hex(3)}-'
-      '${hex(4)}${hex(5)}-${hex(6)}${hex(7)}-'
-      '${hex(8)}${hex(9)}-${hex(10)}${hex(11)}'
-      '${hex(12)}${hex(13)}${hex(14)}${hex(15)}';
-}
+/// Delegates to the shared generator in uuid_v4.dart (verified
+/// true v4: Random.secure bytes, version nibble 4, variant
+/// 10xx — see the GAP-18 verification in uuid_v4.dart's tests).
+String generateMedicationUuid() => generateUuidV4();
 
 // ── Dose logging (Round 48D2) ────────────────────────────────────
 //
@@ -1005,7 +996,14 @@ List<QuickLogEntry>? buildMedTakeLogEntries({
   required List<QuickLogEntry> existingEntries,
   required List<QuickLogCategory> categories,
   required DateTime now,
+  // GAP-18: new entries get client-generated random v4 UUIDs,
+  // never per-device maxId+1 ints (two devices logging offline
+  // after the same pull allocated the SAME int id and the
+  // second sync silently overwrote the first entry). Injectable
+  // so tests can pin the ids.
+  String Function()? idGenerator,
 }) {
+  final nextId = idGenerator ?? generateUuidV4;
   final medCategoryId = resolveSummaryCategoryId(categories,
       name: 'Medication', fallbackId: 8);
   if (medCategoryId == null) return null;
@@ -1020,10 +1018,6 @@ List<QuickLogEntry>? buildMedTakeLogEntries({
           dateStrOf(DateTime.fromMillisecondsSinceEpoch(e.timestamp)) ==
           todayStr)
       .toList();
-  var maxId = 0;
-  for (final e in existingEntries) {
-    if (e.id > maxId) maxId = e.id;
-  }
   final out = <QuickLogEntry>[];
   for (final med in meds) {
     if (medTakenFromEntries(
@@ -1033,9 +1027,8 @@ List<QuickLogEntry>? buildMedTakeLogEntries({
     )) {
       continue;
     }
-    maxId += 1;
     final entry = QuickLogEntry(
-      id: maxId,
+      id: nextId(),
       categoryId: medCategoryId,
       body: medTakeEntryBody(med),
       chips: medTakeEntryChips,

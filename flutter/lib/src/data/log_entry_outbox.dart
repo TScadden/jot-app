@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'quick_log_models.dart';
 import 'tabs_backend.dart';
+import 'uuid_v4.dart';
 
 /// Local sync state for one not-yet-confirmed log-entry upsert.
 enum LogEntrySyncStatus { pending, failed }
@@ -139,10 +140,10 @@ class LogEntryOutbox extends ChangeNotifier {
     _signOutGeneration = 0;
   }
 
-  final Map<int, LogEntryOutboxRecord> _records = {};
-  final Set<int> _inFlightIds = {};
-  final Set<int> _deletingIds = {};
-  final Set<int> _serverConfirmedIds = {};
+  final Map<String, LogEntryOutboxRecord> _records = {};
+  final Set<String> _inFlightIds = {};
+  final Set<String> _deletingIds = {};
+  final Set<String> _serverConfirmedIds = {};
   Future<void>? _deleteInFlight;
   String? _ownerEmail;
   int _epoch = 0;
@@ -214,29 +215,21 @@ class LogEntryOutbox extends ChangeNotifier {
 
   List<QuickLogEntry> get entries => [for (final r in records) r.entry];
 
-  Set<int> get pendingIds => {
+  Set<String> get pendingIds => {
         for (final r in _records.values)
           if (r.status == LogEntrySyncStatus.pending) r.entry.id,
       };
 
-  Set<int> get failedIds => {
+  Set<String> get failedIds => {
         for (final r in _records.values)
           if (r.status == LogEntrySyncStatus.failed) r.entry.id,
       };
 
   bool get hasPending => _records.isNotEmpty;
 
-  int get maxId {
-    var out = 0;
-    for (final id in _records.keys) {
-      if (id > out) out = id;
-    }
-    return out;
-  }
+  LogEntryOutboxRecord? recordFor(String id) => _records[id];
 
-  LogEntryOutboxRecord? recordFor(int id) => _records[id];
-
-  LogEntrySyncStatus? statusFor(int id) => _records[id]?.status;
+  LogEntrySyncStatus? statusFor(String id) => _records[id]?.status;
 
   /// Whether the disk blob has been loaded in this process. Until
   /// it has, [statusFor] cannot see records staged by a previous
@@ -245,14 +238,14 @@ class LogEntryOutbox extends ChangeNotifier {
   bool get isLoaded => _loaded;
 
   /// Ids whose upsert POST is on the wire right now.
-  Set<int> get inFlightIds => Set.unmodifiable(_inFlightIds);
+  Set<String> get inFlightIds => Set.unmodifiable(_inFlightIds);
 
   /// Whether the server is known to hold this entry: either a
   /// queued record says so, or a push this session confirmed it
   /// (the record left the queue, but the fact must not be forgotten
   /// before the next pull lands — a delete in that window still
   /// owes the server a DELETE).
-  bool isServerKnown(int id) =>
+  bool isServerKnown(String id) =>
       _records[id]?.serverKnown == true ||
       _serverConfirmedIds.contains(id);
 
@@ -260,9 +253,9 @@ class LogEntryOutbox extends ChangeNotifier {
   /// a push that starts while a delete is being resolved cannot
   /// carry the row. Callers (History's delete) mark before joining
   /// the in-flight push and unmark when the delete resolves.
-  void markDeleting(int id) => _deletingIds.add(id);
+  void markDeleting(String id) => _deletingIds.add(id);
 
-  void unmarkDeleting(int id) => _deletingIds.remove(id);
+  void unmarkDeleting(String id) => _deletingIds.remove(id);
 
   /// Joins the currently running push, if any. A delete that may
   /// race a push carrying the same row awaits this first: once the
@@ -277,7 +270,7 @@ class LogEntryOutbox extends ChangeNotifier {
     } catch (_) {}
   }
 
-  bool isPending(int id) => _records.containsKey(id);
+  bool isPending(String id) => _records.containsKey(id);
 
   static String? normalizeEmail(String? email) {
     final e = email?.trim().toLowerCase();
@@ -628,28 +621,35 @@ class LogEntryOutbox extends ChangeNotifier {
           'quarantinedRecords': _quarantinedRecords,
       };
 
-  /// Allocates the id for a BRAND-NEW entry (F1).
+  /// Allocates the id for a BRAND-NEW entry (F1 + GAP-18).
   ///
-  /// The old screen code computed `max(_entries, outbox.maxId) + 1`
-  /// synchronously, before this process's disk load had settled:
-  /// after a kill, a pending record sat on disk unseen, its id was
-  /// handed out again, and [stage] overwrote the pending record —
-  /// silent data loss. Allocation now (1) awaits the load, so the
-  /// on-disk records are part of the computation, and (2) runs
-  /// inside the serialization lock against a persisted high-water
-  /// mark, so an id once handed out — even one whose entry was
-  /// never staged, because the user backed out — is never reused.
-  /// The collision is impossible by construction, not by timing.
-  Future<int> allocateEntryId({
-    required int serverMaxId,
+  /// GAP-18 (Nov 27, 2026): the id is a client-generated random
+  /// v4 UUID ([generateUuidV4]) — never a per-device integer.
+  /// The old scheme took max(server ids, local ids, persisted
+  /// high-water) + 1, which is only unique PER DEVICE: two
+  /// phones that pulled the same state and then logged offline
+  /// allocated the SAME id, and the second sync upserted over
+  /// the first phone's different entry — silent loss. A random
+  /// v4 needs no coordination and no shared state, so the
+  /// collision is impossible by construction, and the int
+  /// high-water mark is retired for new entries (it still rides
+  /// the blob so pre-GAP-18 blobs parse unchanged, and [stage]
+  /// still raises it for legacy numeric ids).
+  ///
+  /// The C-01 load gate stays: allocation still awaits the disk
+  /// load and fails loudly when it cannot complete. The gate no
+  /// longer protects the id itself (a UUID cannot collide with
+  /// a staged record the read never loaded) — it protects the
+  /// OWNER binding: allocating under the wrong account's queue
+  /// would stage the new entry into a foreign outbox.
+  Future<String> allocateEntryId({
     String? ownerEmail,
   }) async {
     await load(ownerEmail: ownerEmail);
     if (!_loaded) {
       // C-01 — no id may be allocated from an unloaded queue:
-      // the on-disk high-water mark and pending records are
-      // unknown, so any id handed out could collide with a
-      // staged entry the failed read never loaded. Fail loudly
+      // the queue's owner is unestablished, so an entry created
+      // now could be staged under the wrong account. Fail loudly
       // instead; creation call sites surface this as a save
       // failure and the user can retry once storage recovers
       // (the next [load] retries the read).
@@ -658,27 +658,13 @@ class LogEntryOutbox extends ChangeNotifier {
         'successful disk load',
       );
     }
-    return _runLocked(() async {
-      var candidate = serverMaxId;
-      if (maxId > candidate) candidate = maxId;
-      if (_idHighWater > candidate) candidate = _idHighWater;
-      candidate += 1;
-      _idHighWater = candidate;
-      // Persist the raised mark before handing the id out: a kill
-      // between allocation and stage must not free the id again.
-      // (If this write itself fails, the in-memory mark still
-      // guards this session, and the caller's own stage persist
-      // will fail-and-surface the same way stage failures do.)
-      await _persistLocked();
-      return candidate;
-    });
+    return generateUuidV4();
   }
 
   /// Convenience wrapper for screens, mirroring [stageForBackend]:
   /// resolves the session owner from [backend] first.
-  Future<int> allocateEntryIdForBackend({
+  Future<String> allocateEntryIdForBackend({
     required TabsBackend backend,
-    required int serverMaxId,
   }) async {
     String? email;
     try {
@@ -686,7 +672,7 @@ class LogEntryOutbox extends ChangeNotifier {
     } catch (_) {
       email = null;
     }
-    return allocateEntryId(serverMaxId: serverMaxId, ownerEmail: email);
+    return allocateEntryId(ownerEmail: email);
   }
 
   /// Durably stages [entry] locally. Returns false when the local
@@ -704,11 +690,14 @@ class LogEntryOutbox extends ChangeNotifier {
     // fail here before mutating anything or notifying).
     if (!_loaded) return false;
     final ok = await _runLocked(() async {
-      final previous = Map<int, LogEntryOutboxRecord>.from(_records);
-      // A staged id joins the F1 high-water mark: ids handed out
-      // by any path (allocation, or a caller-constructed entry)
-      // are never reused by a later allocation.
-      if (entry.id > _idHighWater) _idHighWater = entry.id;
+      final previous = Map<String, LogEntryOutboxRecord>.from(_records);
+      // A staged LEGACY numeric id still joins the F1 high-water
+      // mark (pre-GAP-18 blobs and rows keep their semantics);
+      // UUID ids are not integers and never interact with it.
+      final numericId = int.tryParse(entry.id);
+      if (numericId != null && numericId > _idHighWater) {
+        _idHighWater = numericId;
+      }
       final existing = _records[entry.id];
       _records[entry.id] = LogEntryOutboxRecord(
         entry: entry,
@@ -758,7 +747,7 @@ class LogEntryOutbox extends ChangeNotifier {
   /// Removes a pending upsert and persists the removal. Returns the
   /// removed record, or null when it was absent or the local write
   /// failed (in which case the record is restored).
-  Future<LogEntryOutboxRecord?> cancel(int id, {String? ownerEmail}) async {
+  Future<LogEntryOutboxRecord?> cancel(String id, {String? ownerEmail}) async {
     // C-01 — the load must be owner-bound so an unowned blob hits
     // the F3 quarantine instead of being adopted and then
     // persisted over. With no owner available AND nothing loaded
@@ -782,7 +771,7 @@ class LogEntryOutbox extends ChangeNotifier {
   /// Convenience wrapper for screens, mirroring [stageForBackend]:
   /// resolves the session owner from [backend] first.
   Future<LogEntryOutboxRecord?> cancelForBackend(
-    int id, {
+    String id, {
     required TabsBackend backend,
   }) async {
     String? email;
@@ -1005,7 +994,7 @@ class LogEntryOutbox extends ChangeNotifier {
       out.sort((a, b) => b.timestamp.compareTo(a.timestamp));
       return out;
     }
-    final byId = <int, QuickLogEntry>{};
+    final byId = <String, QuickLogEntry>{};
     for (final entry in serverEntries) {
       byId[entry.id] = entry;
     }

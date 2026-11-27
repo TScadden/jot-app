@@ -114,7 +114,7 @@ void main() {
         final hit = i.isEven;
         entries.add(QuickLogEntry(
           id: 100 + i,
-          categoryId: 7,
+          categoryId: '7',
           body: 'Water',
           chips: '["Intake", "Water"]',
           manualText:

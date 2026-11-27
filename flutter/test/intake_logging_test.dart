@@ -290,7 +290,7 @@ void main() {
       }) =>
           QuickLogEntry(
             id: id,
-            categoryId: 7,
+            categoryId: '7',
             body: body,
             chips: chips,
             manualText: manualText,
@@ -352,7 +352,7 @@ void main() {
       final ts = DateTime(2026, 10, 28, 9).millisecondsSinceEpoch;
       QuickLogEntry raw(int id, String manualText) => QuickLogEntry(
             id: id,
-            categoryId: 7,
+            categoryId: '7',
             body: 'x',
             chips: '["Intake","Water"]',
             manualText: manualText,
@@ -378,8 +378,8 @@ void main() {
       expect(parseIntakeChips(''), isEmpty);
       expect(parseIntakeChips('not json'), ['not json']);
       final legacy = QuickLogEntry(
-        id: 1,
-        categoryId: 7,
+        id: '1',
+        categoryId: '7',
         body: 'Water · 16 fl oz',
         chips: 'Intake, Water',
         manualText: '{"v":1,"kind":"Water","fluidMl":473}',
@@ -393,8 +393,8 @@ void main() {
       // A joined string that merely mentions the word in prose is
       // not the tag.
       final prose = QuickLogEntry(
-        id: 2,
-        categoryId: 7,
+        id: '2',
+        categoryId: '7',
         body: 'x',
         chips: 'Not an Intake entry, honestly',
         manualText: '',
@@ -1336,7 +1336,7 @@ void main() {
       expect(entryCombinedText(entry), isNot(contains('fluidMl')));
       // (3) Category change: categoryId only, chips preserved.
       const symptoms = QuickLogCategory(
-        id: 3,
+        id: '3',
         name: 'Symptoms',
         icon: 'circle',
         colorHex: '#CCCCCC',
@@ -1349,8 +1349,8 @@ void main() {
       expect(moved.manualText, entry.manualText);
       // A NON-intake entry keeps the existing replace-chips rule.
       final ordinary = QuickLogEntry(
-        id: 5,
-        categoryId: 7,
+        id: '5',
+        categoryId: '7',
         body: 'note',
         chips: '["Misc"]',
         manualText: '',

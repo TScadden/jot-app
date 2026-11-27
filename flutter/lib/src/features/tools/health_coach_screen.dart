@@ -3327,7 +3327,7 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
   /// Round 48 fix round (Vera F2, coach half): the re-pull is
   /// NULL-CHECKED before any id math. On a failed pull the old
   /// code fell through with maxId 0 and posted
-  /// `QuickLogEntry(id: 1, …)` — an id-keyed upsert that would
+  /// `QuickLogEntry(id: '1', …)` — an id-keyed upsert that would
   /// overwrite the user's real entry 1. A failed pull now aborts
   /// honestly: visible specific error, zero posts.
   Future<CoachApprovalOutcome> _approveNote(String noteText) async {

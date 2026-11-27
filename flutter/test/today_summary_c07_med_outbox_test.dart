@@ -46,7 +46,7 @@ class MedActionFakeBackend extends TabsBackend {
   List<QuickLogEntry> pulledEntries = [];
   List<QuickLogCategory> pulledCategories = const [
     QuickLogCategory(
-      id: 8,
+      id: '8',
       name: 'Medication',
       icon: 'Medication',
       colorHex: '#4ECDC4',
@@ -176,8 +176,8 @@ void main() {
       final h = harness();
       h.backend.pulledEntries = [
         QuickLogEntry(
-          id: 55,
-          categoryId: 8,
+          id: '55',
+          categoryId: '8',
           body: 'Took Ivabradine 7.5 mg',
           chips: '[]',
           manualText: '',

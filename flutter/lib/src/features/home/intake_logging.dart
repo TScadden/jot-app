@@ -133,7 +133,7 @@ String formatMg(int mg) {
 /// by exact name (case-insensitive). There is deliberately NO
 /// fallback id and NO creation: null means the intake surface
 /// hides.
-int? resolveIntakeCategoryId(List<QuickLogCategory> categories) {
+String? resolveIntakeCategoryId(List<QuickLogCategory> categories) {
   for (final c in categories) {
     if (c.name.trim().toLowerCase() == intakeCategoryName.toLowerCase()) {
       return c.id;
@@ -313,8 +313,8 @@ String intakeBodyFor(IntakePayload payload) => switch (payload.kind) {
 /// Builds the exact entry an intake commit writes. [id] comes from
 /// the outbox's post-load allocation — never a synchronous max+1.
 QuickLogEntry buildIntakeEntry({
-  required int id,
-  required int categoryId,
+  required String id,
+  required String categoryId,
   required IntakeDraft draft,
 }) {
   final payload = draft.payload;
@@ -927,7 +927,7 @@ class IntakeCard extends StatelessWidget {
 
   /// The most recent card-logged event's id, or null — Undo (S8)
   /// renders only while one stands.
-  final int? lastLoggedEntryId;
+  final String? lastLoggedEntryId;
 
   final void Function(String kind) onQuickAdd;
   final VoidCallback onOpenEditor;

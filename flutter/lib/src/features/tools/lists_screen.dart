@@ -1,7 +1,9 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/data/text_caps.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/skeleton.dart';
 
@@ -880,17 +882,27 @@ class _AddItemFieldState extends State<_AddItemField> {
   @override
   Widget build(BuildContext context) {
     final canAdd = widget.enabled && _text.trim().isNotEmpty;
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          child: TextField(
-            controller: _controller,
-            enabled: widget.enabled,
-            textCapitalization: TextCapitalization.sentences,
-            style: const TextStyle(
-                color: NotelColors.textPrimary, fontSize: 14),
-            decoration: InputDecoration(
-              hintText: 'Add an item...',
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _controller,
+                enabled: widget.enabled,
+                textCapitalization: TextCapitalization.sentences,
+                // GAP-9 (Juno §1f): custom item name cap 100,
+                // label counter rules (CapCounter below the row).
+                maxLength: TextCaps.itemName,
+                inputFormatters: [
+                  LengthLimitingTextInputFormatter(TextCaps.itemName),
+                ],
+                style: const TextStyle(
+                    color: NotelColors.textPrimary, fontSize: 14),
+                decoration: InputDecoration(
+                  counterText: '',
+                  hintText: 'Add an item...',
               hintStyle: const TextStyle(
                   color: NotelColors.textSecondary, fontSize: 14),
               filled: true,
@@ -930,7 +942,15 @@ class _AddItemFieldState extends State<_AddItemField> {
             shape: const CircleBorder(),
             padding: const EdgeInsets.all(12),
           ),
-          child: const Icon(Icons.add, size: 20, semanticLabel: 'Add item'),
+              child:
+                  const Icon(Icons.add, size: 20, semanticLabel: 'Add item'),
+            ),
+          ],
+        ),
+        CapCounter(
+          controller: _controller,
+          cap: TextCaps.itemName,
+          labelStyle: true,
         ),
       ],
     );
@@ -970,16 +990,26 @@ class _EditItemFieldState extends State<_EditItemField> {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          child: TextField(
-            controller: _controller,
-            autofocus: true,
-            style: const TextStyle(
-                color: NotelColors.textPrimary, fontSize: 14),
-            decoration: InputDecoration(
-              filled: true,
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _controller,
+                autofocus: true,
+                // GAP-9 (Juno §1f): custom item name cap 100,
+                // label counter rules (CapCounter below the row).
+                maxLength: TextCaps.itemName,
+                inputFormatters: [
+                  LengthLimitingTextInputFormatter(TextCaps.itemName),
+                ],
+                style: const TextStyle(
+                    color: NotelColors.textPrimary, fontSize: 14),
+                decoration: InputDecoration(
+                  counterText: '',
+                  filled: true,
               fillColor:
                   NotelColors.surfaceHigh.withValues(alpha: 0.08),
               border: OutlineInputBorder(
@@ -1015,12 +1045,19 @@ class _EditItemFieldState extends State<_EditItemField> {
             if (v.trim().isNotEmpty) widget.onSave(v);
           },
         ),
-        IconButton(
-          icon: const Icon(Icons.close,
-              size: 18,
-              color: NotelColors.textSecondary,
-              semanticLabel: 'Cancel'),
-          onPressed: widget.onCancel,
+            IconButton(
+              icon: const Icon(Icons.close,
+                  size: 18,
+                  color: NotelColors.textSecondary,
+                  semanticLabel: 'Cancel'),
+              onPressed: widget.onCancel,
+            ),
+          ],
+        ),
+        CapCounter(
+          controller: _controller,
+          cap: TextCaps.itemName,
+          labelStyle: true,
         ),
       ],
     );

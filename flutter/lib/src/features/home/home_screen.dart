@@ -460,7 +460,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// The most recent card-logged event (the Undo target). Session
   /// state only, like the counter interaction it mirrors.
-  int? _intakeLastEntryId;
+  String? _intakeLastEntryId;
 
   /// Commit guard: a double-tap retries the stage, never duplicates.
   bool _intakeCommitInFlight = false;
@@ -1538,14 +1538,8 @@ class _HomeScreenState extends State<HomeScreen>
         _intakeCategoryId = resolvedCategoryId;
         _intakePullIds = entries.map((e) => e.id).toSet();
       }
-      final merged = _outbox.merge(entries);
-      var serverMaxId = 0;
-      for (final e in merged) {
-        if (e.id > serverMaxId) serverMaxId = e.id;
-      }
       final id = await _outbox.allocateEntryIdForBackend(
         backend: _backend,
-        serverMaxId: serverMaxId,
       );
       final entry = buildIntakeEntry(
         id: id,
@@ -2069,15 +2063,11 @@ class _HomeScreenState extends State<HomeScreen>
     return true;
   }
 
-  Future<int> _allocateId(List<QuickLogEntry> merged) async {
-    var serverMaxId = 0;
-    for (final e in merged) {
-      if (e.id > serverMaxId) serverMaxId = e.id;
-    }
-    return _outbox.allocateEntryIdForBackend(
-      backend: _backend,
-      serverMaxId: serverMaxId,
-    );
+  // GAP-18: ids for new entries are client-generated random
+  // v4 UUIDs from the outbox allocator — the merged entry list
+  // no longer feeds an allocation computation at all.
+  Future<String> _allocateId() async {
+    return _outbox.allocateEntryIdForBackend(backend: _backend);
   }
 
   /// VC 100138 — re-projects the check-in reminder after a
@@ -2168,7 +2158,7 @@ class _HomeScreenState extends State<HomeScreen>
           moodCategoryId: resolvedId);
       return existing == null ? null : (entry: existing, created: false);
     }
-    final id = await _allocateId(ctx.merged);
+    final id = await _allocateId();
     final entry = buildFeelingEntry(
       level: level,
       categoryId: resolvedId,
@@ -2328,7 +2318,7 @@ class _HomeScreenState extends State<HomeScreen>
           // and the existing record is left untouched.
           return true;
         }
-        final id = await _allocateId(_mergedEntries);
+        final id = await _allocateId();
         final entry = buildFlareEntry(
           id: id,
           categoryId: categoryId,
@@ -2353,7 +2343,7 @@ class _HomeScreenState extends State<HomeScreen>
         entry = amendFlareEntry(existing, severity: severity, type: type);
         serverKnown = _serverKnownFor(existing, ctx);
       } else {
-        final id = await _allocateId(ctx.merged);
+        final id = await _allocateId();
         entry = buildFlareEntry(
           id: id,
           categoryId: resolvedId,
@@ -2399,7 +2389,7 @@ class _HomeScreenState extends State<HomeScreen>
         entry = amendGoodEntry(existing, options: ordered);
         serverKnown = _serverKnownFor(existing, ctx);
       } else {
-        final id = await _allocateId(ctx.merged);
+        final id = await _allocateId();
         entry = buildGoodEntry(
           id: id,
           categoryId: resolvedId,

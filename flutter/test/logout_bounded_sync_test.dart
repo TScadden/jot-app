@@ -50,7 +50,7 @@ SettingsStore _fakeSettings(Map<String, String> map) =>
 
 QuickLogEntry _entry(int id) => QuickLogEntry(
       id: id,
-      categoryId: 3,
+      categoryId: '3',
       body: 'entry $id',
       chips: '[]',
       manualText: '',

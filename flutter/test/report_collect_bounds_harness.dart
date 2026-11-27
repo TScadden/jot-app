@@ -62,19 +62,19 @@ DateTime dayAt(int daysAgo) => DateTime(reproNow.year, reproNow.month,
 // report; the founder brief named only the four counts above.
 const reproCategories = <QuickLogCategory>[
   QuickLogCategory(
-      id: 1, name: 'Symptoms', icon: 'circle', colorHex: '#7C6EFF',
+      id: '1', name: 'Symptoms', icon: 'circle', colorHex: '#7C6EFF',
       isDefault: true, sortOrder: 0),
   QuickLogCategory(
-      id: 2, name: 'Medication', icon: 'circle', colorHex: '#7C6EFF',
+      id: '2', name: 'Medication', icon: 'circle', colorHex: '#7C6EFF',
       isDefault: true, sortOrder: 1),
   QuickLogCategory(
-      id: 3, name: 'Sleep', icon: 'circle', colorHex: '#7C6EFF',
+      id: '3', name: 'Sleep', icon: 'circle', colorHex: '#7C6EFF',
       isDefault: true, sortOrder: 2),
   QuickLogCategory(
-      id: 4, name: 'Weight & Vitals', icon: 'circle', colorHex: '#7C6EFF',
+      id: '4', name: 'Weight & Vitals', icon: 'circle', colorHex: '#7C6EFF',
       isDefault: true, sortOrder: 3),
   QuickLogCategory(
-      id: 5, name: 'Notes', icon: 'circle', colorHex: '#7C6EFF',
+      id: '5', name: 'Notes', icon: 'circle', colorHex: '#7C6EFF',
       isDefault: true, sortOrder: 4),
 ];
 

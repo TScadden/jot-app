@@ -49,7 +49,7 @@ class BackendLeanTestGateway implements LeanTestGateway {
         healthConnect = healthConnect ?? HealthConnectService();
 
   @override
-  Future<int?> resolveCategoryId() async {
+  Future<String?> resolveCategoryId() async {
     try {
       final categories = await backend.fetchLogCategories();
       return resolveLeanCategoryId(categories);
@@ -59,22 +59,10 @@ class BackendLeanTestGateway implements LeanTestGateway {
   }
 
   @override
-  Future<int> allocateEntryId() async {
-    var serverMaxId = 0;
-    try {
-      final entries = await backend.fetchLogEntryDtos();
-      final merged = outbox.merge(entries);
-      for (final e in merged) {
-        if (e.id > serverMaxId) serverMaxId = e.id;
-      }
-    } catch (_) {
-      // Offline: the outbox allocator still guards the id space
-      // from its persisted high-water mark.
-    }
-    return outbox.allocateEntryIdForBackend(
-      backend: backend,
-      serverMaxId: serverMaxId,
-    );
+  Future<String> allocateEntryId() async {
+    // GAP-18: the outbox allocator hands out random v4 UUIDs;
+    // no entry list feeds the allocation anymore.
+    return outbox.allocateEntryIdForBackend(backend: backend);
   }
 
   @override

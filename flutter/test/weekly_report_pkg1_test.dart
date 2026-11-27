@@ -26,7 +26,7 @@ final _prevWeek =
 
 QuickLogEntry _entry(int id, DateTime day) => QuickLogEntry(
       id: id,
-      categoryId: 1,
+      categoryId: '1',
       body: 'entry $id',
       chips: '',
       manualText: '',
@@ -140,7 +140,7 @@ void main() {
     // Sun Nov 1, 2026; spring-forward: Sun Mar 8, 2026).
     QuickLogEntry entryAt(int id, DateTime at) => QuickLogEntry(
           id: id,
-          categoryId: 1,
+          categoryId: '1',
           body: 'entry $id',
           chips: '',
           manualText: '',

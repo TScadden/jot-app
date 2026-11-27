@@ -43,7 +43,7 @@ QuickLogCategory _cat(int id, String name) => QuickLogCategory(
 
 QuickLogEntry _entry(int id, DateTime day) => QuickLogEntry(
   id: id,
-  categoryId: 1,
+  categoryId: '1',
   body: 'entry $id',
   chips: '',
   manualText: '',

@@ -912,7 +912,7 @@ void main() {
         ..generated = ['Focus', 'Calm']
         ..categories = const [
           QuickLogCategory(
-            id: 1,
+            id: '1',
             name: 'Symptoms',
             icon: 'Favorite',
             colorHex: '#FF6B6B',

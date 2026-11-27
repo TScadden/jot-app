@@ -338,8 +338,8 @@ void main() {
     // (outbox flush, quick log, coach — all share postLogEntries).
     final ok = await h.backend.postLogEntries([
       QuickLogEntry(
-        id: 901,
-        categoryId: 1,
+        id: '901',
+        categoryId: '1',
         body: 'Flare',
         chips: '[]',
         manualText: '',

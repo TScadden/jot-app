@@ -1,7 +1,9 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/data/text_caps.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/skeleton.dart';
 
@@ -603,6 +605,13 @@ class _NotesScreenState extends State<NotesScreen> {
             controller: _titleController,
             enabled: !_writing,
             textCapitalization: TextCapitalization.words,
+            // GAP-9 (Juno §1d): note title cap 200, label
+            // counter rules (CapCounter under the body field
+            // carries both fields' counters).
+            maxLength: TextCaps.noteTitle,
+            inputFormatters: [
+              LengthLimitingTextInputFormatter(TextCaps.noteTitle),
+            ],
             style: const TextStyle(
                 color: NotelColors.textPrimary, fontSize: 14),
             decoration: const InputDecoration(
@@ -612,7 +621,13 @@ class _NotesScreenState extends State<NotesScreen> {
               border: InputBorder.none,
               contentPadding:
                   EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              counterText: '',
             ),
+          ),
+          CapCounter(
+            controller: _titleController,
+            cap: TextCaps.noteTitle,
+            labelStyle: true,
           ),
           const SizedBox(height: 6),
           Row(
@@ -624,6 +639,12 @@ class _NotesScreenState extends State<NotesScreen> {
                   enabled: !_writing,
                   textCapitalization: TextCapitalization.sentences,
                   maxLines: 4,
+                  // GAP-9 (Juno §1c3): note body cap 10,000,
+                  // prose counter rules.
+                  maxLength: TextCaps.noteBody,
+                  inputFormatters: [
+                    LengthLimitingTextInputFormatter(TextCaps.noteBody),
+                  ],
                   style: const TextStyle(
                       color: NotelColors.textPrimary, fontSize: 14),
                   decoration: const InputDecoration(
@@ -633,6 +654,7 @@ class _NotesScreenState extends State<NotesScreen> {
                     border: InputBorder.none,
                     contentPadding:
                         EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    counterText: '',
                   ),
                 ),
               ),
@@ -650,6 +672,10 @@ class _NotesScreenState extends State<NotesScreen> {
                     size: 20, semanticLabel: 'Add Note'),
               ),
             ],
+          ),
+          CapCounter(
+            controller: _bodyController,
+            cap: TextCaps.noteBody,
           ),
         ],
       ),
@@ -817,22 +843,43 @@ class _EditNoteDialogState extends State<_EditNoteDialog> {
           TextField(
             controller: _titleController,
             textCapitalization: TextCapitalization.words,
+            // GAP-9 (Juno §1d): note title cap 200.
+            maxLength: TextCaps.noteTitle,
+            inputFormatters: [
+              LengthLimitingTextInputFormatter(TextCaps.noteTitle),
+            ],
             style: const TextStyle(color: NotelColors.textPrimary),
             decoration: const InputDecoration(
               hintText: 'Title (optional)...',
               hintStyle: TextStyle(color: NotelColors.textSecondary),
+              counterText: '',
             ),
+          ),
+          CapCounter(
+            controller: _titleController,
+            cap: TextCaps.noteTitle,
+            labelStyle: true,
           ),
           const SizedBox(height: 8),
           TextField(
             controller: _bodyController,
             textCapitalization: TextCapitalization.sentences,
             maxLines: 6,
+            // GAP-9 (Juno §1c3): note body cap 10,000.
+            maxLength: TextCaps.noteBody,
+            inputFormatters: [
+              LengthLimitingTextInputFormatter(TextCaps.noteBody),
+            ],
             style: const TextStyle(color: NotelColors.textPrimary),
             decoration: const InputDecoration(
               hintText: 'Note content...',
               hintStyle: TextStyle(color: NotelColors.textSecondary),
+              counterText: '',
             ),
+          ),
+          CapCounter(
+            controller: _bodyController,
+            cap: TextCaps.noteBody,
           ),
         ],
       ),

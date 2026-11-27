@@ -40,7 +40,7 @@ class _FakeStore {
 }
 
 const _cat = QuickLogCategory(
-  id: 3,
+  id: '3',
   name: 'Symptoms',
   icon: 'circle',
   colorHex: '#4ECDC4',
@@ -49,8 +49,8 @@ const _cat = QuickLogCategory(
 );
 
 const _recent = QuickLogEntry(
-  id: 9,
-  categoryId: 3,
+  id: '9',
+  categoryId: '3',
   body: 'Brain fog',
   chips: '',
   manualText: '',

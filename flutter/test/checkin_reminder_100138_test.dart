@@ -23,7 +23,7 @@ void main() {
   final now = DateTime(2026, 11, 11, 10);
   const categories = [
     QuickLogCategory(
-      id: 6,
+      id: '6',
       name: 'Mood & Energy',
       icon: 'circle',
       colorHex: '#CCCCCC',
@@ -33,8 +33,8 @@ void main() {
   ];
 
   QuickLogEntry feelingAt(DateTime at) => QuickLogEntry(
-    id: 1,
-    categoryId: 6,
+    id: '1',
+    categoryId: '6',
     body: 'Feeling: 3/5 Today',
     chips: '["Daily Ranking"]',
     manualText: '',

@@ -16,10 +16,34 @@ import 'package:flutter/material.dart';
 /// [rankCategories]) are ports of native `QuickLogViewModel` /
 /// `TemplateAndDefaultsRepository` logic and are unit-tested.
 
+/// GAP-18 (Nov 27, 2026) — sync identity for entries and
+/// categories is a STRING that holds one of two schemes:
+///
+/// - a legacy numeric id (`'42'`), assigned by the server-era
+///   per-device maxId+1 allocation. Existing entries and
+///   built-in categories keep these ids forever and keep
+///   syncing exactly as before.
+/// - a client-generated random v4 UUID (see uuid_v4.dart),
+///   assigned to every NEW entry and NEW custom category.
+///   Two devices logging offline after the same pull can no
+///   longer allocate the same id, so neither device's entry
+///   can silently overwrite the other's on sync.
+///
+/// [syncIdWireValue] is the wire form: numeric ids ride as
+/// JSON ints (byte-identical to the pre-GAP-18 payloads, so a
+/// legacy entry's push is unchanged), UUIDs ride as strings.
+/// Pulls may carry either form; [idStringFromJson] accepts both.
+String idStringFromJson(dynamic v) =>
+    v is num ? '${v.toInt()}' : '${v ?? ''}';
+
+Object syncIdWireValue(String id) => int.tryParse(id) ?? id;
+
+bool isNumericSyncId(String id) => int.tryParse(id) != null;
+
 /// One log entry from `/api/sync/pull` `entries`.
 class QuickLogEntry {
-  final int id;
-  final int categoryId;
+  final String id;
+  final String categoryId;
   final String body;
   final String chips;
   final String manualText;
@@ -39,7 +63,7 @@ class QuickLogEntry {
   /// would duplicate the entry, a colliding id would overwrite a
   /// different one) and [timestamp] (an edit is not a re-log).
   QuickLogEntry copyWith({
-    int? categoryId,
+    String? categoryId,
     String? body,
     String? chips,
     String? manualText,
@@ -58,8 +82,8 @@ class QuickLogEntry {
     int asInt(dynamic v) =>
         v is num ? v.toInt() : int.tryParse('$v') ?? 0;
     return QuickLogEntry(
-      id: asInt(json['id']),
-      categoryId: asInt(json['categoryId']),
+      id: idStringFromJson(json['id']),
+      categoryId: idStringFromJson(json['categoryId']),
       body: '${json['body'] ?? ''}',
       chips: '${json['chips'] ?? ''}',
       manualText: '${json['manualText'] ?? ''}',
@@ -70,8 +94,8 @@ class QuickLogEntry {
   /// Request body for `POST /api/sync/entries` (native
   /// `SyncEntriesRequest` → server upserts on `(user_id, local_id)`).
   Map<String, dynamic> toSyncJson() => {
-        'id': id,
-        'categoryId': categoryId,
+        'id': syncIdWireValue(id),
+        'categoryId': syncIdWireValue(categoryId),
         'body': body,
         'chips': chips,
         'manualText': manualText,
@@ -84,12 +108,21 @@ class QuickLogEntry {
 /// category set (server is authoritative; native `SyncManager` inserts the
 /// pull's categories into the local DB on every pull). Never hardcoded.
 class QuickLogCategory {
-  final int id;
+  final String id;
   final String name;
   final String icon;
   final String colorHex;
   final bool isDefault;
   final int sortOrder;
+
+  /// GAP-18 — the client's last-known `updated_at` for this row
+  /// (ms since epoch; 0 = never stamped). Category pushes carry
+  /// it so the server's conflict guard can compare timestamps
+  /// instead of clobbering by push order: rows this client
+  /// created or edited carry the moment of that change; rows
+  /// that merely rode along from a pull echo the pulled value,
+  /// so an untouched row never looks newer than it is.
+  final int updatedAt;
 
   const QuickLogCategory({
     required this.id,
@@ -98,30 +131,63 @@ class QuickLogCategory {
     required this.colorHex,
     required this.isDefault,
     required this.sortOrder,
+    this.updatedAt = 0,
   });
 
-  factory QuickLogCategory.fromJson(Map<String, dynamic> json) {
-    final id = json['id'];
-    final sortOrder = json['sortOrder'];
+  QuickLogCategory copyWith({
+    String? name,
+    String? icon,
+    String? colorHex,
+    bool? isDefault,
+    int? sortOrder,
+    int? updatedAt,
+  }) {
     return QuickLogCategory(
-      id: id is num ? id.toInt() : int.tryParse('$id') ?? 0,
+      id: id,
+      name: name ?? this.name,
+      icon: icon ?? this.icon,
+      colorHex: colorHex ?? this.colorHex,
+      isDefault: isDefault ?? this.isDefault,
+      sortOrder: sortOrder ?? this.sortOrder,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  factory QuickLogCategory.fromJson(Map<String, dynamic> json) {
+    final sortOrder = json['sortOrder'];
+    final updatedAt = json['updatedAt'] ?? json['updated_at'];
+    return QuickLogCategory(
+      // GAP-18 server contract: the categories pull returns
+      // `id` = the legacy local_id (NULL for UUID categories)
+      // plus `clientId` carrying the UUID. The UUID wins when
+      // present; a pull from a pre-GAP-18 server has no
+      // `clientId` key at all and reads exactly as before.
+      id: json['clientId'] != null
+          ? idStringFromJson(json['clientId'])
+          : idStringFromJson(json['id']),
       name: '${json['name'] ?? 'Untitled'}',
       icon: '${json['icon'] ?? 'circle'}',
       colorHex: '${json['colorHex'] ?? '#CCCCCC'}',
       isDefault: json['isDefault'] == true,
       sortOrder: sortOrder is num ? sortOrder.toInt() : 0,
+      updatedAt: updatedAt is num
+          ? updatedAt.toInt()
+          : int.tryParse('$updatedAt') ?? 0,
     );
   }
 
   /// Request row for `POST /api/sync/categories` (native
-  /// `SyncCategoriesRequest` — full-list replace).
+  /// `SyncCategoriesRequest` — full-list replace). GAP-18: the
+  /// row now carries a real `updatedAt` for the server's
+  /// timestamp conflict guard.
   Map<String, dynamic> toSyncJson() => {
-        'id': id,
+        'id': syncIdWireValue(id),
         'name': name,
         'icon': icon,
         'colorHex': colorHex,
         'isDefault': isDefault,
         'sortOrder': sortOrder,
+        'updatedAt': updatedAt,
       };
 
   /// Parses `#RRGGBB`/`#AARRGGBB`, falling back to Tabs purple —
@@ -189,7 +255,7 @@ int todayEntryCount(List<QuickLogEntry> entries, {DateTime? now}) {
 List<QuickLogEntry> recentSuggestions(
   List<QuickLogEntry> entries, {
   required Set<String> activeMedicationNames,
-  required int? medicationCategoryId,
+  required String? medicationCategoryId,
   int limit = 10,
 }) {
   final seen = <String>{};
@@ -247,8 +313,8 @@ List<QuickLogCategory> rankCategories(
   List<QuickLogCategory> categories,
   List<QuickLogEntry> recentEntries,
 ) {
-  final frequency = <int, int>{};
-  final lastUsed = <int, int>{};
+  final frequency = <String, int>{};
+  final lastUsed = <String, int>{};
   for (final entry in recentEntries) {
     frequency[entry.categoryId] = (frequency[entry.categoryId] ?? 0) + 1;
     final prev = lastUsed[entry.categoryId] ?? 0;

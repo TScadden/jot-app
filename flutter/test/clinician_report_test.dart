@@ -36,16 +36,16 @@ String _key(int month, int day) =>
 
 const _cats = [
   QuickLogCategory(
-      id: 2, name: 'Symptoms', icon: '', colorHex: '', isDefault: true, sortOrder: 0),
+      id: '2', name: 'Symptoms', icon: '', colorHex: '', isDefault: true, sortOrder: 0),
   QuickLogCategory(
-      id: 3,
+      id: '3',
       name: 'Migraine Symptoms & Triggers',
       icon: '',
       colorHex: '',
       isDefault: false,
       sortOrder: 1),
   QuickLogCategory(
-      id: 4, name: 'Food', icon: '', colorHex: '', isDefault: false, sortOrder: 2),
+      id: '4', name: 'Food', icon: '', colorHex: '', isDefault: false, sortOrder: 2),
 ];
 
 QuickLogEntry _entry(int id, int cat, int ts,

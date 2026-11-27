@@ -35,7 +35,7 @@ class _Sink implements WeeklyNotifier {
 
 QuickLogEntry _entry(int id, DateTime day) => QuickLogEntry(
       id: id,
-      categoryId: 1,
+      categoryId: '1',
       body: 'entry $id',
       chips: '',
       manualText: '',

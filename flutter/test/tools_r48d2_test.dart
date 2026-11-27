@@ -41,7 +41,7 @@ import 'test_helpers.dart';
 ///   reaches the cloud blob).
 
 const medCategory = QuickLogCategory(
-  id: 8,
+  id: '8',
   name: 'Medication',
   icon: 'pill',
   colorHex: '#7C6EFF',
@@ -227,7 +227,7 @@ void main() {
         existingEntries: const [],
         categories: const [
           QuickLogCategory(
-              id: 42,
+              id: '42',
               name: 'Medication',
               icon: '',
               colorHex: '',
@@ -245,7 +245,7 @@ void main() {
         existingEntries: const [],
         categories: const [
           QuickLogCategory(
-              id: 8,
+              id: '8',
               name: 'Meds',
               icon: '',
               colorHex: '',
@@ -273,7 +273,7 @@ void main() {
           existingEntries: const [],
           categories: const [
             QuickLogCategory(
-                id: 3,
+                id: '3',
                 name: 'Symptoms',
                 icon: '',
                 colorHex: '',

@@ -34,7 +34,7 @@ final _now = DateTime(2026, 11, 18, 12);
 
 QuickLogEntry _entry(int id, DateTime day) => QuickLogEntry(
       id: id,
-      categoryId: 1,
+      categoryId: '1',
       body: 'entry $id',
       chips: '',
       manualText: '',
@@ -72,7 +72,7 @@ class _Backend extends TabsBackend {
 
 QuickLogEntry _entryAt(int id, DateTime at) => QuickLogEntry(
       id: id,
-      categoryId: 1,
+      categoryId: '1',
       body: 'entry $id',
       chips: '',
       manualText: '',

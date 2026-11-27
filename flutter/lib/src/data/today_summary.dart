@@ -344,7 +344,7 @@ class SummaryReminder {
 // exact name first, then by the native seeded id when a category
 // carries it (`DefaultCategories`: Symptoms id 1, Medication id 8).
 
-int? resolveSummaryCategoryId(
+String? resolveSummaryCategoryId(
   List<QuickLogCategory> categories, {
   required String name,
   required int fallbackId,
@@ -353,7 +353,9 @@ int? resolveSummaryCategoryId(
     if (c.name.trim().toLowerCase() == name.toLowerCase()) return c.id;
   }
   for (final c in categories) {
-    if (c.id == fallbackId) return c.id;
+    // GAP-18: category ids are strings now; the seeded fallback
+    // ids (Symptoms 1, Medication 8) are legacy numeric ids.
+    if (c.id == '$fallbackId') return c.id;
   }
   return null;
 }
@@ -1681,10 +1683,9 @@ class TodaySummaryLoader {
         // exists — so the log is recovered on the next flush instead
         // of being silently dropped.
         await _stageNewMedEntry(
-          categoryId: 8,
+          categoryId: '8',
           body: body,
           timestamp: at.millisecondsSinceEpoch,
-          serverMaxId: _maxEntryId(entries),
         );
         backend.invalidateSyncPull();
         return;
@@ -1711,8 +1712,28 @@ class TodaySummaryLoader {
         // A take with no standing entry, or a Round 41 skip from
         // pending (logged directly in the corrected shape — see the
         // method doc).
+        // GAP-18: the new entry's id is a client-generated random
+        // v4 UUID from the outbox allocator — never maxId+1, which
+        // collided across devices logging offline. If allocation
+        // itself fails (the outbox's disk load never succeeded),
+        // fall back to the staging path, which retries the same
+        // allocation and leaves the entry unstaged rather than
+        // inventing an id (see [_stageNewMedEntry]).
+        final String newId;
+        try {
+          newId = await LogEntryOutbox.instance
+              .allocateEntryIdForBackend(backend: backend);
+        } catch (_) {
+          await _stageNewMedEntry(
+            categoryId: medCategoryId,
+            body: body,
+            timestamp: at.millisecondsSinceEpoch,
+          );
+          backend.invalidateSyncPull();
+          return;
+        }
         entry = QuickLogEntry(
-          id: _maxEntryId(entries) + 1,
+          id: newId,
           categoryId: medCategoryId,
           body: body,
           chips: '[]',
@@ -1721,18 +1742,9 @@ class TodaySummaryLoader {
         );
         serverKnown = false;
       }
-      await _deliverMedEntry(entry,
-          serverKnown: serverKnown, serverMaxId: _maxEntryId(entries));
+      await _deliverMedEntry(entry, serverKnown: serverKnown);
       backend.invalidateSyncPull();
     });
-  }
-
-  static int _maxEntryId(List<QuickLogEntry> entries) {
-    var maxId = 0;
-    for (final e in entries) {
-      if (e.id > maxId) maxId = e.id;
-    }
-    return maxId;
   }
 
   /// Posts one medication entry, checking the result the way
@@ -1741,7 +1753,7 @@ class TodaySummaryLoader {
   /// On failure the entry is staged in [LogEntryOutbox] instead of
   /// dropped (C-07). Never throws.
   Future<void> _deliverMedEntry(QuickLogEntry entry,
-      {required bool serverKnown, required int serverMaxId}) async {
+      {required bool serverKnown}) async {
     var ok = false;
     try {
       ok = await backend.postLogEntries([entry]);
@@ -1767,7 +1779,6 @@ class TodaySummaryLoader {
         categoryId: entry.categoryId,
         body: entry.body,
         timestamp: entry.timestamp,
-        serverMaxId: serverMaxId,
       );
     }
   }
@@ -1785,15 +1796,13 @@ class TodaySummaryLoader {
   /// never saw, so the entry is left unstaged rather than risk a
   /// second silent loss.
   Future<void> _stageNewMedEntry({
-    required int categoryId,
+    required String categoryId,
     required String body,
     required int timestamp,
-    required int serverMaxId,
   }) async {
     try {
       final id = await LogEntryOutbox.instance.allocateEntryIdForBackend(
         backend: backend,
-        serverMaxId: serverMaxId,
       );
       await LogEntryOutbox.instance.stageForBackend(
         QuickLogEntry(

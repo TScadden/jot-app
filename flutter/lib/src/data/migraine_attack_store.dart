@@ -43,7 +43,10 @@ class MigraineAttack {
   /// The Trends (Quick Log) entry id for this attack, generated ONCE
   /// when the attack first ends and reused for the details-form
   /// update — exactly one Trends entry per attack (Juno condition 3).
-  final int? trendsEntryId;
+  /// GAP-18: a string sync id — legacy stored attacks carry an int,
+  /// which [MigraineAttack.fromJson] converts to its numeric-string
+  /// form; new attacks carry a random v4 UUID.
+  final String? trendsEntryId;
 
   /// True when the end-time Trends entry write has not yet landed
   /// (e.g. the end happened offline). Retried on app start and on
@@ -84,7 +87,7 @@ class MigraineAttack {
     int? reliefRating,
     double? pressureAtStartHpa,
     int? updatedAt,
-    int? trendsEntryId,
+    String? trendsEntryId,
     bool? trendsEntryPending,
   }) {
     return MigraineAttack(
@@ -122,6 +125,11 @@ class MigraineAttack {
       int asInt(dynamic v) => v is num ? v.toInt() : int.tryParse('$v') ?? 0;
       int? asIntOrNull(dynamic v) =>
           v == null ? null : (v is num ? v.toInt() : int.tryParse('$v'));
+      // GAP-18: stored trends entry ids are ints in pre-GAP-18
+      // blobs and UUID strings after; both read as the canonical
+      // string sync id.
+      String? asIdOrNull(dynamic v) =>
+          v == null ? null : (v is num ? '${v.toInt()}' : '$v');
       final id = asInt(j['id']);
       final start = asInt(j['startTimestamp']);
       if (id == 0 || start == 0) return null;
@@ -137,7 +145,7 @@ class MigraineAttack {
             double.tryParse('${j['pressureAtStartHpa'] ?? ''}') ??
             0.0,
         updatedAt: asInt(j['updatedAt']),
-        trendsEntryId: asIntOrNull(j['trendsEntryId']),
+        trendsEntryId: asIdOrNull(j['trendsEntryId']),
         trendsEntryPending: j['trendsEntryPending'] == true,
       );
     } catch (_) {

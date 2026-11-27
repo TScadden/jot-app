@@ -427,7 +427,7 @@ void main() {
       for (var i = 1; i <= 6; i++)
         QuickLogEntry(
           id: i,
-          categoryId: 3,
+          categoryId: '3',
           body: 'Entry $i',
           chips: '',
           manualText: '',
@@ -435,7 +435,7 @@ void main() {
         ).toSyncJson(),
     ];
     const cat = QuickLogCategory(
-      id: 3,
+      id: '3',
       name: 'Symptoms',
       icon: 'circle',
       colorHex: '#4ECDC4',

@@ -34,7 +34,7 @@ import 'test_helpers.dart';
 /// the card to end up showing the complete final text.
 
 const _cat = QuickLogCategory(
-  id: 3,
+  id: '3',
   name: 'Symptoms',
   icon: 'circle',
   colorHex: '#4ECDC4',

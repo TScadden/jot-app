@@ -8,6 +8,7 @@ import 'migraine_pressure.dart';
 import 'migraine_trends.dart';
 import 'quick_log_models.dart';
 import 'tabs_backend.dart';
+import 'uuid_v4.dart';
 import 'today_summary.dart' show resolveSummaryCategoryId;
 
 /// The Trends-write surface the controller needs. Abstract so tests
@@ -23,20 +24,21 @@ abstract class MigraineTrendsGateway {
   /// "Migraine Symptoms & Triggers" category when it exists on his
   /// account, otherwise Symptoms resolved by name, final fallback
   /// id 1.
-  Future<int> resolveMigraineCategoryId();
+  Future<String> resolveMigraineCategoryId();
 
   /// Whether the Trends entry [entryId] still exists server-side
   /// (migraine log trio fix 1 — Juno §A condition 5: the Today
   /// Summary completion line must not outlive its entry). Null =
   /// unknown (the pull failed); only a definite false may clear a
   /// rendered line.
-  Future<bool?> entryExists(int entryId);
+  Future<bool?> entryExists(String entryId);
 
-  /// A fresh entry id using the Quick Log convention (max existing
-  /// id + 1). Called ONCE per attack, at first end; the id is then
-  /// persisted on the attack record and reused for the form-save
-  /// update, so the entry lands exactly once.
-  Future<int> generateEntryId();
+  /// A fresh entry id for a NEW entry. GAP-18: a client-generated
+  /// random v4 UUID (never maxId+1, never time-derived). Called
+  /// ONCE per attack, at first end; the id is then persisted on
+  /// the attack record and reused for the form-save update, so
+  /// the entry lands exactly once.
+  Future<String> generateEntryId();
 }
 
 /// Production gateway over [TabsBackend].
@@ -56,7 +58,7 @@ class BackendMigraineTrendsGateway implements MigraineTrendsGateway {
   }
 
   @override
-  Future<int> resolveMigraineCategoryId() async {
+  Future<String> resolveMigraineCategoryId() async {
     try {
       final categories = await backend.fetchLogCategories();
       // Fix 3 chain: founder category by name first, then Symptoms
@@ -65,21 +67,23 @@ class BackendMigraineTrendsGateway implements MigraineTrendsGateway {
       return categoryIdByName(categories, 'Migraine Symptoms & Triggers') ??
           resolveSummaryCategoryId(categories,
               name: 'Symptoms', fallbackId: 1) ??
-          1;
+          '1';
     } catch (_) {
-      return 1;
+      return '1';
     }
   }
 
   @override
-  Future<bool?> entryExists(int entryId) async {
+  Future<bool?> entryExists(String entryId) async {
     try {
       final pull = await backend.fetchSyncPull();
       if (pull == null) return null;
       final raw = pull['entries'];
       if (raw is! List) return null;
       for (final e in raw) {
-        if (e is Map && e['id'] == entryId) return true;
+        // GAP-18: pull ids arrive as ints (legacy) or strings
+        // (UUID) — compare in the canonical string form.
+        if (e is Map && idStringFromJson(e['id']) == entryId) return true;
       }
       return false;
     } catch (_) {
@@ -88,26 +92,14 @@ class BackendMigraineTrendsGateway implements MigraineTrendsGateway {
   }
 
   @override
-  Future<int> generateEntryId() async {
-    try {
-      // Only trust max+1 when the pull actually succeeded — a failed
-      // pull returns empty lists, and stamping id 1 for an offline
-      // end could later upsert over an unrelated entry. Fall back to
-      // a timestamp-derived id, which cannot collide with the small
-      // sequential ids the convention produces.
-      final pull = await backend.fetchSyncPull();
-      if (pull == null) {
-        return DateTime.now().millisecondsSinceEpoch;
-      }
-      final entries = await backend.fetchLogEntryDtos();
-      var maxId = 0;
-      for (final e in entries) {
-        if (e.id > maxId) maxId = e.id;
-      }
-      return maxId + 1;
-    } catch (_) {
-      return DateTime.now().millisecondsSinceEpoch;
-    }
+  Future<String> generateEntryId() async {
+    // GAP-18: a random v4 UUID needs no pull and no shared
+    // state, so the old failure modes are gone by construction:
+    // maxId+1 allocated from a stale/failed pull could collide
+    // with another device's entry, and the offline fallback was
+    // a timestamp-derived id — exactly the time-derived shape
+    // Juno's GAP-18 condition forbids.
+    return generateUuidV4();
   }
 }
 
@@ -116,7 +108,7 @@ class BackendMigraineTrendsGateway implements MigraineTrendsGateway {
 /// fallback — fix 3's chain applies its own ordered fallbacks, and
 /// the founder-category step must not silently land on an id when
 /// the name is absent.
-int? categoryIdByName(List<QuickLogCategory> categories, String name) {
+String? categoryIdByName(List<QuickLogCategory> categories, String name) {
   final target = name.trim().toLowerCase();
   for (final c in categories) {
     if (c.name.trim().toLowerCase() == target) return c.id;

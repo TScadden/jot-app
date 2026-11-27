@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
+import 'package:tabs_lab/src/data/text_caps.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/features/tools/coach_mascot.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
@@ -499,20 +501,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return list;
   }
 
-  /// F1: the id is allocated by the outbox AFTER its disk load
-  /// settles (see [LogEntryOutbox.allocateEntryId]) — never
-  /// synchronously from a possibly-unloaded [LogEntryOutbox.maxId],
-  /// which could hand a killed session's pending id to a new entry
-  /// and let stage() overwrite the pending record.
-  Future<int> _nextEntryId() {
-    var serverMaxId = 0;
-    for (final e in _entries) {
-      if (e.id > serverMaxId) serverMaxId = e.id;
-    }
-    return _outbox.allocateEntryIdForBackend(
-      backend: _backend,
-      serverMaxId: serverMaxId,
-    );
+  /// F1 + GAP-18: the id is allocated by the outbox AFTER its
+  /// disk load settles (see [LogEntryOutbox.allocateEntryId]) —
+  /// a client-generated random v4 UUID, so two devices logging
+  /// offline can never allocate the same id.
+  Future<String> _nextEntryId() {
+    return _outbox.allocateEntryIdForBackend(backend: _backend);
   }
 
   /// The moved circular-arrow button: native `repeatLastEntry()`
@@ -1911,8 +1905,10 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
 }
 
 /// Native "Edit Entry Text" dialog: one field labelled "Note Content"
-/// holding the combined text (no character limit, no empty-text
-/// validation — native has neither), Save / Cancel. Save calls
+/// holding the combined text (no empty-text validation — native has
+/// none), Save / Cancel. GAP-9 (Juno §1c1): the combined text is
+/// capped at the log-entry body cap of 10,000 with the prose
+/// counter + at-cap line. Save calls
 /// [onSave] with `updateText(edited, "")` semantics; on a LOCAL
 /// persistence failure the dialog stays open with the error shown
 /// and nothing is adopted. On local acceptance the dialog closes at
@@ -1986,9 +1982,14 @@ class _EditEntryTextDialogState extends State<_EditEntryTextDialog> {
                 controller: _controller,
                 maxLines: null,
                 expands: true,
+                maxLength: TextCaps.logEntryBody,
+                inputFormatters: [
+                  LengthLimitingTextInputFormatter(TextCaps.logEntryBody),
+                ],
                 textAlignVertical: TextAlignVertical.top,
                 style: const TextStyle(color: NotelColors.textPrimary),
                 decoration: InputDecoration(
+                  counterText: '',
                   labelText: 'Note Content',
                   labelStyle: const TextStyle(color: NotelColors.textSecondary),
                   enabledBorder: OutlineInputBorder(
@@ -2001,6 +2002,10 @@ class _EditEntryTextDialogState extends State<_EditEntryTextDialog> {
                   ),
                 ),
               ),
+            ),
+            CapCounter(
+              controller: _controller,
+              cap: TextCaps.logEntryBody,
             ),
             if (_error != null) ...[
               const SizedBox(height: 12),

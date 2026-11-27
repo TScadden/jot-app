@@ -40,14 +40,14 @@ Map<String, DailyBiometrics> bioMap(List<DailyBiometrics> rows) =>
 
 const categories = [
   QuickLogCategory(
-      id: 1,
+      id: '1',
       name: 'Symptoms',
       icon: 'circle',
       colorHex: '#CCCCCC',
       isDefault: true,
       sortOrder: 0),
   QuickLogCategory(
-      id: 6,
+      id: '6',
       name: 'Mood & Energy',
       icon: 'circle',
       colorHex: '#CCCCCC',

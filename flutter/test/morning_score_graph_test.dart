@@ -150,7 +150,7 @@ void main() {
 
     const categories = [
       QuickLogCategory(
-        id: 6,
+        id: '6',
         name: 'Mood & Energy',
         icon: 'circle',
         colorHex: '',
@@ -158,7 +158,7 @@ void main() {
         sortOrder: 6,
       ),
       QuickLogCategory(
-        id: 1,
+        id: '1',
         name: 'Symptoms',
         icon: 'circle',
         colorHex: '',

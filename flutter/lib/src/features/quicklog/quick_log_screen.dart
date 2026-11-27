@@ -1,12 +1,15 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
+import 'package:tabs_lab/src/data/text_caps.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/data/uuid_v4.dart';
 import 'package:tabs_lab/src/data/voice_input.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/quicklog/history_screen.dart';
@@ -550,20 +553,12 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
     return parts.join(' · ');
   }
 
-  /// F1: the id is allocated by the outbox AFTER its disk load
-  /// settles (see [LogEntryOutbox.allocateEntryId]) — never
-  /// synchronously from a possibly-unloaded [LogEntryOutbox.maxId],
-  /// which could hand a killed session's pending id to a new entry
-  /// and let stage() overwrite the pending record.
-  Future<int> _nextEntryId() {
-    var serverMaxId = 0;
-    for (final e in _entries) {
-      if (e.id > serverMaxId) serverMaxId = e.id;
-    }
-    return _outbox.allocateEntryIdForBackend(
-      backend: _backend,
-      serverMaxId: serverMaxId,
-    );
+  /// F1 + GAP-18: the id is allocated by the outbox AFTER its
+  /// disk load settles (see [LogEntryOutbox.allocateEntryId]) —
+  /// a client-generated random v4 UUID, so two devices logging
+  /// offline can never allocate the same id.
+  Future<String> _nextEntryId() {
+    return _outbox.allocateEntryIdForBackend(backend: _backend);
   }
 
   /// Round 59 — after any successful entry creation on this screen,
@@ -743,14 +738,31 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
             fontWeight: FontWeight.bold,
           ),
         ),
-        content: TextField(
-          controller: nameController,
-          autofocus: true,
-          style: const TextStyle(color: NotelColors.textPrimary),
-          decoration: const InputDecoration(
-            hintText: 'Category name…',
-            hintStyle: TextStyle(color: NotelColors.textSecondary),
-          ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              autofocus: true,
+              // GAP-9 (Juno §1e): custom category name cap 100,
+              // label counter rules.
+              maxLength: TextCaps.categoryName,
+              inputFormatters: [
+                LengthLimitingTextInputFormatter(TextCaps.categoryName),
+              ],
+              style: const TextStyle(color: NotelColors.textPrimary),
+              decoration: const InputDecoration(
+                hintText: 'Category name…',
+                hintStyle: TextStyle(color: NotelColors.textSecondary),
+                counterText: '',
+              ),
+            ),
+            CapCounter(
+              controller: nameController,
+              cap: TextCaps.categoryName,
+              labelStyle: true,
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -783,19 +795,24 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
       '#A566FF',
       '#FFD93D',
     ];
-    final nextId = _categories.fold<int>(0, (m, c) => c.id > m ? c.id : m) + 1;
     final nextSort =
         _categories.fold<int>(0, (m, c) => c.sortOrder > m ? c.sortOrder : m) +
             1;
     final updated = [
       ..._categories,
       QuickLogCategory(
-        id: nextId,
+        // GAP-18: a new custom category gets a client-generated
+        // random v4 UUID (never maxId+1 — two devices creating
+        // categories offline allocated the same int id and
+        // clobbered each other) and a real updatedAt stamp for
+        // the server's conflict guard.
+        id: generateUuidV4(),
         name: name[0].toUpperCase() + name.substring(1),
         icon: 'circle',
-        colorHex: palette[nextId % palette.length],
+        colorHex: palette[_categories.length % palette.length],
         isDefault: false,
         sortOrder: nextSort,
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
       ),
     ];
     final ok = await _backend.postLogCategories(updated);
@@ -1060,12 +1077,22 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
   Widget _buildDetailsRow(Color activeCatColor) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: TextField(
-        controller: _manualController,
-        style: const TextStyle(color: NotelColors.textPrimary, fontSize: 14),
-        cursorColor: activeCatColor,
-        decoration: InputDecoration(
-          hintText: 'Add optional details about these symptoms…',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            controller: _manualController,
+            // GAP-9 (Juno §1c2): manual text cap 10,000, prose
+            // counter rules (CapCounter below the field).
+            maxLength: TextCaps.logEntryManualText,
+            inputFormatters: [
+              LengthLimitingTextInputFormatter(TextCaps.logEntryManualText),
+            ],
+            style: const TextStyle(color: NotelColors.textPrimary, fontSize: 14),
+            cursorColor: activeCatColor,
+            decoration: InputDecoration(
+              counterText: '',
+              hintText: 'Add optional details about these symptoms…',
           hintStyle: const TextStyle(
             color: NotelColors.textSecondary,
             fontSize: 13,
@@ -1103,7 +1130,13 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
                       color: activeCatColor,
                     )
                   : null,
-        ),
+            ),
+          ),
+          CapCounter(
+            controller: _manualController,
+            cap: TextCaps.logEntryManualText,
+          ),
+        ],
       ),
     );
   }

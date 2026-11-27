@@ -1071,8 +1071,8 @@ void main() {
         localState: const TodayPlanLocalState(),
         entries: [
           QuickLogEntry(
-            id: 10,
-            categoryId: 8,
+            id: '10',
+            categoryId: '8',
             body: '[Corrected to Skipped] Took Ivabradine 7.5 mg',
             chips: '[]',
             manualText: '',

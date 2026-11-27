@@ -28,7 +28,7 @@ const _owner = 'founder@example.com';
 QuickLogEntry _entry({int id = 42, String body = 'Brain fog all morning'}) {
   return QuickLogEntry(
     id: id,
-    categoryId: 3,
+    categoryId: '3',
     body: body,
     chips: '["Symptoms"]',
     manualText: '',

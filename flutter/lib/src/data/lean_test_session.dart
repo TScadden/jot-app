@@ -49,7 +49,7 @@ const List<int> leanBaselineMinutes = [9, 10];
 /// Resolves the Symptoms category id (name first, then fallback id
 /// 1 only when a pulled category carries it). Null on a double
 /// miss — the Tools tile hides and nothing is written.
-int? resolveLeanCategoryId(List<QuickLogCategory> categories) =>
+String? resolveLeanCategoryId(List<QuickLogCategory> categories) =>
     resolveSummaryCategoryId(
       categories,
       name: leanCategoryName,
@@ -223,7 +223,7 @@ class LeanTestSession {
   /// The outbox entry id allocated for this session's result,
   /// persisted before the first stage attempt (exactly-once,
   /// migraine pattern). Null until the session first closes.
-  final int? allocatedEntryId;
+  final String? allocatedEntryId;
 
   /// The fully built result entry awaiting a successful stage, as a
   /// plain entry map. Non-null only while a stage is pending retry.
@@ -327,7 +327,7 @@ class LeanTestSession {
     int? standingStartedAtMs,
     List<LeanCapture>? baselineCaptures,
     List<LeanCapture>? checkpoints,
-    int? allocatedEntryId,
+    String? allocatedEntryId,
     Map<String, dynamic>? pendingEntryJson,
     String? pendingOutcome,
   }) {
@@ -387,7 +387,11 @@ class LeanTestSession {
         baselineCaptures:
             captures(j['baselineCaptures'], leanBaselineMinutes),
         checkpoints: captures(j['checkpoints'], const []),
-        allocatedEntryId: asIntOrNull(j['allocatedEntryId']),
+        // GAP-18: stored ids are ints in pre-GAP-18 sessions and
+        // UUID strings after; both read as the string sync id.
+        allocatedEntryId: j['allocatedEntryId'] == null
+            ? null
+            : idStringFromJson(j['allocatedEntryId']),
         pendingEntryJson: pendingRaw is Map
             ? pendingRaw.map((k, v) => MapEntry('$k', v))
             : null,
@@ -720,8 +724,8 @@ String leanCaptureValuesText(LeanCapture c) {
 
 /// Builds the ONE log entry a closed session stages (spec §4).
 QuickLogEntry buildLeanTestEntry({
-  required int id,
-  required int categoryId,
+  required String id,
+  required String categoryId,
   required LeanTestResult result,
 }) {
   return QuickLogEntry(
@@ -1074,11 +1078,11 @@ class LeanTestSessionStore {
 abstract class LeanTestGateway {
   /// The name-resolved Symptoms category id, or null on a double
   /// miss (the tile hides; nothing is written to a guessed id).
-  Future<int?> resolveCategoryId();
+  Future<String?> resolveCategoryId();
 
   /// Allocates a fresh entry id through the outbox's post-load
-  /// allocator (VC 100107 mechanism).
-  Future<int> allocateEntryId();
+  /// allocator (VC 100107 mechanism; GAP-18: a random v4 UUID).
+  Future<String> allocateEntryId();
 
   /// Durably stages [entry] locally through the optimistic outbox.
   /// True only when the local stage succeeded.
