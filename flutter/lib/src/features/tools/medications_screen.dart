@@ -680,7 +680,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
         color: NotelColors.surface.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.08),
+          color: NotelColors.legacyDarkHairline,
         ),
       ),
       child: Column(
@@ -923,7 +923,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                   .withValues(alpha: isArchived ? 0.45 : 0.8),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.08),
+                color: NotelColors.legacyDarkHairline,
               ),
             ),
             child: Row(

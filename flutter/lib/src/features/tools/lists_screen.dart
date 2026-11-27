@@ -729,7 +729,7 @@ class _ListsScreenState extends State<ListsScreen> {
         borderRadius: BorderRadius.circular(14),
         color: NotelColors.surfaceHigh.withValues(alpha: 0.08),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.05),
+          color: NotelColors.legacyDarkHairlineFaint,
         ),
       ),
       child: InkWell(

@@ -839,7 +839,7 @@ class _FoodToolScreenState extends State<FoodToolScreen> {
         decoration: BoxDecoration(
           color: NotelColors.surfaceHigh.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          border: Border.all(color: NotelColors.legacyDarkHairlineFaint),
         ),
               child: Text(_capitalize(name),
                   style: TextStyle(

@@ -958,7 +958,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
             border: Border.all(
               color: r.isEnabled
                   ? NotelColors.primary.withValues(alpha: 0.18)
-                  : Colors.white.withValues(alpha: 0.04),
+                  : NotelColors.legacyDarkHairlineFaint,
             ),
           ),
           child: Row(

@@ -595,7 +595,7 @@ class _NotesScreenState extends State<NotesScreen> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         color: NotelColors.surfaceHigh.withValues(alpha: 0.05),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.03)),
+        border: Border.all(color: NotelColors.legacyDarkHairlineFaint),
       ),
       child: Column(
         children: [
@@ -702,7 +702,7 @@ class _NotesScreenState extends State<NotesScreen> {
         borderRadius: BorderRadius.circular(14),
         color: NotelColors.surfaceHigh.withValues(alpha: 0.08),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.05),
+          color: NotelColors.legacyDarkHairlineFaint,
         ),
       ),
       child: InkWell(
