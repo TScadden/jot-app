@@ -290,7 +290,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   int? _categoryFilter;
   bool _todayOnly = false;
 
-  static const _chipInk = Color(0xFF0A0A0E); // native LegacyDarkChipInk
+  static const _chipInk = NotelColors.onPrimary; // native LegacyDarkChipInk
 
   @override
   void initState() {
@@ -1597,7 +1597,7 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
                   height: 4,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(99),
-                    color: Colors.white.withValues(alpha: 0.18),
+                    color: NotelColors.legacyDarkDivider,
                   ),
                 ),
               ),
@@ -1828,7 +1828,7 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
             Divider(
               height: 1,
               thickness: 1,
-              color: Colors.white.withValues(alpha: 0.07),
+              color: NotelColors.legacyDarkHairlineFaint,
             ),
             const SizedBox(height: 20),
             Text(
@@ -1968,13 +1968,13 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
                   child: TextButton(
                     onPressed: () => Navigator.pop(context),
                     style: TextButton.styleFrom(
-                      backgroundColor: Colors.white.withValues(alpha: 0.05),
+                      backgroundColor: NotelColors.legacyDarkHairlineFaint,
                       foregroundColor: NotelColors.textPrimary,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                         side: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.10),
+                          color: NotelColors.legacyDarkHairline,
                         ),
                       ),
                     ),

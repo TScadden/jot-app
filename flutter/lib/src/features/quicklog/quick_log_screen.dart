@@ -177,7 +177,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
   bool _saveInFlight = false;
   String? _saveError;
 
-  static const _chipInk = Color(0xFF0A0A0E); // native LegacyDarkChipInk
+  static const _chipInk = NotelColors.onPrimary; // native LegacyDarkChipInk
 
   @override
   void initState() {
