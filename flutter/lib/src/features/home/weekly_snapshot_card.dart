@@ -997,7 +997,10 @@ class _SnapshotChartPainter extends CustomPainter {
           segment!.lineTo(pt.dx, pt.dy);
         }
         final isSel = selectedIndex == i;
-        canvas.drawCircle(pt, 3.5, Paint()..color = const Color(0xFFFFFFFF));
+        // Halo: the card surface itself, so the ring separates the
+        // dot from the line in both themes (the raw white halo was
+        // invisible on the light card).
+        canvas.drawCircle(pt, 3.5, Paint()..color = NotelColors.surface);
         canvas.drawCircle(
           pt,
           isSel ? 5 : 2,
