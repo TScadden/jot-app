@@ -709,10 +709,10 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: const Color(0x590A0A0E),
+              color: NotelColors.surface,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.08),
+                color: NotelColors.legacyDarkHairline,
               ),
             ),
             child: switch (_subView) {
@@ -753,10 +753,10 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
         const SizedBox(height: 24),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.03),
+            color: NotelColors.legacyDarkHairlineFaint,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.08),
+              color: NotelColors.legacyDarkHairline,
             ),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -828,8 +828,8 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
             child: ElevatedButton(
               onPressed: () => _setSubView('details'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white.withValues(alpha: 0.08),
-                foregroundColor: Colors.white,
+                backgroundColor: NotelColors.legacyDarkHairline,
+                foregroundColor: NotelColors.textPrimary,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16)),
               ),
@@ -877,8 +877,8 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
           child: ElevatedButton(
             onPressed: () => _setSubView('input'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white.withValues(alpha: 0.08),
-              foregroundColor: Colors.white,
+              backgroundColor: NotelColors.legacyDarkHairline,
+              foregroundColor: NotelColors.textPrimary,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16)),
             ),
@@ -926,8 +926,8 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
           child: ElevatedButton(
             onPressed: () => _setSubView('suggestions'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white.withValues(alpha: 0.08),
-              foregroundColor: Colors.white,
+              backgroundColor: NotelColors.legacyDarkHairline,
+              foregroundColor: NotelColors.textPrimary,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16)),
             ),
@@ -980,9 +980,9 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
             OutlinedButton(
               onPressed: () => _changeDuration(false),
               style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white,
+                foregroundColor: NotelColors.textPrimary,
                 side: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.08)),
+                    color: NotelColors.legacyDarkHairline),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
               ),
@@ -993,19 +993,19 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
             const SizedBox(width: 12),
             Text(
               '$_setupDuration Days',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w900,
-                color: Colors.white,
+                color: NotelColors.textPrimary,
               ),
             ),
             const SizedBox(width: 12),
             OutlinedButton(
               onPressed: () => _changeDuration(true),
               style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white,
+                foregroundColor: NotelColors.textPrimary,
                 side: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.08)),
+                    color: NotelColors.legacyDarkHairline),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
               ),
@@ -1058,8 +1058,8 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
               child: ElevatedButton(
                 onPressed: () => _setSubView('measure'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white.withValues(alpha: 0.08),
-                  foregroundColor: Colors.white,
+                  backgroundColor: NotelColors.legacyDarkHairline,
+                  foregroundColor: NotelColors.textPrimary,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16)),
                 ),
@@ -1103,7 +1103,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.w900,
-            color: Colors.white,
+            color: NotelColors.textPrimary,
           ),
           textAlign: TextAlign.center,
         ),
@@ -1133,10 +1133,10 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
         width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.03),
+          color: NotelColors.legacyDarkHairlineFaint,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.08),
+            color: NotelColors.legacyDarkHairline,
           ),
         ),
         child: Column(
@@ -1144,10 +1144,10 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
           children: [
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.bold,
-                color: Colors.white,
+                color: NotelColors.textPrimary,
               ),
             ),
             if (subtitle != null && subtitle.isNotEmpty) ...[
@@ -1180,12 +1180,12 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
         decoration: BoxDecoration(
           color: selected
               ? NotelColors.primary.withValues(alpha: 0.2)
-              : Colors.white.withValues(alpha: 0.03),
+              : NotelColors.legacyDarkHairlineFaint,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: selected
                 ? NotelColors.primary
-                : Colors.white.withValues(alpha: 0.08),
+                : NotelColors.legacyDarkHairline,
           ),
         ),
         child: Text(
@@ -1194,7 +1194,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.bold,
-            color: selected ? NotelColors.primary : Colors.white,
+            color: selected ? NotelColors.primary : NotelColors.textPrimary,
           ),
         ),
       ),
@@ -1381,12 +1381,12 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
         decoration: BoxDecoration(
           color: selected
               ? NotelColors.primary.withValues(alpha: 0.20)
-              : Colors.white.withValues(alpha: 0.03),
+              : NotelColors.legacyDarkHairlineFaint,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: selected
                 ? NotelColors.primary
-                : Colors.white.withValues(alpha: 0.08),
+                : NotelColors.legacyDarkHairline,
           ),
         ),
         child: Column(
@@ -1397,10 +1397,10 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
               t.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.bold,
-                color: Colors.white,
+                color: NotelColors.textPrimary,
               ),
             ),
             const SizedBox(height: 4),
@@ -1534,7 +1534,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
             child: LinearProgressIndicator(
               value: progress,
               minHeight: 6,
-              backgroundColor: Colors.white.withValues(alpha: 0.07),
+              backgroundColor: NotelColors.legacyDarkHairlineFaint,
               valueColor: AlwaysStoppedAnimation<Color>(
                 isCompleted ? NotelColors.success : NotelColors.primary,
               ),
@@ -1628,12 +1628,12 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
         decoration: BoxDecoration(
           color: selected
               ? accent.withValues(alpha: 0.2)
-              : Colors.white.withValues(alpha: 0.03),
+              : NotelColors.legacyDarkHairlineFaint,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: selected
                 ? accent
-                : Colors.white.withValues(alpha: 0.08),
+                : NotelColors.legacyDarkHairline,
           ),
         ),
         child: Column(
@@ -1802,18 +1802,18 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
         ),
       );
     } else if (isFuture) {
-      bg = Colors.white.withValues(alpha: 0.04);
-      border = Colors.white.withValues(alpha: 0.05);
+      bg = NotelColors.legacyDarkHairlineFaint;
+      border = NotelColors.legacyDarkHairlineFaint;
       inner = Text(
         '$dayNumber',
         style: TextStyle(
           fontSize: 10,
-          color: Colors.white.withValues(alpha: 0.15),
+          color: NotelColors.textPrimary.withValues(alpha: 0.15),
         ),
       );
     } else {
-      bg = Colors.white.withValues(alpha: 0.04);
-      border = Colors.white.withValues(alpha: 0.05);
+      bg = NotelColors.legacyDarkHairlineFaint;
+      border = NotelColors.legacyDarkHairlineFaint;
       inner = Text(
         '$dayNumber',
         style: TextStyle(
