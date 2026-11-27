@@ -11,6 +11,7 @@ import androidx.core.content.ContextCompat
 import android.provider.MediaStore
 import androidx.activity.result.ActivityResultLauncher
 import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.aggregate.AggregateMetric
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
 import androidx.health.connect.client.records.BasalMetabolicRateRecord
@@ -37,6 +38,7 @@ import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -293,6 +295,7 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
             "readStepsHistory" -> readStepsHistory(call.argument<Int>("days"), result)
             "readTotalCaloriesHistory" -> readTotalCaloriesHistory(call.argument<Int>("days"), result)
             "readExerciseSessions" -> readExerciseSessions(call.argument<Int>("days"), result)
+            "readExerciseSessionsRich" -> readExerciseSessionsRich(call.argument<Int>("days"), result)
             "readBloodPressure" -> readBloodPressure(call.argument<Int>("days"), result)
             "readSteps" -> readSteps(call.argument<String>("dateStr"), result)
             // Round 30: profile Auto-Fill reads (native
@@ -1216,6 +1219,254 @@ class HealthConnectBridgePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                 )
             } catch (e: Exception) {
                 result.error("EXERCISE_SESSIONS_READ_FAILED", "Could not read exercise sessions.", hcErrorDetails(e))
+            }
+        }
+    }
+
+    /// Rich exercise sessions over [tomorrowStart - days,
+    /// tomorrowStart) — the workout-sync sibling of
+    /// [readExerciseSessions] (WORKOUT SYNC package, NATIVE.md §5).
+    /// The session read itself is identical to the badges read
+    /// (same window, 31-day chunking, pagination, nonMock filter,
+    /// ascending sort) and the badges method above stays untouched;
+    /// this method additionally ships the full per-session field
+    /// set and enriches each session with ONE combined aggregate()
+    /// over its exact [start, end) window (calories + HR together —
+    /// bucketed aggregation cannot align to session windows).
+    ///
+    /// Enrichment discipline:
+    /// - The metric set is built dynamically from ONE
+    ///   getGrantedPermissions() snapshot taken after the session
+    ///   read: HR metrics only when READ_HEART_RATE is granted,
+    ///   each calorie metric only when its own grant is present.
+    ///   A missing optional grant degrades those fields to null —
+    ///   it never fails the read (an aggregate naming an ungranted
+    ///   metric would throw SecurityException and take the whole
+    ///   request down with it).
+    /// - Identical [start, end) windows are enriched once and the
+    ///   result shared (duplicate writers describing one session).
+    /// - Per-window try/catch: a failed aggregate leaves that
+    ///   window's enrichment fields null; the session is still
+    ///   returned. If ANY enrichment failed (or the deadline below
+    ///   cut enrichment short, or the grant snapshot itself
+    ///   failed), the result is the house partial envelope
+    ///   {items: [...], partialError: "<exception class>"} — the
+    ///   readHeartRateSamples contract — so a partial sync is
+    ///   distinguishable from a complete one. A failure of the
+    ///   session read itself fails the whole call with
+    ///   EXERCISE_SESSIONS_RICH_READ_FAILED.
+    /// - The enrichment loop carries the hardened-read discipline
+    ///   of readHeartRateSamples (overall deadline + cooperative
+    ///   isActive check per window). The deadline is 4 minutes —
+    ///   just inside the Dart side's 4m30s requestTimeout — not
+    ///   the 25 s single-day bound: a 400-day window can hold
+    ///   ~1,200 sessions and each one costs an aggregate call.
+    ///   Breach mid-enrichment returns the partial envelope with
+    ///   every session present; windows not yet enriched carry
+    ///   null enrichment fields.
+    /// - Zero rule (founder standing rule): an aggregate result of
+    ///   0 for kcal or HR is a failed/absent read, never a number —
+    ///   those fields ship null, exactly like the history reads.
+    /// - No data / no sessions is a successful empty list, never
+    ///   an error. Health values (incl. title/notes text) are
+    ///   never logged.
+    ///
+    /// Dart shape (success): [{startMs, endMs, exerciseType, title,
+    /// notes, hcId, clientRecordId, clientRecordVersion, dataOrigin,
+    /// lastModifiedMs, recordingMethod, startZoneOffsetSec,
+    /// endZoneOffsetSec, kcalActive, kcalTotal, hrAvg, hrMax}]
+    /// sorted ascending by startMs, ALL keys always present
+    /// (null = data absent). Partial: {items: [...same maps...],
+    /// partialError}.
+    private fun readExerciseSessionsRich(days: Int?, result: MethodChannel.Result) {
+        val client = hcClientOrError(result) ?: return
+        val n = (days ?: 30).coerceIn(1, 400)
+        engineScope.launch {
+            try {
+                val zone = ZoneId.systemDefault()
+                val end = ZonedDateTime.now(zone).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
+                val start = end.minus(n.toLong(), ChronoUnit.DAYS)
+                val records = mutableListOf<ExerciseSessionRecord>()
+                var chunkEnd = end
+                while (chunkEnd.isAfter(start)) {
+                    val chunkStart = maxOf(start, chunkEnd.minus(31, ChronoUnit.DAYS))
+                    var pageToken: String? = null
+                    do {
+                        val response = client.readRecords(
+                            ReadRecordsRequest(
+                                recordType = ExerciseSessionRecord::class,
+                                timeRangeFilter = TimeRangeFilter.between(chunkStart, chunkEnd),
+                                pageToken = pageToken
+                            )
+                        )
+                        records.addAll(response.records)
+                        pageToken = response.pageToken
+                    } while (pageToken != null)
+                    chunkEnd = chunkStart
+                }
+                // nonMock BEFORE enrichment: never spend aggregate
+                // calls on mock sessions.
+                val sessions = nonMock(records).sortedBy { it.startTime }
+                if (sessions.isEmpty()) {
+                    result.success(emptyList<Map<String, Any?>>())
+                    return@launch
+                }
+
+                // One grant snapshot for the whole read; the metric
+                // set is built from it and from nothing else.
+                var partialError: String? = null
+                val granted: Set<String> = try {
+                    client.permissionController.getGrantedPermissions()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Snapshot failed: sessions still ship, with no
+                    // enrichment attempted, flagged partial — an
+                    // unknown grant layer must not fail the read.
+                    partialError = hcErrorDetails(e)
+                    emptySet()
+                }
+                val includeHr = granted.contains(
+                    HealthPermission.getReadPermission(HeartRateRecord::class)
+                )
+                val includeActiveCalories = granted.contains(
+                    HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class)
+                )
+                val includeTotalCalories = granted.contains(
+                    HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class)
+                )
+                val metrics = mutableSetOf<AggregateMetric<*>>()
+                if (includeTotalCalories) {
+                    metrics.add(TotalCaloriesBurnedRecord.ENERGY_TOTAL)
+                }
+                if (includeActiveCalories) {
+                    metrics.add(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL)
+                }
+                if (includeHr) {
+                    metrics.add(HeartRateRecord.BPM_AVG)
+                    metrics.add(HeartRateRecord.BPM_MAX)
+                }
+
+                // Enrichment, one combined aggregate per unique
+                // [start, end) window, deadline + cancellation
+                // checked per window (see header).
+                data class Enrichment(
+                    val kcalActive: Int?,
+                    val kcalTotal: Int?,
+                    val hrAvg: Int?,
+                    val hrMax: Int?
+                )
+                val noEnrichment = Enrichment(null, null, null, null)
+                val enrichmentByWindow = mutableMapOf<Pair<Instant, Instant>, Enrichment>()
+                if (metrics.isNotEmpty()) {
+                    val deadlineMs = SystemClock.elapsedRealtime() + 240_000L
+                    for (session in sessions) {
+                        val window = session.startTime to session.endTime
+                        if (enrichmentByWindow.containsKey(window)) continue
+                        if (!currentCoroutineContext().isActive ||
+                            SystemClock.elapsedRealtime() > deadlineMs
+                        ) {
+                            if (partialError == null) {
+                                partialError = hcErrorDetails(
+                                    IllegalStateException(
+                                        "readExerciseSessionsRich enrichment deadline exceeded"
+                                    )
+                                )
+                            }
+                            break
+                        }
+                        enrichmentByWindow[window] = try {
+                            val agg = client.aggregate(
+                                AggregateRequest(
+                                    metrics = metrics,
+                                    timeRangeFilter = TimeRangeFilter.between(
+                                        session.startTime, session.endTime
+                                    )
+                                )
+                            )
+                            // Zero rule: 0 (or negative) from an
+                            // aggregate is missing data, not a
+                            // measurement — ship null.
+                            fun positiveKcal(raw: Int?): Int? =
+                                raw?.takeIf { it > 0 }
+                            fun positiveBpm(raw: Long?): Int? =
+                                raw?.toInt()?.takeIf { it > 0 }
+                            Enrichment(
+                                kcalActive = if (includeActiveCalories) {
+                                    positiveKcal(
+                                        agg[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]
+                                            ?.inKilocalories?.toInt()
+                                    )
+                                } else null,
+                                kcalTotal = if (includeTotalCalories) {
+                                    positiveKcal(
+                                        agg[TotalCaloriesBurnedRecord.ENERGY_TOTAL]
+                                            ?.inKilocalories?.toInt()
+                                    )
+                                } else null,
+                                hrAvg = if (includeHr) {
+                                    positiveBpm(agg[HeartRateRecord.BPM_AVG])
+                                } else null,
+                                hrMax = if (includeHr) {
+                                    positiveBpm(agg[HeartRateRecord.BPM_MAX])
+                                } else null
+                            )
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            if (partialError == null) {
+                                partialError = hcErrorDetails(e)
+                            }
+                            noEnrichment
+                        }
+                    }
+                }
+
+                val items = sessions.map { session ->
+                    val enrichment = enrichmentByWindow[
+                        session.startTime to session.endTime
+                    ] ?: noEnrichment
+                    mapOf<String, Any?>(
+                        "startMs" to session.startTime.toEpochMilli(),
+                        "endMs" to session.endTime.toEpochMilli(),
+                        "exerciseType" to session.exerciseType,
+                        "title" to session.title,
+                        "notes" to session.notes,
+                        "hcId" to session.metadata.id,
+                        "clientRecordId" to session.metadata.clientRecordId,
+                        "clientRecordVersion" to session.metadata.clientRecordVersion,
+                        "dataOrigin" to session.metadata.dataOrigin.packageName,
+                        "lastModifiedMs" to session.metadata.lastModifiedTime.toEpochMilli(),
+                        "recordingMethod" to session.metadata.recordingMethod,
+                        "startZoneOffsetSec" to session.startZoneOffset?.totalSeconds,
+                        "endZoneOffsetSec" to session.endZoneOffset?.totalSeconds,
+                        "kcalActive" to enrichment.kcalActive,
+                        "kcalTotal" to enrichment.kcalTotal,
+                        "hrAvg" to enrichment.hrAvg,
+                        "hrMax" to enrichment.hrMax
+                    )
+                }
+                val partial = partialError
+                if (partial != null) {
+                    result.success(
+                        mapOf(
+                            "items" to items,
+                            "partialError" to partial
+                        )
+                    )
+                } else {
+                    result.success(items)
+                }
+            } catch (e: CancellationException) {
+                // Engine detach cancelled the scope: no live caller
+                // remains to answer — propagate, don't error.
+                throw e
+            } catch (e: Exception) {
+                result.error(
+                    "EXERCISE_SESSIONS_RICH_READ_FAILED",
+                    "Could not read exercise sessions.",
+                    hcErrorDetails(e)
+                )
             }
         }
     }
