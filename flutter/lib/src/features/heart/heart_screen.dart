@@ -20,7 +20,7 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 /// Dark ink on a primary fill (native LegacyDarkChipInk) — the in-app
 /// passing precedent for text on Tabs purple: 5.21:1 vs white's 3.80:1
 /// (R49 audit S1/HE5).
-const _chipInk = Color(0xFF0A0A0E);
+final _chipInk = NotelColors.onPrimary;
 
 // ── Juno copy ruling (JUNO-COPY.md, BINDING, Nov 24, 2026) ──────
 // Every new user-facing string in this package is a named constant
