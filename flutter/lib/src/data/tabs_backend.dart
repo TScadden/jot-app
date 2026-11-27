@@ -1867,6 +1867,21 @@ class TabsBackend {
   ) =>
       _postAuthedWithStatus('/api/gems/spend/freeze', {'spendId': spendId});
 
+  /// Dev gems grant (DEV GEMS package, Nov 27, 2026):
+  /// `POST /api/gems/dev-grant {grantId}` → 200 `{granted: 1000,
+  /// balance, replayed}`; 403 when the account is not a dev
+  /// account (the server credits nothing and writes no ledger
+  /// row). The server credits exactly 1,000 gems through the gem
+  /// ledger, marked `dev_grant`. The grantId is client-generated,
+  /// unique per deliberate tap; a replayed grantId is a replay,
+  /// never a double grant. Raw status + body out;
+  /// [GemService.devGrant] owns the interpretation and the
+  /// balance adoption.
+  Future<({int? statusCode, Map<String, dynamic>? body})> devGrantGems(
+    String grantId,
+  ) =>
+      _postAuthedWithStatus('/api/gems/dev-grant', {'grantId': grantId});
+
   /// Chests inventory (CHESTS package, Nov 26, 2026):
   /// `GET /api/chests` → 200 `{chests: [{id, tier, createdAt}],
   /// counts: {daily, streak, mega, total}}` (unopened only; tier

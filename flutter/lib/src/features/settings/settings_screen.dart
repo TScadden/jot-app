@@ -47,6 +47,7 @@ import 'package:tabs_lab/src/features/settings/grant_diagnostics.dart';
 import 'package:tabs_lab/src/features/settings/streak_restore.dart';
 import 'package:tabs_lab/src/data/gem_service.dart';
 import 'package:tabs_lab/src/features/settings/chest_sim.dart';
+import 'package:tabs_lab/src/features/settings/dev_gems.dart';
 import 'package:tabs_lab/src/features/settings/streak_sim.dart';
 import 'package:tabs_lab/src/theme/app_background.dart';
 import 'package:tabs_lab/src/features/settings/progress_reports_page.dart';
@@ -1559,6 +1560,14 @@ class _SettingsScreenState extends State<SettingsScreen>
           // balance lives in its own state and is never adopted
           // back (see chest_sim.dart's A10 grep fence).
           ChestSimEntry(initialBalance: GemService.instance.balance ?? 0),
+        ]),
+        const SizedBox(height: 16),
+        _card([
+          // Dev gems grant (Nov 27, 2026): same dev gate — but
+          // unlike the SIMs above this grants REAL gems through
+          // POST /api/gems/dev-grant; the server authorizes the
+          // grant (403 for non-dev tokens). See dev_gems.dart.
+          const DevGemsEntry(),
         ]),
         const SizedBox(height: 16),
         _card([
