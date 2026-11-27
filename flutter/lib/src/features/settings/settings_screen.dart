@@ -45,6 +45,8 @@ import 'package:tabs_lab/src/data/widget_sync.dart';
 import 'package:tabs_lab/src/features/settings/app_background_section.dart';
 import 'package:tabs_lab/src/features/settings/grant_diagnostics.dart';
 import 'package:tabs_lab/src/features/settings/streak_restore.dart';
+import 'package:tabs_lab/src/data/gem_service.dart';
+import 'package:tabs_lab/src/features/settings/chest_sim.dart';
 import 'package:tabs_lab/src/features/settings/streak_sim.dart';
 import 'package:tabs_lab/src/theme/app_background.dart';
 import 'package:tabs_lab/src/features/settings/progress_reports_page.dart';
@@ -1548,6 +1550,15 @@ class _SettingsScreenState extends State<SettingsScreen>
             nickname: _data.nickname,
             now: now,
           ),
+        ]),
+        const SizedBox(height: 16),
+        _card([
+          // Chest popup test (Nov 26, 2026): same dev gate, same
+          // SIM idiom — the current balance is read here and
+          // passed in as a plain value; the panel's simulated
+          // balance lives in its own state and is never adopted
+          // back (see chest_sim.dart's A10 grep fence).
+          ChestSimEntry(initialBalance: GemService.instance.balance ?? 0),
         ]),
         const SizedBox(height: 16),
         _card([
