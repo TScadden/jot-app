@@ -70,7 +70,7 @@ void showTempInfoSheet(BuildContext context) {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 children: [
                   Text('🏃', style: TextStyle(fontSize: 18)),
                   SizedBox(width: 8),
@@ -154,7 +154,7 @@ void showHumidityInfoSheet(BuildContext context) {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 children: [
                   Text('💡', style: TextStyle(fontSize: 18)),
                   SizedBox(width: 8),

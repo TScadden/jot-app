@@ -1061,7 +1061,7 @@ class _HeartScreenState extends State<HeartScreen> {
                 color: NotelColors.primary,
                 onTap: buttonBusy ? null : onButtonTap,
                 child: buttonBusy
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(
@@ -1073,7 +1073,7 @@ class _HeartScreenState extends State<HeartScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 4),
                         child: Text(
                           buttonLabel,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: _chipInk,
                             fontWeight: FontWeight.bold,
                           ),
@@ -1199,7 +1199,7 @@ class _HeartScreenState extends State<HeartScreen> {
               color: NotelColors.primary,
               onTap: _requesting ? null : _onLinkTap,
               child: _requesting
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(
@@ -1207,7 +1207,7 @@ class _HeartScreenState extends State<HeartScreen> {
                         color: _chipInk,
                       ),
                     )
-                  : const Padding(
+                  : Padding(
                       padding: EdgeInsets.symmetric(vertical: 4),
                       child: Text(
                         'Link Health Connect',
