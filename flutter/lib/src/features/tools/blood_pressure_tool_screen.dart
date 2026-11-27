@@ -970,23 +970,23 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: NotelColors.surface,
-        title: const Text('Delete Manual Reading?',
+        title: Text('Delete Manual Reading?',
             style: TextStyle(color: NotelColors.textPrimary)),
         content: Text(
           'Are you sure you want to delete this reading '
           '(${item.record.systolic}/${item.record.diastolic} mmHg)? '
           'This action cannot be undone.',
-          style: const TextStyle(color: NotelColors.textSecondary),
+          style: TextStyle(color: NotelColors.textSecondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel',
+            child: Text('Cancel',
                 style: TextStyle(color: NotelColors.textSecondary)),
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Delete',
+            child: Text('Delete',
                 style: TextStyle(
                     color: NotelColors.error, fontWeight: FontWeight.bold)),
           ),
@@ -1050,12 +1050,12 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: NotelColors.surface,
-        title: const Text("Couldn't Import CSV",
+        title: Text("Couldn't Import CSV",
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.bold)),
         content: Text(message,
-            style: const TextStyle(
+            style: TextStyle(
                 color: NotelColors.textSecondary, fontSize: 14)),
         actions: [
           FilledButton(
@@ -1078,11 +1078,11 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
         backgroundColor: NotelColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back,
+          icon: Icon(Icons.arrow_back,
               color: NotelColors.textSecondary, semanticLabel: 'Back'),
           onPressed: widget.onBack ?? () => Navigator.of(context).pop(),
         ),
-        title: const Text(
+        title: Text(
           'Blood Pressure',
           style: TextStyle(
               fontSize: 20,
@@ -1091,7 +1091,7 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh,
+            icon: Icon(Icons.refresh,
                 color: NotelColors.textSecondary, semanticLabel: 'Refresh'),
             onPressed: _refreshing ? null : () => _load(isRefresh: true),
           ),
@@ -1131,7 +1131,7 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
+                      Text(
                         'History',
                         style: TextStyle(
                             fontSize: 16,
@@ -1154,7 +1154,7 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
                   if (_error != null)
                     _errorBanner(_error!)
                   else if (_records.isEmpty)
-                    const Padding(
+                    Padding(
                       padding: EdgeInsets.symmetric(vertical: 32),
                       child: Text(
                         'No blood pressure records found.\nTap + below to add your first reading.',
@@ -1181,12 +1181,12 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
       ),
       child: Row(
         children: [
-          const Icon(Icons.warning_amber,
+          Icon(Icons.warning_amber,
               size: 18, color: NotelColors.warning),
           const SizedBox(width: 8),
           Expanded(
             child: Text(text,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 12, color: NotelColors.textSecondary)),
           ),
         ],
@@ -1205,7 +1205,7 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
       ),
       child: Text(text,
           style:
-              const TextStyle(fontSize: 13, color: NotelColors.textPrimary)),
+              TextStyle(fontSize: 13, color: NotelColors.textPrimary)),
     );
   }
 
@@ -1220,7 +1220,7 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
       ),
       child: Column(
         children: [
-          const Row(
+          Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(Icons.favorite, size: 20, color: NotelColors.primary),
@@ -1234,13 +1234,13 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
           ),
           const SizedBox(height: 12),
           if (latest == null) ...[
-            const Text('-- / --',
+            Text('-- / --',
                 style: TextStyle(
                     fontSize: 42,
                     fontWeight: FontWeight.w900,
                     color: NotelColors.textSecondary)),
             const SizedBox(height: 4),
-            const Text('No readings logged yet',
+            Text('No readings logged yet',
                 style: TextStyle(
                     fontSize: 13, color: NotelColors.textSecondary)),
             const SizedBox(height: 8),
@@ -1257,12 +1257,12 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
               children: [
                 Text(
                     '${latest.record.systolic} / ${latest.record.diastolic}',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 42,
                         fontWeight: FontWeight.w900,
                         color: NotelColors.textPrimary)),
                 const SizedBox(width: 6),
-                const Padding(
+                Padding(
                   padding: EdgeInsets.only(bottom: 4),
                   child: Text('mmHg',
                       style: TextStyle(
@@ -1317,11 +1317,11 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
                     TextSpan(
                       text:
                           '${item.record.systolic} / ${item.record.diastolic}',
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                           color: NotelColors.textPrimary),
-                      children: const [
+                      children: [
                         TextSpan(
                             text: ' mmHg',
                             style: TextStyle(
@@ -1334,7 +1334,7 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
                   const SizedBox(height: 4),
                   Text(
                     formatBpHistoryDateTime(item.record.timeEpochMs),
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12, color: NotelColors.textSecondary),
                   ),
                 ],
@@ -1346,7 +1346,7 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
                   if (isManual) ...[
                     const SizedBox(width: 8),
                     IconButton(
-                      icon: const Icon(Icons.delete,
+                      icon: Icon(Icons.delete,
                           size: 18,
                           color: NotelColors.textSecondary,
                           semanticLabel: 'Delete record'),
@@ -1467,7 +1467,7 @@ class _AddBpDialogState extends State<_AddBpDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: NotelColors.surface,
-      title: const Text('Log Blood Pressure',
+      title: Text('Log Blood Pressure',
           style: TextStyle(
               color: NotelColors.textPrimary, fontWeight: FontWeight.bold)),
       content: Column(
@@ -1475,7 +1475,7 @@ class _AddBpDialogState extends State<_AddBpDialog> {
         children: [
           if (_error != null) ...[
             Text(_error!,
-                style: const TextStyle(
+                style: TextStyle(
                     color: NotelColors.error,
                     fontSize: 12,
                     fontWeight: FontWeight.w500)),
@@ -1484,7 +1484,7 @@ class _AddBpDialogState extends State<_AddBpDialog> {
           TextField(
             controller: _sysController,
             keyboardType: TextInputType.number,
-            style: const TextStyle(color: NotelColors.textPrimary),
+            style: TextStyle(color: NotelColors.textPrimary),
             decoration: const InputDecoration(
               labelText: 'Systolic (top / high)',
               hintText: '120',
@@ -1497,7 +1497,7 @@ class _AddBpDialogState extends State<_AddBpDialog> {
           TextField(
             controller: _diaController,
             keyboardType: TextInputType.number,
-            style: const TextStyle(color: NotelColors.textPrimary),
+            style: TextStyle(color: NotelColors.textPrimary),
             decoration: const InputDecoration(
               labelText: 'Diastolic (bottom / low)',
               hintText: '80',
@@ -1524,12 +1524,12 @@ class _AddBpDialogState extends State<_AddBpDialog> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Date & Time',
+                      Text('Date & Time',
                           style: TextStyle(
                               fontSize: 11,
                               color: NotelColors.textSecondary)),
                       Text(formatBpHistoryDateTime(_timeMs),
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                               color: NotelColors.textPrimary)),
@@ -1549,7 +1549,7 @@ class _AddBpDialogState extends State<_AddBpDialog> {
       actions: [
         TextButton(
           onPressed: _saving ? null : () => Navigator.of(context).pop(false),
-          child: const Text('Cancel',
+          child: Text('Cancel',
               style: TextStyle(color: NotelColors.textSecondary)),
         ),
         FilledButton(
@@ -1622,7 +1622,7 @@ class _CsvPreviewDialogState extends State<_CsvPreviewDialog> {
   @override
   Widget build(BuildContext context) {
     if (_importing) {
-      return const AlertDialog(
+      return AlertDialog(
         backgroundColor: NotelColors.surface,
         title: Text('Importing…',
             style: TextStyle(
@@ -1647,12 +1647,12 @@ class _CsvPreviewDialogState extends State<_CsvPreviewDialog> {
     if (_done) {
       return AlertDialog(
         backgroundColor: NotelColors.surface,
-        title: const Text('Import Complete',
+        title: Text('Import Complete',
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.bold)),
         content: Text(bpCsvResultMessage(widget.preview),
-            style: const TextStyle(
+            style: TextStyle(
                 color: NotelColors.textSecondary, fontSize: 14)),
         actions: [
           FilledButton(
@@ -1668,7 +1668,7 @@ class _CsvPreviewDialogState extends State<_CsvPreviewDialog> {
     final newCount = preview.newReadings.length;
     return AlertDialog(
       backgroundColor: NotelColors.surface,
-      title: const Text('Import Blood Pressure CSV',
+      title: Text('Import Blood Pressure CSV',
           style: TextStyle(
               color: NotelColors.textPrimary, fontWeight: FontWeight.bold)),
       content: SingleChildScrollView(
@@ -1680,7 +1680,7 @@ class _CsvPreviewDialogState extends State<_CsvPreviewDialog> {
               newCount == 1
                   ? '1 reading ready to import'
                   : '$newCount readings ready to import',
-              style: const TextStyle(
+              style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontSize: 14,
                   fontWeight: FontWeight.w600),
@@ -1688,7 +1688,7 @@ class _CsvPreviewDialogState extends State<_CsvPreviewDialog> {
             if (_rangeText != null) ...[
               const SizedBox(height: 8),
               Text('Date range: $_rangeText',
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: NotelColors.textSecondary, fontSize: 13)),
             ],
             if (preview.duplicateCount > 0) ...[
@@ -1697,7 +1697,7 @@ class _CsvPreviewDialogState extends State<_CsvPreviewDialog> {
                 '${preview.duplicateCount} '
                 '${preview.duplicateCount == 1 ? 'duplicate' : 'duplicates'} '
                 'skipped (already in your log)',
-                style: const TextStyle(
+                style: TextStyle(
                     color: NotelColors.textSecondary, fontSize: 13),
               ),
             ],
@@ -1706,14 +1706,14 @@ class _CsvPreviewDialogState extends State<_CsvPreviewDialog> {
               Text(
                 '${preview.invalidCount} invalid '
                 '${preview.invalidCount == 1 ? 'row' : 'rows'} skipped',
-                style: const TextStyle(
+                style: TextStyle(
                     color: NotelColors.textSecondary, fontSize: 13),
               ),
             ],
             if (newCount > 0) ...[
               const SizedBox(height: 12),
               Text('First ${newCount < 5 ? newCount : 5} readings:',
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: NotelColors.textSecondary,
                       fontSize: 12,
                       fontWeight: FontWeight.w500)),
@@ -1722,7 +1722,7 @@ class _CsvPreviewDialogState extends State<_CsvPreviewDialog> {
                 Text(
                   '${r.systolic}/${r.diastolic} mmHg, '
                   '${formatBpDateTime(r.timeEpochMs)}',
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: NotelColors.textPrimary, fontSize: 13),
                 ),
             ],
@@ -1732,7 +1732,7 @@ class _CsvPreviewDialogState extends State<_CsvPreviewDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel',
+          child: Text('Cancel',
               style: TextStyle(color: NotelColors.textSecondary)),
         ),
         FilledButton(

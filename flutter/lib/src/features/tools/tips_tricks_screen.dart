@@ -473,11 +473,11 @@ Example format:
         backgroundColor: NotelColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back,
+          icon: Icon(Icons.arrow_back,
               color: NotelColors.textPrimary, semanticLabel: 'Back'),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
+        title: Text(
           'Tips & Insights',
           style: TextStyle(
               fontSize: 20,
@@ -584,13 +584,13 @@ class _LockedView extends StatelessWidget {
                 borderRadius: BorderRadius.circular(28),
                 border: Border.all(color: NotelColors.cardBorder),
               ),
-              child: const Icon(Icons.lock_outline,
+              child: Icon(Icons.lock_outline,
                   size: 44, color: NotelColors.textSecondary),
             ),
             const SizedBox(height: 24),
             Text(
               '$title is locked',
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                   color: NotelColors.textPrimary),
@@ -599,7 +599,7 @@ class _LockedView extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               message,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 14, height: 1.5, color: NotelColors.textSecondary),
               textAlign: TextAlign.center,
             ),
@@ -624,10 +624,10 @@ class _ErrorView extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.cloud_off_outlined,
+            Icon(Icons.cloud_off_outlined,
                 size: 56, color: NotelColors.textSecondary),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Could not load your data',
               style: TextStyle(
                   fontSize: 18,
@@ -638,7 +638,7 @@ class _ErrorView extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               message,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 14, height: 1.5, color: NotelColors.textSecondary),
               textAlign: TextAlign.center,
             ),
@@ -680,10 +680,10 @@ class _InlineError extends StatelessWidget {
           Expanded(
             child: Text(message,
                 style:
-                    const TextStyle(fontSize: 13, color: NotelColors.textPrimary)),
+                    TextStyle(fontSize: 13, color: NotelColors.textPrimary)),
           ),
           IconButton(
-            icon: const Icon(Icons.close,
+            icon: Icon(Icons.close,
                 size: 18, color: NotelColors.textSecondary),
             onPressed: onDismiss,
             padding: EdgeInsets.zero,
@@ -700,7 +700,7 @@ class _LoadingView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -752,7 +752,7 @@ class _OnboardingView extends StatelessWidget {
               child: const Text('💡', style: TextStyle(fontSize: 42)),
             ),
             const SizedBox(height: 32),
-            const Text(
+            Text(
               'Personalized Insights',
               style: TextStyle(
                   fontSize: 24,
@@ -761,7 +761,7 @@ class _OnboardingView extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               'Let AI safely scan your local logs, lists, and document summaries to generate tailored topics and tips for your specific routine.',
               style: TextStyle(
                   fontSize: 14, height: 1.6, color: NotelColors.textSecondary),
@@ -835,14 +835,14 @@ class _TopicCard extends StatelessWidget {
             const SizedBox(width: 16),
             Expanded(
               child: Text(topic,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                       height: 1.35,
                       color: NotelColors.textPrimary)),
             ),
             const SizedBox(width: 8),
-            const Icon(Icons.chevron_right,
+            Icon(Icons.chevron_right,
                 color: NotelColors.textSecondary, size: 20),
           ],
         ),
@@ -895,7 +895,7 @@ class _TipsSheetState extends State<_TipsSheet> {
                         fontWeight: FontWeight.bold,
                         color: NotelColors.primary)),
                 IconButton(
-                  icon: const Icon(Icons.close,
+                  icon: Icon(Icons.close,
                       color: NotelColors.textSecondary),
                   onPressed: () => Navigator.of(context).pop(),
                 ),
@@ -903,7 +903,7 @@ class _TipsSheetState extends State<_TipsSheet> {
             ),
             const SizedBox(height: 8),
             Text(widget.topic,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.bold,
                     height: 1.35,
@@ -914,7 +914,7 @@ class _TipsSheetState extends State<_TipsSheet> {
                 future: _future,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Column(
+                    return Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         CircularProgressIndicator(
@@ -932,7 +932,7 @@ class _TipsSheetState extends State<_TipsSheet> {
                     return Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Text(
+                        Text(
                           'Could not load tips for this topic. Check your connection and try again.',
                           style: TextStyle(
                               fontSize: 14,
@@ -1004,7 +1004,7 @@ class _TipRow extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Text(text,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 14,
                     height: 1.45,
                     color: NotelColors.textPrimary)),

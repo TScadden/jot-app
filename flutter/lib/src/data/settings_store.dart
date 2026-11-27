@@ -44,9 +44,10 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// listeners re-read the key, they never receive a pushed value —
 /// and a cold restart re-seeds from storage exactly as before.
 /// Notification is deliberately scoped to the setters whose keys
-/// have a cross-screen live consumer: [setShowNavLabels] and —
+/// have a cross-screen live consumer: [setShowNavLabels], —
 /// since the Nav Bar Style package (Nov 24, 2026) —
-/// [setNavBarStyle]; no other key has one today.
+/// [setNavBarStyle], and — since the theme-mode package
+/// (Nov 27, 2026) — [setThemeMode]; no other key has one today.
 /// Nav Bar Style (Nov 24, 2026): the bottom navigation bar's
 /// style. [solid] is the NEW default for everyone — a fresh
 /// install, an unreadable store, and a stored garbage value all
@@ -239,7 +240,16 @@ class SettingsStore extends ChangeNotifier {
     return 'DARK';
   }
 
-  Future<void> setThemeMode(String v) => _write(themeModeKey, v);
+  /// Writes the mode, then notifies listeners (theme-mode
+  /// package, Nov 27, 2026): the mode now has a cross-screen live
+  /// consumer — the app root resolves the app's theme from it —
+  /// so it joins [setShowNavLabels] / [setNavBarStyle] on the
+  /// notification channel. Storage stays the source of truth;
+  /// listeners re-read the key.
+  Future<void> setThemeMode(String v) async {
+    await _write(themeModeKey, v);
+    notifyListeners();
+  }
 
   /// The dev-only app background override as a '#RRGGBB' string,
   /// or null when unset (the resolved background is then the

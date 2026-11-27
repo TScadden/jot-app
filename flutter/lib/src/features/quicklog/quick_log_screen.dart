@@ -748,7 +748,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: NotelColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
+        title: Text(
           'New category',
           style: TextStyle(
             color: NotelColors.textPrimary,
@@ -758,8 +758,8 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         content: TextField(
           controller: nameController,
           autofocus: true,
-          style: const TextStyle(color: NotelColors.textPrimary),
-          decoration: const InputDecoration(
+          style: TextStyle(color: NotelColors.textPrimary),
+          decoration: InputDecoration(
             hintText: 'Category name…',
             hintStyle: TextStyle(color: NotelColors.textSecondary),
           ),
@@ -767,7 +767,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text(
+            child: Text(
               'Cancel',
               style: TextStyle(color: NotelColors.textPrimary),
             ),
@@ -835,7 +835,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: NotelColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
+        title: Text(
           'Delete Subject?',
           style: TextStyle(
             color: NotelColors.textPrimary,
@@ -844,19 +844,19 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         ),
         content: Text(
           "Are you sure you want to delete '${cat.name}'? This will remove the subject from your quick logging list.",
-          style: const TextStyle(color: NotelColors.textSecondary),
+          style: TextStyle(color: NotelColors.textSecondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text(
+            child: Text(
               'Cancel',
               style: TextStyle(color: NotelColors.textPrimary),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(
+            child: Text(
               'Delete',
               style: TextStyle(
                 color: NotelColors.error,
@@ -921,14 +921,14 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: NotelColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
+        title: Text(
           'Tabs Premium',
           style: TextStyle(
             color: NotelColors.textPrimary,
             fontWeight: FontWeight.bold,
           ),
         ),
-        content: const Text(
+        content: Text(
           'AI suggestions need Tabs Premium. Manage your membership in Settings under Membership — subscriptions are purchased and managed through Google Play.',
           style: TextStyle(color: NotelColors.textSecondary),
         ),
@@ -958,7 +958,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
       appBar: AppBar(
         backgroundColor: NotelColors.background,
         elevation: 0,
-        title: const Text(
+        title: Text(
           'Quick Log',
           style: TextStyle(
             color: NotelColors.textPrimary,
@@ -1028,7 +1028,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
+            Icon(
               Icons.cloud_off_outlined,
               size: 56,
               color: NotelColors.textSecondary,
@@ -1036,7 +1036,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
             const SizedBox(height: 16),
             Text(
               _loadError!,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 height: 1.5,
                 color: NotelColors.textSecondary,
@@ -1080,11 +1080,11 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         // double-post.
         textInputAction: TextInputAction.done,
         onSubmitted: (_) => _saveEntry(),
-        style: const TextStyle(color: NotelColors.textPrimary, fontSize: 14),
+        style: TextStyle(color: NotelColors.textPrimary, fontSize: 14),
         cursorColor: activeCatColor,
         decoration: InputDecoration(
           hintText: 'Add optional details about these symptoms…',
-          hintStyle: const TextStyle(
+          hintStyle: TextStyle(
             color: NotelColors.textSecondary,
             fontSize: 13,
           ),
@@ -1143,7 +1143,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
   }
 
   Widget _buildCategoriesLabel() {
-    return const Padding(
+    return Padding(
       padding: EdgeInsets.only(left: 16, top: 12, bottom: 4),
       child: Text(
         'Categories',
@@ -1165,7 +1165,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
   Widget _buildCategoryRow() {
     if (_categories.isEmpty) {
       if (!_firstRefreshDone) return _buildCategorySkeleton();
-      return const Padding(
+      return Padding(
         padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         child: Text(
           'No categories found on your account.',
@@ -1307,7 +1307,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
                 color: NotelColors.primary.withValues(alpha: 0.25),
               ),
             ),
-            child: const Row(
+            child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.add, size: 16, color: NotelColors.primary),
@@ -1332,7 +1332,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
+        Padding(
           padding: EdgeInsets.only(left: 16, top: 8, bottom: 4),
           child: Text(
             'Recent suggestions',
@@ -1379,7 +1379,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.history,
                             size: 14,
                             color: NotelColors.textSecondary,
@@ -1387,7 +1387,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
                           const SizedBox(width: 6),
                           Text(
                             label,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: NotelColors.textPrimary,
                               fontSize: 12,
                             ),
@@ -1439,7 +1439,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
     } else if (!_isUnlimited && !_isAdmin) {
       body = Column(
         children: [
-          const Text(
+          Text(
             'Standard Access',
             style: TextStyle(
               color: NotelColors.textSecondary,
@@ -1461,7 +1461,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         ],
       );
     } else if (_chipsLoading) {
-      body = const Column(
+      body = Column(
         children: [
           SizedBox(
             width: 48,
@@ -1481,7 +1481,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
           Text(
             _chipsError!,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: NotelColors.error, fontSize: 13),
+            style: TextStyle(color: NotelColors.error, fontSize: 13),
           ),
           const SizedBox(height: 12),
           TextButton(
@@ -1504,7 +1504,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
     } else if (!_autoAiSuggestions && _chips.isEmpty) {
       body = Column(
         children: [
-          const Text(
+          Text(
             'No suggestions loaded',
             style: TextStyle(color: NotelColors.textSecondary, fontSize: 12),
           ),
@@ -1556,7 +1556,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
     return Column(
       children: [
         ...rows,
-        const Padding(
+        Padding(
           padding: EdgeInsets.only(top: 4, bottom: 8),
           child: Text(
             'Quick notes are generated with AI using your data, so they may not always represent exactly what you are looking for.',
@@ -1626,7 +1626,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
+              Text(
                 'Your quick note',
                 style: TextStyle(
                   color: NotelColors.textSecondary,
@@ -1672,7 +1672,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
           const SizedBox(height: 8),
           Text(
             _composedText(),
-            style: const TextStyle(
+            style: TextStyle(
               color: NotelColors.textPrimary,
               // R49 HI7: entry-body role is 15sp (History parity).
               fontSize: 15,
@@ -1683,7 +1683,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
             const SizedBox(height: 8),
             Text(
               _saveError!,
-              style: const TextStyle(
+              style: TextStyle(
                 color: NotelColors.error,
                 fontSize: 12,
                 fontWeight: FontWeight.w500,

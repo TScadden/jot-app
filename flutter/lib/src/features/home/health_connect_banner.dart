@@ -225,7 +225,7 @@ class HealthConnectBanner extends StatelessWidget {
                         children: [
                           Text(
                             title,
-                            style: const TextStyle(
+                            style: TextStyle(
                               // Round 49 (audit H15): 12.5 was the app's
                               // only non-integer size; 12 is the caption
                               // step.
@@ -237,7 +237,7 @@ class HealthConnectBanner extends StatelessWidget {
                           if (body != null)
                             Text(
                               body,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 12,
                                 color: NotelColors.textSecondary,
                               ),

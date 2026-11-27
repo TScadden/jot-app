@@ -272,7 +272,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
   /// [emptyStateDelay]); same box height as the empty state so the card
   /// does not jump when content or the empty state lands.
   Widget _loadingState() {
-    return const SizedBox(
+    return SizedBox(
       height: 140,
       child: Center(
         child: Column(
@@ -305,7 +305,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Row(
+        Row(
           children: [
             Icon(Icons.bar_chart, size: 20, color: NotelColors.primary),
             SizedBox(width: 8),
@@ -329,7 +329,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
             minHeight: 48,
           ),
           tooltip: 'Refresh weekly snapshot',
-          icon: const Icon(
+          icon: Icon(
             Icons.refresh,
             size: 16,
             color: NotelColors.textSecondary,
@@ -352,7 +352,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
             const SizedBox(height: 6),
             Text(
               data.emptyMessage ?? 'No data available past 7 days',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
                 color: NotelColors.textSecondary,
               ),
@@ -370,7 +370,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
       children: [
         Text(
           data.averageOrTotalText,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w500,
             color: NotelColors.textSecondary,
@@ -378,7 +378,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
         ),
         // Blood Pressure Sys/Dia legend (native shows it when available).
         if (data.metric.isBloodPressure && data.isAvailable)
-          const Row(
+          Row(
             children: [
               _LegendDot(color: NotelColors.error),
               SizedBox(width: 4),
@@ -417,7 +417,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
           Expanded(
             child: Text(
               '${pt.dateStr} (${pt.dayLabel}): ${_formatValue(data, pt)}',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
                 color: NotelColors.primaryText,
@@ -432,7 +432,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
               minHeight: 48,
             ),
             tooltip: 'Dismiss Tooltip',
-            icon: const Icon(
+            icon: Icon(
               Icons.close,
               size: 18,
               color: NotelColors.textSecondary,
@@ -610,7 +610,7 @@ class _MetricSelectorState extends State<_MetricSelector> {
             children: [
               Text(
                 widget.selected.displayName,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: NotelColors.primaryText,

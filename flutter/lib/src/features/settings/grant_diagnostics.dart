@@ -73,11 +73,11 @@ class _GrantDiagnosticsCardState extends State<GrantDiagnosticsCard> {
   Widget build(BuildContext context) {
     final gems = widget._gems;
     final badges = widget._badges;
-    const style = TextStyle(color: NotelColors.textSecondary, fontSize: 13);
+    final style = TextStyle(color: NotelColors.textSecondary, fontSize: 13);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Grants diagnostics',
           style: TextStyle(
             color: NotelColors.textPrimary,

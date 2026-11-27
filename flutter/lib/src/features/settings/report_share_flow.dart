@@ -38,7 +38,7 @@ Future<void> presentReportShareConfirmation({
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: NotelColors.surface,
-        title: const Text('Share health report',
+        title: Text('Share health report',
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.w600)),
@@ -46,13 +46,13 @@ Future<void> presentReportShareConfirmation({
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
                 'This PDF contains your health data. Only share it with people you trust.',
                 style:
                     TextStyle(color: NotelColors.textSecondary, fontSize: 13)),
             const SizedBox(height: 8),
             Text(ready.fileName,
-                style: const TextStyle(
+                style: TextStyle(
                     color: NotelColors.textPrimary, fontSize: 12)),
             const SizedBox(height: 8),
             Text('For informational purposes only. Not medical advice.',
@@ -62,7 +62,7 @@ Future<void> presentReportShareConfirmation({
             if (ready.aiFailureReason != null) ...[
               const SizedBox(height: 8),
               Text('AI summary unavailable: ${ready.aiFailureReason}',
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: NotelColors.textSecondary, fontSize: 11)),
             ],
             // Juno Ruling 2: the Downloads attempt finished before
@@ -74,7 +74,7 @@ Future<void> presentReportShareConfirmation({
                   ready.downloadsSaved!
                       ? 'A copy was also saved to your Downloads folder.'
                       : 'This report could not be saved to Downloads. It is saved in the app and you can still share it now.',
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: NotelColors.textSecondary, fontSize: 11)),
             ],
           ],
@@ -82,7 +82,7 @@ Future<void> presentReportShareConfirmation({
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Not now',
+            child: Text('Not now',
                 style: TextStyle(color: NotelColors.textSecondary)),
           ),
           TextButton(

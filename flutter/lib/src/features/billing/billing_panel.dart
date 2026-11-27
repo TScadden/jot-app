@@ -92,7 +92,7 @@ class VerifyEmailGate extends StatelessWidget {
           const Icon(Icons.mark_email_unread,
               color: NotelColors.primary, size: 32),
           const SizedBox(height: 12),
-          const Text(
+          Text(
             'Verify your email to continue',
             textAlign: TextAlign.center,
             style: TextStyle(
@@ -102,7 +102,7 @@ class VerifyEmailGate extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'We sent a verification code to your email. Verify it '
             'to unlock purchasing and start your trial.',
             textAlign: TextAlign.center,
@@ -155,7 +155,7 @@ class _ActiveSubscriberPanel extends StatelessWidget {
       ),
       child: Column(
         children: [
-          const Text(
+          Text(
             "You're Premium",
             textAlign: TextAlign.center,
             style: TextStyle(
@@ -200,7 +200,7 @@ class _SignedOutPanel extends StatelessWidget {
       ),
       child: Column(
         children: [
-          const Text(
+          Text(
             'Sign in to see plans',
             textAlign: TextAlign.center,
             style: TextStyle(

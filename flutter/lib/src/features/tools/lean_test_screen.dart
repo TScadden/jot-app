@@ -448,7 +448,7 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
       appBar: AppBar(
         backgroundColor: NotelColors.background,
         elevation: 0,
-        title: const Text(
+        title: Text(
           leanS1Label,
           style: TextStyle(
             fontSize: 20,
@@ -481,9 +481,9 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       children: [
-        const Text(leanE1, style: _bodyStyle),
+        Text(leanE1, style: _bodyStyle),
         const SizedBox(height: 12),
-        const Text(leanE2, style: _bodyStyle),
+        Text(leanE2, style: _bodyStyle),
         const SizedBox(height: 12),
         // D1: its own block, no less prominent than S2.
         Container(
@@ -493,7 +493,7 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
             border: Border.all(color: NotelColors.primary, width: 1.5),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: const Text(
+          child: Text(
             leanD1,
             style: TextStyle(
               fontSize: 15,
@@ -503,21 +503,21 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        const Text(leanS2, style: _bodyStyle),
+        Text(leanS2, style: _bodyStyle),
         const SizedBox(height: 12),
-        const Text(leanS3, style: _bodyStyle),
+        Text(leanS3, style: _bodyStyle),
         const SizedBox(height: 12),
-        const Text(leanS4a, style: _bodyStyle),
+        Text(leanS4a, style: _bodyStyle),
         CheckboxListTile(
           contentPadding: EdgeInsets.zero,
           value: _confirmed,
           onChanged: (v) => setState(() => _confirmed = v ?? false),
-          title: const Text(leanS4Confirmation, style: _bodyStyle),
+          title: Text(leanS4Confirmation, style: _bodyStyle),
           controlAffinity: ListTileControlAffinity.leading,
         ),
-        const Text(leanS4b, style: _bodyStyle),
+        Text(leanS4b, style: _bodyStyle),
         const SizedBox(height: 8),
-        const Text(leanS4c, style: _bodyStyle),
+        Text(leanS4c, style: _bodyStyle),
         const SizedBox(height: 20),
         ElevatedButton(
           onPressed: _confirmed ? () => unawaited(_start()) : null,
@@ -525,7 +525,7 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
         ),
         if (_pastResults.isNotEmpty) ...[
           const SizedBox(height: 28),
-          const Text(
+          Text(
             leanN4,
             style: TextStyle(
               fontSize: 16,
@@ -566,11 +566,11 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             children: [
-              const Text(leanS6, style: _bodyStyle),
+              Text(leanS6, style: _bodyStyle),
               const SizedBox(height: 12),
               Text(
                 _timerText(remainingSeconds),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.bold,
                   color: NotelColors.textPrimary,
@@ -600,7 +600,7 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             children: [
-              const Text(leanS8, style: _bodyStyle),
+              Text(leanS8, style: _bodyStyle),
               const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: () => unawaited(_standNow()),
@@ -631,7 +631,7 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
             children: [
               Text(
                 _timerText(elapsedSeconds),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.bold,
                   color: NotelColors.textPrimary,
@@ -647,7 +647,7 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
                   onSave: () => unawaited(_submitStandingCapture(current)),
                 )
               else
-                const Text(leanS8, style: _bodyStyle),
+                Text(leanS8, style: _bodyStyle),
             ],
           ),
         ),
@@ -661,7 +661,7 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       children: [
-        const Text(leanN3Line, style: _bodyStyle),
+        Text(leanN3Line, style: _bodyStyle),
         const SizedBox(height: 20),
         ElevatedButton(
           onPressed: () => unawaited(_closeInterrupted()),
@@ -694,7 +694,7 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       children: [
-        const Text(
+        Text(
           leanS12Heading,
           style: TextStyle(
             fontSize: 18,
@@ -710,9 +710,9 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
         // together. A staged close renders the hint exactly as
         // before, and N6 never renders.
         if (_resultPending)
-          const Text(leanN6, style: _secondaryStyle)
+          Text(leanN6, style: _secondaryStyle)
         else
-          const Text(leanHistoryHint, style: _secondaryStyle),
+          Text(leanHistoryHint, style: _secondaryStyle),
         if (_stopLine != null) ...[
           const SizedBox(height: 12),
           Text(_stopLine!, style: _bodyStyle),
@@ -725,7 +725,7 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
           ),
         const SizedBox(height: 16),
         // S2 again, in full, on the result screen.
-        const Text(leanS2, style: _bodyStyle),
+        Text(leanS2, style: _bodyStyle),
       ],
     );
   }
@@ -765,7 +765,7 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
           decoration: const InputDecoration(suffixText: 'bpm'),
         ),
         const SizedBox(height: 12),
-        const Text(leanBpLabel, style: _bodyStyle),
+        Text(leanBpLabel, style: _bodyStyle),
         Row(
           children: [
             Expanded(
@@ -787,7 +787,7 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
         ),
         if (standing) ...[
           const SizedBox(height: 12),
-          const Text(leanS10, style: _bodyStyle),
+          Text(leanS10, style: _bodyStyle),
           TextField(controller: _noteController),
         ],
         const SizedBox(height: 12),
@@ -844,13 +844,13 @@ class _LeanTestScreenState extends State<LeanTestScreen> {
   }
 }
 
-const TextStyle _bodyStyle = TextStyle(
+TextStyle _bodyStyle = TextStyle(
   fontSize: 15,
   height: 1.4,
   color: NotelColors.textPrimary,
 );
 
-const TextStyle _secondaryStyle = TextStyle(
+TextStyle _secondaryStyle = TextStyle(
   fontSize: 13,
   height: 1.4,
   color: NotelColors.textSecondary,

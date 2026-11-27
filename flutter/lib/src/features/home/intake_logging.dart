@@ -977,7 +977,7 @@ class IntakeCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
                     intakeCardTitle,
                     style: TextStyle(
@@ -1038,7 +1038,7 @@ class IntakeCard extends StatelessWidget {
               const SizedBox(height: 8),
             ],
             if (showSeedLabel) ...[
-              const Text(
+              Text(
                 intakeSeedLabel,
                 style: TextStyle(
                   color: NotelColors.textSecondary,
@@ -1051,7 +1051,7 @@ class IntakeCard extends StatelessWidget {
             // Totals: S7 on a no-data day (never a manufactured 0);
             // S4 with targets in force, S5 without (§5.2, Juno R2).
             if (!totals.hasData)
-              const Text(
+              Text(
                 intakeNoDataLabel,
                 style: TextStyle(
                   color: NotelColors.textSecondary,
@@ -1061,7 +1061,7 @@ class IntakeCard extends StatelessWidget {
             else ...[
               Text(
                 intakeTotalsLine(totals: totals, targets: targets),
-                style: const TextStyle(
+                style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
@@ -1070,7 +1070,7 @@ class IntakeCard extends StatelessWidget {
               if (targets != null)
                 InkWell(
                   onTap: onOpenTargets,
-                  child: const Padding(
+                  child: Padding(
                     padding: EdgeInsets.symmetric(vertical: 6),
                     child: Text(
                       intakeTargetsProvenance,
@@ -1110,7 +1110,7 @@ class IntakeCard extends StatelessWidget {
                       Expanded(
                         child: Text(
                           entry.body,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: NotelColors.textPrimary,
                             fontSize: 13,
                           ),
@@ -1118,7 +1118,7 @@ class IntakeCard extends StatelessWidget {
                       ),
                       Text(
                         _timeLabel(entry.timestamp),
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: NotelColors.textSecondary,
                           fontSize: 12,
                         ),
@@ -1422,11 +1422,11 @@ class _IntakeEditorSheetState extends State<IntakeEditorSheet> {
         key: fieldKey,
         controller: controller,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        style: const TextStyle(color: NotelColors.textPrimary),
+        style: TextStyle(color: NotelColors.textPrimary),
         onChanged: (_) => setState(() {}),
         decoration: InputDecoration(
           labelText: label,
-          labelStyle: const TextStyle(color: NotelColors.textSecondary),
+          labelStyle: TextStyle(color: NotelColors.textSecondary),
           enabledBorder: OutlineInputBorder(
             borderSide: BorderSide(
               color: NotelColors.primary.withValues(alpha: 0.5),
@@ -1450,7 +1450,7 @@ class _IntakeEditorSheetState extends State<IntakeEditorSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
+              Text(
                 'Log intake',
                 style: TextStyle(
                   fontSize: 18,
@@ -1460,7 +1460,7 @@ class _IntakeEditorSheetState extends State<IntakeEditorSheet> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'Kind',
                 style: TextStyle(
                   color: NotelColors.textSecondary,
@@ -1518,7 +1518,7 @@ class _IntakeEditorSheetState extends State<IntakeEditorSheet> {
                   fieldKey: const ValueKey('intake_sodium_field'),
                 ),
               ],
-              const Text(
+              Text(
                 'Time',
                 style: TextStyle(
                   color: NotelColors.textSecondary,
@@ -1546,7 +1546,7 @@ class _IntakeEditorSheetState extends State<IntakeEditorSheet> {
               ),
               const SizedBox(height: 6),
               // R5 — verbatim, wherever a past time can be entered.
-              const Text(
+              Text(
                 intakeTimeHelper,
                 style: TextStyle(
                   color: NotelColors.textSecondary,
@@ -1565,7 +1565,7 @@ class _IntakeEditorSheetState extends State<IntakeEditorSheet> {
                               Navigator.of(context).pop();
                               await cb();
                             },
-                      child: const Text(
+                      child: Text(
                         'Delete',
                         style: TextStyle(color: NotelColors.error),
                       ),
@@ -1587,7 +1587,7 @@ class _IntakeEditorSheetState extends State<IntakeEditorSheet> {
                               Navigator.of(context).pop();
                               await cb(kind);
                             },
-                      child: const Text(
+                      child: Text(
                         'Delete',
                         style: TextStyle(color: NotelColors.error),
                       ),
@@ -1595,7 +1595,7 @@ class _IntakeEditorSheetState extends State<IntakeEditorSheet> {
                   const Spacer(),
                   TextButton(
                     onPressed: _saving ? null : () => Navigator.of(context).pop(),
-                    child: const Text(
+                    child: Text(
                       'Cancel',
                       style: TextStyle(color: NotelColors.textSecondary),
                     ),
@@ -1613,7 +1613,7 @@ class _IntakeEditorSheetState extends State<IntakeEditorSheet> {
               ),
               if (_saveFailed) ...[
                 const SizedBox(height: 12),
-                const Text(
+                Text(
                   intakeStageFailureCopy,
                   style: TextStyle(color: NotelColors.error, fontSize: 13),
                   textAlign: TextAlign.center,
@@ -1712,7 +1712,7 @@ class _IntakeTargetsSheetState extends State<IntakeTargetsSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
+              Text(
                 'Set targets',
                 style: TextStyle(
                   fontSize: 18,
@@ -1727,11 +1727,11 @@ class _IntakeTargetsSheetState extends State<IntakeTargetsSheet> {
                 controller: _fluid,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
-                style: const TextStyle(color: NotelColors.textPrimary),
+                style: TextStyle(color: NotelColors.textPrimary),
                 decoration: InputDecoration(
                   labelText: 'Water (fl oz)',
                   labelStyle:
-                      const TextStyle(color: NotelColors.textSecondary),
+                      TextStyle(color: NotelColors.textSecondary),
                   enabledBorder: OutlineInputBorder(
                     borderSide: BorderSide(
                       color: NotelColors.primary.withValues(alpha: 0.5),
@@ -1748,11 +1748,11 @@ class _IntakeTargetsSheetState extends State<IntakeTargetsSheet> {
                 controller: _sodium,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
-                style: const TextStyle(color: NotelColors.textPrimary),
+                style: TextStyle(color: NotelColors.textPrimary),
                 decoration: InputDecoration(
                   labelText: 'Sodium (mg)',
                   labelStyle:
-                      const TextStyle(color: NotelColors.textSecondary),
+                      TextStyle(color: NotelColors.textSecondary),
                   enabledBorder: OutlineInputBorder(
                     borderSide: BorderSide(
                       color: NotelColors.primary.withValues(alpha: 0.5),
@@ -1765,7 +1765,7 @@ class _IntakeTargetsSheetState extends State<IntakeTargetsSheet> {
               ),
               const SizedBox(height: 12),
               // S6 — verbatim, in the targets editor.
-              const Text(
+              Text(
                 intakeTargetsProvenance,
                 style: TextStyle(
                   color: NotelColors.textSecondary,
@@ -1779,7 +1779,7 @@ class _IntakeTargetsSheetState extends State<IntakeTargetsSheet> {
                   TextButton(
                     onPressed:
                         _saving ? null : () => Navigator.of(context).pop(),
-                    child: const Text(
+                    child: Text(
                       'Cancel',
                       style: TextStyle(color: NotelColors.textSecondary),
                     ),

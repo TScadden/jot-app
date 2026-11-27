@@ -267,7 +267,7 @@ class _GemsSheetState extends State<GemsSheet> {
               // Sheet title — the moved explainer heading, used
               // ONCE (GEMS-MOVE-COPY §2): it is not repeated as an
               // in-sheet heading above the explainer body.
-              const Text(
+              Text(
                 GemCopy.explainerHeading,
                 key: Key('gemsSheetTitle'),
                 style: TextStyle(
@@ -285,7 +285,7 @@ class _GemsSheetState extends State<GemsSheet> {
                 Text(
                   GemCopy.balanceLine(balance),
                   key: const Key('gemsSheetBalanceLine'),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14.5,
                     fontWeight: FontWeight.w700,
                     height: 1.45,
@@ -300,7 +300,7 @@ class _GemsSheetState extends State<GemsSheet> {
                 Text(
                   lines[i],
                   key: Key('gemsSheetExplainerLine$i'),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     height: 1.45,
@@ -312,7 +312,7 @@ class _GemsSheetState extends State<GemsSheet> {
               // §2c success feedback — verified spends only.
               if (_successBalance != null) ...[
                 const SizedBox(height: 16),
-                const Text(
+                Text(
                   GemCopy.spendSuccessTitle,
                   key: Key('gemsSheetSpendSuccessTitle'),
                   style: TextStyle(
@@ -325,7 +325,7 @@ class _GemsSheetState extends State<GemsSheet> {
                 Text(
                   GemCopy.spendSuccessBody(_successBalance!),
                   key: const Key('gemsSheetSpendSuccessBody'),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
                     color: NotelColors.textPrimary,
@@ -368,7 +368,7 @@ class _GemsSheetState extends State<GemsSheet> {
                     GemCopy.insufficientLine(
                         GemCopy.freezePrice - balance),
                     key: const Key('gemsSheetInsufficientLine'),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w700,
                       color: NotelColors.textSecondary,

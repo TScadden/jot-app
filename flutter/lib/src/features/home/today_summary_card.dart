@@ -611,7 +611,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Row(
+              Row(
                 children: [
                   Icon(Icons.today, size: 20, color: NotelColors.primary),
                   SizedBox(width: 8),
@@ -628,7 +628,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
               const SizedBox(height: 4),
               Text(
                 _subtitle,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
                   color: NotelColors.textSecondary,
@@ -645,16 +645,16 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                 ),
               ],
               const SizedBox(height: 12),
-              const Divider(color: NotelColors.divider, height: 1),
+              Divider(color: NotelColors.divider, height: 1),
               const SizedBox(height: 12),
               MigraineBlock(
                 controller: _migraine,
                 onOpenLoggedEntry: _openLoggedEntry,
               ),
               const SizedBox(height: 14),
-              const Divider(color: NotelColors.divider, height: 1),
+              Divider(color: NotelColors.divider, height: 1),
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 "Today's Plan",
                 style: TextStyle(
                   fontSize: 14,
@@ -670,7 +670,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                     data != null && data.plan.plannedCount > 0
                         ? 'Everything planned for today is complete'
                         : 'No plans recorded today',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
                       color: NotelColors.textSecondary,
                     ),
@@ -679,12 +679,12 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
               else
                 ...planRows,
               const SizedBox(height: 14),
-              const Divider(color: NotelColors.divider, height: 1),
+              Divider(color: NotelColors.divider, height: 1),
               const SizedBox(height: 12),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  Text(
                     'Trends',
                     style: TextStyle(
                       fontSize: 14,
@@ -702,7 +702,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                       minHeight: 48,
                     ),
                     tooltip: 'Refresh Trends',
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.refresh,
                       size: 16,
                       color: NotelColors.textSecondary,
@@ -712,7 +712,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
               ),
               const SizedBox(height: 6),
               if (data == null || data.trends.isEmpty)
-                const Padding(
+                Padding(
                   padding: EdgeInsets.symmetric(vertical: 4.0),
                   child: Text(
                     'Not enough data yet',
@@ -805,7 +805,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                         key: const ValueKey('todaySummaryProgressMarker'),
                         width: 26,
                         height: 26,
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           color: NotelColors.surfaceHigh,
                           shape: BoxShape.circle,
                         ),
@@ -1028,7 +1028,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const Row(
+                              Row(
                                 children: [
                                   Icon(
                                     Icons.today,
@@ -1052,7 +1052,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                               const SizedBox(height: 4),
                               Text(
                                 _subtitle,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w500,
                                   color: NotelColors.textSecondary,
@@ -1090,7 +1090,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                         Flexible(
                           child: Text(
                             widget.checkInScoredLine!,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
                               color: NotelColors.textSecondary,
@@ -1209,7 +1209,7 @@ class _PlanItemRow extends StatelessWidget {
                   minHeight: 48,
                 ),
                 tooltip: 'Mark complete',
-                icon: const Icon(
+                icon: Icon(
                   Icons.radio_button_unchecked,
                   size: 18,
                   color: NotelColors.textSecondary,
@@ -1226,7 +1226,7 @@ class _PlanItemRow extends StatelessWidget {
                       Expanded(
                         child: Text(
                           item.title,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
                             color: NotelColors.textPrimary,
@@ -1234,7 +1234,7 @@ class _PlanItemRow extends StatelessWidget {
                         ),
                       ),
                       if (overdue)
-                        const Padding(
+                        Padding(
                           padding: EdgeInsets.only(right: 8.0),
                           child: Text(
                             'Overdue',
@@ -1251,7 +1251,7 @@ class _PlanItemRow extends StatelessWidget {
                     isMed
                         ? '${item.dose} · ${item.timeDisplay}'
                         : item.timeDisplay,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
                       color: NotelColors.textSecondary,
                     ),
@@ -1312,7 +1312,7 @@ class _PlanItemRow extends StatelessWidget {
                       minHeight: 48,
                     ),
                     tooltip: 'Skip Medication',
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.block,
                       size: 16,
                       color: NotelColors.textSecondary,
@@ -1439,7 +1439,7 @@ class _TrendRow extends StatelessWidget {
                 Expanded(
                   child: Text(
                     trend.metricName,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.bold,
                       color: NotelColors.textPrimary,
@@ -1448,7 +1448,7 @@ class _TrendRow extends StatelessWidget {
                 ),
                 Text(
                   trend.dataSource,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 10,
                     color: NotelColors.textSecondary,
                   ),
@@ -1458,7 +1458,7 @@ class _TrendRow extends StatelessWidget {
             const SizedBox(height: 3),
             Text(
               trend.differenceText,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: NotelColors.primaryText,

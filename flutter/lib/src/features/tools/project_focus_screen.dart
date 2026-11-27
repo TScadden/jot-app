@@ -508,21 +508,21 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: NotelColors.surface,
-        title: const Text('Cancel Experiment',
+        title: Text('Cancel Experiment',
             style: TextStyle(color: NotelColors.textPrimary)),
-        content: const Text(
+        content: Text(
           'Are you sure you want to cancel this experiment? This will delete all logged progress for it.',
           style: TextStyle(color: NotelColors.textSecondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('No',
+            child: Text('No',
                 style: TextStyle(color: NotelColors.textPrimary)),
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Yes',
+            child: Text('Yes',
                 style: TextStyle(
                     color: NotelColors.error,
                     fontWeight: FontWeight.bold)),
@@ -587,12 +587,12 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
         backgroundColor: NotelColors.surface,
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text('About Project Focus',
+        title: Text('About Project Focus',
             style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
                 color: NotelColors.textPrimary)),
-        content: const Text(
+        content: Text(
           'Project Focus helps you run self-experiments to tackle personal struggles (like improving sleep, managing stress, or optimizing productivity) by generating custom AI suggestions and tracking your progress over time.\n\nOur core goal is to use data to generate outcomes.',
           style: TextStyle(
               fontSize: 14, height: 1.45, color: NotelColors.textSecondary),
@@ -628,7 +628,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
         backgroundColor: NotelColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
+          icon: Icon(
             Icons.arrow_back,
             color: NotelColors.textPrimary,
             semanticLabel: 'Back',
@@ -643,7 +643,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
             }
           },
         ),
-        title: const Text(
+        title: Text(
           'Project Focus',
           style: TextStyle(
             fontSize: 20,
@@ -663,7 +663,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
             ),
           if (!_loading && _subView == 'input')
             IconButton(
-              icon: const Icon(Icons.help_outline,
+              icon: Icon(Icons.help_outline,
                   color: NotelColors.textPrimary, semanticLabel: 'Help'),
               onPressed: _showHelp,
             ),
@@ -732,7 +732,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text(
+        Text(
           'Project Focus',
           style: TextStyle(
             fontSize: 24,
@@ -742,7 +742,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 6),
-        const Text(
+        Text(
           'What are you trying to work towards?',
           style: TextStyle(
             fontSize: 14,
@@ -769,9 +769,9 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
                   minLines: 2,
                   maxLines: 5,
                   textCapitalization: TextCapitalization.sentences,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 15, color: NotelColors.textPrimary),
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     hintText:
                         'Type something you are struggling with (e.g., sleep, stress)...',
                     hintStyle: TextStyle(
@@ -817,7 +817,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
         if (_flowError != null) ...[
           const SizedBox(height: 12),
           Text(_flowError!,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 12, color: NotelColors.error),
               textAlign: TextAlign.center),
         ],
@@ -845,7 +845,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text(
+        Text(
           'Select a Test',
           style: TextStyle(
             fontSize: 22,
@@ -855,7 +855,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 6),
-        const Text(
+        Text(
           'Pick one of the weekly tests compiled from your struggle to begin:',
           style: TextStyle(
             fontSize: 13,
@@ -895,7 +895,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text(
+        Text(
           'Target Metric',
           style: TextStyle(
             fontSize: 22,
@@ -905,7 +905,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 6),
-        const Text(
+        Text(
           'What metric do you want to measure to track success?',
           style: TextStyle(
             fontSize: 13,
@@ -944,7 +944,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text(
+        Text(
           'Test Duration',
           style: TextStyle(
             fontSize: 22,
@@ -966,7 +966,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
         const SizedBox(height: 8),
         Text(
           selected.desc,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 13,
             height: 1.4,
             color: NotelColors.textSecondary,
@@ -1016,7 +1016,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
           ],
         ),
         const SizedBox(height: 24),
-        const Text(
+        Text(
           'Start Date',
           style: TextStyle(
             fontSize: 12,
@@ -1047,7 +1047,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
         if (_flowError != null) ...[
           const SizedBox(height: 12),
           Text(_flowError!,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 12, color: NotelColors.error),
               textAlign: TextAlign.center),
         ],
@@ -1093,7 +1093,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
   }
 
   Widget _splashView() {
-    return const Column(
+    return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Text('🔒', style: TextStyle(fontSize: 64)),
@@ -1154,7 +1154,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
               const SizedBox(height: 4),
               Text(
                 subtitle,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   height: 1.35,
                   color: NotelColors.textSecondary,
@@ -1220,7 +1220,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
                   color: NotelColors.error.withValues(alpha: 0.4)),
             ),
             child: Text(_writeError!,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 13, color: NotelColors.textPrimary)),
           ),
         ],
@@ -1230,7 +1230,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
         ],
         if (!isCompleted) ...[
           const SizedBox(height: 16),
-          const Text(
+          Text(
             "Today's Check-In",
             style: TextStyle(
               fontSize: 12,
@@ -1243,7 +1243,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
           _checkInCard(test),
         ],
         const SizedBox(height: 16),
-        const Text(
+        Text(
           'Log History',
           style: TextStyle(
             fontSize: 12,
@@ -1267,7 +1267,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
                 borderRadius: BorderRadius.circular(16)),
             padding: const EdgeInsets.symmetric(vertical: 14),
           ),
-          child: const Text('Cancel Experiment',
+          child: Text('Cancel Experiment',
               style: TextStyle(
                   fontWeight: FontWeight.bold, color: NotelColors.error)),
         ),
@@ -1323,7 +1323,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
             Icon(Icons.open_in_browser,
                 size: 28, color: NotelColors.success),
             const SizedBox(width: 14),
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1406,7 +1406,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
             const SizedBox(height: 4),
             Text(
               '${t.durationDays} Days',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 10,
                 color: NotelColors.textSecondary,
               ),
@@ -1484,7 +1484,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
           const SizedBox(height: 12),
           Text(
             test.title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w800,
               height: 1.27,
@@ -1495,7 +1495,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
             const SizedBox(height: 6),
             Text(
               test.desc!,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
                 height: 1.38,
                 color: NotelColors.textSecondary,
@@ -1508,7 +1508,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
             children: [
               Text(
                 'Day $daysElapsed of ${test.durationDays}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                   color: NotelColors.textSecondary,
@@ -1577,7 +1577,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
             ? null
             : TextButton(
                 onPressed: _saving ? null : _undoCheckIn,
-                child: const Text('Undo',
+                child: Text('Undo',
                     style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.bold,
@@ -1771,7 +1771,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
     if (logValue == true) {
       bg = NotelColors.success.withValues(alpha: 0.25);
       border = NotelColors.success.withValues(alpha: 0.4);
-      inner = const Text(
+      inner = Text(
         '✓',
         style: TextStyle(
           fontSize: 14,
@@ -1782,7 +1782,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
     } else if (missed) {
       bg = NotelColors.error.withValues(alpha: 0.15);
       border = NotelColors.error.withValues(alpha: 0.3);
-      inner = const Text(
+      inner = Text(
         '✗',
         style: TextStyle(
           fontSize: 14,
@@ -1816,7 +1816,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
       border = Colors.white.withValues(alpha: 0.05);
       inner = Text(
         '$dayNumber',
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 10,
           color: NotelColors.textSecondary,
         ),
@@ -1861,7 +1861,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
         const SizedBox(width: 4),
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 11,
             color: NotelColors.textSecondary,
           ),

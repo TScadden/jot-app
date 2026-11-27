@@ -319,7 +319,7 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Row(
+                    Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text('Notifications',
@@ -332,7 +332,7 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
                     const SizedBox(height: 16),
                     Flexible(
                       child: _notifications.isEmpty
-                          ? const Padding(
+                          ? Padding(
                               padding: EdgeInsets.symmetric(vertical: 40),
                               child: Center(
                                 child: Column(
@@ -408,11 +408,11 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
         backgroundColor: NotelColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back,
+          icon: Icon(Icons.arrow_back,
               color: NotelColors.textPrimary, semanticLabel: 'Back'),
           onPressed: widget.onBack ?? () => Navigator.of(context).pop(),
         ),
-        title: const Text(
+        title: Text(
           'Community',
           style: TextStyle(
               fontSize: 22,
@@ -445,7 +445,7 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
             ],
           ),
         ],
-        bottom: const PreferredSize(
+        bottom: PreferredSize(
           preferredSize: Size.fromHeight(1),
           child: Divider(
               height: 1, thickness: 1, color: NotelColors.divider),
@@ -475,7 +475,7 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Friends',
+                    Text('Friends',
                         style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -506,7 +506,7 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
                         Border.all(color: NotelColors.cardBorder),
                   ),
                   child: _friends.isEmpty
-                      ? const Text(
+                      ? Text(
                           'No friends added yet. Add friends using their Nickname#ID!',
                           style: TextStyle(
                               fontSize: 14,
@@ -520,7 +520,7 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
                         ),
                 ),
                 const SizedBox(height: 24),
-                const Text('Weekly Leaderboard',
+                Text('Weekly Leaderboard',
                     style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -557,7 +557,7 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
       ),
       child: Text(text,
           style:
-              const TextStyle(fontSize: 13, color: NotelColors.textPrimary)),
+              TextStyle(fontSize: 13, color: NotelColors.textPrimary)),
     );
   }
 
@@ -580,14 +580,14 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
                       Flexible(
                         child: Text(friend.nickname,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600,
                                 color: NotelColors.textPrimary)),
                       ),
                       const SizedBox(width: 4),
                       Text('#${friend.tag}',
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w500,
                               color: NotelColors.textSecondary)),
@@ -603,7 +603,7 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
                       _GemStat(gems: friend.gemBalance),
                       const SizedBox(width: 14),
                       Text(friendWeeklyPointsLabel(friend.level),
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 12,
                               color: NotelColors.textSecondary)),
                     ],
@@ -615,7 +615,7 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
             // native renders neither (the server's `status` field is
             // not presence, and no friends endpoint exposes a
             // last-logged time) — honest omission, kept in Round 48.
-            const Icon(Icons.chevron_right,
+            Icon(Icons.chevron_right,
                 size: 18, color: NotelColors.textSecondary),
           ],
         ),
@@ -669,7 +669,7 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
             width: 72,
             child: Text('${person.level} pts',
                 textAlign: TextAlign.right,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
                     color: NotelColors.textPrimary)),
@@ -710,7 +710,7 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
             children: [
               Expanded(
                 child: Text(notification.message,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
                         color: NotelColors.textPrimary)),
@@ -728,7 +728,7 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
           if (sender.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text(sender,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 12, color: NotelColors.textSecondary)),
           ],
           if (notification.createdAt.isNotEmpty) ...[
@@ -746,7 +746,7 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
               children: [
                 TextButton(
                   onPressed: onDecline,
-                  child: const Text('Decline',
+                  child: Text('Decline',
                       style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.bold,
@@ -835,7 +835,7 @@ class _AddFriendDialogState extends State<_AddFriendDialog> {
     return AlertDialog(
       backgroundColor: NotelColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      title: const Text('Add Friend',
+      title: Text('Add Friend',
           textAlign: TextAlign.center,
           style: TextStyle(
               fontSize: 18,
@@ -844,7 +844,7 @@ class _AddFriendDialogState extends State<_AddFriendDialog> {
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
+          Text(
             "Enter your friend's 5-digit Tag (e.g. 26385)",
             textAlign: TextAlign.center,
             style: TextStyle(
@@ -856,11 +856,11 @@ class _AddFriendDialogState extends State<_AddFriendDialog> {
           TextField(
             controller: _input,
             keyboardType: TextInputType.text,
-            style: const TextStyle(color: NotelColors.textPrimary),
+            style: TextStyle(color: NotelColors.textPrimary),
             decoration: InputDecoration(
               hintText: 'Tag (e.g. 26385)',
               hintStyle:
-                  const TextStyle(color: NotelColors.textSecondary),
+                  TextStyle(color: NotelColors.textSecondary),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(
@@ -880,7 +880,7 @@ class _AddFriendDialogState extends State<_AddFriendDialog> {
           if (_error != null) ...[
             const SizedBox(height: 8),
             Text(_error!,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
                     color: NotelColors.error)),
@@ -888,7 +888,7 @@ class _AddFriendDialogState extends State<_AddFriendDialog> {
           if (_success != null) ...[
             const SizedBox(height: 8),
             Text(_success!,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
                     color: NotelColors.success)),
@@ -898,7 +898,7 @@ class _AddFriendDialogState extends State<_AddFriendDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel',
+          child: Text('Cancel',
               style: TextStyle(color: NotelColors.textSecondary)),
         ),
         ElevatedButton(
@@ -977,12 +977,12 @@ class _FriendDetailDialogState extends State<_FriendDetailDialog> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(friend.nickname,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                         color: NotelColors.textPrimary)),
                 Text('#${friend.tag}',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                         color: NotelColors.textSecondary)),
@@ -990,7 +990,7 @@ class _FriendDetailDialogState extends State<_FriendDetailDialog> {
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.close,
+            icon: Icon(Icons.close,
                 color: NotelColors.textSecondary,
                 semanticLabel: 'Close'),
             onPressed: () => Navigator.of(context).pop(),
@@ -1016,7 +1016,7 @@ class _FriendDetailDialogState extends State<_FriendDetailDialog> {
             )
           else if (_error != null)
             Text(_error!,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 13, color: NotelColors.error))
           else if (_detail != null) ...[
             // Game stats (community revamp, Option A): streak and
@@ -1053,7 +1053,7 @@ class _FriendDetailDialogState extends State<_FriendDetailDialog> {
               ],
             ),
             const SizedBox(height: 16),
-            const Text('TODAY',
+            Text('TODAY',
                 style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -1070,7 +1070,7 @@ class _FriendDetailDialogState extends State<_FriendDetailDialog> {
                 ),
                 child: Column(
                   children: [
-                    const Icon(Icons.lock_outline,
+                    Icon(Icons.lock_outline,
                         size: 32, color: NotelColors.textSecondary),
                     const SizedBox(height: 8),
                     Text(
@@ -1080,7 +1080,7 @@ class _FriendDetailDialogState extends State<_FriendDetailDialog> {
                       // be false on its face.
                       '${friend.nickname} has turned off health data sharing',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
                           color: NotelColors.textSecondary),
@@ -1152,7 +1152,7 @@ class _FriendDetailDialogState extends State<_FriendDetailDialog> {
               ),
           ]
           else
-            const Text('No data available yet',
+            Text('No data available yet',
                 style: TextStyle(
                     fontSize: 13, color: NotelColors.textSecondary)),
         ],
@@ -1170,14 +1170,14 @@ class _FriendStatCard extends StatelessWidget {
   final Widget? iconWidget;
   final String label;
   final String value;
-  final Color accent;
+  final Color? accent;
 
   const _FriendStatCard({
     this.icon,
     this.iconWidget,
     required this.label,
     required this.value,
-    this.accent = NotelColors.textSecondary,
+    this.accent,
   });
 
   @override
@@ -1192,15 +1192,16 @@ class _FriendStatCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          iconWidget ?? Icon(icon, size: 20, color: accent),
+          iconWidget ??
+              Icon(icon, size: 20, color: accent ?? NotelColors.textSecondary),
           const SizedBox(height: 6),
           Text(value,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                   color: NotelColors.textPrimary)),
           Text(label,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w500,
                   color: NotelColors.textSecondary)),
@@ -1312,7 +1313,7 @@ class _GemStat extends StatelessWidget {
             ),
             const SizedBox(width: 4),
             Text('$gems',
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.bold,
                     color: kGemCountColor)),

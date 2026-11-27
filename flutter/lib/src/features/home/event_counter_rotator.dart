@@ -330,7 +330,7 @@ class _EventCounterRotatorState extends State<EventCounterRotator>
               children: [
                 Text(
                   '${display.days}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w900,
                     color: NotelColors.textPrimary,

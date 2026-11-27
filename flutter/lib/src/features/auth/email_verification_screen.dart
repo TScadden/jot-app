@@ -509,7 +509,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
           autocorrect: false,
           enableSuggestions: false,
           textAlign: TextAlign.center,
-          style: const TextStyle(color: NotelColors.textPrimary, fontSize: 24),
+          style: TextStyle(color: NotelColors.textPrimary, fontSize: 24),
           cursorColor: NotelColors.primary,
           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
           onChanged: (value) => _onDigitChanged(index, value),
@@ -521,7 +521,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
             contentPadding: EdgeInsets.zero,
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: NotelColors.fieldBorderIdle),
+              borderSide: BorderSide(color: NotelColors.fieldBorderIdle),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
@@ -543,7 +543,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
         color: NotelColors.surface,
         borderRadius: BorderRadius.circular(28),
         border: Border.all(color: NotelColors.cardBorder, width: 1),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
             // Same value as LoginScreen's card shadow literal,
             // referenced by token name here (legacyDarkScrim is
@@ -559,7 +559,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const Text(
+          Text(
             'Verify your email',
             style: TextStyle(
               fontSize: 22,
@@ -571,20 +571,20 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
           const SizedBox(height: 12),
           Text(
             'We sent a code to ${widget.email}',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               color: NotelColors.textSecondary,
             ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             "Enter the 6-digit code to finish creating your account. If you don't see the email, check your spam folder.",
             style: TextStyle(fontSize: 13, color: NotelColors.textSecondary),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 20),
-          const Align(
+          Align(
             alignment: Alignment.centerLeft,
             child: Text(
               'Verification code',
@@ -640,7 +640,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
             Text(
               _errorMessage!,
               key: const ValueKey('verify_error'),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
                 color: NotelColors.error,
               ),
@@ -652,7 +652,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
             Text(
               _infoMessage!,
               key: const ValueKey('verify_info'),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
                 color: NotelColors.textSecondary,
               ),
@@ -670,7 +670,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
               _resendRemainingSeconds > 0
                   ? 'Resend code in ${_formatCountdown(_resendRemainingSeconds)}'
                   : 'Resend code',
-              style: const TextStyle(
+              style: TextStyle(
                 color: NotelColors.textSecondary,
                 fontSize: 13,
               ),
@@ -679,7 +679,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
           TextButton(
             key: const ValueKey('verify_escape'),
             onPressed: busy ? null : widget.onEscape,
-            child: const Text(
+            child: Text(
               'Sign out',
               style: TextStyle(
                 color: NotelColors.textSecondary,

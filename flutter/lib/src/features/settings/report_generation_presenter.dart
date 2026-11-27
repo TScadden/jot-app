@@ -133,11 +133,11 @@ class _ReportGenerationPresenterState
         context: navContext,
         builder: (ctx) => AlertDialog(
           backgroundColor: NotelColors.surface,
-          title: const Text(aiDecisionTitle,
+          title: Text(aiDecisionTitle,
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontWeight: FontWeight.w600)),
-          content: const Text(aiDecisionBody,
+          content: Text(aiDecisionBody,
               style: TextStyle(color: NotelColors.textSecondary, fontSize: 13)),
           actions: [
             TextButton(
@@ -145,7 +145,7 @@ class _ReportGenerationPresenterState
                 Navigator.of(ctx).pop();
                 widget.service.resumeAiDecision(retryAi: false);
               },
-              child: const Text(aiDecisionRawLabel,
+              child: Text(aiDecisionRawLabel,
                   style: TextStyle(color: NotelColors.textSecondary)),
             ),
             TextButton(

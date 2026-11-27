@@ -1772,7 +1772,7 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Coach memory',
+                    Text('Coach memory',
                         style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -1782,13 +1782,13 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
                         _memoryFacts.isEmpty
                             ? 'Stored on this device'
                             : '${_memoryFacts.length} ${_memoryFacts.length == 1 ? 'fact' : 'facts'} stored on this device',
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 12,
                             color: NotelColors.textSecondary)),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right,
+              Icon(Icons.chevron_right,
                   size: 20, color: NotelColors.textSecondary),
             ],
           ),
@@ -1826,19 +1826,19 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: NotelColors.surface,
-        title: const Text('Delete Chat',
+        title: Text('Delete Chat',
             style: TextStyle(color: NotelColors.textPrimary)),
         content: Text('Delete "${session.title}"? This cannot be undone.',
-            style: const TextStyle(color: NotelColors.textSecondary)),
+            style: TextStyle(color: NotelColors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel',
+            child: Text('Cancel',
                 style: TextStyle(color: NotelColors.textSecondary)),
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Delete',
+            child: Text('Delete',
                 style: TextStyle(
                     color: NotelColors.error, fontWeight: FontWeight.bold)),
           ),
@@ -1873,11 +1873,11 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
         backgroundColor: NotelColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back,
+          icon: Icon(Icons.arrow_back,
               color: NotelColors.textPrimary, semanticLabel: 'Back'),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
+        title: Text(
           'Tabs Coach History',
           style: TextStyle(
               fontSize: 22,
@@ -1931,7 +1931,7 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
       return Column(
         children: [
           _coachMemoryTile(),
-          const Expanded(
+          Expanded(
             child: Center(
               child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: 32),
@@ -1977,13 +1977,13 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
                 children: [
                   Expanded(
                     child: Text(_actionError!,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 13, color: NotelColors.textPrimary)),
                   ),
                   IconButton(
                     // Audit 6d (Oct 27, 2026) — house label.
                     tooltip: 'Dismiss',
-                    icon: const Icon(Icons.close,
+                    icon: Icon(Icons.close,
                         size: 18, color: NotelColors.textSecondary),
                     onPressed: () => setState(() => _actionError = null),
                   ),
@@ -2016,25 +2016,25 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
                             Text(session.title,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
                                     color: NotelColors.textPrimary)),
                             const SizedBox(height: 4),
                             Text(formatCoachDate(session.updatedAt),
-                                style: const TextStyle(
+                                style: TextStyle(
                                     fontSize: 12,
                                     color: NotelColors.textSecondary)),
                           ],
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.delete_outline,
+                        icon: Icon(Icons.delete_outline,
                             color: NotelColors.error,
                             semanticLabel: 'Delete Chat'),
                         onPressed: () => _deleteSession(session),
                       ),
-                      const Icon(Icons.chevron_right,
+                      Icon(Icons.chevron_right,
                           size: 20, color: NotelColors.textSecondary),
                     ],
                   ),
@@ -2092,20 +2092,20 @@ class _CoachMemoryScreenState extends State<CoachMemoryScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: NotelColors.surface,
-        title: const Text('Clear coach memory',
+        title: Text('Clear coach memory',
             style: TextStyle(color: NotelColors.textPrimary)),
-        content: const Text(
+        content: Text(
             'Delete every fact the coach has remembered on this device? This cannot be undone.',
             style: TextStyle(color: NotelColors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel',
+            child: Text('Cancel',
                 style: TextStyle(color: NotelColors.textSecondary)),
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Clear all',
+            child: Text('Clear all',
                 style: TextStyle(
                     color: NotelColors.error, fontWeight: FontWeight.bold)),
           ),
@@ -2125,11 +2125,11 @@ class _CoachMemoryScreenState extends State<CoachMemoryScreen> {
         backgroundColor: NotelColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back,
+          icon: Icon(Icons.arrow_back,
               color: NotelColors.textPrimary, semanticLabel: 'Back'),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
+        title: Text(
           'Coach memory',
           style: TextStyle(
               fontSize: 22,
@@ -2140,7 +2140,7 @@ class _CoachMemoryScreenState extends State<CoachMemoryScreen> {
           if (_facts.isNotEmpty)
             TextButton(
               onPressed: _clearAll,
-              child: const Text('Clear all',
+              child: Text('Clear all',
                   style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
@@ -2151,7 +2151,7 @@ class _CoachMemoryScreenState extends State<CoachMemoryScreen> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
+          Padding(
             padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
             child: Text(
               'Coach memory is stored on this device. It is not synced to your other devices.',
@@ -2163,7 +2163,7 @@ class _CoachMemoryScreenState extends State<CoachMemoryScreen> {
           ),
           Expanded(
             child: _facts.isEmpty
-                ? const Center(
+                ? Center(
                     child: Padding(
                       padding: EdgeInsets.symmetric(horizontal: 32),
                       child: Column(
@@ -2222,7 +2222,7 @@ class _CoachMemoryScreenState extends State<CoachMemoryScreen> {
                                     CrossAxisAlignment.start,
                                 children: [
                                   Text(displayText,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                           fontSize: 14,
                                           fontWeight: FontWeight.normal,
                                           height: 1.4,
@@ -2231,7 +2231,7 @@ class _CoachMemoryScreenState extends State<CoachMemoryScreen> {
                                   if (dateLabel.isNotEmpty) ...[
                                     const SizedBox(height: 4),
                                     Text(dateLabel,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                             fontSize: 11,
                                             color: NotelColors
                                                 .textSecondary)),
@@ -2240,7 +2240,7 @@ class _CoachMemoryScreenState extends State<CoachMemoryScreen> {
                               ),
                             ),
                             IconButton(
-                              icon: const Icon(Icons.delete_outline,
+                              icon: Icon(Icons.delete_outline,
                                   size: 18,
                                   color: NotelColors.error,
                                   semanticLabel: 'Delete memory'),
@@ -2279,11 +2279,11 @@ class _LockedCoachView extends StatelessWidget {
                 borderRadius: BorderRadius.circular(28),
                 border: Border.all(color: NotelColors.cardBorder),
               ),
-              child: const Icon(Icons.lock_outline,
+              child: Icon(Icons.lock_outline,
                   size: 44, color: NotelColors.textSecondary),
             ),
             const SizedBox(height: 24),
-            const Text(
+            Text(
               'Health Coach is locked',
               style: TextStyle(
                   fontSize: 20,
@@ -2294,7 +2294,7 @@ class _LockedCoachView extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               message,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 14, height: 1.5, color: NotelColors.textSecondary),
               textAlign: TextAlign.center,
             ),
@@ -3238,14 +3238,14 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: NotelColors.surface,
-        title: const Text('Calendar access needed',
+        title: Text('Calendar access needed',
             style: TextStyle(color: NotelColors.textPrimary)),
-        content: const Text(coachCalendarPermissionDisclosure,
+        content: Text(coachCalendarPermissionDisclosure,
             style: TextStyle(color: NotelColors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Not now',
+            child: Text('Not now',
                 style: TextStyle(color: NotelColors.textSecondary)),
           ),
           TextButton(
@@ -3835,7 +3835,7 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
         backgroundColor: NotelColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back,
+          icon: Icon(Icons.arrow_back,
               color: NotelColors.textPrimary, semanticLabel: 'Back'),
           onPressed: () => Navigator.of(context).pop(),
         ),
@@ -3846,7 +3846,7 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
             Expanded(
               child: Text(
                 _title,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
                     color: NotelColors.textPrimary),
@@ -3859,7 +3859,7 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
         actions: [
           if (_sessionPersisted && realMessages > 1)
             IconButton(
-              icon: const Icon(Icons.delete_outline,
+              icon: Icon(Icons.delete_outline,
                   color: NotelColors.error, semanticLabel: 'Delete Chat'),
               onPressed: _deleteCurrentSession,
             ),
@@ -3910,7 +3910,7 @@ class _DisclaimerBanner extends StatelessWidget {
         color: NotelColors.primary.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: const Text(
+      child: Text(
         coachDisclaimer,
         style: TextStyle(
             fontSize: 11, color: NotelColors.textSecondary),
@@ -4070,7 +4070,7 @@ class _ChatBubble extends StatelessWidget {
             onDeny: () => onProposal('note', false),
             children: [
               Text('“${parsed.noteText}”',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 14,
                       fontStyle: FontStyle.italic,
                       height: 1.4,
@@ -4078,10 +4078,10 @@ class _ChatBubble extends StatelessWidget {
             ],
           ));
         case CoachProposalStatus.approved:
-          addCard(const _ProposalBadge(
+          addCard(_ProposalBadge(
               text: '✓ Note Saved', color: NotelColors.success));
         case CoachProposalStatus.denied:
-          addCard(const _ProposalBadge(
+          addCard(_ProposalBadge(
               text: '✗ Note Dismissed',
               color: NotelColors.textSecondary));
         case CoachProposalStatus.none:
@@ -4112,18 +4112,18 @@ class _ChatBubble extends StatelessWidget {
             children: [
               Text(
                   'Would you like to save "${parsed.fileName}" to your permanent Tabs database?',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 14,
                       height: 1.4,
                       color: NotelColors.textPrimary)),
             ],
           ));
         case CoachProposalStatus.approved:
-          addCard(const _ProposalBadge(
+          addCard(_ProposalBadge(
               text: '✓ Document Saved to Tabs DB',
               color: NotelColors.success));
         case CoachProposalStatus.denied:
-          addCard(const _ProposalBadge(
+          addCard(_ProposalBadge(
               text: '✗ Document Dismissed',
               color: NotelColors.textSecondary));
         case CoachProposalStatus.none:
@@ -4145,7 +4145,7 @@ class _ChatBubble extends StatelessWidget {
             onDeny: () => onProposal('list', false),
             children: [
               Text('Create list "${parsed.listName}" with items:',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                       color: NotelColors.textPrimary)),
@@ -4154,17 +4154,17 @@ class _ChatBubble extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 2),
                   child: Text('•  $item',
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 13,
                           color: NotelColors.textPrimary)),
                 ),
             ],
           ));
         case CoachProposalStatus.approved:
-          addCard(const _ProposalBadge(
+          addCard(_ProposalBadge(
               text: '✓ List Created', color: NotelColors.success));
         case CoachProposalStatus.denied:
-          addCard(const _ProposalBadge(
+          addCard(_ProposalBadge(
               text: '✗ List Dismissed',
               color: NotelColors.textSecondary));
         case CoachProposalStatus.none:
@@ -4186,24 +4186,24 @@ class _ChatBubble extends StatelessWidget {
             onDeny: () => onProposal('reminder', false),
             children: [
               Text(parsed.reminderTitle!,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                       color: NotelColors.textPrimary)),
               if (parsed.reminderTime != null) ...[
                 const SizedBox(height: 4),
                 Text('🕐 ${_formatReminderTime(parsed.reminderTime!)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 13,
                         color: NotelColors.textSecondary)),
               ],
             ],
           ));
         case CoachProposalStatus.approved:
-          addCard(const _ProposalBadge(
+          addCard(_ProposalBadge(
               text: '✓ Reminder Set', color: NotelColors.success));
         case CoachProposalStatus.denied:
-          addCard(const _ProposalBadge(
+          addCard(_ProposalBadge(
               text: '✗ Reminder Dismissed',
               color: NotelColors.textSecondary));
         case CoachProposalStatus.none:
@@ -4233,39 +4233,39 @@ class _ChatBubble extends StatelessWidget {
             onDeny: () => onProposal('calendar', false),
             children: [
               Text(parsed.calendarTitle!,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                       color: NotelColors.textPrimary)),
               if ((parsed.calendarDate ?? '').isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Text('📅 ${_formatCoachDatePremium(parsed.calendarDate!)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 13,
                         color: NotelColors.textSecondary)),
               ],
               if ((parsed.calendarTime ?? '').isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Text('🕐 ${_formatReminderTime(parsed.calendarTime!)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 13,
                         color: NotelColors.textSecondary)),
               ],
               if ((parsed.calendarDesc ?? '').isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Text(parsed.calendarDesc!,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12,
                         color: NotelColors.textSecondary)),
               ],
             ],
           ));
         case CoachProposalStatus.approved:
-          addCard(const _ProposalBadge(
+          addCard(_ProposalBadge(
               text: '✓ Event Scheduled & Added to Calendar',
               color: NotelColors.success));
         case CoachProposalStatus.denied:
-          addCard(const _ProposalBadge(
+          addCard(_ProposalBadge(
               text: '✗ Event Dismissed',
               color: NotelColors.textSecondary));
         case CoachProposalStatus.none:
@@ -4301,7 +4301,7 @@ class _ChatBubble extends StatelessWidget {
             onDeny: () => onProposal('calendarDelete', false),
             children: [
               Text(parsed.calendarDeleteTitle!,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                       color: NotelColors.textPrimary)),
@@ -4309,18 +4309,18 @@ class _ChatBubble extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                     'Scheduled for: ${_formatCoachDatePremium(parsed.calendarDeleteDate!)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 13,
                         color: NotelColors.textSecondary)),
               ],
             ],
           ));
         case CoachProposalStatus.approved:
-          addCard(const _ProposalBadge(
+          addCard(_ProposalBadge(
               text: '✓ Event Deleted from Calendar',
               color: NotelColors.success));
         case CoachProposalStatus.denied:
-          addCard(const _ProposalBadge(
+          addCard(_ProposalBadge(
               text: '✗ Deletion Dismissed',
               color: NotelColors.textSecondary));
         case CoachProposalStatus.none:
@@ -4342,7 +4342,7 @@ class _ChatBubble extends StatelessWidget {
             onDeny: () => onProposal('logEntry', false),
             children: [
               Text('“${parsed.logEntryText}”',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 14,
                       fontStyle: FontStyle.italic,
                       height: 1.4,
@@ -4351,7 +4351,7 @@ class _ChatBubble extends StatelessWidget {
                   parsed.logEntryCategory!.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Text(parsed.logEntryCategory!,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                         color: NotelColors.textSecondary)),
@@ -4359,10 +4359,10 @@ class _ChatBubble extends StatelessWidget {
             ],
           ));
         case CoachProposalStatus.approved:
-          addCard(const _ProposalBadge(
+          addCard(_ProposalBadge(
               text: '✓ Entry Logged', color: NotelColors.success));
         case CoachProposalStatus.denied:
-          addCard(const _ProposalBadge(
+          addCard(_ProposalBadge(
               text: '✗ Log Entry Dismissed',
               color: NotelColors.textSecondary));
         case CoachProposalStatus.none:
@@ -4398,7 +4398,7 @@ class _ChatBubble extends StatelessWidget {
             onDeny: () => onProposal('counter', false),
             children: [
               Text(parsed.counterName!,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                       color: NotelColors.textPrimary)),
@@ -4408,17 +4408,17 @@ class _ChatBubble extends StatelessWidget {
                     target == null
                         ? parsed.counterDate!
                         : '${_monthNames[target.month - 1]} ${target.day}, ${target.year} — $daysLabel',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 13,
                         color: NotelColors.textSecondary)),
               ],
             ],
           ));
         case CoachProposalStatus.approved:
-          addCard(const _ProposalBadge(
+          addCard(_ProposalBadge(
               text: '✓ Counter Created', color: NotelColors.success));
         case CoachProposalStatus.denied:
-          addCard(const _ProposalBadge(
+          addCard(_ProposalBadge(
               text: '✗ Counter Dismissed',
               color: NotelColors.textSecondary));
         case CoachProposalStatus.none:
@@ -4443,7 +4443,7 @@ class _ChatBubble extends StatelessWidget {
             children: [
               for (var i = 0; i < parsed.medications.length; i++) ...[
                 Text(parsed.medications[i].name,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
                         color: NotelColors.textPrimary)),
@@ -4452,7 +4452,7 @@ class _ChatBubble extends StatelessWidget {
                   parsed.medications[i].isPresent
                       ? 'Started: ${parsed.medications[i].startDate} • Present'
                       : 'Started: ${parsed.medications[i].startDate} • Ended: ${parsed.medications[i].endDate}',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 12,
                       color: NotelColors.textSecondary),
                 ),
@@ -4470,7 +4470,7 @@ class _ChatBubble extends StatelessWidget {
                           .isNotEmpty)
                         parsed.medications[i].frequency.trim(),
                     ].join(' • '),
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12,
                         color: NotelColors.textSecondary),
                   ),
@@ -4546,7 +4546,7 @@ class _ProposalCard extends StatelessWidget {
   /// Title color. Defaults to the Round 55 design's title color
   /// (textSecondary) so every existing card renders unchanged;
   /// Round 54's calendar-DELETION card passes NotelColors.error.
-  final Color titleColor;
+  final Color? titleColor;
   final List<Widget> children;
   final String approveLabel;
   final String denyLabel;
@@ -4567,7 +4567,7 @@ class _ProposalCard extends StatelessWidget {
   const _ProposalCard({
     required this.emoji,
     required this.title,
-    this.titleColor = NotelColors.textSecondary,
+    this.titleColor,
     required this.children,
     required this.approveLabel,
     required this.denyLabel,
@@ -4600,7 +4600,7 @@ class _ProposalCard extends StatelessWidget {
                     style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: titleColor)),
+                        color: titleColor ?? NotelColors.textSecondary)),
               ),
             ],
           ),
@@ -4610,7 +4610,7 @@ class _ProposalCard extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               notice!,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 12,
                   height: 1.35,
                   fontWeight: FontWeight.w600,
@@ -4625,7 +4625,7 @@ class _ProposalCard extends StatelessWidget {
                   onPressed: busy ? null : onDeny,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: NotelColors.textSecondary,
-                    side: const BorderSide(color: NotelColors.divider),
+                    side: BorderSide(color: NotelColors.divider),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                   ),
@@ -4681,11 +4681,11 @@ class _InputBar extends StatelessWidget {
                 maxLines: 4,
                 minLines: 1,
                 textCapitalization: TextCapitalization.sentences,
-                style: const TextStyle(
+                style: TextStyle(
                     color: NotelColors.textPrimary, fontSize: 15),
                 decoration: InputDecoration(
                   hintText: 'Ask $kCoachName anything...',
-                  hintStyle: const TextStyle(
+                  hintStyle: TextStyle(
                       color: NotelColors.textSecondary),
                   filled: true,
                   fillColor:

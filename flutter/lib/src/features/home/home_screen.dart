@@ -3413,7 +3413,7 @@ class _HomeScreenState extends State<HomeScreen>
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Semantics(
               label: kSheetCheckInUnscoredSemantics,
-              child: const ExcludeSemantics(
+              child: ExcludeSemantics(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
@@ -3519,7 +3519,7 @@ class _HomeScreenState extends State<HomeScreen>
               InkWell(
                 key: const ValueKey('home_drawer_ai_advocate'),
                 onTap: () => unawaited(_openAiAdvocate()),
-                child: const Padding(
+                child: Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   child: Row(
                     children: [
@@ -3545,7 +3545,7 @@ class _HomeScreenState extends State<HomeScreen>
               InkWell(
                 key: const ValueKey('home_drawer_event_counters'),
                 onTap: () => unawaited(_openEventCountersFromDrawer()),
-                child: const Padding(
+                child: Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   child: Row(
                     children: [
@@ -3571,7 +3571,7 @@ class _HomeScreenState extends State<HomeScreen>
               InkWell(
                 key: const ValueKey('home_drawer_community'),
                 onTap: () => unawaited(_openCommunityFromDrawer()),
-                child: const Padding(
+                child: Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   child: Row(
                     children: [
@@ -3606,7 +3606,7 @@ class _HomeScreenState extends State<HomeScreen>
                     child: InkWell(
                       key: const ValueKey('home_drawer_badges'),
                       onTap: () => unawaited(_openBadgesFromDrawer()),
-                      child: const Padding(
+                      child: Padding(
                         padding: EdgeInsets.symmetric(
                             horizontal: 16, vertical: 16),
                         child: Row(
@@ -3654,7 +3654,7 @@ class _HomeScreenState extends State<HomeScreen>
               InkWell(
                 key: const ValueKey('home_drawer_medications'),
                 onTap: () => unawaited(_openMedicationsFromDrawer()),
-                child: const Padding(
+                child: Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   child: Row(
                     children: [
@@ -3812,7 +3812,7 @@ class _HomeScreenState extends State<HomeScreen>
                               color: NotelColors.legacyDarkHairline,
                               width: 1),
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.settings,
                           size: 24,
                           color: NotelColors.textPrimary,
@@ -4029,7 +4029,7 @@ class _HomeScreenState extends State<HomeScreen>
                       const SizedBox(height: 8),
                       Text(
                         _hcRepairError!,
-                        style: const TextStyle(
+                        style: TextStyle(
                             color: NotelColors.error, fontSize: 12),
                       ),
                     ],

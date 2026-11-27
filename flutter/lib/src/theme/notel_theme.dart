@@ -26,53 +26,84 @@ import 'slide_page_route.dart';
 /// override explicitly so a change rebuilds the theme — and with
 /// it every theme-driven surface — without a restart. Surface
 /// tokens are never affected.
-ThemeData notelDarkTheme({Color? background}) {
-  final resolvedBackground = background ?? NotelColors.background;
-  final colorScheme = ColorScheme.dark(
+ThemeData notelDarkTheme({Color? background}) => _notelTheme(
+      brightness: Brightness.dark,
+      palette: NotelColors.darkPalette,
+      background: background,
+    );
+
+/// Theme-mode package (Nov 27, 2026) — the light counterpart to
+/// [notelDarkTheme], mirroring its component themes slot for slot
+/// from [NotelColors.lightPalette]. Stock Material surfaces render
+/// on the light tokens instead of the platform fallback, exactly
+/// as the dark theme does for dark mode.
+ThemeData notelLightTheme({Color? background}) => _notelTheme(
+      brightness: Brightness.light,
+      palette: NotelColors.lightPalette,
+      background: background,
+    );
+
+ThemeData _notelTheme({
+  required Brightness brightness,
+  required NotelPalette palette,
+  Color? background,
+}) {
+  // The resolved base background for THIS theme: an explicit
+  // [background] wins; otherwise a dev override in effect wins
+  // over both palettes; otherwise this theme's own palette value —
+  // so the dark and light themes built side by side in one
+  // MaterialApp are each internally correct even though the token
+  // getters resolve against the ACTIVE palette only.
+  final resolvedBackground = background ??
+      (NotelColors.hasBackgroundOverride
+          ? NotelColors.background
+          : palette.background);
+  final isDark = brightness == Brightness.dark;
+  final colorScheme = (isDark ? ColorScheme.dark : ColorScheme.light)(
     primary: NotelColors.primary,
-    onPrimary: NotelColors.textPrimary,
-    primaryContainer: NotelColors.surfaceHigh,
-    onPrimaryContainer: NotelColors.textPrimary,
+    onPrimary: palette.textPrimary,
+    primaryContainer: palette.surfaceHigh,
+    onPrimaryContainer: palette.textPrimary,
     secondary: NotelColors.primary,
-    onSecondary: NotelColors.textPrimary,
-    secondaryContainer: NotelColors.surfaceHigh,
-    onSecondaryContainer: NotelColors.textPrimary,
-    tertiary: NotelColors.info,
-    onTertiary: NotelColors.textPrimary,
-    surface: NotelColors.surface,
-    onSurface: NotelColors.textPrimary,
-    onSurfaceVariant: NotelColors.textSecondary,
+    onSecondary: palette.textPrimary,
+    secondaryContainer: palette.surfaceHigh,
+    onSecondaryContainer: palette.textPrimary,
+    tertiary: palette.info,
+    onTertiary: palette.textPrimary,
+    surface: palette.surface,
+    onSurface: palette.textPrimary,
+    onSurfaceVariant: palette.textSecondary,
     surfaceContainerLowest: resolvedBackground,
-    surfaceContainerLow: NotelColors.surface,
-    surfaceContainer: NotelColors.surface,
-    surfaceContainerHigh: NotelColors.surfaceHigh,
-    surfaceContainerHighest: NotelColors.surfaceHigh,
+    surfaceContainerLow: palette.surface,
+    surfaceContainer: palette.surface,
+    surfaceContainerHigh: palette.surfaceHigh,
+    surfaceContainerHighest: palette.surfaceHigh,
     surfaceDim: resolvedBackground,
-    surfaceBright: NotelColors.surfaceHigh,
-    inverseSurface: NotelColors.textPrimary,
+    surfaceBright: palette.surfaceHigh,
+    inverseSurface: palette.textPrimary,
     onInverseSurface: resolvedBackground,
     inversePrimary: NotelColors.primary,
-    error: NotelColors.error,
-    onError: NotelColors.textPrimary,
-    errorContainer: NotelColors.errorTint,
-    onErrorContainer: NotelColors.error,
-    outline: NotelColors.fieldBorderIdle,
-    outlineVariant: NotelColors.divider,
+    error: palette.error,
+    onError: palette.textPrimary,
+    errorContainer: palette.errorTint,
+    onErrorContainer: palette.error,
+    outline: palette.fieldBorderIdle,
+    outlineVariant: palette.divider,
     scrim: Colors.black,
     shadow: Colors.black,
   );
 
-  // Selected day/year in the stock pickers: Tabs purple fill with the
-  // near-white text token on top; unselected entries use the primary
-  // text token, disabled entries the secondary token.
+  // Selected day/year in the stock pickers: Tabs purple fill with
+  // the primary text token on top; unselected entries use the
+  // primary text token, disabled entries the secondary token.
   Color? pickerForeground(Set<WidgetState> states) {
     if (states.contains(WidgetState.selected)) {
-      return NotelColors.textPrimary;
+      return palette.textPrimary;
     }
     if (states.contains(WidgetState.disabled)) {
-      return NotelColors.textSecondary;
+      return palette.textSecondary;
     }
-    return NotelColors.textPrimary;
+    return palette.textPrimary;
   }
 
   Color? pickerBackground(Set<WidgetState> states) {
@@ -92,72 +123,72 @@ ThemeData notelDarkTheme({Color? background}) {
   // / labelMedium / labelSmall = the textSecondary caption roles);
   // display/headline slots keep their M3 sizes — no new scale — with
   // the textPrimary token applied.
-  const textTheme = TextTheme(
+  final textTheme = TextTheme(
     displayLarge: TextStyle(
       fontSize: 57,
-      color: NotelColors.textPrimary,
+      color: palette.textPrimary,
     ),
     displayMedium: TextStyle(
       fontSize: 45,
-      color: NotelColors.textPrimary,
+      color: palette.textPrimary,
     ),
     displaySmall: TextStyle(
       fontSize: 36,
-      color: NotelColors.textPrimary,
+      color: palette.textPrimary,
     ),
     headlineLarge: TextStyle(
       fontSize: 32,
-      color: NotelColors.textPrimary,
+      color: palette.textPrimary,
     ),
     headlineMedium: TextStyle(
       fontSize: 28,
-      color: NotelColors.textPrimary,
+      color: palette.textPrimary,
     ),
     headlineSmall: TextStyle(
       fontSize: 24,
-      color: NotelColors.textPrimary,
+      color: palette.textPrimary,
     ),
     titleLarge: TextStyle(
       fontSize: 22,
       fontWeight: FontWeight.bold,
-      color: NotelColors.textPrimary,
+      color: palette.textPrimary,
     ),
     titleMedium: TextStyle(
       fontSize: 16,
       fontWeight: FontWeight.bold,
-      color: NotelColors.textPrimary,
+      color: palette.textPrimary,
     ),
     titleSmall: TextStyle(
       fontSize: 14,
       fontWeight: FontWeight.bold,
-      color: NotelColors.textPrimary,
+      color: palette.textPrimary,
     ),
     bodyLarge: TextStyle(
       fontSize: 16,
-      color: NotelColors.textPrimary,
+      color: palette.textPrimary,
     ),
     bodyMedium: TextStyle(
       fontSize: 14,
-      color: NotelColors.textPrimary,
+      color: palette.textPrimary,
     ),
     bodySmall: TextStyle(
       fontSize: 12,
-      color: NotelColors.textSecondary,
+      color: palette.textSecondary,
     ),
     labelLarge: TextStyle(
       fontSize: 14,
       fontWeight: FontWeight.w500,
-      color: NotelColors.textPrimary,
+      color: palette.textPrimary,
     ),
     labelMedium: TextStyle(
       fontSize: 12,
       fontWeight: FontWeight.w600,
-      color: NotelColors.textSecondary,
+      color: palette.textSecondary,
     ),
     labelSmall: TextStyle(
       fontSize: 11,
       fontWeight: FontWeight.w500,
-      color: NotelColors.textSecondary,
+      color: palette.textSecondary,
     ),
   );
 
@@ -168,7 +199,7 @@ ThemeData notelDarkTheme({Color? background}) {
   const buttonMinimumSize = WidgetStatePropertyAll(Size(64, 48));
 
   return ThemeData(
-    brightness: Brightness.dark,
+    brightness: brightness,
     colorScheme: colorScheme,
     scaffoldBackgroundColor: resolvedBackground,
     pageTransitionsTheme: slidePageTransitionsTheme(),
@@ -185,16 +216,16 @@ ThemeData notelDarkTheme({Color? background}) {
     textButtonTheme: const TextButtonThemeData(
       style: ButtonStyle(minimumSize: buttonMinimumSize),
     ),
-    dialogTheme: const DialogThemeData(
-      backgroundColor: NotelColors.surface,
+    dialogTheme: DialogThemeData(
+      backgroundColor: palette.surface,
       surfaceTintColor: Colors.transparent,
-      iconColor: NotelColors.textSecondary,
+      iconColor: palette.textSecondary,
     ),
     datePickerTheme: DatePickerThemeData(
-      backgroundColor: NotelColors.surface,
+      backgroundColor: palette.surface,
       surfaceTintColor: Colors.transparent,
-      headerBackgroundColor: NotelColors.surfaceHigh,
-      headerForegroundColor: NotelColors.textPrimary,
+      headerBackgroundColor: palette.surfaceHigh,
+      headerForegroundColor: palette.textPrimary,
       dayForegroundColor: WidgetStateProperty.resolveWith(pickerForeground),
       dayBackgroundColor: WidgetStateProperty.resolveWith(pickerBackground),
       todayForegroundColor: WidgetStateProperty.resolveWith(pickerForeground),
@@ -204,43 +235,43 @@ ThemeData notelDarkTheme({Color? background}) {
       yearForegroundColor: WidgetStateProperty.resolveWith(pickerForeground),
       yearBackgroundColor: WidgetStateProperty.resolveWith(pickerBackground),
     ),
-    timePickerTheme: const TimePickerThemeData(
-      backgroundColor: NotelColors.surface,
-      dialBackgroundColor: NotelColors.surfaceHigh,
+    timePickerTheme: TimePickerThemeData(
+      backgroundColor: palette.surface,
+      dialBackgroundColor: palette.surfaceHigh,
       dialHandColor: NotelColors.primary,
-      dialTextColor: NotelColors.textPrimary,
-      hourMinuteColor: NotelColors.surfaceHigh,
-      hourMinuteTextColor: NotelColors.textPrimary,
-      entryModeIconColor: NotelColors.textSecondary,
+      dialTextColor: palette.textPrimary,
+      hourMinuteColor: palette.surfaceHigh,
+      hourMinuteTextColor: palette.textPrimary,
+      entryModeIconColor: palette.textSecondary,
     ),
-    bottomSheetTheme: const BottomSheetThemeData(
-      backgroundColor: NotelColors.surface,
-      modalBackgroundColor: NotelColors.surface,
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: palette.surface,
+      modalBackgroundColor: palette.surface,
       surfaceTintColor: Colors.transparent,
     ),
-    popupMenuTheme: const PopupMenuThemeData(
-      color: NotelColors.surfaceHigh,
+    popupMenuTheme: PopupMenuThemeData(
+      color: palette.surfaceHigh,
       surfaceTintColor: Colors.transparent,
-      textStyle: TextStyle(color: NotelColors.textPrimary),
-      iconColor: NotelColors.textSecondary,
+      textStyle: TextStyle(color: palette.textPrimary),
+      iconColor: palette.textSecondary,
     ),
-    menuTheme: const MenuThemeData(
+    menuTheme: MenuThemeData(
       style: MenuStyle(
-        backgroundColor: WidgetStatePropertyAll(NotelColors.surfaceHigh),
-        surfaceTintColor: WidgetStatePropertyAll(Colors.transparent),
+        backgroundColor: WidgetStatePropertyAll(palette.surfaceHigh),
+        surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
       ),
     ),
-    dropdownMenuTheme: const DropdownMenuThemeData(
+    dropdownMenuTheme: DropdownMenuThemeData(
       menuStyle: MenuStyle(
-        backgroundColor: WidgetStatePropertyAll(NotelColors.surfaceHigh),
-        surfaceTintColor: WidgetStatePropertyAll(Colors.transparent),
+        backgroundColor: WidgetStatePropertyAll(palette.surfaceHigh),
+        surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
       ),
     ),
-    snackBarTheme: const SnackBarThemeData(
-      backgroundColor: NotelColors.surfaceHigh,
-      contentTextStyle: TextStyle(color: NotelColors.textPrimary),
+    snackBarTheme: SnackBarThemeData(
+      backgroundColor: palette.surfaceHigh,
+      contentTextStyle: TextStyle(color: palette.textPrimary),
       actionTextColor: NotelColors.primary,
-      closeIconColor: NotelColors.textSecondary,
+      closeIconColor: palette.textSecondary,
     ),
     textSelectionTheme: const TextSelectionThemeData(
       cursorColor: NotelColors.primary,

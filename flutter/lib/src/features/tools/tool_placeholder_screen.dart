@@ -29,7 +29,7 @@ class ToolPlaceholderScreen extends StatelessWidget {
         ),
         title: Text(
           tile.title,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
             color: NotelColors.textPrimary,

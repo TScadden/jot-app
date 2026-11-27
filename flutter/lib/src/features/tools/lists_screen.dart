@@ -410,17 +410,17 @@ class _ListsScreenState extends State<ListsScreen> {
       builder: (dialogContext) => AlertDialog(
         backgroundColor: NotelColors.surface,
         title: Text('Delete "${list.name}"?',
-            style: const TextStyle(
+            style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.bold)),
-        content: const Text(
+        content: Text(
           'This will permanently delete the list and all its items.',
           style: TextStyle(color: NotelColors.textSecondary, fontSize: 14),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel',
+            child: Text('Cancel',
                 style: TextStyle(color: NotelColors.textSecondary)),
           ),
           FilledButton(
@@ -445,14 +445,14 @@ class _ListsScreenState extends State<ListsScreen> {
         backgroundColor: NotelColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
+          icon: Icon(
             Icons.arrow_back,
             color: NotelColors.textPrimary,
             semanticLabel: 'Back',
           ),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
+        title: Text(
           'Lists',
           style: TextStyle(
             fontSize: 20,
@@ -462,7 +462,7 @@ class _ListsScreenState extends State<ListsScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.add,
+            icon: Icon(Icons.add,
                 color: NotelColors.textPrimary, semanticLabel: 'New List'),
             onPressed: _writing ? null : _showNewListDialog,
           ),
@@ -501,7 +501,7 @@ class _ListsScreenState extends State<ListsScreen> {
           children: [
             const Text('📋', style: TextStyle(fontSize: 48)),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'No lists yet',
               style: TextStyle(
                 color: NotelColors.textPrimary,
@@ -510,7 +510,7 @@ class _ListsScreenState extends State<ListsScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Tap + in the top right to create your first list',
               style: TextStyle(
                 color: NotelColors.textSecondary,
@@ -548,7 +548,7 @@ class _ListsScreenState extends State<ListsScreen> {
           children: [
             const Text('📋', style: TextStyle(fontSize: 48)),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Couldn\'t load lists',
               style: TextStyle(
                 color: NotelColors.textPrimary,
@@ -557,7 +557,7 @@ class _ListsScreenState extends State<ListsScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Check your connection and try again.',
               style: TextStyle(
                 color: NotelColors.textSecondary,
@@ -616,7 +616,7 @@ class _ListsScreenState extends State<ListsScreen> {
                       children: [
                         Text(
                           list.name,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: NotelColors.textPrimary,
                             fontSize: 15,
                             fontWeight: FontWeight.bold,
@@ -661,7 +661,7 @@ class _ListsScreenState extends State<ListsScreen> {
             ),
           ),
           if (expanded) ...[
-            const Divider(
+            Divider(
               height: 1,
               color: NotelColors.legacyDarkDivider,
               indent: 16,
@@ -679,7 +679,7 @@ class _ListsScreenState extends State<ListsScreen> {
               ),
             ),
             if (count == 0)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.all(16),
                 child: Text(
                   'This list is empty',
@@ -756,7 +756,7 @@ class _ListsScreenState extends State<ListsScreen> {
               Expanded(
                 child: Text(
                   text,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: NotelColors.textPrimary,
                     fontSize: 14,
                     height: 20 / 14,
@@ -811,7 +811,7 @@ class _NewListDialogState extends State<_NewListDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: NotelColors.surface,
-      title: const Text('New List',
+      title: Text('New List',
           style: TextStyle(
               color: NotelColors.textPrimary,
               fontWeight: FontWeight.bold)),
@@ -819,8 +819,8 @@ class _NewListDialogState extends State<_NewListDialog> {
         controller: _controller,
         autofocus: true,
         textCapitalization: TextCapitalization.words,
-        style: const TextStyle(color: NotelColors.textPrimary),
-        decoration: const InputDecoration(
+        style: TextStyle(color: NotelColors.textPrimary),
+        decoration: InputDecoration(
           hintText: 'e.g. Foods good for MCAS',
           hintStyle: TextStyle(color: NotelColors.textSecondary),
         ),
@@ -832,7 +832,7 @@ class _NewListDialogState extends State<_NewListDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel',
+          child: Text('Cancel',
               style: TextStyle(color: NotelColors.textSecondary)),
         ),
         FilledButton(
@@ -887,11 +887,11 @@ class _AddItemFieldState extends State<_AddItemField> {
             controller: _controller,
             enabled: widget.enabled,
             textCapitalization: TextCapitalization.sentences,
-            style: const TextStyle(
+            style: TextStyle(
                 color: NotelColors.textPrimary, fontSize: 14),
             decoration: InputDecoration(
               hintText: 'Add an item...',
-              hintStyle: const TextStyle(
+              hintStyle: TextStyle(
                   color: NotelColors.textSecondary, fontSize: 14),
               filled: true,
               fillColor:
@@ -976,7 +976,7 @@ class _EditItemFieldState extends State<_EditItemField> {
           child: TextField(
             controller: _controller,
             autofocus: true,
-            style: const TextStyle(
+            style: TextStyle(
                 color: NotelColors.textPrimary, fontSize: 14),
             decoration: InputDecoration(
               filled: true,
@@ -1016,7 +1016,7 @@ class _EditItemFieldState extends State<_EditItemField> {
           },
         ),
         IconButton(
-          icon: const Icon(Icons.close,
+          icon: Icon(Icons.close,
               size: 18,
               color: NotelColors.textSecondary,
               semanticLabel: 'Cancel'),

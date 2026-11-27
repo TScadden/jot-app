@@ -798,14 +798,14 @@ class _HeartScreenState extends State<HeartScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: NotelColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
+        title: Text(
           'Heart Rate Insights',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             color: NotelColors.textPrimary,
           ),
         ),
-        content: const Column(
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -878,7 +878,7 @@ class _HeartScreenState extends State<HeartScreen> {
       appBar: AppBar(
         backgroundColor: NotelColors.background,
         elevation: 0,
-        title: const Text(
+        title: Text(
           'Heart',
           style: TextStyle(
             fontWeight: FontWeight.w900,
@@ -919,14 +919,14 @@ class _HeartScreenState extends State<HeartScreen> {
                         children: [
                           Text(
                             heartDateLabel(_dateStr, _todayStr),
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: NotelColors.textPrimary,
                               fontWeight: FontWeight.w600,
                               fontSize: 13,
                             ),
                           ),
                           const SizedBox(width: 4),
-                          const Icon(
+                          Icon(
                             Icons.keyboard_arrow_down,
                             color: NotelColors.textSecondary,
                             size: 16,
@@ -946,7 +946,7 @@ class _HeartScreenState extends State<HeartScreen> {
           // to Sleep in the not-connected state too.
           IconButton(
             onPressed: widget.onShowSleep,
-            icon: const Icon(Icons.bedtime,
+            icon: Icon(Icons.bedtime,
                 size: 24,
                 color: NotelColors.textSecondary,
                 semanticLabel: 'Sleep'),
@@ -955,7 +955,7 @@ class _HeartScreenState extends State<HeartScreen> {
           if (connected == true)
             IconButton(
               onPressed: _loading ? null : () => unawaited(_load(force: true)),
-              icon: const Icon(Icons.refresh,
+              icon: Icon(Icons.refresh,
                   size: 24, color: NotelColors.textSecondary),
               tooltip: 'Refresh',
             ),
@@ -1024,7 +1024,7 @@ class _HeartScreenState extends State<HeartScreen> {
           const SizedBox(height: 32),
           Text(
             headline,
-            style: const TextStyle(
+            style: TextStyle(
               color: NotelColors.textPrimary,
               fontSize: 24,
               fontWeight: FontWeight.w900,
@@ -1034,7 +1034,7 @@ class _HeartScreenState extends State<HeartScreen> {
           const SizedBox(height: 12),
           Text(
             body,
-            style: const TextStyle(
+            style: TextStyle(
               color: NotelColors.textSecondary,
               fontSize: 14,
               height: 22 / 14,
@@ -1045,7 +1045,7 @@ class _HeartScreenState extends State<HeartScreen> {
             const SizedBox(height: 12),
             Text(
               secondary,
-              style: const TextStyle(
+              style: TextStyle(
                 color: NotelColors.textSecondary,
                 fontSize: 14,
                 height: 22 / 14,
@@ -1086,7 +1086,7 @@ class _HeartScreenState extends State<HeartScreen> {
             const SizedBox(height: 16),
             Text(
               _error!,
-              style: const TextStyle(color: NotelColors.error, fontSize: 13),
+              style: TextStyle(color: NotelColors.error, fontSize: 13),
               textAlign: TextAlign.center,
             ),
           ],
@@ -1174,7 +1174,7 @@ class _HeartScreenState extends State<HeartScreen> {
             ),
           ),
           const SizedBox(height: 32),
-          const Text(
+          Text(
             'Connect Vital Signs',
             style: TextStyle(
               color: NotelColors.textPrimary,
@@ -1183,7 +1183,7 @@ class _HeartScreenState extends State<HeartScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          const Text(
+          Text(
             'Link Health Connect to automatically sync your heart rate and sleep data.',
             style: TextStyle(
               color: NotelColors.textSecondary,
@@ -1223,7 +1223,7 @@ class _HeartScreenState extends State<HeartScreen> {
             const SizedBox(height: 16),
             Text(
               _error!,
-              style: const TextStyle(color: NotelColors.error, fontSize: 13),
+              style: TextStyle(color: NotelColors.error, fontSize: 13),
               textAlign: TextAlign.center,
             ),
           ],
@@ -1241,7 +1241,7 @@ class _HeartScreenState extends State<HeartScreen> {
         borderRadius: BorderRadius.circular(12),
       ),
       padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
-      child: const Row(
+      child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(Icons.info_outline, size: 14, color: NotelColors.error),
@@ -1266,7 +1266,7 @@ class _HeartScreenState extends State<HeartScreen> {
   /// NOT render "-- bpm", an empty chart, or "0 spikes" as if they
   /// were the day's data.
   Widget _noDataFailureState() {
-    return const Padding(
+    return Padding(
       padding: EdgeInsets.symmetric(vertical: 24),
       child: Column(
         children: [
@@ -1316,7 +1316,7 @@ class _HeartScreenState extends State<HeartScreen> {
               ),
               padding:
                   const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
-              child: const Row(
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   SizedBox(
@@ -1366,7 +1366,7 @@ class _HeartScreenState extends State<HeartScreen> {
           if (_error != null) ...[
             Text(
               _error!,
-              style: const TextStyle(color: NotelColors.error, fontSize: 12),
+              style: TextStyle(color: NotelColors.error, fontSize: 12),
             ),
             const SizedBox(height: 12),
           ],
@@ -1424,7 +1424,7 @@ class _HeartScreenState extends State<HeartScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Awake average',
                     style: TextStyle(
                       color: NotelColors.textSecondary,
@@ -1439,13 +1439,13 @@ class _HeartScreenState extends State<HeartScreen> {
                           text: data.awakeAvg != null
                               ? '${data.awakeAvg}'
                               : '--',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: NotelColors.textPrimary,
                             fontSize: 40,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
-                        const TextSpan(
+                        TextSpan(
                           text: ' bpm',
                           style: TextStyle(
                             color: NotelColors.textSecondary,
@@ -1541,7 +1541,7 @@ class _HeartScreenState extends State<HeartScreen> {
         children: [
           Row(
             children: [
-              const Text(
+              Text(
                 'Today’s pattern',
                 style: TextStyle(
                   color: NotelColors.textPrimary,
@@ -1555,7 +1555,7 @@ class _HeartScreenState extends State<HeartScreen> {
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: _showHrInfo,
-                child: const SizedBox(
+                child: SizedBox(
                   width: 48,
                   height: 48,
                   child: Center(
@@ -1566,7 +1566,7 @@ class _HeartScreenState extends State<HeartScreen> {
               ),
             ],
           ),
-          const Text(
+          Text(
             'Heart rate from 12 AM to 11:59 PM',
             style: TextStyle(
               color: NotelColors.textSecondary,
@@ -1596,7 +1596,7 @@ class _HeartScreenState extends State<HeartScreen> {
           // day. Never shown when a series is present.
           if (data.storedSummaryOnly) ...[
             const SizedBox(height: 8),
-            const Text(
+            Text(
               heartChartSummaryOnlyMessage,
               style: TextStyle(
                 color: NotelColors.textSecondary,
@@ -1623,7 +1623,7 @@ class _HeartScreenState extends State<HeartScreen> {
                     ),
                   ),
                   const SizedBox(width: 6),
-                  const Text('Heart rate',
+                  Text('Heart rate',
                       style: TextStyle(
                           color: NotelColors.textSecondary, fontSize: 11)),
                 ],
@@ -1640,7 +1640,7 @@ class _HeartScreenState extends State<HeartScreen> {
                     ),
                   ),
                   const SizedBox(width: 6),
-                  const Text('Resting range (45 to 70 bpm)',
+                  Text('Resting range (45 to 70 bpm)',
                       style: TextStyle(
                           color: NotelColors.textSecondary, fontSize: 11)),
                 ],
@@ -1651,7 +1651,7 @@ class _HeartScreenState extends State<HeartScreen> {
                   Container(
                     width: 8,
                     height: 8,
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       color: NotelColors.error,
                       shape: BoxShape.circle,
                     ),
@@ -1661,7 +1661,7 @@ class _HeartScreenState extends State<HeartScreen> {
                     data.peakBpm != null
                         ? 'Peak ${data.peakBpm} bpm'
                         : 'Peak --',
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: NotelColors.textSecondary, fontSize: 11),
                   ),
                 ],
@@ -1719,12 +1719,12 @@ class _HeartScreenState extends State<HeartScreen> {
               Container(
                 width: 36,
                 height: 36,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   color: NotelColors.errorTintStrong,
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
-                child: const Icon(Icons.whatshot,
+                child: Icon(Icons.whatshot,
                     color: NotelColors.error, size: 20),
               ),
               const SizedBox(width: 12),
@@ -1735,7 +1735,7 @@ class _HeartScreenState extends State<HeartScreen> {
                     if (noReadings) ...[
                       // Juno §1b.2 — ONLY these two lines, in place
                       // of the count and the load level.
-                      const Text(
+                      Text(
                         heartNoReadingsTitle,
                         style: TextStyle(
                           color: NotelColors.textPrimary,
@@ -1743,7 +1743,7 @@ class _HeartScreenState extends State<HeartScreen> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const Text(
+                      Text(
                         heartNoReadingsBody,
                         style: TextStyle(
                           color: NotelColors.textSecondary,
@@ -1754,7 +1754,7 @@ class _HeartScreenState extends State<HeartScreen> {
                     ] else if (examined) ...[
                       Text(
                         '${card.spikeCount} significant spikes',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: NotelColors.textPrimary,
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -1762,7 +1762,7 @@ class _HeartScreenState extends State<HeartScreen> {
                       ),
                       Text(
                         loadLevel,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: NotelColors.error,
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
@@ -1774,7 +1774,7 @@ class _HeartScreenState extends State<HeartScreen> {
                       // only — no count, no load level, no claim.
                       Row(
                         children: [
-                          const Text(
+                          Text(
                             'Significant spikes',
                             style: TextStyle(
                               color: NotelColors.textPrimary,
@@ -1808,7 +1808,7 @@ class _HeartScreenState extends State<HeartScreen> {
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   child: Text(
                     loadLevel,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: NotelColors.error,
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
@@ -1878,7 +1878,7 @@ class _HeartScreenState extends State<HeartScreen> {
           _GlassyButton(
             color: NotelColors.legacyDarkReviewButton,
             onTap: _openSpikeReview,
-            child: const Row(
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
@@ -1899,12 +1899,12 @@ class _HeartScreenState extends State<HeartScreen> {
   }
 
   Widget _spikeMetric(String label, String value, String unit,
-      {Color color = NotelColors.textPrimary}) {
+      {Color? color}) {
     return Column(
       children: [
         Text(
           label.toUpperCase(),
-          style: const TextStyle(
+          style: TextStyle(
             color: NotelColors.textSecondary,
             fontSize: 10,
             fontWeight: FontWeight.bold,
@@ -1915,14 +1915,14 @@ class _HeartScreenState extends State<HeartScreen> {
         Text(
           value,
           style: TextStyle(
-            color: color,
+            color: color ?? NotelColors.textPrimary,
             fontSize: 24,
             fontWeight: FontWeight.w900,
           ),
         ),
         Text(
           unit,
-          style: const TextStyle(
+          style: TextStyle(
             color: NotelColors.textSecondary,
             fontSize: 10,
           ),
@@ -1941,7 +1941,7 @@ class _HeartScreenState extends State<HeartScreen> {
           Container(
             width: 40,
             height: 40,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: NotelColors.legacyDarkConnectCircle,
               shape: BoxShape.circle,
             ),
@@ -1973,7 +1973,7 @@ class _HeartScreenState extends State<HeartScreen> {
                 // logo above forks on the same signal (Gate 10).
                 Text(
                   _service.isIOS ? 'Apple Health' : 'Health Connect',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: NotelColors.textPrimary,
                     fontWeight: FontWeight.bold,
                     fontSize: 15,
@@ -1984,7 +1984,7 @@ class _HeartScreenState extends State<HeartScreen> {
                   // _effectiveLastSyncAt): the row can no longer
                   // say "Not synced yet" over a synced store.
                   formatSyncedAgo(_effectiveLastSyncAt(), DateTime.now()),
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: NotelColors.textSecondary,
                     fontSize: 12,
                   ),
@@ -1992,7 +1992,7 @@ class _HeartScreenState extends State<HeartScreen> {
               ],
             ),
           ),
-          const Icon(Icons.arrow_forward,
+          Icon(Icons.arrow_forward,
               color: NotelColors.textSecondary, size: 18),
         ],
       ),
@@ -2129,12 +2129,14 @@ class _HeartPatternPainter extends CustomPainter {
     void drawLabel(String text, Offset topLeft,
         {double fontSize = 10,
         FontWeight weight = FontWeight.normal,
-        Color color = NotelColors.textSecondary}) {
+        Color? color}) {
       final painter = TextPainter(
         text: TextSpan(
           text: text,
           style: TextStyle(
-              color: color, fontSize: fontSize, fontWeight: weight),
+              color: color ?? NotelColors.textSecondary,
+              fontSize: fontSize,
+              fontWeight: weight),
         ),
         textDirection: TextDirection.ltr,
       )..layout();

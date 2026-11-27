@@ -322,7 +322,7 @@ class _PatternsScreenState extends State<PatternsScreen> {
       appBar: AppBar(
         backgroundColor: NotelColors.background,
         elevation: 0,
-        title: const Text(
+        title: Text(
           correlationTitle,
           style: TextStyle(
             fontSize: 22,
@@ -334,14 +334,14 @@ class _PatternsScreenState extends State<PatternsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const Text(
+          Text(
             correlationIntro,
             style: TextStyle(fontSize: 13, color: NotelColors.textSecondary),
           ),
           const SizedBox(height: 12),
           // Juno item 5 R5: the disclaimer renders EXACTLY ONCE on
           // this surface, below the intro.
-          const Text(
+          Text(
             correlationSurfaceDisclaimer,
             style: TextStyle(fontSize: 11, color: NotelColors.textSecondary),
           ),
@@ -352,7 +352,7 @@ class _PatternsScreenState extends State<PatternsScreen> {
             // placeholder, progress, unavailable, or numbers
             // cards, no skeleton, and no pending label alongside
             // it. One state at a time.
-            const Text(
+            Text(
               correlationLoadError,
               style: TextStyle(
                 fontSize: 14,
@@ -377,7 +377,7 @@ class _PatternsScreenState extends State<PatternsScreen> {
                 child: SkeletonBox(height: 96, radius: 18),
               ),
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 correlationMembershipPendingLabel,
                 style: TextStyle(
                   fontSize: 12,
@@ -570,7 +570,7 @@ class _InsightCardState extends State<_InsightCard> {
 
   Widget _headerText(String text) => Text(
     text,
-    style: const TextStyle(
+    style: TextStyle(
       fontSize: 16,
       fontWeight: FontWeight.bold,
       color: NotelColors.textPrimary,
@@ -579,12 +579,12 @@ class _InsightCardState extends State<_InsightCard> {
 
   Widget _bodyText(String text) => Text(
     text,
-    style: const TextStyle(fontSize: 14, color: NotelColors.textPrimary),
+    style: TextStyle(fontSize: 14, color: NotelColors.textPrimary),
   );
 
   Widget _captionText(String text) => Text(
     text,
-    style: const TextStyle(fontSize: 12, color: NotelColors.textSecondary),
+    style: TextStyle(fontSize: 12, color: NotelColors.textSecondary),
   );
 
   /// S8 — F1–F4 cards only, and only when the record carries a

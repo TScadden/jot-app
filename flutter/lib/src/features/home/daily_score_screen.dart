@@ -277,7 +277,7 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
       appBar: AppBar(
         backgroundColor: NotelColors.background,
         elevation: 0,
-        title: const Text(
+        title: Text(
           'Daily Score',
           style: TextStyle(
             fontSize: 22,
@@ -301,7 +301,7 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
         const SizedBox(height: 24),
         const Center(child: DailyScoreCircle(score: null)),
         const SizedBox(height: 16),
-        const Text(
+        Text(
           'Building baseline',
           textAlign: TextAlign.center,
           style: TextStyle(
@@ -311,7 +311,7 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
           ),
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'Your score appears once at least 7 earlier days exist '
           'for one part of the score: sleep, HRV, or resting heart '
           'rate. From then on, each day is scored once, against '
@@ -375,7 +375,7 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
             border: Border.all(color: NotelColors.legacyDarkDivider),
           ),
           padding: const EdgeInsets.all(16),
-          child: const Row(
+          child: Row(
             children: [
               Expanded(
                 child: Text(
@@ -403,7 +403,7 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
         border: Border.all(color: NotelColors.legacyDarkDivider),
       ),
       padding: const EdgeInsets.all(16),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
@@ -435,7 +435,7 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Last 14 scored days',
             // Card-title role (16 bold), matching the sibling
             // "How this score works" card on this same screen and
@@ -512,7 +512,7 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
                       children: [
                         Text(
                           formatScoreDate(row.date),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
                             color: NotelColors.textPrimary,
@@ -523,7 +523,7 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
                           contributedComponentNames(row,
                                   meta: _store.scoreMetaFor(row.date))
                               .join(' · '),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 11,
                             color: NotelColors.textSecondary,
                           ),
@@ -556,7 +556,7 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
                       delta == 0
                           ? '→ 0'
                           : '${delta > 0 ? '▲' : '▼'} ${delta.abs()}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                         color: NotelColors.textSecondary,
@@ -572,7 +572,7 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
   }
 
   Widget _disclaimer() {
-    return const Text(
+    return Text(
       'Tabs is not a medical device. It does not diagnose, treat, '
       'cure, or prevent any condition. AI insights are '
       'informational only. Consult a healthcare professional.',
@@ -1021,7 +1021,7 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
   List<Widget> _refreshNotices() => [
         if (_refreshErrorCode != null) ...[
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'Refresh failed. Nothing was changed.',
             style: TextStyle(fontSize: 12, color: NotelColors.error),
           ),
@@ -1032,14 +1032,14 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
             'Some data could not be read in this refresh: '
             '${_refreshFailureCodes.entries.map((e) => _captureMetricLabels[e.key] ?? e.key).join(', ')}'
             '. Any score shown uses only the data that is stored.',
-            style: const TextStyle(fontSize: 12, color: NotelColors.warning),
+            style: TextStyle(fontSize: 12, color: NotelColors.warning),
           ),
         ],
         if (_refreshNotice != null) ...[
           const SizedBox(height: 16),
           Text(
             _refreshNotice!,
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 12, color: NotelColors.textSecondary),
           ),
         ],
@@ -1049,7 +1049,7 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
         // failed. No dialog, toast, or banner.
         if (_refreshKeepAliveFailed) ...[
           const SizedBox(height: 16),
-          const Text(
+          Text(
             dailyScoreRefreshKeepAliveFailedLine,
             style: TextStyle(fontSize: 12, color: NotelColors.warning),
           ),
@@ -1076,7 +1076,7 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
                   'also tap refresh to score it now from the data '
                   'already stored.'
               : 'No score stored for this day.',
-          style: const TextStyle(
+          style: TextStyle(
               fontSize: 13, color: NotelColors.textSecondary),
         ),
         ..._refreshNotices(),
@@ -1100,7 +1100,7 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
         elevation: 0,
         title: Text(
           formatScoreDate(widget.date),
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.w900,
             color: NotelColors.textPrimary,
@@ -1158,7 +1158,7 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
                 isToday
                     ? '${formatScoreDate(row.date)} · Today'
                     : formatScoreDate(row.date),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
                   color: NotelColors.textSecondary,
                 ),
@@ -1190,7 +1190,7 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
                       ? 'Same as the previous scored day ($prevDate)'
                       : '${delta > 0 ? 'Higher' : 'Lower'} by ${delta.abs()} '
                           'than the previous scored day ($prevDate)',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     color: NotelColors.textSecondary,
                   ),
@@ -1240,7 +1240,7 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
         ),
         ..._refreshNotices(),
         const SizedBox(height: 16),
-        const Text(
+        Text(
           'This score uses the data stored for this day and your '
           'baseline from earlier days. It does not change on its '
           'own. It changes only when you refresh it.',
@@ -1249,7 +1249,7 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
         const SizedBox(height: 16),
         // Juno C7 — the disclaimer footer, appended at the end of
         // the day-detail list, verbatim as on the history screen.
-        const Text(
+        Text(
           'Tabs is not a medical device. It does not diagnose, treat, cure, or prevent any condition. AI insights are informational only. Consult a healthcare professional.',
           style: TextStyle(fontSize: 11, color: NotelColors.textSecondary),
         ),
@@ -1291,7 +1291,7 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
                 children: [
                   Text(
                     name,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                       color: NotelColors.textPrimary,
@@ -1300,7 +1300,7 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
                   const SizedBox(height: 2),
                   Text(
                     detail,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
                       color: NotelColors.textSecondary,
                     ),
@@ -1328,7 +1328,7 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
                 ),
               )
             else if (componentScore == null)
-              const Text(
+              Text(
                 'Not counted',
                 style: TextStyle(
                   fontSize: 12,

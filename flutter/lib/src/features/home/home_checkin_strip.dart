@@ -139,7 +139,7 @@ class HomeCheckInStrip extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       feelingWordForRanking(level),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w500,
                         color: NotelColors.textSecondary,

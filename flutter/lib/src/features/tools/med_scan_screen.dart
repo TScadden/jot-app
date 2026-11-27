@@ -312,14 +312,14 @@ class _MedScanScreenState extends State<MedScanScreen> {
         backgroundColor: NotelColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
+          icon: Icon(
             Icons.arrow_back,
             color: NotelColors.textPrimary,
             semanticLabel: 'Back',
           ),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
+        title: Text(
           MedScanStrings.screenTitle,
           style: TextStyle(
             fontSize: 20,
@@ -381,7 +381,7 @@ class _MedScanScreenState extends State<MedScanScreen> {
         children: [
           const Icon(Icons.photo_camera, size: 48, color: NotelColors.primary),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             MedScanStrings.rationaleBody,
             style: TextStyle(fontSize: 14, color: NotelColors.textPrimary),
             textAlign: TextAlign.center,
@@ -420,7 +420,7 @@ class _MedScanScreenState extends State<MedScanScreen> {
               if (error.errorCode == MobileScannerErrorCode.permissionDenied) {
                 return _permissionDeniedPanel();
               }
-              return const Center(
+              return Center(
                 child: Padding(
                   padding: EdgeInsets.all(24),
                   child: Text(
@@ -433,7 +433,7 @@ class _MedScanScreenState extends State<MedScanScreen> {
             },
           ),
         ),
-        const Padding(
+        Padding(
           padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
           child: Text(
             MedScanStrings.barcodeHint,
@@ -442,7 +442,7 @@ class _MedScanScreenState extends State<MedScanScreen> {
           ),
         ),
         // §6 barcode lookup disclosure, footer of barcode mode.
-        const Padding(
+        Padding(
           padding: EdgeInsets.fromLTRB(16, 4, 16, 14),
           child: Text(
             MedScanStrings.barcodeLookupNote,
@@ -462,7 +462,7 @@ class _MedScanScreenState extends State<MedScanScreen> {
         children: [
           const Icon(Icons.photo_camera, size: 48, color: NotelColors.primary),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             MedScanStrings.photoHint,
             style: TextStyle(fontSize: 13, color: NotelColors.textSecondary),
             textAlign: TextAlign.center,
@@ -490,7 +490,7 @@ class _MedScanScreenState extends State<MedScanScreen> {
           ),
           const SizedBox(height: 20),
           // §6 label-photo privacy line, footer of photo mode.
-          const Text(
+          Text(
             MedScanStrings.photoPrivacyNote,
             style: TextStyle(fontSize: 11, color: NotelColors.textSecondary),
             textAlign: TextAlign.center,
@@ -516,7 +516,7 @@ class _MedScanScreenState extends State<MedScanScreen> {
           const SizedBox(height: 16),
           Text(
             _busyText,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               color: NotelColors.textSecondary,
             ),
@@ -536,7 +536,7 @@ class _MedScanScreenState extends State<MedScanScreen> {
         children: [
           const Icon(Icons.search_off, size: 48, color: NotelColors.primary),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             MedScanStrings.notIdentifiedMessage,
             style: TextStyle(fontSize: 14, color: NotelColors.textPrimary),
             textAlign: TextAlign.center,
@@ -577,7 +577,7 @@ class _MedScanScreenState extends State<MedScanScreen> {
             color: NotelColors.primary,
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             MedScanStrings.permissionDeniedBody,
             style: TextStyle(fontSize: 14, color: NotelColors.textPrimary),
             textAlign: TextAlign.center,

@@ -74,7 +74,7 @@ class ConsultationIntroScreen extends StatelessWidget {
                               ),
                             ),
                           ),
-                          const Positioned(
+                          Positioned(
                             top: 30,
                             left: 40,
                             child: _IconBubble(
@@ -115,7 +115,7 @@ class ConsultationIntroScreen extends StatelessWidget {
                         ],
                       ),
                     ),
-                    const Padding(
+                    Padding(
                       padding: EdgeInsets.symmetric(horizontal: 12),
                       child: Column(
                         children: [

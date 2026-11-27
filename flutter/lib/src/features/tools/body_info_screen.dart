@@ -786,14 +786,14 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
         backgroundColor: NotelColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
+          icon: Icon(
             Icons.arrow_back,
             color: NotelColors.textPrimary,
             semanticLabel: 'Back',
           ),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
+        title: Text(
           'Body Info & Impact Map',
           style: TextStyle(
             fontSize: 20,
@@ -821,7 +821,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 110),
               children: [
-                const Column(
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
@@ -885,7 +885,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
       ),
       child: Column(
         children: [
-          const Text(
+          Text(
             'Body Impact Visualizer',
             style: TextStyle(
               fontSize: 22,
@@ -900,7 +900,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
                 : _conditions.isEmpty
                 ? 'All body zones normal'
                 : '${_conditions.length} condition${_conditions.length == 1 ? '' : 's'} tracked',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               color: NotelColors.textSecondary,
             ),
@@ -1182,7 +1182,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
               Icon(Icons.fitness_center, size: 20, color: _workoutColor),
               SizedBox(width: 10),
@@ -1197,7 +1197,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
             ],
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'Tap a chip or type it below. Worked zones glow amber and fade over about two days.',
             style: TextStyle(
               fontSize: 13,
@@ -1246,13 +1246,13 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
               Expanded(
                 child: TextField(
                   controller: _workoutCtrl,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     color: NotelColors.textPrimary,
                   ),
                   decoration: InputDecoration(
                     hintText: 'Try "leg workout 3 sets"',
-                    hintStyle: const TextStyle(
+                    hintStyle: TextStyle(
                       fontSize: 14,
                       color: NotelColors.textSecondary,
                     ),
@@ -1505,7 +1505,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
                       Expanded(
                         child: Text(
                           '$label — Workout',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.bold,
                             color: NotelColors.textPrimary,
@@ -1558,7 +1558,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
                       zoneNames.length <= 3
                           ? zoneNames.join(' · ')
                           : '${zoneNames.take(3).join(' · ')} +${zoneNames.length - 3} more',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
                         height: 1.23,
                         color: NotelColors.textSecondary,
@@ -1578,7 +1578,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Expanded(
+        Expanded(
           child: Text(
             'Active Body Impact Zones',
             style: TextStyle(
@@ -1696,7 +1696,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
                             Expanded(
                               child: Text(
                                 impact.regionName,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.bold,
                                   color: NotelColors.textPrimary,
@@ -1746,7 +1746,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
                         const SizedBox(height: 6),
                         Text(
                           impact.details,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
                             height: 1.23,
                             color: NotelColors.textSecondary,
@@ -1787,7 +1787,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
                         impact.originalLogText.isNotEmpty
                             ? '"${impact.originalLogText}"'
                             : 'Logged Entry #${impact.relatedLogId ?? ''}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
                           color: NotelColors.textPrimary,
@@ -1796,7 +1796,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
                       const SizedBox(height: 8),
                       Text(
                         'Logged: $loggedText',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
                           color: NotelColors.textSecondary,
                         ),
@@ -1824,7 +1824,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Text(
+        Text(
           'Your Conditions',
           style: TextStyle(
             fontSize: 16,
@@ -1840,7 +1840,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
           ),
           child: Text(
             '${_conditions.length} Active',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.bold,
               color: NotelColors.primaryText,
@@ -1885,7 +1885,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
                 children: [
                   Text(
                     condition.name,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.bold,
                       color: NotelColors.textPrimary,
@@ -1901,7 +1901,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  const Text(
+                  Text(
                     'Diagnosed or suspected condition.',
                     style: TextStyle(
                       fontSize: 13,
@@ -1929,7 +1929,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
             color: NotelColors.primary.withValues(alpha: 0.6),
           ),
           const SizedBox(height: 12),
-          const Text(
+          Text(
             'All Body Zones Normal',
             style: TextStyle(
               fontSize: 15,
@@ -1938,7 +1938,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'Log a lab draw, peptide shot, or medication entry to see real-time body impact tracking.',
             style: TextStyle(fontSize: 13, color: NotelColors.textSecondary),
             textAlign: TextAlign.center,
@@ -1996,7 +1996,7 @@ class _LegendDot extends StatelessWidget {
         const SizedBox(width: 6),
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
             color: NotelColors.textSecondary,

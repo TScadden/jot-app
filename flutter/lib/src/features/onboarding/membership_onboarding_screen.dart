@@ -139,14 +139,14 @@ class _MembershipOnboardingScreenState
         context: context,
         builder: (dialogContext) => AlertDialog(
           backgroundColor: NotelColors.surface,
-          title: const Text(
+          title: Text(
             'App Store',
             style: TextStyle(
               color: NotelColors.textPrimary,
               fontWeight: FontWeight.bold,
             ),
           ),
-          content: const Text(
+          content: Text(
             'Subscriptions are purchased through the App Store in the '
             'Tabs app. This build cannot start a subscription yet.',
             style: TextStyle(color: NotelColors.textSecondary),
@@ -169,14 +169,14 @@ class _MembershipOnboardingScreenState
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: NotelColors.surface,
-        title: const Text(
+        title: Text(
           'Google Play',
           style: TextStyle(
             color: NotelColors.textPrimary,
             fontWeight: FontWeight.bold,
           ),
         ),
-        content: const Text(
+        content: Text(
           'Subscriptions are purchased through Google Play in the Tabs '
           'app. This build cannot start a subscription yet.',
           style: TextStyle(color: NotelColors.textSecondary),
@@ -242,7 +242,7 @@ class _MembershipOnboardingScreenState
                         ),
                       ),
                       const SizedBox(height: 24),
-                      const Text(
+                      Text(
                         'Unlock Tabs Premium',
                         textAlign: TextAlign.center,
                         style: TextStyle(
@@ -252,7 +252,7 @@ class _MembershipOnboardingScreenState
                         ),
                       ),
                       const SizedBox(height: 8),
-                      const Text(
+                      Text(
                         'Everything you need to understand your body and reach '
                         'your goals.',
                         textAlign: TextAlign.center,
@@ -282,7 +282,7 @@ class _MembershipOnboardingScreenState
                       // drawn icons, never emoji.
                       const _CompareTable(),
                       const SizedBox(height: 24),
-                      const Text(
+                      Text(
                         'Tabs Premium is for education and personal self '
                         'tracking only. It does not provide medical advice, '
                         'diagnosis, or treatment. Talk to a qualified health '
@@ -320,7 +320,7 @@ class _MembershipOnboardingScreenState
               // above the primary button, at the shared baseline.
               TextButton(
                 onPressed: widget.onSkip,
-                child: const Text(
+                child: Text(
                   'Use free account for now',
                   style: TextStyle(
                     color: NotelColors.textSecondary,
@@ -512,7 +512,7 @@ class _CompareTable extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Compare',
                   style: TextStyle(
@@ -522,7 +522,7 @@ class _CompareTable extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(
+              SizedBox(
                 width: 56,
                 child: Text(
                   'Free',
@@ -557,7 +557,7 @@ class _CompareTable extends StatelessWidget {
                   Expanded(
                     child: Text(
                       row.$1,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: NotelColors.textPrimary,
                         fontSize: 13,
                       ),
@@ -622,7 +622,7 @@ class _FeatureRow extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: NotelColors.textPrimary,
                       fontWeight: FontWeight.w600,
                       fontSize: 14,
@@ -630,7 +630,7 @@ class _FeatureRow extends StatelessWidget {
                   ),
                   Text(
                     description,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: NotelColors.textSecondary,
                       fontSize: 12,
                       height: 16 / 12,
@@ -699,7 +699,7 @@ class _PlanCard extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: NotelColors.textPrimary,
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
@@ -710,7 +710,7 @@ class _PlanCard extends StatelessWidget {
                   // SHOWS on the card.
                   Text(
                     price,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: NotelColors.textSecondary,
                       fontSize: 13,
                     ),

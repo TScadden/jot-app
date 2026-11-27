@@ -141,7 +141,7 @@ class CheckInSummaryCard extends StatelessWidget {
               Flexible(
                 child: Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
                     color: NotelColors.textPrimary,

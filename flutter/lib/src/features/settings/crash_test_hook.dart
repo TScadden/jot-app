@@ -32,7 +32,7 @@ class CrashTestHook extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'TEST ONLY — crash reporting check. This card exists '
               'only in the Tabs Lab build. Long-press the button to '
               'force an uncaught test crash; the app will close or '

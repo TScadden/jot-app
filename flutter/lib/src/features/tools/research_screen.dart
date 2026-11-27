@@ -236,11 +236,11 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
         backgroundColor: NotelColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back,
+          icon: Icon(Icons.arrow_back,
               color: NotelColors.textPrimary, semanticLabel: 'Back'),
           onPressed: widget.onBack ?? () => Navigator.of(context).pop(),
         ),
-        title: const Text(
+        title: Text(
           'Research',
           style: TextStyle(
               fontSize: 20,
@@ -268,7 +268,7 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
         border:
             Border.all(color: NotelColors.warning.withValues(alpha: 0.4)),
       ),
-      child: const Row(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(Icons.warning_amber, size: 20, color: NotelColors.warning),
@@ -361,13 +361,13 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
           const Icon(Icons.person_add,
               size: 40, color: NotelColors.primary),
           const SizedBox(height: 12),
-          const Text('No conditions saved yet',
+          Text('No conditions saved yet',
               style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: NotelColors.textPrimary)),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'Research is personalized to your conditions. Add them in Profile → Conditions to see relevant entries.',
             textAlign: TextAlign.center,
             style: TextStyle(
@@ -396,7 +396,7 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: NotelColors.divider),
       ),
-      child: const Column(
+      child: Column(
         children: [
           Icon(Icons.science, size: 40, color: NotelColors.textSecondary),
           SizedBox(height: 12),
@@ -421,7 +421,7 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Your conditions',
           style: TextStyle(
               fontSize: 12,
@@ -441,7 +441,7 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
             isExpanded: true,
             underline: const SizedBox.shrink(),
             dropdownColor: NotelColors.surface,
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 14, color: NotelColors.textPrimary),
             items: [
               for (final c in _conditions)
@@ -468,7 +468,7 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
       ),
       child: Text(text,
           style:
-              const TextStyle(fontSize: 13, color: NotelColors.textPrimary)),
+              TextStyle(fontSize: 13, color: NotelColors.textPrimary)),
     );
   }
 
@@ -499,7 +499,7 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
                       children: [
                         Text(
                           entry.title,
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 15,
                               height: 1.3,
                               fontWeight: FontWeight.bold,
@@ -521,7 +521,7 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
                                             color: NotelColors.primary)),
                                     Expanded(
                                       child: Text(t,
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                               fontSize: 13,
                                               height: 1.4,
                                               color:
@@ -532,7 +532,7 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
                               ))
                         else if (entry.summary.isNotEmpty)
                           Text(entry.summary,
-                              style: const TextStyle(
+                              style: TextStyle(
                                   fontSize: 13,
                                   height: 1.4,
                                   color: NotelColors.textSecondary)),
@@ -572,10 +572,10 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
                 ),
               ],
               if (expanded && entry.detail.isNotEmpty) ...[
-                const Divider(height: 1, color: NotelColors.divider),
+                Divider(height: 1, color: NotelColors.divider),
                 const SizedBox(height: 12),
                 Text(entry.detail,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 13,
                         height: 1.5,
                         color: NotelColors.textPrimary)),

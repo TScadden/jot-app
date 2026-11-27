@@ -192,14 +192,14 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
         ),
-        title: const Text(
+        title: Text(
           'Upload Documents',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             color: NotelColors.textPrimary,
           ),
         ),
-        content: const Text(
+        content: Text(
           'Document upload is not available in this build yet. Your '
           'written context above is saved and used the same way.',
           style: TextStyle(color: NotelColors.textSecondary, fontSize: 14),
@@ -271,7 +271,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      const Text(
+                      Text(
                         "Let's get you set up!",
                         textAlign: TextAlign.center,
                         style: TextStyle(
@@ -281,7 +281,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      const Text(
+                      Text(
                         'Start by sharing your goals and why you are '
                         'using this app, so we can make sure the AI '
                         'knows how to best help you.',
@@ -293,7 +293,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                         ),
                       ),
                       const SizedBox(height: 20),
-                      const Align(
+                      Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
                           'Tell it like you would tell a new doctor.',
@@ -316,12 +316,12 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                             TextField(
                               controller: _controller,
                               maxLines: 5,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: NotelColors.textPrimary,
                                 fontSize: 14,
                               ),
                               cursorColor: NotelColors.primary,
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
                                 hintText: examplePlaceholder,
                                 hintMaxLines: 8,
                                 hintStyle: TextStyle(
@@ -356,7 +356,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                                         color: NotelColors.primary,
                                       ),
                                     ),
-                                    const Expanded(
+                                    Expanded(
                                       child: Text(
                                         'Tap the mic to talk',
                                         overflow: TextOverflow.ellipsis,
@@ -369,7 +369,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                                   ],
                                   Text(
                                     '$count / $denominator words',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       color: NotelColors.textSecondary,
                                       fontSize: 12,
                                     ),
@@ -406,7 +406,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      const Text(
+                      Text(
                         'Tabs builds your tracking categories from '
                         'what you write here, and your coach uses it '
                         'from day one.',

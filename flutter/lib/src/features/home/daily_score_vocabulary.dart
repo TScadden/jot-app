@@ -31,10 +31,10 @@ class DailyScoreBand {
 /// concept's green "Good" (the mockup's 78). The 80+ word extends
 /// the concept vocabulary one step up; Juno rules on it.
 DailyScoreBand bandForScore(int score) {
-  if (score >= 80) return const DailyScoreBand('Great', NotelColors.success);
-  if (score >= 60) return const DailyScoreBand('Good', NotelColors.success);
-  if (score >= 40) return const DailyScoreBand('Low', NotelColors.warning);
-  return const DailyScoreBand('Very low', NotelColors.error);
+  if (score >= 80) return DailyScoreBand('Great', NotelColors.success);
+  if (score >= 60) return DailyScoreBand('Good', NotelColors.success);
+  if (score >= 40) return DailyScoreBand('Low', NotelColors.warning);
+  return DailyScoreBand('Very low', NotelColors.error);
 }
 
 /// A component status chip: word + solid fill + ink, mirroring the
@@ -53,28 +53,28 @@ class ScoreChip {
   const ScoreChip(this.label, this.background, this.foreground);
 }
 
-const ScoreChip _chipGood =
+final ScoreChip _chipGood =
     ScoreChip('Good', NotelColors.success, NotelColors.defaultBackground);
-const ScoreChip _chipNormal =
+final ScoreChip _chipNormal =
     ScoreChip('Normal', NotelColors.primary, NotelColors.onPrimary);
 // Juno C2 — the sleep 60–79 tier is "Fair" (info fill), NOT
 // "Normal": after this change "Normal" means only "within ±2% of
 // your own baseline" (the direction chips below).
-const ScoreChip _chipFair =
+final ScoreChip _chipFair =
     ScoreChip('Fair', NotelColors.info, NotelColors.defaultBackground);
-const ScoreChip _chipAbove =
+final ScoreChip _chipAbove =
     ScoreChip('Above', NotelColors.info, NotelColors.defaultBackground);
-const ScoreChip _chipBelow =
+final ScoreChip _chipBelow =
     ScoreChip('Below', NotelColors.warning, NotelColors.defaultBackground);
 // Juno C3 — resting-HR "Below" is direction-neutral (info fill,
 // identical in color to "Above"): below-baseline resting HR
 // RAISES that component's score, so the warning fill contradicted
 // the scoring. HRV "Below" keeps _chipBelow's warning fill.
-const ScoreChip _chipBelowInfo =
+final ScoreChip _chipBelowInfo =
     ScoreChip('Below', NotelColors.info, NotelColors.defaultBackground);
-const ScoreChip _chipLow =
+final ScoreChip _chipLow =
     ScoreChip('Low', NotelColors.warning, NotelColors.defaultBackground);
-const ScoreChip _chipVeryLow =
+final ScoreChip _chipVeryLow =
     ScoreChip('Very low', NotelColors.error, NotelColors.defaultBackground);
 
 /// Sleep chip, from the day's sleep component score (100 × the

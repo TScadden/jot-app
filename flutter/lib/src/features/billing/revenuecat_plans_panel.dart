@@ -128,7 +128,7 @@ class _RevenueCatPlansPanelState extends State<RevenueCatPlansPanel> {
     // No plan cards, no CTA, no restore — nothing that could read
     // as a paywall (the fail-closed rule in revenuecat_service.dart).
     if (state.phase == RevenueCatPhase.unavailableNotConfigured) {
-      return const Text(
+      return Text(
         // TODO_JUNO: unconfigured-build copy — mirrors the Lab's
         // Play wording with the store name corrected for iOS.
         'Subscriptions are purchased through the App Store in the '
@@ -149,7 +149,7 @@ class _RevenueCatPlansPanelState extends State<RevenueCatPlansPanel> {
         ],
         if (state.packages.isEmpty &&
             state.phase != RevenueCatPhase.loadingOfferings)
-          const Text(
+          Text(
             'Pricing shown in the App Store',
             textAlign: TextAlign.center,
             style: TextStyle(color: NotelColors.textSecondary, fontSize: 13),
@@ -239,7 +239,7 @@ class _RevenueCatPlansPanelState extends State<RevenueCatPlansPanel> {
             state.noticeMessage!,
             key: const ValueKey('revenuecat_notice'),
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
                 color: NotelColors.textSecondary, fontSize: 12),
           ),
         ],
@@ -249,7 +249,7 @@ class _RevenueCatPlansPanelState extends State<RevenueCatPlansPanel> {
             state.errorMessage!,
             key: const ValueKey('revenuecat_error'),
             textAlign: TextAlign.center,
-            style: const TextStyle(color: NotelColors.error, fontSize: 12),
+            style: TextStyle(color: NotelColors.error, fontSize: 12),
           ),
         ],
       ],
@@ -302,7 +302,7 @@ class _RevenueCatPlansPanelState extends State<RevenueCatPlansPanel> {
                 children: [
                   Text(
                     '${package.planName} Plan',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: NotelColors.textPrimary,
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
@@ -311,7 +311,7 @@ class _RevenueCatPlansPanelState extends State<RevenueCatPlansPanel> {
                   const SizedBox(height: 2),
                   Text(
                     priceLine,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: NotelColors.textSecondary,
                       fontSize: 13,
                     ),

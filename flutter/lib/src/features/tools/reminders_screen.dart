@@ -809,14 +809,14 @@ class _RemindersScreenState extends State<RemindersScreen> {
         backgroundColor: NotelColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
+          icon: Icon(
             Icons.arrow_back,
             color: NotelColors.textPrimary,
             semanticLabel: 'Back',
           ),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
+        title: Text(
           'Reminders',
           style: TextStyle(
             fontSize: 20,
@@ -861,7 +861,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
     }
     final visible = _doc.visibleIndices;
     if (visible.isEmpty) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -908,7 +908,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
           children: [
             const Text('🔔', style: TextStyle(fontSize: 48)),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Couldn\'t load reminders',
               style: TextStyle(
                 color: NotelColors.textPrimary,
@@ -917,7 +917,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Check your connection and try again.',
               style: TextStyle(
                 color: NotelColors.textSecondary,
@@ -1007,7 +1007,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
                     _writing ? null : (v) => _toggleReminder(rawIndex, v),
               ),
               IconButton(
-                icon: const Icon(
+                icon: Icon(
                   Icons.close,
                   color: NotelColors.textSecondary,
                   size: 18,
@@ -1203,7 +1203,7 @@ class _ReminderSheetState extends State<_ReminderSheet> {
       contentPadding: EdgeInsets.zero,
       title: Text(
         label,
-        style: const TextStyle(
+        style: TextStyle(
           color: NotelColors.textPrimary,
           fontSize: 14,
           fontWeight: FontWeight.w600,
@@ -1240,7 +1240,7 @@ class _ReminderSheetState extends State<_ReminderSheet> {
           children: [
             Text(
               widget.initial == null ? 'New Reminder' : 'Edit Reminder',
-              style: const TextStyle(
+              style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -1250,7 +1250,7 @@ class _ReminderSheetState extends State<_ReminderSheet> {
             TextField(
               controller: _title,
               autofocus: widget.initial == null,
-              style: const TextStyle(color: NotelColors.textPrimary),
+              style: TextStyle(color: NotelColors.textPrimary),
               decoration: const InputDecoration(
                 labelText: 'Title',
                 hintText: 'Reminder title',
@@ -1282,7 +1282,7 @@ class _ReminderSheetState extends State<_ReminderSheet> {
                 _timeRow('Time', _fixed, (t) => _fixed = t),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text(
+                title: Text(
                   'Custom days & times',
                   style: TextStyle(
                     color: NotelColors.textPrimary,
@@ -1306,7 +1306,7 @@ class _ReminderSheetState extends State<_ReminderSheet> {
                       ),
                       Text(
                         d.dayName,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: NotelColors.textPrimary,
                           fontSize: 14,
                         ),
@@ -1328,7 +1328,7 @@ class _ReminderSheetState extends State<_ReminderSheet> {
             ] else ...[
               Row(
                 children: [
-                  const Text(
+                  Text(
                     'Every',
                     style: TextStyle(
                       color: NotelColors.textPrimary,

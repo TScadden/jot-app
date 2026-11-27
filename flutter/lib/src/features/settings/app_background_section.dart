@@ -127,7 +127,7 @@ class _AppBackgroundSectionState extends State<AppBackgroundSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           AppBackgroundCopy.sectionLabel,
           key: Key('appBgSectionLabel'),
           style: TextStyle(
@@ -137,7 +137,7 @@ class _AppBackgroundSectionState extends State<AppBackgroundSection> {
           ),
         ),
         const SizedBox(height: 4),
-        const Text(
+        Text(
           AppBackgroundCopy.hint,
           key: Key('appBgHint'),
           style: TextStyle(
@@ -170,7 +170,7 @@ class _AppBackgroundSectionState extends State<AppBackgroundSection> {
               ? 'Active: custom ${AppBackgroundController.formatHex(active)}'
               : 'Active: ${AppBackgroundController.formatHex(active)}',
           key: const Key('appBgActiveLabel'),
-          style: const TextStyle(
+          style: TextStyle(
               color: NotelColors.textSecondary, fontSize: 12),
         ),
         const SizedBox(height: 12),
@@ -184,7 +184,7 @@ class _AppBackgroundSectionState extends State<AppBackgroundSection> {
                   hintText: AppBackgroundCopy.hexPlaceholder,
                   isDense: true,
                 ),
-                style: const TextStyle(
+                style: TextStyle(
                     color: NotelColors.textPrimary, fontSize: 14),
                 textCapitalization: TextCapitalization.characters,
                 inputFormatters: [
@@ -209,7 +209,7 @@ class _AppBackgroundSectionState extends State<AppBackgroundSection> {
         ),
         if (_showInvalid) ...[
           const SizedBox(height: 6),
-          const Text(
+          Text(
             AppBackgroundCopy.invalidHex,
             key: Key('appBgHexError'),
             style: TextStyle(color: NotelColors.error, fontSize: 12),

@@ -136,7 +136,7 @@ Widget _sheetShell({
           children: [
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
                 color: NotelColors.textPrimary,
@@ -147,7 +147,7 @@ Widget _sheetShell({
             ...children,
             if (commitFailed) ...[
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 flareStageFailureCopy,
                 style: TextStyle(
                   color: NotelColors.error,
@@ -163,7 +163,7 @@ Widget _sheetShell({
   );
 }
 
-const _promptStyle = TextStyle(
+final _promptStyle = TextStyle(
   fontSize: 15,
   fontWeight: FontWeight.w500,
   color: NotelColors.textSecondary,
@@ -185,7 +185,7 @@ List<Widget> _kindOptions({
         onTap: committing ? null : () => onTap(type),
       );
   return [
-    const Text(
+    Text(
       'What kind of bad?',
       style: _promptStyle,
       textAlign: TextAlign.center,
@@ -406,7 +406,7 @@ class _CheckInGoodSheetState extends State<CheckInGoodSheet> {
       title: 'Good day',
       commitFailed: _commitFailed,
       children: [
-        const Text(
+        Text(
           'What is good about today?',
           style: _promptStyle,
           textAlign: TextAlign.center,
@@ -596,7 +596,7 @@ class _CheckInAmendSheetState extends State<CheckInAmendSheet> {
     if (widget.showFlareAddSection && widget.onFlareAdd != null) {
       if (children.isNotEmpty) children.add(const SizedBox(height: 16));
       children.addAll([
-        const Text(
+        Text(
           'How bad is it today?',
           style: _promptStyle,
           textAlign: TextAlign.center,
@@ -618,7 +618,7 @@ class _CheckInAmendSheetState extends State<CheckInAmendSheet> {
     if (widget.showGoodSection && widget.onGood != null) {
       if (children.isNotEmpty) children.add(const SizedBox(height: 16));
       children.addAll([
-        const Text(
+        Text(
           'What is good about today?',
           style: _promptStyle,
           textAlign: TextAlign.center,

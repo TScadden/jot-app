@@ -138,7 +138,7 @@ class _ChestSimEntryState extends State<ChestSimEntry> {
       children: [
         // Juno ruling (build-chests-dev-test/JUNO-RULING.md) —
         // every string in this panel is byte-exact from it.
-        const Text(
+        Text(
           'Chest popup test',
           key: Key('chestSimTitle'),
           style: TextStyle(
@@ -148,13 +148,13 @@ class _ChestSimEntryState extends State<ChestSimEntry> {
           ),
         ),
         const SizedBox(height: 2),
-        const Text(
+        Text(
           'Simulated. Nothing here touches your real chests or gems.',
           key: Key('chestSimNote'),
           style: TextStyle(color: NotelColors.textSecondary, fontSize: 11),
         ),
         const SizedBox(height: 16),
-        const Text(
+        Text(
           'Tier',
           key: Key('chestSimTierLabel'),
           style: TextStyle(
@@ -186,7 +186,7 @@ class _ChestSimEntryState extends State<ChestSimEntry> {
               Expanded(
                 child: Text(
                   'Upgrade on tap ${i + 1}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: NotelColors.textPrimary,
                     fontSize: 14,
                   ),
@@ -219,7 +219,7 @@ class _ChestSimEntryState extends State<ChestSimEntry> {
         Text(
           'Simulated balance: $_simBalance gems',
           key: Key('chestSimBalance'),
-          style: const TextStyle(
+          style: TextStyle(
             color: NotelColors.textPrimary,
             fontSize: 14,
             fontWeight: FontWeight.w500,

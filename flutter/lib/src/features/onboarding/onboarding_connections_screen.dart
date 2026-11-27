@@ -199,7 +199,7 @@ class _OnboardingConnectionsScreenState
         title: Text(
           isIOS ? 'Skip Apple Health?' : 'Skip Health Connect?',
           textAlign: TextAlign.center,
-          style: const TextStyle(
+          style: TextStyle(
             fontWeight: FontWeight.bold,
             color: NotelColors.textPrimary,
           ),
@@ -212,7 +212,7 @@ class _OnboardingConnectionsScreenState
                   ? "Without it, Tabs can't read your:"
                   : "Without it, Tabs can't sync in your:",
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 color: NotelColors.textSecondary,
                 fontSize: 14,
               ),
@@ -235,7 +235,7 @@ class _OnboardingConnectionsScreenState
                     const SizedBox(width: 8),
                     Text(
                       item,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: NotelColors.textPrimary,
                         fontSize: 14,
                       ),
@@ -257,7 +257,7 @@ class _OnboardingConnectionsScreenState
                       'insights only use what you log by hand. You can '
                       'connect anytime in Settings.',
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 color: NotelColors.textSecondary,
                 fontSize: 14,
                 height: 20 / 14,
@@ -289,7 +289,7 @@ class _OnboardingConnectionsScreenState
               ),
               TextButton(
                 onPressed: () => Navigator.of(dialogContext).pop(true),
-                child: const Text(
+                child: Text(
                   'Skip anyway',
                   style: TextStyle(
                     color: NotelColors.textSecondary,
@@ -373,7 +373,7 @@ class _OnboardingConnectionsScreenState
                             ? 'Connect Apple Health'
                             : 'Connect Health Data',
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.w800,
                           color: NotelColors.textPrimary,
@@ -390,7 +390,7 @@ class _OnboardingConnectionsScreenState
                                 'from Apple Health.'
                             : 'Sync your heart rate and sleep data.',
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 15,
                           color: NotelColors.textSecondary,
                           height: 22 / 15,
@@ -416,7 +416,7 @@ class _OnboardingConnectionsScreenState
                     border: Border.all(color: NotelColors.cardBorder),
                   ),
                   padding: const EdgeInsets.all(16),
-                  child: const Text(
+                  child: Text(
                     'Looks like you are already connected!',
                     textAlign: TextAlign.center,
                     style: TextStyle(
@@ -429,7 +429,7 @@ class _OnboardingConnectionsScreenState
               else if (_iosUnavailable) ...[
                 // Juno onboarding addendum §3: the signed State 4
                 // string replaces the connect-button area verbatim.
-                const Text(
+                Text(
                   'Apple Health is not available on this device, so '
                   'Tabs cannot read health data from it here. Your '
                   'logging, check-ins, and notes in Tabs still work.',
@@ -457,7 +457,7 @@ class _OnboardingConnectionsScreenState
                   const SizedBox(height: 8),
                   TextButton(
                     onPressed: _onManageInSettings,
-                    child: const Text(
+                    child: Text(
                       'Manage access in Settings',
                       style: TextStyle(
                         color: NotelColors.textSecondary,
@@ -472,7 +472,7 @@ class _OnboardingConnectionsScreenState
                         Text(
                           _error!,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: NotelColors.error,
                             fontSize: 13,
                           ),

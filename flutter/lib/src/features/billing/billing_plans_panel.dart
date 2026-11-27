@@ -201,14 +201,14 @@ class _BillingPlansPanelState extends State<BillingPlansPanel> {
           ],
         if (state.products.isEmpty &&
             state.phase != BillingPhase.loadingCatalog)
-          const Text(
+          Text(
             'Pricing shown in Google Play',
             textAlign: TextAlign.center,
             style: TextStyle(color: NotelColors.textSecondary, fontSize: 13),
           ),
         if (selectedGroup != null && selectedGroup.offers.length > 1) ...[
           const SizedBox(height: 4),
-          const Align(
+          Align(
             alignment: Alignment.centerLeft,
             child: Text('Choose an offer',
                 style: TextStyle(
@@ -295,7 +295,7 @@ class _BillingPlansPanelState extends State<BillingPlansPanel> {
             state.errorMessage!,
             key: const ValueKey('billing_error'),
             textAlign: TextAlign.center,
-            style: const TextStyle(color: NotelColors.error, fontSize: 12),
+            style: TextStyle(color: NotelColors.error, fontSize: 12),
           ),
         ],
       ],
@@ -362,7 +362,7 @@ class _BillingPlansPanelState extends State<BillingPlansPanel> {
                 children: [
                   Text(
                     group.cardTitle(product.title),
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: NotelColors.textPrimary,
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
@@ -371,7 +371,7 @@ class _BillingPlansPanelState extends State<BillingPlansPanel> {
                   const SizedBox(height: 2),
                   Text(
                     priceLine,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: NotelColors.textSecondary,
                       fontSize: 13,
                     ),
@@ -379,7 +379,7 @@ class _BillingPlansPanelState extends State<BillingPlansPanel> {
                   if (group.offers.length > 1)
                     Text(
                       '${group.offers.length} offers — tap to choose',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: NotelColors.textSecondary,
                         fontSize: 12,
                       ),
@@ -501,7 +501,7 @@ class _BillingPlansPanelState extends State<BillingPlansPanel> {
             Expanded(
               child: Text(
                 offer.summaryLabel ?? 'Plan option from Google Play',
-                style: const TextStyle(
+                style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontSize: 13,
                 ),

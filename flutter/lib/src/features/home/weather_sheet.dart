@@ -262,14 +262,14 @@ class _WeatherSheetState extends State<_WeatherSheet> {
         for (var i = 0; i < 5; i++) ...[
           const _WeatherSkeletonRow(),
           if (i < 4)
-            const Divider(
+            Divider(
               color: NotelColors.legacyDarkHairlineFaint,
               thickness: 0.5,
               height: 0.5,
             ),
         ],
         const SizedBox(height: 16),
-        const Text(
+        Text(
           'Fetching local weather...',
           style: TextStyle(
             color: NotelColors.textSecondary,
@@ -289,7 +289,7 @@ class _WeatherSheetState extends State<_WeatherSheet> {
         children: [
           const Text('☁️', style: TextStyle(fontSize: 40)),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             "Couldn't load weather right now",
             style: TextStyle(
               color: NotelColors.textPrimary,
@@ -299,7 +299,7 @@ class _WeatherSheetState extends State<_WeatherSheet> {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Weather needs a connection and your location to load. '
             'Check your connection and try again.',
             style: TextStyle(
@@ -335,7 +335,7 @@ class _WeatherSheetState extends State<_WeatherSheet> {
       children: [
         Text(
           weather.locationName ?? 'Unknown',
-          style: const TextStyle(
+          style: TextStyle(
             color: NotelColors.textPrimary,
             fontSize: 18,
             fontWeight: FontWeight.w900,
@@ -346,7 +346,7 @@ class _WeatherSheetState extends State<_WeatherSheet> {
         const SizedBox(height: 4),
         Text(
           weather.condition ?? '',
-          style: const TextStyle(
+          style: TextStyle(
             color: NotelColors.textSecondary,
             fontSize: 13,
           ),
@@ -468,7 +468,7 @@ class _WeatherSheetState extends State<_WeatherSheet> {
   }
 
   Widget _rowDivider() {
-    return const Divider(
+    return Divider(
       color: NotelColors.legacyDarkHairlineFaint,
       thickness: 0.5,
       height: 0.5,
@@ -498,7 +498,7 @@ class _LocationRationaleCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
               Text('📍', style: TextStyle(fontSize: 24)),
               SizedBox(width: 12),
@@ -515,7 +515,7 @@ class _LocationRationaleCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Share your approximate location so weather reflects where you '
             'actually are instead of guessing from your network. You can '
             'change this anytime in Settings.',
@@ -546,7 +546,7 @@ class _LocationRationaleCard extends StatelessWidget {
               Expanded(
                 child: TextButton(
                   onPressed: onDismiss,
-                  child: const Text(
+                  child: Text(
                     'Not now',
                     style: TextStyle(
                       color: NotelColors.textSecondary,
@@ -702,7 +702,7 @@ class _WeatherInfoRow extends StatelessWidget {
                   ),
                   Text(
                     hint,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: NotelColors.textSecondary,
                       fontSize: 11,
                     ),
@@ -727,7 +727,7 @@ class _WeatherInfoRow extends StatelessWidget {
                     padding: const EdgeInsets.only(bottom: 1),
                     child: Text(
                       valueSuffix!,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: NotelColors.textSecondary,
                         fontSize: 11,
                       ),

@@ -124,7 +124,7 @@ class _NotificationOnboardingScreenState
                           size: 36,
                         ),
                         const SizedBox(height: 20),
-                        const Text(
+                        Text(
                           'Allow Tabs to send you\nnotifications?',
                           textAlign: TextAlign.center,
                           style: TextStyle(
@@ -191,7 +191,7 @@ class _NotificationOnboardingScreenState
                           Text(
                             _error!,
                             textAlign: TextAlign.center,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: NotelColors.error,
                               fontSize: 13,
                             ),

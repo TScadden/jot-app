@@ -146,11 +146,11 @@ class _BadgesScreenState extends State<BadgesScreen> {
               child: Container(
                 width: 40,
                 height: 40,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: NotelColors.surface,
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.chevron_left,
                   size: 24,
                   color: NotelColors.textPrimary,
@@ -159,7 +159,7 @@ class _BadgesScreenState extends State<BadgesScreen> {
             ),
           ),
         ),
-        const Column(
+        Column(
           children: [
             Text(
               BadgeStrings.screenTitle,
@@ -217,7 +217,7 @@ class _BadgesScreenState extends State<BadgesScreen> {
                 Text(
                   BadgeStrings.earnedCount(snap.earnedBadgeCount),
                   key: const ValueKey('badges_earned_count'),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: NotelColors.textPrimary,
@@ -225,7 +225,7 @@ class _BadgesScreenState extends State<BadgesScreen> {
                 ),
                 const SizedBox(height: 4),
                 if (top != null) ...[
-                  const Text(
+                  Text(
                     BadgeStrings.topBadgeLabel,
                     style: TextStyle(
                       fontSize: 12,
@@ -238,7 +238,7 @@ class _BadgesScreenState extends State<BadgesScreen> {
                       top.rungIndex,
                       BadgeStrings.badgeName(top.metric.id),
                     ),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                       color: NotelColors.textPrimary,
@@ -250,13 +250,13 @@ class _BadgesScreenState extends State<BadgesScreen> {
                       top.metric.id,
                       top.metric.thresholds[top.rungIndex],
                     ),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
                       color: NotelColors.textSecondary,
                     ),
                   ),
                 ] else ...[
-                  const Text(
+                  Text(
                     BadgeStrings.emptyHeadline,
                     style: TextStyle(
                       fontSize: 14,
@@ -265,7 +265,7 @@ class _BadgesScreenState extends State<BadgesScreen> {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  const Text(
+                  Text(
                     BadgeStrings.emptyBody,
                     style: TextStyle(
                       fontSize: 13,
@@ -296,7 +296,7 @@ class _BadgesScreenState extends State<BadgesScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             BadgeStrings.permissionTitle,
             style: TextStyle(
               fontSize: 14,
@@ -305,7 +305,7 @@ class _BadgesScreenState extends State<BadgesScreen> {
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             BadgeStrings.permissionBody,
             style: TextStyle(
               fontSize: 13,
@@ -313,7 +313,7 @@ class _BadgesScreenState extends State<BadgesScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             BadgeStrings.permissionBlockedLabel,
             style: TextStyle(
               fontSize: 12,
@@ -324,13 +324,13 @@ class _BadgesScreenState extends State<BadgesScreen> {
           for (final section in blockedSections)
             Text(
               BadgeStrings.sectionName(section),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
                 color: NotelColors.textPrimary,
               ),
             ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             BadgeStrings.permissionGuidance,
             style: TextStyle(
               fontSize: 12,
@@ -383,7 +383,7 @@ class _BadgesScreenState extends State<BadgesScreen> {
       children: [
         Text(
           BadgeStrings.sectionName(section),
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
             color: NotelColors.textPrimary,
@@ -392,7 +392,7 @@ class _BadgesScreenState extends State<BadgesScreen> {
         const Spacer(),
         Text(
           BadgeStrings.sectionCount(earned),
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 12,
             color: NotelColors.textSecondary,
           ),
@@ -495,7 +495,7 @@ class _BadgesScreenState extends State<BadgesScreen> {
     // Juno §9 rule 3: a blocked tile shows the name and the ruled
     // status line — nothing numeric, no bar, no §5 line.
     if (blocked) {
-      return const [
+      return [
         Text(
           BadgeStrings.permissionTileLine,
           textAlign: TextAlign.center,
@@ -514,7 +514,7 @@ class _BadgesScreenState extends State<BadgesScreen> {
             color: BadgeWidget.tierTextColor(topRung),
           ),
         ),
-        const Text(
+        Text(
           BadgeStrings.maxed,
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 11, color: NotelColors.textSecondary),
@@ -541,7 +541,7 @@ class _BadgesScreenState extends State<BadgesScreen> {
         textAlign: TextAlign.center,
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 11,
           color: NotelColors.textSecondary,
         ),
@@ -566,7 +566,7 @@ class _BadgesScreenState extends State<BadgesScreen> {
       lines.add(Text(
         BadgeStrings.progressLine(value, nextThreshold),
         textAlign: TextAlign.center,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 10,
           color: NotelColors.textSecondary,
         ),
@@ -616,7 +616,7 @@ class BadgeDetailScreen extends StatelessWidget {
         elevation: 0,
         title: Text(
           name,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.bold,
             color: NotelColors.textPrimary,
@@ -624,7 +624,7 @@ class BadgeDetailScreen extends StatelessWidget {
         ),
         leading: IconButton(
           key: const ValueKey('badge_detail_back_button'),
-          icon: const Icon(Icons.chevron_left,
+          icon: Icon(Icons.chevron_left,
               color: NotelColors.textPrimary, size: 24),
           onPressed: () => Navigator.of(context).pop(),
         ),
@@ -672,14 +672,14 @@ class BadgeDetailScreen extends StatelessWidget {
                         metric.id,
                         metric.thresholds[topRung],
                       ),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
                         color: NotelColors.textSecondary,
                       ),
                     ),
                   ),
                 ] else
-                  const Center(
+                  Center(
                     child: Text(
                       BadgeStrings.noRungsYet,
                       style: TextStyle(
@@ -715,7 +715,7 @@ class BadgeDetailScreen extends StatelessWidget {
                     // §6: Maxed stands in place of the Next rung
                     // block — no requirement, progress, or to-go
                     // line. The ladder below still renders.
-                    const Center(
+                    Center(
                       child: Text(
                         BadgeStrings.maxed,
                         style: TextStyle(
@@ -726,7 +726,7 @@ class BadgeDetailScreen extends StatelessWidget {
                       ),
                     )
                   else ...[
-                    const Text(
+                    Text(
                       BadgeStrings.nextRungHeading,
                     style: TextStyle(
                       fontSize: 14,
@@ -749,7 +749,7 @@ class BadgeDetailScreen extends StatelessWidget {
                       metric.id,
                       metric.thresholds[topRung + 1],
                     ),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       color: NotelColors.textSecondary,
                     ),
@@ -772,7 +772,7 @@ class BadgeDetailScreen extends StatelessWidget {
                         value,
                         metric.thresholds[topRung + 1],
                       ),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         color: NotelColors.textSecondary,
                       ),
@@ -782,7 +782,7 @@ class BadgeDetailScreen extends StatelessWidget {
                       BadgeStrings.toGo(
                         metric.thresholds[topRung + 1] - value,
                       ),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         color: NotelColors.textSecondary,
                       ),
@@ -854,7 +854,7 @@ class BadgeDetailScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             BadgeStrings.permissionTitle,
             style: TextStyle(
               fontSize: 14,
@@ -863,12 +863,12 @@ class BadgeDetailScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             BadgeStrings.permissionBody,
             style: TextStyle(fontSize: 13, color: NotelColors.textSecondary),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             BadgeStrings.permissionBlockedLabel,
             style: TextStyle(
               fontSize: 12,
@@ -878,13 +878,13 @@ class BadgeDetailScreen extends StatelessWidget {
           ),
           Text(
             BadgeStrings.sectionName(metric.section),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
               color: NotelColors.textPrimary,
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             BadgeStrings.permissionGuidance,
             style: TextStyle(fontSize: 12, color: NotelColors.textSecondary),
           ),
@@ -1052,7 +1052,7 @@ class _BadgeUnlockDialogState extends State<BadgeUnlockDialog> {
         grants.length == 1
             ? BadgeStrings.unlockTitleSingle
             : BadgeStrings.unlockTitlePlural,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.bold,
           color: NotelColors.textPrimary,
@@ -1097,7 +1097,7 @@ class _BadgeUnlockDialogState extends State<BadgeUnlockDialog> {
       // alreadyGranted rung was paid in a previous install and
       // the dialog must not suggest it paid again.
       if (g.paidFresh) {
-        lines.add(const Padding(
+        lines.add(Padding(
           padding: EdgeInsets.only(left: 52, top: 2),
           child: Text(
             BadgeStrings.unlockGemsLine,
@@ -1112,7 +1112,7 @@ class _BadgeUnlockDialogState extends State<BadgeUnlockDialog> {
         BadgeStrings.unlockTotalLine(
           widget.batch.freshPaidCount * badgeRungGemAmount,
         ),
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.bold,
           color: NotelColors.textPrimary,
@@ -1121,7 +1121,7 @@ class _BadgeUnlockDialogState extends State<BadgeUnlockDialog> {
     }
     if (widget.batch.anyPending) {
       lines.add(const SizedBox(height: 8));
-      lines.add(const Text(
+      lines.add(Text(
         BadgeStrings.pendingGemsFooter,
         style: TextStyle(fontSize: 12, color: NotelColors.textSecondary),
       ));
@@ -1136,7 +1136,7 @@ class _BadgeUnlockDialogState extends State<BadgeUnlockDialog> {
         widget.batch.includesHcBadge
             ? BadgeStrings.backfillIntroHc
             : BadgeStrings.backfillIntroTabs,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 13,
           color: NotelColors.textSecondary,
         ),
@@ -1145,7 +1145,7 @@ class _BadgeUnlockDialogState extends State<BadgeUnlockDialog> {
     }
     lines.add(Text(
       BadgeStrings.unlockCountLine(widget.batch.grants.length),
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 14,
         fontWeight: FontWeight.bold,
         color: NotelColors.textPrimary,
@@ -1184,7 +1184,7 @@ class _BadgeUnlockDialogState extends State<BadgeUnlockDialog> {
         BadgeStrings.unlockTotalLine(
           widget.batch.freshPaidCount * badgeRungGemAmount,
         ),
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.bold,
           color: NotelColors.textPrimary,
@@ -1193,7 +1193,7 @@ class _BadgeUnlockDialogState extends State<BadgeUnlockDialog> {
     }
     if (widget.batch.anyPending) {
       lines.add(const SizedBox(height: 8));
-      lines.add(const Text(
+      lines.add(Text(
         BadgeStrings.pendingGemsFooter,
         style: TextStyle(fontSize: 12, color: NotelColors.textSecondary),
       ));
@@ -1215,7 +1215,7 @@ class _BadgeUnlockDialogState extends State<BadgeUnlockDialog> {
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
                 color: NotelColors.textPrimary,
