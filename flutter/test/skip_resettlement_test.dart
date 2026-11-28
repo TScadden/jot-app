@@ -18,7 +18,7 @@ import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
 /// day that was skip-only-incomplete under the taken-only rule
 /// and is complete under the resolved rule.
 void main() {
-  const medCat = 8;
+  const medCat = '8';
   const moodCat = 6;
   const goalsCat = 4;
 
@@ -64,10 +64,10 @@ void main() {
   DateTime onNov25(int h, [int m = 0]) => DateTime(2026, 11, 25, h, m);
 
   List<QuickLogEntry> founderEntries({bool withCheckIn = true}) => [
-    entry(id: 1, cat: medCat, body: 'Took Ivabradine 7.5 mg', at: onNov25(8)),
-    entry(id: 2, cat: medCat, body: 'Took BPC-157 0.05', at: onNov25(8, 1)),
-    entry(id: 3, cat: medCat, body: 'Took SS-31 0.05', at: onNov25(8, 2)),
-    entry(id: 4, cat: medCat, body: 'Took MOTS-c 0.10', at: onNov25(8, 3)),
+    entry(id: '1', cat: medCat, body: 'Took Ivabradine 7.5 mg', at: onNov25(8)),
+    entry(id: '2', cat: medCat, body: 'Took BPC-157 0.05', at: onNov25(8, 1)),
+    entry(id: '3', cat: medCat, body: 'Took SS-31 0.05', at: onNov25(8, 2)),
+    entry(id: '4', cat: medCat, body: 'Took MOTS-c 0.10', at: onNov25(8, 3)),
     entry(
       id: '5',
       cat: medCat,
