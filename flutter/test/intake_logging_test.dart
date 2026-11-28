@@ -74,7 +74,7 @@ class _Server {
   bool failPosts;
   Completer<void>? postGate;
   final List<Map<String, dynamic>> capturedPosts = [];
-  final List<int> capturedDeletes = [];
+  final List<String> capturedDeletes = [];
   final List<String> requestLog = [];
 
   TabsBackend backend() {
@@ -114,9 +114,12 @@ class _Server {
       }
       if (request.url.path.startsWith('/api/sync/entries/') &&
           request.method == 'DELETE') {
-        final id = int.parse(request.url.path.split('/').last);
+        // GAP-18: the delete path carries the string sync id
+        // (a UUID for new entries) — the production server
+        // classifies it the same way.
+        final id = request.url.path.split('/').last;
         capturedDeletes.add(id);
-        entries.removeWhere((e) => e['id'] == id);
+        entries.removeWhere((e) => '${e['id']}' == id);
         return http.Response('{"ok":true}', 200);
       }
       return http.Response('not found', 404);
@@ -966,7 +969,7 @@ void main() {
       final staged = LogEntryOutbox.instance.records;
       expect(staged, hasLength(1));
       expect(staged.single.entry.body, 'Water · 16 fl oz');
-      expect(staged.single.entry.categoryId, 7);
+      expect(staged.single.entry.categoryId, '7');
       expect(
         IntakePayload.tryParse(staged.single.entry.manualText)?.fluidMl,
         473,

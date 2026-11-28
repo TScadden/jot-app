@@ -596,7 +596,7 @@ void main() {
         isNull,
       );
       final amended = amendGoodEntry(good, options: ['Good mood', 'Energy']);
-      expect(amended.id, 8);
+      expect(amended.id, '8');
       expect(amended.timestamp, ts);
       expect(jsonDecode(amended.chips), ['Good Day', 'Energy', 'Good mood']);
       expect(amended.body, 'Good day · Energy, Good mood');
@@ -1671,11 +1671,13 @@ void main() {
       final server = _Server([], categories: _catsNameHit);
       server.postGate = Completer<void>();
       await pumpHome(tester, server);
-      // Ranking stage = allocate persist + stage persist (2 writes,
-      // push gated so no flush bookkeeping writes interleave).
-      // Every later disk write fails: the flare stage cannot land.
+      // Ranking stage = its stage persist (1 write; GAP-18
+      // allocation is a local UUID draw and persists nothing, and
+      // the push is gated so no flush bookkeeping writes
+      // interleave). Every later disk write fails: the flare
+      // stage cannot land.
       diskWrites = 0;
-      diskFailAfter = 2;
+      diskFailAfter = 1;
       await tester.tap(find.text('1'));
       await _pumpUntil(
         tester,
@@ -1719,7 +1721,7 @@ void main() {
       final server = _Server([], categories: _catsNameHit);
       await pumpHome(tester, server);
       diskWrites = 0;
-      diskFailAfter = 2;
+      diskFailAfter = 1;
       await tester.tap(find.text('4'));
       await _pumpUntil(
         tester,
@@ -1868,7 +1870,7 @@ void main() {
       // interleave). Every later disk write fails: the flare
       // pre-stage (local, Vera F5) cannot land.
       diskWrites = 0;
-      diskFailAfter = 2;
+      diskFailAfter = 1;
       await tester.tap(find.text('2'));
       await _pumpUntil(
         tester,
@@ -1925,7 +1927,7 @@ void main() {
       server.postGate = Completer<void>();
       await pumpHome(tester, server);
       diskWrites = 0;
-      diskFailAfter = 2;
+      diskFailAfter = 1;
       await tester.tap(find.text('2'));
       await _pumpUntil(
         tester,

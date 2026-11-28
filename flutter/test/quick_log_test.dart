@@ -153,7 +153,7 @@ void main() {
         'updatedAt': 1760220001000,
       });
       expect(e.id, '42');
-      expect(e.categoryId, 3);
+      expect(e.categoryId, '3');
       expect(e.body, 'Brain fog');
       expect(e.timestamp, 1760220000000);
     });
