@@ -136,7 +136,7 @@ void main() {
       final records = LogEntryOutbox.instance.records;
       expect(records, hasLength(1));
       expect(records.single.entry.body, 'Took Ivabradine 7.5 mg');
-      expect(records.single.entry.categoryId, 8);
+      expect(records.single.entry.categoryId, '8');
       expect(records.single.serverKnown, isFalse);
       // The local med record still landed (unchanged semantics).
       final state = await planStoreWith(h.planMem)
@@ -153,7 +153,7 @@ void main() {
       final records = LogEntryOutbox.instance.records;
       expect(records, hasLength(1));
       expect(records.single.entry.body, 'Took Ivabradine 7.5 mg');
-      expect(records.single.entry.categoryId, 8);
+      expect(records.single.entry.categoryId, '8');
       expect(records.single.serverKnown, isFalse);
     });
 
@@ -167,7 +167,7 @@ void main() {
       expect(records, hasLength(1));
       expect(records.single.entry.body,
           '[Corrected to Skipped] Took Ivabradine 7.5 mg');
-      expect(records.single.entry.categoryId, 8);
+      expect(records.single.entry.categoryId, '8');
       expect(records.single.serverKnown, isFalse);
     });
 
@@ -189,7 +189,7 @@ void main() {
           .setMedicationAction(_medItem, DoseStatus.skipped, now: now);
       final records = LogEntryOutbox.instance.records;
       expect(records, hasLength(1));
-      expect(records.single.entry.id, 55);
+      expect(records.single.entry.id, '55');
       expect(records.single.entry.body,
           '[Corrected to Skipped] Took Ivabradine 7.5 mg');
       expect(records.single.serverKnown, isTrue);
@@ -209,7 +209,7 @@ void main() {
       final records = LogEntryOutbox.instance.records;
       expect(records, hasLength(1));
       expect(records.single.entry.body, 'Took Ivabradine 7.5 mg');
-      expect(records.single.entry.categoryId, 8);
+      expect(records.single.entry.categoryId, '8');
       expect(records.single.serverKnown, isFalse);
     });
 

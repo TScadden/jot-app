@@ -108,7 +108,7 @@ HabitDto habit(String id, String title,
         {String target = 'Anytime', List<String> logs = const []}) =>
     HabitDto(id: id, title: title, logs: logs, targetTime: target);
 
-QuickLogEntry entry(int id, int categoryId, String body, DateTime at) =>
+QuickLogEntry entry(String id, String categoryId, String body, DateTime at) =>
     QuickLogEntry(
       id: id,
       categoryId: categoryId,
@@ -190,7 +190,7 @@ void main() {
               isEnabled: true),
         ],
         entries: [
-          entry(7, 4, 'Completed reminder: A', DateTime(2026, 10, 13, 8, 5)),
+          entry('7', '4', 'Completed reminder: A', DateTime(2026, 10, 13, 8, 5)),
         ],
       );
       expect(data.summaryText, 'Everything planned for today is complete');
@@ -208,7 +208,7 @@ void main() {
         ],
         medCategoryId: 8,
         entries: [
-          entry(1, 8, '[Corrected to Skipped] Took MedA 5mg',
+          entry('1', '8', '[Corrected to Skipped] Took MedA 5mg',
               DateTime(2026, 10, 13, 8)),
         ],
       );
@@ -227,8 +227,8 @@ void main() {
         ],
         medCategoryId: 8,
         entries: [
-          entry(1, 8, 'Took MedA 5mg', DateTime(2026, 10, 13, 8)),
-          entry(2, 8, '[Corrected to Skipped] Took MedB 10mg',
+          entry('1', '8', 'Took MedA 5mg', DateTime(2026, 10, 13, 8)),
+          entry('2', '8', '[Corrected to Skipped] Took MedB 10mg',
               DateTime(2026, 10, 13, 8, 5)),
         ],
       );
@@ -250,7 +250,7 @@ void main() {
           'm2|Daily': DoseStatus.snoozed,
         }),
         entries: [
-          entry(1, 8, '[Corrected to Skipped] Took MedA 5mg',
+          entry('1', '8', '[Corrected to Skipped] Took MedA 5mg',
               DateTime(2026, 10, 13, 8)),
         ],
       );
@@ -270,7 +270,7 @@ void main() {
         habits: [habit('h1', 'Stretch')],
         medCategoryId: 8,
         entries: [
-          entry(1, 8, '[Corrected to Skipped] Took MedA 5mg',
+          entry('1', '8', '[Corrected to Skipped] Took MedA 5mg',
               DateTime(2026, 10, 13, 8)),
         ],
       );
@@ -326,7 +326,7 @@ void main() {
               isEnabled: true),
         ],
         entries: [
-          entry(7, 4, 'Completed reminder: done',
+          entry('7', '4', 'Completed reminder: done',
               DateTime(2026, 10, 13, 6, 5)),
         ],
       );
@@ -352,7 +352,7 @@ void main() {
       // therefore absent from the rendered plan.
       final withEntry = build(
         habits: [habit('h1', 'Stretch', logs: [_today])],
-        entries: [entry(9, 4, 'Completed habit: Stretch', _now)],
+        entries: [entry('9', '4', 'Completed habit: Stretch', _now)],
         now: _now,
       );
       expect(withEntry.items, isEmpty);
@@ -375,7 +375,7 @@ void main() {
       final withEntry = build(
         reminders: [rem],
         entries: [
-          entry(7, 4, 'Completed reminder: A', DateTime(2026, 10, 13, 8, 5)),
+          entry('7', '4', 'Completed reminder: A', DateTime(2026, 10, 13, 8, 5)),
         ],
       );
       expect(withEntry.items, isEmpty);
@@ -410,7 +410,7 @@ void main() {
     test('a today "Took …" entry in the Medication category marks '
         'taken — and the dose leaves the rendered plan (R41)', () {
       final data = build(entries: [
-        entry(10, 8, 'Took Ivabradine 7.5 mg', _now),
+        entry('10', '8', 'Took Ivabradine 7.5 mg', _now),
       ]);
       expect(data.items, isEmpty);
       expect(data.plannedCount, 1);
@@ -431,7 +431,7 @@ void main() {
     test('a "[Corrected to Skipped]" entry marks SKIPPED (never '
         'taken) — and the dose leaves the rendered plan (R41)', () {
       final data = build(entries: [
-        entry(10, 8, '[Corrected to Skipped] Took Ivabradine 7.5 mg', _now),
+        entry('10', '8', '[Corrected to Skipped] Took Ivabradine 7.5 mg', _now),
       ]);
       expect(data.items, isEmpty);
       expect(data.plannedCount, 1);
@@ -453,7 +453,7 @@ void main() {
     test('per-item record unchanged: skipped evidence stands as '
         'skipped and never as taken (adherence views unaffected)', () {
       final entries = [
-        entry(10, 8, '[Corrected to Skipped] Took Ivabradine 7.5 mg', _now),
+        entry('10', '8', '[Corrected to Skipped] Took Ivabradine 7.5 mg', _now),
       ];
       expect(
         medSkippedFromEntries(
@@ -475,7 +475,7 @@ void main() {
 
     test('yesterday\'s "Took …" entry does not leak into today', () {
       final data = build(entries: [
-        entry(10, 8, 'Took Ivabradine 7.5 mg',
+        entry('10', '8', 'Took Ivabradine 7.5 mg',
             _now.subtract(const Duration(days: 1))),
       ]);
       expect(data.items.single.status, DoseStatus.pending);
@@ -488,7 +488,7 @@ void main() {
         local: const TodayPlanLocalState(medActions: {
           'uuid-1|Daily': DoseStatus.skipped,
         }),
-        entries: [entry(10, 8, 'Took Ivabradine 7.5 mg', _now)],
+        entries: [entry('10', '8', 'Took Ivabradine 7.5 mg', _now)],
       );
       expect(skippedLocal.items, isEmpty); // taken per the entry
       expect(skippedLocal.remainingCount, 0);
@@ -496,7 +496,7 @@ void main() {
         local: const TodayPlanLocalState(medActions: {
           'uuid-1|Daily': DoseStatus.pending,
         }),
-        entries: [entry(10, 8, 'Took Ivabradine 7.5 mg', _now)],
+        entries: [entry('10', '8', 'Took Ivabradine 7.5 mg', _now)],
       );
       expect(pendingLocal.items, isEmpty);
       expect(pendingLocal.remainingCount, 0);
@@ -769,7 +769,7 @@ void main() {
         habits: const [],
         localState: const TodayPlanLocalState(),
         entries: [
-          entry(3, 8, '[Corrected to Skipped] Took M 1',
+          entry('3', '8', '[Corrected to Skipped] Took M 1',
               DateTime(2026, 10, 13, 8, 0)),
         ],
         medicationCategoryId: '8',
@@ -944,14 +944,14 @@ void main() {
       final now = DateTime(2026, 10, 13, 12, 0);
       final windowStart = DateTime(2026, 10, 6); // today − 7d midnight
       final entries = [
-        entry(1, 1, 'Migraine', now), // category match
-        entry(2, 0, 'bad Headache today', now), // legacy fallback
-        entry(3, 0, 'Lunch', now), // categoryId 0, no keyword → no
-        entry(4, 2, 'Headache', now), // keyword, wrong category → no
-        entry(5, 1, 'At window start', windowStart), // inclusive → yes
-        entry(6, 1, 'Before window',
+        entry('1', '1', 'Migraine', now), // category match
+        entry('2', '0', 'bad Headache today', now), // legacy fallback
+        entry('3', '0', 'Lunch', now), // categoryId 0, no keyword → no
+        entry('4', '2', 'Headache', now), // keyword, wrong category → no
+        entry('5', '1', 'At window start', windowStart), // inclusive → yes
+        entry('6', '1', 'Before window',
             windowStart.subtract(const Duration(milliseconds: 1))),
-        entry(7, 1, 'Future', now.add(const Duration(hours: 1))),
+        entry('7', '1', 'Future', now.add(const Duration(hours: 1))),
       ];
       expect(
         countSymptomLogs(
@@ -1417,7 +1417,7 @@ void main() {
         habits: const [],
         localState: const TodayPlanLocalState(),
         entries: [
-          entry(55, 8, '[Corrected to Skipped] Took Ivabradine 7.5 mg',
+          entry('55', '8', '[Corrected to Skipped] Took Ivabradine 7.5 mg',
               _now),
         ],
         medicationCategoryId: '8',
