@@ -1458,42 +1458,55 @@ class _HeartScreenState extends State<HeartScreen> {
             children: [
               const Icon(Icons.favorite, color: NotelColors.primary, size: 48),
               const SizedBox(width: 16),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Awake average',
-                    style: TextStyle(
-                      color: NotelColors.textSecondary,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
+              // GAP-13: at 3.0 text scale the label + big number
+              // outgrow the card next to the 48dp icon (+35px) —
+              // the column flexes and both lines shrink to fit.
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Awake average',
+                        style: TextStyle(
+                          color: NotelColors.textSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
                     ),
-                  ),
-                  Text.rich(
-                    TextSpan(
-                      children: [
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text.rich(
                         TextSpan(
-                          text: data.awakeAvg != null
-                              ? '${data.awakeAvg}'
-                              : '--',
-                          style: const TextStyle(
-                            color: NotelColors.textPrimary,
-                            fontSize: 40,
-                            fontWeight: FontWeight.w900,
-                          ),
+                          children: [
+                            TextSpan(
+                              text: data.awakeAvg != null
+                                  ? '${data.awakeAvg}'
+                                  : '--',
+                              style: const TextStyle(
+                                color: NotelColors.textPrimary,
+                                fontSize: 40,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const TextSpan(
+                              text: ' bpm',
+                              style: TextStyle(
+                                color: NotelColors.textSecondary,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ),
-                        const TextSpan(
-                          text: ' bpm',
-                          style: TextStyle(
-                            color: NotelColors.textSecondary,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
