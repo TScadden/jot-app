@@ -179,6 +179,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _passwordFocusNode = FocusNode();
+
+  /// SCORECARD-3 #7 (validate on blur): the email field's focus node.
+  /// On focus loss a non-empty, malformed address sets the shared
+  /// [_errorMessage] line immediately instead of waiting for a server
+  /// round-trip at submit. Submit-time checks stay as the backstop.
+  final _emailFocusNode = FocusNode();
   bool _isLoading = false;
   String? _errorMessage;
 
@@ -189,10 +196,59 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _resetSent = false;
 
   @override
+  void initState() {
+    super.initState();
+    _emailFocusNode.addListener(_onEmailFocusChange);
+  }
+
+  /// SCORECARD-3 #7: blur validation for the email field. Fires only
+  /// on focus LOSS, only for a non-empty field, and reuses the
+  /// existing [_errorMessage] line — no new validation framework.
+  /// A valid address clears a format error left by an earlier blur
+  /// (never a server/submit error, which the next submit replaces).
+  void _onEmailFocusChange() {
+    if (_emailFocusNode.hasFocus) return;
+    final email = _emailController.text.trim();
+    if (email.isEmpty) return;
+    if (!_isPlausibleEmail(email)) {
+      setState(() => _errorMessage = 'Please enter a valid email address');
+    } else if (_errorMessage == 'Please enter a valid email address') {
+      setState(() => _errorMessage = null);
+    }
+  }
+
+  /// Basic format check for blur validation: one `@`, non-empty
+  /// local and domain parts, a dot in the domain, no spaces. The
+  /// server remains the authority at submit time.
+  static bool _isPlausibleEmail(String email) {
+    if (email.contains(' ')) return false;
+    final at = email.indexOf('@');
+    if (at <= 0 || at != email.lastIndexOf('@')) return false;
+    final domain = email.substring(at + 1);
+    return domain.length >= 3 && domain.contains('.');
+  }
+
+  @override
   void dispose() {
+    _emailFocusNode.removeListener(_onEmailFocusChange);
+    _emailFocusNode.dispose();
+    _passwordFocusNode.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  /// SCORECARD-3 #5 (Enter to submit): the one mode dispatch the
+  /// main button and the password field's `onSubmitted` both run, so
+  /// keyboard and tap submits can never drift apart.
+  void _submitCurrentMode() {
+    if (_isForgotPasswordMode) {
+      _onForgotPasswordPressed();
+    } else if (_isRegisterMode) {
+      _onRegisterPressed();
+    } else {
+      _onLoginPressed();
+    }
   }
 
   /// Round 5: real login. Mirrors the native `LoginViewModel.login()`
@@ -200,6 +256,12 @@ class _LoginScreenState extends State<LoginScreen> {
   /// session persistence + [LoginScreen.onLoginSuccess] or an inline
   /// error message.
   Future<void> _onLoginPressed() async {
+    // SCORECARD-3 #1 prerequisite for #5: entry guard, matching
+    // _onForgotPasswordPressed/_onGooglePressed/_onApplePressed.
+    // The button's disabled-while-loading state used to cover this;
+    // the keyboard-submit caller (password field onSubmitted) does
+    // not, so the guard now lives in the handler itself.
+    if (_isLoading) return;
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     if (email.isEmpty || password.isEmpty) {
@@ -308,6 +370,9 @@ class _LoginScreenState extends State<LoginScreen> {
   /// then fires [LoginScreen.onRegisterSuccess] (onboarding entry —
   /// see the class doc).
   Future<void> _onRegisterPressed() async {
+    // SCORECARD-3 #1 prerequisite for #5: entry guard (see
+    // _onLoginPressed) — the keyboard-submit caller needs it here.
+    if (_isLoading) return;
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     if (email.isEmpty || password.isEmpty) {
@@ -786,9 +851,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   _resetSent = false;
                 }),
                 style: TextButton.styleFrom(
+                  // SCORECARD-3 #2: 48dp hit box, visual text
+                  // unchanged (13sp, no extra padding) — the
+                  // hit >= 48 / visual < 48 pattern
+                  // a11y_audit_closures_test.dart enforces.
                   padding: EdgeInsets.zero,
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  minimumSize: const Size(48, 48),
+                  tapTargetSize: MaterialTapTargetSize.padded,
                 ),
                 child: const Text(
                   'Forgot Password?',
@@ -811,17 +880,7 @@ class _LoginScreenState extends State<LoginScreen> {
             width: double.infinity,
             height: 50,
             child: ElevatedButton(
-              onPressed: _isLoading
-                  ? null
-                  : () {
-                      if (_isForgotPasswordMode) {
-                        _onForgotPasswordPressed();
-                      } else if (_isRegisterMode) {
-                        _onRegisterPressed();
-                      } else {
-                        _onLoginPressed();
-                      }
-                    },
+              onPressed: _isLoading ? null : _submitCurrentMode,
               style: ElevatedButton.styleFrom(
                 backgroundColor: NotelColors.primary,
                 foregroundColor: NotelColors.background,
@@ -977,6 +1036,10 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _buildEmailField() {
     return TextField(
       controller: _emailController,
+      focusNode: _emailFocusNode,
+      // SCORECARD-3 #5: Enter advances to the password field.
+      textInputAction: TextInputAction.next,
+      onSubmitted: (_) => _passwordFocusNode.requestFocus(),
       keyboardType: TextInputType.emailAddress,
       autocorrect: false,
       style: const TextStyle(color: NotelColors.textPrimary, fontSize: 16),
@@ -1007,7 +1070,12 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _buildPasswordField() {
     return TextField(
       controller: _passwordController,
+      focusNode: _passwordFocusNode,
       obscureText: !_passwordVisible,
+      // SCORECARD-3 #5: Enter submits through the same dispatch
+      // the main button runs.
+      textInputAction: TextInputAction.done,
+      onSubmitted: (_) => _submitCurrentMode(),
       keyboardType: TextInputType.visiblePassword,
       autocorrect: false,
       style: const TextStyle(color: NotelColors.textPrimary, fontSize: 16),
