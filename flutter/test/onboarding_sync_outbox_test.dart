@@ -174,15 +174,27 @@ class _FakeBackend extends TabsBackend {
 
   @override
   Future<bool> postSyncProfile(Map<String, dynamic> fields) async {
+    final result = await postSyncProfileDetailed(fields);
+    return result.ok;
+  }
+
+  // GAP-9: Settings saves through the detailed variant (it needs
+  // the server's error string for Juno's verbatim-rejection rule);
+  // the fake records both entry points identically.
+  @override
+  Future<({bool ok, String? serverError})> postSyncProfileDetailed(
+      Map<String, dynamic> fields) async {
     profilePosts++;
     profilePayloads.add(Map.of(fields));
-    if (failPosts || failProfilePost) return false;
+    if (failPosts || failProfilePost) {
+      return (ok: false, serverError: 'fake profile failure');
+    }
     // Server contract: COALESCE upsert — non-null fields
     // overwrite, omitted fields keep their server value.
     fields.forEach((k, v) {
       if (v != null) serverProfile[k] = v;
     });
-    return true;
+    return (ok: true, serverError: null);
   }
 }
 

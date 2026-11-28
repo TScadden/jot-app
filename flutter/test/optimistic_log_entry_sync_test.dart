@@ -488,8 +488,12 @@ void main() {
       final field = tester.widget<TextField>(find.byType(TextField).first);
       expect(field.controller!.text, isEmpty);
       // And the entry sits in the outbox as pending, not "synced".
+      // GAP-18: its id is a client-generated v4 UUID (was the
+      // allocated integer 2 under max+1).
+      final stagedA = LogEntryOutbox.instance.records.single;
+      expect(isUuidV4(stagedA.entry.id), isTrue);
       expect(
-        LogEntryOutbox.instance.statusFor('2'),
+        LogEntryOutbox.instance.statusFor(stagedA.entry.id),
         LogEntrySyncStatus.pending,
       );
 
@@ -666,10 +670,10 @@ void main() {
       // …the server still holds the old category…
       expect(server.entries.single['categoryId'], 3);
       // …and the edit remains queued, marked failed, for retry.
-      expect(LogEntryOutbox.instance.failedIds, contains(42));
+      expect(LogEntryOutbox.instance.failedIds, contains('42'));
       expect(
         LogEntryOutbox.instance.recordFor('42')!.entry.categoryId,
-        7,
+        '7',
       );
     });
 
@@ -699,7 +703,7 @@ void main() {
         tester,
         () => find.text('Local only note').evaluate().isNotEmpty,
       );
-      expect(outbox.inFlightIds, contains(77));
+      expect(outbox.inFlightIds, contains('77'));
 
       // Ask to delete it and confirm.
       await tester.tap(find.byTooltip('Delete entry'));
@@ -748,7 +752,7 @@ void main() {
         );
         await outbox.flush(server.backend());
       });
-      expect(outbox.failedIds, contains(42));
+      expect(outbox.failedIds, contains('42'));
       outbox.debugReset();
       expect(outbox.isLoaded, isFalse);
 
@@ -1017,7 +1021,12 @@ void main() {
       // pending record was NOT overwritten by the relaunch entry.
       final byId = {for (final r in server.capturedPosts) r['id']: r['body']};
       expect(byId[2], 'Killed session entry');
-      expect(byId[3], 'Fresh entry');
+      // GAP-18: the relaunch entry's id is a fresh v4 UUID (was 3
+      // under max+1) — its own id, never the pending record's.
+      final freshIds = byId.keys.where((k) => k != 2).toList();
+      expect(freshIds, hasLength(1));
+      expect(isUuidV4('${freshIds.single}'), isTrue);
+      expect(byId[freshIds.single], 'Fresh entry');
       expect(outbox.records, isEmpty);
       // Drain the snackbar + request timers (see test (a)).
       await tester.pump(const Duration(seconds: 25));
@@ -1202,7 +1211,7 @@ void main() {
       // The entry stages and its push fails…
       await _pumpUntil(
         tester,
-        () => LogEntryOutbox.instance.failedIds.contains('2'),
+        () => LogEntryOutbox.instance.failedIds.isNotEmpty,
       );
       await _pumpUntil(
         tester,
@@ -1212,7 +1221,9 @@ void main() {
       // per-entry Not synced signal, with the History badge's copy.
       expect(find.text('Not synced'), findsOneWidget);
       expect(find.text('Synced'), findsNothing);
-      expect(LogEntryOutbox.instance.statusFor('2'),
+      expect(
+          LogEntryOutbox.instance
+              .statusFor(LogEntryOutbox.instance.failedIds.single),
           LogEntrySyncStatus.failed);
       // Drain the snackbar + request timers (see test (a)).
       await tester.pump(const Duration(seconds: 25));
