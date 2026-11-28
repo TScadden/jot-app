@@ -350,7 +350,7 @@ void main() {
         expect(IntakePayload.tryParse(bad), isNull, reason: bad);
       }
       final ts = DateTime(2026, 10, 28, 9).millisecondsSinceEpoch;
-      QuickLogEntry raw(int id, String manualText) => QuickLogEntry(
+      QuickLogEntry raw(String id, String manualText) => QuickLogEntry(
             id: id,
             categoryId: '7',
             body: 'x',
@@ -360,8 +360,8 @@ void main() {
           );
       final totals = intakeTotalsForDay(
         [
-          raw(1, '{"v":1,"kind":"Water","fluidMl":473.5}'),
-          raw(2, '{"v":1,"kind":"Water","fluidMl":-473}'),
+          raw('1', '{"v":1,"kind":"Water","fluidMl":473.5}'),
+          raw('2', '{"v":1,"kind":"Water","fluidMl":-473}'),
         ],
         now: DateTime(2026, 10, 28, 12),
       );
@@ -595,7 +595,7 @@ void main() {
 
   group('category resolution (Q4 — name only, no fallback)', () {
     test('name hit at any id; a miss is null even when id 1 exists', () {
-      QuickLogCategory cat(int id, String name) => QuickLogCategory(
+      QuickLogCategory cat(String id, String name) => QuickLogCategory(
             id: id,
             name: name,
             icon: 'circle',
@@ -603,9 +603,9 @@ void main() {
             isDefault: true,
             sortOrder: 0,
           );
-      expect(resolveIntakeCategoryId([cat(7, 'Hydration')]), 7);
-      expect(resolveIntakeCategoryId([cat(9, 'hydration')]), 9);
-      expect(resolveIntakeCategoryId([cat(1, 'Symptoms')]), isNull);
+      expect(resolveIntakeCategoryId([cat('7', 'Hydration')]), 7);
+      expect(resolveIntakeCategoryId([cat('9', 'hydration')]), 9);
+      expect(resolveIntakeCategoryId([cat('1', 'Symptoms')]), isNull);
       expect(resolveIntakeCategoryId(const []), isNull);
     });
   });
