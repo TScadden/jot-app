@@ -32,11 +32,20 @@ class OnboardingConnectionsScreen extends StatefulWidget {
   final VoidCallback onNavigateNext;
   final HealthConnectService? healthConnectService;
 
+  /// Onboarding reorder fix (Vera F1 / Juno condition 2): when
+  /// true, this step runs BEFORE an account exists and may use
+  /// ONLY grant-status read-back — no probe / evidence health
+  /// reads (see HealthConnectService.getGrantStatusOnly /
+  /// probeIosAvailabilityGrantOnly / requestPermissionsGrantOnly).
+  /// Post-account (default) behavior is unchanged.
+  final bool preAccount;
+
   const OnboardingConnectionsScreen({
     super.key,
     required this.onBack,
     required this.onNavigateNext,
     this.healthConnectService,
+    this.preAccount = false,
   });
 
   @override
@@ -81,7 +90,11 @@ class _OnboardingConnectionsScreenState
 
   Future<void> _loadStatus() async {
     if (_service.isIOS) {
-      final snapshot = await _service.probeIosAvailability();
+      // Pre-account: grant-status-only snapshot — no data-evidence
+      // reads (Vera F1). Post-account: the normal probe, unchanged.
+      final snapshot = widget.preAccount
+          ? await _service.probeIosAvailabilityGrantOnly()
+          : await _service.probeIosAvailability();
       if (mounted) setState(() => _iosAvailability = snapshot);
       return;
     }
@@ -92,7 +105,12 @@ class _OnboardingConnectionsScreenState
       }
     } catch (_) {}
     try {
-      final status = await _service.getStatus();
+      // Pre-account: grant-status-only — getStatus() would run
+      // probeReadAccess() (a real StepsRecord read) whenever
+      // READ_STEPS is granted (Vera F1). Post-account: unchanged.
+      final status = widget.preAccount
+          ? await _service.getGrantStatusOnly()
+          : await _service.getStatus();
       if (mounted) {
         setState(() {
           _status = status;
@@ -127,13 +145,23 @@ class _OnboardingConnectionsScreenState
         _error = null;
       });
       try {
-        await _service.requestPermissions();
+        // Pre-account: the grant-only request skips any probe
+        // read inside the request path (Vera F1).
+        if (widget.preAccount) {
+          await _service.requestPermissionsGrantOnly();
+        } else {
+          await _service.requestPermissions();
+        }
       } on HealthConnectException catch (e) {
         if (mounted) setState(() => _error = e.message);
       }
       if (!mounted) return;
       setState(() => _requesting = false);
-      final snapshot = await _service.probeIosAvailability();
+      // Pre-account re-check is grant-status-only too: the normal
+      // probe would run the data-evidence reads here (Vera F1).
+      final snapshot = widget.preAccount
+          ? await _service.probeIosAvailabilityGrantOnly()
+          : await _service.probeIosAvailability();
       if (mounted) setState(() => _iosAvailability = snapshot);
       return;
     }
@@ -145,7 +173,12 @@ class _OnboardingConnectionsScreenState
       _error = null;
     });
     try {
-      final granted = await _service.requestPermissions();
+      // Pre-account: grant-only request — the normal request runs
+      // probeReadAccess() on a full grant, a real health read
+      // that must not run before an account exists (Vera F1).
+      final granted = widget.preAccount
+          ? await _service.requestPermissionsGrantOnly()
+          : await _service.requestPermissions();
       if (!mounted) return;
       setState(() {
         _requesting = false;

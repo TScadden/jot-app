@@ -161,8 +161,13 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   /// as always; pre-account the Continue hands off to the
   /// register gate (AppFlow) — membership is never entered here.
   void _onGemsContinue() {
-    if (widget.preAccount && widget.onPreAccountComplete != null) {
-      widget.onPreAccountComplete!();
+    if (widget.preAccount) {
+      // Hard guard: pre-account mode NEVER advances to membership
+      // — with no handoff callback it stays on gems rather than
+      // falling through to the post-account step.
+      if (widget.onPreAccountComplete != null) {
+        widget.onPreAccountComplete!();
+      }
       return;
     }
     _go(OnboardingStep.membership);
@@ -248,6 +253,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
             onBack: _stepBack,
             onNavigateNext: () => _go(OnboardingStep.gems),
             healthConnectService: widget.healthConnectService,
+            preAccount: widget.preAccount,
           ),
         OnboardingStep.gems => GemsOnboardingScreen(
             onBack: _stepBack,

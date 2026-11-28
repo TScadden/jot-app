@@ -337,6 +337,47 @@ class HealthConnectService {
     );
   }
 
+  /// Grant-status-only iOS availability (onboarding reorder fix,
+  /// Vera F1 / Juno condition 2): derives ONLY from availability
+  /// and the persisted authorization-requested fact — it NEVER
+  /// runs the data-evidence reads ([_iosHasDataEvidence]:
+  /// readSteps / readHeartRateSamples / readRestingHeartRate /
+  /// readHrvSdnnSamples / readSleepMinutes). For the pre-account
+  /// connections step, where no health-data read may run before
+  /// an account exists. A requested authorization therefore maps
+  /// to [IosHealthAvailabilityState.noDataYet] with hasData false:
+  /// "connected" is earned only by a real read returning data,
+  /// and that read is deferred to post-account. Post-account
+  /// callers keep using [probeIosAvailability] unchanged.
+  Future<IosHealthAvailability> probeIosAvailabilityGrantOnly() async {
+    bool available;
+    try {
+      available = await isAvailable();
+    } catch (_) {
+      available = false;
+    }
+    if (!available) {
+      return const IosHealthAvailability(
+        state: IosHealthAvailabilityState.unavailable,
+        requested: false,
+        hasData: false,
+      );
+    }
+    final requested = await iosAuthorizationRequested();
+    if (!requested) {
+      return const IosHealthAvailability(
+        state: IosHealthAvailabilityState.notYetRequested,
+        requested: false,
+        hasData: false,
+      );
+    }
+    return const IosHealthAvailability(
+      state: IosHealthAvailabilityState.noDataYet,
+      requested: true,
+      hasData: false,
+    );
+  }
+
   /// The has-data evidence for [probeIosAvailability]: at least one
   /// real read actually returning data. Steps for today is the
   /// primary probe (the analogue of the Android Steps probe);
@@ -514,6 +555,30 @@ class HealthConnectService {
     return status;
   }
 
+  /// Grant-status-only status (onboarding reorder fix, Vera F1 /
+  /// Juno condition 2): availability + the live granted-permission
+  /// set ONLY — it NEVER runs [probeReadAccess] (the StepsRecord
+  /// probe read inside [_probeAvailability]) and never reads any
+  /// health data. For the pre-account connections step, where no
+  /// health-data read may run before an account exists; Juno
+  /// allows pre-account only the disclosure dialog, the OS
+  /// permission UI, and grant-status read-back — this method is
+  /// exactly that read-back. It does not persist and does not
+  /// detect the stale/wedged grant (that verdict needs the probe
+  /// read, deferred to post-account). Post-account callers keep
+  /// using [getStatus] unchanged. Throws [HealthConnectException]
+  /// exactly as the underlying availability / grant reads throw.
+  Future<HealthConnectStatus> getGrantStatusOnly() async {
+    final available = await isAvailable();
+    if (!available) return HealthConnectStatus.unavailable;
+    final granted = await getGrantedPermissions();
+    if (granted.isEmpty) return HealthConnectStatus.notConnected;
+    if (granted.containsAll(requiredPermissions)) {
+      return HealthConnectStatus.connected;
+    }
+    return HealthConnectStatus.partiallyConnected;
+  }
+
   /// The required permissions not currently granted (live bridge
   /// read, like [getGrantedPermissions]). Empty when fully granted.
   /// Throws [HealthConnectException] when the bridge read fails —
@@ -550,14 +615,31 @@ class HealthConnectService {
   /// is the empty set — HealthKit discloses no grant list, so there
   /// is nothing truthful to return; the availability model
   /// ([probeIosAvailability]) carries the truth instead.
-  Future<Set<String>> requestPermissions() async {
+  Future<Set<String>> requestPermissions() =>
+      _requestPermissionsImpl(skipProbe: false);
+
+  /// Grant-status-only permission request (onboarding reorder
+  /// fix, Vera F1 / Juno condition 2): identical to
+  /// [requestPermissions] — disclosure / OS permission UI and
+  /// grant-status read-back are the pre-account-allowed acts —
+  /// EXCEPT the post-grant [probeReadAccess] real-read probe is
+  /// skipped, so no health-data read runs pre-account. The
+  /// granted set is still persisted exactly as the normal path
+  /// persists it. On iOS this is the same authorization request
+  /// (that path never read data). Post-account callers keep
+  /// using [requestPermissions] unchanged.
+  Future<Set<String>> requestPermissionsGrantOnly() =>
+      _requestPermissionsImpl(skipProbe: true);
+
+  Future<Set<String>> _requestPermissionsImpl(
+      {required bool skipProbe}) async {
     if (isIOS) return _requestIosAuthorization();
     try {
       final granted = await _channel
           .invokeMethod<List>('requestPermissions')
           .timeout(requestTimeout);
       final set = (granted ?? []).map((e) => e.toString()).toSet();
-      if (set.containsAll(requiredPermissions)) {
+      if (!skipProbe && set.containsAll(requiredPermissions)) {
         // Grant-state probe: grants reporting OK is not proof reads
         // work (stale grant after update/reinstall — reads throw
         // SecurityException while the grant list looks complete).

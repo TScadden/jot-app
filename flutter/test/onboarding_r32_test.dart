@@ -115,6 +115,19 @@ class FakeOnboardingHC extends HealthConnectService {
   @override
   Future<HealthConnectStatus> getStatus() async => status;
 
+  // Grant-status-only surface (Vera F1 fix): the pre-account
+  // connections step calls these instead of getStatus /
+  // requestPermissions; the fake answers them from the same
+  // fields so pre-account walks keep the same visible state.
+  @override
+  Future<HealthConnectStatus> getGrantStatusOnly() async => status;
+
+  @override
+  Future<Set<String>> requestPermissionsGrantOnly() async {
+    requestCalls++;
+    return grantedOnRequest;
+  }
+
   @override
   Future<Set<String>> requestPermissions() async {
     requestCalls++;
