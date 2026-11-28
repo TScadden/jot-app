@@ -426,7 +426,7 @@ void main() {
     final serverEntries = <Map<String, dynamic>>[
       for (var i = 1; i <= 6; i++)
         QuickLogEntry(
-          id: i,
+          id: '$i',
           categoryId: '3',
           body: 'Entry $i',
           chips: '',

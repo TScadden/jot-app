@@ -24,7 +24,7 @@ final _week = WeeklyWeekWindow(DateTime(2026, 11, 9), DateTime(2026, 11, 15));
 final _prevWeek =
     WeeklyWeekWindow(DateTime(2026, 11, 2), DateTime(2026, 11, 8));
 
-QuickLogEntry _entry(int id, DateTime day) => QuickLogEntry(
+QuickLogEntry _entry(String id, DateTime day) => QuickLogEntry(
       id: id,
       categoryId: '1',
       body: 'entry $id',

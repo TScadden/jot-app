@@ -66,7 +66,7 @@ class RecordingWeeklyNotifier implements WeeklyNotifier {
   }
 }
 
-QuickLogEntry _entry(int id, DateTime day) => QuickLogEntry(
+QuickLogEntry _entry(String id, DateTime day) => QuickLogEntry(
       id: id,
       categoryId: '1',
       body: 'entry $id',

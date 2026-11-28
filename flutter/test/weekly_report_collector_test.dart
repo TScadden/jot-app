@@ -32,7 +32,7 @@ final _weekStart = DateTime(2026, 11, 9);
 final _weekEnd = DateTime(2026, 11, 15);
 final _now = DateTime(2026, 11, 18, 12);
 
-QuickLogEntry _entry(int id, DateTime day) => QuickLogEntry(
+QuickLogEntry _entry(String id, DateTime day) => QuickLogEntry(
       id: id,
       categoryId: '1',
       body: 'entry $id',
@@ -51,10 +51,10 @@ class _Backend extends TabsBackend {
 
   @override
   Future<List<QuickLogEntry>> fetchLogEntryDtos() async => [
-        _entry(1, DateTime(2026, 11, 8)), // Sunday BEFORE the week
-        _entry(2, DateTime(2026, 11, 9)), // Monday of the week
-        _entry(3, DateTime(2026, 11, 15)), // Sunday of the week
-        _entry(4, DateTime(2026, 11, 16)), // Monday AFTER the week
+        _entry('1', DateTime(2026, 11, 8)), // Sunday BEFORE the week
+        _entry('2', DateTime(2026, 11, 9)), // Monday of the week
+        _entry('3', DateTime(2026, 11, 15)), // Sunday of the week
+        _entry('4', DateTime(2026, 11, 16)), // Monday AFTER the week
       ];
 
   @override

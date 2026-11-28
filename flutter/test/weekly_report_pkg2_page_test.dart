@@ -38,7 +38,7 @@ QuickLogCategory _cat(int id, String name) => QuickLogCategory(
     isDefault: true,
     sortOrder: int.tryParse(id) ?? 0);
 
-QuickLogEntry _entry(int id, DateTime day) => QuickLogEntry(
+QuickLogEntry _entry(String id, DateTime day) => QuickLogEntry(
       id: id,
       categoryId: '1',
       body: 'entry $id',
