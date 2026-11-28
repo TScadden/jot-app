@@ -179,6 +179,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _emailFocusNode = FocusNode();
+  final _passwordFocusNode = FocusNode();
   bool _isLoading = false;
   String? _errorMessage;
 
@@ -188,11 +190,74 @@ class _LoginScreenState extends State<LoginScreen> {
   /// starts, so a stale confirmation can never sit over a new form.
   bool _resetSent = false;
 
+  /// Wave A (SCORECARD-3 #7): the blur-validation message, kept as a
+  /// constant so the focus-loss check can recognise (and clear) its
+  /// own error without ever wiping a server or submit-time error.
+  static const String _blurEmailError =
+      'Please enter a valid email address.';
+
+  @override
+  void initState() {
+    super.initState();
+    _emailFocusNode.addListener(_onEmailFocusChange);
+  }
+
+  /// Blur validation (SCORECARD-3 #7): when the email field loses
+  /// focus holding a non-empty value that is not shaped like an
+  /// email address, flag it on the existing inline error line right
+  /// away instead of waiting for a server round-trip. A later blur
+  /// with a well-formed address clears only this check's own error;
+  /// every submit-time check stays in place as the backstop.
+  void _onEmailFocusChange() {
+    if (_emailFocusNode.hasFocus || !mounted) return;
+    final email = _emailController.text.trim();
+    if (email.isEmpty) return;
+    if (!_isPlausibleEmail(email)) {
+      if (_errorMessage != _blurEmailError) {
+        setState(() => _errorMessage = _blurEmailError);
+      }
+    } else if (_errorMessage == _blurEmailError) {
+      setState(() => _errorMessage = null);
+    }
+  }
+
+  /// Deliberately basic shape check for blur feedback only (one `@`,
+  /// a dotted domain, no spaces) — the server remains the authority
+  /// on whether an address is real.
+  static bool _isPlausibleEmail(String email) {
+    if (email.contains(' ')) return false;
+    final at = email.indexOf('@');
+    if (at <= 0 || at != email.lastIndexOf('@')) return false;
+    final domain = email.substring(at + 1);
+    return domain.contains('.') &&
+        !domain.startsWith('.') &&
+        !domain.endsWith('.');
+  }
+
   @override
   void dispose() {
+    _emailFocusNode.removeListener(_onEmailFocusChange);
     _emailController.dispose();
     _passwordController.dispose();
+    _emailFocusNode.dispose();
+    _passwordFocusNode.dispose();
     super.dispose();
+  }
+
+  /// Video-lessons Wave A (SCORECARD-3 #5): the one submit dispatch
+  /// shared by the main button and the password field's keyboard
+  /// submit (Enter / Done), so both paths run the exact same mode
+  /// logic. The handlers themselves carry the `_isLoading` entry
+  /// guards, so a keyboard submit cannot double-fire while a request
+  /// is in flight.
+  void _submitFromKeyboard() {
+    if (_isForgotPasswordMode) {
+      _onForgotPasswordPressed();
+    } else if (_isRegisterMode) {
+      _onRegisterPressed();
+    } else {
+      _onLoginPressed();
+    }
   }
 
   /// Round 5: real login. Mirrors the native `LoginViewModel.login()`
@@ -200,6 +265,10 @@ class _LoginScreenState extends State<LoginScreen> {
   /// session persistence + [LoginScreen.onLoginSuccess] or an inline
   /// error message.
   Future<void> _onLoginPressed() async {
+    // Wave A prerequisite (SCORECARD-3 #1/#5): the keyboard submit
+    // path calls this directly, bypassing the button's disabled
+    // state — the entry guard is what stops a double submit.
+    if (_isLoading) return;
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     if (email.isEmpty || password.isEmpty) {
@@ -308,6 +377,9 @@ class _LoginScreenState extends State<LoginScreen> {
   /// then fires [LoginScreen.onRegisterSuccess] (onboarding entry —
   /// see the class doc).
   Future<void> _onRegisterPressed() async {
+    // Wave A prerequisite (SCORECARD-3 #1/#5): same keyboard-submit
+    // entry guard as [_onLoginPressed].
+    if (_isLoading) return;
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     if (email.isEmpty || password.isEmpty) {
@@ -786,9 +858,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   _resetSent = false;
                 }),
                 style: TextButton.styleFrom(
+                  // Wave A (SCORECARD-3 #2 / SCORECARD-9 #13): 48dp
+                  // hit box, visual text unchanged — the glyph, its
+                  // size and its colour are exactly as before; only
+                  // the tappable area grows to the 48dp floor.
                   padding: EdgeInsets.zero,
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  minimumSize: const Size(48, 48),
                 ),
                 child: const Text(
                   'Forgot Password?',
@@ -811,17 +886,7 @@ class _LoginScreenState extends State<LoginScreen> {
             width: double.infinity,
             height: 50,
             child: ElevatedButton(
-              onPressed: _isLoading
-                  ? null
-                  : () {
-                      if (_isForgotPasswordMode) {
-                        _onForgotPasswordPressed();
-                      } else if (_isRegisterMode) {
-                        _onRegisterPressed();
-                      } else {
-                        _onLoginPressed();
-                      }
-                    },
+              onPressed: _isLoading ? null : _submitFromKeyboard,
               style: ElevatedButton.styleFrom(
                 backgroundColor: NotelColors.primary,
                 foregroundColor: NotelColors.background,
@@ -977,7 +1042,23 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _buildEmailField() {
     return TextField(
       controller: _emailController,
+      focusNode: _emailFocusNode,
       keyboardType: TextInputType.emailAddress,
+      // Wave A (SCORECARD-3 #5 + SCORECARD-9 #15-adjacent): Enter
+      // advances to the password field (in forgot-password mode, to
+      // the reset submit), and credential managers get the email hint
+      // they need to offer saved logins.
+      textInputAction: _isForgotPasswordMode
+          ? TextInputAction.done
+          : TextInputAction.next,
+      onSubmitted: (_) {
+        if (_isForgotPasswordMode) {
+          _submitFromKeyboard();
+        } else {
+          _passwordFocusNode.requestFocus();
+        }
+      },
+      autofillHints: const [AutofillHints.email],
       autocorrect: false,
       style: const TextStyle(color: NotelColors.textPrimary, fontSize: 16),
       cursorColor: NotelColors.primary,
@@ -1007,8 +1088,18 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _buildPasswordField() {
     return TextField(
       controller: _passwordController,
+      focusNode: _passwordFocusNode,
       obscureText: !_passwordVisible,
       keyboardType: TextInputType.visiblePassword,
+      // Wave A (SCORECARD-3 #5 + SCORECARD-9 #15-adjacent): Enter
+      // submits through the same dispatch as the main button; the
+      // autofill hint is newPassword in register mode so credential
+      // managers offer to save (not fill) the new credential.
+      textInputAction: TextInputAction.done,
+      onSubmitted: (_) => _submitFromKeyboard(),
+      autofillHints: _isRegisterMode
+          ? const [AutofillHints.newPassword]
+          : const [AutofillHints.password],
       autocorrect: false,
       style: const TextStyle(color: NotelColors.textPrimary, fontSize: 16),
       cursorColor: NotelColors.primary,
