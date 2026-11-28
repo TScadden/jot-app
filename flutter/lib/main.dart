@@ -481,7 +481,22 @@ class _AppFlowState extends State<AppFlow>
           await _onboardingStore.clearPreAccountState();
         }
       } catch (_) {}
-      final step = await _computePreAccountResumeStep();
+      // Flag provenance (Vera F2 / Juno condition 7): resume is
+      // permitted ONLY for a run the in-progress flag actually
+      // marks. With the flag ABSENT, any payload already in the
+      // store is foreign / unstamped — wipe it and start at
+      // Consent BEFORE the flow's first marker write can mint
+      // flag=true over it. Flag-present resume is unchanged.
+      var flagPresent = false;
+      try {
+        flagPresent = await _onboardingStore.getPreAccountInProgress();
+        if (!flagPresent) {
+          await _onboardingStore.clearPreAccountState();
+        }
+      } catch (_) {}
+      final step = flagPresent
+          ? await _computePreAccountResumeStep()
+          : OnboardingStep.consent;
       if (!mounted) return;
       setState(() {
         _preAccountMode = true;
@@ -721,6 +736,14 @@ class _AppFlowState extends State<AppFlow>
               _onboardingStep = step;
               _stage = _FlowStage.onboarding;
             });
+          } else {
+            // Flag provenance (Vera F2 / Juno condition 7): with
+            // the in-progress flag ABSENT, any payload in the
+            // store is foreign / unstamped — wipe it here, before
+            // any onboarding screen can render, so a later Get
+            // started can never mint the flag over it or carry
+            // it into a new account. The app stays at Welcome.
+            await _onboardingStore.clearPreAccountState();
           }
         } catch (_) {}
         return;
