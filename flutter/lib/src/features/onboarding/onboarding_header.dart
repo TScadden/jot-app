@@ -24,7 +24,7 @@ class OnboardingHeader extends StatelessWidget {
   /// header is laid out as a Stack: the logo row is centered on the
   /// FULL header width and the side slots overlay it, which keeps
   /// the logo at the exact center whether the trailing slot holds
-  /// the 40dp Skip button, this label, or nothing.
+  /// the Skip button, this label, or nothing.
   final String? trailingLabel;
 
   const OnboardingHeader({
@@ -36,8 +36,12 @@ class OnboardingHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Wave A (SCORECARD-3 #2 / SCORECARD-9 #13): the header is 48dp
+    // tall so the Skip button can carry a full 48dp hit box. The
+    // logo and the 40dp back circle stay exactly as they were —
+    // both are centered, so the taller slot only adds air.
     return SizedBox(
-      height: 40,
+      height: 48,
       child: Stack(
         children: [
           const Center(
@@ -84,17 +88,19 @@ class OnboardingHeader extends StatelessWidget {
                     ),
                   )
                 : SizedBox(
-                    width: 40,
-                    height: 40,
+                    height: 48,
                     child: onSkip == null
-                        ? null
+                        ? const SizedBox(width: 40)
                         : TextButton(
                             onPressed: onSkip,
                             style: TextButton.styleFrom(
-                              padding: EdgeInsets.zero,
-                              minimumSize: Size.zero,
-                              tapTargetSize:
-                                  MaterialTapTargetSize.shrinkWrap,
+                              // 48dp hit box, visual text unchanged
+                              // (Wave A, SCORECARD-3 #2 / SCORECARD-9
+                              // #13): same 15sp glyph, same colour —
+                              // only the tappable area grows.
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 8),
+                              minimumSize: const Size(48, 48),
                             ),
                             child: const Text(
                               'Skip',
