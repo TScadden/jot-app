@@ -179,7 +179,7 @@ void main() {
     final table = shippedTable();
     final now = DateTime.now().millisecondsSinceEpoch;
     QuickLogEntry entry({
-      required int id,
+      required String id,
       required String body,
       String chips = '',
       required int ageHours,
@@ -193,7 +193,7 @@ void main() {
     );
 
     test('only Workout-chip entries light zones', () {
-      final plain = entry(id: 1, body: 'leg workout 3 sets', ageHours: 1);
+      final plain = entry(id: '1', body: 'leg workout 3 sets', ageHours: 1);
       final state = evaluateBodyWorkouts([plain], table, now);
       expect(state.zones, isEmpty);
       expect(state.recentEntries, isEmpty);
@@ -258,7 +258,7 @@ void main() {
     });
 
     test('symptom text on a non-workout entry never lights workout zones', () {
-      final e = entry(id: 1, body: 'my leg is sore', ageHours: 1);
+      final e = entry(id: '1', body: 'my leg is sore', ageHours: 1);
       expect(evaluateBodyWorkouts([e], table, now).zones, isEmpty);
     });
   });

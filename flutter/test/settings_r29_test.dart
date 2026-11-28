@@ -72,6 +72,20 @@ class FakeSettingsBackend extends TabsBackend {
     return pushResult;
   }
 
+  // GAP-9: Settings saves through the detailed variant (Juno's
+  // verbatim server-error rule); record it identically.
+  @override
+  Future<({bool ok, String? serverError})> postSyncProfileDetailed(
+      Map<String, dynamic> fields) async {
+    profilePushes.add(fields);
+    events.add('push');
+    tokenSeenAtPush = tokenProbe?.call();
+    return (
+      ok: pushResult,
+      serverError: pushResult ? null : 'fake profile failure'
+    );
+  }
+
   @override
   Future<Map<String, dynamic>?> updateNickname(String nickname) async =>
       {'success': true, 'nickname': nickname, 'tag': '4242'};
