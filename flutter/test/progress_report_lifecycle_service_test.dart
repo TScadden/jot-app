@@ -38,7 +38,7 @@ QuickLogCategory _cat(String id, String name) => QuickLogCategory(
     icon: 'x',
     colorHex: '#FF0000',
     isDefault: true,
-    sortOrder: id);
+    sortOrder: int.tryParse(id) ?? 0);
 
 List<QuickLogCategory> _cats() => [
       _cat('1', 'Symptoms'),

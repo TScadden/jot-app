@@ -28,7 +28,7 @@ final _now = DateTime(2026, 11, 13, 15);
 
 QuickLogCategory _cat(int id, String name) => QuickLogCategory(
     id: id, name: name, icon: 'x', colorHex: '#FF0000',
-    isDefault: true, sortOrder: id);
+    isDefault: true, sortOrder: int.tryParse(id) ?? 0);
 
 class _Backend extends TabsBackend {
   _Backend() : super(sessionStore: FakeSessionStore());

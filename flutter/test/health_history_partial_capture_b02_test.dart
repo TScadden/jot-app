@@ -398,7 +398,7 @@ QuickLogCategory _cat(String id, String name) => QuickLogCategory(
     icon: 'x',
     colorHex: '#FF0000',
     isDefault: true,
-    sortOrder: id);
+    sortOrder: int.tryParse(id) ?? 0);
 
 class _ReportBackend extends TabsBackend {
   _ReportBackend() : super(sessionStore: FakeSessionStore());

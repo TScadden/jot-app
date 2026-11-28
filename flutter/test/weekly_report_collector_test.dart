@@ -170,7 +170,7 @@ QuickLogCategory _cat(int id, String name) => QuickLogCategory(
     icon: 'x',
     colorHex: '#FF0000',
     isDefault: true,
-    sortOrder: id);
+    sortOrder: int.tryParse(id) ?? 0);
 
 void main() {
   late Map<String, String> disk;

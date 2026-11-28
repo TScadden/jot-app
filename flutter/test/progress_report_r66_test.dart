@@ -115,7 +115,7 @@ class FakeHc extends HealthConnectService {
 }
 
 QuickLogCategory cat(String id, String name) => QuickLogCategory(
-    id: id, name: name, icon: 'x', colorHex: '#FF0000', isDefault: true, sortOrder: id);
+    id: id, name: name, icon: 'x', colorHex: '#FF0000', isDefault: true, sortOrder: int.tryParse(id) ?? 0);
 
 List<QuickLogCategory> defaultCats() => [
       cat('1', 'Symptoms'),

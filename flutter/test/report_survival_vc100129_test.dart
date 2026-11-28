@@ -103,7 +103,7 @@ class ThrowingTokenStore extends FakeSessionStore {
 
 QuickLogCategory cat(int id, String name) => QuickLogCategory(
     id: id, name: name, icon: 'x', colorHex: '#FF0000',
-    isDefault: true, sortOrder: id);
+    isDefault: true, sortOrder: int.tryParse(id) ?? 0);
 
 QuickLogEntry entry(int id, int catId) => QuickLogEntry(
     id: id,
