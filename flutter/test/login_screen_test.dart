@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/main.dart';
@@ -32,6 +34,38 @@ class _FakeAuthApi extends AuthApiClient {
     required String password,
   }) async =>
       loginResult;
+}
+
+/// Vera condition 1 (PR #188 review) — Completer-gated fake: every
+/// login/register call is counted and then hangs on its gate, so a
+/// test can hold a submit in flight, re-enter via the keyboard, and
+/// count how many API calls the `_isLoading` entry guards let
+/// through. The instant-result [_FakeAuthApi] above can never
+/// observe this: its calls complete before a second submit lands.
+class _GatedAuthApi extends AuthApiClient {
+  int loginCalls = 0;
+  int registerCalls = 0;
+  final Completer<LoginResult> loginGate = Completer<LoginResult>();
+  final Completer<LoginResult> registerGate = Completer<LoginResult>();
+
+  @override
+  Future<LoginResult> login({
+    required String email,
+    required String password,
+  }) {
+    loginCalls++;
+    return loginGate.future;
+  }
+
+  @override
+  Future<LoginResult> register({
+    required String email,
+    required String password,
+    required bool ageConfirmed,
+  }) {
+    registerCalls++;
+    return registerGate.future;
+  }
 }
 
 void main() {
@@ -225,5 +259,90 @@ void main() {
     expect(topSpace, greaterThan(0));
     expect(bottomSpace, greaterThan(0));
     expect((topSpace - bottomSpace).abs(), lessThan(48.0));
+  });
+
+  testWidgets(
+      'Vera condition 1: re-focused password Enter during an in-flight '
+      'login fires exactly one API call (double-submit guard)',
+      (tester) async {
+    final api = _GatedAuthApi();
+    await tester.pumpWidget(MaterialApp(
+      home: LoginScreen(
+        initialRegisterMode: false,
+        authApi: api,
+        sessionStore: FakeSessionStore(),
+      ),
+    ));
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(0), 'back@tabs.app');
+    await tester.enterText(fields.at(1), 'secret');
+    // First submit via password-field Enter. The gated fake hangs,
+    // so the login stays in flight with _isLoading true.
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(api.loginCalls, 1);
+    // The first `done` drops focus, so a back-to-back second `done`
+    // never reaches onSubmitted — the re-focus is what makes this a
+    // real reproduction (Vera's mutation harness, PR #188 review).
+    // Re-focus the password field and fire Enter again mid-flight:
+    // the _isLoading entry guard must swallow it.
+    await tester.tap(fields.at(1));
+    await tester.pump();
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(api.loginCalls, 1);
+    // Release the in-flight call so the tree settles clean.
+    api.loginGate.complete(const LoginSuccess(
+      token: 'tok',
+      refreshToken: 'ref',
+      email: 'back@tabs.app',
+      emailVerified: true,
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(api.loginCalls, 1);
+  });
+
+  testWidgets(
+      'Vera condition 1: re-focused password Enter during an in-flight '
+      'register fires exactly one API call (double-submit guard)',
+      (tester) async {
+    final api = _GatedAuthApi();
+    await tester.pumpWidget(MaterialApp(
+      home: LoginScreen(
+        authApi: api,
+        sessionStore: FakeSessionStore(),
+      ),
+    ));
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(0), 'new@tabs.app');
+    await tester.enterText(fields.at(1), 'secret');
+    await tester.tap(find.text('I confirm I am 13 or older.'));
+    await tester.pump();
+    // Focus the password field, then submit via Enter; the gated
+    // fake holds the register in flight.
+    await tester.tap(fields.at(1));
+    await tester.pump();
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(api.registerCalls, 1);
+    // Re-focus (the first `done` dropped focus) and Enter again
+    // mid-flight: _onRegisterPressed's _isLoading guard must
+    // swallow the second submit.
+    await tester.tap(fields.at(1));
+    await tester.pump();
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(api.registerCalls, 1);
+    // Release the in-flight call so the tree settles clean.
+    api.registerGate.complete(const LoginSuccess(
+      token: 'tok',
+      refreshToken: 'ref',
+      email: 'new@tabs.app',
+      emailVerified: false,
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(api.registerCalls, 1);
   });
 }
