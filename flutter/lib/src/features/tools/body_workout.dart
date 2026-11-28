@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/workout_table.dart';
 
@@ -15,6 +17,72 @@ bool isWorkoutEntry(QuickLogEntry entry) => entry.chips
     .split(',')
     .map((c) => c.trim().toLowerCase())
     .contains(kWorkoutChip.toLowerCase());
+
+/// Chip token marking a log entry as synced from Health Connect
+/// (workout sync, Nov 27, 2026). Synced entries write the plain
+/// chips form `'Workout, Health Connect'` (DESIGN §1.5 R1), so
+/// this token round-trips the server inside the opaque chips
+/// string — the link store (WorkoutSyncStore) is the identity of
+/// record; this token is the rendering marker.
+const String kSyncedWorkoutChip = 'Health Connect';
+
+/// History card marker for a synced workout entry (Juno-ruled
+/// final string, JUNO-STRINGS.md §1.1 — ships byte-for-byte).
+const String kSyncedWorkoutCardMarker = 'Synced from Health Connect';
+
+/// Entry-detail provenance banner for a synced workout entry
+/// (Juno-ruled final string, JUNO-STRINGS.md §1.2 — the banner
+/// register of the LOGGED VIA MEDICATIONS TAB slot it sits
+/// beside). Provenance only: a synced entry stays editable and
+/// deletable like any log entry, so this banner is never paired
+/// with a locked/non-editable treatment.
+const String kSyncedWorkoutDetailBanner = 'SYNCED FROM HEALTH CONNECT';
+
+/// Tolerant synced-marker reader (DESIGN §1.5 R1): chips have two
+/// live encodings in the app (plain comma-joined and JSON array),
+/// so membership is checked BOTH ways — JSON-array membership
+/// first when the payload parses as a list, comma-token match
+/// otherwise — case-insensitive either way, in the
+/// `chipsContainFeelingTag` style. A future encoding change must
+/// not be able to silently unmark entries.
+bool isSyncedWorkoutEntry(QuickLogEntry entry) {
+  final raw = entry.chips.trim();
+  if (raw.isEmpty) return false;
+  const token = kSyncedWorkoutChip;
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is List) {
+      return decoded
+          .any((c) => '$c'.trim().toLowerCase() == token.toLowerCase());
+    }
+  } catch (_) {
+    // Not JSON — fall through to the plain comma-token match.
+  }
+  return raw
+      .split(',')
+      .map((c) => c.trim().toLowerCase())
+      .contains(token.toLowerCase());
+}
+
+/// The workout-entry category chain, shared by the Body screen's
+/// manual workout log and WorkoutSyncService (extracted from
+/// Body's `_workoutCategoryId`, DESIGN §5 — the two workout
+/// writers must never drift): Exercise → Workout → the
+/// `isDefault` category → the first category → literal 7.
+/// Category and workout-ness are orthogonal: workout identity is
+/// the chip; this is filing only.
+int workoutCategoryId(List<QuickLogCategory> categories) {
+  for (final wanted in const ['exercise', 'workout']) {
+    for (final c in categories) {
+      if (c.name.trim().toLowerCase() == wanted) return c.id;
+    }
+  }
+  for (final c in categories) {
+    if (c.isDefault) return c.id;
+  }
+  if (categories.isNotEmpty) return categories.first.id;
+  return 7;
+}
 
 /// Display names for the canonical zone ids.
 const Map<String, String> bodyZoneLabels = {
