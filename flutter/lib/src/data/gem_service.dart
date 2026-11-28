@@ -159,6 +159,7 @@ typedef GemRequestResult = ({int? statusCode, Map<String, dynamic>? body});
 
 typedef GemGrantFn = Future<GemRequestResult> Function(String key);
 typedef GemSpendFn = Future<GemRequestResult> Function(String spendId);
+typedef GemDevGrantFn = Future<GemRequestResult> Function(String grantId);
 typedef GemBalancePullFn = Future<int?> Function();
 
 enum GemSpendStatus {
@@ -186,6 +187,31 @@ class GemSpendResult {
   });
 }
 
+enum GemDevGrantStatus {
+  success,
+  replay,
+  forbidden,
+  failed,
+}
+
+class GemDevGrantResult {
+  final GemDevGrantStatus status;
+
+  /// The gems the server credited (always 1000 on a fresh grant),
+  /// when the server answered 200.
+  final int? granted;
+
+  /// The server balance after the grant, on a 200 answer. Null on
+  /// every failure — a failure adopts nothing.
+  final int? balance;
+
+  const GemDevGrantResult({
+    required this.status,
+    this.granted,
+    this.balance,
+  });
+}
+
 /// What one completion granted, for the celebration screen: the
 /// Juno §3 lines to render (empty when nothing landed — a replay
 /// of an already-granted day shows NO line) and the latest
@@ -207,8 +233,10 @@ class GemService extends ChangeNotifier {
 
   final GemGrantFn _grantFn;
   final GemSpendFn _spendFn;
+  final GemDevGrantFn _devGrantFn;
   final GemBalancePullFn _pullBalanceFn;
   final String Function() _spendIdGen;
+  final String Function() _devGrantIdGen;
 
   Future<String?> Function(String key) _read =
       (key) => const FlutterSecureStorage().read(key: key);
@@ -221,14 +249,18 @@ class GemService extends ChangeNotifier {
   GemService({
     GemGrantFn? grant,
     GemSpendFn? spend,
+    GemDevGrantFn? devGrant,
     GemBalancePullFn? pullBalance,
     TabsBackend? backend,
     String Function()? spendIdGen,
+    String Function()? devGrantIdGen,
   })  : _grantFn = grant ?? _backendGrant(backend ?? TabsBackend()),
         _spendFn = spend ?? _backendSpend(backend ?? TabsBackend()),
+        _devGrantFn = devGrant ?? _backendDevGrant(backend ?? TabsBackend()),
         _pullBalanceFn =
             pullBalance ?? _backendPullBalance(backend ?? TabsBackend()),
-        _spendIdGen = spendIdGen ?? _defaultSpendIdGen();
+        _spendIdGen = spendIdGen ?? _defaultSpendIdGen(),
+        _devGrantIdGen = devGrantIdGen ?? _defaultDevGrantIdGen();
 
   static String Function() _defaultSpendIdGen() {
     var counter = 0;
@@ -236,11 +268,20 @@ class GemService extends ChangeNotifier {
         'gem-spend-${DateTime.now().microsecondsSinceEpoch}-${counter++}';
   }
 
+  static String Function() _defaultDevGrantIdGen() {
+    var counter = 0;
+    return () =>
+        'gem-dev-grant-${DateTime.now().microsecondsSinceEpoch}-${counter++}';
+  }
+
   static GemGrantFn _backendGrant(TabsBackend backend) =>
       (key) => backend.grantGems(key);
 
   static GemSpendFn _backendSpend(TabsBackend backend) =>
       (spendId) => backend.spendGemsOnFreeze(spendId);
+
+  static GemDevGrantFn _backendDevGrant(TabsBackend backend) =>
+      (grantId) => backend.devGrantGems(grantId);
 
   static GemBalancePullFn _backendPullBalance(TabsBackend backend) =>
       () async {
@@ -984,6 +1025,52 @@ class GemService extends ChangeNotifier {
     if (!_loaded) return _balance;
     await _flushPending();
     return _balance;
+  }
+
+  /// Dev grant (DEV GEMS package, Nov 27, 2026): POST
+  /// /api/gems/dev-grant. The server credits exactly 1,000 gems
+  /// through the gem ledger (reason `dev_grant`) ONLY for a dev
+  /// account; any other token gets 403 and no credit — the
+  /// server is the gate, the dev-area button's rendering gate is
+  /// only a display convenience. A unique grantId is generated
+  /// per deliberate tap, so repeated deliberate grants each land
+  /// as their own ledger entry; a replayed grantId is a replay,
+  /// never a double grant. On a 200 the returned server balance
+  /// is adopted exactly like a spend answer's, so the pill and
+  /// the store reflect it immediately. On ANY failure (403,
+  /// transport, server error) nothing is adopted and the local
+  /// balance stands untouched. This path never touches the
+  /// earn-grant queue, the pending grants, or any chest/store
+  /// endpoint.
+  Future<GemDevGrantResult> devGrant({String? grantId}) async {
+    await ensureLoaded();
+    GemRequestResult r;
+    try {
+      r = await _devGrantFn(grantId ?? _devGrantIdGen());
+    } catch (_) {
+      return const GemDevGrantResult(status: GemDevGrantStatus.failed);
+    }
+    final body = r.body;
+    if (r.statusCode == 200 && body != null) {
+      final b = body['balance'];
+      final bal = b is int ? b : null;
+      final g = body['granted'];
+      if (bal != null) {
+        _setBalance(bal);
+        await _persist();
+      }
+      return GemDevGrantResult(
+        status: body['replayed'] == true
+            ? GemDevGrantStatus.replay
+            : GemDevGrantStatus.success,
+        granted: g is int ? g : null,
+        balance: bal,
+      );
+    }
+    if (r.statusCode == 403) {
+      return const GemDevGrantResult(status: GemDevGrantStatus.forbidden);
+    }
+    return const GemDevGrantResult(status: GemDevGrantStatus.failed);
   }
 
   /// Spend 300 gems on one streak freeze (POST /api/gems/spend/
