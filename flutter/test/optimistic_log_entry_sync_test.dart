@@ -334,7 +334,7 @@ void main() {
       );
       await outbox.stage(
         _entry(
-          id: 100,
+          id: '100',
           categoryId: '7',
           body: 'New local entry',
           ts: DateTime(2026, 10, 12, 10, 0).millisecondsSinceEpoch,
@@ -344,9 +344,9 @@ void main() {
       );
       final merged = outbox.merge([_entry(id: '42', categoryId: '3')]);
       expect(merged, hasLength(2));
-      expect(merged.firstWhere((e) => e.id == 42).categoryId, 7);
+      expect(merged.firstWhere((e) => e.id == '42').categoryId, '7');
       expect(
-        merged.firstWhere((e) => e.id == 100).body,
+        merged.firstWhere((e) => e.id == '100').body,
         'New local entry',
       );
     });
