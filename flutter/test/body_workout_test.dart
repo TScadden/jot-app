@@ -517,4 +517,117 @@ void main() {
       );
     });
   });
+
+  group('workout sync rendering pins (Nov 27, 2026)', () {
+    final table = shippedTable();
+
+    QuickLogEntry entryWith(String body, String chips) => QuickLogEntry(
+          id: 1,
+          categoryId: 7,
+          body: body,
+          chips: chips,
+          manualText: '',
+          timestamp: 1000,
+        );
+
+    // DESIGN §2.3 parse audit: neither founder type lights zones.
+    test('"Walking · 34 min" → unmatched, minutes still extracted', () {
+      final p = table.parse('Walking · 34 min');
+      expect(p.matched, isFalse);
+      expect(p.minutes, 34);
+    });
+
+    test('"Workout · 27 min" → unmatched', () {
+      final p = table.parse('Workout · 27 min');
+      expect(p.matched, isFalse);
+      expect(p.minutes, 27);
+    });
+
+    // The accepted §2.3 risk, pinned: synced cardio inherits the
+    // manual zone semantics wholesale.
+    test('"Running · 30 min" → matched, leg zones, minutes-driven', () {
+      final p = table.parse('Running · 30 min');
+      expect(p.matched, isTrue);
+      expect(p.minutes, 30);
+      expect(
+        p.primaryZones,
+        containsAll(<String>['quad_l', 'quad_r', 'calf_l', 'calf_r']),
+      );
+      // Intensity formula: 0.7 + min/120 clamped to 0.7–1.3.
+      expect(p.intensity, closeTo(0.95, 0.001));
+      final state = evaluateBodyWorkouts(
+        [entryWith('Running · 30 min', 'Workout, Health Connect')],
+        table,
+        1000 + 60 * 60000, // 1h later — inside the fade window
+      );
+      expect(state.zones.keys, containsAll(<String>['quad_l', 'calf_r']));
+      expect(state.recentEntries, hasLength(1));
+    });
+
+    test('synced walking entry lights nothing on the figure', () {
+      final state = evaluateBodyWorkouts(
+        [entryWith('Walking · 34 min', 'Workout, Health Connect')],
+        table,
+        1000 + 60 * 60000,
+      );
+      expect(state.zones, isEmpty);
+      expect(state.recentEntries, isEmpty);
+    });
+
+    test('isSyncedWorkoutEntry over plain, JSON, and mixed-case chips',
+        () {
+      expect(
+          isSyncedWorkoutEntry(
+              entryWith('x', 'Workout, Health Connect')),
+          isTrue);
+      expect(
+          isSyncedWorkoutEntry(
+              entryWith('x', '["Workout","Health Connect"]')),
+          isTrue);
+      expect(
+          isSyncedWorkoutEntry(
+              entryWith('x', 'workout, health connect')),
+          isTrue);
+      expect(
+          isSyncedWorkoutEntry(entryWith('x', '["HEALTH CONNECT"]')),
+          isTrue);
+      expect(isSyncedWorkoutEntry(entryWith('x', 'Workout')), isFalse);
+      expect(isSyncedWorkoutEntry(entryWith('x', '["General"]')), isFalse);
+      expect(isSyncedWorkoutEntry(entryWith('x', '')), isFalse);
+      // A near-miss token must not mark the entry.
+      expect(
+          isSyncedWorkoutEntry(entryWith('x', 'Health Connection')),
+          isFalse);
+    });
+
+    test('workoutCategoryId chain: Exercise → Workout → default → '
+        'first → 7', () {
+      QuickLogCategory cat(int id, String name, {bool isDefault = false}) =>
+          QuickLogCategory(
+            id: id,
+            name: name,
+            icon: 'circle',
+            colorHex: '#CCCCCC',
+            isDefault: isDefault,
+            sortOrder: 0,
+          );
+      expect(
+        workoutCategoryId([cat(7, 'General', isDefault: true), cat(5, 'Exercise')]),
+        5,
+      );
+      expect(
+        workoutCategoryId([cat(7, 'General', isDefault: true), cat(9, 'Workout')]),
+        9,
+      );
+      // Name match is trimmed + case-insensitive (Body precedent).
+      expect(workoutCategoryId([cat(5, ' exercise ')]), 5);
+      expect(
+        workoutCategoryId(
+            [cat(3, 'Symptoms'), cat(7, 'General', isDefault: true)]),
+        7,
+      );
+      expect(workoutCategoryId([cat(3, 'Symptoms'), cat(4, 'Mood')]), 3);
+      expect(workoutCategoryId(const []), 7);
+    });
+  });
 }
