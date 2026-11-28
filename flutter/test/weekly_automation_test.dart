@@ -57,7 +57,7 @@ ReportSnapshot _goodSnap(WeeklyWeekWindow week) => ReportSnapshot(
       logEntries: [
         for (var i = 0; i < 5; i++) _entry(i + 1, week.days[i]),
       ],
-      categoriesMap: const {1: 'Symptoms'},
+      categoriesMap: const {'1': 'Symptoms'},
       dailyScoreSeries: _seriesOn(week.days, 60),
       sleepSeries: _seriesOn(week.days, 420),
     );
@@ -319,7 +319,7 @@ void main() {
             logEntries: [
               for (var i = 0; i < 7; i++) _entry(i + 1, days[i]),
             ],
-            categoriesMap: const {1: 'Symptoms'},
+            categoriesMap: const {'1': 'Symptoms'},
             dailyScoreSeries: [
               ..._seriesOn(monSat, 60),
               (dateStrOf(sunday), 100),

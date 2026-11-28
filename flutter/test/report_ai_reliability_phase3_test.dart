@@ -757,7 +757,7 @@ void main() {
         generationTimestampMs:
             DateTime(2026, 11, 9, 20, 20).millisecondsSinceEpoch,
         logEntries: [entry(1, 1, 1000)],
-        categoriesMap: const {1: 'Symptoms'},
+        categoriesMap: const {'1': 'Symptoms'},
         conditions: const ['POTS'],
       );
       final bytes = await buildReportPdfBytes(snap,
@@ -876,7 +876,7 @@ void main() {
           generationTimestampMs:
               DateTime(2026, 11, 9, 20, 20).millisecondsSinceEpoch,
           logEntries: [entry(1, 1, 1000)],
-          categoriesMap: const {1: 'Symptoms'},
+          categoriesMap: const {'1': 'Symptoms'},
           conditions: const ['POTS'],
         );
 

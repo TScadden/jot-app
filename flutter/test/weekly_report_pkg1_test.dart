@@ -55,7 +55,7 @@ ReportSnapshot _snap({
     generationTimestampMs:
         DateTime(2026, 11, 18, 12).millisecondsSinceEpoch,
     logEntries: entries,
-    categoriesMap: const {1: 'Symptoms'},
+    categoriesMap: const {'1': 'Symptoms'},
     dailyScoreSeries: scores,
     sleepSeries: sleep,
     sectionMetadata: meta,

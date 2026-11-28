@@ -298,25 +298,25 @@ void main() {
           );
       final entries = [
         // Tagged, corrupt payload.
-        raw(id: 1, chips: '["Intake","Water"]', manualText: 'not json'),
+        raw(id: '1', chips: '["Intake","Water"]', manualText: 'not json'),
         // Tagged, absent payload.
-        raw(id: 2, chips: '["Intake","Salt"]', manualText: ''),
+        raw(id: '2', chips: '["Intake","Salt"]', manualText: ''),
         // Tagged, wrong payload version.
         raw(
-          id: 3,
+          id: '3',
           chips: '["Intake","Water"]',
           manualText: '{"v":2,"kind":"Water","fluidMl":500}',
         ),
         // Untagged free text mentioning water/salt — never parsed.
         raw(
-          id: 4,
+          id: '4',
           chips: '[]',
           manualText: '',
           body: 'drank 16 oz water and took salt pills',
         ),
         // Payload-shaped manualText but NO reserved tag.
         raw(
-          id: 5,
+          id: '5',
           chips: '["Daily Ranking"]',
           manualText: '{"v":1,"kind":"Water","fluidMl":500}',
         ),

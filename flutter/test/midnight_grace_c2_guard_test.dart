@@ -31,7 +31,7 @@ void main() {
 
   group('SummaryCompletionWatcher grace liveness guard (C2)', () {
     const medCat = '8';
-    const moodCat = 6;
+    const moodCat = '6';
     const goalsCat = '4';
     const med = SummaryMedication(key: 'k1', name: 'MedA', dose: '5mg');
 

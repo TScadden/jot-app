@@ -281,7 +281,7 @@ void main() {
           last30Days: true,
           generationTimestampMs: 1000,
           logEntries: [entry(1, 1, 1000)],
-          categoriesMap: const {1: 'Symptoms'},
+          categoriesMap: const {'1': 'Symptoms'},
         );
 
     test('carries reportGenerationId when present; byte-legacy '
@@ -811,7 +811,7 @@ void main() {
             last30Days: true,
             generationTimestampMs: 1000,
             logEntries: [entry(1, 1, 1000)],
-            categoriesMap: const {1: 'Symptoms'},
+            categoriesMap: const {'1': 'Symptoms'},
           ),
           pdfBytes: const [1],
           fileName: 'f.pdf',

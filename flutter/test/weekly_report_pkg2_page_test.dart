@@ -56,7 +56,7 @@ ReportSnapshot _goodSnap() {
     weekEnd: _week.end,
     generationTimestampMs: _sundayNight.millisecondsSinceEpoch,
     logEntries: [for (var i = 0; i < 5; i++) _entry(i + 1, days[i])],
-    categoriesMap: const {1: 'Symptoms'},
+    categoriesMap: const {'1': 'Symptoms'},
     dailyScoreSeries: [for (final d in days) (dateStrOf(d), 60)],
     sleepSeries: [for (final d in days) (dateStrOf(d), 420)],
   );

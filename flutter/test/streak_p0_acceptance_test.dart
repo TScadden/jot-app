@@ -62,7 +62,7 @@ void main() {
       );
 
   QuickLogEntry checkIn() => entry(
-        id: 100,
+        id: '100',
         cat: moodCat,
         body: 'Feeling: 1/5 Today',
         chips: jsonEncode(const [feelingCheckInTag]),
@@ -497,13 +497,13 @@ void main() {
       );
       final entries = [
         entry(
-          id: 1,
+          id: '1',
           cat: medCat,
           body: 'Took Desvenlafaxine Succinate ER 50 mg',
           at: DateTime(2026, 11, 18, 8),
         ),
         entry(
-          id: 2,
+          id: '2',
           cat: medCat,
           body: 'Took Ivabradine 7.5 mg',
           at: DateTime(2026, 11, 18, 8),

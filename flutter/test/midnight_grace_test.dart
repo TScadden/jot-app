@@ -303,9 +303,9 @@ void main() {
   });
 
   group('grace completion path (watcher + store)', () {
-    const medCat = 8;
+    const medCat = '8';
     const moodCat = '6';
-    const goalsCat = 4;
+    const goalsCat = '4';
     const med = SummaryMedication(key: 'k1', name: 'MedA', dose: '5mg');
 
     late Map<String, String> disk;

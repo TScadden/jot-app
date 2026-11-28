@@ -339,8 +339,8 @@ void main() {
     test('6: typed record shape is exact', () {
       final now = DateTime(2026, 10, 28, 15, 30);
       final e = buildFlareEntry(
-        id: 12,
-        categoryId: 3,
+        id: '12',
+        categoryId: '3',
         severity: 'Rough',
         type: 'Dizzy',
         now: now,
@@ -356,7 +356,7 @@ void main() {
 
     test('6: severity-only record carries the two-element chip list '
         'and the severity-only body', () {
-      final e = buildFlareEntry(id: 5, categoryId: 3, severity: 'Really bad');
+      final e = buildFlareEntry(id: '5', categoryId: '3', severity: 'Really bad');
       expect(jsonDecode(e.chips), ['Flare Day', 'Really bad']);
       expect(e.body, 'Flare day · Really bad');
       expect(e.manualText, '');
@@ -386,7 +386,7 @@ void main() {
         hasFlareToday(
           [
             _entry(
-              categoryId: 6,
+              categoryId: '6',
               chips: '["Flare Day","Rough"]',
               ts: flare.timestamp,
             )
@@ -418,7 +418,7 @@ void main() {
         ts: ms(DateTime(2026, 10, 28, 3, 59)),
       );
       final at0400 = _entry(
-        id: 2,
+        id: '2',
         chips: '["Flare Day","Rough"]',
         ts: ms(DateTime(2026, 10, 28, 4, 0)),
       );
@@ -441,8 +441,8 @@ void main() {
     test('8: amend reuses the id, updates severity/type, keeps one '
         'record, and refreshes updatedAt at push', () {
       final original = buildFlareEntry(
-        id: 9,
-        categoryId: 3,
+        id: '9',
+        categoryId: '3',
         severity: 'Rough',
         type: 'Fog',
         now: DateTime(2026, 10, 28, 8, 0),
@@ -508,8 +508,8 @@ void main() {
     test("legacy 'Bad' records: parse, and display exactly as "
         'recorded — never remapped', () {
       final legacy = buildFlareEntry(
-        id: 3,
-        categoryId: 3,
+        id: '3',
+        categoryId: '3',
         severity: 'Bad',
         type: 'Dizzy',
         now: DateTime(2026, 10, 28, 9, 0),
@@ -536,8 +536,8 @@ void main() {
     test('shape: Mood category, JSON chips in SHEET order regardless '
         'of tap order, Juno body, and NO Daily Ranking tag', () {
       final e = buildGoodEntry(
-        id: 21,
-        categoryId: 6,
+        id: '21',
+        categoryId: '6',
         options: ['Clear head', 'Energy'],
         now: DateTime(2026, 10, 28, 12, 0),
       );
@@ -558,15 +558,15 @@ void main() {
       final now = DateTime(2026, 10, 28, 11, 0);
       final ts = DateTime(2026, 10, 28, 9, 0).millisecondsSinceEpoch;
       final good = _entry(
-        id: 8,
-        categoryId: 6,
+        id: '8',
+        categoryId: '6',
         chips: '["Good Day","Energy"]',
         ts: ts,
       );
       expect(findGoodRecord([good], moodCategoryId: '6', now: now)?.id, 8);
       expect(
         findGoodRecord(
-          [_entry(id: 9, categoryId: 3, chips: '["Good Day","Energy"]', ts: ts)],
+          [_entry(id: '9', categoryId: '3', chips: '["Good Day","Energy"]', ts: ts)],
           moodCategoryId: '6',
           now: now,
         ),
@@ -576,8 +576,8 @@ void main() {
         findGoodRecord(
           [
             _entry(
-              id: 10,
-              categoryId: 6,
+              id: '10',
+              categoryId: '6',
               chips: '["Good Day","Energy"]',
               ts: DateTime(2026, 10, 27, 12, 0).millisecondsSinceEpoch,
             )
@@ -589,7 +589,7 @@ void main() {
       );
       expect(
         findGoodRecord(
-          [_entry(id: 11, categoryId: 6, chips: '["Energy"]', ts: ts)],
+          [_entry(id: '11', categoryId: '6', chips: '["Energy"]', ts: ts)],
           moodCategoryId: '6',
           now: now,
         ),
@@ -782,18 +782,18 @@ void main() {
       final now = DateTime(2026, 10, 28, 10, 0);
       final shapes = <QuickLogEntry>[
         // Number-origin, severity only (incl. dismissal-created).
-        buildFlareEntry(id: 1, categoryId: 3, severity: 'Really bad', now: now),
-        buildFlareEntry(id: 2, categoryId: 3, severity: 'Rough', now: now),
+        buildFlareEntry(id: '1', categoryId: '3', severity: 'Really bad', now: now),
+        buildFlareEntry(id: '2', categoryId: '3', severity: 'Rough', now: now),
         // Number-origin with a kind.
         buildFlareEntry(
-            id: 3, categoryId: 3, severity: 'Rough', type: 'Dizzy', now: now),
+            id: '3', categoryId: '3', severity: 'Rough', type: 'Dizzy', now: now),
         // Late-added (severity step + kind / severity only).
         buildFlareEntry(
-            id: 4, categoryId: 3, severity: 'Rough', type: 'Crash', now: now),
-        buildFlareEntry(id: 5, categoryId: 3, severity: 'Really bad', now: now),
+            id: '4', categoryId: '3', severity: 'Rough', type: 'Crash', now: now),
+        buildFlareEntry(id: '5', categoryId: '3', severity: 'Really bad', now: now),
         // Amended in place.
         amendFlareEntry(
-          buildFlareEntry(id: 6, categoryId: 3, severity: 'Rough', now: now),
+          buildFlareEntry(id: '6', categoryId: '3', severity: 'Rough', now: now),
           severity: 'Rough',
           type: 'Pain',
         ),
@@ -807,16 +807,16 @@ void main() {
       }
       // Fallback-1 resolution also counts a fallback-filed record.
       final fallbackShape =
-          buildFlareEntry(id: 7, categoryId: 1, severity: 'Rough', now: now);
+          buildFlareEntry(id: '7', categoryId: '1', severity: 'Rough', now: now);
       expect(
         _deriveFlareDays([fallbackShape], [_cat('1', 'Renamed')]),
         {'2026-10-28'},
       );
       // And a good-day / ranking record never counts as a flare day.
       final good = buildGoodEntry(
-          id: 8, categoryId: 6, options: ['Energy'], now: now);
+          id: '8', categoryId: '6', options: ['Energy'], now: now);
       final ranking =
-          buildFeelingEntry(level: 2, categoryId: 6, id: 9, now: now);
+          buildFeelingEntry(level: 2, categoryId: '6', id: '9', now: now);
       expect(_deriveFlareDays([good, ranking], cats), isEmpty);
     });
   });
@@ -1278,7 +1278,7 @@ void main() {
         'the kind sheet opens, and a kind tap amends that SAME '
         'record — one flare record, one ranking', (tester) async {
       final server = _Server(
-        [_entryJson(_entry(id: 41, body: 'headache'))],
+        [_entryJson(_entry(id: '41', body: 'headache'))],
         categories: _catsNameHit,
       );
       server.postGate = Completer<void>();
@@ -1557,15 +1557,15 @@ void main() {
       final server = _Server(
         [
           _entryJson(_entry(
-            id: 40,
-            categoryId: 6,
+            id: '40',
+            categoryId: '6',
             body: 'Feeling: 4/5 Today',
             chips: '["Daily Ranking"]',
             ts: now,
           )),
           _entryJson(_entry(
-            id: 41,
-            categoryId: 6,
+            id: '41',
+            categoryId: '6',
             body: 'Good day · Energy',
             chips: '["Good Day","Energy"]',
             ts: now,
@@ -1631,15 +1631,15 @@ void main() {
       final server = _Server(
         [
           _entryJson(_entry(
-            id: 40,
-            categoryId: 6,
+            id: '40',
+            categoryId: '6',
             body: 'Feeling: 4/5 Today',
             chips: '["Daily Ranking"]',
             ts: now,
           )),
           _entryJson(_entry(
-            id: 41,
-            categoryId: 3,
+            id: '41',
+            categoryId: '3',
             body: 'Flare day · Bad · Crash',
             chips: '["Flare Day","Bad","Crash"]',
             ts: now,
@@ -1754,8 +1754,8 @@ void main() {
       final outbox = LogEntryOutbox.instance;
       final entry = buildFeelingEntry(
         level: 2,
-        categoryId: 6,
-        id: 77,
+        categoryId: '6',
+        id: '77',
       );
       await tester.runAsync(
         () => outbox.stage(entry, serverKnown: false, ownerEmail: _owner),
@@ -2024,15 +2024,15 @@ void main() {
       final server = _Server(
         [
           _entryJson(_entry(
-            id: 40,
-            categoryId: 6,
+            id: '40',
+            categoryId: '6',
             body: 'Feeling: 4/5 Today',
             chips: '["Daily Ranking"]',
             ts: now,
           )),
           _entryJson(_entry(
-            id: 41,
-            categoryId: 3,
+            id: '41',
+            categoryId: '3',
             body: 'Flare day',
             chips: '["Flare Day"]',
             ts: now,
@@ -2100,8 +2100,8 @@ void main() {
         (tester) async {
       final server = _Server([], categories: _catsNameHit);
       final outbox = LogEntryOutbox.instance;
-      final ranking = buildFeelingEntry(level: 2, categoryId: 6, id: 77);
-      final flare = buildFlareEntry(id: 78, categoryId: 3, severity: 'Rough');
+      final ranking = buildFeelingEntry(level: 2, categoryId: '6', id: '77');
+      final flare = buildFlareEntry(id: '78', categoryId: '3', severity: 'Rough');
       // Staged through the same outbox stage the new local path
       // (Vera F5a) lands in — durable on disk, never pushed.
       await tester.runAsync(() async {
@@ -2150,7 +2150,7 @@ void main() {
         for (var i = 6; i >= 0; i--) ds(now.subtract(Duration(days: i))),
       ];
       final labels = [for (final _ in dateStrs) 'X'];
-      final flare = buildFlareEntry(id: 1, categoryId: 3, severity: 'Rough');
+      final flare = buildFlareEntry(id: '1', categoryId: '3', severity: 'Rough');
       final data = buildLogsMetric(dateStrs, labels, [flare.timestamp]);
       expect(data.points.last.value, 1);
       expect(data.averageOrTotalText, '7-Day Total: 1 logs');
@@ -2161,8 +2161,8 @@ void main() {
         'normal, unlocked logged entry, its body exactly as '
         'recorded (legacy Bad included)', (tester) async {
       final flare = buildFlareEntry(
-        id: 42,
-        categoryId: 3,
+        id: '42',
+        categoryId: '3',
         severity: 'Bad',
         type: 'Dizzy',
       );

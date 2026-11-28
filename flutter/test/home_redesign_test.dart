@@ -396,7 +396,7 @@ void main() {
       await _pumpHome(
         tester,
         physicalSize: const Size(1080, 2400),
-        entries: [_entry(id: 41, categoryId: 1, body: 'headache')],
+        entries: [_entry(id: '41', categoryId: '1', body: 'headache')],
       );
 
       await openDrawer(tester);
@@ -430,7 +430,7 @@ void main() {
       await _pumpHome(
         tester,
         physicalSize: const Size(1080, 2400),
-        entries: [_entry(id: 41, categoryId: 1, body: 'headache')],
+        entries: [_entry(id: '41', categoryId: '1', body: 'headache')],
       );
 
       await openDrawer(tester);
@@ -466,7 +466,7 @@ void main() {
       await _pumpHome(
         tester,
         physicalSize: const Size(1080, 2400),
-        entries: [_entry(id: 41, categoryId: 1, body: 'headache')],
+        entries: [_entry(id: '41', categoryId: '1', body: 'headache')],
       );
 
       await openDrawer(tester);
@@ -525,7 +525,7 @@ void main() {
       await _pumpHome(
         tester,
         physicalSize: const Size(1080, 2400),
-        entries: [_entry(id: 41, categoryId: 1, body: 'headache')],
+        entries: [_entry(id: '41', categoryId: '1', body: 'headache')],
       );
 
       final drawerBtn = find.byKey(const ValueKey('home_drawer_button'));
@@ -587,7 +587,7 @@ void main() {
           physicalSize: size,
           entries: [
             for (var i = 0; i < 10; i++)
-              _entry(id: 100 + i, categoryId: 1, body: 'entry $i'),
+              _entry(id: 100 + i, categoryId: '1', body: 'entry $i'),
           ],
         );
 
@@ -634,7 +634,7 @@ void main() {
           physicalSize: size,
           entries: [
             for (var i = 0; i < 10; i++)
-              _entry(id: 100 + i, categoryId: 1, body: 'entry $i'),
+              _entry(id: 100 + i, categoryId: '1', body: 'entry $i'),
           ],
         );
 
@@ -694,7 +694,7 @@ void main() {
       await _pumpHome(
         tester,
         physicalSize: const Size(1080, 2400),
-        entries: [_entry(id: 41, categoryId: 1, body: 'headache')],
+        entries: [_entry(id: '41', categoryId: '1', body: 'headache')],
       );
 
       final stack = find.byType(HomeStreakStack);
@@ -732,7 +732,7 @@ void main() {
       await _pumpHome(
         tester,
         physicalSize: const Size(1080, 2400),
-        entries: [_entry(id: 41, categoryId: 1, body: 'headache')],
+        entries: [_entry(id: '41', categoryId: '1', body: 'headache')],
       );
 
       // The input is on Home now, in the top strip — the old
@@ -784,7 +784,7 @@ void main() {
       await _pumpHome(
         tester,
         physicalSize: const Size(1080, 2400),
-        entries: [_entry(id: 41, categoryId: 1, body: 'headache')],
+        entries: [_entry(id: '41', categoryId: '1', body: 'headache')],
         onPost: (body) => posted = body,
       );
 
@@ -839,7 +839,7 @@ void main() {
       await _pumpHome(
         tester,
         physicalSize: const Size(1080, 2400),
-        entries: [_entry(id: 41, categoryId: 1, body: 'headache')],
+        entries: [_entry(id: '41', categoryId: '1', body: 'headache')],
         onPost: (body) => posted = body,
       );
 
@@ -878,7 +878,7 @@ void main() {
         await _pumpHome(
           tester,
           physicalSize: size,
-          entries: [_entry(id: 41, categoryId: 1, body: 'headache')],
+          entries: [_entry(id: '41', categoryId: '1', body: 'headache')],
         );
 
         final bandit = tester.getRect(find.descendant(

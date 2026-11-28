@@ -168,7 +168,7 @@ void main() {
       final entry = buildFeelingEntry(
         level: 4,
         categoryId: '6',
-        id: 42,
+        id: '42',
         now: DateTime(2026, 10, 12, 11, 0),
       );
       expect(entry.id, 42);
@@ -187,7 +187,7 @@ void main() {
       final entry = buildFeelingEntry(
         level: 1,
         categoryId: '6',
-        id: 1,
+        id: '1',
       );
       expect(entry.id, 1);
     });
@@ -197,7 +197,7 @@ void main() {
       final entry = buildFeelingEntry(
         level: 2,
         categoryId: '6',
-        id: 99,
+        id: '99',
       );
       expect(entry.id, 99);
     });

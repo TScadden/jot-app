@@ -124,7 +124,7 @@ ReportSnapshot snap() => ReportSnapshot(
       last30Days: false,
       generationTimestampMs: DateTime.now().millisecondsSinceEpoch,
       logEntries: [entry(1, 1)],
-      categoriesMap: const {1: 'Symptoms'},
+      categoriesMap: const {'1': 'Symptoms'},
     );
 
 AiAttemptRecord attemptRec(int n, AiFailureClass cls, {int? status}) =>
@@ -678,7 +678,7 @@ void main() {
         last30Days: false,
         generationTimestampMs: 0,
         logEntries: [entry(1, 1)],
-        categoriesMap: const {1: 'Symptoms'},
+        categoriesMap: const {'1': 'Symptoms'},
         correlationInsights: [
           rec('F1', double.nan, 70),
           rec('F1', 65, double.infinity),
@@ -697,7 +697,7 @@ void main() {
         last30Days: false,
         generationTimestampMs: 0,
         logEntries: [entry(1, 1)],
-        categoriesMap: const {1: 'Symptoms'},
+        categoriesMap: const {'1': 'Symptoms'},
         correlationInsights: [
           rec('F1', double.nan, 70),
           rec('F1', 65, 70),

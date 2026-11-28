@@ -346,7 +346,7 @@ void main() {
         existingEntries: [
           logEntry(
       id: '9',
-              categoryId: 1,
+              categoryId: '1',
               body: 'Took Ivabradine 7.5mg',
               at: _now),
         ],

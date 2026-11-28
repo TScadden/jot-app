@@ -197,7 +197,7 @@ void main() {
           id: '7',
           at: DateTime(2026, 11, 1, 11, 0),
           body: 'Feeling: 2/5 Today',
-          categoryId: 1,
+          categoryId: '1',
         ),
         // Wed Nov 4: tag + category, but no ranking in the body.
         entry(

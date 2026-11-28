@@ -201,7 +201,7 @@ void main() {
 
     test('a fresh 3-set leg workout lights the leg zones strongly', () {
       final e = entry(
-        id: 1,
+        id: '1',
         body: 'leg workout 3 sets',
         chips: 'Workout',
         ageHours: 1,
@@ -215,7 +215,7 @@ void main() {
 
     test('secondary zones light weaker than primary zones', () {
       final e = entry(
-        id: 1,
+        id: '1',
         body: 'bench press',
         chips: 'Workout',
         ageHours: 0,
@@ -229,14 +229,14 @@ void main() {
 
     test('fade: default session is gone by 49h; 5 sets lasts past 60h', () {
       final standard = entry(
-        id: 1,
+        id: '1',
         body: 'leg workout 3 sets',
         chips: 'Workout',
         ageHours: 49,
       );
       expect(evaluateBodyWorkouts([standard], table, now).zones, isEmpty);
       final big = entry(
-        id: 2,
+        id: '2',
         body: 'leg workout 5 sets',
         chips: 'Workout',
         ageHours: 60,
@@ -247,7 +247,7 @@ void main() {
 
     test('a Workout-chip entry with unmatched text lights nothing', () {
       final e = entry(
-        id: 1,
+        id: '1',
         body: 'felt great today',
         chips: 'Workout',
         ageHours: 1,

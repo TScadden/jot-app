@@ -442,7 +442,7 @@ void main() {
         selected: [founderCategories[3]],
       );
       expect(snap.logEntries.length, founderEntryTotal);
-      expect(snap.categoriesMap, {4: 'Weight & Vitals'});
+      expect(snap.categoriesMap, {'4': 'Weight & Vitals'});
     });
   });
 

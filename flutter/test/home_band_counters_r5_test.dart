@@ -147,8 +147,8 @@ Map<String, dynamic> _entry({
     };
 
 Map<String, dynamic> _scoredEntry() => _entry(
-      id: 90,
-      categoryId: 6,
+      id: '90',
+      categoryId: '6',
       body: 'Feeling: 3/5 Today',
       chips: '["Daily Ranking"]',
     );
@@ -330,7 +330,7 @@ void main() {
         (tester) async {
       final now = DateTime.now();
       final server = _BandServer(
-        entries: [_entry(id: 41, categoryId: 1, body: 'headache')],
+        entries: [_entry(id: '41', categoryId: '1', body: 'headache')],
         counters: [
           _counter(id: 'a', name: 'Alpha', target: _midnightPlus(now, 7)),
           _counter(
@@ -356,7 +356,7 @@ void main() {
         (tester) async {
       final now = DateTime.now();
       final server = _BandServer(
-        entries: [_entry(id: 41, categoryId: 1, body: 'headache')],
+        entries: [_entry(id: '41', categoryId: '1', body: 'headache')],
         counters: [
           _counter(id: 'a', name: 'Alpha', target: _midnightPlus(now, 7)),
         ],
@@ -441,7 +441,7 @@ void main() {
         (tester) async {
       final now = DateTime.now();
       final server = _BandServer(
-        entries: [_entry(id: 41, categoryId: 1, body: 'headache')],
+        entries: [_entry(id: '41', categoryId: '1', body: 'headache')],
         counters: [
           _counter(
               id: 'x',

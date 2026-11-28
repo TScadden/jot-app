@@ -41,7 +41,7 @@ void main() {
   );
 
   QuickLogEntry checkIn(DateTime at) => entry(
-    id: 100,
+    id: '100',
     cat: moodCat,
     body: 'Feeling: 4/5 Today',
     chips: jsonEncode(const [feelingCheckInTag]),
@@ -116,7 +116,7 @@ void main() {
 
     test('everything taken + check-in = complete', () {
       final entries = [
-        entry(id: 1, cat: medCat, body: 'Took MedA 5mg', at: onNov5(8)),
+        entry(id: '1', cat: medCat, body: 'Took MedA 5mg', at: onNov5(8)),
         checkIn(onNov5(9)),
       ];
       final plan = planFor(entries, meds: const [med]);
@@ -129,7 +129,7 @@ void main() {
         'as completed for completion counting)', () {
       final entries = [
         entry(
-          id: 1,
+          id: '1',
           cat: medCat,
           body: '[Corrected to Skipped] Took MedA 5mg',
           at: onNov5(8),
@@ -164,7 +164,7 @@ void main() {
         'complete (the ruling keeps the check-in term)', () {
       final entries = [
         entry(
-          id: 1,
+          id: '1',
           cat: medCat,
           body: '[Corrected to Skipped] Took MedA 5mg',
           at: onNov5(8),
@@ -185,7 +185,7 @@ void main() {
     test('evidence window: a dose taken at 01:00 on the NEXT '
         'calendar date is inside the feeling window and counts', () {
       final entries = [
-        entry(id: 1, cat: medCat, body: 'Took MedA 5mg', at: onNov6(1)),
+        entry(id: '1', cat: medCat, body: 'Took MedA 5mg', at: onNov6(1)),
         checkIn(onNov5(9)),
       ];
       final plan = planFor(entries, meds: const [med]);
@@ -196,7 +196,7 @@ void main() {
     test('evidence window: a dose taken at 01:00 on the plan date '
         'is BEFORE the window opened and does not count', () {
       final entries = [
-        entry(id: 1, cat: medCat, body: 'Took MedA 5mg', at: onNov5(1)),
+        entry(id: '1', cat: medCat, body: 'Took MedA 5mg', at: onNov5(1)),
         checkIn(onNov5(9)),
       ];
       final plan = planFor(entries, meds: const [med]);
@@ -319,7 +319,7 @@ void main() {
         'the day and emits one completion', () async {
       final entries = [
         entry(
-          id: 1,
+          id: '1',
           cat: medCat,
           body: '[Corrected to Skipped] Took MedA 5mg',
           at: onNov5(8),

@@ -57,7 +57,7 @@ ReportSnapshot _snap({
     weekEnd: _week.end,
     generationTimestampMs: _pageNow.millisecondsSinceEpoch,
     logEntries: [for (var i = 0; i < 5; i++) _entry(i + 1, days[i])],
-    categoriesMap: const {1: 'Symptoms'},
+    categoriesMap: const {'1': 'Symptoms'},
     dailyScoreSeries:
         goodWeek ? [for (final d in days) (dateStrOf(d), 60)] : const [],
     sleepSeries:
@@ -451,7 +451,7 @@ void main() {
         weekEnd: _week.end,
         generationTimestampMs: _pageNow.millisecondsSinceEpoch,
         logEntries: [for (var i = 0; i < 5; i++) _entry(i + 1, days[i])],
-        categoriesMap: const {1: 'Symptoms'},
+        categoriesMap: const {'1': 'Symptoms'},
         dailyScoreSeries: [for (final d in days) (dateStrOf(d), 60)],
         sectionMetadata: const {
           'sleep':
@@ -514,7 +514,7 @@ void main() {
         weekEnd: _week.end,
         generationTimestampMs: _pageNow.millisecondsSinceEpoch,
         logEntries: const [],
-        categoriesMap: const {1: 'Symptoms'},
+        categoriesMap: const {'1': 'Symptoms'},
         sectionMetadata: const {
           'sleep':
               SectionMetadata('sleep', DataSourceStatus.permissionDenied, 0),
@@ -546,7 +546,7 @@ void main() {
         last30Days: true,
         generationTimestampMs: _pageNow.millisecondsSinceEpoch,
         logEntries: const [],
-        categoriesMap: const {1: 'Symptoms'},
+        categoriesMap: const {'1': 'Symptoms'},
       );
       final pipeline = ReportGenerationPipeline(
         collector: _CannedCollector(snapshot: emptyStandard),

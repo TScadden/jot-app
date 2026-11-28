@@ -137,7 +137,7 @@ ReportSnapshot fixtureSnapshot({bool last30Days = true}) {
     generationTimestampMs:
         DateTime(2026, 10, 16, 16, 17).millisecondsSinceEpoch,
     logEntries: [entry('1', '1', 1000), entry('2', '5', 2000)],
-    categoriesMap: const {1: 'Symptoms', 5: 'Sleep'},
+    categoriesMap: const {'1': 'Symptoms', '5': 'Sleep'},
     userContext: 'ctx',
     userAge: 22,
     userHeightIn: 70,
@@ -206,12 +206,12 @@ void main() {
     test('TRAINING resolves by canonical slug-by-id', () {
       final sel = resolveReportCategories(
           defaultCats(), ReportFocus.training, const {});
-      expect(sel.map((c) => c.id).toSet(), {4, 3, 2});
+      expect(sel.map((c) => c.id).toSet(), {'4', '3', '2'});
     });
     test('CUSTOM resolves by id set only', () {
       final sel = resolveReportCategories(
-          defaultCats(), ReportFocus.custom, {7, 99});
-      expect(sel.map((c) => c.id), [7]);
+          defaultCats(), ReportFocus.custom, {'7', '99'});
+      expect(sel.map((c) => c.id), ['7']);
     });
     test('non-default id has no slug and matches no preset', () {
       final cats = [...defaultCats(), cat('99', 'Custom Thing')];

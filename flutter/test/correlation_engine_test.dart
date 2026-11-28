@@ -639,7 +639,7 @@ void main() {
         'salt-only days', () {
       final entries = <QuickLogEntry>[
         entry(
-          id: 1,
+          id: '1',
           categoryId: '1',
           body: 'Water · 16 fl oz',
           chips: '["Intake","Water"]',
@@ -647,7 +647,7 @@ void main() {
           timestamp: tsFor('2026-09-05'),
         ),
         entry(
-          id: 2,
+          id: '2',
           categoryId: '1',
           body: 'Salt · 1 g',
           chips: '["Intake","Salt"]',
@@ -655,7 +655,7 @@ void main() {
           timestamp: tsFor('2026-09-06'),
         ),
         entry(
-          id: 3,
+          id: '3',
           categoryId: '1',
           body: 'Water',
           chips: '["Intake","Water"]',
@@ -664,7 +664,7 @@ void main() {
         ),
         // Legacy ', '-joined chips shape still parses.
         entry(
-          id: 4,
+          id: '4',
           categoryId: '1',
           body: 'Water',
           chips: 'Intake, Water',
@@ -713,7 +713,7 @@ void main() {
         // Fractional fluid amount: the defect case. Must not be
         // truncated to 473 and counted as valid data.
         entry(
-          id: 11,
+          id: '11',
           categoryId: '1',
           body: 'Water',
           chips: '["Intake","Water"]',
@@ -722,7 +722,7 @@ void main() {
         ),
         // Whole-number int amount on the same day: still counts.
         entry(
-          id: 12,
+          id: '12',
           categoryId: '1',
           body: 'Water',
           chips: '["Intake","Water"]',
@@ -731,7 +731,7 @@ void main() {
         ),
         // Fractional sodium amount: also unparseable.
         entry(
-          id: 13,
+          id: '13',
           categoryId: '1',
           body: 'Salt',
           chips: '["Intake","Salt"]',
@@ -741,7 +741,7 @@ void main() {
         // Whole-valued double (JSON "473.0") is the integer it is:
         // encoders vary, so this one counts.
         entry(
-          id: 14,
+          id: '14',
           categoryId: '1',
           body: 'Water',
           chips: '["Intake","Water"]',

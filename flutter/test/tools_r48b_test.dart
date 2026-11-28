@@ -257,7 +257,7 @@ void main() {
 
     test('headache: severe scales the window to 3h', () {
       final out = evaluateBodyImpacts(
-        [entry(id: 1, body: 'Terrible headache', timestamp: now - halfHour)],
+        [entry(id: '1', body: 'Terrible headache', timestamp: now - halfHour)],
         now,
       );
       final head = out.where((i) => i.regionId == 'HEAD').toList();
@@ -271,7 +271,7 @@ void main() {
       final out = evaluateBodyImpacts(
         [
           entry(
-              id: 1,
+              id: '1',
               body: 'headache',
               timestamp: now - 5 * 60 * 60 * 1000), // 2h window, 5h ago
         ],
@@ -282,7 +282,7 @@ void main() {
 
     test('medication impacts are gated to Medications Tab entries', () {
       final dose = entry(
-        id: 2,
+        id: '2',
         body: 'Took Medication: Ivabradine (7.5mg) 2x daily',
         timestamp: now - halfHour,
       );
@@ -292,7 +292,7 @@ void main() {
         isEmpty,
       );
       final fromTab = entry(
-        id: 2,
+        id: '2',
         body: 'Took Medication: Ivabradine (7.5mg) 2x daily',
         chips: '["Medication Tab"]',
         timestamp: now - halfHour,
@@ -308,7 +308,7 @@ void main() {
 
     test('peptide shot from the Medications Tab → PEPTIDE only', () {
       final shot = entry(
-        id: 3,
+        id: '3',
         body: 'Peptide shot',
         chips: 'Medication Tab',
         timestamp: now - halfHour,
@@ -320,9 +320,9 @@ void main() {
 
     test('results are sorted newest first', () {
       final older = entry(
-          id: 4, body: 'Feeling dizzy', timestamp: now - 60 * 60 * 1000);
+          id: '4', body: 'Feeling dizzy', timestamp: now - 60 * 60 * 1000);
       final newer =
-          entry(id: 5, body: 'Blood draw', timestamp: now - halfHour);
+          entry(id: '5', body: 'Blood draw', timestamp: now - halfHour);
       final out = evaluateBodyImpacts([older, newer], now);
       expect(out.first.relatedLogId, 5);
       expect(out.first.regionId, 'LEFT_ARM'); // no side mentioned → left
@@ -333,8 +333,8 @@ void main() {
     test('maps AI items, gates SYSTEMIC, unknown region → BACK', () {
       final now = DateTime.now().millisecondsSinceEpoch;
       final entries = [
-        entry(id: 7, body: 'Feeling dizzy', timestamp: now),
-        entry(id: 8, body: 'Random note', timestamp: now),
+        entry(id: '7', body: 'Feeling dizzy', timestamp: now),
+        entry(id: '8', body: 'Random note', timestamp: now),
       ];
       final response = {
         'result': {

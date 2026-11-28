@@ -86,7 +86,7 @@ ReportSnapshot _snapshot({
   List<MedicationEntry> medications = const [],
   List<QuickLogEntry> logEntries = const [],
   Map<String, SectionMetadata> sectionMetadata = const {},
-  Map<int, String>? categoriesMap,
+  Map<String, String>? categoriesMap,
   int userAge = 22,
   String userGender = 'Male',
   double userHeightIn = 0,
@@ -1289,7 +1289,7 @@ void main() {
         '(3) extend with categoriesFail: resolution falls back to snapshot categoriesMap',
         () async {
       final snapshot = _snapshot(
-        categoriesMap: const {99: 'Migraine Symptoms & Triggers'},
+        categoriesMap: const {'99': 'Migraine Symptoms & Triggers'},
         logEntries: [
           _entry('1', '99', _ts(10, 10)),
           _entry('2', '99', _ts(10, 12)),
