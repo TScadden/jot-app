@@ -187,7 +187,7 @@ void main() {
 
     test('payload derivation round-trips a fixture past result', () {
       final result = _fixtureResult();
-      final entry = buildLeanTestEntry(id: 3, categoryId: 3, result: result);
+      final entry = buildLeanTestEntry(id: '3', categoryId: '3', result: result);
       // Filed under Symptoms with the reserved chip, body built
       // from the payload — the shape History renders.
       expect(entry.categoryId, 3);
@@ -208,7 +208,7 @@ void main() {
     testWidgets('History renders the fixture past result, '
         'with no way to start a new test from it', (tester) async {
       final result = _fixtureResult();
-      final entry = buildLeanTestEntry(id: 3, categoryId: 3, result: result);
+      final entry = buildLeanTestEntry(id: '3', categoryId: '3', result: result);
       final serverEntry = <String, dynamic>{
         'id': entry.id,
         'categoryId': entry.categoryId,

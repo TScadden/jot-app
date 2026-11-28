@@ -758,7 +758,7 @@ void main() {
         ],
       );
       gateway.entries = [
-        buildLeanTestEntry(id: 3, categoryId: 7, result: result)
+        buildLeanTestEntry(id: '3', categoryId: '7', result: result)
       ];
       final now = DateTime(2026, 10, 28, 9);
       await _pumpScreen(
