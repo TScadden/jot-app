@@ -271,7 +271,11 @@ void main() {
     await tester.pump(const Duration(milliseconds: 650));
     await tester.pump();
 
-    await tester.tap(find.text('Register'));
+    // Register mode via Log In -> Sign Up toggle (Welcome's
+    // entry now starts the pre-account value flow).
+    await tester.tap(find.text('Log In'));
+    await tester.pump();
+    await tester.tap(find.text("Don't have an account? Sign Up"));
     await tester.pump();
     expect(find.text('Create Your Account'), findsOneWidget);
 

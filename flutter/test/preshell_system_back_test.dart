@@ -252,7 +252,12 @@ void main() {
         'register mode is the same login stage: system back returns '
         'to Welcome', (tester) async {
       await pumpPushedAppFlow(tester);
-      await tester.tap(find.text('Register'));
+      // Register mode is reached via Log In -> Sign Up toggle
+      // (Welcome's entry now starts the pre-account value flow);
+      // it is still the same login stage underneath.
+      await tester.tap(find.text('Log In'));
+      await tester.pump();
+      await tester.tap(find.text("Don't have an account? Sign Up"));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pump();

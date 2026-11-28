@@ -335,8 +335,8 @@ void main() {
       ));
       await tester.pump();
       expectNoException(tester);
-      expect(find.text('Notes that build'), findsOneWidget);
-      expect(find.text('Register'), findsOneWidget);
+      expect(find.text('For the days that'), findsOneWidget);
+      expect(find.text('Get started'), findsOneWidget);
     });
 
     testWidgets('Onboarding flow: welcome -> create account pumps clean',
@@ -355,8 +355,12 @@ void main() {
       await tester.pump(const Duration(milliseconds: 650));
       await tester.pump();
       expectNoException(tester);
-      expect(find.text('Notes that build'), findsOneWidget);
-      await tester.tap(find.text('Register'));
+      expect(find.text('For the days that'), findsOneWidget);
+      // Create-account is reached via Log In -> Sign Up toggle
+      // (Welcome's entry now starts the pre-account value flow).
+      await tester.tap(find.text('Log In'));
+      await tester.pump();
+      await tester.tap(find.text("Don't have an account? Sign Up"));
       await tester.pump();
       expectNoException(tester);
       expect(find.text('Create Your Account'), findsOneWidget);
@@ -478,8 +482,8 @@ void main() {
       ));
       await tester.pump();
       expectNoException(tester);
-      expect(find.text('Notes that build'), findsOneWidget);
-      expect(find.text('Register'), findsOneWidget);
+      expect(find.text('For the days that'), findsOneWidget);
+      expect(find.text('Get started'), findsOneWidget);
     });
 
     testWidgets('Onboarding flow: welcome -> create account pumps clean',
@@ -497,8 +501,12 @@ void main() {
       await tester.pump(const Duration(milliseconds: 650));
       await tester.pump();
       expectNoException(tester);
-      expect(find.text('Notes that build'), findsOneWidget);
-      await tester.tap(find.text('Register'));
+      expect(find.text('For the days that'), findsOneWidget);
+      // Create-account is reached via Log In -> Sign Up toggle
+      // (Welcome's entry now starts the pre-account value flow).
+      await tester.tap(find.text('Log In'));
+      await tester.pump();
+      await tester.tap(find.text("Don't have an account? Sign Up"));
       await tester.pump();
       expectNoException(tester);
       expect(find.text('Create Your Account'), findsOneWidget);
