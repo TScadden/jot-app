@@ -949,11 +949,14 @@ void main() {
         ownerEmail: _owner,
       );
       // BOTH entries survive in the outbox…
-      expect(outbox.records.map((r) => r.entry.id), containsAll(['101', '102']));
-      // …and both push.
+      expect(
+          outbox.records.map((r) => r.entry.id), containsAll(['101', newId]));
+      // …and both push (the legacy entry in wire-int form, the
+      // relaunch entry under its UUID string).
       final server = _Server([]);
       expect(await outbox.flush(server.backend()), isTrue);
-      expect(server.capturedPosts.map((r) => r['id']), containsAll([101, 102]));
+      expect(server.capturedPosts.map((r) => r['id']),
+          containsAll([101, newId]));
       expect(
         server.capturedPosts.map((r) => r['body']),
         containsAll(['Killed session entry', 'Relaunch entry']),
