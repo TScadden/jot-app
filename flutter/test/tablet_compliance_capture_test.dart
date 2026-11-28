@@ -76,20 +76,31 @@ void main() {
       });
     }
 
+    // The frame mirrors main.dart's real architecture: the shell
+    // sits in MaterialApp.builder, wrapping the NAVIGATOR (so dialog
+    // routes are capped exactly as in production). Wrapping `home`
+    // instead would leave dialogs uncapped in the harness while they
+    // are capped in the app — the first version of this harness made
+    // that mistake and its dialog frames were discarded.
     Widget frame(Widget child) => RepaintBoundary(
           key: rootKey,
           child: MaterialApp(
             debugShowCheckedModeBanner: false,
             theme: notelDarkTheme(),
-            home: TickerMode(
-              enabled: false,
-              child: MediaQuery(
-                data: const MediaQueryData(disableAnimations: true),
-                child: variant == 'after'
-                    ? TabletContentShell(child: child)
-                    : child,
-              ),
+            // NOTE: no TickerMode here — freezing tickers around the
+            // Navigator leaves dialog route transitions stuck at
+            // their first frame (invisible dialog). Reduced motion
+            // comes from MediaQuery.disableAnimations alone, which
+            // zeroes the transitions properly.
+            builder: (context, navigatorChild) => MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(disableAnimations: true),
+              child: variant == 'after'
+                  ? TabletContentShell(
+                      child: navigatorChild ?? const SizedBox.shrink())
+                  : (navigatorChild ?? const SizedBox.shrink()),
             ),
+            home: child,
           ),
         );
 
@@ -112,7 +123,12 @@ void main() {
     final settingsBackend = r29.FakeSettingsBackend()
       ..pullBody = r29.pull(profile: {'avatarId': 'avatar_03'});
 
-    const sizes = [Size(820, 1180), Size(1180, 820)];
+    final sizes =
+        Platform.environment['TABLET_CAPTURE_LANDSCAPE_ONLY'] == '1'
+            ? const [Size(1180, 820)]
+            : Platform.environment['TABLET_CAPTURE_PORTRAIT_ONLY'] == '1'
+                ? const [Size(820, 1180)]
+                : const [Size(820, 1180), Size(1180, 820)];
     var n = 0;
     for (final size in sizes) {
       n++;
@@ -137,9 +153,14 @@ void main() {
         onNavigateNext: () {},
       )));
       await settle();
+      // 'Connect Health Data' appears twice on this screen (the
+      // headline and the primary button); the button is LAST in
+      // tree order. Tapping the headline does nothing — the first
+      // version of this harness tapped .first and captured the
+      // bare screen, on both variants.
       final connectFinder = find.text('Connect Health Data');
       if (connectFinder.evaluate().isNotEmpty) {
-        await tester.tap(connectFinder.first);
+        await tester.tap(connectFinder.last);
         await settle();
       }
       await capture('hc_disclosure_${tag}_$variant');
@@ -166,6 +187,15 @@ void main() {
       }
       await capture('skip_warning_${tag}_$variant');
       tester.takeException();
+      // Close the dialog before the next step: the Navigator (and
+      // any open route on it) persists across pumpWidget calls when
+      // the replacement tree has the same shape, so a leftover
+      // dialog would contaminate every later frame in this size.
+      final skipAnyway = find.text('Skip anyway');
+      if (skipAnyway.evaluate().isNotEmpty) {
+        await tester.tap(skipAnyway.first);
+        await settle();
+      }
 
       // 3b — Post-onboarding notification card (non-dismissible,
       // Allow / Don't Allow) — Juno §3's second priming surface.
@@ -188,6 +218,13 @@ void main() {
       await settle();
       await capture('notif_card_${tag}_$variant');
       tester.takeException();
+      // Close the non-dismissible card via its explicit action so
+      // later frames in this size are clean (see skip step note).
+      final dontAllow = find.text("Don't Allow");
+      if (dontAllow.evaluate().isNotEmpty) {
+        await tester.tap(dontAllow.first);
+        await settle();
+      }
 
       // 4 — Login screen (terms line under the card).
       await tester.pumpWidget(frame(const LoginScreen()));
