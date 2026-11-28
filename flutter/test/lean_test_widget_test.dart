@@ -20,7 +20,7 @@ LeanTestSessionStore _memoryStore(Map<String, String> backing) =>
     );
 
 class FakeLeanGateway implements LeanTestGateway {
-  int? categoryId = 7;
+  String? categoryId = '7';
   int nextId = 100;
   bool stageSucceeds = true;
   final List<QuickLogEntry> staged = [];
@@ -28,10 +28,10 @@ class FakeLeanGateway implements LeanTestGateway {
   List<HrSample> samples = const [];
 
   @override
-  Future<int?> resolveCategoryId() async => categoryId;
+  Future<String?> resolveCategoryId() async => categoryId;
 
   @override
-  Future<int> allocateEntryId() async => nextId++;
+  Future<String> allocateEntryId() async => '${nextId++}';
 
   @override
   Future<bool> stageEntry(QuickLogEntry entry) async {
