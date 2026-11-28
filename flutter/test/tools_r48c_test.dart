@@ -171,7 +171,7 @@ void main() {
             }),
             200);
       }));
-      expect(await ok.classifyCoachNote('note', {'3': 'Sleep'}), 3);
+      expect(await ok.classifyCoachNote('note', {'3': 'Sleep'}), '3');
 
       final bad = backendWith(
           MockClient((_) async => http.Response('nope', 500)));
