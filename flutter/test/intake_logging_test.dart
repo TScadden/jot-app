@@ -47,9 +47,9 @@ final _catsNoHydration = [
 ];
 
 QuickLogEntry _intakeEntry({
-  required int id,
+  required String id,
   required IntakeDraft draft,
-  int categoryId = 7,
+  String categoryId = '7',
 }) =>
     buildIntakeEntry(id: id, categoryId: categoryId, draft: draft);
 
@@ -240,11 +240,11 @@ void main() {
       DateTime at(int h) => DateTime(2026, 10, 28, h);
       final entries = [
         _intakeEntry(
-          id: 1,
+        id: '1',
           draft: IntakeDraft(kind: 'Water', fluidMl: 473, time: at(8)),
         ),
         _intakeEntry(
-          id: 2,
+        id: '2',
           draft: IntakeDraft(
             kind: 'Electrolyte drink',
             fluidMl: 355,
@@ -253,7 +253,7 @@ void main() {
           ),
         ),
         _intakeEntry(
-          id: 3,
+        id: '3',
           draft: IntakeDraft(
             kind: 'Salt',
             sodiumMg: 393,
@@ -262,7 +262,7 @@ void main() {
           ),
         ),
         _intakeEntry(
-          id: 4,
+        id: '4',
           draft: IntakeDraft(kind: 'Water', fluidMl: 250, time: at(13)),
         ),
       ];
@@ -283,7 +283,7 @@ void main() {
       final day = DateTime(2026, 10, 28, 12, 0);
       final ts = DateTime(2026, 10, 28, 9).millisecondsSinceEpoch;
       QuickLogEntry raw({
-        required int id,
+        required String id,
         required String chips,
         required String manualText,
         String body = 'x',
@@ -411,7 +411,7 @@ void main() {
       final day = DateTime(2026, 10, 28, 12, 0);
       DateTime at(int h) => DateTime(2026, 10, 28, h);
       final saltEntered = _intakeEntry(
-        id: 1,
+        id: '1',
         draft: IntakeDraft(
           kind: 'Salt',
           sodiumMg: saltMgToSodiumMg(1000),
@@ -425,7 +425,7 @@ void main() {
       var totals = intakeTotalsForDay([saltEntered], now: day);
       expect(totals.sodiumMg, 393);
       final sodiumEntered = _intakeEntry(
-        id: 2,
+        id: '2',
         draft: IntakeDraft(kind: 'Salt', sodiumMg: 500, time: at(10)),
       );
       totals = intakeTotalsForDay([saltEntered, sodiumEntered], now: day);
@@ -437,7 +437,7 @@ void main() {
     test('5: energy-day boundary — 03:59 and 04:00 land on '
         'different intake days', () {
       final before = _intakeEntry(
-        id: 1,
+        id: '1',
         draft: IntakeDraft(
           kind: 'Water',
           fluidMl: 100,
@@ -445,7 +445,7 @@ void main() {
         ),
       );
       final after = _intakeEntry(
-        id: 2,
+        id: '2',
         draft: IntakeDraft(
           kind: 'Water',
           fluidMl: 200,
@@ -507,11 +507,11 @@ void main() {
       DateTime at(int d, int h) => DateTime(2026, 10, d, h);
       final entries = [
         _intakeEntry(
-          id: 1,
+        id: '1',
           draft: IntakeDraft(kind: 'Water', fluidMl: 1500, time: at(27, 10)),
         ),
         _intakeEntry(
-          id: 2,
+        id: '2',
           draft: IntakeDraft(kind: 'Water', fluidMl: 1500, time: at(28, 10)),
         ),
       ];
@@ -559,7 +559,7 @@ void main() {
       final entries = [
         // Day A: fluid exactly at target, sodium one below.
         _intakeEntry(
-          id: 1,
+        id: '1',
           draft: IntakeDraft(
             kind: 'Electrolyte drink',
             fluidMl: 500,
@@ -569,7 +569,7 @@ void main() {
         ),
         // Day B: fluid one below, sodium exactly at target.
         _intakeEntry(
-          id: 2,
+        id: '2',
           draft: IntakeDraft(
             kind: 'Electrolyte drink',
             fluidMl: 499,
@@ -839,7 +839,7 @@ void main() {
         'contribution', () {
       final day = DateTime(2026, 10, 28, 12, 0);
       final original = _intakeEntry(
-        id: 9,
+        id: '9',
         draft: IntakeDraft(
           kind: 'Water',
           fluidMl: 473,
@@ -867,7 +867,7 @@ void main() {
   group('backfill (§9 item 12)', () {
     test('12: a declared past time lands in that time\'s day totals', () {
       final entry = _intakeEntry(
-        id: 1,
+        id: '1',
         draft: IntakeDraft(
           kind: 'Water',
           fluidMl: 473,
@@ -903,7 +903,7 @@ void main() {
       final entries = [
         // Oct 26: fluid 600 / sodium 500 — hit / hit.
         _intakeEntry(
-          id: 1,
+        id: '1',
           draft: IntakeDraft(
             kind: 'Electrolyte drink',
             fluidMl: 600,
@@ -914,7 +914,7 @@ void main() {
         // Oct 27: NO entries — no-data, absent everywhere.
         // Oct 28: fluid 300 / sodium 450 — miss / hit.
         _intakeEntry(
-          id: 2,
+        id: '2',
           draft: IntakeDraft(
             kind: 'Electrolyte drink',
             fluidMl: 300,
@@ -1319,7 +1319,7 @@ void main() {
 
   group('History guards (§9 item 13)', () {
     final intakeServerEntry = _entryJson(_intakeEntry(
-      id: 21,
+        id: '21',
       draft: IntakeDraft(
         kind: 'Water',
         fluidMl: 473,

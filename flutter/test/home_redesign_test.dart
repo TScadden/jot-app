@@ -1080,7 +1080,7 @@ void main() {
                 now.subtract(const Duration(minutes: 5)).millisecondsSinceEpoch,
           ),
         ],
-        medicationCategoryId: 8,
+        medicationCategoryId: '8',
         now: now,
       );
       expect(plan.remainingCount, 0);

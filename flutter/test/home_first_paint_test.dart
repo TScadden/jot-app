@@ -499,7 +499,7 @@ void main() {
       final first = await backend.fetchLogEntryDtos();
       final second = await backend.fetchLogEntryDtos();
       expect(pullCount, 1, reason: 'one pull serves both calls');
-      expect(first.map((e) => e.id).toList(), [1, 2]);
+      expect(first.map((e) => e.id).toList(), ['1', '2']);
       expect(second.map((e) => e.id).toList(),
           first.map((e) => e.id).toList());
       expect(second.map((e) => e.body).toList(), ['one', 'two']);

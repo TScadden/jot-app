@@ -48,7 +48,7 @@ SettingsStore _fakeSettings(Map<String, String> map) =>
       delete: (k) async => map.remove(k),
     );
 
-QuickLogEntry _entry(int id) => QuickLogEntry(
+QuickLogEntry _entry(String id) => QuickLogEntry(
       id: id,
       categoryId: '3',
       body: 'entry $id',
@@ -73,7 +73,7 @@ class _FlushBackend extends TabsBackend {
   final String? email;
   Completer<void>? postGate;
   bool postSucceeds = true;
-  final List<int> postedIds = [];
+  final List<String> postedIds = [];
   int postAttempts = 0;
   int logoutCalls = 0;
 
@@ -290,7 +290,7 @@ void main() {
       )..postGate = Completer<void>(); // the POST never lands
       expect(
         await LogEntryOutbox.instance.stage(
-          _entry(42),
+          _entry('42'),
           serverKnown: false,
           ownerEmail: 'a@example.com',
         ),
@@ -330,7 +330,7 @@ void main() {
         sessionStore: session,
       )..postGate = Completer<void>();
       await LogEntryOutbox.instance.stage(
-        _entry(42),
+        _entry('42'),
         serverKnown: false,
         ownerEmail: 'a@example.com',
       );
@@ -362,7 +362,7 @@ void main() {
       // and flushes through that account's session.
       final backA = _FlushBackend(email: 'a@example.com');
       expect(await LogEntryOutbox.instance.flush(backA), isTrue);
-      expect(backA.postedIds, [42]);
+      expect(backA.postedIds, ['42']);
       expect(LogEntryOutbox.instance.records, isEmpty);
 
       // Retain a second entry the same way, then a DIFFERENT
@@ -377,7 +377,7 @@ void main() {
         sessionStore: session2,
       )..postGate = Completer<void>();
       await LogEntryOutbox.instance.stage(
-        _entry(43),
+        _entry('43'),
         serverKnown: false,
         ownerEmail: 'a@example.com',
       );
@@ -445,9 +445,9 @@ void main() {
       final backend = _FlushBackend(email: 'a@example.com')
         ..postGate = Completer<void>();
       final outbox = LogEntryOutbox.instance;
-      await outbox.stage(_entry(42),
+      await outbox.stage(_entry('42'),
           serverKnown: false, ownerEmail: 'a@example.com');
-      await outbox.stage(_entry(43),
+      await outbox.stage(_entry('43'),
           serverKnown: false, ownerEmail: 'a@example.com');
 
       final flushFuture = outbox.flush(backend);
