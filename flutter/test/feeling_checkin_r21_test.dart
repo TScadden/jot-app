@@ -16,8 +16,8 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'test_helpers.dart';
 
 QuickLogEntry _entry({
-  int id = 1,
-  int categoryId = 6,
+  String id = '1',
+  String categoryId = '6',
   String body = 'x',
   String chips = '[]',
   int timestamp = 0,
@@ -119,7 +119,7 @@ void main() {
     test('tag in another category does not count', () {
       final entries = [
         _entry(
-          categoryId: 7,
+          categoryId: '7',
           chips: '["Daily Ranking"]',
           timestamp: ms(DateTime(2026, 10, 12, 9, 15)),
         ),
@@ -167,7 +167,7 @@ void main() {
     test('exact body/chips/category and the caller-supplied id', () {
       final entry = buildFeelingEntry(
         level: 4,
-        categoryId: 6,
+        categoryId: '6',
         id: 42,
         now: DateTime(2026, 10, 12, 11, 0),
       );
@@ -186,7 +186,7 @@ void main() {
         'fallback form (Vera M3)', () {
       final entry = buildFeelingEntry(
         level: 1,
-        categoryId: 6,
+        categoryId: '6',
         id: 1,
       );
       expect(entry.id, 1);
@@ -196,7 +196,7 @@ void main() {
         () {
       final entry = buildFeelingEntry(
         level: 2,
-        categoryId: 6,
+        categoryId: '6',
         id: 99,
       );
       expect(entry.id, 99);

@@ -277,14 +277,14 @@ void main() {
           id: '6', name: 'Mood & Energy', icon: '', colorHex: '',
           isDefault: true, sortOrder: 5)];
       final checkIn = entry.copyWith(
-          categoryId: 6, chips: '["Daily Ranking"]');
+          categoryId: '6', chips: '["Daily Ranking"]');
       expect(isLockedCheckInEntry(checkIn, cats), isTrue);
       // Same chip in another category is NOT a check-in.
       expect(isLockedCheckInEntry(
           entry.copyWith(chips: '["Daily Ranking"]'), cats), isFalse);
       // Mood category without the reserved chip is NOT locked.
       expect(isLockedCheckInEntry(
-          entry.copyWith(categoryId: 6, chips: '["Symptoms"]'), cats),
+          entry.copyWith(categoryId: '6', chips: '["Symptoms"]'), cats),
           isFalse);
     });
 

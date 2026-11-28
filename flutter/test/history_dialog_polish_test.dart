@@ -208,7 +208,7 @@ void main() {
       expect(filterCategoriesForPicker(cats, ''), cats);
       expect(
         filterCategoriesForPicker(cats, '').map((c) => c.id),
-        [7, 3, 8, 6],
+        ['7', '3', '8', '6'],
       );
     });
 

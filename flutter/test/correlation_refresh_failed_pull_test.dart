@@ -94,7 +94,7 @@ List<QuickLogEntry> _richEntries() {
   // Feeling check-ins (F4) on offsets 0..19.
   for (var i = 0; i < 20; i++) {
     out.add(QuickLogEntry(
-      id: id++,
+      id: '${id++}',
       categoryId: '6',
       body: 'Feeling: ${i.isEven ? 5 : 1}/5 Today',
       chips: '["Daily Ranking"]',
@@ -105,7 +105,7 @@ List<QuickLogEntry> _richEntries() {
   // Flare days (F2 incidence / F3) on offsets 2, 5, 8.
   for (final i in [2, 5, 8]) {
     out.add(QuickLogEntry(
-      id: id++,
+      id: '${id++}',
       categoryId: '1',
       body: 'Flare',
       chips: '["Flare Day"]',
@@ -118,7 +118,7 @@ List<QuickLogEntry> _richEntries() {
   // F2 score splits land in the numbers state.
   for (var i = 0; i < 14; i++) {
     out.add(QuickLogEntry(
-      id: id++,
+      id: '${id++}',
       categoryId: '7',
       body: 'Water',
       chips: '["Intake", "Water"]',

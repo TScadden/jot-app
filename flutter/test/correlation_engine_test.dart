@@ -56,8 +56,8 @@ const categories = [
 ];
 
 QuickLogEntry entry({
-  required int id,
-  required int categoryId,
+  required String id,
+  required String categoryId,
   required String body,
   required String chips,
   String manualText = '',
@@ -72,7 +72,7 @@ QuickLogEntry entry({
       timestamp: timestamp,
     );
 
-QuickLogEntry feeling(int id, String dayKey, int level) => entry(
+QuickLogEntry feeling(String id, String dayKey, int level) => entry(
       id: id,
       categoryId: 6,
       body: 'Feeling: $level/5 Today',
@@ -167,9 +167,9 @@ void main() {
       expect(energyDayLabel(tsFor('2026-09-10', hour: 4, minute: 0)),
           '2026-09-10');
       final byDay = deriveFeelingByDay([
-        feeling(1, '2026-09-10', 2)
+        feeling('1', '2026-09-10', 2)
             .copyWithTimestamp(tsFor('2026-09-10', hour: 3, minute: 59)),
-        feeling(2, '2026-09-10', 4)
+        feeling('2', '2026-09-10', 4)
             .copyWithTimestamp(tsFor('2026-09-10', hour: 4, minute: 0)),
       ], categories);
       expect(byDay, {'2026-09-09': 2, '2026-09-10': 4});
@@ -188,7 +188,7 @@ void main() {
         '2026-06-23',
         '2026-06-24',
       ]) {
-        entries.add(feeling(id++, d, 5));
+        entries.add(feeling('${id++}', d, 5));
         rows.add(bio(d, score: 100));
       }
       // In-window low days: 9, scores 40.
@@ -200,7 +200,7 @@ void main() {
       // In-window high days: only 4, scores 50.
       for (var i = 0; i < 4; i++) {
         final d = addDaysToDayKey('2026-09-20', i);
-        entries.add(feeling(id++, d, 5));
+        entries.add(feeling('${id++}', d, 5));
         rows.add(bio(d, score: 50));
       }
       rows.add(bio('2026-09-28', score: 55)); // the latest input day
@@ -604,8 +604,8 @@ void main() {
     test('A7 (engine half). mutating an input changes the '
         'fingerprint; the stale record keeps its throughDate', () {
       final entries = <QuickLogEntry>[
-        feeling(1, '2026-09-10', 2),
-        feeling(2, '2026-09-11', 5),
+        feeling('1', '2026-09-10', 2),
+        feeling('2', '2026-09-11', 5),
       ];
       final rows = bioMap([
         bio('2026-09-10', score: 40),
@@ -623,7 +623,7 @@ void main() {
           ...rows.values,
           bio('2026-09-12', score: 90),
         ]),
-        entries: [...entries, feeling(3, '2026-09-12', 5)],
+        entries: [...entries, feeling('3', '2026-09-12', 5)],
       );
       final fpAfter = computeCorrelationFingerprints(mutated);
       expect(fpAfter['F4/F4'], isNot(fpBefore['F4/F4']));

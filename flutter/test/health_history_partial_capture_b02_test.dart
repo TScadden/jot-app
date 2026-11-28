@@ -360,7 +360,7 @@ void main() {
         historyQueries: queries,
       );
       final snap = await collector.collect(
-        selectedCategories: [_cat(1, 'Symptoms')],
+        selectedCategories: [_cat('1', 'Symptoms')],
         last30Days: true,
         profile: const ReportProfileInput(),
         now: _now,
@@ -392,7 +392,7 @@ void main() {
   });
 }
 
-QuickLogCategory _cat(int id, String name) => QuickLogCategory(
+QuickLogCategory _cat(String id, String name) => QuickLogCategory(
     id: id,
     name: name,
     icon: 'x',

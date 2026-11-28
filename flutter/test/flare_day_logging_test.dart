@@ -51,8 +51,8 @@ final _catsFallbackHit = [_catJson(1, 'Renamed'), _catJson(6, 'Mood & Energy')];
 final _catsDoubleMiss = [_catJson(9, 'Renamed'), _catJson(6, 'Mood & Energy')];
 
 QuickLogEntry _entry({
-  int id = 1,
-  int categoryId = 3,
+  String id = '1',
+  String categoryId = '3',
   String body = 'x',
   String chips = '[]',
   int? ts,
@@ -75,7 +75,7 @@ Map<String, dynamic> _entryJson(QuickLogEntry e) => {
       'timestamp': e.timestamp,
     };
 
-QuickLogCategory _cat(int id, String name) => QuickLogCategory(
+QuickLogCategory _cat(String id, String name) => QuickLogCategory(
       id: id,
       name: name,
       icon: 'circle',
@@ -478,9 +478,9 @@ void main() {
 
     test('category resolution (Q4): name hit, fallback hit, double '
         'miss → null', () {
-      expect(resolveFlareCategoryId([_cat(3, 'Symptoms'), _cat(1, 'Other')]), 3);
-      expect(resolveFlareCategoryId([_cat(1, 'Renamed')]), 1);
-      expect(resolveFlareCategoryId([_cat(9, 'Renamed')]), isNull);
+      expect(resolveFlareCategoryId([_cat('3', 'Symptoms'), _cat('1', 'Other')]), '3');
+      expect(resolveFlareCategoryId([_cat('1', 'Renamed')]), '1');
+      expect(resolveFlareCategoryId([_cat('9', 'Renamed')]), isNull);
       expect(resolveFlareCategoryId(const []), isNull);
     });
 
@@ -549,7 +549,7 @@ void main() {
       expect(goodOptionsOf(e), ['Energy', 'Clear head']);
       expect(goodBody(['Good mood']), 'Good day · Good mood');
       // An ordinary editable entry — never a locked check-in.
-      final cats = [_cat(3, 'Symptoms'), _cat(6, 'Mood & Energy')];
+      final cats = [_cat('3', 'Symptoms'), _cat('6', 'Mood & Energy')];
       expect(isLockedCheckInEntry(e, cats), isFalse);
     });
 
@@ -778,7 +778,7 @@ void main() {
     test('every flare shape the merged flow writes satisfies '
         'deriveFlareDays (name-resolved Symptoms + Flare Day tag)',
         () {
-      final cats = [_cat(3, 'Symptoms'), _cat(6, 'Mood & Energy')];
+      final cats = [_cat('3', 'Symptoms'), _cat('6', 'Mood & Energy')];
       final now = DateTime(2026, 10, 28, 10, 0);
       final shapes = <QuickLogEntry>[
         // Number-origin, severity only (incl. dismissal-created).
@@ -809,7 +809,7 @@ void main() {
       final fallbackShape =
           buildFlareEntry(id: 7, categoryId: 1, severity: 'Rough', now: now);
       expect(
-        _deriveFlareDays([fallbackShape], [_cat(1, 'Renamed')]),
+        _deriveFlareDays([fallbackShape], [_cat('1', 'Renamed')]),
         {'2026-10-28'},
       );
       // And a good-day / ranking record never counts as a flare day.
