@@ -571,7 +571,7 @@ void main() {
     test('all-time entries capped at most recent 2000', () async {
       final backend = FakeBackend()
         ..entries = [
-          for (var i = 0; i < 2005; i++) entry(i, 1, 1000000 + i),
+          for (var i = 0; i < 2005; i++) entry('${i}', '1', 1000000 + i),
         ];
       final snap = await ReportDataCollector(backend: backend, hc: FakeHc())
           .collect(

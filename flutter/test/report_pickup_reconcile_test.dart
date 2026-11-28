@@ -111,7 +111,7 @@ QuickLogCategory cat(String id, String name) => QuickLogCategory(
     isDefault: true,
     sortOrder: int.tryParse(id) ?? 0);
 
-QuickLogEntry entry(int id, int catId, int ts) => QuickLogEntry(
+QuickLogEntry entry(String id, String catId, int ts) => QuickLogEntry(
     id: id,
     categoryId: catId,
     body: 'b$id',

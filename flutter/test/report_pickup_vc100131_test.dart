@@ -236,7 +236,7 @@ void main() {
           kind: 'standard',
           focusKey: 'health',
           last30Days: true,
-          categoryIds: [1],
+          categoryIds: ['1'],
         ),
         outcomeKind: JournalOutcomeKind.expired,
         reportGenerationId: testId,
@@ -691,7 +691,7 @@ void main() {
           kind: 'standard',
           focusKey: 'health',
           last30Days: true,
-          categoryIds: [1],
+          categoryIds: ['1'],
         ),
         stage: 'collecting',
         outcomeKind: JournalOutcomeKind.running,
@@ -757,7 +757,7 @@ void main() {
           kind: 'standard',
           focusKey: 'health',
           last30Days: true,
-          categoryIds: [1],
+          categoryIds: ['1'],
         ),
       );
       expect(svc.pendingFailure, isA<ReportAiDecision>());
@@ -786,7 +786,7 @@ void main() {
           kind: 'standard',
           focusKey: 'health',
           last30Days: true,
-          categoryIds: [1],
+          categoryIds: ['1'],
         ),
       );
       expect(svc.expiredEntry, isNotNull);
@@ -823,7 +823,7 @@ void main() {
           kind: 'standard',
           focusKey: 'health',
           last30Days: true,
-          categoryIds: [1],
+          categoryIds: ['1'],
         ),
       );
       expect(svc.journalEntry?.heldCompletedAtMs, 777000);
@@ -841,7 +841,7 @@ void main() {
           kind: 'standard',
           focusKey: 'health',
           last30Days: true,
-          categoryIds: [1],
+          categoryIds: ['1'],
         ),
       );
       await Future<void>.delayed(const Duration(milliseconds: 20));
@@ -871,7 +871,7 @@ void main() {
           kind: 'standard',
           focusKey: 'health',
           last30Days: true,
-          categoryIds: [1],
+          categoryIds: ['1'],
         ),
         stage: 'buildingSummary',
         outcomeKind: JournalOutcomeKind.running,
@@ -901,7 +901,7 @@ void main() {
           kind: 'standard',
           focusKey: 'health',
           last30Days: true,
-          categoryIds: [1],
+          categoryIds: ['1'],
         ),
         outcomeKind: JournalOutcomeKind.expired,
         reportGenerationId: testId,

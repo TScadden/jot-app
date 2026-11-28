@@ -739,7 +739,7 @@ void main() {
     test('transform stays within the subtle band (scale 1.0–1.04)', () {
       for (var i = 0; i <= 20; i++) {
         final m = StreakFlame.flickerTransform(i / 20);
-        final scale = m.entry(0, 0).abs() + m.entry(1, 0).abs();
+        final scale = m.entry('0', '0').abs() + m.entry('1', '0').abs();
         expect(scale, greaterThanOrEqualTo(0.99));
         expect(scale, lessThanOrEqualTo(1.05));
       }

@@ -105,7 +105,7 @@ QuickLogCategory cat(String id, String name) => QuickLogCategory(
     id: id, name: name, icon: 'x', colorHex: '#FF0000',
     isDefault: true, sortOrder: int.tryParse(id) ?? 0);
 
-QuickLogEntry entry(int id, int catId) => QuickLogEntry(
+QuickLogEntry entry(String id, String catId) => QuickLogEntry(
     id: id,
     categoryId: catId,
     body: 'b$id',
@@ -123,7 +123,7 @@ const testRequest = ReportRequestIdentity(
 ReportSnapshot snap() => ReportSnapshot(
       last30Days: false,
       generationTimestampMs: DateTime.now().millisecondsSinceEpoch,
-      logEntries: [entry(1, 1)],
+      logEntries: [entry('1', '1')],
       categoriesMap: const {'1': 'Symptoms'},
     );
 
@@ -482,7 +482,7 @@ void main() {
       addTearDown(() => dir.deleteSync(recursive: true));
       var collects = 0, aiCalls = 0, renders = 0, saves = 0;
 
-      final backend = FakeBackend()..entries = [entry(1, 1)];
+      final backend = FakeBackend()..entries = [entry('1', '1')];
       final s1 = serviceOver(mem);
       await s1.restoreSettled;
       final pipeline = ReportGenerationPipeline(
@@ -615,7 +615,7 @@ void main() {
 
     test('pipeline: preDispatch exhausts as a fatal failure in '
         'exactly 1 attempt with its own class', () async {
-      final backend = FakeBackend()..entries = [entry(1, 1)];
+      final backend = FakeBackend()..entries = [entry('1', '1')];
       var calls = 0;
       final pipeline = ReportGenerationPipeline(
         collector: ReportDataCollector(
@@ -677,7 +677,7 @@ void main() {
       final s = ReportSnapshot(
         last30Days: false,
         generationTimestampMs: 0,
-        logEntries: [entry(1, 1)],
+        logEntries: [entry('1', '1')],
         categoriesMap: const {'1': 'Symptoms'},
         correlationInsights: [
           rec('F1', double.nan, 70),
@@ -696,7 +696,7 @@ void main() {
       final s = ReportSnapshot(
         last30Days: false,
         generationTimestampMs: 0,
-        logEntries: [entry(1, 1)],
+        logEntries: [entry('1', '1')],
         categoriesMap: const {'1': 'Symptoms'},
         correlationInsights: [
           rec('F1', double.nan, 70),
@@ -712,7 +712,7 @@ void main() {
   group('R-1 F4 — collection deadline', () {
     test('a hung collection surfaces as ReportCollectionTimeout '
         'and the pipeline maps it to a named failure', () async {
-      final backend = FakeBackend()..entries = [entry(1, 1)];
+      final backend = FakeBackend()..entries = [entry('1', '1')];
       final collector = ReportDataCollector(
         backend: backend,
         hc: FakeHc(),
@@ -820,7 +820,7 @@ void main() {
         write: (k, v) async => storeMem[k] = v,
         delete: (k) async => storeMem.remove(k),
       );
-      final backend = FakeBackend()..entries = [entry(1, 1)];
+      final backend = FakeBackend()..entries = [entry('1', '1')];
       final service = serviceOver(mem,
           clock: () => DateTime(2026, 11, 13, 9, 0));
       await service.restoreSettled;

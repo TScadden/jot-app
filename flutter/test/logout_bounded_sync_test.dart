@@ -393,13 +393,13 @@ void main() {
         isTrue,
       );
       expect(LogEntryOutbox.instance.records.map((r) => r.entry.id),
-          contains(43));
+          contains('43'));
       // The second abandoned POST lands late too; the retained
       // entry must still be intact for the owner check below.
       stalled2.postGate!.complete();
       await Future<void>.delayed(const Duration(milliseconds: 300));
       expect(LogEntryOutbox.instance.records.map((r) => r.entry.id),
-          contains(43));
+          contains('43'));
 
       expect(
         await LogEntryOutbox.instance
