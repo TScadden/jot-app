@@ -315,6 +315,9 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
                             fontSize: 14.5,
                             fontWeight: FontWeight.w800,
                             color: NotelColors.textPrimary,
+                            // Wave A (SCORECARD-9 #16): tabular gem
+                            // balance.
+                            fontFeatures: [FontFeature.tabularFigures()],
                           ),
                         ),
                       ],

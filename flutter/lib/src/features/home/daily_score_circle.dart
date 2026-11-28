@@ -96,6 +96,9 @@ class DailyScoreFace extends StatelessWidget {
                       fontSize: size * 0.36,
                       height: 0.90,
                       fontWeight: FontWeight.w900,
+                      // Wave A (SCORECARD-9 #16): tabular Daily
+                      // Score digits.
+                      fontFeatures: const [FontFeature.tabularFigures()],
                       // Ink over the liquid, measured (Mira pass,
                       // Oct 17, 2026): the number sits over the purple
                       // fill whenever the score is mid/high and over

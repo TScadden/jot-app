@@ -136,10 +136,13 @@ class VitalsStrip extends StatelessWidget {
     );
   }
 
+  // Wave A (SCORECARD-9 #16): tabular figures on the value styles
+  // so vitals digits hold their width as values change.
   static const _valueStyle = TextStyle(
     fontSize: 14,
     fontWeight: FontWeight.bold,
     color: NotelColors.legacyDarkOnDark,
+    fontFeatures: [FontFeature.tabularFigures()],
   );
 
   /// Header alignment package (Nov 10, 2026) — the compact pill's
@@ -149,6 +152,7 @@ class VitalsStrip extends StatelessWidget {
     fontSize: 15,
     fontWeight: FontWeight.bold,
     color: NotelColors.legacyDarkOnDark,
+    fontFeatures: [FontFeature.tabularFigures()],
   );
 
   TextStyle get _effectiveValueStyle =>
@@ -360,6 +364,8 @@ class HomeGemPill extends StatelessWidget {
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
                   color: kGemCountColor,
+                  // Wave A (SCORECARD-9 #16): tabular gem balance.
+                  fontFeatures: [FontFeature.tabularFigures()],
                 ),
               ),
             ],
@@ -401,6 +407,7 @@ class HomeGemPill extends StatelessWidget {
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
                       color: Color(0xFF121B20),
+                      fontFeatures: [FontFeature.tabularFigures()],
                     ),
                   ),
                 ),
@@ -503,6 +510,8 @@ class HomeStreakStack extends StatelessWidget {
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
                 color: NotelColors.warning,
+                // Wave A (SCORECARD-9 #16): tabular streak number.
+                fontFeatures: [FontFeature.tabularFigures()],
               ),
               animate: animateCountUps,
             ),
@@ -621,6 +630,8 @@ class HomeStreakRow extends StatelessWidget {
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
                       color: NotelColors.warning,
+                      // Wave A (SCORECARD-9 #16): tabular streak number.
+                      fontFeatures: [FontFeature.tabularFigures()],
                     ),
                     animate: animateCountUps,
                   ),
