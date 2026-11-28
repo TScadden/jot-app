@@ -487,10 +487,10 @@ void main() {
           'chips': '["Daily Ranking"]',
         },
       ]);
-      expect(out[0].id, 639);
+      expect(out[0].id, '639');
       expect(out[0].timestamp, 1791747393624);
       expect(out[1].timestamp, 1791738774130);
-      expect(out[1].categoryId, 6);
+      expect(out[1].categoryId, '6');
       final dt = DateTime.fromMillisecondsSinceEpoch(out[0].timestamp);
       expect(dt.year, 2026);
       expect(dt.month, 10);

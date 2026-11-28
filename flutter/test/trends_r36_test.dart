@@ -195,7 +195,7 @@ void main() {
     });
 
     testWidgets('entry tap navigates with the parsed int id', (tester) async {
-      int? navigated;
+      String? navigated;
       final backend = backendWith(
         MockClient((_) async => http.Response(jsonEncode(pull()), 200)),
         token: 't',
@@ -216,7 +216,7 @@ void main() {
       );
       await tester.tap(find.text('morning dose'));
       await tester.pump();
-      expect(navigated, 639);
+      expect(navigated, '639');
     });
 
     testWidgets('day selector cannot page past today', (tester) async {
