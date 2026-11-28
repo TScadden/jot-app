@@ -27,9 +27,9 @@ import 'package:tabs_lab/src/features/home/streak_share_card.dart';
 /// A1 strip, the A2 absent-field, and the equal-stamp regression
 /// tests FAIL on d06593fc and pass with the fix.
 void main() {
-  const medCat = 8;
+  const medCat = '8';
   const moodCat = '6';
-  const goalsCat = 4;
+  const goalsCat = '4';
 
   // Wed Nov 18, 2026 — the founder's report day.
   final now = DateTime(2026, 11, 18, 19);

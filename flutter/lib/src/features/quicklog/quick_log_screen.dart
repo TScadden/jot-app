@@ -834,7 +834,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
   /// The server has no single-row category DELETE, so delete = full-list
   /// POST minus the removed row (the server prunes missing ids).
   Future<void> _confirmDeleteCategory(QuickLogCategory cat) async {
-    if (cat.id == 7 || cat.isDefault) return; // native guard, verbatim
+    if (cat.id == '7' || cat.isDefault) return; // native guard, verbatim
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1184,7 +1184,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
           final cat = _categories[index];
           final selected = cat.id == _selectedCategory?.id;
           final catColor = cat.color;
-          final deletable = !(cat.id == 7 || cat.isDefault);
+          final deletable = !(cat.id == '7' || cat.isDefault);
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => _selectCategory(cat),

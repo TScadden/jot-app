@@ -795,7 +795,7 @@ int countSymptomLogs({
     final matchesCategory =
         symptomsCategoryId != null && e.categoryId == symptomsCategoryId;
     final body = e.body.toLowerCase();
-    final matchesLegacy = e.categoryId == 0 &&
+    final matchesLegacy = e.categoryId == '0' &&
         (body.contains('headache') ||
             body.contains('nausea') ||
             body.contains('fatigue'));

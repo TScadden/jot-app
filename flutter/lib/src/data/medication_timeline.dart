@@ -860,7 +860,7 @@ MedicationTimelineData buildMedicationTimeline({
     // fatigue count as symptom logs.
     final body = e.body.toLowerCase();
     final legacySymptom =
-        e.categoryId == 0 &&
+        e.categoryId == '0' &&
         (body.contains('headache') ||
             body.contains('nausea') ||
             body.contains('fatigue'));

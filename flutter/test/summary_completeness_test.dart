@@ -16,9 +16,9 @@ import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
 /// counting) + the feeling check-in; firing is open-day only,
 /// exactly once.
 void main() {
-  const medCat = 8;
+  const medCat = '8';
   const moodCat = '6';
-  const goalsCat = 4;
+  const goalsCat = '4';
 
   // The Nov 5 feeling day: [Nov 5 04:00, Nov 6 04:00).
   final dayStart = DateTime(2026, 11, 5, 4);

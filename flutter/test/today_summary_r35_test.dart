@@ -11,6 +11,7 @@ import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
+import 'package:tabs_lab/src/data/uuid_v4.dart';
 import 'package:tabs_lab/src/data/onboarding_store.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -1291,11 +1292,12 @@ void main() {
         'is_completed': true,
       });
       // Plus exactly one real log entry, in the Goals & Habits
-      // category, id = max existing (900) + 1.
+      // category, under a fresh v4 UUID (GAP-18; was max
+      // existing (900) + 1 = 901).
       expect(postedEntries, hasLength(1));
       expect(postedEntries.single['body'], 'Completed habit: Stretch');
       expect(postedEntries.single['categoryId'], 4);
-      expect(postedEntries.single['id'], 901);
+      expect(isUuidV4(postedEntries.single['id'] as String), isTrue);
     });
 
     test('med Take posts the native "Took …" entry and the next load '

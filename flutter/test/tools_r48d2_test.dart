@@ -345,6 +345,7 @@ void main() {
         ],
         categories: const [medCategory],
         now: _now,
+        idGenerator: sequentialIds(9),
       )!;
       expect(out.single.body, 'Took Ivabradine 7.5mg');
       expect(out.single.id, '10');
@@ -633,8 +634,8 @@ void main() {
 
       expect(backend.entryPosts, hasLength(1));
       final e = backend.entryPosts.single.single;
-      expect(e.id, 42);
-      expect(e.categoryId, 8);
+      expect(isUuidV4(e.id), isTrue);
+      expect(e.categoryId, '8');
       expect(e.body, 'Took Ivabradine 7.5mg');
       expect(e.chips, '["Medication Tab"]');
       expect(e.manualText,
@@ -716,7 +717,10 @@ void main() {
       final posted = backend.entryPosts.single;
       expect(posted.map((e) => e.body),
           ['Took Ivabradine 7.5mg', 'Took Pyridostigmine 60mg']);
-      expect(posted.map((e) => e.id), [6, 7]);
+      // GAP-18: screen-flow ids are fresh v4 UUIDs (the
+      // planner's production generator), distinct per entry.
+      expect(posted.map((e) => isUuidV4(e.id)), [true, true]);
+      expect(posted.map((e) => e.id).toSet(), hasLength(2));
     });
 
     testWidgets(

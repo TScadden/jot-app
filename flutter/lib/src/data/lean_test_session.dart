@@ -1279,7 +1279,7 @@ Future<bool> retryPendingLeanTestEntry({
     final pending = session?.pendingEntryJson;
     if (session == null || pending == null) return false;
     final entry = QuickLogEntry.fromJson(pending);
-    if (entry.id == 0) return false;
+    if (entry.id == '0') return false;
     final ok = await stage(entry);
     if (ok) await store.clear();
     return ok;
