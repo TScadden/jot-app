@@ -114,7 +114,7 @@ void main() {
     testWidgets('focused entry opens in its detail dialog once loaded',
         (tester) async {
       await tester.pumpWidget(MaterialApp(
-        home: HistoryScreen(backend: serverBackend(), focusEntryId: 42),
+        home: HistoryScreen(backend: serverBackend(), focusEntryId: '42'),
       ));
       await tester.pumpAndSettle();
       final dialog = find.byType(Dialog);
@@ -148,7 +148,7 @@ void main() {
     testWidgets('focus id absent from the pull → no dialog, list stands',
         (tester) async {
       await tester.pumpWidget(MaterialApp(
-        home: HistoryScreen(backend: serverBackend(), focusEntryId: 999),
+        home: HistoryScreen(backend: serverBackend(), focusEntryId: '999'),
       ));
       await tester.pumpAndSettle();
       expect(find.byType(Dialog), findsNothing);
@@ -175,7 +175,7 @@ void main() {
       return TabsBackend(client: client, sessionStore: session);
     }
 
-    Future<int> resolve(List<Map<String, dynamic>> cats) {
+    Future<String> resolve(List<Map<String, dynamic>> cats) {
       TabsBackend.debugResetSharedCaches();
       return BackendMigraineTrendsGateway(backendForCategories(cats))
           .resolveMigraineCategoryId();
@@ -414,7 +414,7 @@ void main() {
     testWidgets('renders line + hint after a saved end; tap fires '
         'with the entry id', (tester) async {
       final h = await endedHarness();
-      int? tappedId;
+      String? tappedId;
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
           body: SingleChildScrollView(
@@ -437,7 +437,7 @@ void main() {
 
       await tester.tap(find.text(line));
       await tester.pumpAndSettle();
-      expect(tappedId, 100,
+      expect(tappedId, '100',
           reason: 'the tap targets THAT attack\'s entry (§A.3)');
     });
 

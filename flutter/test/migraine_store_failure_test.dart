@@ -34,7 +34,7 @@ MigraineAttack mkAttack({
   String meds = 'sumatriptan',
   int relief = 0,
   bool trendsPending = false,
-  int? trendsId,
+  String? trendsId,
 }) => MigraineAttack(
   id: start,
   startTimestamp: start,

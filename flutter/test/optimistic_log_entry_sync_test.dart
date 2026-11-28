@@ -14,6 +14,7 @@ import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/data/migraine_attack_store.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
+import 'package:tabs_lab/src/data/uuid_v4.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/today_plan_store.dart';
@@ -74,8 +75,8 @@ const _categories = <Map<String, dynamic>>[
 const _owner = 'founder@example.com';
 
 QuickLogEntry _entry({
-  int id = 42,
-  int categoryId = 3,
+  String id = '42',
+  String categoryId = '3',
   String body = 'Brain fog all morning',
   int? ts,
 }) {
@@ -232,7 +233,7 @@ void main() {
         'process reloads it and flushes exactly once', () async {
       final outbox = LogEntryOutbox.instance;
       final staged = await outbox.stage(
-        _entry(id: 99),
+        _entry(id: '99'),
         serverKnown: false,
         ownerEmail: _owner,
       );
@@ -267,7 +268,7 @@ void main() {
         'the retry lands when the server recovers', () async {
       final outbox = LogEntryOutbox.instance;
       await outbox.stage(
-        _entry(id: 7),
+        _entry(id: '7'),
         serverKnown: true,
         ownerEmail: _owner,
       );
@@ -292,7 +293,7 @@ void main() {
         'instead of leaking it', () async {
       final outbox = LogEntryOutbox.instance;
       await outbox.stage(
-        _entry(id: 5),
+        _entry(id: '5'),
         serverKnown: false,
         ownerEmail: 'a@example.com',
       );
@@ -303,7 +304,7 @@ void main() {
 
     test('an edit staged mid-flight survives the older push landing', () async {
       final outbox = LogEntryOutbox.instance;
-      final v1 = _entry(id: 42, categoryId: 3);
+      final v1 = _entry(id: '42', categoryId: 3);
       await outbox.stage(v1, serverKnown: true, ownerEmail: _owner);
       final server = _Server([v1.toSyncJson()]);
       server.postGate = Completer<void>();
@@ -311,7 +312,7 @@ void main() {
       await server.firstPostStarted.future;
       // The user edits the same entry again while v1 is in flight.
       await outbox.stage(
-        _entry(id: 42, categoryId: 7),
+        _entry(id: '42', categoryId: 7),
         serverKnown: true,
         ownerEmail: _owner,
       );
@@ -327,7 +328,7 @@ void main() {
     test('merge overlays pending versions over a stale pull', () async {
       final outbox = LogEntryOutbox.instance;
       await outbox.stage(
-        _entry(id: 42, categoryId: 7),
+        _entry(id: '42', categoryId: 7),
         serverKnown: true,
         ownerEmail: _owner,
       );
@@ -341,7 +342,7 @@ void main() {
         serverKnown: false,
         ownerEmail: _owner,
       );
-      final merged = outbox.merge([_entry(id: 42, categoryId: 3)]);
+      final merged = outbox.merge([_entry(id: '42', categoryId: 3)]);
       expect(merged, hasLength(2));
       expect(merged.firstWhere((e) => e.id == 42).categoryId, 7);
       expect(
@@ -355,7 +356,7 @@ void main() {
         'then the row is server-known', () async {
       final outbox = LogEntryOutbox.instance;
       await outbox.stage(
-        _entry(id: 55),
+        _entry(id: '55'),
         serverKnown: false,
         ownerEmail: _owner,
       );
@@ -395,7 +396,7 @@ void main() {
         },
         delete: (key) async => disk.remove(key),
       );
-      final seenAtNotify = <List<int>>[];
+      final seenAtNotify = <List<String>>[];
       void listener() => seenAtNotify.add(
             [for (final r in outbox.records) r.entry.id],
           );
@@ -403,7 +404,7 @@ void main() {
       addTearDown(() => outbox.removeListener(listener));
 
       final stageFuture = outbox.stage(
-        _entry(id: 56),
+        _entry(id: '56'),
         serverKnown: false,
         ownerEmail: _owner,
       );
@@ -431,7 +432,7 @@ void main() {
         write: (key, value) async => throw StateError('disk full'),
         delete: (key) async => disk.remove(key),
       );
-      final seenAtNotify = <List<int>>[];
+      final seenAtNotify = <List<String>>[];
       void listener() => seenAtNotify.add(
             [for (final r in outbox.records) r.entry.id],
           );
@@ -439,7 +440,7 @@ void main() {
       addTearDown(() => outbox.removeListener(listener));
 
       final ok = await outbox.stage(
-        _entry(id: 57),
+        _entry(id: '57'),
         serverKnown: false,
         ownerEmail: _owner,
       );
@@ -454,7 +455,7 @@ void main() {
         '(a) Quick Log submit completes on screen while the '
         'server push is still gated', (tester) async {
       final now = DateTime.now().millisecondsSinceEpoch;
-      final server = _Server([_entry(id: 1, ts: now).toSyncJson()]);
+      final server = _Server([_entry(id: '1', ts: now).toSyncJson()]);
       server.postGate = Completer<void>();
       await tester.pumpWidget(MaterialApp(
         home: QuickLogScreen(
@@ -682,7 +683,7 @@ void main() {
       // runAsync — see (c) for why bare body awaits are avoided).
       await tester.runAsync(
         () => outbox.stage(
-          _entry(id: 77, body: 'Local only note'),
+          _entry(id: '77', body: 'Local only note'),
           serverKnown: false,
           ownerEmail: _owner,
         ),
@@ -737,11 +738,11 @@ void main() {
         'row reads Syncing — never Synced', (tester) async {
       // Put a FAILED record for entry 42 on disk, then wipe memory:
       // the next History open must load it from the blob.
-      final server = _Server([_entry(id: 42).toSyncJson()])..failPosts = true;
+      final server = _Server([_entry(id: '42').toSyncJson()])..failPosts = true;
       final outbox = LogEntryOutbox.instance;
       await tester.runAsync(() async {
         await outbox.stage(
-          _entry(id: 42),
+          _entry(id: '42'),
           serverKnown: true,
           ownerEmail: _owner,
         );
@@ -797,7 +798,7 @@ void main() {
       final outbox = LogEntryOutbox.instance;
       await tester.runAsync(
         () => outbox.stage(
-          _entry(id: 88),
+          _entry(id: '88'),
           serverKnown: false,
           ownerEmail: _owner,
         ),
@@ -811,7 +812,7 @@ void main() {
       // Edit the row again while its create is on the wire (v2).
       await tester.runAsync(
         () => outbox.stage(
-          _entry(id: 88, categoryId: 7),
+          _entry(id: '88', categoryId: 7),
           serverKnown: false,
           ownerEmail: _owner,
         ),
@@ -888,7 +889,7 @@ void main() {
       // Session 1: an entry staged offline; the app is killed
       // before its push. Its id (101) exists ONLY on disk.
       await outbox.stage(
-        _entry(id: 101, body: 'Killed session entry'),
+        _entry(id: '101', body: 'Killed session entry'),
         serverKnown: false,
         ownerEmail: _owner,
       );
@@ -910,7 +911,7 @@ void main() {
       );
       var allocationDone = false;
       final allocFuture = outbox
-          .allocateEntryId(serverMaxId: 100, ownerEmail: _owner)
+          .allocateEntryId(ownerEmail: _owner)
           .then((id) {
         allocationDone = true;
         return id;
@@ -923,13 +924,16 @@ void main() {
               'the F1 collision window is open');
       readGate.complete();
       final newId = await allocFuture;
-      expect(newId, 102);
-      // The raised high-water mark is itself durable, so even an
-      // allocation that is never staged cannot be reused after
-      // another kill.
+      // GAP-18: the allocated id is a random v4 UUID — it cannot
+      // reuse the killed session's pending id (101) or any other
+      // entry's id, on this device or any other.
+      expect(isUuidV4(newId), isTrue);
+      expect(newId, isNot('101'));
+      // The legacy high-water blob field now only tracks staged
+      // numeric ids; allocation no longer raises it.
       final blob =
           jsonDecode(disk[LogEntryOutbox.storageKey]!) as Map<String, dynamic>;
-      expect(blob['nextIdHighWater'], 102);
+      expect(blob['nextIdHighWater'], 101);
 
       await outbox.stage(
         _entry(
@@ -957,13 +961,13 @@ void main() {
         'gets a fresh id — the killed session\'s pending entry '
         'survives and both push', (tester) async {
       final now = DateTime.now().millisecondsSinceEpoch;
-      final server = _Server([_entry(id: 1, ts: now).toSyncJson()]);
+      final server = _Server([_entry(id: '1', ts: now).toSyncJson()]);
       final outbox = LogEntryOutbox.instance;
       // A pending entry from a session the OS killed before its
       // push: id 2 exists only in the disk blob.
       await tester.runAsync(
         () => outbox.stage(
-          _entry(id: 2, body: 'Killed session entry', ts: now),
+          _entry(id: '2', body: 'Killed session entry', ts: now),
           serverKnown: false,
           ownerEmail: _owner,
         ),
@@ -1027,7 +1031,7 @@ void main() {
       wireFunnelCaches();
       final outbox = LogEntryOutbox.instance;
       await outbox.stage(
-        _entry(id: 201, body: 'Offline logout entry'),
+        _entry(id: '201', body: 'Offline logout entry'),
         serverKnown: false,
         ownerEmail: _owner,
       );
@@ -1063,7 +1067,7 @@ void main() {
       wireFunnelCaches();
       final outbox = LogEntryOutbox.instance;
       await outbox.stage(
-        _entry(id: 202, body: 'Retained entry'),
+        _entry(id: '202', body: 'Retained entry'),
         serverKnown: false,
         ownerEmail: _owner,
       );
@@ -1096,7 +1100,7 @@ void main() {
         'return, and only the owner\'s', () async {
       final outbox = LogEntryOutbox.instance;
       await outbox.stage(
-        _entry(id: 203, body: 'Expiry entry'),
+        _entry(id: '203', body: 'Expiry entry'),
         serverKnown: false,
         ownerEmail: _owner,
       );
@@ -1124,7 +1128,7 @@ void main() {
       // And retained entries are the owner's alone: a different
       // account's sign-in drops them before they can be seen.
       await outbox.stage(
-        _entry(id: 204, body: 'Owner-bound entry'),
+        _entry(id: '204', body: 'Owner-bound entry'),
         serverKnown: false,
         ownerEmail: _owner,
       );
@@ -1144,7 +1148,7 @@ void main() {
       disk[LogEntryOutbox.storageKey] = jsonEncode({
         'ownerEmail': null,
         'records': [
-          LogEntryOutboxRecord(entry: _entry(id: 301), serverKnown: false)
+          LogEntryOutboxRecord(entry: _entry(id: '301'), serverKnown: false)
               .toJson(),
           {'serverKnown': true}, // no entry: fromJson rejects it
         ],
@@ -1160,7 +1164,7 @@ void main() {
       // re-embeds the quarantined raw records — the data is not
       // lost as a side effect of the next write.
       await outbox.stage(
-        _entry(id: 302),
+        _entry(id: '302'),
         serverKnown: false,
         ownerEmail: _owner,
       );
@@ -1180,7 +1184,7 @@ void main() {
         '(i) F5: a Quick Log entry whose push fails shows Not '
         'synced in Quick Log itself', (tester) async {
       final now = DateTime.now().millisecondsSinceEpoch;
-      final server = _Server([_entry(id: 1, ts: now).toSyncJson()],
+      final server = _Server([_entry(id: '1', ts: now).toSyncJson()],
           failPosts: true);
       await tester.pumpWidget(MaterialApp(
         home: QuickLogScreen(

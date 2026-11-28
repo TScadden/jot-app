@@ -170,7 +170,7 @@ void main() {
         relief: 4,
       );
       final entry =
-          buildMigraineTrendsEntry(attack, entryId: 42, categoryId: 1);
+          buildMigraineTrendsEntry(attack, entryId: '42', categoryId: '1');
       expect(
         entry.body,
         'Migraine attack — 2h 15m. Aura: visual. Peak pain 8/10. '
