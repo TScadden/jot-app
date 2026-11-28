@@ -24,10 +24,26 @@ class ConsultationIntroScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: NotelColors.background,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          child: Column(
-            children: [
+        // SCORECARD-5 #1: the fixed content (300dp orb stage + copy +
+        // Continue) totals ~560dp and overflowed any viewport shorter
+        // than ~600dp (landscape phones, split-screen), pushing
+        // Continue off screen. Same pattern the welcome/login screens
+        // use — LayoutBuilder + SingleChildScrollView + min-height
+        // ConstrainedBox — with IntrinsicHeight so the Expanded
+        // space-between layout below resolves exactly as before at
+        // tall heights (content box = viewport height, identical
+        // arrangement) and the column grows past it, scrollable,
+        // when short.
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: IntrinsicHeight(
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  child: Column(
+                    children: [
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: OnboardingHeader(onBack: onBack),
@@ -131,11 +147,15 @@ class ConsultationIntroScreen extends StatelessWidget {
                   ],
                 ),
               ),
-              OnboardingPrimaryButton(
-                label: 'Continue',
-                onPressed: onContinue,
+                      OnboardingPrimaryButton(
+                        label: 'Continue',
+                        onPressed: onContinue,
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ],
+            ),
           ),
         ),
       ),
