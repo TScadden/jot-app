@@ -750,7 +750,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
     // list; any failure keeps the local list untouched.
     final candidateIds = local
         .map((i) => i.relatedLogId)
-        .whereType<int>()
+        .whereType<String>()
         .toSet();
     if (candidateIds.isEmpty) return;
     final candidates = entries

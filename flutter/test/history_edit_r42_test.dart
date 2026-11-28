@@ -442,7 +442,7 @@ void main() {
       expect(find.text('Phantom edit'), findsOneWidget);
       expect(find.text('Brain fog all morning'), findsNothing);
       expect(find.text('Not synced'), findsOneWidget);
-      expect(LogEntryOutbox.instance.failedIds, contains(42));
+      expect(LogEntryOutbox.instance.failedIds, contains('42'));
       // The server, meanwhile, still holds the old text.
       expect(server.entries.single['body'], 'Brain fog all morning');
     });
@@ -465,7 +465,7 @@ void main() {
           findsNothing);
       expect(find.text('General'), findsWidgets);
       expect(server.entries.single['categoryId'], 3);
-      expect(LogEntryOutbox.instance.failedIds, contains(42));
+      expect(LogEntryOutbox.instance.failedIds, contains('42'));
       await tester.tap(find.text('Close'));
       await tester.pumpAndSettle();
       expect(find.text('Not synced'), findsOneWidget);

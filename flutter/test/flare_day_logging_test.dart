@@ -1297,7 +1297,7 @@ void main() {
           .entry;
       expect(jsonDecode(stagedFlare.chips), ['Flare Day', 'Really bad']);
       expect(stagedFlare.body, 'Flare day · Really bad');
-      expect(stagedFlare.categoryId, 3);
+      expect(stagedFlare.categoryId, '3');
       expect(server.capturedPosts, isEmpty);
       expect(find.byType(SnackBar), findsNothing);
 

@@ -103,7 +103,11 @@ class _Server {
         final rows = (decoded['entries'] as List).cast<Map<String, dynamic>>();
         capturedPosts.addAll(rows);
         for (final row in rows) {
-          final i = entries.indexWhere((e) => e['id'] == row['id']);
+          // GAP-18: ids compare in string form — a seeded int id
+          // and its posted string form are the same entry (the
+          // production upsert keys them identically).
+          final i =
+              entries.indexWhere((e) => '${e['id']}' == '${row['id']}');
           if (i >= 0) {
             entries[i] = {...entries[i], ...row};
           } else {

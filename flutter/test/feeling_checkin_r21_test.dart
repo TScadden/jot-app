@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
+import 'package:tabs_lab/src/data/uuid_v4.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
@@ -429,8 +430,9 @@ void main() {
         final rows = posted!['entries'] as List<dynamic>;
         expect(rows, hasLength(1));
         final row = rows.single as Map<String, dynamic>;
-        // The outbox allocation also lands on max(41) + 1 here.
-        expect(row['id'], 42);
+        // GAP-18: the outbox allocation is a fresh random v4
+        // UUID (was max(41) + 1 = 42 under the integer scheme).
+        expect(isUuidV4(row['id'] as String), isTrue);
         expect(row['categoryId'], 6);
         expect(row['body'], 'Feeling: 3/5 Today');
         expect(row['chips'], '["Daily Ranking"]');
