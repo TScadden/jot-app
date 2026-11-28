@@ -141,7 +141,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
   }
 
   Map<int, int> get _frequencyByHour {
-    final out = <String, int>{};
+    final out = <int, int>{};
     for (final e in _entries) {
       if (e.timestamp <= 0) continue;
       final dt = DateTime.fromMillisecondsSinceEpoch(e.timestamp);
