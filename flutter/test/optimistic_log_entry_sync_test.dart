@@ -252,8 +252,8 @@ void main() {
       outbox.debugReset();
       expect(outbox.records, isEmpty);
       await outbox.load(ownerEmail: _owner);
-      expect(outbox.records.single.entry.id, 99);
-      expect(outbox.statusFor(99), LogEntrySyncStatus.pending);
+      expect(outbox.records.single.entry.id, '99');
+      expect(outbox.statusFor('99'), LogEntrySyncStatus.pending);
 
       final server = _Server([]);
       final ok = await outbox.flush(server.backend());
@@ -274,12 +274,12 @@ void main() {
       );
       final server = _Server([], failPosts: true);
       expect(await outbox.flush(server.backend()), isFalse);
-      expect(outbox.statusFor(7), LogEntrySyncStatus.failed);
+      expect(outbox.statusFor('7'), LogEntrySyncStatus.failed);
 
       // The failed state itself is durable across a kill.
       outbox.debugReset();
       await outbox.load(ownerEmail: _owner);
-      expect(outbox.statusFor(7), LogEntrySyncStatus.failed);
+      expect(outbox.statusFor('7'), LogEntrySyncStatus.failed);
       expect(outbox.records.single.entry.body, 'Brain fog all morning');
 
       server.failPosts = false;
@@ -304,7 +304,7 @@ void main() {
 
     test('an edit staged mid-flight survives the older push landing', () async {
       final outbox = LogEntryOutbox.instance;
-      final v1 = _entry(id: '42', categoryId: 3);
+      final v1 = _entry(id: '42', categoryId: '3');
       await outbox.stage(v1, serverKnown: true, ownerEmail: _owner);
       final server = _Server([v1.toSyncJson()]);
       server.postGate = Completer<void>();
@@ -312,7 +312,7 @@ void main() {
       await server.firstPostStarted.future;
       // The user edits the same entry again while v1 is in flight.
       await outbox.stage(
-        _entry(id: '42', categoryId: 7),
+        _entry(id: '42', categoryId: '7'),
         serverKnown: true,
         ownerEmail: _owner,
       );
@@ -328,21 +328,21 @@ void main() {
     test('merge overlays pending versions over a stale pull', () async {
       final outbox = LogEntryOutbox.instance;
       await outbox.stage(
-        _entry(id: '42', categoryId: 7),
+        _entry(id: '42', categoryId: '7'),
         serverKnown: true,
         ownerEmail: _owner,
       );
       await outbox.stage(
         _entry(
           id: 100,
-          categoryId: 7,
+          categoryId: '7',
           body: 'New local entry',
           ts: DateTime(2026, 10, 12, 10, 0).millisecondsSinceEpoch,
         ),
         serverKnown: false,
         ownerEmail: _owner,
       );
-      final merged = outbox.merge([_entry(id: '42', categoryId: 3)]);
+      final merged = outbox.merge([_entry(id: '42', categoryId: '3')]);
       expect(merged, hasLength(2));
       expect(merged.firstWhere((e) => e.id == 42).categoryId, 7);
       expect(
@@ -363,7 +363,7 @@ void main() {
       final server = _Server([]);
       server.postGate = Completer<void>();
       final flushFuture = outbox.flush(server.backend());
-      for (var i = 0; i < 50 && !outbox.inFlightIds.contains(55); i++) {
+      for (var i = 0; i < 50 && !outbox.inFlightIds.contains('55'); i++) {
         await Future<void>.delayed(Duration.zero);
       }
       expect(outbox.inFlightIds, contains(55));
@@ -380,7 +380,7 @@ void main() {
       // The confirmation outlives the queue record: classification
       // (delete staging, later edits) still knows the server holds
       // the row before any revalidating pull lands.
-      expect(outbox.isServerKnown(55), isTrue);
+      expect(outbox.isServerKnown('55'), isTrue);
     });
 
     test(
@@ -414,7 +414,7 @@ void main() {
       // The write is still gated: no notification may have observed
       // the staged record yet.
       expect(
-        seenAtNotify.every((ids) => !ids.contains(56)),
+        seenAtNotify.every((ids) => !ids.contains('56')),
         isTrue,
         reason: 'notifications before durability: $seenAtNotify',
       );
@@ -446,7 +446,7 @@ void main() {
       );
       expect(ok, isFalse);
       expect(outbox.records, isEmpty);
-      expect(seenAtNotify.every((ids) => !ids.contains(57)), isTrue);
+      expect(seenAtNotify.every((ids) => !ids.contains('57')), isTrue);
     });
   });
 
@@ -489,7 +489,7 @@ void main() {
       expect(field.controller!.text, isEmpty);
       // And the entry sits in the outbox as pending, not "synced".
       expect(
-        LogEntryOutbox.instance.statusFor(2),
+        LogEntryOutbox.instance.statusFor('2'),
         LogEntrySyncStatus.pending,
       );
 
@@ -643,7 +643,7 @@ void main() {
       await tester.tap(find.text('GENERAL'));
       await _pumpUntil(
         tester,
-        () => LogEntryOutbox.instance.failedIds.contains(42),
+        () => LogEntryOutbox.instance.failedIds.contains('42'),
       );
 
       // The edit stands (no revert, no inline save error)…
@@ -668,7 +668,7 @@ void main() {
       // …and the edit remains queued, marked failed, for retry.
       expect(LogEntryOutbox.instance.failedIds, contains(42));
       expect(
-        LogEntryOutbox.instance.recordFor(42)!.entry.categoryId,
+        LogEntryOutbox.instance.recordFor('42')!.entry.categoryId,
         7,
       );
     });
@@ -724,7 +724,7 @@ void main() {
       await _pumpUntil(
         tester,
         () =>
-            server.deletedIds.contains(77) &&
+            server.deletedIds.contains('77') &&
             find.text('Local only note').evaluate().isEmpty,
       );
       expect(server.capturedPosts.map((e) => e['id']), contains(77));
@@ -812,19 +812,19 @@ void main() {
       // Edit the row again while its create is on the wire (v2).
       await tester.runAsync(
         () => outbox.stage(
-          _entry(id: '88', categoryId: 7),
+          _entry(id: '88', categoryId: '7'),
           serverKnown: false,
           ownerEmail: _owner,
         ),
       );
       gate.complete();
       // v1 lands on the server; v2's push fails and stays queued.
-      await _pumpUntil(tester, () => outbox.failedIds.contains(88));
+      await _pumpUntil(tester, () => outbox.failedIds.contains('88'));
       expect(server.entries.single['categoryId'], 3);
       // The superseded push's confirmation is NOT forgotten: the
       // surviving record is classified server-known.
-      expect(outbox.recordFor(88)!.serverKnown, isTrue);
-      expect(outbox.isServerKnown(88), isTrue);
+      expect(outbox.recordFor('88')!.serverKnown, isTrue);
+      expect(outbox.isServerKnown('88'), isTrue);
 
       // Deleting now must cancel the queued edit AND issue the
       // server DELETE — a local-only classification would skip it
@@ -838,7 +838,7 @@ void main() {
       await _pumpUntil(
         tester,
         () =>
-            server.deletedIds.contains(88) &&
+            server.deletedIds.contains('88') &&
             find.text('Brain fog all morning').evaluate().isEmpty,
       );
       expect(server.entries, isEmpty);
@@ -1051,7 +1051,7 @@ void main() {
       expect(disk.containsKey(LogEntryOutbox.storageKey), isTrue);
       outbox.debugReset();
       await outbox.load(ownerEmail: _owner);
-      expect(outbox.records.single.entry.id, 201);
+      expect(outbox.records.single.entry.id, '201');
       expect(outbox.records.single.entry.body, 'Offline logout entry');
       // The same account returns and the entry finally pushes.
       server.failPosts = false;
@@ -1077,7 +1077,7 @@ void main() {
         ..refreshToken = 'ref'
         ..email = _owner;
       await actionsFor(server, session).logout();
-      expect(outbox.records.single.entry.id, 202);
+      expect(outbox.records.single.entry.id, '202');
 
       // A DIFFERENT account signs in: main.dart's login wiring
       // runs the owner-mismatch enforcement before the shell
@@ -1106,7 +1106,7 @@ void main() {
       );
       final server = _Server([], failPosts: true);
       expect(await outbox.flush(server.backend()), isFalse);
-      expect(outbox.statusFor(203), LogEntrySyncStatus.failed);
+      expect(outbox.statusFor('203'), LogEntrySyncStatus.failed);
 
       // Session expiry: the session is dead, so no flush attempt
       // is possible — retention replaces the old unconditional wipe.
@@ -1114,7 +1114,7 @@ void main() {
       expect(disk.containsKey(LogEntryOutbox.storageKey), isTrue);
       outbox.debugReset();
       await outbox.load(ownerEmail: _owner);
-      expect(outbox.statusFor(203), LogEntrySyncStatus.failed);
+      expect(outbox.statusFor('203'), LogEntrySyncStatus.failed);
       // The same account's next session flushes its own entry.
       server.failPosts = false;
       expect(await outbox.flush(server.backend()), isTrue);
@@ -1177,7 +1177,7 @@ void main() {
       outbox.debugReset();
       await outbox.load(ownerEmail: _owner);
       expect(outbox.quarantinedRecordCount, 2);
-      expect(outbox.records.single.entry.id, 302);
+      expect(outbox.records.single.entry.id, '302');
     });
 
     testWidgets(
@@ -1202,7 +1202,7 @@ void main() {
       // The entry stages and its push fails…
       await _pumpUntil(
         tester,
-        () => LogEntryOutbox.instance.failedIds.contains(2),
+        () => LogEntryOutbox.instance.failedIds.contains('2'),
       );
       await _pumpUntil(
         tester,
@@ -1212,7 +1212,7 @@ void main() {
       // per-entry Not synced signal, with the History badge's copy.
       expect(find.text('Not synced'), findsOneWidget);
       expect(find.text('Synced'), findsNothing);
-      expect(LogEntryOutbox.instance.statusFor(2),
+      expect(LogEntryOutbox.instance.statusFor('2'),
           LogEntrySyncStatus.failed);
       // Drain the snackbar + request timers (see test (a)).
       await tester.pump(const Duration(seconds: 25));
