@@ -133,7 +133,7 @@ class _DevGemsEntryState extends State<DevGemsEntry> {
             key: const Key('devGemsStatus'),
             style: TextStyle(
               color: _statusIsError
-                  ? Colors.redAccent
+                  ? NotelColors.error
                   : NotelColors.textPrimary,
               fontSize: 13,
             ),
