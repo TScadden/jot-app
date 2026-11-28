@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
+import 'package:tabs_lab/src/data/uuid_v4.dart';
 
 /// C-01 regression tests — LogEntryOutbox load-failure conflation
 /// (pass-2 audit, verdict v-outbox: HOLDS, both sub-claims).
@@ -25,7 +26,7 @@ import 'package:tabs_lab/src/data/quick_log_models.dart';
 /// the F3 quarantine runs as designed.
 const _owner = 'founder@example.com';
 
-QuickLogEntry _entry({int id = 42, String body = 'Brain fog all morning'}) {
+QuickLogEntry _entry({String id = '42', String body = 'Brain fog all morning'}) {
   return QuickLogEntry(
     id: id,
     categoryId: '3',
@@ -84,7 +85,7 @@ void main() {
     // Stage an entry durably for the owner.
     expect(
       await outbox.stage(
-        _entry(id: 42),
+        _entry(id: '42'),
         serverKnown: false,
         ownerEmail: _owner,
       ),
@@ -104,7 +105,7 @@ void main() {
     // over the blob.
     expect(
       await outbox.stage(
-        _entry(id: 77, body: 'New entry during outage'),
+        _entry(id: '77', body: 'New entry during outage'),
         serverKnown: false,
         ownerEmail: _owner,
       ),
@@ -112,11 +113,11 @@ void main() {
     );
     expect(disk.values[LogEntryOutbox.storageKey], blobBefore);
 
-    // An allocate attempt must NOT hand out an id computed from
-    // the unloaded (empty) state — pre-fix it returned 1 and
-    // persisted the raised mark over the blob.
+    // An allocate attempt must NOT hand out an id while the
+    // outbox state is unloaded — the C-01 load gate still stands
+    // under GAP-18 (it binds the owner, not the id space).
     await expectLater(
-      outbox.allocateEntryId(serverMaxId: 0, ownerEmail: _owner),
+      outbox.allocateEntryId(ownerEmail: _owner),
       throwsStateError,
     );
     expect(disk.values[LogEntryOutbox.storageKey], blobBefore);
@@ -127,19 +128,19 @@ void main() {
     disk.throwOnRead = false;
     await outbox.load(ownerEmail: _owner);
     expect(outbox.isLoaded, isTrue);
-    expect(outbox.records.single.entry.id, 42);
+    expect(outbox.records.single.entry.id, '42');
 
-    // The persisted high-water survived, so the next allocated id
-    // clears the recovered entry instead of colliding with it.
-    expect(
-      await outbox.allocateEntryId(serverMaxId: 0, ownerEmail: _owner),
-      43,
-    );
+    // GAP-18: the next allocated id is a fresh random v4 UUID —
+    // it cannot collide with the recovered entry (or any other
+    // device's entries) by construction.
+    final allocated = await outbox.allocateEntryId(ownerEmail: _owner);
+    expect(isUuidV4(allocated), isTrue);
+    expect(allocated, isNot('42'));
 
     // And staging works again, keeping BOTH records on disk.
     expect(
       await outbox.stage(
-        _entry(id: 43, body: 'Post-recovery entry'),
+        _entry(id: allocated, body: 'Post-recovery entry'),
         serverKnown: false,
         ownerEmail: _owner,
       ),
@@ -160,7 +161,7 @@ void main() {
       'nextIdHighWater': 301,
       'records': [
         LogEntryOutboxRecord(
-          entry: _entry(id: 301),
+          entry: _entry(id: '301'),
           serverKnown: false,
         ).toJson(),
       ],
@@ -181,7 +182,7 @@ void main() {
     // the now-known owner.
     expect(
       await outbox.stage(
-        _entry(id: 302),
+        _entry(id: '302'),
         serverKnown: false,
         ownerEmail: _owner,
       ),
@@ -202,7 +203,7 @@ void main() {
       'nextIdHighWater': 401,
       'records': [
         LogEntryOutboxRecord(
-          entry: _entry(id: 401),
+          entry: _entry(id: '401'),
           serverKnown: false,
         ).toJson(),
       ],
@@ -234,7 +235,7 @@ void main() {
     // And the outbox is fully usable afterwards.
     expect(
       await outbox.stage(
-        _entry(id: 55),
+        _entry(id: '55'),
         serverKnown: false,
         ownerEmail: _owner,
       ),

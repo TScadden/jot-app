@@ -108,18 +108,18 @@ OnboardingSyncOutbox _gatedOutbox(_GatedDisk disk) =>
       delete: disk.delete,
     );
 
-QuickLogCategory _cat(int id, String name, {bool isDefault = false}) =>
+QuickLogCategory _cat(String id, String name, {bool isDefault = false}) =>
     QuickLogCategory(
       id: id,
       name: name,
       icon: 'Favorite',
       colorHex: '#FF6B6B',
       isDefault: isDefault,
-      sortOrder: id,
+      sortOrder: int.tryParse(id) ?? 0,
     );
 
 List<QuickLogCategory> _defaults() => [
-  for (var i = 1; i <= 7; i++) _cat(i, 'Default$i', isDefault: true),
+  for (var i = 1; i <= 7; i++) _cat('$i', 'Default$i', isDefault: true),
 ];
 
 class _FakeBackend extends TabsBackend {
@@ -223,8 +223,8 @@ void main() {
       final backend = _FakeBackend(email: _ownerA);
 
       final staged = await outbox.stageCategories(backend, [
-        _cat(8, 'Focus'),
-        _cat(9, 'Calm'),
+        _cat('8', 'Focus'),
+        _cat('9', 'Calm'),
       ]);
       expect(staged, isTrue);
       expect(
@@ -267,12 +267,12 @@ void main() {
       final disk = _FakeDisk();
       final outbox = _outbox(disk);
       final backend = _FakeBackend(email: _ownerA);
-      await outbox.stageCategories(backend, [_cat(8, 'Focus')]);
+      await outbox.stageCategories(backend, [_cat('8', 'Focus')]);
 
       // The user creates a category AFTER onboarding, before the
       // flush ever runs. Under a naive stale-list replay the
       // full-list-replace endpoint would DELETE it.
-      backend.serverCategories = [..._defaults(), _cat(10, 'Journal')];
+      backend.serverCategories = [..._defaults(), _cat('10', 'Journal')];
 
       expect(await outbox.flush(backend), isTrue);
       final byName = {for (final c in backend.serverCategories) c.name: c};
@@ -291,11 +291,11 @@ void main() {
       final disk = _FakeDisk();
       final outbox = _outbox(disk);
       final backend = _FakeBackend(email: _ownerA);
-      await outbox.stageCategories(backend, [_cat(8, 'Focus')]);
+      await outbox.stageCategories(backend, [_cat('8', 'Focus')]);
 
       // Post-onboarding, the user created 'Journal' and it took
       // id 8 (the id finalize had allocated for 'Focus').
-      backend.serverCategories = [..._defaults(), _cat(8, 'Journal')];
+      backend.serverCategories = [..._defaults(), _cat('8', 'Journal')];
 
       expect(await outbox.flush(backend), isTrue);
       final byName = {for (final c in backend.serverCategories) c.name: c};
@@ -309,7 +309,7 @@ void main() {
       final disk = _FakeDisk();
       final outbox = _outbox(disk);
       final backend = _FakeBackend(email: _ownerA);
-      await outbox.stageCategories(backend, [_cat(8, 'Focus')]);
+      await outbox.stageCategories(backend, [_cat('8', 'Focus')]);
       await outbox.stageProfile(backend, {
         'userContext': 'ctx',
         'conditions': '[]',
@@ -342,13 +342,13 @@ void main() {
       final disk = _FakeDisk();
       final outbox = _outbox(disk);
       final backend = _FakeBackend(email: _ownerA);
-      await outbox.stageCategories(backend, [_cat(8, 'Focus')]);
+      await outbox.stageCategories(backend, [_cat('8', 'Focus')]);
       await outbox.stageProfile(backend, {
         'userContext': 'ctx',
         'conditions': '["POTS"]',
         'onboardingComplete': true,
       });
-      backend.serverCategories = [..._defaults(), _cat(8, 'Focus')];
+      backend.serverCategories = [..._defaults(), _cat('8', 'Focus')];
       backend.serverProfile = {
         'userContext': 'ctx',
         'conditions': '["POTS"]',
@@ -418,7 +418,7 @@ void main() {
       final disk = _FakeDisk();
       final outboxA = _outbox(disk);
       final backendA = _FakeBackend(email: _ownerA);
-      await outboxA.stageCategories(backendA, [_cat(8, 'Focus')]);
+      await outboxA.stageCategories(backendA, [_cat('8', 'Focus')]);
       await outboxA.stageProfile(backendA, {
         'userContext': 'a context',
         'conditions': '[]',
@@ -446,7 +446,7 @@ void main() {
       final disk = _FakeDisk();
       final outbox = _outbox(disk);
       final backendA = _FakeBackend(email: _ownerA);
-      await outbox.stageCategories(backendA, [_cat(8, 'Focus')]);
+      await outbox.stageCategories(backendA, [_cat('8', 'Focus')]);
 
       expect(await outbox.clearIfOwnerMismatch(_ownerA), isFalse);
       expect(await outbox.pendingCategories(backendA), isNotNull);
@@ -491,7 +491,7 @@ void main() {
       final disk = _GatedDisk();
       final outbox = _gatedOutbox(disk);
       final backend = _FakeBackend(email: _ownerA);
-      await outbox.stageCategories(backend, [_cat(8, 'Focus')]);
+      await outbox.stageCategories(backend, [_cat('8', 'Focus')]);
 
       disk.gateNextWrite();
       final flushFuture = outbox.flush(backend);
@@ -519,7 +519,7 @@ void main() {
       // is B signing in, so any dispatch after the switch would
       // be counted here as a post under B's token.
       final backend = _FakeBackend(email: _ownerA);
-      await outbox.stageCategories(backend, [_cat(8, 'Focus')]);
+      await outbox.stageCategories(backend, [_cat('8', 'Focus')]);
       await outbox.stageProfile(backend, {
         'userContext': 'a context',
         'conditions': '[]',
@@ -680,7 +680,7 @@ void main() {
       final disk = _FakeDisk();
       final outbox = _outbox(disk);
       final backend = _FakeBackend(email: _ownerA)..failPull = true;
-      await outbox.stageCategories(backend, [_cat(8, 'Focus')]);
+      await outbox.stageCategories(backend, [_cat('8', 'Focus')]);
       await outbox.stageProfile(backend, {
         'userContext': 'ctx',
         'conditions': '[]',
@@ -700,7 +700,7 @@ void main() {
       final disk = _FakeDisk();
       final outbox = _outbox(disk);
       final backend = _FakeBackend(email: _ownerA)..failPosts = true;
-      await outbox.stageCategories(backend, [_cat(8, 'Focus')]);
+      await outbox.stageCategories(backend, [_cat('8', 'Focus')]);
 
       expect(await outbox.flush(backend), isFalse);
       final pending = await outbox.pendingCategories(backend);
@@ -717,7 +717,7 @@ void main() {
       final disk = _FakeDisk();
       final outbox = _outbox(disk);
       final backend = _FakeBackend(email: _ownerA);
-      await outbox.stageCategories(backend, [_cat(8, 'Focus')]);
+      await outbox.stageCategories(backend, [_cat('8', 'Focus')]);
 
       expect(await outbox.retainUnconfirmed(backend), isTrue);
       expect(disk.values[OnboardingSyncOutbox.storageKey], isNotNull);
@@ -728,7 +728,7 @@ void main() {
       expect(backend.serverCategories.map((c) => c.name), contains('Focus'));
 
       // Account deletion path: clear wipes.
-      await relaunched.stageCategories(backend, [_cat(8, 'Focus')]);
+      await relaunched.stageCategories(backend, [_cat('8', 'Focus')]);
       await relaunched.clear();
       expect(disk.values[OnboardingSyncOutbox.storageKey], isNull);
       expect(await relaunched.pendingCategories(backend), isNull);
