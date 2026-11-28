@@ -897,10 +897,13 @@ List<String> coachLogDigestLines(
   required DateTime now,
   int cap = 20,
 }) {
-  final catNames = <int, String>{
+  final catNames = <String, String>{
     for (final c in categories)
-      if (_asIntOr(c['id'], -1) >= 0)
-        _asIntOr(c['id'], 0): coachPlainText('${c['name'] ?? ''}'),
+      // GAP-18: key by the string sync id (UUID categories carry
+      // it in `clientId` with `id` null).
+      if (idStringFromJson(c['clientId'] ?? c['id']).isNotEmpty)
+        idStringFromJson(c['clientId'] ?? c['id']):
+            coachPlainText('${c['name'] ?? ''}'),
   };
   final cutoff = DateTime(now.year, now.month, now.day)
       .subtract(const Duration(days: 14))
@@ -913,7 +916,7 @@ List<String> coachLogDigestLines(
     if (body.isEmpty) body = coachPlainText('${e['manualText'] ?? ''}');
     if (body.isEmpty) continue;
     if (body.length > 160) body = '${body.substring(0, 157)}...';
-    final catId = _asIntOr(e['categoryId'], 0);
+    final catId = idStringFromJson(e['categoryId']);
     final cat = catNames[catId] ?? 'General';
     final date = _coachDateStr(DateTime.fromMillisecondsSinceEpoch(ts));
     rows.add((
@@ -950,7 +953,7 @@ String buildCoachBodyLoadHistory(
   final cutoffDay = DateTime(now.year, now.month, now.day)
       .subtract(const Duration(days: 14));
   for (final e in entries) {
-    if (_asIntOr(e['categoryId'], -1) != moodId) continue;
+    if (idStringFromJson(e['categoryId']) != moodId) continue;
     if (!chipsContainFeelingTag('${e['chips'] ?? ''}')) continue;
     final m = RegExp(r'Feeling:\s*([1-5])\s*/\s*5')
         .firstMatch('${e['body'] ?? ''}');
@@ -3335,8 +3338,12 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
     try {
       final categories = <String, String>{
         for (final c in widget.pullCategories)
-          if (_asIntOr(c['id'], 0) != 0 || '${c['id']}' == '0')
-            '${c['id']}': '${c['name'] ?? ''}',
+          // GAP-18: key by the string sync id (UUID categories
+          // carry it in `clientId` with `id` null — keying on
+          // '${c['id']}' would file them all under "null").
+          if (idStringFromJson(c['clientId'] ?? c['id']).isNotEmpty)
+            idStringFromJson(c['clientId'] ?? c['id']):
+                '${c['name'] ?? ''}',
       };
       final categoryId =
           await _backend.classifyCoachNote(noteText, categories) ?? '7';

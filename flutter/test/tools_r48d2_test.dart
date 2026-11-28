@@ -69,8 +69,8 @@ MedicationEntry medEntry({
     );
 
 QuickLogEntry logEntry({
-  int id = 1,
-  int categoryId = 8,
+  String id = '1',
+  String categoryId = '8',
   required String body,
   required DateTime at,
 }) =>
@@ -184,10 +184,10 @@ void main() {
   group('buildMedTakeLogEntries: payload (dual-reader take shape)', () {
     test('body/category/chips/manualText/timestamp + max+1 id', () {
       final existing = [
-        logEntry(id: 41, body: 'Felt dizzy', at: _now),
+        logEntry(id: '41', body: 'Felt dizzy', at: _now),
         // The max id is over ALL entries, not just today's.
         logEntry(
-            id: 57,
+      id: '57',
             body: 'Old entry',
             at: _now.subtract(const Duration(days: 3))),
       ];
@@ -300,7 +300,7 @@ void main() {
       final out = buildMedTakeLogEntries(
         meds: [medEntry(name: 'Ivabradine', dose: '7.5mg')],
         existingEntries: [
-          logEntry(id: 9, body: 'Took Ivabradine 7.5mg', at: _now),
+          logEntry(id: '9', body: 'Took Ivabradine 7.5mg', at: _now),
         ],
         categories: const [medCategory],
         now: _now,
@@ -316,7 +316,7 @@ void main() {
       final out = buildMedTakeLogEntries(
         meds: [medEntry(name: 'Pyridostigmine', dose: '60mg')],
         existingEntries: [
-          logEntry(id: 9, body: 'Took Pyridostigmine 60mg', at: _now),
+          logEntry(id: '9', body: 'Took Pyridostigmine 60mg', at: _now),
         ],
         categories: const [medCategory],
         now: _now,
@@ -329,7 +329,7 @@ void main() {
         meds: [medEntry(name: 'Ivabradine', dose: '7.5mg')],
         existingEntries: [
           logEntry(
-              id: 9,
+      id: '9',
               body: 'Took Ivabradine 7.5mg',
               at: _now.subtract(const Duration(days: 1))),
         ],
@@ -345,7 +345,7 @@ void main() {
         meds: [medEntry(name: 'Ivabradine', dose: '7.5mg')],
         existingEntries: [
           logEntry(
-              id: 9,
+      id: '9',
               categoryId: 1,
               body: 'Took Ivabradine 7.5mg',
               at: _now),
@@ -363,7 +363,7 @@ void main() {
         meds: [medEntry(name: 'Ivabradine', dose: '7.5mg')],
         existingEntries: [
           logEntry(
-              id: 9,
+      id: '9',
               body: '[Corrected to Skipped] Took Ivabradine 7.5mg',
               at: _now),
         ],
@@ -383,7 +383,7 @@ void main() {
           medEntry(id: 'c', name: 'Midodrine', dose: '5mg'),
         ],
         existingEntries: [
-          logEntry(id: 20, body: 'Took Pyridostigmine 60mg', at: _now),
+          logEntry(id: '20', body: 'Took Pyridostigmine 60mg', at: _now),
         ],
         categories: const [medCategory],
         now: _now,
@@ -610,7 +610,7 @@ void main() {
       ], configure: (b) {
         b.entries = [
           logEntry(
-              id: 41,
+      id: '41',
               body: 'Unrelated',
               at: DateTime.now().subtract(const Duration(days: 2))),
         ];
@@ -693,7 +693,7 @@ void main() {
             dose: '60mg',
             frequency: '3x daily'),
       ], configure: (b) {
-        b.entries = [logEntry(id: 5, body: 'Earlier', at: DateTime.now())];
+        b.entries = [logEntry(id: '5', body: 'Earlier', at: DateTime.now())];
         return b;
       });
 

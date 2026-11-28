@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:tabs_lab/src/data/reminder_alarm_sync.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/data/uuid_v4.dart';
 import 'package:tabs_lab/src/features/tools/health_coach_screen.dart';
 
 import 'test_helpers.dart';
@@ -398,7 +399,8 @@ void main() {
       await flushSnack(tester);
     });
 
-    testWidgets('successful pull still saves with max-id + 1',
+    testWidgets('successful pull still saves under a fresh '
+        'v4 UUID (GAP-18; was max-id + 1)',
         (tester) async {
       final log = <http.BaseRequest>[];
       await pumpChat(
@@ -415,7 +417,7 @@ void main() {
       final posts = requestsTo(log, '/api/sync/entries');
       expect(posts, hasLength(1));
       final body = jsonDecode(posts.single.body) as Map<String, dynamic>;
-      expect((body['entries'] as List).single['id'], 8);
+      expect(isUuidV4((body['entries'] as List).single['id'] as String), isTrue);
       expect(find.text("Great! I've saved that note to your history."),
           findsOneWidget);
     });

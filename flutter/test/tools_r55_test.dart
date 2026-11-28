@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:tabs_lab/src/data/coach_memory_store.dart';
+import 'package:tabs_lab/src/data/uuid_v4.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
@@ -807,7 +808,8 @@ void main() {
   });
 
   group('Step 3 — LOG_ENTRY', () {
-    testWidgets('approve resolves the category, uses max-id + 1',
+    testWidgets('approve resolves the category, posts under a '
+        'fresh v4 UUID (GAP-18; was max-id + 1)',
         (tester) async {
       final log = <http.BaseRequest>[];
       await pumpChat(
@@ -834,7 +836,7 @@ void main() {
       expect(posts, hasLength(1));
       final body = jsonDecode(posts.single.body) as Map<String, dynamic>;
       final entry = (body['entries'] as List).single;
-      expect(entry['id'], 8);
+      expect(isUuidV4(entry['id'] as String), isTrue);
       expect(entry['categoryId'], 3);
       expect(entry['body'], 'Headache today');
       expect(find.text('✓ Entry Logged'), findsOneWidget);

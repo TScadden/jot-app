@@ -224,7 +224,7 @@ void main() {
   group('(d) Daily Summary completion on cutover night — real '
       'SummaryCompletionWatcher path', () {
     const medCat = 8;
-    const moodCat = 6;
+    const moodCat = '6';
     const goalsCat = 4;
 
     late Map<String, String> disk;
@@ -233,7 +233,7 @@ void main() {
     late SummaryCompletionWatcher watcher;
     late List<StreakCompletionResult> events;
 
-    QuickLogEntry checkIn(DateTime atTime, int id) => QuickLogEntry(
+    QuickLogEntry checkIn(DateTime atTime, String id) => QuickLogEntry(
           id: id,
           categoryId: moodCat,
           body: 'Feeling: 4/5 Today',
@@ -306,7 +306,7 @@ void main() {
         () async {
       final evening = at(5, 23, 30);
       final firedEvening = await watcher.maybeFireSummaryCompletion(
-        context: ctxFor([checkIn(evening, 100)], feelingDayStart(evening)),
+        context: ctxFor([checkIn(evening, '100')], feelingDayStart(evening)),
         pullSucceeded: true,
         seedCurrent: null,
         seedBest: null,
@@ -322,7 +322,7 @@ void main() {
       expect(store.state!.countedDays, {'2026-11-05'});
 
       final smallHours = at(6, 1, 30);
-      final entries = [checkIn(evening, 100), checkIn(smallHours, 101)];
+      final entries = [checkIn(evening, '100'), checkIn(smallHours, '101')];
       final firedSmall = await watcher.maybeFireSummaryCompletion(
         context: ctxFor(entries, feelingDayStart(smallHours)),
         pullSucceeded: true,
