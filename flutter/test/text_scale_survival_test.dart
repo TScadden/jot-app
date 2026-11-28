@@ -208,6 +208,16 @@ void main() {
         drain(tester, '$name-scrolled@$scale', failures);
       }
     }
+    // GAP-13 harness completion (Bram): shell services leave
+    // one-shot timers pending at the end of the tour (retry /
+    // debounce timers owned outside the widget tree), which the
+    // test binding reports as a failure unrelated to layout.
+    // Advance fake time so they complete, then drain once more —
+    // any layout exception raised in this window still counts.
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(seconds: 30));
+    }
+    drain(tester, 'after-time@$scale', failures);
     return failures;
   }
 
