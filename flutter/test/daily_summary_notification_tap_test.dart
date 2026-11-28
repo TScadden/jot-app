@@ -118,11 +118,11 @@ class FakeMigraineGateway implements MigraineTrendsGateway {
   @override
   Future<bool> postEntry(QuickLogEntry entry) async => true;
   @override
-  Future<int> resolveMigraineCategoryId() async => 7;
+  Future<String> resolveMigraineCategoryId() async => '7';
   @override
-  Future<int> generateEntryId() async => 100;
+  Future<String> generateEntryId() async => '100';
   @override
-  Future<bool?> entryExists(int entryId) async => true;
+  Future<bool?> entryExists(String entryId) async => true;
 }
 
 MigraineController testMigraineController() {

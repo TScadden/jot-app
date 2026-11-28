@@ -71,7 +71,7 @@ class FakeMigraineNotifier implements MigraineNotifier {
 class FakeTrendsGateway implements MigraineTrendsGateway {
   final List<QuickLogEntry> posted = [];
   bool postResult = true;
-  int categoryId = 7;
+  String categoryId = '7';
   int nextId = 100;
 
   @override
@@ -81,13 +81,13 @@ class FakeTrendsGateway implements MigraineTrendsGateway {
   }
 
   @override
-  Future<int> resolveMigraineCategoryId() async => categoryId;
+  Future<String> resolveMigraineCategoryId() async => categoryId;
 
   @override
-  Future<int> generateEntryId() async => nextId++;
+  Future<String> generateEntryId() async => '${nextId++}';
 
   @override
-  Future<bool?> entryExists(int entryId) async => true;
+  Future<bool?> entryExists(String entryId) async => true;
 }
 
 class Harness {
@@ -335,7 +335,7 @@ void main() {
         'Meds: sumatriptan. Relief 4/5. Started Oct 26, 9:12 AM.',
       );
       final stored = await h.store.loadById(ended.id);
-      expect(stored!.trendsEntryId, 100);
+      expect(stored!.trendsEntryId, '100');
       expect(stored.trendsEntryPending, isFalse);
       expect(stored.reliefRating, 4);
     });
@@ -454,7 +454,7 @@ void main() {
       await h.controller.endWithReliefDialog(reliefRating: 3);
       var stored = (await h.store.loadAll()).single;
       expect(stored.trendsEntryPending, isTrue);
-      expect(stored.trendsEntryId, 100);
+      expect(stored.trendsEntryId, '100');
       expect(h.gateway.posted, hasLength(1));
 
       h.gateway.postResult = true;

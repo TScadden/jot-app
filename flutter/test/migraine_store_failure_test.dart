@@ -77,11 +77,11 @@ class FakeGateway implements MigraineTrendsGateway {
   }
 
   @override
-  Future<int> resolveMigraineCategoryId() async => 7;
+  Future<String> resolveMigraineCategoryId() async => '7';
   @override
-  Future<int> generateEntryId() async => nextId++;
+  Future<String> generateEntryId() async => '${nextId++}';
   @override
-  Future<bool?> entryExists(int entryId) async => true;
+  Future<bool?> entryExists(String entryId) async => true;
 }
 
 void main() {
@@ -232,7 +232,7 @@ void main() {
       );
       expect(stored.reliefRating, 3);
       expect(stored.trendsEntryPending, isFalse);
-      expect(stored.trendsEntryId, 100);
+      expect(stored.trendsEntryId, '100');
       expect(await store.loadActive(), isNull);
     });
   });

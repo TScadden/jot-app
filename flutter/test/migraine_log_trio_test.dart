@@ -228,7 +228,7 @@ void main() {
 
     test('posted entry carries the resolved category id', () async {
       final h = Harness();
-      h.gateway.categoryId = 9;
+      h.gateway.categoryId = '9';
       await h.controller.initialize();
       await h.controller.startAttack();
       await h.controller.endWithReliefDialog(reliefRating: 3);
@@ -248,7 +248,7 @@ void main() {
           updatedAt: start
               .add(Duration(minutes: durationMin))
               .millisecondsSinceEpoch,
-          trendsEntryId: 100,
+          trendsEntryId: '100',
         );
 
     test('example 1: under-60 duration, PM start', () {
@@ -284,7 +284,7 @@ void main() {
       final h = await endedHarness();
       final logged = h.controller.lastLoggedAttack;
       expect(logged, isNotNull);
-      expect(logged!.trendsEntryId, 100);
+      expect(logged!.trendsEntryId, '100');
       expect(logged.trendsEntryPending, isFalse);
       expect(logged.isActive, isFalse);
     });
@@ -305,7 +305,7 @@ void main() {
       h.gateway.postResult = true;
       await h.controller.onAppResumed();
       expect(h.controller.lastLoggedAttack, isNotNull);
-      expect(h.controller.lastLoggedAttack!.trendsEntryId, 100);
+      expect(h.controller.lastLoggedAttack!.trendsEntryId, '100');
     });
 
     test('§C-form update confirming the entry surfaces the line (§A.1)',
@@ -323,17 +323,17 @@ void main() {
           .saveDetails(attackId: ended!.id, reliefRating: 4);
       expect(ok, isTrue);
       expect(h.controller.lastLoggedAttack, isNotNull);
-      expect(h.controller.lastLoggedAttack!.trendsEntryId, 100);
+      expect(h.controller.lastLoggedAttack!.trendsEntryId, '100');
     });
 
     test('second confirmed attack the same day replaces the line (§A.5)',
         () async {
       final h = await endedHarness();
-      expect(h.controller.lastLoggedAttack!.trendsEntryId, 100);
+      expect(h.controller.lastLoggedAttack!.trendsEntryId, '100');
       await h.controller.startAttack();
       h.now = DateTime(2026, 10, 27, 10, 30);
       await h.controller.endWithReliefDialog(reliefRating: 2);
-      expect(h.controller.lastLoggedAttack!.trendsEntryId, 101);
+      expect(h.controller.lastLoggedAttack!.trendsEntryId, '101');
     });
 
     test('restored on a later load when the entry still exists',
@@ -348,7 +348,7 @@ void main() {
       );
       await c2.initialize();
       expect(c2.lastLoggedAttack, isNotNull);
-      expect(c2.lastLoggedAttack!.trendsEntryId, 100);
+      expect(c2.lastLoggedAttack!.trendsEntryId, '100');
     });
 
     test('entry deleted → line must not render on a subsequent load (§A.5)',
@@ -389,7 +389,7 @@ void main() {
         startTimestamp: yStart.millisecondsSinceEpoch,
         endTimestamp: yEnd.millisecondsSinceEpoch,
         updatedAt: yEnd.millisecondsSinceEpoch,
-        trendsEntryId: 55,
+        trendsEntryId: '55',
         trendsEntryPending: false,
       ));
       await h.controller.initialize();
@@ -655,7 +655,7 @@ class FakeMigraineNotifier implements MigraineNotifier {
 class FakeTrendsGateway implements MigraineTrendsGateway {
   final List<QuickLogEntry> posted = [];
   bool postResult = true;
-  int categoryId = 7;
+  String categoryId = '7';
   int nextId = 100;
 
   @override
@@ -665,15 +665,15 @@ class FakeTrendsGateway implements MigraineTrendsGateway {
   }
 
   @override
-  Future<int> resolveMigraineCategoryId() async => categoryId;
+  Future<String> resolveMigraineCategoryId() async => categoryId;
 
   @override
-  Future<int> generateEntryId() async => nextId++;
+  Future<String> generateEntryId() async => '${nextId++}';
 
   bool? existsResult = true;
 
   @override
-  Future<bool?> entryExists(int entryId) async => existsResult;
+  Future<bool?> entryExists(String entryId) async => existsResult;
 }
 
 class Harness {

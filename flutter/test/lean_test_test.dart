@@ -23,7 +23,7 @@ LeanTestSessionStore _memoryStore(Map<String, String> backing) =>
     );
 
 class FakeLeanGateway implements LeanTestGateway {
-  int? categoryId = 7;
+  String? categoryId = '7';
   int nextId = 100;
   bool stageSucceeds = true;
 
@@ -36,14 +36,14 @@ class FakeLeanGateway implements LeanTestGateway {
   List<HrSample> samples = const [];
 
   @override
-  Future<int?> resolveCategoryId() async => categoryId;
+  Future<String?> resolveCategoryId() async => categoryId;
 
   @override
-  Future<int> allocateEntryId() async {
+  Future<String> allocateEntryId() async {
     if (allocateThrows) {
       throw StateError('outbox load never succeeded (C1 fake)');
     }
-    return nextId++;
+    return '${nextId++}';
   }
 
   @override
@@ -240,7 +240,7 @@ void main() {
       expect(gateway.staged, isEmpty);
       final persisted = await store.load();
       expect(persisted, isNotNull);
-      expect(persisted!.allocatedEntryId, 100);
+      expect(persisted!.allocatedEntryId, '100');
       expect(persisted.pendingEntryJson, isNotNull);
       expect(persisted.pendingEntryJson!['id'], 100);
 
@@ -285,7 +285,7 @@ void main() {
         baselineReadings: [_cap(9, _t0 + _min(9), hr: 70)],
         checkpoints: [_cap(0, _t0 + _min(11), hr: 95)],
       );
-      final entry = buildLeanTestEntry(id: 5, categoryId: 7, result: result);
+      final entry = buildLeanTestEntry(id: '5', categoryId: '7', result: result);
       final edited = entry.copyWith(body: 'completely different prose');
       final fromEdited = leanPastResults([edited]);
       expect(fromEdited.length, 1);
@@ -334,7 +334,7 @@ void main() {
   });
 
   group('§8.10 category resolution', () {
-    QuickLogCategory cat(int id, String name) => QuickLogCategory(
+    QuickLogCategory cat(String id, String name) => QuickLogCategory(
         id: id,
         name: name,
         icon: 'circle',
@@ -343,15 +343,15 @@ void main() {
         sortOrder: 0);
 
     test('name match wins', () {
-      expect(resolveLeanCategoryId([cat(9, 'Symptoms')]), 9);
+      expect(resolveLeanCategoryId([cat('9', 'Symptoms')]), '9');
     });
 
     test('fallback id 1 only when a pulled category carries it', () {
-      expect(resolveLeanCategoryId([cat(1, 'Other')]), 1);
+      expect(resolveLeanCategoryId([cat('1', 'Other')]), '1');
     });
 
     test('double miss resolves null', () {
-      expect(resolveLeanCategoryId([cat(4, 'Other')]), isNull);
+      expect(resolveLeanCategoryId([cat('4', 'Other')]), isNull);
       expect(resolveLeanCategoryId(const []), isNull);
     });
   });
@@ -404,7 +404,7 @@ void main() {
         stoppedAtMinute: 9,
         baselineReadings: [_cap(9, _t0 + _min(9), hr: 70)],
       );
-      final entry = buildLeanTestEntry(id: 5, categoryId: 7, result: result);
+      final entry = buildLeanTestEntry(id: '5', categoryId: '7', result: result);
       // The body IS the History rendering; past tests derive from
       // the payload only. Both must carry the same S12 line.
       expect(entry.body.split('\n').first, result.completionLine);
@@ -476,7 +476,7 @@ void main() {
       expect(payload['v'], 1);
       expect(payload['kind'], 'lean_test');
       expect(payload['disclaimerVersion'], 2);
-      final entry = buildLeanTestEntry(id: 1, categoryId: 7, result: result);
+      final entry = buildLeanTestEntry(id: '1', categoryId: '7', result: result);
       expect(entry.chips, jsonEncode(['Lean Test']));
       final parsed = LeanTestResult.fromPayloadText(entry.manualText);
       expect(parsed, isNotNull);
