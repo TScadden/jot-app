@@ -1041,6 +1041,9 @@ class _LoginScreenState extends State<LoginScreen> {
       textInputAction: TextInputAction.next,
       onSubmitted: (_) => _passwordFocusNode.requestFocus(),
       keyboardType: TextInputType.emailAddress,
+      // Wave A remainder (SCORECARD-3, from 610e6d5e): credential
+      // managers get the email hint they need to offer saved logins.
+      autofillHints: const [AutofillHints.email],
       autocorrect: false,
       style: const TextStyle(color: NotelColors.textPrimary, fontSize: 16),
       cursorColor: NotelColors.primary,
@@ -1077,6 +1080,12 @@ class _LoginScreenState extends State<LoginScreen> {
       textInputAction: TextInputAction.done,
       onSubmitted: (_) => _submitCurrentMode(),
       keyboardType: TextInputType.visiblePassword,
+      // Wave A remainder (SCORECARD-3, from 610e6d5e): newPassword in
+      // register mode so credential managers offer to save (not fill)
+      // the new credential; password in login mode.
+      autofillHints: _isRegisterMode
+          ? const [AutofillHints.newPassword]
+          : const [AutofillHints.password],
       autocorrect: false,
       style: const TextStyle(color: NotelColors.textPrimary, fontSize: 16),
       cursorColor: NotelColors.primary,
