@@ -324,7 +324,7 @@ void main() {
       final newer =
           entry(id: '5', body: 'Blood draw', timestamp: now - halfHour);
       final out = evaluateBodyImpacts([older, newer], now);
-      expect(out.first.relatedLogId, 5);
+      expect(out.first.relatedLogId, '5');
       expect(out.first.regionId, 'LEFT_ARM'); // no side mentioned → left
     });
   });

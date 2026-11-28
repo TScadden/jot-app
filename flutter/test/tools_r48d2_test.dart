@@ -180,9 +180,18 @@ List<Map<String, dynamic>> pushedMedRows(MedsBackend backend) {
       .cast<Map<String, dynamic>>();
 }
 
+/// GAP-18: the planner takes its entry ids from an injected
+/// generator (production: random v4 UUIDs). These payload/dedupe
+/// tests inject a deterministic sequence so allocation order is
+/// asserted exactly, as the old max+1 assertions did.
+String Function() sequentialIds(int start) {
+  var n = start;
+  return () => '${++n}';
+}
+
 void main() {
   group('buildMedTakeLogEntries: payload (dual-reader take shape)', () {
-    test('body/category/chips/manualText/timestamp + max+1 id', () {
+    test('body/category/chips/manualText/timestamp + generated id', () {
       final existing = [
         logEntry(id: '41', body: 'Felt dizzy', at: _now),
         // The max id is over ALL entries, not just today's.
@@ -196,6 +205,7 @@ void main() {
         existingEntries: existing,
         categories: const [medCategory],
         now: _now,
+        idGenerator: sequentialIds(57),
       )!;
       final e = out.single;
       expect(e.id, '58');
@@ -374,7 +384,7 @@ void main() {
     });
 
     test(
-        'Took All coverage: one entry per untaken med, order preserved, ids sequential from max+1',
+        'Took All coverage: one entry per untaken med, order preserved, ids drawn in order from the generator',
         () {
       final out = buildMedTakeLogEntries(
         meds: [
@@ -387,6 +397,7 @@ void main() {
         ],
         categories: const [medCategory],
         now: _now,
+        idGenerator: sequentialIds(20),
       )!;
       expect(out.map((e) => e.body),
           ['Took Ivabradine 7.5mg', 'Took Midodrine 5mg']);

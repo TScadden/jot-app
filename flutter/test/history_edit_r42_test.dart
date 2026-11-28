@@ -238,7 +238,7 @@ void main() {
       expect(edited.timestamp, 123456);
       expect(edited.body, 'New text');
       expect(edited.manualText, '');
-      expect(edited.categoryId, 3);
+      expect(edited.categoryId, '3');
       expect(edited.chips, '["Symptoms"]');
       // The upsert payload shape carries that same id.
       final payload = edited.toSyncJson();

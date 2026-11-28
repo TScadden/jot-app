@@ -345,8 +345,8 @@ void main() {
         type: 'Dizzy',
         now: now,
       );
-      expect(e.id, 12);
-      expect(e.categoryId, 3);
+      expect(e.id, '12');
+      expect(e.categoryId, '3');
       expect(e.chips, '["Flare Day","Rough","Dizzy"]');
       expect(jsonDecode(e.chips), ['Flare Day', 'Rough', 'Dizzy']);
       expect(e.body, 'Flare day · Rough · Dizzy');
@@ -451,7 +451,7 @@ void main() {
           amendFlareEntry(original, severity: 'Really bad', type: 'Pain');
       expect(amended.id, original.id);
       expect(amended.timestamp, original.timestamp);
-      expect(amended.categoryId, 3);
+      expect(amended.categoryId, '3');
       expect(jsonDecode(amended.chips), ['Flare Day', 'Really bad', 'Pain']);
       expect(amended.body, 'Flare day · Really bad · Pain');
       final sync = amended.toSyncJson();
@@ -541,7 +541,7 @@ void main() {
         options: ['Clear head', 'Energy'],
         now: DateTime(2026, 10, 28, 12, 0),
       );
-      expect(e.categoryId, 6);
+      expect(e.categoryId, '6');
       expect(jsonDecode(e.chips), ['Good Day', 'Energy', 'Clear head']);
       expect(e.body, 'Good day · Energy, Clear head');
       expect(e.manualText, '');
@@ -563,7 +563,7 @@ void main() {
         chips: '["Good Day","Energy"]',
         ts: ts,
       );
-      expect(findGoodRecord([good], moodCategoryId: '6', now: now)?.id, 8);
+      expect(findGoodRecord([good], moodCategoryId: '6', now: now)?.id, '8');
       expect(
         findGoodRecord(
           [_entry(id: '9', categoryId: '3', chips: '["Good Day","Energy"]', ts: ts)],

@@ -354,7 +354,7 @@ void main() {
       stalled.postGate!.complete();
       await Future<void>.delayed(const Duration(milliseconds: 300));
       expect(LogEntryOutbox.instance.records.map((r) => r.entry.id),
-          contains(42),
+          contains('42'),
           reason: 'a flush abandoned at the sign-out timeout must '
               'stop mutating the queue it was retained from');
 

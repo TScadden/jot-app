@@ -47,7 +47,7 @@ void main() {
       ];
       final out = recentSuggestions(entries,
           activeMedicationNames: const {}, medicationCategoryId: null);
-      expect(out.map((e) => e.id).toList(), [1, 3, 4]);
+      expect(out.map((e) => e.id).toList(), ['1', '3', '4']);
     });
 
     test('medication entries need an active med name in the body', () {
@@ -59,7 +59,7 @@ void main() {
       final out = recentSuggestions(entries,
           activeMedicationNames: {'escitalopram'},
           medicationCategoryId: '8');
-      expect(out.map((e) => e.id).toList(), [1, 3]);
+      expect(out.map((e) => e.id).toList(), ['1', '3']);
     });
 
     test('limit honored', () {
@@ -122,7 +122,7 @@ void main() {
         _entry(id: '3', categoryId: '3', timestamp: 300),
       ];
       final ranked = rankCategories(cats, entries);
-      expect(ranked.map((c) => c.id).toList(), [2, 3, 1]);
+      expect(ranked.map((c) => c.id).toList(), ['2', '3', '1']);
     });
 
     test('recency breaks frequency ties', () {
@@ -137,7 +137,7 @@ void main() {
         _entry(id: '2', categoryId: '2', timestamp: 900),
       ];
       final ranked = rankCategories(cats, entries);
-      expect(ranked.map((c) => c.id).toList(), [2, 1]);
+      expect(ranked.map((c) => c.id).toList(), ['2', '1']);
     });
   });
 
@@ -152,7 +152,7 @@ void main() {
         'timestamp': 1760220000000,
         'updatedAt': 1760220001000,
       });
-      expect(e.id, 42);
+      expect(e.id, '42');
       expect(e.categoryId, 3);
       expect(e.body, 'Brain fog');
       expect(e.timestamp, 1760220000000);
@@ -179,7 +179,7 @@ void main() {
         'isDefault': false,
         'sortOrder': 3,
       });
-      expect(c.id, 8);
+      expect(c.id, '8');
       expect(c.name, 'Medication');
       expect(c.color.toARGB32(), 0xFF4ECDC4);
     });

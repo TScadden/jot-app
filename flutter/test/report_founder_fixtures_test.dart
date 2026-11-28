@@ -427,7 +427,7 @@ void main() {
       final store = await seedFounderStore();
       final snap = await collectFounder(
           founderCollector(hc: FounderHc(), store: store));
-      expect(snap.categoriesMap[4], 'Weight & Vitals');
+      expect(snap.categoriesMap['4'], 'Weight & Vitals');
       expect(snap.logEntries.where((e) => e.categoryId == 4), isEmpty);
       expect(snap.sectionMetadata['logs']!.recordCount, founderEntryTotal);
     });

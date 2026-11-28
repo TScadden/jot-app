@@ -530,7 +530,7 @@ void main() {
       expect(ok, isTrue);
       final fourth = await backend.fetchLogEntryDtos();
       expect(pullCount, 2, reason: 'epoch change re-issues the pull');
-      expect(fourth.map((e) => e.id).toList(), [7],
+      expect(fourth.map((e) => e.id).toList(), ['7'],
           reason: 'new pull body is re-parsed');
     });
   });
