@@ -274,7 +274,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
       backgroundColor: NotelColors.background,
       appBar: AppBar(
         backgroundColor: NotelColors.background,
-        title: const Text(
+        title: Text(
           StoreCopy.storeTitle,
           style: TextStyle(
             fontSize: 19,
@@ -311,7 +311,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
                         const SizedBox(width: 6),
                         Text(
                           '$balance',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 14.5,
                             fontWeight: FontWeight.w800,
                             color: NotelColors.textPrimary,
@@ -334,7 +334,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
+          Text(
             StoreCopy.loadFailedLine,
             key: Key('gemStoreLoadError'),
             style: TextStyle(
@@ -422,7 +422,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   StoreCopy.heroTitle,
                   style: TextStyle(
                     fontSize: 16,
@@ -431,7 +431,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   StoreCopy.heroLine,
                   style: TextStyle(
                     fontSize: 12.5,
@@ -471,7 +471,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
       ),
       child: Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 11.5,
           fontWeight: FontWeight.w600,
           color: NotelColors.textSecondary,
@@ -491,7 +491,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
       ),
       child: Row(
         children: [
-          const Expanded(
+          Expanded(
             child: Text(
               StoreCopy.equipFailedLine,
               style: TextStyle(
@@ -549,7 +549,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       StoreCopy.chestsRowTitle,
                       style: TextStyle(
                         fontSize: 15,
@@ -561,7 +561,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
                     Text(
                       StoreCopy.chestsRowSubtitle(count),
                       key: const Key('gemStoreChestsSubtitle'),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12.5,
                         color: NotelColors.textSecondary,
                       ),
@@ -569,7 +569,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
                   ],
                 ),
               ),
-              const Icon(
+              Icon(
                 Icons.chevron_right,
                 color: NotelColors.textSecondary,
               ),
@@ -610,7 +610,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
           children: [
             Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -641,7 +641,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
                       const SizedBox(width: 5),
                       Text(
                         '${GemCopy.freezePrice}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 15.5,
                           fontWeight: FontWeight.w800,
                           color: NotelColors.textPrimary,
@@ -665,7 +665,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
               Text(
                 StoreCopy.freezeOwnedLine(totalCover),
                 key: const Key('gemStoreFreezeOwned'),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,
                   color: NotelColors.textSecondary,
@@ -676,7 +676,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
             // a verified spend — the gems-sheet discipline).
             if (_freezeSuccessBalance != null) ...[
               const SizedBox(height: 10),
-              const Text(
+              Text(
                 GemCopy.spendSuccessTitle,
                 key: Key('gemStoreFreezeSuccessTitle'),
                 style: TextStyle(
@@ -689,7 +689,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
               Text(
                 GemCopy.spendSuccessBody(_freezeSuccessBalance!),
                 key: const Key('gemStoreFreezeSuccessBody'),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13.5,
                   fontWeight: FontWeight.w600,
                   color: NotelColors.textSecondary,
@@ -701,7 +701,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
               Text(
                 GemCopy.insufficientLine(GemCopy.freezePrice - balance),
                 key: const Key('gemStoreFreezeInsufficient'),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,
                   color: NotelColors.textSecondary,
@@ -730,7 +730,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
         Text(
           title,
           key: Key('gemStoreSection-${slot.wireName}'),
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.w800,
             color: NotelColors.textPrimary,
@@ -739,7 +739,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
         const SizedBox(height: 4),
         Text(
           sub,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 12.5,
             color: NotelColors.textSecondary,
           ),
@@ -771,14 +771,14 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
         Text(
           StoreCopy.shadesSection,
           key: const Key('gemStoreSection-shades'),
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.w800,
             color: NotelColors.textPrimary,
           ),
         ),
         const SizedBox(height: 4),
-        const Text(
+        Text(
           StoreCopy.shadesSectionSub,
           style: TextStyle(fontSize: 12.5, color: NotelColors.textSecondary),
         ),
@@ -844,7 +844,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       StoreCopy.noneName,
                       style: TextStyle(
                         fontSize: 14,
@@ -855,7 +855,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
                     const SizedBox(height: 7),
                     Row(
                       children: [
-                        const Text(
+                        Text(
                           StoreCopy.ownedLabel,
                           style: TextStyle(
                             fontSize: 12.5,
@@ -933,7 +933,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
                   children: [
                     Text(
                       item.name,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: NotelColors.textPrimary,
@@ -959,7 +959,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
                                 const SizedBox(width: 5),
                                 Text(
                                   '${item.price}',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w800,
                                     color: NotelColors.textPrimary,
@@ -969,7 +969,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
                             ),
                           )
                         else
-                          const Text(
+                          Text(
                             StoreCopy.ownedLabel,
                             style: TextStyle(
                               fontSize: 12.5,
@@ -1034,7 +1034,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           GemCopy.explainerHeading,
           key: Key('gemStoreAboutHeading'),
           style: TextStyle(
@@ -1048,7 +1048,7 @@ class _GemStoreScreenState extends State<GemStoreScreen> {
           Text(
             lines[i],
             key: Key('gemStoreAboutLine$i'),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13.5,
               fontWeight: FontWeight.w600,
               height: 1.45,
@@ -1224,7 +1224,7 @@ class _GemStoreItemDetailState extends State<GemStoreItemDetail> {
                   Expanded(
                     child: Text(
                       _sectionTitle,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
                         color: NotelColors.textSecondary,
@@ -1251,7 +1251,7 @@ class _GemStoreItemDetailState extends State<GemStoreItemDetail> {
               Text(
                 detailCaption(previewed: slot, equipped: _cosmetics.equipped),
                 key: const Key('detailCaption'),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12.5,
                   color: NotelColors.textSecondary,
                 ),
@@ -1260,7 +1260,7 @@ class _GemStoreItemDetailState extends State<GemStoreItemDetail> {
               Text(
                 StoreCopy.eyebrow(slot),
                 key: const Key('detailEyebrow'),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 1.2,
@@ -1271,7 +1271,7 @@ class _GemStoreItemDetailState extends State<GemStoreItemDetail> {
               Text(
                 name,
                 key: const Key('detailName'),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w800,
                   color: NotelColors.textPrimary,
@@ -1281,14 +1281,14 @@ class _GemStoreItemDetailState extends State<GemStoreItemDetail> {
               Text(
                 description,
                 key: const Key('detailDescription'),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   height: 1.45,
                   color: NotelColors.textSecondary,
                 ),
               ),
               const SizedBox(height: 10),
-              const Text(
+              Text(
                 StoreCopy.combineNote,
                 key: Key('detailCombineNote'),
                 style: TextStyle(
@@ -1299,7 +1299,7 @@ class _GemStoreItemDetailState extends State<GemStoreItemDetail> {
               ),
               const SizedBox(height: 18),
               if (_successBalance != null) ...[
-                const Text(
+                Text(
                   StoreCopy.purchaseSuccessTitle,
                   key: Key('detailSuccessTitle'),
                   style: TextStyle(
@@ -1312,7 +1312,7 @@ class _GemStoreItemDetailState extends State<GemStoreItemDetail> {
                 Text(
                   StoreCopy.purchaseSuccessBody(name, _successBalance!),
                   key: const Key('detailSuccessBody'),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: NotelColors.textSecondary,
@@ -1323,7 +1323,7 @@ class _GemStoreItemDetailState extends State<GemStoreItemDetail> {
               if (_purchaseFailed) ...[
                 Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text(
                         StoreCopy.purchaseFailedLine,
                         key: Key('detailPurchaseFailure'),
@@ -1358,7 +1358,7 @@ class _GemStoreItemDetailState extends State<GemStoreItemDetail> {
               if (_equipFailed) ...[
                 Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text(
                         StoreCopy.equipFailedLine,
                         key: Key('detailEquipFailure'),
@@ -1462,7 +1462,7 @@ class _GemStoreItemDetailState extends State<GemStoreItemDetail> {
             const SizedBox(width: 6),
             Text(
               '${item!.price}',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
                 color: NotelColors.textPrimary,
@@ -1485,7 +1485,7 @@ class _GemStoreItemDetailState extends State<GemStoreItemDetail> {
           Text(
             StoreCopy.insufficientForItem(item.price - balance!),
             key: const Key('detailInsufficient'),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12.5,
               fontWeight: FontWeight.w600,
               color: NotelColors.textSecondary,
@@ -1495,7 +1495,7 @@ class _GemStoreItemDetailState extends State<GemStoreItemDetail> {
           Text(
             StoreCopy.afterBuyingLine(balance - item.price),
             key: const Key('detailAfterBuying'),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12.5,
               fontWeight: FontWeight.w600,
               color: NotelColors.textSecondary,

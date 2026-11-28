@@ -1348,7 +1348,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 // Manual entries show nothing.
                 if (isSyncedWorkoutEntry(entry)) ...[
                   const SizedBox(height: 6),
-                  const Row(
+                  Row(
                     key: ValueKey('synced_workout_marker'),
                     mainAxisSize: MainAxisSize.min,
                     children: [
