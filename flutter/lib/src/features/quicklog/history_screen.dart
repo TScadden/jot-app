@@ -290,6 +290,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
   int? _categoryFilter;
   bool _todayOnly = false;
 
+  /// Vera Wave A Condition 3: fetch generation guard for
+  /// [_fetchIntoState]. Monotonically increasing; only the newest
+  /// fetch may apply its result / setState. A stale in-flight
+  /// revalidate (e.g. a delete's fetch holding a pre-Undo snapshot)
+  /// landing after a newer fetch must not overwrite `_entries`
+  /// with its stale pull and hide a just-restored row.
+  int _fetchGeneration = 0;
+
   static const _chipInk = Color(0xFF0A0A0E); // native LegacyDarkChipInk
 
   @override
@@ -394,10 +402,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
     bool quiet = false,
     bool retryPending = true,
   }) async {
+    // Vera Wave A Condition 3: claim a generation; every apply
+    // point below re-checks it, so only the newest fetch lands.
+    final generation = ++_fetchGeneration;
+    bool isNewest() => generation == _fetchGeneration;
     _primeOutbox();
     try {
       final pull = await _backend.fetchSyncPull();
       if (!mounted) return;
+      if (!isNewest()) return;
       if (pull == null) {
         // Quiet failure keeps the displayed data; only the bare
         // initial load surfaces the error screen — and only when
@@ -425,20 +438,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
       });
       // Categories ride the same cached pull (no extra fetch).
       final cats = await _backend.fetchLogCategories();
-      if (mounted) {
+      if (mounted && isNewest()) {
         setState(() {
           _categories = cats;
         });
       }
-      if (!quiet && mounted) _maybeOpenFocusedEntry();
+      if (!quiet && mounted && isNewest()) _maybeOpenFocusedEntry();
       // History opening is a normal sync trigger: rows staged by an
       // earlier session (including one killed before its push) retry
       // here, behind the already-rendered list.
-      if (retryPending && mounted) {
+      if (retryPending && mounted && isNewest()) {
         unawaited(_flushOutboxThenRevalidate());
       }
     } catch (_) {
       if (!mounted) return;
+      if (!isNewest()) return;
       if (!quiet) {
         setState(() {
           _loading = false;
@@ -590,6 +604,102 @@ class _HistoryScreenState extends State<HistoryScreen> {
     unawaited(HomeDataCache.instance.persist());
   }
 
+  /// Wave A remainder (SCORECARD-9 #5): the "Entry removed" toast
+  /// for a successful delete, carrying Undo (strings signed by
+  /// Juno verbatim). [index] is the row's captured position;
+  /// [cancelledRecord] is the pending outbox record the delete
+  /// cancelled, if any — Undo restores it exactly (the same
+  /// machinery the server-failure path below uses), otherwise it
+  /// re-stages the entry through the outbox upsert on its original
+  /// id, so a server-deleted row is recreated in place by the same
+  /// idempotent write the edit path reuses — never duplicated.
+  /// [priorWorkoutLink] is the workout-sync link the delete
+  /// tombstoned, if any — Undo restores it via
+  /// [WorkoutSyncStore.restoreLink] so the restored entry keeps
+  /// its live link and the next workout sync treats it as the
+  /// live entry it is, not as a deleted one.
+  void _showRemovedSnackBar(
+    QuickLogEntry entry,
+    int index, {
+    LogEntryOutboxRecord? cancelledRecord,
+    ({String key, WorkoutLink link})? priorWorkoutLink,
+  }) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Entry removed'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () => unawaited(
+            _undoDelete(
+              entry,
+              index,
+              cancelledRecord,
+              priorWorkoutLink: priorWorkoutLink,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _undoDelete(
+    QuickLogEntry entry,
+    int index,
+    LogEntryOutboxRecord? cancelledRecord, {
+    ({String key, WorkoutLink link})? priorWorkoutLink,
+  }) async {
+    // Vera Wave A Condition 1 (BLOCKING, data loss): the outbox
+    // stage/restore bool is the contract — false means the local
+    // write itself failed, no outbox record exists, and the entry
+    // must NOT be presented as restored. Reinserting it anyway
+    // rendered it with no outbox record (read as Synced) while
+    // the server row stayed deleted, so it vanished permanently
+    // on the next load after a visibly successful Undo. On false:
+    // keep it out of `_entries`, do not restore the workout link
+    // (the tombstone stands — the entry stays deleted), do not
+    // sync the Home count or flush, and surface the honest
+    // try-again error so the user knows the entry stays deleted.
+    final bool restoredOk;
+    if (cancelledRecord != null) {
+      restoredOk =
+          await _outbox.restoreForBackend(cancelledRecord, backend: _backend);
+    } else {
+      restoredOk = await _outbox.stageForBackend(
+        entry,
+        backend: _backend,
+        serverKnown: true,
+      );
+    }
+    if (!mounted) return;
+    if (!restoredOk) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Couldn't undo that delete — try again."),
+        ),
+      );
+      return;
+    }
+    // The entry is back, so its workout link is restored with it —
+    // the delete's tombstone is lifted exactly (DESIGN §1.4
+    // failure symmetry, same restore the delete-failure exits use).
+    final prior = priorWorkoutLink;
+    if (prior != null) {
+      await WorkoutSyncStore.instance.restoreLink(prior.key, prior.link);
+      if (!mounted) return;
+    }
+    setState(() {
+      if (_entries.any((e) => e.id == entry.id)) return;
+      final restored = [..._entries];
+      restored.insert(
+        index > restored.length ? restored.length : index,
+        entry,
+      );
+      _entries = restored;
+    });
+    _syncHomeEntryCount(todayEntryCount(_entries));
+    unawaited(_flushOutboxThenRevalidate());
+  }
+
   Future<void> _deleteEntry(QuickLogEntry entry) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -701,8 +811,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
         if (!pendingRecord.serverKnown) {
           setState(() => _entries = [..._entries]..removeAt(index));
           _syncHomeEntryCount(todayEntryCount(_entries));
-          ScaffoldMessenger.of(context)
-              .showSnackBar(const SnackBar(content: Text('Entry removed')));
+          _showRemovedSnackBar(
+            entry,
+            index,
+            cancelledRecord: cancelledRecord,
+            priorWorkoutLink: priorWorkoutLink,
+          );
           return;
         }
       }
@@ -716,8 +830,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
         // Round 59: deleting a today entry lowers the strip/widget
         // count the same way creating one raises it.
         _syncHomeEntryCount(todayEntryCount(_entries));
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Entry removed')));
+        _showRemovedSnackBar(
+          entry,
+          index,
+          cancelledRecord: cancelledRecord,
+          priorWorkoutLink: priorWorkoutLink,
+        );
         // Quiet background reconcile — never blanks the screen.
         unawaited(_revalidate());
       } else {
