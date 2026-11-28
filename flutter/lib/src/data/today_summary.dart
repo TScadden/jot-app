@@ -1712,27 +1712,16 @@ class TodaySummaryLoader {
         // pending (logged directly in the corrected shape — see the
         // method doc).
         // GAP-18: the new entry's id is a client-generated random
-        // v4 UUID from the outbox allocator — never maxId+1, which
-        // collided across devices logging offline. If allocation
-        // itself fails (the outbox's disk load never succeeded),
-        // fall back to the staging path, which retries the same
-        // allocation and leaves the entry unstaged rather than
-        // inventing an id (see [_stageNewMedEntry]).
-        final String newId;
-        try {
-          newId = await LogEntryOutbox.instance
-              .allocateEntryIdForBackend(backend: backend);
-        } catch (_) {
-          await _stageNewMedEntry(
-            categoryId: medCategoryId,
-            body: body,
-            timestamp: at.millisecondsSinceEpoch,
-          );
-          backend.invalidateSyncPull();
-          return;
-        }
+        // v4 UUID — never maxId+1, which collided across devices
+        // logging offline. This is a DIRECT post, so the id is
+        // generated locally: a UUID needs no allocator state, and
+        // routing the post through the outbox's load gate would
+        // silently drop the take whenever the outbox disk load
+        // failed, even though the post itself could have landed.
+        // (The outbox allocator remains the id source for
+        // stage-first flows, where the owner-bound load matters.)
         entry = QuickLogEntry(
-          id: newId,
+          id: generateUuidV4(),
           categoryId: medCategoryId,
           body: body,
           chips: '[]',

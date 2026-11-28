@@ -352,7 +352,7 @@ void main() {
     // The next read must see the posted entry — the stale body
     // the in-flight pull carried must not be cached as fresh.
     final entries = await h.backend.fetchLogEntryDtos();
-    expect(entries.map((e) => e.id), contains(901),
+    expect(entries.map((e) => e.id), contains('901'),
         reason: 'the pre-post pull body must never be served '
             'after the post landed');
   });
