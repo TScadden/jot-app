@@ -705,7 +705,7 @@ void main() {
       ),
     ];
 
-    QuickLogEntry entry(int id, int categoryId, String chips, DateTime day) =>
+    QuickLogEntry entry(String id, String categoryId, String chips, DateTime day) =>
         QuickLogEntry(
           id: id,
           categoryId: categoryId,
@@ -737,13 +737,13 @@ void main() {
         scores: _flatScores(_d(10, 1), _d(10, 7), 60),
         categories: categories,
         entries: [
-          entry(1, 1, '["Flare Day"]', _d(10, 2)),
-          entry(2, 1, '["Migraine attack"]', _d(10, 3)),
-          entry(3, 1, '[]', _d(10, 4)),
-          entry(4, 1, '[]', _d(10, 4)),
+          entry('1', '1', '["Flare Day"]', _d(10, 2)),
+          entry('2', '1', '["Migraine attack"]', _d(10, 3)),
+          entry('3', '1', '[]', _d(10, 4)),
+          entry('4', '1', '[]', _d(10, 4)),
           // A flare chip outside the Symptoms category is not a
           // flare day.
-          entry(5, 9, '["Flare Day"]', _d(10, 5)),
+          entry('5', '9', '["Flare Day"]', _d(10, 5)),
         ],
         today: _d(10, 7),
       );

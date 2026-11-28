@@ -30,9 +30,9 @@ void main() {
   });
 
   group('SummaryCompletionWatcher grace liveness guard (C2)', () {
-    const medCat = 8;
+    const medCat = '8';
     const moodCat = 6;
-    const goalsCat = 4;
+    const goalsCat = '4';
     const med = SummaryMedication(key: 'k1', name: 'MedA', dose: '5mg');
 
     late Map<String, String> disk;
@@ -47,8 +47,8 @@ void main() {
         true;
 
     QuickLogEntry entry({
-      required int id,
-      required int cat,
+      required String id,
+      required String cat,
       required String body,
       String chips = '[]',
       required DateTime at,
@@ -66,13 +66,13 @@ void main() {
     // logged inside the grace window (00:00:30).
     List<QuickLogEntry> completeEntries() => [
           entry(
-            id: 1,
+          id: '1',
             cat: medCat,
             body: 'Took MedA 5mg',
             at: DateTime(2026, 11, 5, 20),
           ),
           entry(
-            id: 100,
+          id: '100',
             cat: moodCat,
             body: 'Feeling: 4/5 Today',
             chips: jsonEncode(const [feelingCheckInTag]),
