@@ -1753,6 +1753,12 @@ class _StreakScreenState extends State<StreakScreen> {
                         800,
                         const Color(0xFF17102E),
                         letterSpacing: 1.6,
+                      ).copyWith(
+                        // Wave A (SCORECARD-9 #16): the pill carries
+                        // the best-streak day count — tabular digits.
+                        fontFeatures: const [
+                          FontFeature.tabularFigures()
+                        ],
                       ),
                     ),
                   ),
@@ -1768,7 +1774,14 @@ class _StreakScreenState extends State<StreakScreen> {
                         Text(
                           '$current',
                           key: const Key('streakHeroNumber'),
-                          style: _duo(88, 1000, _duoPrimary, height: 1.0),
+                          // Wave A (SCORECARD-9 #16): tabular streak
+                          // digits on the hero number.
+                          style: _duo(88, 1000, _duoPrimary, height: 1.0)
+                              .copyWith(
+                            fontFeatures: const [
+                              FontFeature.tabularFigures()
+                            ],
+                          ),
                         ),
                         Text('day streak!', style: _duo(29, 900, _duoPrimary)),
                       ],

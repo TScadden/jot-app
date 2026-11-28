@@ -154,14 +154,33 @@ class _CountUpState extends State<CountUp>
   String _text(int v) =>
       widget.format != null ? widget.format!(v) : '$v';
 
+  /// Wave A (SCORECARD-9 #16): every CountUp render carries tabular
+  /// figures, so the number's width never changes as its digits
+  /// change mid-count (a proportional "1" is narrower than an "8"
+  /// and made vitals readouts wobble horizontally). Merged over the
+  /// caller's style; a caller-supplied fontFeatures list is kept and
+  /// the tabular feature appended if missing.
+  TextStyle? get _tabularStyle {
+    const tabular = FontFeature.tabularFigures();
+    final base = widget.style;
+    if (base == null) {
+      return const TextStyle(fontFeatures: [tabular]);
+    }
+    final features = base.fontFeatures;
+    if (features != null && features.contains(tabular)) return base;
+    return base.copyWith(
+      fontFeatures: [...?features, tabular],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final v = widget.value;
-    if (v == null) return Text('--', style: widget.style);
-    if (!_shouldAnimate()) return Text(_text(v), style: widget.style);
+    if (v == null) return Text('--', style: _tabularStyle);
+    if (!_shouldAnimate()) return Text(_text(v), style: _tabularStyle);
     return AnimatedBuilder(
       animation: _controller,
-      builder: (_, _) => Text(_text(_shownNow().round()), style: widget.style),
+      builder: (_, _) => Text(_text(_shownNow().round()), style: _tabularStyle),
     );
   }
 
