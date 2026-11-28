@@ -65,7 +65,7 @@ class MigraineBlock extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
+            Text(
               'Migraine attack',
               style: TextStyle(
                 fontSize: 14,
@@ -130,14 +130,14 @@ class _IdleContent extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             controller.startError!,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
               color: NotelColors.error,
             ),
           ),
         ],
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'One tap. Pressure attaches automatically.',
           style: TextStyle(
             fontSize: 12,
@@ -185,14 +185,14 @@ class _LoggedCompletionLine extends StatelessWidget {
               children: [
                 Text(
                   line,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: NotelColors.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 2),
-                const Text(
+                Text(
                   migraineLoggedHint,
                   style: TextStyle(
                     fontSize: 12,
@@ -261,7 +261,7 @@ class _ActiveContentState extends State<_ActiveContent> {
       children: [
         Text(
           formatElapsedDuration(elapsedMin),
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.w700,
             color: NotelColors.textPrimary,
@@ -272,14 +272,14 @@ class _ActiveContentState extends State<_ActiveContent> {
           _attack.pressureAtStartHpa > 0
               ? 'Started at ${_attack.pressureAtStartHpa.toStringAsFixed(0)} hPa'
               : 'Started — logging',
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 13,
             color: NotelColors.textSecondary,
           ),
         ),
         if (!controller.notificationPosted) ...[
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Notifications are off. End the attack here when it passes.',
             style: TextStyle(
               fontSize: 12,
@@ -315,14 +315,14 @@ class _ActiveContentState extends State<_ActiveContent> {
           controller: _medsController,
           onChanged: (v) =>
               unawaited(controller.updateActive(medsTaken: v)),
-          style: const TextStyle(color: NotelColors.textPrimary),
+          style: TextStyle(color: NotelColors.textPrimary),
           decoration: InputDecoration(
             hintText: 'e.g. sumatriptan',
-            hintStyle: const TextStyle(color: NotelColors.textSecondary),
+            hintStyle: TextStyle(color: NotelColors.textSecondary),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide:
-                  const BorderSide(color: NotelColors.fieldBorderIdle),
+                  BorderSide(color: NotelColors.fieldBorderIdle),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
@@ -389,7 +389,7 @@ class _ActiveContentState extends State<_ActiveContent> {
           insetPadding:
               const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
           backgroundColor: NotelColors.surfaceHigh,
-          title: const Text(
+          title: Text(
             'Relief rating',
             style: TextStyle(
               color: NotelColors.textPrimary,
@@ -399,7 +399,7 @@ class _ActiveContentState extends State<_ActiveContent> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
+              Text(
                 'How much relief do you feel now?',
                 style: TextStyle(
                   color: NotelColors.textSecondary,
@@ -421,7 +421,7 @@ class _ActiveContentState extends State<_ActiveContent> {
               const SizedBox(height: 8),
               Text(
                 '$relief / 5',
-                style: const TextStyle(
+                style: TextStyle(
                   color: NotelColors.textSecondary,
                   fontSize: 13,
                 ),
@@ -433,7 +433,7 @@ class _ActiveContentState extends State<_ActiveContent> {
               height: 56,
               child: TextButton(
                 onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text(
+                child: Text(
                   'Back',
                   style: TextStyle(
                     color: NotelColors.textSecondary,
@@ -501,8 +501,8 @@ class ReliefOption extends StatelessWidget {
         alignment: Alignment.center,
         child: Text(
           '$value',
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: selected ? Colors.white : NotelColors.textPrimary,
             fontSize: 19,
             fontWeight: FontWeight.bold,
           ),
@@ -561,7 +561,7 @@ class _SectionLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: const TextStyle(
+      style: TextStyle(
         color: NotelColors.textSecondary,
         fontSize: 13,
         fontWeight: FontWeight.w500,
@@ -669,7 +669,7 @@ class _MigraineDetailsFormState extends State<MigraineDetailsForm> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
+            Text(
               'Migraine attack ended',
               style: TextStyle(
                 fontSize: 18,
@@ -680,7 +680,7 @@ class _MigraineDetailsFormState extends State<MigraineDetailsForm> {
             const SizedBox(height: 8),
             Text(
               'You ended this attack at ${formatAttackTimestamp(endMs)} when you tapped the notification. Add the details below to finish the record.',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
                 color: NotelColors.textSecondary,
               ),
@@ -688,7 +688,7 @@ class _MigraineDetailsFormState extends State<MigraineDetailsForm> {
             const SizedBox(height: 16),
             const _SectionLabel('Relief rating'),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'How much relief do you feel now?',
               style: TextStyle(
                 fontSize: 13,
@@ -749,15 +749,15 @@ class _MigraineDetailsFormState extends State<MigraineDetailsForm> {
             const SizedBox(height: 8),
             TextField(
               controller: _medsController,
-              style: const TextStyle(color: NotelColors.textPrimary),
+              style: TextStyle(color: NotelColors.textPrimary),
               decoration: InputDecoration(
                 hintText: 'e.g. sumatriptan',
                 hintStyle:
-                    const TextStyle(color: NotelColors.textSecondary),
+                    TextStyle(color: NotelColors.textSecondary),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide:
-                      const BorderSide(color: NotelColors.fieldBorderIdle),
+                      BorderSide(color: NotelColors.fieldBorderIdle),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -771,7 +771,7 @@ class _MigraineDetailsFormState extends State<MigraineDetailsForm> {
               const SizedBox(height: 12),
               Text(
                 _saveError!,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
                   color: NotelColors.error,
                 ),
@@ -786,7 +786,7 @@ class _MigraineDetailsFormState extends State<MigraineDetailsForm> {
                   child: TextButton(
                     onPressed:
                         _saving ? null : () => Navigator.of(context).pop(),
-                    child: const Text(
+                    child: Text(
                       'Not now',
                       style: TextStyle(
                         color: NotelColors.textSecondary,
@@ -812,7 +812,7 @@ class _MigraineDetailsFormState extends State<MigraineDetailsForm> {
               ],
             ),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               'If you leave without saving, the attack stays ended and relief stays unset.',
               style: TextStyle(
                 fontSize: 12,

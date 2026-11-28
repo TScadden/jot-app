@@ -136,7 +136,7 @@ class VitalsStrip extends StatelessWidget {
     );
   }
 
-  static const _valueStyle = TextStyle(
+  static TextStyle get _valueStyle => TextStyle(
     fontSize: 14,
     fontWeight: FontWeight.bold,
     color: NotelColors.legacyDarkOnDark,
@@ -145,7 +145,7 @@ class VitalsStrip extends StatelessWidget {
   /// Header alignment package (Nov 10, 2026) — the compact pill's
   /// stepped-up value size (14sp → 15sp), keeping the icon∶text
   /// relationship with the compact icon at 17.
-  static const _valueStyleCompact = TextStyle(
+  static TextStyle get _valueStyleCompact => TextStyle(
     fontSize: 15,
     fontWeight: FontWeight.bold,
     color: NotelColors.legacyDarkOnDark,
@@ -205,7 +205,10 @@ Widget streakPill({required Widget leading, required Widget value}) {
       color: NotelColors.surfaceHigh.withValues(alpha: 0.15),
       borderRadius: BorderRadius.circular(8),
       border: Border.all(
-        color: const Color(0xFFFFFFFF).withValues(alpha: 0.08),
+        // Theme-mode package: hairline token (white @ 10% dark /
+        // black @ 10% light) — the raw white @ 8% literal was
+        // invisible on the light pill.
+        color: NotelColors.legacyDarkHairline,
         width: 1,
       ),
     ),
@@ -260,7 +263,11 @@ class StreakPillFlame extends StatelessWidget {
   static const Color litColor = Color(0xFFFF6A3D);
 
   /// StreakFlame's unlit icon color (before desaturation).
-  static const Color unlitColor = Color(0xFF8E97B8);
+  /// Theme sweep A: a getter, not a const — the raw #8E97B8 literal
+  /// measured ~2.9:1 against the light background, so the unlit
+  /// glyph resolves through the muted-text token, which passes
+  /// WCAG AA in both palettes (same fix as streak_flame.dart).
+  static Color get unlitColor => NotelColors.textSecondary;
 
   /// StreakFlame's unlit opacity.
   static const double unlitOpacity = 0.45;
@@ -293,7 +300,14 @@ class StreakPillFlame extends StatelessWidget {
 /// The gem pill's count color (founder-approved mock, Nov 19,
 /// 2026): lavender, following the streak pills' per-pill accent
 /// pattern (orange for the flame).
-const Color kGemCountColor = Color(0xFFB9AFFF);
+/// Theme-mode package (Nov 27, 2026): a getter, not a const —
+/// the dark value is the founder-approved lavender byte-exact;
+/// in light mode the count is TEXT on a near-white pill, where
+/// the lavender measures ~1.9:1, so it resolves to the light
+/// palette's AA purple text tint instead.
+Color get kGemCountColor => NotelColors.isLight
+    ? const Color(0xFF5340D6)
+    : const Color(0xFFB9AFFF);
 
 /// The Home gem pill (gems feature, Nov 19, 2026): directly under
 /// the current-streak pill, same pill construction as [streakPill]
@@ -337,7 +351,10 @@ class HomeGemPill extends StatelessWidget {
             color: NotelColors.surfaceHigh.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: const Color(0xFFFFFFFF).withValues(alpha: 0.08),
+              // Theme-mode package: hairline token (white @ 10% dark /
+        // black @ 10% light) — the raw white @ 8% literal was
+        // invisible on the light pill.
+        color: NotelColors.legacyDarkHairline,
               width: 1,
             ),
           ),
@@ -356,7 +373,7 @@ class HomeGemPill extends StatelessWidget {
               Text(
                 '$gemBalance',
                 key: const Key('homeGemPillCount'),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
                   color: kGemCountColor,
@@ -499,7 +516,7 @@ class HomeStreakStack extends StatelessWidget {
             leading: StreakPillFlame(lit: streakTodayComplete),
             value: CountUp(
               value: currentStreak,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
                 color: NotelColors.warning,
@@ -617,7 +634,7 @@ class HomeStreakRow extends StatelessWidget {
                   // Round 14 — counts up to the real streak on load.
                   value: CountUp(
                     value: currentStreak,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
                       color: NotelColors.warning,

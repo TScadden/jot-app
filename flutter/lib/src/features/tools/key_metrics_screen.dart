@@ -549,7 +549,7 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
           backgroundColor: NotelColors.surface,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text(
+          title: Text(
             'Export Biometrics CSV',
             style: TextStyle(
               fontWeight: FontWeight.bold,
@@ -567,7 +567,7 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Select how far back you want the download to go:',
                     style: TextStyle(
                       fontSize: 14,
@@ -596,7 +596,7 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
                           const SizedBox(width: 8),
                           Text(
                             label,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 16,
                               color: NotelColors.textPrimary,
                             ),
@@ -655,7 +655,7 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
             TextButton(
               onPressed:
                   _exporting ? null : () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancel',
+              child: Text('Cancel',
                   style: TextStyle(color: NotelColors.textSecondary)),
             ),
             FilledButton(
@@ -695,14 +695,14 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back,
+          icon: Icon(Icons.arrow_back,
               color: NotelColors.textSecondary, semanticLabel: 'Back'),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Key Metrics',
               style: TextStyle(
                   fontSize: 20,
@@ -731,13 +731,13 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
             )
           else
             IconButton(
-              icon: const Icon(Icons.download,
+              icon: Icon(Icons.download,
                   color: NotelColors.textSecondary,
                   semanticLabel: 'Export CSV'),
               onPressed: _showExportDialog,
             ),
           IconButton(
-            icon: const Icon(Icons.calendar_month,
+            icon: Icon(Icons.calendar_month,
                 color: NotelColors.textSecondary,
                 semanticLabel: 'Select Date'),
             onPressed: _pickDate,
@@ -773,11 +773,11 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.cloud_off_outlined,
+              Icon(Icons.cloud_off_outlined,
                   size: 56, color: NotelColors.textSecondary),
               const SizedBox(height: 16),
               Text(_error!,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 14,
                       height: 1.5,
                       color: NotelColors.textSecondary),
@@ -1041,7 +1041,7 @@ class MetricTile extends StatelessWidget {
                       Padding(
                         padding: const EdgeInsets.only(bottom: 6),
                         child: Text(unit,
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 12,
                                 color: NotelColors.textSecondary)),
                       ),
@@ -1050,7 +1050,7 @@ class MetricTile extends StatelessWidget {
                 ),
               const SizedBox(height: 2),
               Text(title,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
                       color: NotelColors.textSecondary)),
@@ -1058,7 +1058,7 @@ class MetricTile extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: Text(subtitle!,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 11, color: NotelColors.textSecondary)),
                 ),
             ],

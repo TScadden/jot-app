@@ -776,7 +776,7 @@ class _LoginScreenState extends State<LoginScreen> {
         children: [
           Text(
             _title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.bold,
               color: NotelColors.textPrimary,
@@ -806,7 +806,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         MaterialTapTargetSize.shrinkWrap,
                     visualDensity: VisualDensity.compact,
                   ),
-                  const Text(
+                  Text(
                     'I confirm I am 13 or older.',
                     style: TextStyle(
                       fontSize: 13,
@@ -824,7 +824,7 @@ class _LoginScreenState extends State<LoginScreen> {
           // field (which keeps whatever email was typed on the
           // login form — the controller is shared across modes).
           if (_isForgotPasswordMode) ...[
-            const Text(
+            Text(
               "Enter your email. If there's an account for it, we'll send you a link to set a new password.",
               style: TextStyle(
                 fontSize: 13,
@@ -915,7 +915,7 @@ class _LoginScreenState extends State<LoginScreen> {
           // "Back to Log In" toggle directly below.
           if (_isForgotPasswordMode && _resetSent) ...[
             const SizedBox(height: 10),
-            const Text(
+            Text(
               "If there's an account for that email, a reset link is on its way. Check your inbox, open the link to set your new password, then come back and log in with your new password.",
               key: ValueKey('forgot_password_success'),
               style: TextStyle(
@@ -932,7 +932,7 @@ class _LoginScreenState extends State<LoginScreen> {
             Text(
               _errorMessage!,
               key: const ValueKey('login_error'),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
                 color: NotelColors.error,
               ),
@@ -944,7 +944,7 @@ class _LoginScreenState extends State<LoginScreen> {
             onPressed: _onToggleMode,
             child: Text(
               _toggleLabel,
-              style: const TextStyle(
+              style: TextStyle(
                 color: NotelColors.textSecondary,
                 fontSize: 13,
               ),
@@ -956,7 +956,7 @@ class _LoginScreenState extends State<LoginScreen> {
               Expanded(
                 child: Divider(color: NotelColors.divider, thickness: 1),
               ),
-              const Text(
+              Text(
                 '  or  ',
                 style: TextStyle(
                   fontSize: 12,
@@ -1042,15 +1042,15 @@ class _LoginScreenState extends State<LoginScreen> {
       onSubmitted: (_) => _passwordFocusNode.requestFocus(),
       keyboardType: TextInputType.emailAddress,
       autocorrect: false,
-      style: const TextStyle(color: NotelColors.textPrimary, fontSize: 16),
+      style: TextStyle(color: NotelColors.textPrimary, fontSize: 16),
       cursorColor: NotelColors.primary,
       decoration: InputDecoration(
         labelText: 'Email Address',
         labelStyle:
-            const TextStyle(color: NotelColors.textSecondary),
+            TextStyle(color: NotelColors.textSecondary),
         floatingLabelStyle:
             const TextStyle(color: NotelColors.primary),
-        prefixIcon: const Icon(Icons.email,
+        prefixIcon: Icon(Icons.email,
             color: NotelColors.textSecondary),
         filled: false,
         enabledBorder: OutlineInputBorder(
@@ -1078,16 +1078,16 @@ class _LoginScreenState extends State<LoginScreen> {
       onSubmitted: (_) => _submitCurrentMode(),
       keyboardType: TextInputType.visiblePassword,
       autocorrect: false,
-      style: const TextStyle(color: NotelColors.textPrimary, fontSize: 16),
+      style: TextStyle(color: NotelColors.textPrimary, fontSize: 16),
       cursorColor: NotelColors.primary,
       decoration: InputDecoration(
         labelText: 'Password',
         labelStyle:
-            const TextStyle(color: NotelColors.textSecondary),
+            TextStyle(color: NotelColors.textSecondary),
         floatingLabelStyle:
             const TextStyle(color: NotelColors.primary),
         prefixIcon:
-            const Icon(Icons.lock, color: NotelColors.textSecondary),
+            Icon(Icons.lock, color: NotelColors.textSecondary),
         suffixIcon: IconButton(
           onPressed: () =>
               setState(() => _passwordVisible = !_passwordVisible),
@@ -1127,7 +1127,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _buildTermsLine() {
-    const base = TextStyle(
+    final base = TextStyle(
         fontSize: 8.5, color: NotelColors.textSecondary);
     const link = TextStyle(
         fontSize: 8.5,
@@ -1137,19 +1137,19 @@ class _LoginScreenState extends State<LoginScreen> {
       alignment: WrapAlignment.center,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        const Text('By signing up you agree to our ', style: base),
+        Text('By signing up you agree to our ', style: base),
         GestureDetector(
           onTap: () =>
               _openLegalPage('https://api.jottracker.com/terms.html'),
-          child: const Text('Terms of Use', style: link),
+          child: Text('Terms of Use', style: link),
         ),
-        const Text(' and ', style: base),
+        Text(' and ', style: base),
         GestureDetector(
           onTap: () =>
               _openLegalPage('https://api.jottracker.com/privacy.html'),
-          child: const Text('Privacy Policy', style: link),
+          child: Text('Privacy Policy', style: link),
         ),
-        const Text('.', style: base),
+        Text('.', style: base),
       ],
     );
   }

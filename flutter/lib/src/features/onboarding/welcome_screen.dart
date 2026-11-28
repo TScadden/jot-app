@@ -71,7 +71,7 @@ class WelcomeScreen extends StatelessWidget {
                           avatarAsset:
                               'assets/images/onboarding_avatar_man.png',
                           ringTint: NotelColors.primary,
-                          chip: const _CalloutChip(
+                          chip: _CalloutChip(
                             icon: Icons.biotech,
                             iconBg: NotelColors.info,
                             text: 'Track symptoms and treatments',
@@ -324,7 +324,7 @@ class _CalloutChip extends StatelessWidget {
                   text,
                   maxLines: 2,
                   softWrap: true,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                     color: NotelColors.textPrimary,

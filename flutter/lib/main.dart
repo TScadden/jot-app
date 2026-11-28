@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/billing_play_store.dart';
@@ -64,6 +66,7 @@ import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/app_background.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/notel_theme.dart';
+import 'package:tabs_lab/src/theme/theme_mode_controller.dart';
 import 'package:sentry_flutter/sentry_flutter.dart'
     show SentryWidgetsFlutterBinding;
 
@@ -159,6 +162,18 @@ Future<void> _bootstrap() async {
     // Keep the default already in the token; the app must start
     // identically without the override.
   }
+  // Theme-mode package (Nov 27, 2026): load the persisted theme
+  // mode BEFORE the first frame, next to the background load
+  // above — a LIGHT/SYSTEM value stored before the Oct 2026
+  // disabling takes effect on this first launch, with the
+  // matching NotelColors palette already selected, so there is
+  // no dark flash. Never throws (the controller's load resolves
+  // unreadable stores to DARK, the shipped default).
+  try {
+    await ThemeModeController.instance.load();
+  } catch (_) {
+    // Keep the dark default already in the tokens.
+  }
   // Boundary migration (Nov 19, 2026 founder decision): load the
   // persisted Tabs-day cutover BEFORE the first frame, next to
   // the background load above and in the same pattern — every
@@ -229,13 +244,192 @@ Future<void> _bootstrap() async {
 /// inject their own client (here or at [AppFlow]) are unaffected.
 final WeatherApiClient sharedWeatherApiClient = WeatherApiClient();
 
-class TabsLabApp extends StatelessWidget {
+class TabsLabApp extends StatefulWidget {
   /// Injectable for tests; defaults to [sharedWeatherApiClient]
   /// (see its doc) — NOT a fresh client — so production shares one
   /// weather cache app-wide.
   final WeatherApiClient? weatherApi;
 
-  const TabsLabApp({super.key, this.weatherApi});
+  /// Theme-mode package (Nov 27, 2026) — injectable for tests;
+  /// defaults to the app-wide [ThemeModeController.instance] the
+  /// bootstrap loads before the first frame.
+  final ThemeModeController? themeModeController;
+
+  const TabsLabApp({super.key, this.weatherApi, this.themeModeController});
+
+  @override
+  State<TabsLabApp> createState() => _TabsLabAppState();
+}
+
+/// The app root's theme coordinator (theme-mode package, Nov 27,
+/// 2026). Holds the APPLIED mode/brightness — the one the tree is
+/// actually rendering — apart from the controller's target, so a
+/// mode change can be sequenced as the founder's cross-fade:
+///
+/// 1. capture the current frame through the root
+///    [RepaintBoundary] (the whole UI, every surface — including
+///    per-widget `NotelColors` painters a ThemeData-only
+///    transition could never fade);
+/// 2. flip the [NotelColors] palette + the MaterialApp
+///    theme/themeMode in one setState, so the new frame paints
+///    complete under the captured image;
+/// 3. fade the captured image out over 450ms ease-out, then
+///    remove it. The overlay is non-interactive throughout.
+///
+/// Tap-driven changes and System-driven platform changes take
+/// this same path (the controller notifies for both). Reduced
+/// motion (MediaQuery.disableAnimations) skips the fade and
+/// applies instantly, per the design audit's §8 absolute rule.
+/// If a capture genuinely fails, the switch applies without the
+/// fade rather than wedging the app on a stale frame.
+class _TabsLabAppState extends State<TabsLabApp>
+    with SingleTickerProviderStateMixin {
+  static const _fadeDuration = Duration(milliseconds: 450);
+
+  late final ThemeModeController _themeController;
+  late String _appliedMode;
+  late Brightness _appliedBrightness;
+
+  final GlobalKey _boundaryKey = GlobalKey();
+  late final AnimationController _fadeController;
+  late final Animation<double> _fadeOpacity;
+  ui.Image? _fadeImage;
+  bool _switchInFlight = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _themeController =
+        widget.themeModeController ?? ThemeModeController.instance;
+    _appliedMode = _themeController.mode;
+    _appliedBrightness = _themeController.resolvedBrightness;
+    // The palette must match the applied brightness from the
+    // first frame this root ever paints (the bootstrap already
+    // selected it for the production controller; an injected
+    // controller in tests may not have).
+    NotelColors.setBrightness(_appliedBrightness);
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: _fadeDuration,
+    );
+    _fadeOpacity = Tween<double>(begin: 1, end: 0).animate(
+      CurvedAnimation(parent: _fadeController, curve: Curves.easeOut),
+    );
+    _fadeController.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        _fadeImage?.dispose();
+        if (mounted) setState(() => _fadeImage = null);
+      }
+    });
+    _themeController.addListener(_onThemeTargetChanged);
+    AppBackgroundController.instance.addListener(_onBackgroundChanged);
+  }
+
+  @override
+  void dispose() {
+    _themeController.removeListener(_onThemeTargetChanged);
+    AppBackgroundController.instance.removeListener(_onBackgroundChanged);
+    _fadeController.dispose();
+    _fadeImage?.dispose();
+    super.dispose();
+  }
+
+  void _onBackgroundChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onThemeTargetChanged() {
+    final targetMode = _themeController.mode;
+    final targetBrightness = _themeController.resolvedBrightness;
+    if (targetMode == _appliedMode &&
+        targetBrightness == _appliedBrightness) {
+      return;
+    }
+    if (targetBrightness == _appliedBrightness) {
+      // Mode changed but the rendered brightness did not (e.g.
+      // DARK -> SYSTEM on a dark device): apply the mode label
+      // only — there is nothing to fade.
+      setState(() {
+        _appliedMode = targetMode;
+        _appliedBrightness = targetBrightness;
+      });
+      return;
+    }
+    unawaited(_switchWithFade(targetMode, targetBrightness));
+  }
+
+  Future<void> _switchWithFade(
+      String targetMode, Brightness targetBrightness) async {
+    if (_switchInFlight) {
+      // A switch is already animating; land on the newest target
+      // immediately rather than stacking captures.
+      _applySwitch(targetMode, targetBrightness);
+      return;
+    }
+    _switchInFlight = true;
+    try {
+      final reduceMotion =
+          MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+      ui.Image? snapshot;
+      if (!reduceMotion) {
+        snapshot = await _captureFrame();
+      }
+      if (!mounted) {
+        snapshot?.dispose();
+        return;
+      }
+      if (snapshot == null) {
+        // Reduced motion, or the capture genuinely failed:
+        // apply now (see the class doc).
+        _applySwitch(targetMode, targetBrightness);
+        return;
+      }
+      _fadeImage?.dispose();
+      _fadeImage = snapshot;
+      _applySwitch(targetMode, targetBrightness);
+      _fadeController.forward(from: 0);
+    } finally {
+      _switchInFlight = false;
+    }
+  }
+
+  void _applySwitch(String mode, Brightness brightness) {
+    // Palette first, then the rebuild: the frame the setState
+    // paints must already read the new tokens.
+    NotelColors.setBrightness(brightness);
+    setState(() {
+      _appliedMode = mode;
+      _appliedBrightness = brightness;
+    });
+  }
+
+  Future<ui.Image?> _captureFrame() async {
+    try {
+      final boundary = _boundaryKey.currentContext?.findRenderObject()
+          as RenderRepaintBoundary?;
+      if (boundary == null) return null;
+      final ratio =
+          MediaQuery.maybeOf(context)?.devicePixelRatio ?? 1.0;
+      // The capture rasterizes the CURRENT (pre-switch) layer
+      // tree; nothing has rebuilt yet, so the image is the old
+      // theme exactly as the user sees it. The timeout only
+      // guards a wedged rasterizer — a miss applies the switch
+      // unfaded instead of hanging the app.
+      final image = await boundary
+          .toImage(pixelRatio: ratio)
+          .timeout(const Duration(milliseconds: 250),
+              onTimeout: () => throw TimeoutException('theme capture'));
+      return image;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  ThemeMode get _appliedThemeMode => switch (_appliedMode) {
+        'LIGHT' => ThemeMode.light,
+        'SYSTEM' => ThemeMode.system,
+        _ => ThemeMode.dark,
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -243,23 +437,27 @@ class TabsLabApp extends StatelessWidget {
     // its theme when AppBackgroundController notifies, so a change
     // in the Developer Terminal re-skins the base background
     // app-wide immediately, with no restart. With no override the
-    // controller's color IS the shipped default and the theme is
-    // byte-identical to before.
-    return ListenableBuilder(
-      listenable: AppBackgroundController.instance,
-      builder: (context, _) => MaterialApp(
-        title: 'Tabs',
-        debugShowCheckedModeBanner: false,
-        // Round 22 — the app's first theme carried only the slide
-        // pageTransitionsTheme (navigation flash fix) and the scaffold
-        // background backstop. Round 28 — notelDarkTheme() (see
-        // notel_theme.dart) keeps both and adds the full dark
-        // ColorScheme + stock-surface sub-themes from the Notel
-        // palette, so built-in Material surfaces (date picker, dialogs,
-        // menus, snackbars) render dark instead of falling back to the
-        // default light theme. Screen colors stay per-widget literals.
-        theme: notelDarkTheme(
-            background: AppBackgroundController.instance.color),
+    // controller's color IS the active palette's background.
+    final background = AppBackgroundController.instance.color;
+    return MaterialApp(
+      title: 'Tabs',
+      debugShowCheckedModeBanner: false,
+      // Round 22 — the app's first theme carried only the slide
+      // pageTransitionsTheme (navigation flash fix) and the scaffold
+      // background backstop. Round 28 — notelDarkTheme() (see
+      // notel_theme.dart) keeps both and adds the full dark
+      // ColorScheme + stock-surface sub-themes from the Notel
+      // palette, so built-in Material surfaces (date picker, dialogs,
+      // menus, snackbars) render dark instead of falling back to the
+      // default light theme.
+      // Theme-mode package (Nov 27, 2026): the light theme joins
+      // as `theme`, the dark theme stays as `darkTheme`, and
+      // `themeMode` is the APPLIED mode held by this root (see
+      // _TabsLabAppState) — it moves only inside the cross-fade
+      // sequence, together with the NotelColors palette flip.
+      theme: notelLightTheme(background: background),
+      darkTheme: notelDarkTheme(background: background),
+      themeMode: _appliedThemeMode,
       // The root presenter's presentation channel (see
       // reportPresentationNavigatorKey): its dialogs must land
       // on THIS navigator.
@@ -278,21 +476,43 @@ class TabsLabApp extends StatelessWidget {
       // unmounted, and holds it across a backgrounding until the
       // next foreground (see StreakCelebrationPresenter /
       // StreakCelebrationService). It renders its child unchanged.
-      builder: (context, child) => StreakCelebrationPresenter(
-        // Chest drop prompt presenter (CHESTS, Nov 26, 2026):
-        // presents a fresh chest drop on the root navigator once
-        // the streak celebration has cleared (see
-        // ChestDropPresenter / ChestDropService). Renders its
-        // child unchanged.
-        child: ChestDropPresenter(
-          child: ReportGenerationPresenter(
-            service: ReportGenerationService.instance,
-            child: child ?? const SizedBox.shrink(),
+      // Theme-mode package: the presenters + Navigator sit inside
+      // the root RepaintBoundary the cross-fade captures, and the
+      // captured frame overlays them while it fades (see
+      // _TabsLabAppState).
+      builder: (context, child) => Stack(
+        children: [
+          RepaintBoundary(
+            key: _boundaryKey,
+            child: StreakCelebrationPresenter(
+              // Chest drop prompt presenter (CHESTS, Nov 26, 2026):
+              // presents a fresh chest drop on the root navigator once
+              // the streak celebration has cleared (see
+              // ChestDropPresenter / ChestDropService). Renders its
+              // child unchanged.
+              child: ChestDropPresenter(
+                child: ReportGenerationPresenter(
+                  service: ReportGenerationService.instance,
+                  child: child ?? const SizedBox.shrink(),
+                ),
+              ),
+            ),
           ),
-        ),
+          if (_fadeImage != null)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: FadeTransition(
+                  opacity: _fadeOpacity,
+                  child: RawImage(
+                    image: _fadeImage,
+                    fit: BoxFit.fill,
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
-        home: AppFlow(weatherApi: weatherApi ?? sharedWeatherApiClient),
-      ),
+      home: AppFlow(weatherApi: widget.weatherApi ?? sharedWeatherApiClient),
     );
   }
 }

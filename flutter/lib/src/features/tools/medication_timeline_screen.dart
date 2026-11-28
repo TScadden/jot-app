@@ -446,11 +446,11 @@ class _MedicationTimelineScreenState extends State<MedicationTimelineScreen> {
               ListTile(
                 title: Text(
                   medicationMarkerLabel(marker),
-                  style: const TextStyle(color: NotelColors.textPrimary),
+                  style: TextStyle(color: NotelColors.textPrimary),
                 ),
                 subtitle: Text(
                   marker.dateDisplay,
-                  style: const TextStyle(color: NotelColors.textSecondary),
+                  style: TextStyle(color: NotelColors.textSecondary),
                 ),
                 onTap: () {
                   Navigator.of(sheetContext).pop();
@@ -482,14 +482,14 @@ class _MedicationTimelineScreenState extends State<MedicationTimelineScreen> {
         backgroundColor: NotelColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
+          icon: Icon(
             Icons.arrow_back,
             color: NotelColors.textPrimary,
             semanticLabel: 'Back',
           ),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
+        title: Text(
           MedicationTimelineStrings.title,
           style: TextStyle(
             fontSize: 20,
@@ -519,7 +519,7 @@ class _MedicationTimelineScreenState extends State<MedicationTimelineScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 110),
       children: [
-        const Text(
+        Text(
           MedicationTimelineStrings.intro,
           style: TextStyle(fontSize: 14, color: NotelColors.textSecondary),
         ),
@@ -533,7 +533,7 @@ class _MedicationTimelineScreenState extends State<MedicationTimelineScreen> {
         _chartCard(data),
         const SizedBox(height: 20),
         if (data.markers.isEmpty)
-          const Text(
+          Text(
             MedicationTimelineStrings.noChangesInRange,
             style: TextStyle(fontSize: 14, color: NotelColors.textSecondary),
           )
@@ -562,7 +562,7 @@ class _MedicationTimelineScreenState extends State<MedicationTimelineScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text(
+            Text(
               MedicationTimelineStrings.membershipUnknownMessage,
               style: TextStyle(
                   fontSize: 14, height: 1.5, color: NotelColors.textSecondary),
@@ -594,7 +594,7 @@ class _MedicationTimelineScreenState extends State<MedicationTimelineScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text(
+            Text(
               MedicationTimelineStrings.loadErrorMessage,
               style: TextStyle(
                   fontSize: 14, height: 1.5, color: NotelColors.textSecondary),
@@ -632,11 +632,11 @@ class _MedicationTimelineScreenState extends State<MedicationTimelineScreen> {
                 borderRadius: BorderRadius.circular(28),
                 border: Border.all(color: NotelColors.cardBorder),
               ),
-              child: const Icon(Icons.lock_outline,
+              child: Icon(Icons.lock_outline,
                   size: 44, color: NotelColors.textSecondary),
             ),
             const SizedBox(height: 24),
-            const Text(
+            Text(
               MedicationTimelineStrings.title,
               style: TextStyle(
                   fontSize: 20,
@@ -645,7 +645,7 @@ class _MedicationTimelineScreenState extends State<MedicationTimelineScreen> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               MedicationTimelineStrings.intro,
               style: TextStyle(
                   fontSize: 14, height: 1.5, color: NotelColors.textSecondary),
@@ -668,7 +668,7 @@ class _MedicationTimelineScreenState extends State<MedicationTimelineScreen> {
       ),
       child: Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
             fontSize: 13, height: 1.45, color: NotelColors.textPrimary),
       ),
     );
@@ -701,7 +701,7 @@ class _MedicationTimelineScreenState extends State<MedicationTimelineScreen> {
               ? NotelColors.textPrimary
               : NotelColors.textSecondary,
         ),
-        side: const BorderSide(color: NotelColors.cardBorder),
+        side: BorderSide(color: NotelColors.cardBorder),
       );
     }
 
@@ -773,7 +773,7 @@ class _MedicationTimelineScreenState extends State<MedicationTimelineScreen> {
               children: [
                 Text(
                   medicationMarkerLabel(marker),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: NotelColors.textPrimary,
@@ -782,12 +782,12 @@ class _MedicationTimelineScreenState extends State<MedicationTimelineScreen> {
                 const SizedBox(height: 3),
                 Text(
                   marker.dateDisplay,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 12, color: NotelColors.textSecondary),
                 ),
                 if (marker.seeded) ...[
                   const SizedBox(height: 3),
-                  const Text(
+                  Text(
                     MedicationTimelineStrings.seededProvenance,
                     style: TextStyle(
                         fontSize: 12, color: NotelColors.textSecondary),
@@ -824,14 +824,14 @@ class _MedicationTimelineScreenState extends State<MedicationTimelineScreen> {
                 Expanded(
                   child: Text(
                     lane.medName,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                       color: NotelColors.textPrimary,
                     ),
                   ),
                 ),
-                const Icon(Icons.chevron_right,
+                Icon(Icons.chevron_right,
                     size: 20, color: NotelColors.textSecondary),
               ],
             ),
@@ -948,7 +948,7 @@ class MedicationTimelineChartPainter extends CustomPainter {
         final tp = TextPainter(
           text: TextSpan(
             text: '${monthNames[day.date.month]} ${day.date.day}',
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 9, color: NotelColors.textSecondary),
           ),
           textDirection: TextDirection.ltr,
@@ -1007,7 +1007,7 @@ class _MedicationChangePanelState extends State<MedicationChangePanel> {
           children: [
             Text(
               medicationMarkerLabel(marker),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
                 color: NotelColors.textPrimary,
@@ -1016,19 +1016,19 @@ class _MedicationChangePanelState extends State<MedicationChangePanel> {
             const SizedBox(height: 4),
             Text(
               marker.dateDisplay,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 13, color: NotelColors.textSecondary),
             ),
             if (marker.seeded) ...[
               const SizedBox(height: 4),
-              const Text(
+              Text(
                 MedicationTimelineStrings.seededProvenance,
                 style:
                     TextStyle(fontSize: 13, color: NotelColors.textSecondary),
               ),
             ],
             const SizedBox(height: 14),
-            const Text(
+            Text(
               MedicationTimelineStrings.nonCausationDisclaimer,
               style: TextStyle(
                   fontSize: 13, height: 1.45, color: NotelColors.textPrimary),
@@ -1052,7 +1052,7 @@ class _MedicationChangePanelState extends State<MedicationChangePanel> {
                       : NotelColors.surfaceHigh,
                 ),
                 side: WidgetStateProperty.all(
-                    const BorderSide(color: NotelColors.cardBorder)),
+                    BorderSide(color: NotelColors.cardBorder)),
               ),
             ),
             const SizedBox(height: 16),
@@ -1071,7 +1071,7 @@ class _MedicationChangePanelState extends State<MedicationChangePanel> {
                     result.afterAverage!, result.afterScoredDays),
               ),
               const SizedBox(height: 14),
-              const Text(
+              Text(
                 MedicationTimelineStrings.ruleNote,
                 style: TextStyle(
                     fontSize: 12,
@@ -1082,13 +1082,13 @@ class _MedicationChangePanelState extends State<MedicationChangePanel> {
               Text(
                 MedicationTimelineStrings.belowFloorMessage(
                     result.beforeScoredDays, result.afterScoredDays),
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 13,
                     height: 1.45,
                     color: NotelColors.textPrimary),
               ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               MedicationTimelineStrings.screenDisclaimer,
               style: TextStyle(
                   fontSize: 12,
@@ -1105,11 +1105,11 @@ class _MedicationChangePanelState extends State<MedicationChangePanel> {
   /// identical styling for before and after is structural, not
   /// a convention (R2).
   Widget _averageRow(String label, String value) {
-    const labelStyle = TextStyle(
+    final labelStyle = TextStyle(
       fontSize: 13,
       color: NotelColors.textSecondary,
     );
-    const valueStyle = TextStyle(
+    final valueStyle = TextStyle(
       fontSize: 15,
       fontWeight: FontWeight.w600,
       color: NotelColors.textPrimary,
@@ -1155,7 +1155,7 @@ class MedicationLaneScreen extends StatelessWidget {
         backgroundColor: NotelColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
+          icon: Icon(
             Icons.arrow_back,
             color: NotelColors.textPrimary,
             semanticLabel: 'Back',
@@ -1164,7 +1164,7 @@ class MedicationLaneScreen extends StatelessWidget {
         ),
         title: Text(
           lane.medName,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
             color: NotelColors.textPrimary,
@@ -1197,7 +1197,7 @@ class MedicationLaneScreen extends StatelessWidget {
                       children: [
                         Text(
                           medicationMarkerLabel(marker),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                             color: NotelColors.textPrimary,
@@ -1206,13 +1206,13 @@ class MedicationLaneScreen extends StatelessWidget {
                         const SizedBox(height: 3),
                         Text(
                           marker.dateDisplay,
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 12,
                               color: NotelColors.textSecondary),
                         ),
                         if (marker.seeded) ...[
                           const SizedBox(height: 3),
-                          const Text(
+                          Text(
                             MedicationTimelineStrings.seededProvenance,
                             style: TextStyle(
                                 fontSize: 12,
@@ -1268,7 +1268,7 @@ class MedicationLaneScreen extends StatelessWidget {
                   children: [
                     Text(
                       formatMedArchiveDate(segment.startDate),
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 11, color: NotelColors.textSecondary),
                     ),
                     const SizedBox(height: 4),
@@ -1277,7 +1277,7 @@ class MedicationLaneScreen extends StatelessWidget {
                         if (segment.dose.isNotEmpty) segment.dose,
                         if (segment.frequency.isNotEmpty) segment.frequency,
                       ].join(' · '),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: NotelColors.textPrimary,
@@ -1285,7 +1285,7 @@ class MedicationLaneScreen extends StatelessWidget {
                     ),
                     if (segment.startsSeeded) ...[
                       const SizedBox(height: 4),
-                      const Text(
+                      Text(
                         MedicationTimelineStrings.seededProvenance,
                         style: TextStyle(
                             fontSize: 11, color: NotelColors.textSecondary),

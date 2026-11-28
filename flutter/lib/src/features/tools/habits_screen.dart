@@ -421,7 +421,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
         backgroundColor: NotelColors.surface,
         title: Text(
           habit.title,
-          style: const TextStyle(
+          style: TextStyle(
             color: NotelColors.textPrimary,
             fontSize: 16,
             fontWeight: FontWeight.bold,
@@ -583,14 +583,14 @@ class _HabitsScreenState extends State<HabitsScreen> {
         backgroundColor: NotelColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
+          icon: Icon(
             Icons.arrow_back,
             color: NotelColors.textPrimary,
             semanticLabel: 'Back',
           ),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
+        title: Text(
           'Daily Habits',
           style: TextStyle(
             fontSize: 20,
@@ -658,7 +658,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
+              Text(
                 'Couldn\'t load habits',
                 style: TextStyle(
                   color: NotelColors.textPrimary,
@@ -667,7 +667,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Check your connection and try again.',
                 style: TextStyle(
                   color: NotelColors.textSecondary,
@@ -709,7 +709,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
           ],
           Text(
             subtitle,
-            style: const TextStyle(
+            style: TextStyle(
               color: NotelColors.textSecondary,
               fontSize: 13,
             ),
@@ -750,13 +750,13 @@ class _HabitsScreenState extends State<HabitsScreen> {
         Expanded(
           child: TextField(
             controller: _addController,
-            style: const TextStyle(
+            style: TextStyle(
               color: NotelColors.textPrimary,
               fontSize: 14,
             ),
             decoration: InputDecoration(
               hintText: 'Add new routine habit...',
-              hintStyle: const TextStyle(
+              hintStyle: TextStyle(
                 color: NotelColors.textSecondary,
                 fontSize: 14,
               ),
@@ -808,14 +808,14 @@ class _HabitsScreenState extends State<HabitsScreen> {
       padding: const EdgeInsets.only(top: 8),
       child: InputChip(
         key: const ValueKey('habit_add_time_chip'),
-        avatar: const Icon(
+        avatar: Icon(
           Icons.schedule,
           size: 16,
           color: NotelColors.textSecondary,
         ),
         label: Text(
           _addTime == null ? kHabitAnytime : _addTime!.format(context),
-          style: const TextStyle(
+          style: TextStyle(
             color: NotelColors.textPrimary,
             fontSize: 12,
           ),
@@ -845,7 +845,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
       ),
       child: Row(
         children: [
-          const Icon(Icons.whatshot,
+          Icon(Icons.whatshot,
               color: NotelColors.warning, size: 28),
           const SizedBox(width: 10),
           Expanded(
@@ -854,7 +854,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
               children: [
                 Text(
                   '$streak day streak!',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: NotelColors.warning,
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
@@ -878,7 +878,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
   }
 
   Widget _emptyState() {
-    return const Center(
+    return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -968,7 +968,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
               _streakBadge(checked, streak),
               // Native per-card ✕ delete (top-right, no confirmation).
               IconButton(
-                icon: const Icon(
+                icon: Icon(
                   Icons.close,
                   color: NotelColors.textSecondary,
                   size: 14,
@@ -984,7 +984,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
           const SizedBox(height: 12),
           Text(
             habit.title,
-            style: const TextStyle(
+            style: TextStyle(
               color: NotelColors.textPrimary,
               fontSize: 13,
               fontWeight: FontWeight.bold,
@@ -1011,7 +1011,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.schedule,
                     size: 11,
                     color: NotelColors.textSecondary,
@@ -1020,7 +1020,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
                   Text(
                     formatHabitTargetTimeForDisplay(
                         habit.targetTime, context),
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: NotelColors.textSecondary,
                       fontSize: 10,
                     ),

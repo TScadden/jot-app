@@ -203,7 +203,7 @@ class _MedScanConfirmSheetState extends State<MedScanConfirmSheet> {
                       _match!.dose,
                     )
                   : MedScanStrings.confirmAddTitle,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
                 color: NotelColors.textPrimary,
@@ -214,7 +214,7 @@ class _MedScanConfirmSheetState extends State<MedScanConfirmSheet> {
               _updateMode
                   ? MedScanStrings.confirmUpdateIntro
                   : MedScanStrings.confirmAddIntro,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
                 color: NotelColors.textSecondary,
               ),
@@ -223,8 +223,8 @@ class _MedScanConfirmSheetState extends State<MedScanConfirmSheet> {
             TextField(
               key: const ValueKey('med_scan_name'),
               controller: _name,
-              style: const TextStyle(color: NotelColors.textPrimary),
-              decoration: const InputDecoration(
+              style: TextStyle(color: NotelColors.textPrimary),
+              decoration: InputDecoration(
                 labelText: MedScanStrings.nameLabel,
                 labelStyle: TextStyle(color: NotelColors.textSecondary),
               ),
@@ -233,8 +233,8 @@ class _MedScanConfirmSheetState extends State<MedScanConfirmSheet> {
             TextField(
               key: const ValueKey('med_scan_dose'),
               controller: _dose,
-              style: const TextStyle(color: NotelColors.textPrimary),
-              decoration: const InputDecoration(
+              style: TextStyle(color: NotelColors.textPrimary),
+              decoration: InputDecoration(
                 labelText: MedScanStrings.doseLabel,
                 labelStyle: TextStyle(color: NotelColors.textSecondary),
               ),
@@ -243,7 +243,7 @@ class _MedScanConfirmSheetState extends State<MedScanConfirmSheet> {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  const Text(
+                  Text(
                     '${MedScanStrings.formLabel}: ',
                     style: TextStyle(
                       fontSize: 13,
@@ -252,7 +252,7 @@ class _MedScanConfirmSheetState extends State<MedScanConfirmSheet> {
                   ),
                   Text(
                     form,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       color: NotelColors.textPrimary,
                     ),
@@ -266,8 +266,8 @@ class _MedScanConfirmSheetState extends State<MedScanConfirmSheet> {
               readOnly: true,
               onTap: _pickStartDate,
               controller: _startText,
-              style: const TextStyle(color: NotelColors.textPrimary),
-              decoration: const InputDecoration(
+              style: TextStyle(color: NotelColors.textPrimary),
+              decoration: InputDecoration(
                 labelText: MedScanStrings.startDateLabel,
                 labelStyle: TextStyle(color: NotelColors.textSecondary),
                 suffixIcon: Icon(
@@ -282,7 +282,7 @@ class _MedScanConfirmSheetState extends State<MedScanConfirmSheet> {
               _updateMode
                   ? MedScanStrings.nothingSavedUpdate
                   : MedScanStrings.nothingSavedAdd,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 color: NotelColors.textSecondary,
               ),
@@ -337,7 +337,7 @@ class _MedScanConfirmSheetState extends State<MedScanConfirmSheet> {
               widget.proposal.source == MedScanSource.labelPhoto
                   ? MedScanStrings.photoPrivacyNote
                   : MedScanStrings.barcodeLookupNote,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
                 color: NotelColors.textSecondary,
               ),

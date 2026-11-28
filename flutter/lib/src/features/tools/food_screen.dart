@@ -554,11 +554,11 @@ class _FoodToolScreenState extends State<FoodToolScreen> {
         backgroundColor: NotelColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back,
+          icon: Icon(Icons.arrow_back,
               color: NotelColors.textPrimary, semanticLabel: 'Back'),
           onPressed: widget.onBack ?? () => Navigator.of(context).pop(),
         ),
-        title: const Text(
+        title: Text(
           'Food Sensitivity',
           style: TextStyle(
               fontSize: 20,
@@ -569,7 +569,7 @@ class _FoodToolScreenState extends State<FoodToolScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
         children: [
-          const Text(
+          Text(
             'Check sensitivity triggers and nutritional levels.',
             style:
                 TextStyle(fontSize: 13, color: NotelColors.textSecondary),
@@ -578,7 +578,7 @@ class _FoodToolScreenState extends State<FoodToolScreen> {
           TextField(
             controller: _input,
             maxLines: 4,
-            style: const TextStyle(color: NotelColors.textPrimary),
+            style: TextStyle(color: NotelColors.textPrimary),
             decoration: InputDecoration(
               hintText: 'e.g. spinach, coffee, avocado, aged cheese',
               hintStyle: TextStyle(
@@ -602,7 +602,7 @@ class _FoodToolScreenState extends State<FoodToolScreen> {
               ),
               suffixIcon: _input.text.isNotEmpty
                   ? IconButton(
-                      icon: const Icon(Icons.close,
+                      icon: Icon(Icons.close,
                           color: NotelColors.textSecondary),
                       onPressed: () => setState(_input.clear),
                     )
@@ -659,7 +659,7 @@ class _FoodToolScreenState extends State<FoodToolScreen> {
           ],
           if (_results.isNotEmpty && !_loading) ...[
             const SizedBox(height: 16),
-            const Text('Results',
+            Text('Results',
                 style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -669,7 +669,7 @@ class _FoodToolScreenState extends State<FoodToolScreen> {
           ],
           if (_recentSearches.isNotEmpty) ...[
             const SizedBox(height: 24),
-            const Text('Recently Checked',
+            Text('Recently Checked',
                 style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -698,15 +698,15 @@ class _FoodToolScreenState extends State<FoodToolScreen> {
       ),
       child: Row(
         children: [
-          const Icon(Icons.cloud_off, size: 20, color: NotelColors.error),
+          Icon(Icons.cloud_off, size: 20, color: NotelColors.error),
           const SizedBox(width: 10),
           Expanded(
             child: Text(text,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 13, color: NotelColors.textPrimary)),
           ),
           IconButton(
-            icon: const Icon(Icons.close,
+            icon: Icon(Icons.close,
                 size: 18, color: NotelColors.textSecondary),
             onPressed: () => setState(() => _error = null),
           ),
@@ -750,7 +750,7 @@ class _FoodToolScreenState extends State<FoodToolScreen> {
                       ),
                       const SizedBox(width: 12),
                       Text(_capitalize(result.foodName),
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
                               color: NotelColors.textPrimary)),
@@ -789,7 +789,7 @@ class _FoodToolScreenState extends State<FoodToolScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(topic.topicName,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                       color: NotelColors.textPrimary)),
@@ -812,7 +812,7 @@ class _FoodToolScreenState extends State<FoodToolScreen> {
           ),
           const SizedBox(height: 4),
           Text(topic.reasoning,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 13, height: 1.4, color: NotelColors.textSecondary)),
         ],
       ),
@@ -839,10 +839,10 @@ class _FoodToolScreenState extends State<FoodToolScreen> {
         decoration: BoxDecoration(
           color: NotelColors.surfaceHigh.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          border: Border.all(color: NotelColors.legacyDarkHairlineFaint),
         ),
               child: Text(_capitalize(name),
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 12, color: NotelColors.textSecondary)),
             ),
           ],

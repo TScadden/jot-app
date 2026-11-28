@@ -500,7 +500,7 @@ class _StreakCelebrationScreenState extends State<StreakCelebrationScreen>
                           data.gemLines[i],
                           key: Key('celebrationGemLine$i'),
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: kGemCountColor,

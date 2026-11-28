@@ -532,14 +532,14 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
         backgroundColor: NotelColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
+          icon: Icon(
             Icons.arrow_back,
             color: NotelColors.textPrimary,
             semanticLabel: 'Back',
           ),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
+        title: Text(
           'Medications & Side Effects',
           style: TextStyle(
             fontSize: 20,
@@ -577,7 +577,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 110),
               children: [
-                const Text(
+                Text(
                   'Manage your active prescriptions and log doses to track body side-effects in real time.',
                   style: TextStyle(
                     fontSize: 14,
@@ -590,7 +590,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                 _quickActionsCard(
                     [for (final i in active) _doc.entryAt(i)!]),
                 const SizedBox(height: 16),
-                const Text(
+                Text(
                   'Active Prescriptions',
                   style: TextStyle(
                     fontSize: 16,
@@ -643,7 +643,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: NotelColors.cardBorder),
           ),
-          child: const Row(
+          child: Row(
             children: [
               Icon(Icons.timeline, size: 22, color: NotelColors.primary),
               SizedBox(width: 12),
@@ -680,7 +680,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
         color: NotelColors.surface.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.08),
+          color: NotelColors.legacyDarkHairline,
         ),
       ),
       child: Column(
@@ -691,7 +691,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Quick Actions',
                     style: TextStyle(
                       fontSize: 16,
@@ -701,7 +701,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                   ),
                   Text(
                     '$activeCount Active Medication(s)',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       color: NotelColors.textSecondary,
                     ),
@@ -787,7 +787,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                   // in the app's real font — the content scales
                   // a touch instead of overflowing (capture
                   // pass, Nov 22, 2026).
-                  child: const FittedBox(
+                  child: FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -822,7 +822,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: const FittedBox(
+                  child: FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -849,7 +849,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
             ],
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Dose logs sync to your history, and adding, archiving, restoring, and editing sync to your profile.',
             style: TextStyle(
               fontSize: 11,
@@ -873,7 +873,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
             color: NotelColors.primary.withValues(alpha: 0.6),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'No Active Medications',
             style: TextStyle(
               fontSize: 15,
@@ -882,7 +882,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'No medications found in your profile.',
             style: TextStyle(
               fontSize: 13,
@@ -923,7 +923,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                   .withValues(alpha: isArchived ? 0.45 : 0.8),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.08),
+                color: NotelColors.legacyDarkHairline,
               ),
             ),
             child: Row(
@@ -984,7 +984,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                       ),
                       child: Text(
                         'Ended ${med.endedDate}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
                           color: NotelColors.textSecondary,
@@ -1068,7 +1068,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
               ),
               IconButton(
                 key: ValueKey('archive_med_at_$rawIndex'),
-                icon: const Icon(Icons.archive,
+                icon: Icon(Icons.archive,
                     size: 20, color: NotelColors.textSecondary),
                 tooltip: 'Archive',
                 onPressed:
@@ -1078,7 +1078,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
             if (isArchived) ...[
               IconButton(
                 key: ValueKey('unarchive_med_at_$rawIndex'),
-                icon: const Icon(Icons.unarchive,
+                icon: Icon(Icons.unarchive,
                     size: 20, color: NotelColors.textSecondary),
                 tooltip: 'Restore',
                 onPressed:
@@ -1088,7 +1088,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
               // (no confirmation dialog in native).
               IconButton(
                 key: ValueKey('delete_med_at_$rawIndex'),
-                icon: const Icon(Icons.delete_outline,
+                icon: Icon(Icons.delete_outline,
                     size: 20, color: NotelColors.textSecondary),
                 tooltip: 'Delete permanently',
                 onPressed:
@@ -1115,7 +1115,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
           children: [
             Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.archive,
                   size: 18,
                   color: NotelColors.textSecondary,
@@ -1123,7 +1123,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                 const SizedBox(width: 8),
                 Text(
                   'Archived Medications ($count)',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: NotelColors.textSecondary,
@@ -1150,7 +1150,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(24),
         ),
-        title: const Row(
+        title: Row(
           children: [
             Icon(Icons.info, color: NotelColors.primary),
             SizedBox(width: 8),
@@ -1163,7 +1163,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
             ),
           ],
         ),
-        content: const Column(
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1399,15 +1399,15 @@ class _MedicationEditDialogState extends State<_MedicationEditDialog> {
       controller: controller,
       readOnly: true,
       onTap: () => _pickDate(controller),
-      style: const TextStyle(color: NotelColors.textPrimary),
+      style: TextStyle(color: NotelColors.textPrimary),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: NotelColors.textSecondary),
+        labelStyle: TextStyle(color: NotelColors.textSecondary),
         suffixIcon: controller.text.isEmpty
-            ? const Icon(Icons.calendar_month,
+            ? Icon(Icons.calendar_month,
                 color: NotelColors.textSecondary)
             : IconButton(
-                icon: const Icon(Icons.clear,
+                icon: Icon(Icons.clear,
                     color: NotelColors.textSecondary),
                 tooltip: 'Clear date',
                 onPressed: () =>
@@ -1426,7 +1426,7 @@ class _MedicationEditDialogState extends State<_MedicationEditDialog> {
       ),
       title: Text(
         _isAdd ? 'Add New Medication' : 'Edit Medication',
-        style: const TextStyle(
+        style: TextStyle(
           fontWeight: FontWeight.bold,
           color: NotelColors.textPrimary,
         ),
@@ -1441,8 +1441,8 @@ class _MedicationEditDialogState extends State<_MedicationEditDialog> {
               TextField(
                 key: const ValueKey('med_edit_name'),
                 controller: _name,
-                style: const TextStyle(color: NotelColors.textPrimary),
-                decoration: const InputDecoration(
+                style: TextStyle(color: NotelColors.textPrimary),
+                decoration: InputDecoration(
                   labelText: 'Medication Name *',
                   labelStyle: TextStyle(color: NotelColors.textSecondary),
                 ),
@@ -1451,8 +1451,8 @@ class _MedicationEditDialogState extends State<_MedicationEditDialog> {
               TextField(
                 key: const ValueKey('med_edit_dose'),
                 controller: _dose,
-                style: const TextStyle(color: NotelColors.textPrimary),
-                decoration: const InputDecoration(
+                style: TextStyle(color: NotelColors.textPrimary),
+                decoration: InputDecoration(
                   labelText: 'Dose * (e.g. 50mg, 60mg, 0.5ml)',
                   labelStyle: TextStyle(color: NotelColors.textSecondary),
                 ),
@@ -1461,8 +1461,8 @@ class _MedicationEditDialogState extends State<_MedicationEditDialog> {
               TextField(
                 key: const ValueKey('med_edit_frequency'),
                 controller: _frequency,
-                style: const TextStyle(color: NotelColors.textPrimary),
-                decoration: const InputDecoration(
+                style: TextStyle(color: NotelColors.textPrimary),
+                decoration: InputDecoration(
                   labelText: 'Frequency * (e.g. Twice daily, Once weekly)',
                   labelStyle: TextStyle(color: NotelColors.textSecondary),
                 ),
@@ -1499,7 +1499,7 @@ class _MedicationEditDialogState extends State<_MedicationEditDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text(
+          child: Text(
             'Cancel',
             style: TextStyle(color: NotelColors.textSecondary),
           ),

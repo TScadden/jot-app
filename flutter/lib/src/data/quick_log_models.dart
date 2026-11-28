@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Round 19 — Quick Log data models + pure logic.
 ///
@@ -133,7 +134,7 @@ class QuickLogCategory {
       if (hex.length == 6) hex = 'FF$hex';
       return Color(int.parse(hex, radix: 16));
     } catch (_) {
-      return const Color(0xFF7C6EFF);
+      return NotelColors.primary;
     }
   }
 }

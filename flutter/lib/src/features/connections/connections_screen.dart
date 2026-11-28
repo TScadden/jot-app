@@ -502,7 +502,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen>
                 ),
           tooltip: 'Back',
         ),
-        title: const Text(
+        title: Text(
           'Data connections',
           style: TextStyle(
             fontSize: 20,
@@ -533,12 +533,12 @@ class _ConnectionsScreenState extends State<ConnectionsScreen>
                 onTap: _openIosSheet,
               )
             else
-              const Padding(
+              Padding(
                 padding: EdgeInsets.only(left: 4),
                 child: Text(
                   'No trackers connected yet.',
                   style: TextStyle(
-                    color: Color(0x807A8FAF),
+                    color: NotelColors.textSecondary,
                     fontSize: 14,
                   ),
                 ),
@@ -575,7 +575,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen>
                 onTap: null,
               ),
               const SizedBox(height: 12),
-              const Padding(
+              Padding(
                 padding: EdgeInsets.only(left: 4),
                 child: Text(
                   IosHealthCopy.state4Detail,
@@ -587,12 +587,12 @@ class _ConnectionsScreenState extends State<ConnectionsScreen>
                 ),
               ),
             ] else
-              const Padding(
+              Padding(
                 padding: EdgeInsets.symmetric(vertical: 16),
                 child: Text(
                   "You've connected every supported tracker.",
                   style: TextStyle(
-                    color: Color(0x807A8FAF),
+                    color: NotelColors.textSecondary,
                     fontSize: 14,
                   ),
                   textAlign: TextAlign.center,
@@ -602,7 +602,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen>
               const SizedBox(height: 12),
               Text(
                 _error!,
-                style: const TextStyle(
+                style: TextStyle(
                   color: NotelColors.error,
                   fontSize: 13,
                 ),
@@ -639,7 +639,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen>
                 ),
           tooltip: 'Back',
         ),
-        title: const Text(
+        title: Text(
           'Data connections',
           style: TextStyle(
             fontSize: 20,
@@ -683,12 +683,12 @@ class _ConnectionsScreenState extends State<ConnectionsScreen>
                 onTap: _openManageSheet,
               )
             else
-              const Padding(
+              Padding(
                 padding: EdgeInsets.only(left: 4),
                 child: Text(
                   'No trackers connected yet.',
                   style: TextStyle(
-                    color: Color(0x807A8FAF),
+                    color: NotelColors.textSecondary,
                     fontSize: 14,
                   ),
                 ),
@@ -699,7 +699,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen>
             if (showLoading)
               const _LoadingRow()
             else if (status == HealthConnectStatus.unavailable)
-              const _ConnectionItem(
+              _ConnectionItem(
                 logo: _HealthConnectLogo(),
                 name: 'Android Health (Google Fit, Samsung)',
                 statusText: 'Not available on this device',
@@ -727,12 +727,12 @@ class _ConnectionsScreenState extends State<ConnectionsScreen>
                     : null,
               )
             else
-              const Padding(
+              Padding(
                 padding: EdgeInsets.symmetric(vertical: 16),
                 child: Text(
                   "You've connected every supported tracker.",
                   style: TextStyle(
-                    color: Color(0x807A8FAF),
+                    color: NotelColors.textSecondary,
                     fontSize: 14,
                   ),
                   textAlign: TextAlign.center,
@@ -742,7 +742,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen>
               const SizedBox(height: 12),
               Text(
                 _error!,
-                style: const TextStyle(
+                style: TextStyle(
                   color: NotelColors.error,
                   fontSize: 13,
                 ),
@@ -756,7 +756,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen>
             // status.
             if (_postGrantCapturing) ...[
               const SizedBox(height: 12),
-              const Row(
+              Row(
                 children: [
                   SizedBox(
                     width: 16,
@@ -786,7 +786,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen>
               Text(
                 HealthConnectService.missingPermissionsMessage(
                     _missingLabels),
-                style: const TextStyle(
+                style: TextStyle(
                   color: NotelColors.warning,
                   fontSize: 13,
                 ),
@@ -797,7 +797,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen>
             const SizedBox(height: 8),
             const _FitbitCard(),
             const SizedBox(height: 32),
-            const Padding(
+            Padding(
               padding: EdgeInsets.symmetric(horizontal: 4),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -849,7 +849,7 @@ class _SectionLabel extends StatelessWidget {
       padding: const EdgeInsets.only(left: 4, bottom: 4),
       child: Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           color: NotelColors.textSecondary,
           fontSize: 14,
           fontWeight: FontWeight.bold,
@@ -923,7 +923,7 @@ class _ConnectionItem extends StatelessWidget {
                   Container(
                     width: 44,
                     height: 44,
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       color: NotelColors.legacyDarkHairlineFaint,
                       shape: BoxShape.circle,
                     ),
@@ -937,7 +937,7 @@ class _ConnectionItem extends StatelessWidget {
                       children: [
                         Text(
                           name,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: NotelColors.textPrimary,
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
@@ -1056,7 +1056,7 @@ class _FitbitCard extends StatelessWidget {
         ),
       ),
       padding: const EdgeInsets.all(16),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
@@ -1143,7 +1143,7 @@ class _ManageSheet extends StatelessWidget {
           Container(
             width: 64,
             height: 64,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: NotelColors.legacyDarkHairlineFaint,
               shape: BoxShape.circle,
             ),
@@ -1151,7 +1151,7 @@ class _ManageSheet extends StatelessWidget {
             child: const _HealthConnectLogo(),
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'Android Health (Google Fit, Samsung)',
             style: TextStyle(
               color: NotelColors.textPrimary,
@@ -1180,7 +1180,7 @@ class _ManageSheet extends StatelessWidget {
           ),
           if (isConnectionProblem) ...[
             const SizedBox(height: 24),
-            const Text(
+            Text(
               HealthConnectService.staleGrantMessage,
               style: TextStyle(
                 color: NotelColors.textSecondary,
@@ -1203,7 +1203,7 @@ class _ManageSheet extends StatelessWidget {
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  const Text(
+                  Text(
                     'New Metrics Available!',
                     style: TextStyle(
                       color: NotelColors.textPrimary,
@@ -1212,7 +1212,7 @@ class _ManageSheet extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  const Text(
+                  Text(
                     'Tabs now supports Blood Oxygen, Resting HR, and Breathing Rate, but they require additional permissions.',
                     style: TextStyle(
                       color: NotelColors.textSecondary,
@@ -1246,7 +1246,7 @@ class _ManageSheet extends StatelessWidget {
             width: double.infinity,
             child: TextButton(
               onPressed: () => onManageSystem(),
-              child: const Text(
+              child: Text(
                 'Manage system permissions',
                 style: TextStyle(
                   color: NotelColors.textSecondary,
@@ -1322,7 +1322,7 @@ class _IosHealthSheet extends StatelessWidget {
           Container(
             width: 64,
             height: 64,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: NotelColors.legacyDarkHairlineFaint,
               shape: BoxShape.circle,
             ),
@@ -1330,7 +1330,7 @@ class _IosHealthSheet extends StatelessWidget {
             child: const _AppleHealthLogo(),
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             IosHealthCopy.rowName,
             style: TextStyle(
               color: NotelColors.textPrimary,
@@ -1357,7 +1357,7 @@ class _IosHealthSheet extends StatelessWidget {
                 : isNoData
                     ? IosHealthCopy.state3Body
                     : IosHealthCopy.state1Body,
-            style: const TextStyle(
+            style: TextStyle(
               color: NotelColors.textSecondary,
               fontSize: 13,
               height: 18 / 13,
@@ -1366,7 +1366,7 @@ class _IosHealthSheet extends StatelessWidget {
           ),
           if (isNoData) ...[
             const SizedBox(height: 12),
-            const Text(
+            Text(
               IosHealthCopy.state3Secondary,
               style: TextStyle(
                 color: NotelColors.textSecondary,
@@ -1382,7 +1382,7 @@ class _IosHealthSheet extends StatelessWidget {
               width: double.infinity,
               child: TextButton(
                 onPressed: () => onManage(),
-                child: const Text(
+                child: Text(
                   IosHealthCopy.state2ManageButton,
                   style: TextStyle(
                     color: NotelColors.textSecondary,

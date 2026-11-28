@@ -55,13 +55,15 @@ import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/lab_black_colors.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/theme_mode_controller.dart';
 import 'package:tabs_lab/src/widgets/user_avatar.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
 
-/// Dark ink on a primary fill (native LegacyDarkChipInk) — the in-app
-/// passing precedent for text on Tabs purple: 5.21:1 vs white's 3.80:1
-/// (R49 audit S1).
-const _chipInk = Color(0xFF0A0A0E);
+// Dark ink on a primary fill is the NotelColors.onPrimary token
+// (native LegacyDarkChipInk) — the in-app passing precedent for
+// text on Tabs purple: 5.21:1 vs white's 3.80:1 (R49 audit S1).
+// (Theme-mode package, Nov 27, 2026: the file-local _chipInk
+// literal was token-routed to it.)
 
 /// Round 29 — the Flutter Settings tab: a port of native
 /// `SettingsScreen.kt` (5933 lines, SettingsMenu MAIN / MEMBERSHIP /
@@ -311,10 +313,12 @@ class _SettingsScreenState extends State<SettingsScreen>
   // dock re-renders on the flip with no restart. (Supersedes
   // the PR #170 _liquidGlass bool field.)
   NavBarStyle _navBarStyle = NavBarStyle.solid;
-  // Juno ruling (Oct 2026): no _themeMode view state anymore — the
-  // Appearance picker is disabled and Dark is always the shown
-  // selection, so this screen never reads the stored theme mode.
-  // The stored key/value is left exactly as it was in the store.
+  // Theme-mode package (Nov 27, 2026): _themeMode view state is
+  // back — Juno's Nov 27 ruling supersedes her Oct 2026 disabling.
+  // Seeded from the store in _load (a value stored before the
+  // disabling is honored as-is); the Appearance picker shows it
+  // as the selection and writes taps through setThemeMode.
+  String _themeMode = 'DARK';
   bool _contextHidden = true;
   bool _checkInEnabled = true;
   int _lastSyncMs = 0;
@@ -606,13 +610,11 @@ class _SettingsScreenState extends State<SettingsScreen>
     final results = await Future.wait<dynamic>([
       _backend.fetchSyncPull(),
       _store.getShowNavLabels(),
-      // No getThemeMode(): per Juno's Oct 2026 ruling the disabled
-      // Appearance picker never displays the stored value (see the
-      // field note above), so nothing here consumes it.
       _store.getUserContextHidden(),
       _store.getCheckInReminderEnabled(),
       _store.getLastSyncTimeMs(),
       _store.getNavBarStyle(),
+      _store.getThemeMode(),
     ]);
     if (!mounted) return;
     final body = results[0] as Map<String, dynamic>?;
@@ -646,6 +648,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       _checkInEnabled = results[3] as bool;
       _lastSyncMs = results[4] as int;
       _navBarStyle = results[5] as NavBarStyle;
+      _themeMode = results[6] as String;
       _loaded = true;
       if (!_contextSeeded) {
         _contextController.text = data.userContext;
@@ -1024,7 +1027,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: NotelColors.surface,
-        title: const Text('Allow notifications?',
+        title: Text('Allow notifications?',
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.bold)),
@@ -1032,12 +1035,12 @@ class _SettingsScreenState extends State<SettingsScreen>
           checkIn
               ? 'Tabs needs permission to send notifications before it can remind you. The reminder fires at 8:00 PM, only on days you have not checked in yet.'
               : 'Tabs needs permission to send notifications before it can remind you. Each reminder fires at the time shown for its toggle, only while that toggle is on.',
-          style: const TextStyle(color: NotelColors.textPrimary),
+          style: TextStyle(color: NotelColors.textPrimary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Not now',
+            child: Text('Not now',
                 style: TextStyle(color: NotelColors.textSecondary)),
           ),
           TextButton(
@@ -1119,12 +1122,12 @@ class _SettingsScreenState extends State<SettingsScreen>
           context: context,
           builder: (dialogContext) => AlertDialog(
             backgroundColor: NotelColors.surface,
-            title: const Text('Health History Imported',
+            title: Text('Health History Imported',
                 style: TextStyle(
                     color: NotelColors.textPrimary,
                     fontWeight: FontWeight.bold)),
             content: Text(report.summary,
-                style: const TextStyle(
+                style: TextStyle(
                     color: NotelColors.textSecondary, fontSize: 14)),
             actions: [
               FilledButton(
@@ -1145,12 +1148,12 @@ class _SettingsScreenState extends State<SettingsScreen>
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: NotelColors.surface,
-        title: const Text("Couldn't Import CSV",
+        title: Text("Couldn't Import CSV",
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.bold)),
         content: Text(message,
-            style: const TextStyle(
+            style: TextStyle(
                 color: NotelColors.textSecondary, fontSize: 14)),
         actions: [
           FilledButton(
@@ -1325,12 +1328,12 @@ class _SettingsScreenState extends State<SettingsScreen>
         leading: _page == _Page.main
             ? null
             : IconButton(
-                icon: const Icon(Icons.arrow_back,
+                icon: Icon(Icons.arrow_back,
                     color: NotelColors.textSecondary),
                 onPressed: _back,
               ),
         title: Text(_title,
-            style: const TextStyle(
+            style: TextStyle(
                 color: NotelColors.textPrimary,
                 // R49 SE7/S3: explicit root-title size (was inherited
                 // from the M3 default text theme).
@@ -1425,8 +1428,16 @@ class _SettingsScreenState extends State<SettingsScreen>
             alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(vertical: 10),
             decoration: BoxDecoration(
+              // Theme-mode package (Nov 27, 2026): the LabBlack
+              // pair is a dark-glass recipe; in light mode the
+              // capsule resolves through the Notel tokens instead
+              // (selected surface — white — LIGHTER than the
+              // surfaceHigh track, the same D11 polarity). Dark
+              // rendering is byte-identical to before.
               color: selected
-                  ? LabBlackColors.segmentedSelected
+                  ? (NotelColors.isLight
+                      ? NotelColors.surface
+                      : LabBlackColors.segmentedSelected)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(10),
             ),
@@ -1458,7 +1469,9 @@ class _SettingsScreenState extends State<SettingsScreen>
       padding: const EdgeInsets.all(4),
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: LabBlackColors.segmentedTrack,
+        color: NotelColors.isLight
+            ? NotelColors.surfaceHigh
+            : LabBlackColors.segmentedTrack,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(children: [
@@ -1471,7 +1484,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   Widget _sectionLabel(String text) => Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: Text(text,
-            style: const TextStyle(
+            style: TextStyle(
                 color: NotelColors.textSecondary,
                 fontSize: 12,
                 fontWeight: FontWeight.w600)),
@@ -1501,7 +1514,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(title,
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: NotelColors.textPrimary,
                       // R49 SE7: explicit row-title size, unified at
                       // 16 with the profile card titles (was inherited).
@@ -1509,7 +1522,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                       fontWeight: FontWeight.w500)),
               const SizedBox(height: 2),
               Text(subtitle,
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: NotelColors.textSecondary, fontSize: 11)),
             ],
           ),
@@ -1665,7 +1678,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     return [
       _card([
         Text(message,
-            style: const TextStyle(
+            style: TextStyle(
                 color: NotelColors.textSecondary, fontSize: 13)),
       ]),
     ];
@@ -1711,7 +1724,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                const Icon(Icons.medication_outlined,
+                Icon(Icons.medication_outlined,
                     size: 18, color: NotelColors.warning),
                 const SizedBox(width: 8),
                 Expanded(
@@ -1719,13 +1732,13 @@ class _SettingsScreenState extends State<SettingsScreen>
                     'Medication names in this text: ${names.join(', ')}. '
                     'For reports, your medication list wins over this '
                     'text, so keep the two in sync.',
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: NotelColors.textPrimary, fontSize: 12),
                   ),
                 ),
                 IconButton(
                   key: const ValueKey('personal_context_med_hint_dismiss'),
-                  icon: const Icon(Icons.close,
+                  icon: Icon(Icons.close,
                       size: 18, color: NotelColors.textSecondary),
                   tooltip: 'Dismiss',
                   onPressed: () => setState(
@@ -1746,7 +1759,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text('Personal Context',
+            Text('Personal Context',
                 style: TextStyle(
                     color: NotelColors.textPrimary,
                     fontWeight: FontWeight.w600,
@@ -1773,7 +1786,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         // Coach with every message, and the medication list —
         // not this text — is what reports treat as authoritative
         // for medications.
-        const Text(
+        Text(
             'This text is quoted word for word as background in your '
             'clinical reports and is sent to the Health Coach with '
             'every message. Your medication list is authoritative '
@@ -1788,9 +1801,9 @@ class _SettingsScreenState extends State<SettingsScreen>
             controller: _contextController,
             minLines: 2,
             maxLines: 4,
-            style: const TextStyle(
+            style: TextStyle(
                 color: NotelColors.textPrimary, fontSize: 13),
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: 'Add background info here…',
               hintStyle:
                   TextStyle(color: NotelColors.textSecondary, fontSize: 12),
@@ -1820,7 +1833,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 color: NotelColors.surfaceHigh,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Column(
+              child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text('Hidden for your privacy',
@@ -1849,9 +1862,9 @@ class _SettingsScreenState extends State<SettingsScreen>
         [
           _menuRow(Icons.person, 'User Profile', _Page.userProfile,
               key: const ValueKey('menu_user_profile')),
-          const Divider(color: NotelColors.divider, height: 1),
+          Divider(color: NotelColors.divider, height: 1),
           _menuRow(Icons.tune, 'Customize', _Page.customize),
-          const Divider(color: NotelColors.divider, height: 1),
+          Divider(color: NotelColors.divider, height: 1),
           // Home polish round 5 (founder, Nov 10, 2026): TWO rows
           // are removed from this menu. The AI & Clinical Advocate
           // row is gone — its home is the Home drawer's "AI
@@ -1862,10 +1875,10 @@ class _SettingsScreenState extends State<SettingsScreen>
           // openEventCounters (the _Page.eventCounters plumbing
           // below is likewise unchanged).
           _menuRow(Icons.notifications, 'Notifications', _Page.notifications),
-          const Divider(color: NotelColors.divider, height: 1),
+          Divider(color: NotelColors.divider, height: 1),
           _menuRow(Icons.sync, 'Sync Settings', _Page.syncSettings),
           if (_data.isAdmin) ...[
-            const Divider(color: NotelColors.divider, height: 1),
+            Divider(color: NotelColors.divider, height: 1),
             _menuRow(Icons.bluetooth, 'Tabs Live Beta', _Page.jotLive),
           ],
         ],
@@ -1890,7 +1903,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           InkWell(
             key: const ValueKey('import_health_history'),
             onTap: _startHistoryImport,
-            child: const Padding(
+            child: Padding(
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               child: Row(
                 children: [
@@ -1954,7 +1967,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           child: TextButton(
             key: const ValueKey('developer_terminal_entry'),
             onPressed: () => setState(() => _page = _Page.debug),
-            child: const Text('Developer Terminal Options',
+            child: Text('Developer Terminal Options',
                 style: TextStyle(
                     color: NotelColors.textSecondary, fontSize: 11)),
           ),
@@ -1964,7 +1977,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       // 5. Footer (native :1170-1210)
       Column(
         children: [
-          const Text('Tabs v1.0',
+          Text('Tabs v1.0',
               style: TextStyle(
                   color: NotelColors.textSecondary,
                   fontWeight: FontWeight.w600,
@@ -2031,7 +2044,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Widget _menuRow(IconData icon, String title, _Page page,
-      {Color iconColor = NotelColors.textSecondary, Key? key}) {
+      {Color? iconColor, Key? key}) {
     return InkWell(
       key: key,
       onTap: () {
@@ -2058,13 +2071,13 @@ class _SettingsScreenState extends State<SettingsScreen>
             const SizedBox(width: 16),
             Expanded(
               child: Text(title,
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: NotelColors.textPrimary,
                       fontWeight: FontWeight.w500,
                       // R49 SE7: row-title role unified at 16.
                       fontSize: 16)),
             ),
-            const Icon(Icons.chevron_right,
+            Icon(Icons.chevron_right,
                 size: 20, color: NotelColors.textSecondary),
           ],
         ),
@@ -2089,7 +2102,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(d.membershipTitle,
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: NotelColors.textPrimary,
                         fontWeight: FontWeight.bold,
                         // R49 SE7: card-title role = 16 bold.
@@ -2133,7 +2146,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     color: NotelColors.primary,
                     fontSize: 32,
                     fontWeight: FontWeight.w900)),
-            const Text('MEMBERSHIP LEVEL',
+            Text('MEMBERSHIP LEVEL',
                 style: TextStyle(
                     color: NotelColors.textSecondary,
                     fontSize: 12,
@@ -2149,7 +2162,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             : 'Standard account. Upgrade for unlimited AI insights and clinical reports.',
         textAlign: TextAlign.center,
         style:
-            const TextStyle(color: NotelColors.textSecondary, fontSize: 13),
+            TextStyle(color: NotelColors.textSecondary, fontSize: 13),
       ),
       const SizedBox(height: 12),
       Center(
@@ -2216,7 +2229,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   backgroundColor: NotelColors.primary,
                   // R49 SE6/S1+S2: dark-ink foreground (5.21:1 on
                   // primary; white was 3.80:1) and 48dp height.
-                  foregroundColor: _chipInk,
+                  foregroundColor: NotelColors.onPrimary,
                   minimumSize: const Size(64, 48)),
               onPressed: _showPurchaseUnavailable,
               icon: const Icon(Icons.star, size: 18),
@@ -2225,7 +2238,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
           ),
           const SizedBox(height: 10),
-          const Text(
+          Text(
             'Auto-renews until canceled. Billed by Google Play.',
             textAlign: TextAlign.center,
             style: TextStyle(color: NotelColors.textSecondary, fontSize: 11),
@@ -2268,7 +2281,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         ],
       ] else ...[
         const SizedBox(height: 20),
-        const Text(
+        Text(
             'Thank you for being a member! Your support keeps Tabs improving.',
             style: TextStyle(
                 color: NotelColors.textSecondary,
@@ -2276,7 +2289,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 fontWeight: FontWeight.w500)),
       ],
       const SizedBox(height: 12),
-      const Text(
+      Text(
         'Tabs Premium is for education and personal self tracking only. It does not provide medical advice, diagnosis, or treatment. Talk to a qualified health professional about any health decisions.',
         textAlign: TextAlign.center,
         style: TextStyle(color: NotelColors.textSecondary, fontSize: 11),
@@ -2294,7 +2307,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       const SizedBox(height: 12),
       _planCardIos('yearly', 'Yearly Plan'),
       const SizedBox(height: 24),
-      const Text(
+      Text(
         'Subscriptions are purchased through the App Store in the '
         'Tabs app. This build cannot start a subscription yet.',
         textAlign: TextAlign.center,
@@ -2348,7 +2361,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(title,
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: NotelColors.textPrimary,
                           fontWeight: FontWeight.bold,
                           fontSize: 16)),
@@ -2356,7 +2369,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   // Native reads live Play pricing; the Lab has no Play
                   // catalog, so native's own fallback copy is shown.
                   Text(priceLine,
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: NotelColors.textSecondary,
                           fontSize: 13)),
                 ],
@@ -2396,11 +2409,11 @@ class _SettingsScreenState extends State<SettingsScreen>
         context: context,
         builder: (ctx) => AlertDialog(
           backgroundColor: NotelColors.surface,
-          title: const Text('App Store',
+          title: Text('App Store',
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontWeight: FontWeight.bold)),
-          content: const Text(
+          content: Text(
               'Subscriptions are purchased through the App Store in the Tabs app. This build cannot start a subscription yet.',
               style: TextStyle(color: NotelColors.textSecondary)),
           actions: [
@@ -2419,11 +2432,11 @@ class _SettingsScreenState extends State<SettingsScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: NotelColors.surface,
-        title: const Text('Google Play',
+        title: Text('Google Play',
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.bold)),
-        content: const Text(
+        content: Text(
             'Subscriptions are purchased through Google Play in the Tabs app. This build cannot start a subscription yet.',
             style: TextStyle(color: NotelColors.textSecondary)),
         actions: [
@@ -2513,7 +2526,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Nickname',
+                  Text('Nickname',
                       style: TextStyle(
                           color: NotelColors.textPrimary,
                           // R49 SE7: explicit card-title size (was
@@ -2535,7 +2548,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                       if (d.nickname.isNotEmpty && d.tag.isNotEmpty) ...[
                         const SizedBox(width: 4),
                         Text('#${d.tag}',
-                            style: const TextStyle(
+                            style: TextStyle(
                                 color: NotelColors.textSecondary,
                                 fontSize: 12,
                                 fontWeight: FontWeight.w500)),
@@ -2551,7 +2564,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               style:
                   TextButton.styleFrom(minimumSize: const Size(64, 48)),
               onPressed: _showNicknameDialog,
-              child: const Text('Edit',
+              child: Text('Edit',
                   style: TextStyle(
                       color: NotelColors.textPrimary, fontSize: 12)),
             ),
@@ -2560,7 +2573,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       ]),
       const SizedBox(height: 16),
       _card([
-        const Row(
+        Row(
           children: [
             Icon(Icons.person, color: NotelColors.primary, size: 28),
             SizedBox(width: 12),
@@ -2586,19 +2599,19 @@ class _SettingsScreenState extends State<SettingsScreen>
         const SizedBox(height: 16),
         if (d.age != null && d.age! > 0)
           Text('Age: ${d.age}',
-              style: const TextStyle(
+              style: TextStyle(
                   color: NotelColors.textSecondary, fontSize: 13)),
         if (heightIn != null && heightIn > 0)
           Text('Height: $ft\'$inch" ($heightIn in)',
-              style: const TextStyle(
+              style: TextStyle(
                   color: NotelColors.textSecondary, fontSize: 13)),
         if (weightLbs != null && weightLbs > 0)
           Text('Weight: $weightLbs lbs',
-              style: const TextStyle(
+              style: TextStyle(
                   color: NotelColors.textSecondary, fontSize: 13)),
         if (d.gender.isNotEmpty)
           Text('Gender: ${d.gender}',
-              style: const TextStyle(
+              style: TextStyle(
                   color: NotelColors.textSecondary, fontSize: 13)),
         const SizedBox(height: 16),
         SizedBox(
@@ -2653,19 +2666,19 @@ class _SettingsScreenState extends State<SettingsScreen>
       // When no med is active — even if archived meds exist —
       // the existing empty state below shows (no new copy).
       _card([
-        const Text('Medications',
+        Text('Medications',
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 // R49 SE7: same card-title role as the profile cards
                 // above — explicit 16 (was inherited).
                 fontSize: 16,
                 fontWeight: FontWeight.w500)),
-        const Text('Track your current medications',
+        Text('Track your current medications',
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
         const SizedBox(height: 8),
         if (activeMedIndices.isEmpty)
-          const Text(
+          Text(
               'No medications added yet. Tap the + button to add one manually.',
               style:
                   TextStyle(color: NotelColors.textSecondary, fontSize: 13))
@@ -2688,12 +2701,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text('${m['name'] ?? ''}',
-                            style: const TextStyle(
+                            style: TextStyle(
                                 color: NotelColors.textPrimary,
                                 fontWeight: FontWeight.bold,
                                 fontSize: 14)),
                         Text(range,
-                            style: const TextStyle(
+                            style: TextStyle(
                                 color: NotelColors.textSecondary,
                                 fontSize: 12)),
                       ],
@@ -2708,14 +2721,14 @@ class _SettingsScreenState extends State<SettingsScreen>
                   // this list (Round 44 rule).
                   IconButton(
                     key: ValueKey('archive_medication_at_$rawIndex'),
-                    icon: const Icon(Icons.archive,
+                    icon: Icon(Icons.archive,
                         size: 20, color: NotelColors.textSecondary),
                     tooltip: 'Archive',
                     onPressed: () => _archiveMedication(rawIndex),
                   ),
                   IconButton(
                     key: ValueKey('delete_medication_${m['id'] ?? ''}'),
-                    icon: const Icon(Icons.delete,
+                    icon: Icon(Icons.delete,
                         size: 18, color: NotelColors.error),
                     onPressed: () => _deleteMedication('${m['id'] ?? ''}'),
                   ),
@@ -2739,15 +2752,15 @@ class _SettingsScreenState extends State<SettingsScreen>
       // list of plain name strings native's ConditionRepository
       // persists (SyncManager.kt:430 sends it as `conditions`).
       _card([
-        const Text('Conditions',
+        Text('Conditions',
             style: TextStyle(
                 color: NotelColors.textPrimary, fontWeight: FontWeight.w500)),
-        const Text('Diagnosed or suspected conditions',
+        Text('Diagnosed or suspected conditions',
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
         const SizedBox(height: 8),
         if (d.conditions.isEmpty)
-          const Text(
+          Text(
               'No conditions added yet. Tap the + button to search and add one.',
               style:
                   TextStyle(color: NotelColors.textSecondary, fontSize: 13))
@@ -2760,7 +2773,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                       label: Text('${c['name'] ?? ''}'),
                       backgroundColor: NotelColors.surfaceHigh,
                       labelStyle:
-                          const TextStyle(color: NotelColors.textPrimary),
+                          TextStyle(color: NotelColors.textPrimary),
                       onDeleted: () =>
                           _removeCondition('${c['name'] ?? ''}'),
                       deleteIconColor: NotelColors.error,
@@ -2783,7 +2796,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         InkWell(
           onTap: () =>
               setState(() => _privacyExpanded = !_privacyExpanded),
-          child: const Row(
+          child: Row(
             children: [
               Icon(Icons.security, color: NotelColors.primary, size: 28),
               SizedBox(width: 12),
@@ -2808,7 +2821,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         ),
         if (_privacyExpanded) ...[
           const SizedBox(height: 12),
-          const Text(
+          Text(
               'You have the right to request deletion of all your sync information, logs, files, and credentials from our cloud servers and database permanently.',
               style:
                   TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
@@ -2830,7 +2843,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           if (_deleteError != null) ...[
             const SizedBox(height: 8),
             Text(_deleteError!,
-                style: const TextStyle(
+                style: TextStyle(
                     color: NotelColors.error, fontSize: 12)),
           ],
         ],
@@ -2846,7 +2859,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
           backgroundColor: NotelColors.surface,
-          title: const Text('Nickname',
+          title: Text('Nickname',
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontWeight: FontWeight.bold)),
@@ -2856,8 +2869,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               TextField(
                 key: const ValueKey('nickname_field'),
                 controller: controller,
-                style: const TextStyle(color: NotelColors.textPrimary),
-                decoration: const InputDecoration(
+                style: TextStyle(color: NotelColors.textPrimary),
+                decoration: InputDecoration(
                     hintText: 'Enter nickname...',
                     hintStyle: TextStyle(color: NotelColors.textSecondary)),
               ),
@@ -2865,7 +2878,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(error!,
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: NotelColors.error, fontSize: 11)),
                 ),
             ],
@@ -2873,7 +2886,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel',
+              child: Text('Cancel',
                   style: TextStyle(color: NotelColors.textPrimary)),
             ),
             TextButton(
@@ -2913,7 +2926,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                           'Could not save nickname. Try again.');
                 }
               },
-              child: const Text('Save',
+              child: Text('Save',
                   style: TextStyle(
                       color: NotelColors.textPrimary,
                       fontWeight: FontWeight.bold)),
@@ -3015,7 +3028,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: NotelColors.surface,
-        title: const Text('Edit Profile',
+        title: Text('Edit Profile',
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.bold)),
@@ -3026,11 +3039,11 @@ class _SettingsScreenState extends State<SettingsScreen>
               TextField(
                   controller: ageC,
                   keyboardType: TextInputType.number,
-                  style: const TextStyle(color: NotelColors.textPrimary),
+                  style: TextStyle(color: NotelColors.textPrimary),
                   decoration: const InputDecoration(labelText: 'Age')),
               TextField(
                   controller: genderC,
-                  style: const TextStyle(color: NotelColors.textPrimary),
+                  style: TextStyle(color: NotelColors.textPrimary),
                   decoration: const InputDecoration(labelText: 'Gender')),
               Row(children: [
                 Expanded(
@@ -3038,7 +3051,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                         controller: ftC,
                         keyboardType: TextInputType.number,
                         style:
-                            const TextStyle(color: NotelColors.textPrimary),
+                            TextStyle(color: NotelColors.textPrimary),
                         decoration: const InputDecoration(
                             labelText: 'Height (ft)'))),
                 const SizedBox(width: 8),
@@ -3047,14 +3060,14 @@ class _SettingsScreenState extends State<SettingsScreen>
                         controller: inC,
                         keyboardType: TextInputType.number,
                         style:
-                            const TextStyle(color: NotelColors.textPrimary),
+                            TextStyle(color: NotelColors.textPrimary),
                         decoration: const InputDecoration(
                             labelText: 'Height (in)'))),
               ]),
               TextField(
                   controller: weightC,
                   keyboardType: TextInputType.number,
-                  style: const TextStyle(color: NotelColors.textPrimary),
+                  style: TextStyle(color: NotelColors.textPrimary),
                   decoration: const InputDecoration(labelText: 'Weight')),
             ],
           ),
@@ -3062,7 +3075,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel',
+            child: Text('Cancel',
                 style: TextStyle(color: NotelColors.textSecondary)),
           ),
           TextButton(
@@ -3323,7 +3336,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
           backgroundColor: NotelColors.surface,
-          title: const Text('Add Medication',
+          title: Text('Add Medication',
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontWeight: FontWeight.bold)),
@@ -3334,14 +3347,14 @@ class _SettingsScreenState extends State<SettingsScreen>
                 TextField(
                   key: const ValueKey('medication_name_field'),
                   controller: nameC,
-                  style: const TextStyle(color: NotelColors.textPrimary),
+                  style: TextStyle(color: NotelColors.textPrimary),
                   decoration:
                       const InputDecoration(labelText: 'Medication Name'),
                 ),
                 TextField(
                   key: const ValueKey('medication_start_field'),
                   controller: startC,
-                  style: const TextStyle(color: NotelColors.textPrimary),
+                  style: TextStyle(color: NotelColors.textPrimary),
                   decoration: const InputDecoration(
                       labelText: 'Started Date (e.g. Jun 2026)'),
                 ),
@@ -3352,7 +3365,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                       onChanged: (v) =>
                           setLocal(() => isPresent = v ?? true),
                     ),
-                    const Text('Still taking (Present)',
+                    Text('Still taking (Present)',
                         style: TextStyle(
                             color: NotelColors.textPrimary, fontSize: 14)),
                   ],
@@ -3361,7 +3374,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   TextField(
                     key: const ValueKey('medication_end_field'),
                     controller: endC,
-                    style: const TextStyle(color: NotelColors.textPrimary),
+                    style: TextStyle(color: NotelColors.textPrimary),
                     decoration: const InputDecoration(
                         labelText: 'Ended Date (e.g. Jul 2026)'),
                   ),
@@ -3371,7 +3384,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel',
+              child: Text('Cancel',
                   style: TextStyle(color: NotelColors.textSecondary)),
             ),
             TextButton(
@@ -3452,7 +3465,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   .toList();
           return AlertDialog(
             backgroundColor: NotelColors.surface,
-            title: const Text('Add Condition',
+            title: Text('Add Condition',
                 style: TextStyle(
                     color: NotelColors.textPrimary,
                     fontWeight: FontWeight.bold)),
@@ -3464,7 +3477,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   TextField(
                     key: const ValueKey('condition_search_field'),
                     controller: searchC,
-                    style: const TextStyle(color: NotelColors.textPrimary),
+                    style: TextStyle(color: NotelColors.textPrimary),
                     decoration: const InputDecoration(
                         labelText: 'Search Conditions'),
                     onChanged: (v) => setLocal(() => query = v),
@@ -3479,7 +3492,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                         return ListTile(
                           key: ValueKey('condition_option_$name'),
                           title: Text(name,
-                              style: const TextStyle(
+                              style: TextStyle(
                                   color: NotelColors.textPrimary,
                                   // R49 preservation: ListTile titles
                                   // inherit theme titleMedium, which R49
@@ -3737,7 +3750,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
           backgroundColor: NotelColors.surface,
-          title: const Text('Add Text Note',
+          title: Text('Add Text Note',
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontWeight: FontWeight.bold)),
@@ -3748,7 +3761,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 key: const ValueKey('note_title_field'),
                 controller: titleC,
                 onChanged: (_) => setLocal(() {}),
-                style: const TextStyle(color: NotelColors.textPrimary),
+                style: TextStyle(color: NotelColors.textPrimary),
                 decoration:
                     const InputDecoration(labelText: 'Title (Optional)'),
               ),
@@ -3759,7 +3772,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 minLines: 3,
                 maxLines: 6,
                 onChanged: (_) => setLocal(() {}),
-                style: const TextStyle(color: NotelColors.textPrimary),
+                style: TextStyle(color: NotelColors.textPrimary),
                 decoration: const InputDecoration(
                     labelText: 'Note content / Text message'),
               ),
@@ -3768,7 +3781,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel',
+              child: Text('Cancel',
                   style: TextStyle(color: NotelColors.textSecondary)),
             ),
             TextButton(
@@ -3862,23 +3875,23 @@ class _SettingsScreenState extends State<SettingsScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: NotelColors.surface,
-        title: const Text('Trash File?',
+        title: Text('Trash File?',
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.bold)),
         content: Text(
             "Are you sure you want to permanently delete '${doc.name}'?",
-            style: const TextStyle(color: NotelColors.textSecondary)),
+            style: TextStyle(color: NotelColors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel',
+            child: Text('Cancel',
                 style: TextStyle(color: NotelColors.textSecondary)),
           ),
           TextButton(
             key: ValueKey('confirm_delete_doc_${doc.id}'),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete',
+            child: Text('Delete',
                 style: TextStyle(
                     color: NotelColors.error, fontWeight: FontWeight.bold)),
           ),
@@ -3909,23 +3922,23 @@ class _SettingsScreenState extends State<SettingsScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: NotelColors.surface,
-        title: const Text('Clear All Files?',
+        title: Text('Clear All Files?',
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.bold)),
         content: Text(
             'This will permanently delete all ${docs.length} uploaded files. This cannot be undone.',
-            style: const TextStyle(color: NotelColors.textSecondary)),
+            style: TextStyle(color: NotelColors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel',
+            child: Text('Cancel',
                 style: TextStyle(color: NotelColors.textSecondary)),
           ),
           TextButton(
             key: const ValueKey('confirm_clear_all_docs'),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete All',
+            child: Text('Delete All',
                 style: TextStyle(
                     color: NotelColors.error, fontWeight: FontWeight.bold)),
           ),
@@ -3971,12 +3984,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                 Text(doc.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: NotelColors.textPrimary,
                         fontWeight: FontWeight.bold,
                         fontSize: 15)),
                 if (state == KnowledgeExtractionState.ready)
-                  const Text('AI read · tap below to view or edit',
+                  Text('AI read · tap below to view or edit',
                       style: TextStyle(
                           color: NotelColors.success, fontSize: 10)),
               ],
@@ -4005,7 +4018,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                           shown = '';
                         }
                         return Text(shown,
-                            style: const TextStyle(
+                            style: TextStyle(
                                 color: NotelColors.textSecondary,
                                 fontSize: 13,
                                 height: 1.5));
@@ -4017,7 +4030,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                       builder: (ctx2, snap) {
                         final raw = snap.data;
                         if (raw == null) {
-                          return const Text('Preview not available for this file type.',
+                          return Text('Preview not available for this file type.',
                               style: TextStyle(
                                   color: NotelColors.textSecondary));
                         }
@@ -4025,23 +4038,23 @@ class _SettingsScreenState extends State<SettingsScreen>
                           return Image.memory(base64Decode(raw),
                               fit: BoxFit.contain);
                         } catch (_) {
-                          return const Text('Preview not available for this file type.',
+                          return Text('Preview not available for this file type.',
                               style: TextStyle(
                                   color: NotelColors.textSecondary));
                         }
                       },
                     )
                   else ...[
-                    const Text('Preview not available for this file type.',
+                    Text('Preview not available for this file type.',
                         style:
                             TextStyle(color: NotelColors.textSecondary)),
                     Text('Type: ${doc.mimeType}',
-                        style: const TextStyle(
+                        style: TextStyle(
                             color: NotelColors.textSecondary,
                             fontSize: 12)),
                   ],
                   const SizedBox(height: 16),
-                  const Row(
+                  Row(
                     children: [
                       Icon(Icons.auto_awesome,
                           color: NotelColors.primary, size: 18),
@@ -4073,7 +4086,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   ),
                   const SizedBox(height: 8),
                   if (state == KnowledgeExtractionState.pending) ...[
-                    const Row(
+                    Row(
                       children: [
                         SizedBox(
                           width: 20,
@@ -4113,7 +4126,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                           style: TextStyle(color: NotelColors.primary)),
                     ),
                   ] else if (state == KnowledgeExtractionState.failed) ...[
-                    const Text(
+                    Text(
                         'Gemini could not complete extraction for this file. Try again.',
                         style:
                             TextStyle(color: NotelColors.textSecondary, fontSize: 13)),
@@ -4130,7 +4143,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   ] else if (state == KnowledgeExtractionState.empty) ...[
                     // Juno-ruled EMPTY copy, verbatim, with NO
                     // error-code suffix. Manually retryable.
-                    const Text(
+                    Text(
                         'Gemini read this file and found no readable text in it.',
                         style:
                             TextStyle(color: NotelColors.textSecondary, fontSize: 13)),
@@ -4147,7 +4160,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   ] else ...[
                     Text(text ?? '',
                         key: ValueKey('doc_extracted_text_${doc.id}'),
-                        style: const TextStyle(
+                        style: TextStyle(
                             color: NotelColors.textPrimary,
                             fontSize: 13,
                             height: 1.4)),
@@ -4166,7 +4179,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                       context: ctx,
                       builder: (ectx) => AlertDialog(
                         backgroundColor: NotelColors.surface,
-                        title: const Text('Edit extracted text',
+                        title: Text('Edit extracted text',
                             style: TextStyle(
                                 color: NotelColors.textPrimary,
                                 fontWeight: FontWeight.bold)),
@@ -4175,14 +4188,14 @@ class _SettingsScreenState extends State<SettingsScreen>
                           controller: editC,
                           minLines: 4,
                           maxLines: 10,
-                          style: const TextStyle(
+                          style: TextStyle(
                               color: NotelColors.textPrimary),
                         ),
                         actions: [
                           TextButton(
                             onPressed: () =>
                                 Navigator.of(ectx).pop(false),
-                            child: const Text('Cancel',
+                            child: Text('Cancel',
                                 style: TextStyle(
                                     color: NotelColors.textSecondary)),
                           ),
@@ -4210,7 +4223,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               TextButton(
                 onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Close',
+                child: Text('Close',
                     style: TextStyle(color: NotelColors.textSecondary)),
               ),
             ],
@@ -4226,7 +4239,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: NotelColors.surface,
-        title: const Text('New Clinical Protocol',
+        title: Text('New Clinical Protocol',
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.bold)),
@@ -4235,13 +4248,13 @@ class _SettingsScreenState extends State<SettingsScreen>
           controller: noteC,
           minLines: 2,
           maxLines: 4,
-          style: const TextStyle(color: NotelColors.textPrimary),
+          style: TextStyle(color: NotelColors.textPrimary),
           decoration: const InputDecoration(labelText: 'What did they say?'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel',
+            child: Text('Cancel',
                 style: TextStyle(color: NotelColors.textSecondary)),
           ),
           TextButton(
@@ -4288,7 +4301,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       builder: (ctx) => AlertDialog(
         backgroundColor: NotelColors.surface,
         title: Text(title,
-            style: const TextStyle(
+            style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.bold)),
         content: TextField(
@@ -4296,12 +4309,12 @@ class _SettingsScreenState extends State<SettingsScreen>
           controller: c,
           minLines: 2,
           maxLines: 5,
-          style: const TextStyle(color: NotelColors.textPrimary),
+          style: TextStyle(color: NotelColors.textPrimary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel',
+            child: Text('Cancel',
                 style: TextStyle(color: NotelColors.textSecondary)),
           ),
           TextButton(
@@ -4356,13 +4369,13 @@ class _SettingsScreenState extends State<SettingsScreen>
         // ruling (the full 'Liquid Glass' name is carried by
         // the subtitle): the long forms exceeded the ~14-char
         // single-line segment budget at 360dp.
-        const Text('Navigation Bar Style',
+        Text('Navigation Bar Style',
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.w600,
                 fontSize: 14)),
         const SizedBox(height: 2),
-        const Text(
+        Text(
             'Bottom navigation bar only. Solid is the default. '
             'The glass options are Liquid Glass, in dark and light.',
             style:
@@ -4418,32 +4431,25 @@ class _SettingsScreenState extends State<SettingsScreen>
       ]),
       const SizedBox(height: 12),
       _card([
-        const Text('Appearance',
+        Text('Appearance',
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.w600,
                 fontSize: 14)),
-        const SizedBox(height: 2),
-        // Juno ruling (Oct 2026, verbatim copy): the picker is
-        // disabled below, so the subtitle states the one appearance
-        // that exists instead of offering a choice.
-        const Text('Tabs currently uses the dark appearance.',
-            style:
-                TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
         const SizedBox(height: 10),
-        // Juno ruling (Oct 2026): this picker renders DISABLED.
-        // An interactive control is itself a claim — with no light
-        // theme in the app (main.dart builds only notelDarkTheme()
-        // and screens use dark NotelColors literals throughout) a
-        // tappable Light/System choice would mislead: taps used to
-        // save a selection nothing ever applied. So: taps do
-        // nothing and write NOTHING (the setThemeMode write on tap
-        // is removed), and Dark — the appearance actually in
-        // effect — is always the shown selection, regardless of
-        // any previously stored value (a stored LIGHT/SYSTEM is
-        // left untouched in the store, just never presented as in
-        // effect). Re-enabling waits on a real light theme
-        // verified on device — a future package, not this one.
+        // Theme-mode package (Nov 27, 2026): the picker is LIVE.
+        // Juno's Nov 27 ruling supersedes her Oct 2026 disabling
+        // on this package's conditions (a real light theme wired
+        // from the stored mode, verified in both themes). The
+        // shown selection is _themeMode, read from the store on
+        // load — a LIGHT/SYSTEM value stored before the disabling
+        // is honored untouched. A tap writes via setThemeMode and
+        // applies live through ThemeModeController; the app root
+        // cross-fades the whole UI to the new palette. Under
+        // SYSTEM the selection stays on System while the rendered
+        // brightness follows the device. The Oct subtitle above
+        // the picker is REMOVED with no replacement (Juno Nov 27
+        // §3): the heading stands alone.
         Row(
           children: [
             for (final (mode, label) in const [
@@ -4457,27 +4463,22 @@ class _SettingsScreenState extends State<SettingsScreen>
                   child: ElevatedButton(
                     key: ValueKey('theme_$mode'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: mode == 'DARK'
+                      backgroundColor: mode == _themeMode
                           ? NotelColors.primary
                           : NotelColors.surfaceHigh,
-                      foregroundColor: mode == 'DARK'
-                          ? Colors.white
-                          : NotelColors.textSecondary,
-                      // Disabled-state colors pinned to the same
-                      // values, so the disabled row still reads as
-                      // "Dark is current" instead of washing out.
-                      disabledBackgroundColor: mode == 'DARK'
-                          ? NotelColors.primary
-                          : NotelColors.surfaceHigh,
-                      disabledForegroundColor: mode == 'DARK'
+                      foregroundColor: mode == _themeMode
                           ? Colors.white
                           : NotelColors.textSecondary,
                     ),
-                    onPressed: null,
+                    onPressed: () async {
+                      setState(() => _themeMode = mode);
+                      await _store.setThemeMode(mode);
+                      ThemeModeController.instance.applyMode(mode);
+                    },
                     child: Text(label,
                         style: TextStyle(
                             fontSize: 13,
-                            fontWeight: mode == 'DARK'
+                            fontWeight: mode == _themeMode
                                 ? FontWeight.bold
                                 : FontWeight.w500)),
                   ),
@@ -4486,10 +4487,10 @@ class _SettingsScreenState extends State<SettingsScreen>
           ],
         ),
         const SizedBox(height: 8),
-        // Juno ruling (Oct 2026, verbatim copy) — replaces the
-        // Lab-era caption that claimed the choice was saved.
-        const Text(
-            'Appearance cannot be changed right now. Tabs includes only the dark appearance.',
+        // Juno ruling (Nov 27, 2026, verbatim copy) — replaces the
+        // Oct 2026 disabled caption in the same slot and style.
+        Text(
+            'Light is always light, Dark is always dark, and System follows your device setting.',
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
       ]),
@@ -4509,7 +4510,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   Widget _iosHealthCard() {
     final state = _iosSnapshot?.state;
     final card = _card([
-      const Text(IosHealthCopy.rowName,
+      Text(IosHealthCopy.rowName,
           style: TextStyle(
               color: NotelColors.textPrimary, fontWeight: FontWeight.w500)),
       if (state != null)
@@ -4576,12 +4577,12 @@ class _SettingsScreenState extends State<SettingsScreen>
         if (postGrantRunning) ...[
           // Juno Part 2, Item 1 — working state: the read is
           // happening now; no result is claimed while it runs.
-          const Text('Google Health Connect',
+          Text('Google Health Connect',
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontWeight: FontWeight.w500)),
           const SizedBox(height: 8),
-          const Row(
+          Row(
             children: [
               SizedBox(
                 width: 16,
@@ -4604,11 +4605,11 @@ class _SettingsScreenState extends State<SettingsScreen>
           // last-known status is retained: a neutral checking
           // line and an EMPTY button slot (the not-connected
           // card would assert a state nobody has measured).
-          const Text('Google Health Connect',
+          Text('Google Health Connect',
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontWeight: FontWeight.w500)),
-          const Text('Checking Health Connect status…',
+          Text('Checking Health Connect status…',
               style:
                   TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
         ] else if (hcSnapshot.staleWedged) ...[
@@ -4618,14 +4619,14 @@ class _SettingsScreenState extends State<SettingsScreen>
           // constant in the Body slot, and the connected
           // branch's Manage button unchanged. No Active /
           // Live-sync strings, no connect or grant CTAs here.
-          const Text('Google Health Connect',
+          Text('Google Health Connect',
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontWeight: FontWeight.w500)),
-          const Text('Connection problem',
+          Text('Connection problem',
               style: TextStyle(color: NotelColors.error, fontSize: 12)),
           const SizedBox(height: 4),
-          const Text(HealthConnectService.staleGrantMessage,
+          Text(HealthConnectService.staleGrantMessage,
               style:
                   TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
           const SizedBox(height: 12),
@@ -4647,15 +4648,15 @@ class _SettingsScreenState extends State<SettingsScreen>
           // informational only, EMPTY button slot, and the
           // not-connected "Connect to grab data…" body is
           // forbidden here.
-          const Text('Google Health Connect',
+          Text('Google Health Connect',
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontWeight: FontWeight.w500)),
-          const Text('Not available on this device',
+          Text('Not available on this device',
               style: TextStyle(
                   color: NotelColors.textSecondary, fontSize: 12)),
           const SizedBox(height: 4),
-          const Text(
+          Text(
               "Tabs can't read health data through Health Connect on this device.",
               style:
                   TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
@@ -4670,7 +4671,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Health Connect Active',
+                    Text('Health Connect Active',
                         style: TextStyle(
                             color: NotelColors.textPrimary,
                             fontWeight: FontWeight.w500)),
@@ -4690,14 +4691,14 @@ class _SettingsScreenState extends State<SettingsScreen>
                     //   untouched, exactly as Juno §5 signed it).
                     if (postGrantOutcome ==
                         PostGrantCaptureOutcome.dataCameThrough)
-                      const Text(
+                      Text(
                           'Connected. Your health data is coming through.',
                           style: TextStyle(
                               color: NotelColors.textSecondary,
                               fontSize: 12))
                     else if (postGrantOutcome ==
                             PostGrantCaptureOutcome.readFailed)
-                      const Text(
+                      Text(
                           'Tabs could not read your health data this time. Tap Re-approve access to try again.',
                           style: TextStyle(
                               color: NotelColors.textSecondary,
@@ -4707,13 +4708,13 @@ class _SettingsScreenState extends State<SettingsScreen>
                         (postGrantOutcome == null &&
                             _hcCaptureRan &&
                             !_hcStoreHasData))
-                      const Text(
+                      Text(
                           'Connected, but Health Connect does not have any of this data yet. It shows up here after your watch or phone records some.',
                           style: TextStyle(
                               color: NotelColors.textSecondary,
                               fontSize: 12))
                     else
-                      const Text('Live synchronization active',
+                      Text('Live synchronization active',
                           style: TextStyle(
                               color: NotelColors.textSecondary,
                               fontSize: 12)),
@@ -4728,7 +4729,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           // under a post-grant outcome or the no-data form).
           if (postGrantOutcome == null &&
               !(_hcCaptureRan && !_hcStoreHasData)) ...[
-            const Text('• Connected to local device sensors',
+            Text('• Connected to local device sensors',
                 style: TextStyle(
                     color: NotelColors.textSecondary, fontSize: 13)),
             const SizedBox(height: 12),
@@ -4773,11 +4774,11 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
         ] else if (hcSnapshot.status ==
             HealthConnectStatus.partiallyConnected) ...[
-          const Text('Google Health Connect',
+          Text('Google Health Connect',
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontWeight: FontWeight.w500)),
-          const Text('Partially connected',
+          Text('Partially connected',
               style: TextStyle(
                   color: NotelColors.warning, fontSize: 12)),
           // Sync-settings package — a settled post-grant
@@ -4795,7 +4796,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                             PostGrantCaptureOutcome.readFailed
                         ? 'Tabs could not read your health data this time. Tap Re-approve access to try again.'
                         : 'Connected, but Health Connect does not have any of this data yet. It shows up here after your watch or phone records some.',
-                style: const TextStyle(
+                style: TextStyle(
                     color: NotelColors.textSecondary, fontSize: 12)),
             if (postGrantOutcome ==
                 PostGrantCaptureOutcome.readFailed) ...[
@@ -4836,10 +4837,10 @@ class _SettingsScreenState extends State<SettingsScreen>
             Text(
                 HealthConnectService.missingPermissionsMessage(
                     _hcMissingLabels),
-                style: const TextStyle(
+                style: TextStyle(
                     color: NotelColors.textSecondary, fontSize: 12))
           else
-            const Text(
+            Text(
                 'Some health permissions are still missing. Grant the remaining permissions to sync everything.',
                 style: TextStyle(
                     color: NotelColors.textSecondary, fontSize: 12)),
@@ -4868,21 +4869,21 @@ class _SettingsScreenState extends State<SettingsScreen>
           // persisted flag in this state. Supersedes the old
           // Juno §3 fallback presentation per this package's
           // brief; flagged for Vera/Juno in the stage log.
-          const Text('Google Health Connect',
+          Text('Google Health Connect',
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontWeight: FontWeight.w500)),
           const SizedBox(height: 4),
-          const Text('Health Connect status check failed.',
+          Text('Health Connect status check failed.',
               style: TextStyle(color: NotelColors.error, fontSize: 12)),
         ] else ...[
           // Known not-connected (Juno §5): the grant set is
           // KNOWN empty, so the connect card is a finding.
-          const Text('Google Health Connect',
+          Text('Google Health Connect',
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontWeight: FontWeight.w500)),
-          const Text('Connect to grab data from Garmin, Oura, Fitbit and more.',
+          Text('Connect to grab data from Garmin, Oura, Fitbit and more.',
               style:
                   TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
           const SizedBox(height: 12),
@@ -4911,7 +4912,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         if (_hrvDiag != null) ...[
           const SizedBox(height: 8),
           Text(_hrvDiagnosticsLine(_hrvDiag!),
-              style: const TextStyle(
+              style: TextStyle(
                   color: NotelColors.textSecondary, fontSize: 12)),
         ],
       ]),
@@ -4928,23 +4929,23 @@ class _SettingsScreenState extends State<SettingsScreen>
       // renders a neutral checking line — no grant claim and no
       // enablement button until the state is known.
       _card([
-        const Text('Daily Score in the Background',
+        Text('Daily Score in the Background',
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.w500)),
         const SizedBox(height: 4),
         if (_bgScoreAccess == true)
-          const Text(
+          Text(
               'Background access is on. Tabs can work on your Daily Score in the background a few times a day at most, and Android may delay that work to save battery. When a background run creates a new Daily Score, Tabs can notify you if notifications are turned on for Tabs.',
               style:
                   TextStyle(color: NotelColors.textSecondary, fontSize: 12))
         else if (_bgScoreAccess == false)
-          const Text(
+          Text(
               'Tabs can build your Daily Score in the background, so a score may be ready even on days you do not open the app. Android may delay background work to save battery, so a score is not guaranteed by a set time. To allow it, tap Open Health Connect Settings below, then tap Tabs, App permissions, Additional access, and turn on Background access.',
               style:
                   TextStyle(color: NotelColors.textSecondary, fontSize: 12))
         else
-          const Text('Checking background access…',
+          Text('Checking background access…',
               style:
                   TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
         if (_bgScoreAccess == false) ...[
@@ -4976,12 +4977,12 @@ class _SettingsScreenState extends State<SettingsScreen>
         // (CoachViewModel.kt:1354, :1463). Mirrored exactly: no new
         // OAuth scope is requested here.
         if (_gCalConnected) ...[
-          const Text('Google Calendar Active',
+          Text('Google Calendar Active',
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontWeight: FontWeight.w500)),
           Text('Connected as $_gCalEmail',
-              style: const TextStyle(
+              style: TextStyle(
                   color: NotelColors.textSecondary, fontSize: 12)),
           const SizedBox(height: 12),
           SizedBox(
@@ -4997,11 +4998,11 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
           ),
         ] else ...[
-          const Text('Google Calendar',
+          Text('Google Calendar',
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontWeight: FontWeight.w500)),
-          const Text(
+          Text(
               'Let your AI Clinical Advocate schedule events and update calendars.',
               style:
                   TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
@@ -5027,12 +5028,12 @@ class _SettingsScreenState extends State<SettingsScreen>
         // ID token goes to POST /api/auth/link-google; local state
         // flips ONLY on the server's success (fail closed).
         if (_gAccountConnected) ...[
-          const Text('Google Account Connected',
+          Text('Google Account Connected',
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontWeight: FontWeight.w500)),
           Text('Connected as $_gAccountEmail',
-              style: const TextStyle(
+              style: TextStyle(
                   color: NotelColors.textSecondary, fontSize: 12)),
           const SizedBox(height: 12),
           SizedBox(
@@ -5048,11 +5049,11 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
           ),
         ] else ...[
-          const Text('Google Account',
+          Text('Google Account',
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontWeight: FontWeight.w500)),
-          const Text(
+          Text(
               'Link your Google account to sign in with Google or email & password.',
               style:
                   TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
@@ -5078,13 +5079,13 @@ class _SettingsScreenState extends State<SettingsScreen>
         // token goes to POST /api/auth/link-apple; local state
         // flips ONLY on the server's success (fail closed).
         if (_appleAccountConnected) ...[
-          const Text('Apple Account Connected',
+          Text('Apple Account Connected',
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontWeight: FontWeight.w500)),
           if (_appleAccountEmail.isNotEmpty)
             Text('Connected as $_appleAccountEmail',
-                style: const TextStyle(
+                style: TextStyle(
                     color: NotelColors.textSecondary, fontSize: 12)),
           const SizedBox(height: 12),
           SizedBox(
@@ -5100,11 +5101,11 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
           ),
         ] else ...[
-          const Text('Apple Account',
+          Text('Apple Account',
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontWeight: FontWeight.w500)),
-          const Text(
+          Text(
               'Link your Apple account to sign in with Apple or email & password.',
               style:
                   TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
@@ -5132,11 +5133,11 @@ class _SettingsScreenState extends State<SettingsScreen>
         // The button only OPENS the Connect an AI screen (see +
         // revoke) — connecting happens in the AI app's sign-in
         // flow, so there is no creation action here either.
-        const Text('AI Apps',
+        Text('AI Apps',
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.w500)),
-        const Text(ConnectAiCopy.howItWorks,
+        Text(ConnectAiCopy.howItWorks,
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
         const SizedBox(height: 12),
@@ -5156,14 +5157,14 @@ class _SettingsScreenState extends State<SettingsScreen>
       const SizedBox(height: 24),
       _sectionLabel('ADVANCED DATA SOURCES'),
       _card([
-        const Text('Fitbit Direct Sync',
+        Text('Fitbit Direct Sync',
             style: TextStyle(
                 color: NotelColors.textPrimary, fontWeight: FontWeight.w500)),
-        const Text('No longer available',
+        Text('No longer available',
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
         const SizedBox(height: 8),
-        const Text(
+        Text(
             'Google retired the Fitbit Web API on Oct 30, 2026. Fitbit data still reaches Tabs through Health Connect.',
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
@@ -5189,15 +5190,15 @@ class _SettingsScreenState extends State<SettingsScreen>
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: NotelColors.surface,
-        title: const Text('Connect Google Calendar',
+        title: Text('Connect Google Calendar',
             style: TextStyle(color: NotelColors.textPrimary)),
-        content: const Text(calendarCoachDisclosure,
+        content: Text(calendarCoachDisclosure,
             style: TextStyle(color: NotelColors.textSecondary)),
         actions: [
           TextButton(
             key: const ValueKey('calendar_disclosure_not_now'),
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Not now',
+            child: Text('Not now',
                 style: TextStyle(color: NotelColors.textSecondary)),
           ),
           TextButton(
@@ -5307,21 +5308,21 @@ class _SettingsScreenState extends State<SettingsScreen>
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
           backgroundColor: NotelColors.surface,
-          title: const Text('Disconnect Google Account',
+          title: Text('Disconnect Google Account',
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontWeight: FontWeight.bold)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
+              Text(
                   'Are you sure you want to disconnect this Google account? Tabs will refuse if you do not have another usable sign in method.',
                   style: TextStyle(
                       color: NotelColors.textSecondary, fontSize: 13)),
               if (error != null) ...[
                 const SizedBox(height: 10),
                 Text(error!,
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: NotelColors.error, fontSize: 12)),
               ],
             ],
@@ -5329,7 +5330,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel',
+              child: Text('Cancel',
                   style: TextStyle(color: NotelColors.textSecondary)),
             ),
             TextButton(
@@ -5420,21 +5421,21 @@ class _SettingsScreenState extends State<SettingsScreen>
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
           backgroundColor: NotelColors.surface,
-          title: const Text('Disconnect Apple Account',
+          title: Text('Disconnect Apple Account',
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontWeight: FontWeight.bold)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
+              Text(
                   'Are you sure you want to disconnect this Apple account? Tabs will refuse if you do not have another usable sign in method.',
                   style: TextStyle(
                       color: NotelColors.textSecondary, fontSize: 13)),
               if (error != null) ...[
                 const SizedBox(height: 10),
                 Text(error!,
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: NotelColors.error, fontSize: 12)),
               ],
             ],
@@ -5442,7 +5443,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel',
+              child: Text('Cancel',
                   style: TextStyle(color: NotelColors.textSecondary)),
             ),
             TextButton(
@@ -5497,7 +5498,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       if (updates.isNotEmpty || _professionalGate) ...[
         _sectionLabel('PHYSICIAN PROTOCOLS'),
         _card([
-          const Text('New Physician Protocol',
+          Text('New Physician Protocol',
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontWeight: FontWeight.w500)),
@@ -5541,7 +5542,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                           const SizedBox(width: 6),
                           Text('(${updates.length})',
                               key: const ValueKey('past_updates_count'),
-                              style: const TextStyle(
+                              style: TextStyle(
                                   color: NotelColors.textSecondary,
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold)),
@@ -5585,14 +5586,14 @@ class _SettingsScreenState extends State<SettingsScreen>
                                   children: [
                                     Expanded(
                                       child: Text(e.value,
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                               color:
                                                   NotelColors.textPrimary,
                                               fontSize: 13)),
                                     ),
                                     IconButton(
                                       key: ValueKey('edit_protocol_${e.key}'),
-                                      icon: const Icon(Icons.edit,
+                                      icon: Icon(Icons.edit,
                                           size: 18,
                                           color: NotelColors.textSecondary),
                                       onPressed: () =>
@@ -5612,7 +5613,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                                     IconButton(
                                       key:
                                           ValueKey('delete_protocol_${e.key}'),
-                                      icon: const Icon(Icons.delete,
+                                      icon: Icon(Icons.delete,
                                           size: 18,
                                           color: NotelColors.error),
                                       onPressed: () {
@@ -5638,7 +5639,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         // The badge is native's copy; extraction itself is a
         // server Gemini call (see the trace) — the copy is kept
         // verbatim because native source is the spec for copy.
-        const Row(
+        Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text('Digital Knowledge Extraction',
@@ -5659,13 +5660,13 @@ class _SettingsScreenState extends State<SettingsScreen>
           ],
         ),
         const SizedBox(height: 4),
-        const Text(
+        Text(
             'Upload notes or PDFs to extract permanent knowledge (patterns, triggers, facts) that Gemini will remember.',
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
         const SizedBox(height: 16),
         if (_kProcessing)
-          const Row(
+          Row(
             children: [
               SizedBox(
                 width: 32,
@@ -5711,7 +5712,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           Text(_kError!,
               key: const ValueKey('knowledge_process_error'),
               style:
-                  const TextStyle(color: NotelColors.error, fontSize: 12)),
+                  TextStyle(color: NotelColors.error, fontSize: 12)),
         ],
         // Extracted Facts (native: only when knowledgeBase non-blank).
         if (facts.isNotEmpty) ...[
@@ -5769,7 +5770,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                           ),
                           IconButton(
                             key: ValueKey('delete_fact_${e.key}'),
-                            icon: const Icon(Icons.delete,
+                            icon: Icon(Icons.delete,
                                 size: 16, color: NotelColors.error),
                             onPressed: () {
                               final list = [...facts]..removeAt(e.key);
@@ -5795,13 +5796,13 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 overflow: _expandedFacts.contains(e.key)
                                     ? TextOverflow.visible
                                     : TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                     color: NotelColors.textPrimary,
                                     fontSize: 13,
                                     height: 18 / 13)),
                             if (!_expandedFacts.contains(e.key)) ...[
                               const SizedBox(height: 4),
-                              const Text('Tap to expand',
+                              Text('Tap to expand',
                                   style: TextStyle(
                                       color: NotelColors.textSecondary,
                                       fontSize: 11)),
@@ -5817,7 +5818,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               child: TextButton(
                 key: const ValueKey('clear_knowledge_button'),
                 onPressed: () => _saveKnowledgeBase(const []),
-                child: const Text('Clear Knowledge Base',
+                child: Text('Clear Knowledge Base',
                     style:
                         TextStyle(color: NotelColors.error, fontSize: 12)),
               ),
@@ -5827,7 +5828,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         // Original Documents (native: only when documents exist).
         if (d.documents.isNotEmpty) ...[
           const SizedBox(height: 16),
-          const Divider(color: NotelColors.divider, thickness: 0.5),
+          Divider(color: NotelColors.divider, thickness: 0.5),
           const SizedBox(height: 12),
           InkWell(
             key: const ValueKey('documents_toggle'),
@@ -5879,7 +5880,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                             size: 28,
                           ),
                           if (state == KnowledgeExtractionState.ready)
-                            const Positioned(
+                            Positioned(
                               right: 0,
                               top: 0,
                               child: DecoratedBox(
@@ -5899,37 +5900,37 @@ class _SettingsScreenState extends State<SettingsScreen>
                             Text(doc.name,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                     color: NotelColors.textPrimary,
                                     fontSize: 13,
                                     fontWeight: FontWeight.w500)),
                             Row(
                               children: [
                                 Text(doc.typeLabel,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                         color: NotelColors.textSecondary,
                                         fontSize: 10)),
                                 const SizedBox(width: 6),
                                 if (busy || state == KnowledgeExtractionState.pending)
-                                  const Text('• Extracting…',
+                                  Text('• Extracting…',
                                       style: TextStyle(
                                           color: NotelColors.textSecondary,
                                           fontSize: 10))
                                 else if (state == KnowledgeExtractionState.ready)
-                                  const Text('• AI read',
+                                  Text('• AI read',
                                       style: TextStyle(
                                           color: NotelColors.success,
                                           fontSize: 10,
                                           fontWeight: FontWeight.w500))
                                 else if (state ==
                                     KnowledgeExtractionState.empty)
-                                  const Text('• No readable text found',
+                                  Text('• No readable text found',
                                       style: TextStyle(
                                           color: NotelColors.textSecondary,
                                           fontSize: 10,
                                           fontWeight: FontWeight.w500))
                                 else
-                                  const Text('• Extraction failed',
+                                  Text('• Extraction failed',
                                       style: TextStyle(
                                           color: NotelColors.error,
                                           fontSize: 10,
@@ -5941,7 +5942,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                       ),
                       IconButton(
                         key: ValueKey('delete_doc_${doc.id}'),
-                        icon: const Icon(Icons.delete,
+                        icon: Icon(Icons.delete,
                             size: 18, color: NotelColors.error),
                         onPressed: () => _confirmDeleteDocument(doc),
                       ),
@@ -5953,7 +5954,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             InkWell(
               key: const ValueKey('clear_all_docs_button'),
               onTap: _confirmClearAllDocuments,
-              child: const Padding(
+              child: Padding(
                 padding: EdgeInsets.symmetric(vertical: 12),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -5993,7 +5994,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       _card([
         InkWell(
           onTap: () => setState(() => _page = _Page.progressReports),
-          child: const Row(
+          child: Row(
             children: [
               Expanded(
                 child: Column(
@@ -6019,7 +6020,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       const SizedBox(height: 24),
       _sectionLabel('AI INSIGHTS HISTORY'),
       if (displayInsights.isEmpty)
-        const Text(
+        Text(
             'No AI insights generated yet. Perform an AI action to see it here.',
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 14))
@@ -6041,7 +6042,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 padding: const EdgeInsets.only(top: 12),
                 child: _card([
                   Text(i.text,
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: NotelColors.textPrimary, fontSize: 13)),
                 ]),
               )),
@@ -6326,7 +6327,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   size: 16),
               const SizedBox(width: 4),
               Text(_syncConfirmed ? 'Synced' : 'Not synced',
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: NotelColors.textSecondary,
                       fontSize: 10,
                       fontWeight: FontWeight.w500)),
@@ -6357,7 +6358,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       // action keeps its exact pre-round behavior.
       if (counters.isEmpty)
         _card([
-          const Text('No counters yet.',
+          Text('No counters yet.',
               style:
                   TextStyle(color: NotelColors.textSecondary, fontSize: 13))
         ])
@@ -6375,7 +6376,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 8)),
       ],
       const SizedBox(height: 12),
-      const Padding(
+      Padding(
         padding: EdgeInsets.symmetric(horizontal: 4),
         child: Text(
             'Track important upcoming or past events. All active counters will show on the main screen and sync with the AI.',
@@ -6393,7 +6394,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     final children = <Widget>[];
     for (var i = 0; i < list.length; i++) {
       if (i > 0) {
-        children.add(const Divider(color: NotelColors.divider, height: 1));
+        children.add(Divider(color: NotelColors.divider, height: 1));
       }
       children.add(_counterRow(list[i]));
     }
@@ -6431,7 +6432,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     final rows = <Widget>[];
     for (var i = 0; i < rowWidgets.length; i++) {
       if (i > 0) {
-        rows.add(const Divider(color: NotelColors.divider, height: 1));
+        rows.add(Divider(color: NotelColors.divider, height: 1));
       }
       rows.add(rowWidgets[i]);
     }
@@ -6466,7 +6467,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: Text(label,
-                style: const TextStyle(
+                style: TextStyle(
                     color: NotelColors.textSecondary, fontSize: 11)),
           ),
         ),
@@ -6510,7 +6511,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: Text('$name (Ended: ${_monthDayYearLabel(endedMs)})',
-                style: const TextStyle(
+                style: TextStyle(
                     color: NotelColors.textSecondary, fontSize: 11)),
           ),
         ),
@@ -6595,7 +6596,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(c.name,
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: NotelColors.textPrimary,
                         fontWeight: FontWeight.bold,
                         fontSize: 13)),
@@ -6615,7 +6616,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             tooltip: 'Delete counter',
             constraints:
                 const BoxConstraints(minWidth: 48, minHeight: 48),
-            icon: const Icon(Icons.delete_outline,
+            icon: Icon(Icons.delete_outline,
                 size: 18, color: NotelColors.textSecondary),
             // Vera F1 — disabled while a counter save is in flight.
             onPressed: _counterSaveInFlight
@@ -6646,7 +6647,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             tooltip: 'Edit counter',
             constraints:
                 const BoxConstraints(minWidth: 48, minHeight: 48),
-            icon: const Icon(Icons.edit,
+            icon: Icon(Icons.edit,
                 size: 18, color: NotelColors.textSecondary),
             onPressed:
                 _counterSaveInFlight ? null : () => _showCounterDialog(c),
@@ -6656,7 +6657,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             tooltip: 'End counter',
             constraints:
                 const BoxConstraints(minWidth: 48, minHeight: 48),
-            icon: const Icon(Icons.stop_circle,
+            icon: Icon(Icons.stop_circle,
                 size: 18, color: NotelColors.textSecondary),
             onPressed: _counterSaveInFlight
                 ? null
@@ -6711,7 +6712,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         builder: (ctx, setLocal) => AlertDialog(
           backgroundColor: NotelColors.surface,
           title: Text(existing != null ? 'Edit Counter' : 'New Counter',
-              style: const TextStyle(
+              style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontWeight: FontWeight.bold)),
           content: SingleChildScrollView(
@@ -6721,7 +6722,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 TextField(
                   key: const ValueKey('counter_name_field'),
                   controller: nameC,
-                  style: const TextStyle(color: NotelColors.textPrimary),
+                  style: TextStyle(color: NotelColors.textPrimary),
                   decoration: const InputDecoration(
                       labelText: 'Event Name (e.g. Next Doctor Appt)'),
                 ),
@@ -6731,7 +6732,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     Expanded(
                       child: Text(
                           '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
-                          style: const TextStyle(
+                          style: TextStyle(
                               color: NotelColors.textPrimary)),
                     ),
                     IconButton(
@@ -6753,7 +6754,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
                 Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                         child: Text('Count Up (Past Event)?',
                             style: TextStyle(
                                 color: NotelColors.textPrimary,
@@ -6765,7 +6766,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
                 Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                         child: Text(
                             'Auto switch to Count Up when day arrives?',
                             style: TextStyle(
@@ -6782,7 +6783,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel',
+              child: Text('Cancel',
                   style: TextStyle(color: NotelColors.textSecondary)),
             ),
             TextButton(
@@ -6916,7 +6917,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         ),
         if (_checkInDenied) ...[
           const SizedBox(height: 4),
-          const Text(
+          Text(
               'Notifications are turned off on this phone, so the reminder cannot fire. You can turn them on in system settings.',
               style:
                   TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
@@ -6996,20 +6997,20 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
         ],
         const SizedBox(height: 16),
-        const Text(
+        Text(
             'Habit, project, and check-in reminders are scheduled on this device and fire daily at the times shown while their toggle is on. Event reminders fire at 9:00 AM on the day of each active event counter. HR spike and delta alert preferences save exactly as in the native app, but the alerts do not fire from the Flutter app yet: in the native app they run from an always-on heart rate monitor service.',
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
         if (_notifDenied) ...[
           const SizedBox(height: 8),
-          const Text(
+          Text(
               'Notifications are turned off on this phone, so reminders cannot fire. You can turn them on in system settings.',
               style:
                   TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
         ],
         if (_notifError != null) ...[
           const SizedBox(height: 8),
-          const Text('Notification scheduling hit a problem.',
+          Text('Notification scheduling hit a problem.',
               style:
                   TextStyle(color: NotelColors.error, fontSize: 11)),
         ],
@@ -7061,7 +7062,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       const SizedBox(height: 24),
       _sectionLabel('MANUAL SYNC'),
       _card([
-        const Text(
+        Text(
             'Manually push all your local data to the cloud and pull the latest from the server. This happens automatically in the background, but you can trigger it here anytime.',
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
@@ -7090,7 +7091,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       const SizedBox(height: 24),
       _sectionLabel('RECOVERY'),
       _card([
-        const Text(
+        Text(
             'If your data appears missing or out of date, use this to pull a fresh copy from the server and restore everything.',
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
@@ -7123,12 +7124,12 @@ class _SettingsScreenState extends State<SettingsScreen>
       ],
       _sectionLabel('LOCAL CACHE'),
       _card([
-        const Text(
+        Text(
             'Delete all locally cached Key Metrics (weights, breathing rates, SpO2, and resting heart rates) saved on this device. This triggers a fresh sync from Health Connect or Fitbit on your next reload.',
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
         const SizedBox(height: 12),
-        const Text(
+        Text(
             'This app does not keep a Key Metrics cache, so there is nothing to clear here yet.',
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
@@ -7136,7 +7137,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       const SizedBox(height: 24),
       _sectionLabel('MOVE YOUR DATA'),
       _card([
-        const Text(
+        Text(
             'Some of your data lives only on this device: what your '
             'Health Coach remembers about you, your health history, '
             'the text extracted from your Knowledge Base documents, '
@@ -7182,7 +7183,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           const SizedBox(height: 12),
           Text(_migrationStatus!,
               key: const ValueKey('migration_status'),
-              style: const TextStyle(
+              style: TextStyle(
                   color: NotelColors.textPrimary, fontSize: 12)),
         ],
       ]),
@@ -7280,9 +7281,11 @@ class _SettingsScreenState extends State<SettingsScreen>
       // it is a reconcile input below).
       try {
         _checkInEnabled = await _store.getCheckInReminderEnabled();
-        // No theme-mode re-read: the disabled Appearance picker
-        // never displays it (Juno ruling, Oct 2026). The imported
-        // value stays in the store untouched.
+        // Theme-mode package (Nov 27, 2026): the Appearance
+        // picker displays the stored mode again, so an imported
+        // value is re-read and applied live like any other write.
+        _themeMode = await _store.getThemeMode();
+        ThemeModeController.instance.applyMode(_themeMode);
         _showNavLabels = await _store.getShowNavLabels();
         _contextHidden = await _store.getUserContextHidden();
       } catch (_) {}
@@ -7399,7 +7402,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           canPop: !loggingOut,
           child: AlertDialog(
             backgroundColor: NotelColors.surface,
-            title: const Text('Logout?',
+            title: Text('Logout?',
                 style: TextStyle(
                     color: NotelColors.textPrimary,
                     fontWeight: FontWeight.bold)),
@@ -7415,7 +7418,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   // JUNO-COPY.md (Nov 24, 2026): the working line
                   // names only the sign-out itself, which completes
                   // within seconds under every outcome.
-                  const Row(
+                  Row(
                     children: [
                       SizedBox(
                         width: 20,
@@ -7438,12 +7441,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                   // only the sign-out itself; the note states the
                   // bounded wait and the on-device retention
                   // outcome for entries that have not synced yet.
-                  const Text(
+                  Text(
                     "You'll be signed out of this account on this device.",
                     style: TextStyle(color: NotelColors.textPrimary),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
+                  Text(
                     "This only takes a few seconds. Anything that hasn't synced yet stays saved on this device and syncs the next time you sign in.",
                     style: TextStyle(
                         color: NotelColors.textSecondary, fontSize: 14),
@@ -7458,7 +7461,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               if (!loggingOut)
                 TextButton(
                   onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text('Cancel',
+                  child: Text('Cancel',
                       style: TextStyle(color: NotelColors.textSecondary)),
                 ),
               TextButton(
@@ -7528,17 +7531,17 @@ class _SettingsScreenState extends State<SettingsScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: NotelColors.surface,
-        title: const Text('Reset Account Status?',
+        title: Text('Reset Account Status?',
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.bold)),
-        content: const Text(
+        content: Text(
             'This will log you out and reset your account\'s setup status. The next time you sign in, you\'ll go through the app setup again, like a new account.\n\nYour account, password, and server-saved data are not deleted — your logs, profile, and files will still be here when you finish setup. Like any log-out, this clears data stored only on this device: Coach memory is lost for good, and device-only health history is cleared — recent days re-sync from Health Connect, but imported history and past Daily Scores don\'t come back.',
             style: TextStyle(color: NotelColors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel',
+            child: Text('Cancel',
                 style: TextStyle(color: NotelColors.textSecondary)),
           ),
           TextButton(
@@ -7578,11 +7581,11 @@ class _SettingsScreenState extends State<SettingsScreen>
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
           backgroundColor: NotelColors.surface,
-          title: const Text('Delete Account and Data?',
+          title: Text('Delete Account and Data?',
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontWeight: FontWeight.bold)),
-          content: const Text(
+          content: Text(
               'This action is permanent and cannot be undone. All your notes, history, files, health sync logs, and account profiles will be instantly purged from our servers and database.',
               style: TextStyle(
                   color: NotelColors.textSecondary, fontSize: 14)),
@@ -7590,7 +7593,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             TextButton(
               onPressed:
                   deleting ? null : () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel',
+              child: Text('Cancel',
                   style: TextStyle(color: NotelColors.textSecondary)),
             ),
             TextButton(
@@ -7623,7 +7626,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                       }
                     },
               child: Text(deleting ? 'Deleting...' : 'Delete Permanently',
-                  style: const TextStyle(color: NotelColors.error)),
+                  style: TextStyle(color: NotelColors.error)),
             ),
           ],
         ),
@@ -7705,7 +7708,7 @@ class _ThresholdFieldState extends State<_ThresholdField> {
       children: [
         Expanded(
           child: Text(widget.label,
-              style: const TextStyle(
+              style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontSize: 14,
                   fontWeight: FontWeight.w500)),
@@ -7720,11 +7723,11 @@ class _ThresholdFieldState extends State<_ThresholdField> {
               FilteringTextInputFormatter.digitsOnly,
               LengthLimitingTextInputFormatter(widget.maxLength),
             ],
-            style: const TextStyle(color: NotelColors.textPrimary),
+            style: TextStyle(color: NotelColors.textPrimary),
             decoration: InputDecoration(
               suffixText: widget.suffix,
               prefixText: widget.prefix,
-              suffixStyle: const TextStyle(
+              suffixStyle: TextStyle(
                   color: NotelColors.textSecondary, fontSize: 12),
             ),
             onSubmitted: _submit,
@@ -7785,7 +7788,7 @@ class _AvatarPickerDialogState extends State<_AvatarPickerDialog> {
       backgroundColor: NotelColors.surface,
       title: Semantics(
         header: true,
-        child: const Text('Choose a Profile Picture',
+        child: Text('Choose a Profile Picture',
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.bold)),
@@ -7797,7 +7800,7 @@ class _AvatarPickerDialogState extends State<_AvatarPickerDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Tap a picture to save it. Your friends will see it next to your name.',
                 style: TextStyle(
                     color: NotelColors.textSecondary, fontSize: 13),
@@ -7897,7 +7900,7 @@ class _AvatarPickerDialogState extends State<_AvatarPickerDialog> {
       actions: [
         TextButton(
           onPressed: _saving ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel',
+          child: Text('Cancel',
               style: TextStyle(color: NotelColors.textSecondary)),
         ),
       ],

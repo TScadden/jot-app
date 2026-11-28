@@ -240,11 +240,11 @@ class _TrendsScreenState extends State<TrendsScreen> {
         backgroundColor: NotelColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back,
+          icon: Icon(Icons.arrow_back,
               color: NotelColors.textSecondary, semanticLabel: 'Back'),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
+        title: Text(
           'Visual Trends',
           style: TextStyle(
               fontSize: 20,
@@ -253,7 +253,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.list,
+            icon: Icon(Icons.list,
                 color: NotelColors.textSecondary,
                 semanticLabel: 'Most Used Symptoms'),
             onPressed: () =>
@@ -292,11 +292,11 @@ class _TrendsScreenState extends State<TrendsScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.cloud_off_outlined,
+              Icon(Icons.cloud_off_outlined,
                   size: 56, color: NotelColors.textSecondary),
               const SizedBox(height: 16),
               Text(_error!,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 14,
                       height: 1.5,
                       color: NotelColors.textSecondary),
@@ -380,7 +380,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                             style: TextStyle(
                                 fontSize: 13, color: NotelColors.primary)),
                         Text('$totalLogs Total Entries',
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.bold,
                                 color: NotelColors.textPrimary)),
@@ -438,7 +438,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Category Focus',
+                  Text('Category Focus',
                       style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -573,7 +573,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         IconButton(
-          icon: const Icon(Icons.chevron_left,
+          icon: Icon(Icons.chevron_left,
               color: NotelColors.textPrimary),
           onPressed: () => setState(() {
             _dayOffset -= 1;
@@ -590,7 +590,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
             height: 48,
             child: Center(
               child: Text(_dateLabel(_selectedDate),
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                       color: NotelColors.textPrimary)),
@@ -687,7 +687,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                         color: NotelColors.primaryText)),
               if (entry.timestamp > 0) const SizedBox(height: 4),
               Text(entry.body,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w500,
                       height: 1.45,
@@ -727,7 +727,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
               textAlign: TextAlign.center),
           const SizedBox(height: 8),
           Text(body,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 13,
                   height: 1.5,
                   color: NotelColors.textSecondary),
@@ -871,7 +871,7 @@ class _CategoryProgressRow extends StatelessWidget {
           children: [
             Flexible(
               child: Text(name,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 14, color: NotelColors.textPrimary),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis),
@@ -956,7 +956,7 @@ class _SymptomsDialog extends StatelessWidget {
                       color: NotelColors.primary)),
               const SizedBox(height: 16),
               if (chips.isEmpty)
-                const Text('No symptoms logged yet.',
+                Text('No symptoms logged yet.',
                     style: TextStyle(
                         fontSize: 14, color: NotelColors.textSecondary))
               else

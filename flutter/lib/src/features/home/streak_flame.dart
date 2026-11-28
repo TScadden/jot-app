@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// The streak flame (streak upgrade deliverable 4).
 ///
@@ -85,7 +86,11 @@ class _StreakFlameState extends State<StreakFlame>
     final icon = Icon(
       Icons.local_fire_department,
       size: widget.size,
-      color: widget.lit ? widget.litColor : const Color(0xFF8E97B8),
+      // Unlit glyph: the muted-text token. The raw #8E97B8 literal
+      // measured ~2.9:1 against the light background; textSecondary
+      // passes WCAG AA in both palettes (dark 6.70:1 on surface,
+      // light 7.62:1 on surface / 6.94:1 on background).
+      color: widget.lit ? widget.litColor : NotelColors.textSecondary,
     );
     if (!widget.lit) {
       // Grey state: desaturated + reduced opacity, per the mock.

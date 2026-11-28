@@ -708,14 +708,14 @@ class _SleepScreenState extends State<SleepScreen> {
         leading: hosted
             ? null
             : IconButton(
-                icon: const Icon(
+                icon: Icon(
                   Icons.arrow_back,
                   color: NotelColors.textPrimary,
                   semanticLabel: 'Back',
                 ),
                 onPressed: () => Navigator.of(context).pop(),
               ),
-        title: const Text(
+        title: Text(
           'Sleep Profile',
           style: TextStyle(
             fontSize: 20,
@@ -730,7 +730,7 @@ class _SleepScreenState extends State<SleepScreen> {
           // not-connected state too.
           if (hosted)
             IconButton(
-              icon: const Icon(Icons.favorite,
+              icon: Icon(Icons.favorite,
                   color: NotelColors.textSecondary,
                   semanticLabel: 'Heart'),
               tooltip: 'Heart',
@@ -738,14 +738,14 @@ class _SleepScreenState extends State<SleepScreen> {
             ),
           if (_connected) ...[
             IconButton(
-              icon: const Icon(Icons.sync,
+              icon: Icon(Icons.sync,
                   color: NotelColors.textSecondary,
                   semanticLabel: 'Sync'),
               onPressed: _refreshing ? null : _sync,
             ),
             if (!_isTodaySelected)
               IconButton(
-                icon: const Icon(Icons.today,
+                icon: Icon(Icons.today,
                     color: NotelColors.textSecondary,
                     semanticLabel: 'Today'),
                 onPressed: _refreshing
@@ -753,7 +753,7 @@ class _SleepScreenState extends State<SleepScreen> {
                     : () => _selectDate(_dateKey(DateTime.now())),
               ),
             IconButton(
-              icon: const Icon(Icons.calendar_month,
+              icon: Icon(Icons.calendar_month,
                   color: NotelColors.textSecondary,
                   semanticLabel: 'Select Date'),
               onPressed: _refreshing ? null : _pickDate,
@@ -812,7 +812,7 @@ class _SleepScreenState extends State<SleepScreen> {
               ),
             ),
             const SizedBox(height: 32),
-            const Text(
+            Text(
               'Sleep Analysis',
               style: TextStyle(
                 fontSize: 24,
@@ -821,7 +821,7 @@ class _SleepScreenState extends State<SleepScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               'Connect your health data to track sleep cycles and calculate your sleep debt automatically.',
               style: TextStyle(
                 fontSize: 14,
@@ -831,7 +831,7 @@ class _SleepScreenState extends State<SleepScreen> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               "Today's sleep: --",
               style: TextStyle(
                 fontSize: 13,
@@ -861,7 +861,7 @@ class _SleepScreenState extends State<SleepScreen> {
           if (_readError != null) ...[
             Text(
               _readError!,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
                 color: NotelColors.error,
               ),
@@ -878,7 +878,7 @@ class _SleepScreenState extends State<SleepScreen> {
           const SizedBox(height: 24),
           _sleepNeedSection(),
           const SizedBox(height: 24),
-          const Text(
+          Text(
             'Sleep Stages',
             style: TextStyle(
               fontSize: 16,
@@ -924,14 +924,14 @@ class _SleepScreenState extends State<SleepScreen> {
             const SizedBox(height: 16),
             Text(
               _isTodaySelected ? 'Time Asleep Today' : 'Daily Time Asleep',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 color: NotelColors.textSecondary,
               ),
             ),
             Text(
               mins != null ? formatSleepHeroMins(mins) : '--',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 48,
                 fontWeight: FontWeight.w900,
                 color: NotelColors.textPrimary,
@@ -941,7 +941,7 @@ class _SleepScreenState extends State<SleepScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(
+                Icon(
                   Icons.history,
                   size: 16,
                   color: NotelColors.error,
@@ -951,7 +951,7 @@ class _SleepScreenState extends State<SleepScreen> {
                   debt != null
                       ? 'Deficit: -${formatSleepMinutes(debt.abs())}'
                       : 'Deficit: --',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
                     color: NotelColors.error,
@@ -963,7 +963,7 @@ class _SleepScreenState extends State<SleepScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(
+                Icon(
                   Icons.auto_graph,
                   size: 16,
                   color: NotelColors.info,
@@ -973,7 +973,7 @@ class _SleepScreenState extends State<SleepScreen> {
                   _remMins != null
                       ? 'REM: ${_formatMins(_remMins!)}'
                       : 'REM: --',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
                     color: NotelColors.textPrimary,
@@ -995,7 +995,7 @@ class _SleepScreenState extends State<SleepScreen> {
                 _efficiency != null
                     ? 'Efficiency: ${_efficiency!}%'
                     : 'Efficiency: --',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w900,
                   color: NotelColors.primaryText,
@@ -1021,7 +1021,7 @@ class _SleepScreenState extends State<SleepScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Sleep Need',
           style: TextStyle(
             fontSize: 16,
@@ -1030,7 +1030,7 @@ class _SleepScreenState extends State<SleepScreen> {
           ),
         ),
         const SizedBox(height: 4),
-        const Text(
+        Text(
           'Your usual need, from your recent nights',
           style: TextStyle(
             fontSize: 13,
@@ -1046,7 +1046,7 @@ class _SleepScreenState extends State<SleepScreen> {
             border: Border.all(color: NotelColors.cardBorder),
           ),
           child: estimate == null
-              ? const Text(
+              ? Text(
                   'Still learning your pattern. Your personal sleep need will show here once at least 7 nights are recorded.',
                   style: TextStyle(
                     fontSize: 13,
@@ -1110,7 +1110,7 @@ class _SleepScreenState extends State<SleepScreen> {
           Text(
             'Recent shortfall: ${_formatMins(estimate.recentDebtMinutes)} '
             'across your last ${estimate.debtNightsUsed} recorded nights',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               color: NotelColors.textSecondary,
             ),
@@ -1118,7 +1118,7 @@ class _SleepScreenState extends State<SleepScreen> {
         ],
         if (_needNights.isNotEmpty) ...[
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'This week\'s balance',
             style: TextStyle(
               fontSize: 14,
@@ -1143,7 +1143,7 @@ class _SleepScreenState extends State<SleepScreen> {
   Widget _needLabel(String label) {
     return Text(
       label,
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 12,
         color: NotelColors.textSecondary,
       ),
@@ -1153,7 +1153,7 @@ class _SleepScreenState extends State<SleepScreen> {
   Widget _needValue(String value) {
     return Text(
       value,
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 20,
         fontWeight: FontWeight.bold,
         color: NotelColors.textPrimary,
@@ -1218,7 +1218,7 @@ class _SleepScreenState extends State<SleepScreen> {
               const SizedBox(width: 8),
               Text(
                 balanceText,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   color: NotelColors.textSecondary,
                 ),
@@ -1357,7 +1357,7 @@ class _SleepScreenState extends State<SleepScreen> {
           Align(
             alignment: Alignment.topRight,
             child: IconButton(
-              icon: const Icon(Icons.close,
+              icon: Icon(Icons.close,
                   color: NotelColors.textSecondary,
                   semanticLabel: 'Clear Compare'),
               onPressed: () => setState(() => _compare = null),
@@ -1374,7 +1374,7 @@ class _SleepScreenState extends State<SleepScreen> {
           const SizedBox(height: 12),
           Text(
             '$displayDate: ${formatSleepHeroMins(compare.mins)} avg',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               color: NotelColors.textPrimary,
             ),
@@ -1383,7 +1383,7 @@ class _SleepScreenState extends State<SleepScreen> {
             isWeeks
                 ? 'This Week: ${formatSleepHeroMins(currentMins)} avg'
                 : 'Selected: ${formatSleepHeroMins(currentMins)}',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
               color: NotelColors.textPrimary,
@@ -1416,7 +1416,7 @@ class _SleepScreenState extends State<SleepScreen> {
         children: [
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               color: NotelColors.textSecondary,
             ),
@@ -1424,7 +1424,7 @@ class _SleepScreenState extends State<SleepScreen> {
           const SizedBox(height: 4),
           Text(
             mins != null ? _formatMins(mins) : '--',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
               color: NotelColors.textPrimary,
@@ -1444,7 +1444,7 @@ class _SleepScreenState extends State<SleepScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Recent Nights',
           style: TextStyle(
             fontSize: 16,
@@ -1455,7 +1455,7 @@ class _SleepScreenState extends State<SleepScreen> {
         const SizedBox(height: 4),
         Text(
           avgText,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 13,
             color: NotelColors.textSecondary,
           ),
@@ -1472,7 +1472,7 @@ class _SleepScreenState extends State<SleepScreen> {
               for (var i = 0; i < _nights.length; i++) ...[
                 _nightRow(_nights[i]),
                 if (i < _nights.length - 1)
-                  const Divider(
+                  Divider(
                     height: 1,
                     color: NotelColors.divider,
                   ),
@@ -1504,7 +1504,7 @@ class _SleepScreenState extends State<SleepScreen> {
             const SizedBox(width: 12),
             Text(
               night.dayLabel,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.bold,
                 color: NotelColors.textPrimary,
@@ -1513,7 +1513,7 @@ class _SleepScreenState extends State<SleepScreen> {
             const SizedBox(width: 8),
             Text(
               dateLabel,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
                 color: NotelColors.textSecondary,
               ),
@@ -1564,14 +1564,14 @@ class _SleepScreenState extends State<SleepScreen> {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(24),
         ),
-        title: const Text(
+        title: Text(
           'Sleep Science',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             color: NotelColors.textPrimary,
           ),
         ),
-        content: const Column(
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

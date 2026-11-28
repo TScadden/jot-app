@@ -595,19 +595,19 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
         backgroundColor: NotelColors.surface,
         title: Text(
           ShareCopy.revokeConfirmTitle(name),
-          style: const TextStyle(
+          style: TextStyle(
             color: NotelColors.textPrimary,
             fontWeight: FontWeight.bold,
           ),
         ),
-        content: const Text(
+        content: Text(
           ShareCopy.revokeConfirmBody,
           style: TextStyle(color: NotelColors.textPrimary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text(
+            child: Text(
               ShareCopy.revokeCancelButton,
               style: TextStyle(color: NotelColors.textSecondary),
             ),
@@ -615,7 +615,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
           TextButton(
             key: const ValueKey('confirm_stop_sharing'),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text(
+            child: Text(
               ShareCopy.revokeConfirmButton,
               style: TextStyle(color: NotelColors.error),
             ),
@@ -797,19 +797,19 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
         backgroundColor: NotelColors.surface,
         title: Text(
           ConnectAiCopy.disconnectConfirmTitle(connection.name),
-          style: const TextStyle(
+          style: TextStyle(
             color: NotelColors.textPrimary,
             fontWeight: FontWeight.bold,
           ),
         ),
         content: Text(
           ConnectAiCopy.disconnectConfirmBody(connection.name),
-          style: const TextStyle(color: NotelColors.textPrimary),
+          style: TextStyle(color: NotelColors.textPrimary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text(
+            child: Text(
               ConnectAiCopy.cancelButton,
               style: TextStyle(color: NotelColors.textSecondary),
             ),
@@ -817,7 +817,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
           TextButton(
             key: const ValueKey('confirm_disconnect'),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text(
+            child: Text(
               ConnectAiCopy.confirmButton,
               style: TextStyle(color: NotelColors.error),
             ),
@@ -910,7 +910,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
           icon: const Icon(Icons.arrow_back, color: NotelColors.primary),
           tooltip: 'Back',
         ),
-        title: const Text(
+        title: Text(
           ConnectAiCopy.title,
           style: TextStyle(
             fontSize: 20,
@@ -931,7 +931,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
             // Fail closed on an unknown verdict: the honest
             // error line only — no list, no upsell.
             if (_entitlementFailed)
-              const Text(
+              Text(
                 ConnectAiCopy.loadError,
                 style: TextStyle(
                   color: NotelColors.error,
@@ -955,7 +955,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
   /// Premium verdict.
   List<Widget> _premiumChildren(List<AiConnectionDto>? connections) {
     return [
-      const Text(
+      Text(
         ConnectAiCopy.howItWorks,
         style: TextStyle(
           color: NotelColors.textPrimary,
@@ -964,7 +964,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
         ),
       ),
       const SizedBox(height: 12),
-      const Text(
+      Text(
         ConnectAiCopy.blurb,
         style: TextStyle(
           color: NotelColors.textSecondary,
@@ -981,7 +981,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               ConnectAiCopy.connectionAddress,
               style: TextStyle(
                 color: NotelColors.textPrimary,
@@ -1007,7 +1007,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               ConnectAiCopy.metaAiIdLabel,
               style: TextStyle(
                 color: NotelColors.textPrimary,
@@ -1016,7 +1016,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
               ),
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               ConnectAiCopy.metaAiIdHelper,
               style: TextStyle(
                 color: NotelColors.textSecondary,
@@ -1027,7 +1027,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
             const SizedBox(height: 8),
             Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
                     ConnectAiCopy.metaAiId,
                     style: TextStyle(
@@ -1054,12 +1054,12 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
       if (connections == null)
         const _LoadingRow()
       else if (connections.isEmpty && _loadError == null)
-        const Padding(
+        Padding(
           padding: EdgeInsets.only(left: 4),
           child: Text(
             ConnectAiCopy.emptyState,
             style: TextStyle(
-              color: Color(0x807A8FAF),
+              color: NotelColors.textSecondary,
               fontSize: 14,
               height: 20 / 14,
             ),
@@ -1079,7 +1079,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
         const SizedBox(height: 12),
         Text(
           _loadError!,
-          style: const TextStyle(
+          style: TextStyle(
             color: NotelColors.error,
             fontSize: 13,
           ),
@@ -1108,7 +1108,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
     final children = <Widget>[
       const _SectionLabel(ShareCopy.shareTitle),
       const SizedBox(height: 8),
-      const Text(
+      Text(
         ShareCopy.shareExplainer,
         style: TextStyle(
           color: NotelColors.textSecondary,
@@ -1123,7 +1123,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
         children.add(Text(
           _sharesLoadError!,
           style:
-              const TextStyle(color: NotelColors.error, fontSize: 13),
+              TextStyle(color: NotelColors.error, fontSize: 13),
         ));
       } else {
         children.add(const _LoadingRow());
@@ -1134,12 +1134,12 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
     final active =
         outgoing.where((s) => s.isPending || s.isAccepted).toList();
     if (active.isEmpty) {
-      children.add(const Padding(
+      children.add(Padding(
         padding: EdgeInsets.only(left: 4),
         child: Text(
           ShareCopy.noSharesEmpty,
           style: TextStyle(
-            color: Color(0x807A8FAF),
+            color: NotelColors.textSecondary,
             fontSize: 14,
             height: 20 / 14,
           ),
@@ -1167,7 +1167,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
         children: [
           Text(
             ShareCopy.pendingLabel(name),
-            style: const TextStyle(
+            style: TextStyle(
               color: NotelColors.textPrimary,
               fontSize: 14,
               fontWeight: FontWeight.bold,
@@ -1176,7 +1176,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
           const SizedBox(height: 4),
           Text(
             ShareCopy.pendingExplainer(name),
-            style: const TextStyle(
+            style: TextStyle(
               color: NotelColors.textSecondary,
               fontSize: 13,
               height: 18 / 13,
@@ -1214,7 +1214,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
               Expanded(
                 child: Text(
                   name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: NotelColors.textPrimary,
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
@@ -1241,7 +1241,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
           ),
           Text(
             lastRead,
-            style: const TextStyle(
+            style: TextStyle(
               color: NotelColors.textSecondary,
               fontSize: 12,
               height: 16 / 12,
@@ -1251,7 +1251,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
             const SizedBox(height: 8),
             Text(
               ShareCopy.manageHeading(name),
-              style: const TextStyle(
+              style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontSize: 14,
                 fontWeight: FontWeight.bold,
@@ -1259,7 +1259,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
             ),
             const SizedBox(height: 8),
             const _SectionLabel(ShareCopy.toggleHeading),
-            const Text(
+            Text(
               ShareCopy.toggleSubline,
               style: TextStyle(
                 color: NotelColors.textSecondary,
@@ -1274,7 +1274,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
                 contentPadding: EdgeInsets.zero,
                 title: Text(
                   cat.$2,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: NotelColors.textPrimary,
                     fontSize: 14,
                   ),
@@ -1288,7 +1288,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
               ),
             Text(
               ShareCopy.turnOnNote(name),
-              style: const TextStyle(
+              style: TextStyle(
                 color: NotelColors.textSecondary,
                 fontSize: 13,
                 height: 18 / 13,
@@ -1337,7 +1337,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
     final friends = _friends!;
     final children = <Widget>[
       const _SectionLabel(ShareCopy.pickerHeading),
-      const Padding(
+      Padding(
         padding: EdgeInsets.only(left: 4),
         child: Text(
           ShareCopy.pickerSubline,
@@ -1351,12 +1351,12 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
       const SizedBox(height: 8),
     ];
     if (friends.isEmpty) {
-      children.add(const Padding(
+      children.add(Padding(
         padding: EdgeInsets.only(left: 4),
         child: Text(
           ShareCopy.pickerEmpty,
           style: TextStyle(
-            color: Color(0x807A8FAF),
+            color: NotelColors.textSecondary,
             fontSize: 14,
             height: 20 / 14,
           ),
@@ -1392,7 +1392,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
                 Expanded(
                   child: Text(
                     friend.nickname,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: NotelColors.textPrimary,
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
@@ -1423,7 +1423,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
   List<Widget> _categoryStepChildren() {
     return [
       const _SectionLabel(ShareCopy.categoryStepHeading),
-      const Padding(
+      Padding(
         padding: EdgeInsets.only(left: 4),
         child: Text(
           ShareCopy.categoryStepSubline,
@@ -1441,7 +1441,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
           contentPadding: EdgeInsets.zero,
           title: Text(
             cat.$2,
-            style: const TextStyle(
+            style: TextStyle(
               color: NotelColors.textPrimary,
               fontSize: 14,
               fontWeight: FontWeight.bold,
@@ -1449,7 +1449,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
           ),
           subtitle: Text(
             cat.$3,
-            style: const TextStyle(
+            style: TextStyle(
               color: NotelColors.textSecondary,
               fontSize: 12,
               height: 16 / 12,
@@ -1467,7 +1467,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
       const SizedBox(height: 8),
       // Juno §a4: the honesty block sits directly above the send
       // button, every time.
-      const Text(
+      Text(
         ShareCopy.thirdPartyLine,
         style: TextStyle(
           color: NotelColors.textSecondary,
@@ -1476,7 +1476,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
         ),
       ),
       const SizedBox(height: 8),
-      const Text(
+      Text(
         ShareCopy.cantPullBackLine,
         style: TextStyle(
           color: NotelColors.textSecondary,
@@ -1491,7 +1491,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
           key: const ValueKey('send_share_request'),
           style: ElevatedButton.styleFrom(
             backgroundColor: NotelColors.primary,
-            foregroundColor: const Color(0xFF0A0A0E),
+            foregroundColor: NotelColors.onPrimary,
             minimumSize: const Size(64, 48),
           ),
           onPressed: _sending ? null : _sendShare,
@@ -1515,7 +1515,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
         children.add(Text(
           _sharesLoadError!,
           style:
-              const TextStyle(color: NotelColors.error, fontSize: 13),
+              TextStyle(color: NotelColors.error, fontSize: 13),
         ));
       } else {
         children.add(const _LoadingRow());
@@ -1548,7 +1548,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
         padding: const EdgeInsets.only(left: 4),
         child: Text(
           ShareCopy.declinedLine(share.otherNickname),
-          style: const TextStyle(
+          style: TextStyle(
             color: NotelColors.textSecondary,
             fontSize: 13,
             height: 18 / 13,
@@ -1568,7 +1568,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
         children: [
           Text(
             ShareCopy.offerHeading(name),
-            style: const TextStyle(
+            style: TextStyle(
               color: NotelColors.textPrimary,
               fontSize: 14,
               fontWeight: FontWeight.bold,
@@ -1577,7 +1577,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
           const SizedBox(height: 4),
           Text(
             ShareCopy.offerBody(name, cats),
-            style: const TextStyle(
+            style: TextStyle(
               color: NotelColors.textSecondary,
               fontSize: 13,
               height: 18 / 13,
@@ -1587,7 +1587,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
           // Juno §b2: both honesty lines directly above Accept.
           Text(
             ShareCopy.incomingThirdPartyLine(name),
-            style: const TextStyle(
+            style: TextStyle(
               color: NotelColors.textSecondary,
               fontSize: 13,
               height: 18 / 13,
@@ -1596,7 +1596,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
           const SizedBox(height: 4),
           Text(
             ShareCopy.incomingCantPullBackLine(name),
-            style: const TextStyle(
+            style: TextStyle(
               color: NotelColors.textSecondary,
               fontSize: 13,
               height: 18 / 13,
@@ -1622,7 +1622,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
                 key: ValueKey('accept_share_${share.id}'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: NotelColors.primary,
-                  foregroundColor: const Color(0xFF0A0A0E),
+                  foregroundColor: NotelColors.onPrimary,
                   minimumSize: const Size(64, 48),
                 ),
                 onPressed: _shareBusy.contains(share.id)
@@ -1648,7 +1648,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
         children: [
           Text(
             share.otherNickname,
-            style: const TextStyle(
+            style: TextStyle(
               color: NotelColors.textPrimary,
               fontSize: 14,
               fontWeight: FontWeight.bold,
@@ -1660,7 +1660,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
               ShareCopy.categoryList(share.categories),
               since == null ? '' : _formatShareDate(since),
             ),
-            style: const TextStyle(
+            style: TextStyle(
               color: NotelColors.textSecondary,
               fontSize: 12,
               height: 16 / 12,
@@ -1682,7 +1682,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
     final hasConnections =
         _connections != null && _connections!.isNotEmpty;
     return [
-      const Text(
+      Text(
         ConnectAiCopy.premiumHeading,
         style: TextStyle(
           color: NotelColors.textPrimary,
@@ -1692,7 +1692,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
         ),
       ),
       const SizedBox(height: 12),
-      const Text(
+      Text(
         ConnectAiCopy.premiumExplainer,
         style: TextStyle(
           color: NotelColors.textPrimary,
@@ -1701,7 +1701,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
         ),
       ),
       const SizedBox(height: 12),
-      const Text(
+      Text(
         ConnectAiCopy.premiumThirdParty,
         style: TextStyle(
           color: NotelColors.textSecondary,
@@ -1711,7 +1711,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
       ),
       if (hasConnections) ...[
         const SizedBox(height: 12),
-        const Text(
+        Text(
           ConnectAiCopy.lapsedNote,
           style: TextStyle(
             color: NotelColors.textSecondary,
@@ -1729,7 +1729,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
             backgroundColor: NotelColors.primary,
             // Dark ink on primary, the Membership CTA pairing
             // (5.21:1; settings_screen.dart's _chipInk).
-            foregroundColor: const Color(0xFF0A0A0E),
+            foregroundColor: NotelColors.onPrimary,
             minimumSize: const Size(64, 48),
           ),
           onPressed: () => Navigator.of(context)
@@ -1755,7 +1755,7 @@ class _SectionLabel extends StatelessWidget {
       padding: const EdgeInsets.only(left: 4, bottom: 4),
       child: Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           color: NotelColors.textSecondary,
           fontSize: 14,
           fontWeight: FontWeight.bold,
@@ -1822,7 +1822,7 @@ class _AiConnectionRow extends StatelessWidget {
             Container(
               width: 44,
               height: 44,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 color: NotelColors.legacyDarkHairlineFaint,
                 shape: BoxShape.circle,
               ),
@@ -1840,7 +1840,7 @@ class _AiConnectionRow extends StatelessWidget {
                 children: [
                   Text(
                     connection.name,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: NotelColors.textPrimary,
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
@@ -1849,7 +1849,7 @@ class _AiConnectionRow extends StatelessWidget {
                   if (connectedAt != null)
                     Text(
                       'Connected ${_formatConnectionDate(connectedAt)}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: NotelColors.textSecondary,
                         fontSize: 12,
                       ),
@@ -1857,7 +1857,7 @@ class _AiConnectionRow extends StatelessWidget {
                   if (lastUsedAt != null)
                     Text(
                       'Last used ${_formatConnectionDate(lastUsedAt)}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: NotelColors.textSecondary,
                         fontSize: 12,
                       ),
@@ -1913,7 +1913,7 @@ class _HelpLinkRow extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
           onTap: onTap,
-          child: const Padding(
+          child: Padding(
             padding: EdgeInsets.all(16),
             child: Row(
               children: [
@@ -1972,7 +1972,7 @@ class _SendStepsRow extends StatelessWidget {
           key: const ValueKey('send_steps_row'),
           borderRadius: BorderRadius.circular(20),
           onTap: onTap,
-          child: const Padding(
+          child: Padding(
             padding: EdgeInsets.all(16),
             child: Row(
               children: [

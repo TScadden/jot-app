@@ -147,7 +147,7 @@ class HcRepairCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text(
+                      Text(
                         hcRepairCardTitle,
                         style: TextStyle(
                           fontSize: 12,
@@ -160,7 +160,7 @@ class HcRepairCard extends StatelessWidget {
                         secondStep
                             ? HealthConnectService.staleGrantMessage
                             : hcRepairCardBody,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           color: NotelColors.textSecondary,
                         ),

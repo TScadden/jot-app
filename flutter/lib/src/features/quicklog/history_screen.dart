@@ -290,7 +290,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   int? _categoryFilter;
   bool _todayOnly = false;
 
-  static const _chipInk = Color(0xFF0A0A0E); // native LegacyDarkChipInk
+  static const _chipInk = NotelColors.onPrimary; // native LegacyDarkChipInk
 
   @override
   void initState() {
@@ -596,28 +596,28 @@ class _HistoryScreenState extends State<HistoryScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: NotelColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
+        title: Text(
           'Delete entry?',
           style: TextStyle(
             color: NotelColors.textPrimary,
             fontWeight: FontWeight.bold,
           ),
         ),
-        content: const Text(
+        content: Text(
           'This cannot be undone.',
           style: TextStyle(color: NotelColors.textSecondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text(
+            child: Text(
               'Cancel',
               style: TextStyle(color: NotelColors.textSecondary),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(
+            child: Text(
               'Delete',
               style: TextStyle(color: NotelColors.error),
             ),
@@ -864,7 +864,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'History',
               style: TextStyle(
                 color: NotelColors.textPrimary,
@@ -876,7 +876,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               _lastSyncAt != null
                   ? 'Last synced: ${_formatSyncTime(_lastSyncAt!)}'
                   : 'Saved locally',
-              style: const TextStyle(
+              style: TextStyle(
                 color: NotelColors.textSecondary,
                 fontSize: 11,
               ),
@@ -981,7 +981,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
+            Icon(
               Icons.cloud_off_outlined,
               size: 56,
               color: NotelColors.textSecondary,
@@ -989,7 +989,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             const SizedBox(height: 16),
             Text(
               _loadError!,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 height: 1.5,
                 color: NotelColors.textSecondary,
@@ -1020,11 +1020,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
       child: TextField(
         controller: _searchController,
         onChanged: (v) => setState(() => _searchQuery = v),
-        style: const TextStyle(color: NotelColors.textPrimary, fontSize: 14),
+        style: TextStyle(color: NotelColors.textPrimary, fontSize: 14),
         decoration: InputDecoration(
           hintText: 'Search entries…',
-          hintStyle: const TextStyle(color: NotelColors.textSecondary),
-          prefixIcon: const Icon(
+          hintStyle: TextStyle(color: NotelColors.textSecondary),
+          prefixIcon: Icon(
             Icons.search,
             color: NotelColors.textSecondary,
           ),
@@ -1036,7 +1036,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   },
                   // Audit 6d (Oct 27, 2026) — house label.
                   tooltip: 'Clear search',
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.clear,
                     color: NotelColors.textSecondary,
                   ),
@@ -1198,7 +1198,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget _buildLogsTab() {
     final filtered = _filtered;
     if (filtered.isEmpty) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1254,7 +1254,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           : math.pow((c + 0.055) / 1.055, 2.4).toDouble();
       double luminance(double r, double g, double b) =>
           0.2126 * linearize(r) + 0.7152 * linearize(g) + 0.0722 * linearize(b);
-      const bg = NotelColors.surface;
+      final bg = NotelColors.surface;
       final tintLum = luminance(
         color.r * 0.15 + bg.r * 0.85,
         color.g * 0.15 + bg.g * 0.85,
@@ -1333,7 +1333,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 const SizedBox(height: 10),
                 Text(
                   entry.body,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: NotelColors.textPrimary,
                     fontSize: 15,
                     fontWeight: FontWeight.w500,
@@ -1348,7 +1348,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 // Manual entries show nothing.
                 if (isSyncedWorkoutEntry(entry)) ...[
                   const SizedBox(height: 6),
-                  const Row(
+                  Row(
                     key: ValueKey('synced_workout_marker'),
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -1569,7 +1569,7 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
     // before the entry body, and filled Edit / ghost Close actions
     // side by side. Layout only: sections, labels, the category
     // save-on-tap path and Edit behaviour are unchanged.
-    const sectionLabelStyle = TextStyle(
+    final sectionLabelStyle = TextStyle(
       color: NotelColors.primaryText,
       fontSize: 12,
       fontWeight: FontWeight.w800,
@@ -1580,7 +1580,7 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(28),
-        side: const BorderSide(color: NotelColors.legacyDarkHairline),
+        side: BorderSide(color: NotelColors.legacyDarkHairline),
       ),
       child: SingleChildScrollView(
         child: Padding(
@@ -1597,7 +1597,7 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
                   height: 4,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(99),
-                    color: Colors.white.withValues(alpha: 0.18),
+                    color: NotelColors.legacyDarkDivider,
                   ),
                 ),
               ),
@@ -1625,7 +1625,7 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
                   Expanded(
                     child: Text(
                       _category?.name ?? 'Entry',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: NotelColors.textPrimary,
                         fontSize: 27,
                         fontWeight: FontWeight.w800,
@@ -1638,7 +1638,7 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
               const SizedBox(height: 26),
             if (_isCheckIn)
               // Native locked note in place of every edit affordance.
-              const Row(
+              Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(Icons.lock, size: 12, color: NotelColors.textSecondary),
@@ -1656,7 +1656,7 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
                 ],
               )
             else if (_isMedTab)
-              const Text(
+              Text(
                 'LOGGED VIA MEDICATIONS TAB',
                 style: TextStyle(
                   color: NotelColors.primary,
@@ -1684,7 +1684,7 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
                 ),
                 const SizedBox(height: 20),
               ],
-              const Text('CHANGE CATEGORY', style: sectionLabelStyle),
+              Text('CHANGE CATEGORY', style: sectionLabelStyle),
               const SizedBox(height: 12),
               // Search field (approved mock): directly under the
               // label, styled after History's own 'Search entries…'
@@ -1696,17 +1696,17 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
                 key: const ValueKey('history_category_search_field'),
                 controller: _categorySearchController,
                 onChanged: (v) => setState(() => _categoryQuery = v),
-                style: const TextStyle(
+                style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontSize: 14,
                 ),
                 decoration: InputDecoration(
                   hintText: TODO_JUNO_HISTORY_CATEGORY_SEARCH_HINT,
-                  hintStyle: const TextStyle(
+                  hintStyle: TextStyle(
                     color: NotelColors.textSecondary,
                     fontSize: 15,
                   ),
-                  prefixIcon: const Icon(
+                  prefixIcon: Icon(
                     Icons.search,
                     size: 20,
                     color: NotelColors.textSecondary,
@@ -1718,7 +1718,7 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
                             setState(() => _categoryQuery = '');
                           },
                           tooltip: 'Clear search',
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.clear,
                             color: NotelColors.textSecondary,
                           ),
@@ -1828,12 +1828,12 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
             Divider(
               height: 1,
               thickness: 1,
-              color: Colors.white.withValues(alpha: 0.07),
+              color: NotelColors.legacyDarkHairlineFaint,
             ),
             const SizedBox(height: 20),
             Text(
               entryCombinedText(_entry),
-              style: const TextStyle(
+              style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontSize: 21,
                 height: 1.35,
@@ -1843,7 +1843,7 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
             const SizedBox(height: 9),
             Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.access_time,
                   size: 16,
                   color: NotelColors.textSecondary,
@@ -1852,7 +1852,7 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
                 Expanded(
                   child: Text(
                     'Logged on ${widget.formatDateTime(_entry.timestamp)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: NotelColors.textSecondary,
                       fontSize: 14,
                     ),
@@ -1861,8 +1861,8 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
               ],
             ),
             if (chips.isNotEmpty) ...[
-              const SizedBox(height: 22),
-              const Text('ASSOCIATED TILES', style: sectionLabelStyle),
+              SizedBox(height: 22),
+              Text('ASSOCIATED TILES', style: sectionLabelStyle),
               const SizedBox(height: 12),
               Wrap(
                 spacing: 9,
@@ -1885,7 +1885,7 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           if (_isCheckIn && chip == feelingCheckInTag) ...[
-                            const Icon(
+                            Icon(
                               Icons.lock,
                               size: 12,
                               color: NotelColors.textSecondary,
@@ -1894,7 +1894,7 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
                           ],
                           Text(
                             chip,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: NotelColors.primaryText,
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
@@ -1907,7 +1907,7 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
               ),
               if (_isCheckIn) ...[
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   'This tag was added automatically and cannot be '
                   'changed.',
                   style: TextStyle(
@@ -1921,7 +1921,7 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
               const SizedBox(height: 12),
               Text(
                 _error!,
-                style: const TextStyle(color: NotelColors.error, fontSize: 13),
+                style: TextStyle(color: NotelColors.error, fontSize: 13),
               ),
             ],
             // Actions (approved mock): filled purple Edit + quiet
@@ -1968,13 +1968,13 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
                   child: TextButton(
                     onPressed: () => Navigator.pop(context),
                     style: TextButton.styleFrom(
-                      backgroundColor: Colors.white.withValues(alpha: 0.05),
+                      backgroundColor: NotelColors.legacyDarkHairlineFaint,
                       foregroundColor: NotelColors.textPrimary,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                         side: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.10),
+                          color: NotelColors.legacyDarkHairline,
                         ),
                       ),
                     ),
@@ -2055,7 +2055,7 @@ class _EditEntryTextDialogState extends State<_EditEntryTextDialog> {
     return AlertDialog(
       backgroundColor: NotelColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      title: const Text(
+      title: Text(
         'Edit Entry Text',
         style: TextStyle(
           color: NotelColors.textPrimary,
@@ -2074,10 +2074,10 @@ class _EditEntryTextDialogState extends State<_EditEntryTextDialog> {
                 maxLines: null,
                 expands: true,
                 textAlignVertical: TextAlignVertical.top,
-                style: const TextStyle(color: NotelColors.textPrimary),
+                style: TextStyle(color: NotelColors.textPrimary),
                 decoration: InputDecoration(
                   labelText: 'Note Content',
-                  labelStyle: const TextStyle(color: NotelColors.textSecondary),
+                  labelStyle: TextStyle(color: NotelColors.textSecondary),
                   enabledBorder: OutlineInputBorder(
                     borderSide: BorderSide(
                       color: NotelColors.primary.withValues(alpha: 0.5),
@@ -2095,7 +2095,7 @@ class _EditEntryTextDialogState extends State<_EditEntryTextDialog> {
                 alignment: Alignment.centerLeft,
                 child: Text(
                   _error!,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: NotelColors.error,
                     fontSize: 13,
                   ),
@@ -2108,7 +2108,7 @@ class _EditEntryTextDialogState extends State<_EditEntryTextDialog> {
       actions: [
         TextButton(
           onPressed: _saving ? null : () => Navigator.pop(context),
-          child: const Text(
+          child: Text(
             'Cancel',
             style: TextStyle(color: NotelColors.textSecondary),
           ),

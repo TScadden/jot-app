@@ -367,7 +367,7 @@ class _DailyScoreCircleState extends State<DailyScoreCircle>
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Daily Score',
                       style: TextStyle(
                         fontSize: 10,

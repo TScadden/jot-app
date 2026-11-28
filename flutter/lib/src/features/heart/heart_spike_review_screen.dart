@@ -191,12 +191,12 @@ class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
         backgroundColor: NotelColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back,
+          icon: Icon(Icons.arrow_back,
               color: NotelColors.textSecondary),
           tooltip: 'Back',
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
+        title: Text(
           'Spike Review',
           style: TextStyle(
             fontSize: 20,
@@ -227,7 +227,7 @@ class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
               if (spikes.isEmpty)
                 _emptyState()
               else ...[
-              const Text(
+              Text(
                 'Detected Events',
                 style: TextStyle(
                   color: NotelColors.textSecondary,
@@ -267,12 +267,12 @@ class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
           Container(
             width: 44,
             height: 44,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: NotelColors.errorTintStrong,
               shape: BoxShape.circle,
             ),
             alignment: Alignment.center,
-            child: const Icon(Icons.whatshot,
+            child: Icon(Icons.whatshot,
                 color: NotelColors.error, size: 24),
           ),
           const SizedBox(width: 14),
@@ -282,7 +282,7 @@ class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
               children: [
                 Text(
                   '$count Significant Spikes Detected',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: NotelColors.textPrimary,
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -293,7 +293,7 @@ class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
                   hasSpikes
                       ? 'Showing heart rate spikes ≥100 bpm for today'
                       : 'No spikes ≥100 bpm recorded for this time range',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: NotelColors.textSecondary,
                     fontSize: 12,
                   ),
@@ -317,13 +317,13 @@ class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
       padding: const EdgeInsets.symmetric(vertical: 40),
       child: Column(
         children: [
-          const Icon(Icons.info_outline,
+          Icon(Icons.info_outline,
               color: NotelColors.textSecondary, size: 48),
           const SizedBox(height: 12),
           if (stored != null && stored > 0) ...[
             Text(
               spikeReviewStoredCountLine(stored),
-              style: const TextStyle(
+              style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontWeight: FontWeight.bold,
                 fontSize: 18,
@@ -332,7 +332,7 @@ class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
             ),
             const SizedBox(height: 4),
           ],
-          const Text(
+          Text(
             spikeReviewDetailUnavailableLine,
             style: TextStyle(
               color: NotelColors.textSecondary,
@@ -349,7 +349,7 @@ class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
   /// examined-and-zero-events branch — a non-empty series was
   /// actually examined and detection found 0 events.
   Widget _emptyState() {
-    return const Padding(
+    return Padding(
       padding: EdgeInsets.symmetric(vertical: 40),
       child: Column(
         children: [
@@ -414,7 +414,7 @@ class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
                           horizontal: 8, vertical: 4),
                       child: Text(
                         '#${index + 1}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: NotelColors.error,
                           fontSize: 11,
                           fontWeight: FontWeight.w900,
@@ -428,7 +428,7 @@ class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
                         children: [
                           Text(
                             timeLabel,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: NotelColors.textPrimary,
                               fontWeight: FontWeight.bold,
                               fontSize: 14,
@@ -439,7 +439,7 @@ class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
                           const SizedBox(height: 2),
                           Text(
                             '${spike.durationMins}m duration  •  ${spike.source}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: NotelColors.textSecondary,
                               fontSize: 11,
                             ),
@@ -455,7 +455,7 @@ class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
                       children: [
                         Text(
                           '${spike.peakBpm} bpm',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: NotelColors.error,
                             fontWeight: FontWeight.w900,
                             fontSize: 15,
@@ -464,7 +464,7 @@ class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
                         const SizedBox(height: 2),
                         Text(
                           '+${spike.jumpDelta} jump',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: NotelColors.textSecondary,
                             fontSize: 11,
                             fontWeight: FontWeight.w500,
@@ -476,11 +476,11 @@ class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
                 ),
                 if (expanded) ...[
                   const SizedBox(height: 14),
-                  const Divider(height: 1, color: NotelColors.divider),
+                  Divider(height: 1, color: NotelColors.divider),
                   const SizedBox(height: 12),
                   Text(
                     'Surrounding Context (${contextReadings.length} data points):',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: NotelColors.textSecondary,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -493,7 +493,7 @@ class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
                       children: [
                         Text(
                           formatHrTime(r.timeMs),
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: NotelColors.textSecondary,
                             fontSize: 12,
                           ),

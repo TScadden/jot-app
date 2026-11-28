@@ -99,7 +99,7 @@ class _ChestsSheetState extends State<ChestsSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               ChestCopy.sheetTitle,
               key: Key('chestsSheetTitle'),
               style: TextStyle(
@@ -115,7 +115,7 @@ class _ChestsSheetState extends State<ChestsSheet> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       ChestCopy.loadError,
                       key: Key('chestsLoadError'),
                       style: TextStyle(
@@ -133,7 +133,7 @@ class _ChestsSheetState extends State<ChestsSheet> {
                 ),
               )
             else if (inventory.isEmpty)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.symmetric(vertical: 12),
                 child: Text(
                   ChestCopy.emptyState,
@@ -214,7 +214,7 @@ class _ChestRow extends StatelessWidget {
           Expanded(
             child: Text(
               chest.tier.rowName,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
                 color: NotelColors.textPrimary,

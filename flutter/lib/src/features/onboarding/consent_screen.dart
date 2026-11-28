@@ -54,14 +54,14 @@ class OnboardingConsentScreen extends StatelessWidget {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
         ),
-        title: const Text(
+        title: Text(
           'Data Consent Required',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             color: NotelColors.textPrimary,
           ),
         ),
-        content: const Text(
+        content: Text(
           'Tabs relies on health notes and biometric data to generate '
           'personalized AI insights and recaps. Declining limits app '
           'capabilities. Would you like to go back to login or continue '
@@ -74,7 +74,7 @@ class OnboardingConsentScreen extends StatelessWidget {
               Navigator.of(dialogContext).pop();
               onDecline();
             },
-            child: const Text(
+            child: Text(
               'Log Out',
               style: TextStyle(color: NotelColors.textSecondary),
             ),
@@ -135,7 +135,7 @@ class OnboardingConsentScreen extends StatelessWidget {
                         ),
                       ],
                     ),
-                    child: const SingleChildScrollView(
+                    child: SingleChildScrollView(
                       padding: EdgeInsets.all(24),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -198,7 +198,7 @@ class OnboardingConsentScreen extends StatelessWidget {
                 alignment: WrapAlignment.center,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  const Text(
+                  Text(
                     'Read our ',
                     style: TextStyle(
                       fontSize: 12,
@@ -217,7 +217,7 @@ class OnboardingConsentScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const Text(
+                  Text(
                     ' and ',
                     style: TextStyle(
                       fontSize: 12,
@@ -236,7 +236,7 @@ class OnboardingConsentScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const Text(
+                  Text(
                     ' for full details.',
                     style: TextStyle(
                       fontSize: 12,

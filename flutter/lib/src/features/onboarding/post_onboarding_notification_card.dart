@@ -65,7 +65,7 @@ class PostOnboardingNotificationCard extends StatelessWidget {
                 size: 40,
               ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'Allow Tabs to send you notifications?',
                 textAlign: TextAlign.center,
                 style: TextStyle(
@@ -75,7 +75,7 @@ class PostOnboardingNotificationCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 10),
-              const Text(
+              Text(
                 'Your evening check-in reminder and habit nudges.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
@@ -109,7 +109,7 @@ class PostOnboardingNotificationCard extends StatelessWidget {
               const SizedBox(height: 8),
               TextButton(
                 onPressed: onDontAllow,
-                child: const Text(
+                child: Text(
                   "Don't Allow",
                   style: TextStyle(
                     color: NotelColors.textSecondary,

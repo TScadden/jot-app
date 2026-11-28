@@ -1137,7 +1137,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text('Include these categories',
+            Text('Include these categories',
                 style: TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
             Row(children: [
               TextButton(
@@ -1148,7 +1148,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
               ),
               TextButton(
                 onPressed: () => setState(() => _customIds = {}),
-                child: const Text('Clear',
+                child: Text('Clear',
                     style: TextStyle(
                         color: NotelColors.textSecondary, fontSize: 12)),
               ),
@@ -1173,7 +1173,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
                 ),
                 const SizedBox(width: 8),
                 Text(c.name,
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: NotelColors.textPrimary, fontSize: 14)),
               ]),
             ),
@@ -1216,7 +1216,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
           color: NotelColors.primary.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(10),
         ),
-        child: const Text(
+        child: Text(
           'Tabs is not a medical device. It does not diagnose, treat, cure, or prevent any condition. AI insights are informational only. Consult a healthcare professional.',
           textAlign: TextAlign.center,
           style: TextStyle(color: NotelColors.textSecondary, fontSize: 11),
@@ -1244,12 +1244,12 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(weeklyLockedTitle,
+                Text(weeklyLockedTitle,
                     style: TextStyle(
                         color: NotelColors.textPrimary,
                         fontSize: 14,
                         fontWeight: FontWeight.w500)),
-                const Text(weeklyLockedBody,
+                Text(weeklyLockedBody,
                     style: TextStyle(
                         color: NotelColors.textSecondary, fontSize: 12)),
               ],
@@ -1257,7 +1257,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
           ),
         ]),
       ] else if (entitlement == WeeklyEntitlement.lapsed) ...[
-        const Text(weeklyLapsedLine,
+        Text(weeklyLapsedLine,
             style: TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
         if (_weeklyRecords.isNotEmpty) ...[
           const SizedBox(height: 8),
@@ -1290,7 +1290,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
         if (_weeklyService.pendingFailure != null && !generating) ...[
           const SizedBox(height: 8),
           Text(_weeklyService.pendingFailure!.message,
-              style: const TextStyle(color: NotelColors.error, fontSize: 12)),
+              style: TextStyle(color: NotelColors.error, fontSize: 12)),
         ],
         if (_bgAskVisible) ...[
           const SizedBox(height: 12),
@@ -1298,7 +1298,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
         ],
         const SizedBox(height: 8),
         if (_weeklyRecords.isEmpty)
-          const Text(weeklyArchiveEmpty,
+          Text(weeklyArchiveEmpty,
               style: TextStyle(color: NotelColors.textSecondary, fontSize: 12))
         else
           for (final r in _weeklyRecords) _weeklyEntryRow(r),
@@ -1328,16 +1328,16 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(weeklyBgTitle,
+          Text(weeklyBgTitle,
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontSize: 13,
                   fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
-          const Text(weeklyBgBody,
+          Text(weeklyBgBody,
               style: TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
           const SizedBox(height: 8),
-          const Text(weeklyBgGuidance,
+          Text(weeklyBgGuidance,
               style: TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
           const SizedBox(height: 8),
           Row(children: [
@@ -1351,7 +1351,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
             ),
             TextButton(
               onPressed: () => _dismissBgAsk(),
-              child: const Text(weeklyBgSecondaryAction,
+              child: Text(weeklyBgSecondaryAction,
                   style: TextStyle(
                       color: NotelColors.textSecondary, fontSize: 12)),
             ),
@@ -1375,18 +1375,18 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(weeklyWeekLabel(r.window),
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: NotelColors.textPrimary,
                         fontSize: 13,
                         fontWeight: FontWeight.w500)),
                 Text(weeklyGeneratedLine(r.generatedAtMs),
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: NotelColors.textSecondary, fontSize: 11)),
               ],
             ),
           ),
           Text(r.label.label,
-              style: const TextStyle(
+              style: TextStyle(
                   color: NotelColors.textSecondary,
                   fontSize: 12,
                   fontWeight: FontWeight.w600)),
@@ -1411,26 +1411,26 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(weeklyPermissionTitle,
+          Text(weeklyPermissionTitle,
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontSize: 13,
                   fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
-          const Text(weeklyPermissionBody,
+          Text(weeklyPermissionBody,
               style: TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
           const SizedBox(height: 8),
-          const Text(weeklyPermissionSectionsLabel,
+          Text(weeklyPermissionSectionsLabel,
               style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontSize: 12,
                   fontWeight: FontWeight.w500)),
           for (final section in evaluation.blockedSections)
             Text(section,
-                style: const TextStyle(
+                style: TextStyle(
                     color: NotelColors.textSecondary, fontSize: 12)),
           const SizedBox(height: 8),
-          const Text(weeklyPermissionGuidance,
+          Text(weeklyPermissionGuidance,
               style: TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
           const SizedBox(height: 8),
           Row(children: [
@@ -1447,7 +1447,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
             ),
             TextButton(
               onPressed: () => setState(() => _permissionDismissed = true),
-              child: const Text(weeklyPermissionSecondaryAction,
+              child: Text(weeklyPermissionSecondaryAction,
                   style: TextStyle(
                       color: NotelColors.textSecondary, fontSize: 12)),
             ),
@@ -1466,7 +1466,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
                   fontWeight: FontWeight.bold)),
           Text(label,
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                   color: NotelColors.textSecondary, fontSize: 11)),
         ]),
       );
@@ -1480,11 +1480,11 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
         '${_focus.label} report, ${_last30Days ? 'this month' : 'all time'}. '
         '${inRange.length} entries across ${selected.length} categories.',
         style:
-            const TextStyle(color: NotelColors.textSecondary, fontSize: 13),
+            TextStyle(color: NotelColors.textSecondary, fontSize: 13),
       ),
       if (inRange.isNotEmpty) ...[
         const SizedBox(height: 8),
-        const Text('Log activity by hour',
+        Text('Log activity by hour',
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontSize: 13,
@@ -1493,7 +1493,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
         if (_selectedHour != null)
           Text(
             '${formatHourLabel(_selectedHour!)}: ${hourlyCounts(inRange)[_selectedHour!] ?? 0} entries',
-            style: const TextStyle(
+            style: TextStyle(
                 color: NotelColors.textSecondary, fontSize: 12),
           ),
       ] else ...[
@@ -1508,7 +1508,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
               selected.isEmpty
                   ? 'No categories selected'
                   : 'Nothing to preview yet',
-              style: const TextStyle(
+              style: TextStyle(
                   color: NotelColors.textPrimary,
                   fontSize: 14,
                   fontWeight: FontWeight.w500),
@@ -1531,7 +1531,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
         // R5-9: the auto re-run framing line, above the standard
         // stage label, only while an auto re-run is in flight.
         if (_service.autoRunInFlight) ...[
-          const Center(
+          Center(
             child: Text(autoRerunFraming,
                 style: TextStyle(
                     color: NotelColors.textPrimary,
@@ -1558,7 +1558,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
         Center(
           child: TextButton(
             onPressed: () => _service.requestCancel(),
-            child: const Text('Cancel Report Generation',
+            child: Text('Cancel Report Generation',
                 style: TextStyle(color: NotelColors.error, fontSize: 11)),
           ),
         ),
@@ -1572,13 +1572,13 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
         // logical generation (new identity, full collect +
         // generate). Copy is Juno's signed R8-1 set, defined in
         // report_generation_journal.dart.
-        const Text(expiredHoldTitle,
+        Text(expiredHoldTitle,
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontSize: 13,
                 fontWeight: FontWeight.w600)),
         const SizedBox(height: 6),
-        const Text(expiredHoldBody,
+        Text(expiredHoldBody,
             style: TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
         const SizedBox(height: 4),
         TextButton(
@@ -1602,17 +1602,17 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
         // same-session body/buttons would be false here).
         if (_service.restoredDecisionFraming != null) ...[
           Text(_service.restoredDecisionFraming!,
-              style: const TextStyle(
+              style: TextStyle(
                   color: NotelColors.textSecondary, fontSize: 11)),
           const SizedBox(height: 4),
         ],
-        const Text(aiDecisionTitle,
+        Text(aiDecisionTitle,
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontSize: 13,
                 fontWeight: FontWeight.w600)),
         const SizedBox(height: 6),
-        const Text(restoredDecisionBodyCase2,
+        Text(restoredDecisionBodyCase2,
             style: TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
         const SizedBox(height: 4),
         TextButton(
@@ -1641,13 +1641,13 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
       ] else if (!generating && _service.interruptedEntry != null) ...[
         // VC 100129, R5-1–R5-3 — the interrupted surface (shown
         // when the auto re-run could not proceed).
-        const Text(interruptedTitle,
+        Text(interruptedTitle,
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontSize: 13,
                 fontWeight: FontWeight.w600)),
         const SizedBox(height: 6),
-        const Text(interruptedBody,
+        Text(interruptedBody,
             style: TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
         const SizedBox(height: 4),
         TextButton(
@@ -1672,17 +1672,17 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
         // produced carries the earlier-attempt framing line.
         if (_service.heldFramingLine != null) ...[
           Text(_service.heldFramingLine!,
-              style: const TextStyle(
+              style: TextStyle(
                   color: NotelColors.textSecondary, fontSize: 11)),
           const SizedBox(height: 4),
         ],
-        const Text(aiDecisionTitle,
+        Text(aiDecisionTitle,
             style: TextStyle(
                 color: NotelColors.textPrimary,
                 fontSize: 13,
                 fontWeight: FontWeight.w600)),
         const SizedBox(height: 6),
-        const Text(aiDecisionBody,
+        Text(aiDecisionBody,
             style: TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
         const SizedBox(height: 4),
         Row(children: [
@@ -1711,12 +1711,12 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
         // failure message.
         if (_service.heldFramingLine != null) ...[
           Text(_service.heldFramingLine!,
-              style: const TextStyle(
+              style: TextStyle(
                   color: NotelColors.textSecondary, fontSize: 11)),
           const SizedBox(height: 4),
         ],
         Text(_failureMessage!,
-            style: const TextStyle(color: NotelColors.error, fontSize: 12)),
+            style: TextStyle(color: NotelColors.error, fontSize: 12)),
         if (_failureAllowRaw)
           TextButton(
             onPressed: () => _generate(forceRaw: true),
@@ -1749,7 +1749,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
                   height: 18,
                   child: CircularProgressIndicator(
                       strokeWidth: 2, color: Colors.white))
-              : const Row(
+              : Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(Icons.picture_as_pdf,
@@ -1824,7 +1824,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("What's in this report",
+              Text("What's in this report",
                   style: TextStyle(
                       color: NotelColors.textSecondary, fontSize: 12)),
               Icon(_showSources ? Icons.expand_less : Icons.expand_more,
@@ -1873,7 +1873,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(attemptDetailsLabel,
+                Text(attemptDetailsLabel,
                     style: TextStyle(
                         color: NotelColors.textSecondary, fontSize: 12)),
                 Icon(
@@ -1891,7 +1891,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
             Padding(
               padding: const EdgeInsets.only(bottom: 2),
               child: Text(line,
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: NotelColors.textSecondary, fontSize: 11)),
             ),
       ],
@@ -1909,12 +1909,12 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title,
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: NotelColors.textPrimary,
                         fontSize: 13,
                         fontWeight: FontWeight.w500)),
                 Text(detail,
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: NotelColors.textSecondary, fontSize: 12)),
               ],
             ),
@@ -2012,7 +2012,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(c.name,
-                style: const TextStyle(
+                style: TextStyle(
                     color: NotelColors.textPrimary, fontSize: 14)),
             Text('$count',
                 style: TextStyle(
@@ -2045,7 +2045,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
     final saved = _appointmentDateIso;
     return _card(
       [
-        const Row(children: [
+        Row(children: [
           Icon(Icons.event_note, size: 22, color: NotelColors.primary),
           SizedBox(width: 8),
           Text('Prepare for an appointment',
@@ -2055,7 +2055,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
                   fontWeight: FontWeight.w600)),
         ]),
         const SizedBox(height: 4),
-        const Text(
+        Text(
           'Save the date and the report type you want ready for your visit. We will remind you the day before to export it.',
           style: TextStyle(color: NotelColors.textSecondary, fontSize: 12),
         ),
@@ -2075,14 +2075,14 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
                   children: [
                     Text(
                       'Appointment: ${formatIsoDate(saved)}${appointmentCountdown(saved) != null ? ' (${appointmentCountdown(saved)})' : ''}',
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: NotelColors.textPrimary,
                           fontSize: 14,
                           fontWeight: FontWeight.w500),
                     ),
                     Text(
                         '${ReportFocus.fromKey(_appointmentTypeKey).label} report saved',
-                        style: const TextStyle(
+                        style: TextStyle(
                             color: NotelColors.textSecondary, fontSize: 12)),
                   ],
                 ),
@@ -2097,7 +2097,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
                 ),
                 TextButton(
                   onPressed: _clearAppointment,
-                  child: const Text('Clear',
+                  child: Text('Clear',
                       style: TextStyle(
                           color: NotelColors.textSecondary, fontSize: 12)),
                 ),
@@ -2162,7 +2162,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
             ),
-            child: const Text('Save appointment',
+            child: Text('Save appointment',
                 style: TextStyle(
                     color: NotelColors.textPrimary,
                     fontSize: 14,

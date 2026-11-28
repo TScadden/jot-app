@@ -498,14 +498,14 @@ class _NotesScreenState extends State<NotesScreen> {
         backgroundColor: NotelColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
+          icon: Icon(
             Icons.arrow_back,
             color: NotelColors.textPrimary,
             semanticLabel: 'Back',
           ),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
+        title: Text(
           'Notes',
           style: TextStyle(
             fontSize: 20,
@@ -549,7 +549,7 @@ class _NotesScreenState extends State<NotesScreen> {
         const SizedBox(height: 20),
         Expanded(
           child: notes.isEmpty
-              ? const Center(
+              ? Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -595,7 +595,7 @@ class _NotesScreenState extends State<NotesScreen> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         color: NotelColors.surfaceHigh.withValues(alpha: 0.05),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.03)),
+        border: Border.all(color: NotelColors.legacyDarkHairlineFaint),
       ),
       child: Column(
         children: [
@@ -603,9 +603,9 @@ class _NotesScreenState extends State<NotesScreen> {
             controller: _titleController,
             enabled: !_writing,
             textCapitalization: TextCapitalization.words,
-            style: const TextStyle(
+            style: TextStyle(
                 color: NotelColors.textPrimary, fontSize: 14),
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: 'Title (optional)...',
               hintStyle:
                   TextStyle(color: NotelColors.textSecondary, fontSize: 14),
@@ -624,9 +624,9 @@ class _NotesScreenState extends State<NotesScreen> {
                   enabled: !_writing,
                   textCapitalization: TextCapitalization.sentences,
                   maxLines: 4,
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: NotelColors.textPrimary, fontSize: 14),
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     hintText: 'Write a note...',
                     hintStyle: TextStyle(
                         color: NotelColors.textSecondary, fontSize: 14),
@@ -665,7 +665,7 @@ class _NotesScreenState extends State<NotesScreen> {
           children: [
             const Text('📝', style: TextStyle(fontSize: 48)),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Couldn\'t load notes',
               style: TextStyle(
                 color: NotelColors.textPrimary,
@@ -674,7 +674,7 @@ class _NotesScreenState extends State<NotesScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Check your connection and try again.',
               style: TextStyle(
                 color: NotelColors.textSecondary,
@@ -702,7 +702,7 @@ class _NotesScreenState extends State<NotesScreen> {
         borderRadius: BorderRadius.circular(14),
         color: NotelColors.surfaceHigh.withValues(alpha: 0.08),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.05),
+          color: NotelColors.legacyDarkHairlineFaint,
         ),
       ),
       child: InkWell(
@@ -729,7 +729,7 @@ class _NotesScreenState extends State<NotesScreen> {
                     const SizedBox(height: 4),
                     Text(
                       note.text,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: NotelColors.textPrimary,
                         fontSize: 13,
                         height: 18 / 13,
@@ -807,7 +807,7 @@ class _EditNoteDialogState extends State<_EditNoteDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: NotelColors.surface,
-      title: const Text('Edit Note',
+      title: Text('Edit Note',
           style: TextStyle(
               color: NotelColors.textPrimary,
               fontWeight: FontWeight.bold)),
@@ -817,8 +817,8 @@ class _EditNoteDialogState extends State<_EditNoteDialog> {
           TextField(
             controller: _titleController,
             textCapitalization: TextCapitalization.words,
-            style: const TextStyle(color: NotelColors.textPrimary),
-            decoration: const InputDecoration(
+            style: TextStyle(color: NotelColors.textPrimary),
+            decoration: InputDecoration(
               hintText: 'Title (optional)...',
               hintStyle: TextStyle(color: NotelColors.textSecondary),
             ),
@@ -828,8 +828,8 @@ class _EditNoteDialogState extends State<_EditNoteDialog> {
             controller: _bodyController,
             textCapitalization: TextCapitalization.sentences,
             maxLines: 6,
-            style: const TextStyle(color: NotelColors.textPrimary),
-            decoration: const InputDecoration(
+            style: TextStyle(color: NotelColors.textPrimary),
+            decoration: InputDecoration(
               hintText: 'Note content...',
               hintStyle: TextStyle(color: NotelColors.textSecondary),
             ),
@@ -839,7 +839,7 @@ class _EditNoteDialogState extends State<_EditNoteDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel',
+          child: Text('Cancel',
               style: TextStyle(color: NotelColors.textSecondary)),
         ),
         FilledButton(

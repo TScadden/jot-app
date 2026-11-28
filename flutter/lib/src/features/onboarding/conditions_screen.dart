@@ -190,7 +190,7 @@ class _OnboardingConditionsScreenState
             ),
           ),
           const SizedBox(height: 12),
-          const Text(
+          Text(
             'This helps us personalize your experience by suggesting '
             'the most relevant symptoms to track.',
             textAlign: TextAlign.center,
@@ -210,7 +210,7 @@ class _OnboardingConditionsScreenState
               child: Container(
                 height: 50,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: const Row(
+                child: Row(
                   children: [
                     Icon(Icons.search, color: NotelColors.primary, size: 20),
                     SizedBox(width: 12),
@@ -257,7 +257,7 @@ class _OnboardingConditionsScreenState
                           ),
                         ),
                         const SizedBox(width: 12),
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -307,7 +307,7 @@ class _OnboardingConditionsScreenState
                                         Expanded(
                                           child: Text(
                                             condition,
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               color: NotelColors.textPrimary,
                                               fontSize: 14,
                                               fontWeight: FontWeight.w500,
@@ -362,7 +362,7 @@ class _OnboardingConditionsScreenState
                 child: InkWell(
                   customBorder: const CircleBorder(),
                   onTap: () => setState(() => _searching = false),
-                  child: const SizedBox(
+                  child: SizedBox(
                     width: 36,
                     height: 36,
                     child: Icon(
@@ -374,7 +374,7 @@ class _OnboardingConditionsScreenState
                 ),
               ),
               const SizedBox(width: 12),
-              const Text(
+              Text(
                 'Search conditions',
                 style: TextStyle(
                   fontSize: 18,
@@ -387,15 +387,15 @@ class _OnboardingConditionsScreenState
           const SizedBox(height: 16),
           TextField(
             autofocus: true,
-            style: const TextStyle(
+            style: TextStyle(
               color: NotelColors.textPrimary,
               fontSize: 14,
             ),
             cursorColor: NotelColors.primary,
             decoration: InputDecoration(
               hintText: 'Search all conditions',
-              hintStyle: const TextStyle(color: NotelColors.textSecondary),
-              prefixIcon: const Icon(
+              hintStyle: TextStyle(color: NotelColors.textSecondary),
+              prefixIcon: Icon(
                 Icons.search,
                 color: NotelColors.textSecondary,
               ),
@@ -403,12 +403,12 @@ class _OnboardingConditionsScreenState
                   ? null
                   : IconButton(
                       onPressed: () => setState(() => _query = ''),
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.close,
                         color: NotelColors.textSecondary,
                       ),
                     ),
-              enabledBorder: const OutlineInputBorder(
+              enabledBorder: OutlineInputBorder(
                 borderSide: BorderSide(color: NotelColors.textSecondary),
               ),
               focusedBorder: const OutlineInputBorder(
@@ -444,7 +444,7 @@ class _OnboardingConditionsScreenState
                         Expanded(
                           child: Text(
                             condition,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 14,
                               color: NotelColors.textPrimary,
                             ),

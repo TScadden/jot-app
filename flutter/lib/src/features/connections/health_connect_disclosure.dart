@@ -26,7 +26,7 @@ Future<bool> showHealthConnectDisclosure(BuildContext context) {
           color: NotelColors.primary.withValues(alpha: 0.15),
         ),
       ),
-      title: const Text(
+      title: Text(
         'Connect Health Connect?',
         style: TextStyle(
           fontSize: 17,
@@ -34,7 +34,7 @@ Future<bool> showHealthConnectDisclosure(BuildContext context) {
           color: NotelColors.textPrimary,
         ),
       ),
-      content: const Text(
+      content: Text(
         'Tabs reads your heart rate, sleep, steps, calories, and blood '
         'pressure from Health Connect to show your vitals and weekly '
         'snapshot. Your health data stays on your device and is never sold.',
@@ -47,7 +47,7 @@ Future<bool> showHealthConnectDisclosure(BuildContext context) {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(dialogContext).pop(false),
-          child: const Text(
+          child: Text(
             'Not now',
             style: TextStyle(color: NotelColors.textSecondary),
           ),

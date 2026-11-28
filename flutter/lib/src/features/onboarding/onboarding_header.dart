@@ -66,7 +66,7 @@ class OnboardingHeader extends StatelessWidget {
                       child: InkWell(
                         customBorder: const CircleBorder(),
                         onTap: onBack,
-                        child: const Icon(
+                        child: Icon(
                           Icons.arrow_back,
                           color: NotelColors.textPrimary,
                           size: 20,
@@ -81,7 +81,7 @@ class OnboardingHeader extends StatelessWidget {
                 ? Text(
                     trailingLabel!,
                     key: const ValueKey('onboarding_header_trailing_label'),
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: NotelColors.textSecondary,
                       fontSize: 15,
                       fontWeight: FontWeight.w500,
@@ -100,7 +100,7 @@ class OnboardingHeader extends StatelessWidget {
                               tapTargetSize:
                                   MaterialTapTargetSize.padded,
                             ),
-                            child: const Text(
+                            child: Text(
                               'Skip',
                               style: TextStyle(
                                 color: NotelColors.textSecondary,

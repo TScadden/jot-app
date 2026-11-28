@@ -276,7 +276,7 @@ class _ToolsScreenState extends State<ToolsScreen>
         backgroundColor: NotelColors.background,
         elevation: 0,
         automaticallyImplyLeading: false,
-        title: const Text(
+        title: Text(
           'Tools',
           style: TextStyle(
             fontSize: 22,
@@ -334,7 +334,7 @@ class _ToolsScreenState extends State<ToolsScreen>
           else
             IconButton(
               onPressed: () => setState(() => _editMode = true),
-              icon: const Icon(
+              icon: Icon(
                 Icons.swap_vert,
                 semanticLabel: 'Reorder tiles',
                 color: NotelColors.textSecondary,
@@ -516,7 +516,7 @@ class _ToolCard extends StatelessWidget {
                 children: [
                   Text(
                     tile.title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.bold,
                       height: 1.27,
@@ -528,7 +528,7 @@ class _ToolCard extends StatelessWidget {
                     tile.description,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
                       height: 1.27,
                       color: NotelColors.textSecondary,
@@ -539,13 +539,13 @@ class _ToolCard extends StatelessWidget {
             ],
           ),
           if (editMode && !dragging)
-            const Positioned(
+            Positioned(
               top: 0,
               right: 0,
               child: Icon(
                 Icons.drag_handle,
                 size: 20,
-                color: Color(0x997C6EFF),
+                color: NotelColors.primary.withValues(alpha: 0.6),
                 semanticLabel: 'Drag handle',
               ),
             ),

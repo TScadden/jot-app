@@ -115,7 +115,7 @@ class _MidnightGraceBandState extends State<MidnightGraceBand>
         children: [
           Text(
             widget.controller.timerText,
-            style: const TextStyle(
+            style: TextStyle(
               color: NotelColors.textPrimary,
               fontSize: 25,
               fontWeight: FontWeight.w700,

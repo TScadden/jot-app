@@ -38,7 +38,7 @@ class GemsOnboardingScreen extends StatelessWidget {
                   child: Column(
                     children: [
                       const SizedBox(height: 24),
-                      const Text(
+                      Text(
                         'STREAKS, FREEZES & GEMS',
                         textAlign: TextAlign.center,
                         style: TextStyle(
@@ -48,7 +48,7 @@ class GemsOnboardingScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      const Text(
+                      Text(
                         'Three little things that help you stick with it.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
@@ -171,7 +171,7 @@ class _GemsCard extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: NotelColors.textPrimary,
@@ -180,7 +180,7 @@ class _GemsCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   body,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     color: NotelColors.textSecondary,
                     height: 20 / 14,

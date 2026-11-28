@@ -344,7 +344,7 @@ class _FeelingCheckInCardState extends State<FeelingCheckInCard>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  const Text(
+                  Text(
                     'How are you feeling?',
                     style: TextStyle(
                       fontSize: 13,
@@ -377,7 +377,7 @@ class _FeelingCheckInCardState extends State<FeelingCheckInCard>
                               // is printed before it.
                               Text(
                                 feelingWordForRanking(level),
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w500,
                                   color: NotelColors.textSecondary,

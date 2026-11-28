@@ -25,14 +25,14 @@ class AuthTopLogoHeader extends StatelessWidget {
             child: Container(
               width: 40,
               height: 40,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 color: NotelColors.surfaceHigh,
                 shape: BoxShape.circle,
               ),
               child: IconButton(
                 onPressed: onBack,
                 padding: EdgeInsets.zero,
-                icon: const Icon(
+                icon: Icon(
                   Icons.arrow_back,
                   color: NotelColors.textPrimary,
                 ),

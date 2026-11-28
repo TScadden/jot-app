@@ -47,9 +47,17 @@ class AppBackgroundController extends ChangeNotifier {
   /// Unset or unreadable → the shipped default. Never throws.
   Future<void> load() async {
     final hex = await _store.getAppBackgroundColorHex();
-    NotelColors.backgroundOverride =
-        (hex == null ? null : parseHex(hex)) ??
-            NotelColors.defaultBackground;
+    final parsed = hex == null ? null : parseHex(hex);
+    // Theme-mode package (Nov 27, 2026): an unset/unreadable key
+    // means NO override — the resolved background is the active
+    // palette's (dark default in dark mode, the light background
+    // in light mode). An explicit stored hex is an override and
+    // wins in BOTH themes.
+    if (parsed == null) {
+      NotelColors.clearBackgroundOverride();
+    } else {
+      NotelColors.backgroundOverride = parsed;
+    }
     notifyListeners();
   }
 
@@ -71,10 +79,11 @@ class AppBackgroundController extends ChangeNotifier {
     return true;
   }
 
-  /// Clears the override: the token returns to the shipped
-  /// default and the prefs key is deleted (unset state).
+  /// Clears the override: the token returns to the active
+  /// palette's background (the shipped default in dark mode) and
+  /// the prefs key is deleted (unset state).
   Future<void> reset() async {
-    NotelColors.backgroundOverride = NotelColors.defaultBackground;
+    NotelColors.clearBackgroundOverride();
     notifyListeners();
     await _store.setAppBackgroundColorHex(null);
   }
