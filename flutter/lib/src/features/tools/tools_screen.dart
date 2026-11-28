@@ -19,6 +19,7 @@ import 'package:tabs_lab/src/features/tools/research_screen.dart';
 import 'package:tabs_lab/src/features/tools/tips_tricks_screen.dart';
 import 'package:tabs_lab/src/features/tools/tool_placeholder_screen.dart';
 import 'package:tabs_lab/src/features/tools/trends_screen.dart';
+import 'package:tabs_lab/src/features/shell/tablet_content_shell.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
@@ -349,15 +350,22 @@ class _ToolsScreenState extends State<ToolsScreen>
             child: _InfoBanner(editMode: _editMode),
           ),
           Expanded(
-            child: GridView.count(
-              crossAxisCount: 2,
-              mainAxisSpacing: 14,
-              crossAxisSpacing: 14,
-              childAspectRatio: 1.0,
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 110),
-              children: [
-                for (final tile in _tiles) _reorderableCell(tile),
-              ],
+            // Tablet width adaptation: column count follows the
+            // EFFECTIVE content width (LayoutBuilder constraints, so
+            // split panes behave like phones). <600dp keeps today's
+            // 2-up grid exactly; >=600dp goes 4-up. Tile construction
+            // is unchanged — only the count moves.
+            child: LayoutBuilder(
+              builder: (context, constraints) => GridView.count(
+                crossAxisCount: constraints.maxWidth >= 600 ? 4 : 2,
+                mainAxisSpacing: 14,
+                crossAxisSpacing: 14,
+                childAspectRatio: 1.0,
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 110),
+                children: [
+                  for (final tile in _tiles) _reorderableCell(tile),
+                ],
+              ),
             ),
           ),
         ],
@@ -372,6 +380,15 @@ class _ToolsScreenState extends State<ToolsScreen>
       ).animate(CurvedAnimation(parent: _enter, curve: Curves.easeOut)),
       child: content,
     );
+  }
+
+  /// Width of one grid cell at the effective content width: mirrors
+  /// the grid's own math (16dp padding each side, 14dp gaps) and its
+  /// >=600dp column breakpoint.
+  double _feedbackTileWidth(BuildContext context) {
+    final effective = TabletContentShell.effectiveWidthOf(context);
+    final columns = effective >= 600 ? 4 : 2;
+    return (effective - 32 - 14 * (columns - 1)) / columns;
   }
 
   Widget _reorderableCell(ToolTile tile) {
@@ -393,7 +410,10 @@ class _ToolsScreenState extends State<ToolsScreen>
           feedback: Material(
             color: Colors.transparent,
             child: SizedBox(
-              width: (MediaQuery.sizeOf(context).width - 32 - 14) / 2,
+              // Same effective-width rule as the grid: the dragged
+              // tile must match the cell it came from. Below 600dp
+              // effective this is exactly the old (width - 32 - 14)/2.
+              width: _feedbackTileWidth(context),
               child: _ToolCard(tile: tile, editMode: true, dragging: true),
             ),
           ),

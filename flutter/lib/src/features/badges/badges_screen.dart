@@ -407,17 +407,23 @@ class _BadgesScreenState extends State<BadgesScreen> {
     String section,
   ) {
     final metrics = BadgeMetrics.inSection(section);
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-        childAspectRatio: 0.55,
+    // Tablet width adaptation: column count follows the EFFECTIVE
+    // content width (LayoutBuilder constraints, so split panes behave
+    // like phones). <600dp keeps today's 3-up grid exactly; >=600dp
+    // goes 5-up. Tile construction and aspect are unchanged.
+    return LayoutBuilder(
+      builder: (context, constraints) => GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: constraints.maxWidth >= 600 ? 5 : 3,
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
+          childAspectRatio: 0.55,
+        ),
+        itemCount: metrics.length,
+        itemBuilder: (context, i) => _tile(context, snap, metrics[i]),
       ),
-      itemCount: metrics.length,
-      itemBuilder: (context, i) => _tile(context, snap, metrics[i]),
     );
   }
 

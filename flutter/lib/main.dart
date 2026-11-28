@@ -55,6 +55,7 @@ import 'package:tabs_lab/src/features/home/chest_drop_presenter.dart';
 import 'package:tabs_lab/src/features/home/streak_celebration_presenter.dart';
 import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
+import 'package:tabs_lab/src/features/shell/tablet_content_shell.dart';
 import 'package:tabs_lab/src/data/onboarding_resume_gate.dart';
 import 'package:tabs_lab/src/features/onboarding/onboarding_flow.dart';
 import 'package:tabs_lab/src/features/onboarding/post_onboarding_notification_card.dart';
@@ -287,7 +288,15 @@ class TabsLabApp extends StatelessWidget {
         child: ChestDropPresenter(
           child: ReportGenerationPresenter(
             service: ReportGenerationService.instance,
-            child: child ?? const SizedBox.shrink(),
+            // Tablet width adaptation (Phase 1 prototype, Nov 27,
+            // 2026): the content shell wraps the navigator child
+            // INSIDE the presenter chain, so presenter overlays stay
+            // full-screen while routes, dialogs, sheets and the dock
+            // lay out in the capped, centered column. Below the cap
+            // the shell is layout-identical to no shell at all.
+            child: TabletContentShell(
+              child: child ?? const SizedBox.shrink(),
+            ),
           ),
         ),
       ),
