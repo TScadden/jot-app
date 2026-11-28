@@ -588,42 +588,65 @@ class _HistoryScreenState extends State<HistoryScreen> {
     unawaited(HomeDataCache.instance.persist());
   }
 
-  Future<void> _deleteEntry(QuickLogEntry entry) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: NotelColors.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'Delete entry?',
-          style: TextStyle(
-            color: NotelColors.textPrimary,
-            fontWeight: FontWeight.bold,
-          ),
+  /// Wave A (SCORECARD-9 #5): the "Entry removed" toast for a
+  /// successful delete, carrying Undo. [index] is the row's captured
+  /// position; [cancelledRecord] is the pending outbox record the
+  /// delete cancelled, if any — Undo restores it exactly (the same
+  /// machinery the server-failure path below uses), otherwise it
+  /// re-stages the entry through the outbox upsert on its original
+  /// id, so a server-deleted row is recreated in place by the same
+  /// idempotent write the edit path reuses — never duplicated.
+  void _showRemovedSnackBar(
+    QuickLogEntry entry,
+    int index, {
+    LogEntryOutboxRecord? cancelledRecord,
+  }) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Entry removed'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () =>
+              unawaited(_undoDelete(entry, index, cancelledRecord)),
         ),
-        content: const Text(
-          'This cannot be undone.',
-          style: TextStyle(color: NotelColors.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: NotelColors.textSecondary),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              'Delete',
-              style: TextStyle(color: NotelColors.error),
-            ),
-          ),
-        ],
       ),
     );
-    if (confirmed != true) return;
+  }
+
+  Future<void> _undoDelete(
+    QuickLogEntry entry,
+    int index,
+    LogEntryOutboxRecord? cancelledRecord,
+  ) async {
+    if (cancelledRecord != null) {
+      await _outbox.restoreForBackend(cancelledRecord, backend: _backend);
+    } else {
+      await _outbox.stageForBackend(
+        entry,
+        backend: _backend,
+        serverKnown: true,
+      );
+    }
+    if (!mounted) return;
+    setState(() {
+      if (_entries.any((e) => e.id == entry.id)) return;
+      final restored = [..._entries];
+      restored.insert(
+        index > restored.length ? restored.length : index,
+        entry,
+      );
+      _entries = restored;
+    });
+    _syncHomeEntryCount(todayEntryCount(_entries));
+    unawaited(_flushOutboxThenRevalidate());
+  }
+
+  Future<void> _deleteEntry(QuickLogEntry entry) async {
+    // Wave A (SCORECARD-9 #5): no confirm dialog on this path any
+    // more — the delete is undoable from the "Entry removed" toast
+    // (see _showRemovedSnackBar), which is the tip's whole point:
+    // undo replaces confirmation friction. (Copy change flagged for
+    // Juno in the package report.)
     // In-flight interplay: a push already on the wire may be
     // carrying this very row. Deleting underneath it would let the
     // push resurrect the row server-side after the delete (a
@@ -663,8 +686,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
         if (!pendingRecord.serverKnown) {
           setState(() => _entries = [..._entries]..removeAt(index));
           _syncHomeEntryCount(todayEntryCount(_entries));
-          ScaffoldMessenger.of(context)
-              .showSnackBar(const SnackBar(content: Text('Entry removed')));
+          _showRemovedSnackBar(entry, index,
+              cancelledRecord: cancelledRecord);
           return;
         }
       }
@@ -678,8 +701,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
         // Round 59: deleting a today entry lowers the strip/widget
         // count the same way creating one raises it.
         _syncHomeEntryCount(todayEntryCount(_entries));
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Entry removed')));
+        _showRemovedSnackBar(entry, index,
+            cancelledRecord: cancelledRecord);
         // Quiet background reconcile — never blanks the screen.
         unawaited(_revalidate());
       } else {
