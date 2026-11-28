@@ -842,8 +842,11 @@ String buildDataAvailability(ReportSnapshot s) {
 /// `QuickLogEntry.toSyncJson()` stamps `DateTime.now()` per entry
 /// and must NOT be reused here.
 Map<String, dynamic> reportEntryJson(QuickLogEntry e) => {
-      'id': e.id,
-      'categoryId': e.categoryId,
+      // GAP-18: the report DTO keeps its legacy byte shape —
+      // numeric ids travel as JSON ints (the server's insight
+      // linking keys on them), UUID ids as strings.
+      'id': syncIdWireValue(e.id),
+      'categoryId': syncIdWireValue(e.categoryId),
       'body': e.body,
       'chips': e.chips,
       'manualText': e.manualText,

@@ -317,7 +317,7 @@ void main() {
       expect(profile.activeMedications.map((m) => m.name), trueActives);
 
       final backend = FakeBackend()
-        ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)];
+        ..entries = [entry('1', '1', DateTime.now().millisecondsSinceEpoch)];
       final snap = await ReportDataCollector(backend: backend, hc: FakeHc())
           .collect(
             selectedCategories: [cat('1', 'Symptoms')],
@@ -371,7 +371,7 @@ void main() {
           MedicationEntry.fromBlobRow(row)!,
       ];
       final backend = FakeBackend()
-        ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)];
+        ..entries = [entry('1', '1', DateTime.now().millisecondsSinceEpoch)];
       final snap = await ReportDataCollector(backend: backend, hc: FakeHc())
           .collect(
             selectedCategories: [cat('1', 'Symptoms')],
@@ -391,7 +391,7 @@ void main() {
           ]),
         );
         final backend = FakeBackend()
-          ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)];
+          ..entries = [entry('1', '1', DateTime.now().millisecondsSinceEpoch)];
         final snap = await ReportDataCollector(backend: backend, hc: FakeHc())
             .collect(
               selectedCategories: [cat('1', 'Symptoms')],
@@ -600,7 +600,7 @@ void main() {
       aiCall,
     ) async {
       final backend = FakeBackend()
-        ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)];
+        ..entries = [entry('1', '1', DateTime.now().millisecondsSinceEpoch)];
       final pipeline = ReportGenerationPipeline(
         collector: ReportDataCollector(backend: backend, hc: FakeHc()),
         backend: backend,
@@ -800,7 +800,7 @@ void main() {
       void Function(List<int> bytes, String name)? onSave,
     }) {
       final backend = FakeBackend()
-        ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)];
+        ..entries = [entry('1', '1', DateTime.now().millisecondsSinceEpoch)];
       final pipeline = ReportGenerationPipeline(
         collector: ReportDataCollector(backend: backend, hc: FakeHc()),
         backend: backend,
@@ -904,7 +904,7 @@ void main() {
       );
       final backend = FakeBackend()
         ..categories = [cat('1', 'Symptoms'), cat('5', 'Sleep')]
-        ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)];
+        ..entries = [entry('1', '1', DateTime.now().millisecondsSinceEpoch)];
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(

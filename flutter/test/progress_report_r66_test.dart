@@ -201,7 +201,7 @@ void main() {
     test('HEALTH resolves by canonical slug-by-id', () {
       final sel = resolveReportCategories(
           defaultCats(), ReportFocus.health, const {});
-      expect(sel.map((c) => c.id).toSet(), {1, 8, 5, 6, 3});
+      expect(sel.map((c) => c.id).toSet(), {'1', '8', '5', '6', '3'});
     });
     test('TRAINING resolves by canonical slug-by-id', () {
       final sel = resolveReportCategories(
@@ -580,7 +580,7 @@ void main() {
         profile: const ReportProfileInput(),
       );
       expect(snap.logEntries.length, 2000);
-      expect(snap.logEntries.first.id, 2004);
+      expect(snap.logEntries.first.id, '2004');
     });
   });
 

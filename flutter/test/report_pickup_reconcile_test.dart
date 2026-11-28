@@ -121,7 +121,7 @@ QuickLogEntry entry(String id, String catId, int ts) => QuickLogEntry(
 
 FakeBackend backendWithData() => FakeBackend()
   ..categories = [cat('1', 'Symptoms')]
-  ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)];
+  ..entries = [entry('1', '1', DateTime.now().millisecondsSinceEpoch)];
 
 const testId = '0123456789abcdef0123456789abcdef';
 
