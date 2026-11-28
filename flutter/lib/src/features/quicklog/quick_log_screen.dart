@@ -1074,6 +1074,12 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: TextField(
         controller: _manualController,
+        // SCORECARD-3 #5: Enter saves the entry — _saveEntry is
+        // already fully guarded (re-checks _isLogEnabled, which
+        // folds in _saveInFlight), so the keyboard path cannot
+        // double-post.
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => _saveEntry(),
         style: const TextStyle(color: NotelColors.textPrimary, fontSize: 14),
         cursorColor: activeCatColor,
         decoration: InputDecoration(
@@ -1098,7 +1104,23 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
             borderRadius: BorderRadius.circular(16),
             borderSide: BorderSide(color: activeCatColor),
           ),
-          suffixIcon: _hasTypedText
+          // SCORECARD-3 #1 (cosmetic): honour this field's own doc
+          // comment — while a save is in flight the suffix is a
+          // spinner (and no tappable Add), ahead of the typed/empty
+          // states below.
+          suffixIcon: _saveInFlight
+              ? Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: activeCatColor,
+                    ),
+                  ),
+                )
+              : _hasTypedText
               ? IconButton(
                   onPressed: _saveEntry,
                   icon: const Icon(Icons.add),

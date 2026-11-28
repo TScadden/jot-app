@@ -24,7 +24,7 @@ class OnboardingHeader extends StatelessWidget {
   /// header is laid out as a Stack: the logo row is centered on the
   /// FULL header width and the side slots overlay it, which keeps
   /// the logo at the exact center whether the trailing slot holds
-  /// the 40dp Skip button, this label, or nothing.
+  /// the 48dp Skip hit box, this label, or nothing.
   final String? trailingLabel;
 
   const OnboardingHeader({
@@ -37,7 +37,11 @@ class OnboardingHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 40,
+      // SCORECARD-3 #2: with a Skip button the header is 48dp tall
+      // so the Skip hit box can be a full 48dp (design-audit §7);
+      // the back-button and trailing-label forms keep the native
+      // 40dp height. The Skip glyph itself is unchanged.
+      height: onSkip != null ? 48 : 40,
       child: Stack(
         children: [
           const Center(
@@ -84,17 +88,17 @@ class OnboardingHeader extends StatelessWidget {
                     ),
                   )
                 : SizedBox(
-                    width: 40,
-                    height: 40,
+                    width: 48,
+                    height: 48,
                     child: onSkip == null
                         ? null
                         : TextButton(
                             onPressed: onSkip,
                             style: TextButton.styleFrom(
                               padding: EdgeInsets.zero,
-                              minimumSize: Size.zero,
+                              minimumSize: const Size(48, 48),
                               tapTargetSize:
-                                  MaterialTapTargetSize.shrinkWrap,
+                                  MaterialTapTargetSize.padded,
                             ),
                             child: const Text(
                               'Skip',
