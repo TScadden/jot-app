@@ -19,7 +19,6 @@ import 'package:tabs_lab/src/features/tools/research_screen.dart';
 import 'package:tabs_lab/src/features/tools/tips_tricks_screen.dart';
 import 'package:tabs_lab/src/features/tools/tool_placeholder_screen.dart';
 import 'package:tabs_lab/src/features/tools/trends_screen.dart';
-import 'package:tabs_lab/src/features/shell/tablet_content_shell.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
@@ -382,45 +381,40 @@ class _ToolsScreenState extends State<ToolsScreen>
     );
   }
 
-  /// Width of one grid cell at the effective content width: mirrors
-  /// the grid's own math (16dp padding each side, 14dp gaps) and its
-  /// >=600dp column breakpoint.
-  double _feedbackTileWidth(BuildContext context) {
-    final effective = TabletContentShell.effectiveWidthOf(context);
-    final columns = effective >= 600 ? 4 : 2;
-    return (effective - 32 - 14 * (columns - 1)) / columns;
-  }
-
   Widget _reorderableCell(ToolTile tile) {
     final card = _ToolCard(
       tile: tile,
       editMode: _editMode,
       onTap: () => _onTileTap(tile),
     );
-    return DragTarget<ToolTile>(
-      onWillAcceptWithDetails: (details) => details.data.id != tile.id,
-      onAcceptWithDetails: (details) => _reorder(details.data.id, tile.id),
-      builder: (context, candidate, rejected) {
-        return LongPressDraggable<ToolTile>(
-          data: tile,
-          delay: const Duration(milliseconds: 350),
-          onDragStarted: () {
-            if (!_editMode) setState(() => _editMode = true);
-          },
-          feedback: Material(
-            color: Colors.transparent,
-            child: SizedBox(
-              // Same effective-width rule as the grid: the dragged
-              // tile must match the cell it came from. Below 600dp
-              // effective this is exactly the old (width - 32 - 14)/2.
-              width: _feedbackTileWidth(context),
-              child: _ToolCard(tile: tile, editMode: true, dragging: true),
+    // The feedback tile takes its width from the grid cell's own
+    // LayoutBuilder constraints — the effective (post-cap) cell
+    // width by construction, so the dragged tile always matches the
+    // cell it came from at every window size and column count. No
+    // raw screen/MediaQuery width is consulted (Juno C4).
+    return LayoutBuilder(
+      builder: (context, cellConstraints) => DragTarget<ToolTile>(
+        onWillAcceptWithDetails: (details) => details.data.id != tile.id,
+        onAcceptWithDetails: (details) => _reorder(details.data.id, tile.id),
+        builder: (context, candidate, rejected) {
+          return LongPressDraggable<ToolTile>(
+            data: tile,
+            delay: const Duration(milliseconds: 350),
+            onDragStarted: () {
+              if (!_editMode) setState(() => _editMode = true);
+            },
+            feedback: Material(
+              color: Colors.transparent,
+              child: SizedBox(
+                width: cellConstraints.maxWidth,
+                child: _ToolCard(tile: tile, editMode: true, dragging: true),
+              ),
             ),
-          ),
-          childWhenDragging: Opacity(opacity: 0.25, child: card),
-          child: card,
-        );
-      },
+            childWhenDragging: Opacity(opacity: 0.25, child: card),
+            child: card,
+          );
+        },
+      ),
     );
   }
 }

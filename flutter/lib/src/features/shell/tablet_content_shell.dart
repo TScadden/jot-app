@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
@@ -24,14 +22,6 @@ class TabletContentShell extends StatelessWidget {
   /// reading columns and form rows at tablet sizes while leaving a
   /// deliberate gutter; see the package RENDERS.md for the read.
   static const double maxContentWidth = 680;
-
-  /// Effective content width for [context]: the window width as the
-  /// shell presents it to descendants (window width, capped).
-  /// Widgets that size from raw screen width (e.g. the Tools
-  /// drag-feedback tile) use this so they follow the same rule the
-  /// shell enforces.
-  static double effectiveWidthOf(BuildContext context) =>
-      math.min(MediaQuery.sizeOf(context).width, maxContentWidth);
 
   @override
   Widget build(BuildContext context) {
