@@ -114,21 +114,21 @@ class FakeHc extends HealthConnectService {
   }
 }
 
-QuickLogCategory cat(int id, String name) => QuickLogCategory(
+QuickLogCategory cat(String id, String name) => QuickLogCategory(
     id: id, name: name, icon: 'x', colorHex: '#FF0000', isDefault: true, sortOrder: id);
 
 List<QuickLogCategory> defaultCats() => [
-      cat(1, 'Symptoms'),
-      cat(2, 'Food & Eating'),
-      cat(3, 'Weight & Vitals'),
-      cat(8, 'Medication'),
-      cat(4, 'Goals & Habits'),
-      cat(5, 'Sleep'),
-      cat(6, 'Mood & Energy'),
-      cat(7, 'General'),
+      cat('1', 'Symptoms'),
+      cat('2', 'Food & Eating'),
+      cat('3', 'Weight & Vitals'),
+      cat('8', 'Medication'),
+      cat('4', 'Goals & Habits'),
+      cat('5', 'Sleep'),
+      cat('6', 'Mood & Energy'),
+      cat('7', 'General'),
     ];
 
-QuickLogEntry entry(int id, int catId, int ts) => QuickLogEntry(
+QuickLogEntry entry(String id, String catId, int ts) => QuickLogEntry(
     id: id, categoryId: catId, body: 'b$id', chips: '', manualText: '', timestamp: ts);
 
 ReportSnapshot fixtureSnapshot({bool last30Days = true}) {
@@ -136,7 +136,7 @@ ReportSnapshot fixtureSnapshot({bool last30Days = true}) {
     last30Days: last30Days,
     generationTimestampMs:
         DateTime(2026, 10, 16, 16, 17).millisecondsSinceEpoch,
-    logEntries: [entry(1, 1, 1000), entry(2, 5, 2000)],
+    logEntries: [entry('1', '1', 1000), entry('2', '5', 2000)],
     categoriesMap: const {1: 'Symptoms', 5: 'Sleep'},
     userContext: 'ctx',
     userAge: 22,
@@ -214,7 +214,7 @@ void main() {
       expect(sel.map((c) => c.id), [7]);
     });
     test('non-default id has no slug and matches no preset', () {
-      final cats = [...defaultCats(), cat(99, 'Custom Thing')];
+      final cats = [...defaultCats(), cat('99', 'Custom Thing')];
       expect(effectiveSlug(cats.last), '');
       expect(
           resolveReportCategories(cats, ReportFocus.health, const {})
@@ -226,21 +226,21 @@ void main() {
   group('coverage math', () {
     const day = 24 * 60 * 60 * 1000;
     test('distinct days uses epoch-day buckets (native)', () {
-      final logs = [entry(1, 1, 5 * day), entry(2, 1, 5 * day + 100), entry(3, 1, 6 * day)];
+      final logs = [entry('1', '1', 5 * day), entry('2', '1', 5 * day + 100), entry('3', '1', 6 * day)];
       expect(distinctDaysLogged(logs), 2);
     });
     test('denominator: this month 30; all time span capped 180', () {
       final now = 500 * day;
       expect(
-          coverageDenominator([entry(1, 1, 400 * day)],
+          coverageDenominator([entry('1', '1', 400 * day)],
               last30Days: true, nowMs: now),
           30);
       expect(
-          coverageDenominator([entry(1, 1, 400 * day)],
+          coverageDenominator([entry('1', '1', 400 * day)],
               last30Days: false, nowMs: now),
           101);
       expect(
-          coverageDenominator([entry(1, 1, 100 * day)],
+          coverageDenominator([entry('1', '1', 100 * day)],
               last30Days: false, nowMs: now),
           180);
       expect(coverageDenominator(const [], last30Days: false, nowMs: now), 1);
@@ -248,9 +248,9 @@ void main() {
     test('logsInRange filters cutoff + selection', () {
       final now = 100 * day;
       final logs = [
-        entry(1, 1, now - 29 * day),
-        entry(2, 1, now - 31 * day),
-        entry(3, 5, now - day),
+        entry('1', '1', now - 29 * day),
+        entry('2', '1', now - 31 * day),
+        entry('3', '5', now - day),
       ];
       expect(
           logsInRange(logs, {1, 5}, last30Days: true, nowMs: now)
@@ -483,7 +483,7 @@ void main() {
       final windowInner =
           dateStrOf(DateTime(now.year, now.month, now.day - 29));
       final backend = FakeBackend()
-        ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)]
+        ..entries = [entry('1', '1', DateTime.now().millisecondsSinceEpoch)]
         ..bp = [
           BpRecord(
               systolic: 120,
@@ -507,7 +507,7 @@ void main() {
         ..hrvValue = 0;
       final collector = ReportDataCollector(backend: backend, hc: hc);
       final snap = await collector.collect(
-        selectedCategories: [cat(1, 'Symptoms')],
+        selectedCategories: [cat('1', 'Symptoms')],
         last30Days: true,
         profile: const ReportProfileInput(),
       );
@@ -540,7 +540,7 @@ void main() {
       final denied = await ReportDataCollector(
               backend: backend, hc: FakeHc()..connected = false)
           .collect(
-        selectedCategories: [cat(1, 'Symptoms')],
+        selectedCategories: [cat('1', 'Symptoms')],
         last30Days: true,
         profile: const ReportProfileInput(),
       );
@@ -558,7 +558,7 @@ void main() {
         documentsLoader: () async => ['Doc text one', 'Doc text two'],
       );
       final snap = await collector.collect(
-        selectedCategories: [cat(1, 'Symptoms')],
+        selectedCategories: [cat('1', 'Symptoms')],
         last30Days: true,
         profile: const ReportProfileInput(),
       );
@@ -575,7 +575,7 @@ void main() {
         ];
       final snap = await ReportDataCollector(backend: backend, hc: FakeHc())
           .collect(
-        selectedCategories: [cat(1, 'Symptoms')],
+        selectedCategories: [cat('1', 'Symptoms')],
         last30Days: false,
         profile: const ReportProfileInput(),
       );
@@ -597,7 +597,7 @@ void main() {
         delay: (_) async {},
       );
       return pipeline.generate(
-        selectedCategories: [cat(1, 'Symptoms')],
+        selectedCategories: [cat('1', 'Symptoms')],
         last30Days: true,
         profile: const ReportProfileInput(),
         forceRawFallback: forceRaw,
@@ -620,7 +620,7 @@ void main() {
 
     test('AI success passes the summary through', () async {
       final backend = FakeBackend()
-        ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)];
+        ..entries = [entry('1', '1', DateTime.now().millisecondsSinceEpoch)];
       String? seenSummary;
       bool? seenRaw;
       final outcome = await run(backend,
@@ -645,7 +645,7 @@ void main() {
     test('HTTP 500 retries once (2 attempts) then HOLDS as a decision',
         () async {
       final backend = FakeBackend()
-        ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)]
+        ..entries = [entry('1', '1', DateTime.now().millisecondsSinceEpoch)]
         ..aiResponse = (
           statusCode: 500,
           body: null,
@@ -674,7 +674,7 @@ void main() {
     test('transport timeout (backend-classified) is NOT no connection',
         () async {
       final backend = FakeBackend()
-        ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)]
+        ..entries = [entry('1', '1', DateTime.now().millisecondsSinceEpoch)]
         ..aiResponse = (
           statusCode: null,
           body: null,
@@ -699,7 +699,7 @@ void main() {
     // never as a raw ReportReady, and never as "no connection".
     test('HTTP 401 fails fast (1 attempt), reason signed out', () async {
       final backend = FakeBackend()
-        ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)]
+        ..entries = [entry('1', '1', DateTime.now().millisecondsSinceEpoch)]
         ..aiResponse = (
           statusCode: 401,
           body: null,
@@ -721,7 +721,7 @@ void main() {
 
     test('forceRaw skips the AI call and carries no reason', () async {
       final backend = FakeBackend()
-        ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)];
+        ..entries = [entry('1', '1', DateTime.now().millisecondsSinceEpoch)];
       RawReportBanner? seenBanner;
       final outcome = await run(backend, forceRaw: true,
           onRender: (s, raw, b) {
@@ -813,8 +813,8 @@ void main() {
         ..categories = defaultCats()
         ..entries = entries ??
             [
-              entry(1, 1, DateTime.now().millisecondsSinceEpoch),
-              entry(2, 5, DateTime.now().millisecondsSinceEpoch),
+              entry('1', '1', DateTime.now().millisecondsSinceEpoch),
+              entry('2', '5', DateTime.now().millisecondsSinceEpoch),
             ];
       final notifs = FakeReminderNotificationService();
       await tester.pumpWidget(MaterialApp(
@@ -898,7 +898,7 @@ void main() {
       );
       final backend = FakeBackend()
         ..categories = defaultCats()
-        ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)];
+        ..entries = [entry('1', '1', DateTime.now().millisecondsSinceEpoch)];
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
           body: ListView(children: [

@@ -304,7 +304,7 @@ void main() {
 
   group('grace completion path (watcher + store)', () {
     const medCat = 8;
-    const moodCat = 6;
+    const moodCat = '6';
     const goalsCat = 4;
     const med = SummaryMedication(key: 'k1', name: 'MedA', dose: '5mg');
 
@@ -319,8 +319,8 @@ void main() {
         true;
 
     QuickLogEntry entry({
-      required int id,
-      required int cat,
+      required String id,
+      required String cat,
       required String body,
       String chips = '[]',
       required DateTime at,
@@ -335,7 +335,7 @@ void main() {
         );
 
     QuickLogEntry checkIn(DateTime at) => entry(
-          id: 100,
+          id: '100',
           cat: moodCat,
           body: 'Feeling: 4/5 Today',
           chips: jsonEncode(const [feelingCheckInTag]),
@@ -398,7 +398,7 @@ void main() {
         'day, exactly once', () async {
       final entries = [
         entry(
-          id: 1,
+          id: '1',
           cat: medCat,
           body: 'Took MedA 5mg',
           at: DateTime(2026, 11, 5, 20),
@@ -445,7 +445,7 @@ void main() {
       final entries = [
         checkIn(DateTime(2026, 11, 5, 21)),
         entry(
-          id: 1,
+          id: '1',
           cat: medCat,
           body: 'Took MedA 5mg',
           at: DateTime(2026, 11, 6, 0, 1, 0),
@@ -471,7 +471,7 @@ void main() {
         () async {
       final entries = [
         entry(
-          id: 1,
+          id: '1',
           cat: medCat,
           body: 'Took MedA 5mg',
           at: DateTime(2026, 11, 5, 20),
@@ -518,7 +518,7 @@ void main() {
         ),
         entries: [
           entry(
-            id: 1,
+            id: '1',
             cat: medCat,
             body: 'Took MedA 5mg',
             at: DateTime(2026, 11, 5, 20),
@@ -545,7 +545,7 @@ void main() {
         () async {
       final entries = [
         entry(
-          id: 1,
+          id: '1',
           cat: medCat,
           body: 'Took MedA 5mg',
           at: DateTime(2026, 11, 5, 20),
@@ -586,7 +586,7 @@ void main() {
         '2026: grace saves the streak, it does not pay)', () async {
       final entries = [
         entry(
-          id: 1,
+          id: '1',
           cat: medCat,
           body: 'Took MedA 5mg',
           at: DateTime(2026, 11, 5, 20),
@@ -618,7 +618,7 @@ void main() {
         'grace with NO gem lines and zero grant calls', () async {
       final entries = [
         entry(
-          id: 1,
+          id: '1',
           cat: medCat,
           body: 'Took MedA 5mg',
           at: DateTime(2026, 11, 5, 20),

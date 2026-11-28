@@ -220,7 +220,7 @@ class _RecordThenYieldHc extends HealthConnectService {
       const [(date: '2026-10-20', kcal: 2100)];
 }
 
-QuickLogCategory _cat(int id, String name) => QuickLogCategory(
+QuickLogCategory _cat(String id, String name) => QuickLogCategory(
     id: id,
     name: name,
     icon: 'x',
@@ -254,7 +254,7 @@ void main() {
         historyQueries: HealthHistoryQueries(hc: hc, store: store),
         insightsLoader: insightsLoader,
       ).collect(
-        selectedCategories: [_cat(1, 'Symptoms')],
+        selectedCategories: [_cat('1', 'Symptoms')],
         last30Days: true,
         profile: const ReportProfileInput(),
         now: _now,

@@ -74,7 +74,7 @@ QuickLogEntry entry({
 
 QuickLogEntry feeling(String id, String dayKey, int level) => entry(
       id: id,
-      categoryId: 6,
+      categoryId: '6',
       body: 'Feeling: $level/5 Today',
       chips: '["Daily Ranking"]',
       timestamp: tsFor(dayKey),
@@ -409,8 +409,8 @@ void main() {
             sleep: flare ? 300 : 500, score: flare ? 40 : 80));
         if (flare) {
           entries.add(entry(
-            id: id++,
-            categoryId: 1,
+            id: '${id++}',
+            categoryId: '1',
             body: 'Flare day · Bad',
             chips: '["Flare Day", "Bad"]',
             timestamp: tsFor(day(i)),
@@ -498,8 +498,8 @@ void main() {
       final rows = <DailyBiometrics>[];
       var id = 0;
       QuickLogEntry intake(String d, int fluidMl) => entry(
-            id: id++,
-            categoryId: 1,
+            id: '${id++}',
+            categoryId: '1',
             body: 'Water',
             chips: '["Intake", "Water"]',
             manualText: '{"v":1,"kind":"Water","fluidMl":$fluidMl}',
@@ -640,7 +640,7 @@ void main() {
       final entries = <QuickLogEntry>[
         entry(
           id: 1,
-          categoryId: 1,
+          categoryId: '1',
           body: 'Water · 16 fl oz',
           chips: '["Intake","Water"]',
           manualText: '{"v":1,"kind":"Water","fluidMl":473}',
@@ -648,7 +648,7 @@ void main() {
         ),
         entry(
           id: 2,
-          categoryId: 1,
+          categoryId: '1',
           body: 'Salt · 1 g',
           chips: '["Intake","Salt"]',
           manualText: '{"v":1,"kind":"Salt","sodiumMg":1000}',
@@ -656,7 +656,7 @@ void main() {
         ),
         entry(
           id: 3,
-          categoryId: 1,
+          categoryId: '1',
           body: 'Water',
           chips: '["Intake","Water"]',
           manualText: 'not a payload',
@@ -665,7 +665,7 @@ void main() {
         // Legacy ', '-joined chips shape still parses.
         entry(
           id: 4,
-          categoryId: 1,
+          categoryId: '1',
           body: 'Water',
           chips: 'Intake, Water',
           manualText: '{"v":1,"kind":"Water","fluidMl":200}',
@@ -714,7 +714,7 @@ void main() {
         // truncated to 473 and counted as valid data.
         entry(
           id: 11,
-          categoryId: 1,
+          categoryId: '1',
           body: 'Water',
           chips: '["Intake","Water"]',
           manualText: '{"v":1,"kind":"Water","fluidMl":473.5}',
@@ -723,7 +723,7 @@ void main() {
         // Whole-number int amount on the same day: still counts.
         entry(
           id: 12,
-          categoryId: 1,
+          categoryId: '1',
           body: 'Water',
           chips: '["Intake","Water"]',
           manualText: '{"v":1,"kind":"Water","fluidMl":473}',
@@ -732,7 +732,7 @@ void main() {
         // Fractional sodium amount: also unparseable.
         entry(
           id: 13,
-          categoryId: 1,
+          categoryId: '1',
           body: 'Salt',
           chips: '["Intake","Salt"]',
           manualText: '{"v":1,"kind":"Salt","sodiumMg":1000.5}',
@@ -742,7 +742,7 @@ void main() {
         // encoders vary, so this one counts.
         entry(
           id: 14,
-          categoryId: 1,
+          categoryId: '1',
           body: 'Water',
           chips: '["Intake","Water"]',
           manualText: '{"v":1,"kind":"Water","fluidMl":473.0}',
@@ -863,8 +863,8 @@ void main() {
       for (var i = 0; i < 14; i++) {
         final hit = i.isEven;
         entries.add(entry(
-          id: id++,
-          categoryId: 1,
+          id: '${id++}',
+          categoryId: '1',
           body: 'Water',
           chips: '["Intake", "Water"]',
           manualText:
@@ -873,8 +873,8 @@ void main() {
         ));
         if (hit) {
           entries.add(entry(
-            id: id++,
-            categoryId: 1,
+            id: '${id++}',
+            categoryId: '1',
             body: 'Flare day · Bad',
             chips: '["Flare Day", "Bad"]',
             timestamp: tsFor(day(i + 1)),

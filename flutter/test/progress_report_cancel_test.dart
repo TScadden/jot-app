@@ -30,7 +30,7 @@ import 'test_helpers.dart';
 // Health Connect sync stage is never entered, nothing is saved,
 // and (widget test) the page returns to idle.
 
-QuickLogCategory _cat(int id, String name) => QuickLogCategory(
+QuickLogCategory _cat(String id, String name) => QuickLogCategory(
     id: id,
     name: name,
     icon: 'x',
@@ -39,17 +39,17 @@ QuickLogCategory _cat(int id, String name) => QuickLogCategory(
     sortOrder: id);
 
 List<QuickLogCategory> _cats() => [
-      _cat(1, 'Symptoms'),
-      _cat(2, 'Food & Eating'),
-      _cat(3, 'Weight & Vitals'),
-      _cat(8, 'Medication'),
-      _cat(4, 'Goals & Habits'),
-      _cat(5, 'Sleep'),
-      _cat(6, 'Mood & Energy'),
-      _cat(7, 'General'),
+      _cat('1', 'Symptoms'),
+      _cat('2', 'Food & Eating'),
+      _cat('3', 'Weight & Vitals'),
+      _cat('8', 'Medication'),
+      _cat('4', 'Goals & Habits'),
+      _cat('5', 'Sleep'),
+      _cat('6', 'Mood & Energy'),
+      _cat('7', 'General'),
     ];
 
-QuickLogEntry _entryNow(int id, int catId) => QuickLogEntry(
+QuickLogEntry _entryNow(String id, String catId) => QuickLogEntry(
     id: id,
     categoryId: catId,
     body: 'b$id',
@@ -73,7 +73,7 @@ class _FakeBackend extends TabsBackend {
 
   @override
   Future<List<QuickLogEntry>> fetchLogEntryDtos() async =>
-      [_entryNow(1, 1)];
+      [_entryNow('1', '1')];
 
   @override
   Future<List<BpRecord>> fetchManualBpLogs() async => const [];

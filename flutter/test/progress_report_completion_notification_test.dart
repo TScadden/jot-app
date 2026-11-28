@@ -35,7 +35,7 @@ import 'test_helpers.dart';
 // it open on a staged gate, backgrounds the app mid-generation
 // — exactly Tyson's sequence — and then releases the gate.
 
-QuickLogCategory _cat(int id, String name) => QuickLogCategory(
+QuickLogCategory _cat(String id, String name) => QuickLogCategory(
     id: id,
     name: name,
     icon: 'x',
@@ -44,17 +44,17 @@ QuickLogCategory _cat(int id, String name) => QuickLogCategory(
     sortOrder: id);
 
 List<QuickLogCategory> _cats() => [
-      _cat(1, 'Symptoms'),
-      _cat(2, 'Food & Eating'),
-      _cat(3, 'Weight & Vitals'),
-      _cat(8, 'Medication'),
-      _cat(4, 'Goals & Habits'),
-      _cat(5, 'Sleep'),
-      _cat(6, 'Mood & Energy'),
-      _cat(7, 'General'),
+      _cat('1', 'Symptoms'),
+      _cat('2', 'Food & Eating'),
+      _cat('3', 'Weight & Vitals'),
+      _cat('8', 'Medication'),
+      _cat('4', 'Goals & Habits'),
+      _cat('5', 'Sleep'),
+      _cat('6', 'Mood & Energy'),
+      _cat('7', 'General'),
     ];
 
-QuickLogEntry _entryNow(int id, int catId) => QuickLogEntry(
+QuickLogEntry _entryNow(String id, String catId) => QuickLogEntry(
     id: id,
     categoryId: catId,
     body: 'b$id',
@@ -63,7 +63,7 @@ QuickLogEntry _entryNow(int id, int catId) => QuickLogEntry(
     timestamp: DateTime.now().millisecondsSinceEpoch);
 
 class _FakeBackend extends TabsBackend {
-  List<QuickLogEntry> entries = [_entryNow(1, 1)];
+  List<QuickLogEntry> entries = [_entryNow('1', '1')];
 
   _FakeBackend() : super(sessionStore: FakeSessionStore());
 

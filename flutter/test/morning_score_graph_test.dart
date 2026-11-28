@@ -132,10 +132,10 @@ void main() {
 
   group('entries → derivation → graph (end to end)', () {
     QuickLogEntry entry({
-      required int id,
+      required String id,
       required DateTime at,
       required String body,
-      int categoryId = 6,
+      String categoryId = '6',
       String chips = '["Daily Ranking"]',
     }) {
       return QuickLogEntry(
@@ -171,31 +171,37 @@ void main() {
         () {
       final entries = [
         // Thu Oct 29, morning check-in → 4.
-        entry(id: 1, at: DateTime(2026, 10, 29, 8, 12), body: 'Feeling: 4/5 Today'),
+        entry(
+          id: '1', at: DateTime(2026, 10, 29, 8, 12), body: 'Feeling: 4/5 Today'),
         // Fri Oct 30 twice — the newest entry of the energy day wins.
-        entry(id: 2, at: DateTime(2026, 10, 30, 7, 45), body: 'Feeling: 2/5 Today'),
-        entry(id: 3, at: DateTime(2026, 10, 30, 21, 5), body: 'Feeling: 5/5 Today'),
+        entry(
+          id: '2', at: DateTime(2026, 10, 30, 7, 45), body: 'Feeling: 2/5 Today'),
+        entry(
+          id: '3', at: DateTime(2026, 10, 30, 21, 5), body: 'Feeling: 5/5 Today'),
         // Mon Nov 2 → 2.
-        entry(id: 4, at: DateTime(2026, 11, 2, 9, 0), body: 'Feeling: 2/5 Today'),
+        entry(
+          id: '4', at: DateTime(2026, 11, 2, 9, 0), body: 'Feeling: 2/5 Today'),
         // Wed Nov 4 at 02:00 is BEFORE the 04:00 energy-day start,
         // so it belongs to Tue Nov 3's energy day → 1 on Nov 3.
-        entry(id: 5, at: DateTime(2026, 11, 4, 2, 0), body: 'Feeling: 1/5 Today'),
+        entry(
+          id: '5', at: DateTime(2026, 11, 4, 2, 0), body: 'Feeling: 1/5 Today'),
         // Sun Nov 1: right body, but no Daily Ranking tag → ignored.
         entry(
-          id: 6,
+          id: '6',
           at: DateTime(2026, 11, 1, 10, 0),
           body: 'Feeling: 2/5 Today',
           chips: '["Headache"]',
         ),
         // Sun Nov 1: right tag, wrong category → ignored.
         entry(
-          id: 7,
+          id: '7',
           at: DateTime(2026, 11, 1, 11, 0),
           body: 'Feeling: 2/5 Today',
           categoryId: 1,
         ),
         // Wed Nov 4: tag + category, but no ranking in the body.
-        entry(id: 8, at: DateTime(2026, 11, 4, 8, 0), body: 'Slept badly'),
+        entry(
+          id: '8', at: DateTime(2026, 11, 4, 8, 0), body: 'Slept badly'),
       ];
 
       final byDay = deriveFeelingByDay(entries, categories);

@@ -38,7 +38,7 @@ Finder energyButton(int level) => find.byWidgetPredicate(
       w.properties.label == 'Energy $level of 5, ${_energyWords[level - 1]}',
 );
 
-QuickLogCategory _cat(int id, String name) => QuickLogCategory(
+QuickLogCategory _cat(String id, String name) => QuickLogCategory(
   id: id,
   name: name,
   icon: 'circle',
@@ -148,17 +148,17 @@ void main() {
   group('resolveFeelingCategoryId', () {
     test('by name wins (the pulled set carries no slug)', () {
       expect(
-        resolveFeelingCategoryId([_cat(9, 'Mood & Energy'), _cat(6, 'Other')]),
+        resolveFeelingCategoryId([_cat('9', 'Mood & Energy'), _cat('6', 'Other')]),
         9,
       );
     });
 
     test('falls back to native fallback id 6', () {
-      expect(resolveFeelingCategoryId([_cat(6, 'Renamed')]), 6);
+      expect(resolveFeelingCategoryId([_cat('6', 'Renamed')]), '6');
     });
 
     test('null when neither resolves — caller hides the card', () {
-      expect(resolveFeelingCategoryId([_cat(3, 'Sleep')]), isNull);
+      expect(resolveFeelingCategoryId([_cat('3', 'Sleep')]), isNull);
       expect(resolveFeelingCategoryId(const []), isNull);
     });
   });
