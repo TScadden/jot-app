@@ -47,6 +47,12 @@ class ProfileSetupScreen extends StatefulWidget {
   /// [VoiceInput] — the Quick Log mic path.
   final VoiceInput? voiceInput;
 
+  /// Onboarding reorder (Nov 27, 2026) — pre-account phase: when
+  /// true, this step is LOCAL ONLY (Juno ruling 3): no prefill
+  /// fetch and no profile push may carry the user's text anywhere
+  /// before an account exists. Default false = today's behavior.
+  final bool deferServerSync;
+
   const ProfileSetupScreen({
     super.key,
     required this.onBack,
@@ -54,6 +60,7 @@ class ProfileSetupScreen extends StatefulWidget {
     this.onboardingStore,
     this.backend,
     this.voiceInput,
+    this.deferServerSync = false,
   });
 
   @override
@@ -140,6 +147,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         _controller.text = local;
       }
     } catch (_) {}
+    // Pre-account: zero network — the server prefill fetch is
+    // skipped entirely (Juno ruling 3, defer flag).
+    if (widget.deferServerSync) return;
     try {
       final profile = await _backend.fetchProfile();
       if (!mounted) return;
@@ -176,9 +186,12 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     try {
       await _store.setUserContext(text);
     } catch (_) {}
-    try {
-      await _backend.postSyncProfile({'userContext': text});
-    } catch (_) {}
+    // Pre-account: local write only — no push (Juno ruling 3).
+    if (!widget.deferServerSync) {
+      try {
+        await _backend.postSyncProfile({'userContext': text});
+      } catch (_) {}
+    }
     if (!mounted) return;
     setState(() => _saving = false);
     widget.onNavigateNext();

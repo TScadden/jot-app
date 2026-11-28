@@ -85,6 +85,21 @@ class OnboardingFlow extends StatefulWidget {
   /// "Log Out" (AppFlow clears the session and returns to welcome).
   final VoidCallback onDeclineConsent;
 
+  /// Onboarding reorder (Nov 27, 2026) — pre-account mode: the
+  /// flow runs consent → … → gems BEFORE an account exists.
+  /// Registration is a gate between gems and membership, NOT a
+  /// new enum step (indices byte-identical): gems' Continue fires
+  /// [onPreAccountComplete] instead of advancing to membership,
+  /// profile/conditions run local-only (defer flag), and the
+  /// consent decline uses the pre-account dialog variant.
+  /// Membership / setupLoading are unreachable in this mode.
+  final bool preAccount;
+
+  /// The gems-boundary handoff out of the pre-account phase
+  /// (AppFlow shows the register gate). Required in pre-account
+  /// mode; ignored otherwise.
+  final VoidCallback? onPreAccountComplete;
+
   const OnboardingFlow({
     super.key,
     this.initialStep = OnboardingStep.consent,
@@ -99,6 +114,8 @@ class OnboardingFlow extends StatefulWidget {
     this.onVerifyEmail,
     required this.onComplete,
     required this.onDeclineConsent,
+    this.preAccount = false,
+    this.onPreAccountComplete,
   });
 
   @override
@@ -113,7 +130,16 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   void initState() {
     super.initState();
     _store = widget.onboardingStore ?? OnboardingStore();
-    _step = widget.initialStep;
+    var step = widget.initialStep;
+    // Pre-account guard (Juno condition 6): membership and
+    // setupLoading are unreachable before an account exists, on
+    // any entry path — a stale marker/entry clamps to gems, the
+    // last pre-account step.
+    if (widget.preAccount &&
+        step.index >= OnboardingStep.membership.index) {
+      step = OnboardingStep.gems;
+    }
+    _step = step;
     // Entering the flow (fresh or resumed) records where the user
     // currently is, so leaving now still resumes here.
     unawaited(_writeMarker(_step));
@@ -122,7 +148,24 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   Future<void> _writeMarker(OnboardingStep step) async {
     try {
       await _store.setStepMarker(step.index);
+      if (widget.preAccount) {
+        // Stamp the live pre-account run + its abandonment clock
+        // (30-day expiry, Juno ruling 3).
+        await _store.setPreAccountInProgress(true);
+        await _store.touchPreAccountActivity();
+      }
     } catch (_) {}
+  }
+
+  /// Gems boundary: post-account the flow advances to membership
+  /// as always; pre-account the Continue hands off to the
+  /// register gate (AppFlow) — membership is never entered here.
+  void _onGemsContinue() {
+    if (widget.preAccount && widget.onPreAccountComplete != null) {
+      widget.onPreAccountComplete!();
+      return;
+    }
+    _go(OnboardingStep.membership);
   }
 
   void _go(OnboardingStep step) {
@@ -165,6 +208,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     try {
       await _store.setFlow3Completed(true);
       await _store.clearStepMarker();
+      await _store.setPreAccountInProgress(false);
     } catch (_) {}
     widget.onComplete();
   }
@@ -183,12 +227,14 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
             onBack: _stepBack,
             onConsent: _onConsent,
             onDecline: widget.onDeclineConsent,
+            preAccount: widget.preAccount,
           ),
         OnboardingStep.profileSetup => ProfileSetupScreen(
             onBack: _stepBack,
             onNavigateNext: () => _go(OnboardingStep.conditions),
             onboardingStore: _store,
             backend: widget.backend,
+            deferServerSync: widget.preAccount,
           ),
         OnboardingStep.conditions => OnboardingConditionsScreen(
             onBack: _stepBack,
@@ -196,6 +242,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
             onSkip: () => _go(OnboardingStep.connections),
             onboardingStore: _store,
             backend: widget.backend,
+            deferServerSync: widget.preAccount,
           ),
         OnboardingStep.connections => OnboardingConnectionsScreen(
             onBack: _stepBack,
@@ -204,7 +251,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           ),
         OnboardingStep.gems => GemsOnboardingScreen(
             onBack: _stepBack,
-            onContinue: () => _go(OnboardingStep.membership),
+            onContinue: _onGemsContinue,
           ),
         OnboardingStep.membership => MembershipOnboardingScreen(
             onBack: _stepBack,

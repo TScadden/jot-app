@@ -153,6 +153,15 @@ class LoginScreen extends StatefulWidget {
   /// defaults to the real on-device settings store.
   final SettingsStore? settingsStore;
 
+  /// Onboarding reorder (Nov 27, 2026) — true ONLY when this
+  /// register form was reached through the pre-account value flow
+  /// (Welcome → … → Gems → Register). Drives Juno's register
+  /// disclosures (ruling 6): the full handoff text in register
+  /// mode, and the short form directly above the create-account
+  /// button. Never shown in login mode, and never for a register
+  /// that did not come through the value flow.
+  final bool isPreAccountRegister;
+
   const LoginScreen({
     super.key,
     this.initialRegisterMode = true,
@@ -164,6 +173,7 @@ class LoginScreen extends StatefulWidget {
     this.googleSignInService,
     this.appleSignInService,
     this.settingsStore,
+    this.isPreAccountRegister = false,
   });
 
   @override
@@ -783,6 +793,28 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
             textAlign: TextAlign.center,
           ),
+          // Juno ruling 6 — the full Gems → Register handoff
+          // disclosure, presented in register mode before the form
+          // can be submitted (pre-account-origin registers only).
+          if (widget.isPreAccountRegister &&
+              _isRegisterMode &&
+              !_isForgotPasswordMode) ...[
+            const SizedBox(height: 12),
+            const Text(
+              'Your answers so far are saved only on this device. '
+              'Create your account and they\'ll be added to it. If '
+              'you log in to an account you already have instead, '
+              'they won\'t be added, and they\'ll be cleared from '
+              'this device.',
+              key: ValueKey('pre_account_handoff_disclosure'),
+              style: TextStyle(
+                fontSize: 13,
+                color: NotelColors.textSecondary,
+                height: 18 / 13,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
           const SizedBox(height: 20),
           // 13+ attestation (sign-up form only).
           if (_isRegisterMode && !_isForgotPasswordMode) ...[
@@ -870,6 +902,24 @@ class _LoginScreenState extends State<LoginScreen> {
             )
           else
             const SizedBox(height: 8),
+          // Juno ruling 6 — the short form, directly above the
+          // create-account button, pre-account-origin register
+          // mode only (never login mode).
+          if (widget.isPreAccountRegister &&
+              _isRegisterMode &&
+              !_isForgotPasswordMode) ...[
+            const Text(
+              'Saved only on this device until you create your '
+              'account.',
+              key: ValueKey('pre_account_short_disclosure'),
+              style: TextStyle(
+                fontSize: 12,
+                color: NotelColors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+          ],
           // Main action button. "Log In" (login mode) performs the real
           // login (Round 5); "Sign Up" (register mode) performs the
           // real registration (Round 32); "Send Reset Link"

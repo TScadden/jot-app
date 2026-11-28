@@ -27,11 +27,19 @@ class OnboardingConsentScreen extends StatelessWidget {
   final VoidCallback onConsent;
   final VoidCallback onDecline;
 
+  /// Onboarding reorder (Nov 27, 2026) — true when this consent
+  /// step runs BEFORE any account exists. The decline dialog is
+  /// then Juno's separate pre-account variant (ruling 4,
+  /// byte-exact below): no session exists, so there is no
+  /// log-out — "Leave setup" returns to Welcome via [onDecline].
+  final bool preAccount;
+
   const OnboardingConsentScreen({
     super.key,
     required this.onBack,
     required this.onConsent,
     required this.onDecline,
+    this.preAccount = false,
   });
 
   Future<void> _openUrl(String url) async {
@@ -46,7 +54,64 @@ class OnboardingConsentScreen extends StatelessWidget {
     }
   }
 
+  /// Juno ruling 4 — the PRE-ACCOUNT decline variant, byte-exact.
+  /// Separate dialog: the post-account "Data Consent Required" /
+  /// "Log Out" strings must never appear on this path, and no
+  /// session-clearing call is made (there is no session).
+  Future<void> _showPreAccountDeclineDialog(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: NotelColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        title: const Text(
+          'We need your consent to continue',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: NotelColors.textPrimary,
+          ),
+        ),
+        content: const Text(
+          'Tabs saves the health notes you add so you can see them '
+          'in one place. Without your consent, nothing can be '
+          'saved, so setup can\'t continue. You can go back and '
+          'read the Terms and Privacy Policy first, or leave setup '
+          'for now. Nothing has been saved on this device.',
+          style: TextStyle(color: NotelColors.textSecondary, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text(
+              'Go back',
+              style: TextStyle(color: NotelColors.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              onDecline();
+            },
+            child: const Text(
+              'Leave setup',
+              style: TextStyle(
+                color: NotelColors.primary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _showDeclineDialog(BuildContext context) async {
+    if (preAccount) {
+      await _showPreAccountDeclineDialog(context);
+      return;
+    }
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(

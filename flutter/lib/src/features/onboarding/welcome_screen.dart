@@ -74,7 +74,9 @@ class WelcomeScreen extends StatelessWidget {
                           chip: const _CalloutChip(
                             icon: Icons.biotech,
                             iconBg: NotelColors.info,
-                            text: 'Track symptoms and treatments',
+                            text: 'Days blur together? Jot a symptom or '
+                                'treatment in a few words, right when '
+                                'it happens.',
                           ),
                           avatarFirst: true,
                         ),
@@ -86,7 +88,9 @@ class WelcomeScreen extends StatelessWidget {
                           chip: const _CalloutChip(
                             icon: Icons.emoji_events,
                             iconBg: NotelColors.chipPurple,
-                            text: 'Reach your goals',
+                            text: "Can't remember what you tried last "
+                                "week? Keep it next to the day it "
+                                "happened.",
                           ),
                           avatarFirst: false,
                         ),
@@ -98,7 +102,9 @@ class WelcomeScreen extends StatelessWidget {
                           chip: const _CalloutChip(
                             icon: Icons.fingerprint,
                             iconBg: NotelColors.chipPurple,
-                            text: 'Learn patterns and get insights',
+                            text: "Hard to see what's been going on "
+                                "lately? Your own notes, in one place "
+                                "to look back on.",
                           ),
                           avatarFirst: true,
                         ),
@@ -113,7 +119,7 @@ class WelcomeScreen extends StatelessWidget {
                           child: Column(
                             children: [
                               Text(
-                                'Notes that build',
+                                'For the days that',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontSize: 22,
@@ -124,7 +130,7 @@ class WelcomeScreen extends StatelessWidget {
                                 ),
                               ),
                               Text(
-                                'with you',
+                                'blur together',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontSize: 28,
@@ -152,7 +158,7 @@ class WelcomeScreen extends StatelessWidget {
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
-                            child: const Text('Register'),
+                            child: const Text('Get started'),
                           ),
                         ),
                         const SizedBox(height: 10),

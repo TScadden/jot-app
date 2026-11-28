@@ -36,6 +36,12 @@ class OnboardingConditionsScreen extends StatefulWidget {
   final OnboardingStore? onboardingStore;
   final TabsBackend? backend;
 
+  /// Onboarding reorder (Nov 27, 2026) — pre-account phase: when
+  /// true, this step is LOCAL ONLY (Juno ruling 3): no server
+  /// merge fetch on mount, no debounced push, no final push.
+  /// Default false = today's behavior.
+  final bool deferServerSync;
+
   const OnboardingConditionsScreen({
     super.key,
     required this.onBack,
@@ -43,6 +49,7 @@ class OnboardingConditionsScreen extends StatefulWidget {
     required this.onSkip,
     this.onboardingStore,
     this.backend,
+    this.deferServerSync = false,
   });
 
   @override
@@ -90,6 +97,8 @@ class _OnboardingConditionsScreenState
       if (!mounted) return;
       setState(() => _selected = List.of(local));
     } catch (_) {}
+    // Pre-account: zero network — no server merge fetch (ruling 3).
+    if (widget.deferServerSync) return;
     // Native pull-merge: server conditions join the local selection
     // (local order preserved, no case-insensitive duplicates).
     try {
@@ -134,6 +143,8 @@ class _OnboardingConditionsScreenState
   /// Native ConditionRepository debounce: 1.5s after the last edit,
   /// one profile push with the full conditions JSON string.
   void _schedulePush() {
+    // Pre-account: toggles stay local — no debounced push (ruling 3).
+    if (widget.deferServerSync) return;
     _pushDebounce?.cancel();
     _pushDebounce = Timer(const Duration(milliseconds: 1500), () {
       unawaited(_backend
@@ -146,10 +157,13 @@ class _OnboardingConditionsScreenState
     // selection before the flow moves on (native's later syncs push
     // the same field; this only tightens the timing).
     _pushDebounce?.cancel();
-    try {
-      await _backend
-          .postSyncProfile({'conditions': jsonEncode(_selected)});
-    } catch (_) {}
+    // Pre-account: no final push either (ruling 3).
+    if (!widget.deferServerSync) {
+      try {
+        await _backend
+            .postSyncProfile({'conditions': jsonEncode(_selected)});
+      } catch (_) {}
+    }
     if (!mounted) return;
     widget.onNavigateNext();
   }

@@ -68,6 +68,22 @@ class OnboardingStore {
   static const flow3NotifPromptShownKey =
       'onboarding_flow3_notif_prompt_shown';
 
+  /// Onboarding reorder (Nov 27, 2026) — pre-account phase keys.
+  /// Device-scoped (never owner-stamped until registration carries
+  /// the answers forward): the user walks consent → profile →
+  /// conditions → connections → gems BEFORE an account exists.
+  /// [preAccountInProgressKey] marks a live pre-account run — it
+  /// is what distinguishes carry-forward state from FOREIGN
+  /// unstamped state (which registration must still wipe).
+  static const preAccountInProgressKey =
+      'onboarding_pre_account_in_progress';
+  static const preAccountLastActivityKey =
+      'onboarding_pre_account_last_activity';
+
+  /// Pre-account abandonment window (Juno ruling 3): answers +
+  /// marker expire 30 days after the last pre-account activity.
+  static const preAccountTtl = Duration(days: 30);
+
   Future<String?> Function(String key) _read =
       (key) => const FlutterSecureStorage().read(key: key);
   Future<void> Function(String key, String value) _write =
@@ -147,6 +163,79 @@ class OnboardingStore {
   Future<bool> getFlow3Completed() => _readBool(flow3CompletedKey, false);
   Future<void> setFlow3Completed(bool v) => _writeBool(flow3CompletedKey, v);
 
+  // ── Pre-account phase (onboarding reorder, Nov 27, 2026) ─────
+
+  Future<bool> getPreAccountInProgress() =>
+      _readBool(preAccountInProgressKey, false);
+  Future<void> setPreAccountInProgress(bool v) =>
+      _writeBool(preAccountInProgressKey, v);
+
+  Future<DateTime?> getPreAccountLastActivity() async {
+    try {
+      final v = await _read(preAccountLastActivityKey);
+      return v == null ? null : DateTime.tryParse(v);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> touchPreAccountActivity({DateTime? now}) =>
+      _write(preAccountLastActivityKey,
+          (now ?? DateTime.now()).toIso8601String());
+
+  /// True when a live pre-account run has passed its 30-day
+  /// abandonment window. No recorded activity → not expired (a
+  /// run stamps activity on entry; absence means no live run).
+  Future<bool> isPreAccountExpired({DateTime? now}) async {
+    if (!await getPreAccountInProgress()) return false;
+    final last = await getPreAccountLastActivity();
+    if (last == null) return false;
+    return (now ?? DateTime.now()).difference(last) > preAccountTtl;
+  }
+
+  Future<bool> hasPreAccountAnswers() async {
+    if (await getPreAccountInProgress()) return true;
+    return false;
+  }
+
+  /// Wipes ONLY the pre-account payload: answers, resume marker,
+  /// consent flags and the pre-account keys themselves. Used by
+  /// the 30-day expiry sweep and by login-to-existing-account
+  /// (Juno ruling 3: wiped at login success, no merge, no post).
+  /// The owner stamp is NOT touched — the login/register funnel
+  /// owns it. Never throws.
+  Future<void> clearPreAccountState() async {
+    for (final k in const [
+      userContextKey,
+      userConditionsKey,
+      stepMarkerKey,
+      hasConsentedKey,
+      introConsultationSeenKey,
+      preAccountInProgressKey,
+      preAccountLastActivityKey,
+    ]) {
+      try {
+        await _delete(k);
+      } catch (_) {}
+    }
+  }
+
+  /// Registration carry-forward (Juno ruling 3/7): the pre-account
+  /// answers become the NEW account's — stamp ONLY the owner,
+  /// point the resume marker at Membership (the step registration
+  /// resumes at), and end the pre-account phase. Every other
+  /// onboarding key (consent, context, conditions) is preserved
+  /// byte-for-byte. Never throws.
+  Future<void> preservePreAccountForRegistration(String? email) async {
+    final expected = _normalizeEmail(email);
+    try {
+      if (expected != null) await _write(ownerEmailKey, expected);
+      await _write(stepMarkerKey, '5'); // OnboardingStep.membership
+      await _delete(preAccountInProgressKey);
+      await _delete(preAccountLastActivityKey);
+    } catch (_) {}
+  }
+
   Future<bool> getFlow3NotifPromptShown() =>
       _readBool(flow3NotifPromptShownKey, false);
   Future<void> setFlow3NotifPromptShown(bool v) =>
@@ -163,6 +252,8 @@ class OnboardingStore {
       stepMarkerKey,
       flow3CompletedKey,
       flow3NotifPromptShownKey,
+      preAccountInProgressKey,
+      preAccountLastActivityKey,
     ]) {
       try {
         if (await _read(k) != null) return true;
@@ -226,6 +317,8 @@ class OnboardingStore {
       stepMarkerKey,
       flow3CompletedKey,
       flow3NotifPromptShownKey,
+      preAccountInProgressKey,
+      preAccountLastActivityKey,
     ]) {
       try {
         await _delete(k);
