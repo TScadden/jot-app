@@ -374,7 +374,7 @@ enum _FlowStage { welcome, login, resolving, verifyEmail, onboarding, home }
 /// VC 100134 — which door entered the verifyEmail stage; the
 /// verify-success handler routes each origin to the destination
 /// that door would have reached unverified-free.
-enum _VerifyOrigin { register, login, restore }
+enum _VerifyOrigin { register, login, restore, preAccountRegister }
 
 class _AppFlowState extends State<AppFlow>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
@@ -410,15 +410,111 @@ class _AppFlowState extends State<AppFlow>
   /// stage; consumed (and cleared) by the verify-success handler.
   _VerifyOrigin? _verifyOrigin;
 
+  /// Onboarding reorder (Nov 27, 2026) — true while the
+  /// onboarding stage is running the PRE-ACCOUNT value flow
+  /// (Welcome "Get started" → consent → … → gems, no account yet).
+  bool _preAccountMode = false;
+
+  /// True when the login stage was entered from the gems →
+  /// register handoff. Registration from here CARRIES the
+  /// pre-account answers forward; a login from here WIPES them
+  /// (Juno ruling 3). Cleared on any plain Welcome entry/exit.
+  bool _loginPreAccountOrigin = false;
+
   void _goLogin(bool isRegister) {
     setState(() {
       _loginIsRegister = isRegister;
+      _loginPreAccountOrigin = false;
       _stage = _FlowStage.login;
     });
   }
 
   void _goWelcome() {
-    setState(() => _stage = _FlowStage.welcome);
+    setState(() {
+      _loginPreAccountOrigin = false;
+      _stage = _FlowStage.welcome;
+    });
+  }
+
+  /// The resume step for a pre-account run, from the persisted
+  /// marker: Juno probe (marker past consent with
+  /// hasConsented == false routes to CONSENT, never the marked
+  /// step), the m1 clamp (past Profile without profile text
+  /// clamps to Profile), and the pre-account ceiling (membership
+  /// / setupLoading are unreachable pre-account — clamp to gems).
+  Future<OnboardingStep> _computePreAccountResumeStep() async {
+    try {
+      if (!await _onboardingStore.getHasConsented()) {
+        return OnboardingStep.consent;
+      }
+      if (await _onboardingStore.getOnboardingComplete()) {
+        return OnboardingStep.consent;
+      }
+      final marker = await _onboardingStore.getStepMarker();
+      if (marker == null) return OnboardingStep.profileSetup;
+      if (marker < 0 || marker >= OnboardingStep.values.length) {
+        return OnboardingStep.consent;
+      }
+      var step = OnboardingStep.values[marker];
+      if (step.index > OnboardingStep.profileSetup.index) {
+        final context = await _onboardingStore.getUserContext();
+        if (context.trim().isEmpty) {
+          step = OnboardingStep.profileSetup;
+        }
+      }
+      if (step.index >= OnboardingStep.membership.index) {
+        step = OnboardingStep.gems;
+      }
+      return step;
+    } catch (_) {
+      return OnboardingStep.consent;
+    }
+  }
+
+  /// Welcome "Get started": enter (or resume) the pre-account
+  /// value flow. The 30-day expiry sweep runs first, before any
+  /// onboarding screen renders (Juno ruling 3).
+  void _enterPreAccountFlow() {
+    unawaited(() async {
+      try {
+        if (await _onboardingStore.isPreAccountExpired()) {
+          await _onboardingStore.clearPreAccountState();
+        }
+      } catch (_) {}
+      final step = await _computePreAccountResumeStep();
+      if (!mounted) return;
+      setState(() {
+        _preAccountMode = true;
+        _loginPreAccountOrigin = false;
+        _onboardingStep = step;
+        _stage = _FlowStage.onboarding;
+      });
+    }());
+  }
+
+  /// Gems → Register handoff: the pre-account flow hands off to
+  /// the login stage in register mode, flagged as pre-account
+  /// origin so LoginScreen shows Juno's disclosures and
+  /// _onRegisterSuccess carries the answers forward.
+  void _onPreAccountGemsComplete() {
+    setState(() {
+      _preAccountMode = false;
+      _loginPreAccountOrigin = true;
+      _loginIsRegister = true;
+      _stage = _FlowStage.login;
+    });
+  }
+
+  /// Pre-account consent decline ("Leave setup"): NO session
+  /// exists, so nothing is cleared — return to Welcome (Juno
+  /// ruling 4). The post-account decline (_onConsentDecline) is
+  /// untouched.
+  void _onPreAccountDecline() {
+    if (!mounted) return;
+    setState(() {
+      _preAccountMode = false;
+      _stage = _FlowStage.welcome;
+    });
   }
 
   // Round 29 (minimal, additive): Settings logout / account deletion
@@ -460,6 +556,8 @@ class _AppFlowState extends State<AppFlow>
     setState(() {
       _loggedInEmail = null;
       _verifyOrigin = null;
+      _preAccountMode = false;
+      _loginPreAccountOrigin = false;
       _stage = _FlowStage.welcome;
     });
   }
@@ -600,8 +698,33 @@ class _AppFlowState extends State<AppFlow>
 
   Future<void> _restoreSession() async {
     try {
+      // Onboarding reorder — the pre-account 30-day expiry sweep
+      // runs on EVERY launch, before any onboarding screen can
+      // render, token or not (Juno ruling 3).
+      try {
+        if (await _onboardingStore.isPreAccountExpired()) {
+          await _onboardingStore.clearPreAccountState();
+        }
+      } catch (_) {}
       final token = await _sessionStore.readToken();
-      if (token == null || token.trim().isEmpty) return;
+      if (token == null || token.trim().isEmpty) {
+        // No session: a live pre-account run resumes where it
+        // left off (marker + Juno probe + m1 clamp, computed by
+        // _computePreAccountResumeStep). Anything else keeps the
+        // fresh-install welcome behavior.
+        try {
+          if (await _onboardingStore.getPreAccountInProgress()) {
+            final step = await _computePreAccountResumeStep();
+            if (!mounted || _stage != _FlowStage.welcome) return;
+            setState(() {
+              _preAccountMode = true;
+              _onboardingStep = step;
+              _stage = _FlowStage.onboarding;
+            });
+          }
+        } catch (_) {}
+        return;
+      }
       // Round 31 fix pass (Vera NIT 2): the email read is isolated
       // (see _readEmailOrNull). A TOKEN-read failure keeps the outer
       // behavior: fall to welcome, without clearing anything.
@@ -993,7 +1116,23 @@ class _AppFlowState extends State<AppFlow>
     // never wired in: a previous account's (or older app
     // generation's) context/conditions survived into the next
     // account's onboarding and were pushed into its server profile.
-    final onboardingClaim = _onboardingStore.clearIfOwnerMismatch(email);
+    // Onboarding reorder (Juno ruling 3): a login to an EXISTING
+    // account wipes any pre-account answers + marker at login
+    // success, BEFORE that account's state loads — no merge, no
+    // post. The wipe chains ahead of the owner claim so its
+    // deletes land first; with no pre-account run present the
+    // chain is exactly the old claim.
+    final hadPreAccountOrigin = _loginPreAccountOrigin;
+    _loginPreAccountOrigin = false;
+    final onboardingClaim = () async {
+      try {
+        if (hadPreAccountOrigin ||
+            await _onboardingStore.getPreAccountInProgress()) {
+          await _onboardingStore.clearPreAccountState();
+        }
+      } catch (_) {}
+      return _onboardingStore.clearIfOwnerMismatch(email);
+    }();
     _onboardingClaim = onboardingClaim;
     unawaited(onboardingClaim);
     // Audit gap (Oct 28, 2026): HeartDataCache implements the same
@@ -1384,6 +1523,33 @@ class _AppFlowState extends State<AppFlow>
     // delete can never land after a stamp write).
     unawaited(HeartDataCache.instance.clearIfOwnerMismatch(email));
     unawaited(SettingsStore().clearIdentityIfOwnerMismatch(email));
+    // Onboarding reorder (Juno ruling 3/7): a registration that
+    // came through the pre-account value flow CARRIES the answers
+    // forward — the onboarding store is NOT wiped and NOT stamped
+    // fresh; only its owner is stamped to the new account, the
+    // resume marker moves to Membership, and the pre-account
+    // phase ends. (Every OTHER store's owner-mismatch clear above
+    // still ran.) A foreign unstamped state with no live
+    // pre-account run never reaches this branch and is still
+    // wiped by the plain-register path below.
+    final isPreAccountRegister = _loginPreAccountOrigin;
+    _loginPreAccountOrigin = false;
+    if (isPreAccountRegister) {
+      unawaited(
+          _onboardingStore.preservePreAccountForRegistration(email));
+      setState(() {
+        _loggedInEmail = email;
+        _preAccountMode = false;
+        _onboardingStep = OnboardingStep.membership;
+        if (emailVerified) {
+          _stage = _FlowStage.onboarding;
+        } else {
+          _verifyOrigin = _VerifyOrigin.preAccountRegister;
+          _stage = _FlowStage.verifyEmail;
+        }
+      });
+      return;
+    }
     unawaited(_onboardingStore
         .clearIfOwnerMismatch(email)
         .then((_) => _stampFreshAccountOnboarding()));
@@ -1432,6 +1598,14 @@ class _AppFlowState extends State<AppFlow>
         // onboarding at consent, flags stamped at register time.
         setState(() {
           _onboardingStep = OnboardingStep.consent;
+          _stage = _FlowStage.onboarding;
+        });
+      case _VerifyOrigin.preAccountRegister:
+        // Onboarding reorder: a pre-account registration resumes
+        // at MEMBERSHIP after verification — the value steps are
+        // already done and their answers are in the store.
+        setState(() {
+          _onboardingStep = OnboardingStep.membership;
           _stage = _FlowStage.onboarding;
         });
       case _VerifyOrigin.login:
@@ -1908,12 +2082,15 @@ class _AppFlowState extends State<AppFlow>
       children: [
         if (_stage == _FlowStage.welcome)
           WelcomeScreen(
-            onRegister: () => _goLogin(true),
+            // "Get started" enters the pre-account value flow;
+            // "Log In" is unchanged (plain login entry).
+            onRegister: _enterPreAccountFlow,
             onLogin: () => _goLogin(false),
           )
         else if (_stage == _FlowStage.login)
           LoginScreen(
             initialRegisterMode: _loginIsRegister,
+            isPreAccountRegister: _loginPreAccountOrigin,
             onBack: _goWelcome,
             onLoginSuccess: (s) =>
                 _onLoginSuccess(s.email, s.emailVerified),
@@ -1957,8 +2134,12 @@ class _AppFlowState extends State<AppFlow>
                 _stage = _FlowStage.verifyEmail;
               });
             },
+            preAccount: _preAccountMode,
+            onPreAccountComplete: _onPreAccountGemsComplete,
             onComplete: _onOnboardingComplete,
-            onDeclineConsent: () => unawaited(_onConsentDecline()),
+            onDeclineConsent: _preAccountMode
+                ? _onPreAccountDecline
+                : () => unawaited(_onConsentDecline()),
           )
         else
           MainShell(email: _loggedInEmail,
