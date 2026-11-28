@@ -79,7 +79,9 @@ void main() {
       await tester.pump();
       expect(find.byKey(const ValueKey('onboarding_progress_bar')),
           findsNothing);
-      expect(find.text('Register'), findsOneWidget);
+      // Onboarding reorder: the entry button is "Get started"
+      // (Juno ruling 5); welcome stays bar-less.
+      expect(find.text('Get started'), findsOneWidget);
       expect(find.text('Log In'), findsOneWidget);
     });
 

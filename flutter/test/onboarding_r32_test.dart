@@ -333,7 +333,7 @@ void main() {
         session: FakeSessionStore(),
         onboardingMap: {},
       );
-      expect(find.text('Register'), findsOneWidget);
+      expect(find.text('Get started'), findsOneWidget);
       expect(find.text('Log In'), findsOneWidget);
     });
 
@@ -425,7 +425,11 @@ void main() {
         onboardingMap: map,
         authApi: api,
       );
-      await tester.tap(find.text('Register'));
+      // Plain register (NOT the pre-account value flow) is now
+      // reached via Log In -> "Don't have an account? Sign Up".
+      await tester.tap(find.text('Log In'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Don't have an account? Sign Up"));
       await tester.pumpAndSettle();
       final fields = find.byType(TextField);
       await tester.enterText(fields.at(0), 'new@tabs.app');
@@ -473,7 +477,11 @@ void main() {
         onboardingMap: map,
         authApi: api,
       );
-      await tester.tap(find.text('Register'));
+      // Plain register (NOT the pre-account value flow) is now
+      // reached via Log In -> "Don't have an account? Sign Up".
+      await tester.tap(find.text('Log In'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Don't have an account? Sign Up"));
       await tester.pumpAndSettle();
       final fields = find.byType(TextField);
       await tester.enterText(fields.at(0), 'new@tabs.app');
@@ -511,7 +519,7 @@ void main() {
       await tester.tap(find.text('Log Out'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
-      expect(find.text('Register'), findsOneWidget);
+      expect(find.text('Get started'), findsOneWidget);
       expect(session.token, isNull);
       expect(map['has_consented'], 'false');
     });
@@ -694,7 +702,7 @@ void main() {
       await session.clear();
       TabsBackend.onSessionExpired?.call();
       await tester.pump();
-      expect(find.text('Register'), findsOneWidget);
+      expect(find.text('Get started'), findsOneWidget);
       // The pull finally answers — with a reset body, the most
       // dangerous stale answer — and the resolver must NOT route.
       backend.pullGate!.complete({
@@ -705,7 +713,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump();
-      expect(find.text('Register'), findsOneWidget);
+      expect(find.text('Get started'), findsOneWidget);
       expect(find.text('Privacy & Data Consent'), findsNothing);
       expect(find.byType(MainShell), findsNothing);
       expect(session.token, isNull);

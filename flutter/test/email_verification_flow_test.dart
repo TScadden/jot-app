@@ -119,7 +119,11 @@ Future<FakeFlowBackend> pumpFlow(
 }
 
 Future<void> driveRegister(WidgetTester tester) async {
-  await tester.tap(find.text('Register'));
+  // Plain register (NOT the pre-account value flow) is now
+  // reached via Log In -> "Don't have an account? Sign Up".
+  await tester.tap(find.text('Log In'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text("Don't have an account? Sign Up"));
   await tester.pumpAndSettle();
   final fields = find.byType(TextField);
   await tester.enterText(fields.at(0), _email);

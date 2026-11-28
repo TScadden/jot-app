@@ -281,7 +281,13 @@ void main() {
         backend: backend,
         authApi: registerApi(),
       );
-      await tester.tap(find.text('Register'));
+      // Plain register (NOT the pre-account value flow) is now
+      // reached via Log In -> "Don't have an account? Sign Up".
+      // The seed-wipe protection pinned below is for THIS path:
+      // foreign state with no live pre-account run still wipes.
+      await tester.tap(find.text('Log In'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Don't have an account? Sign Up"));
       await tester.pumpAndSettle();
       final fields = find.byType(TextField);
       await tester.enterText(fields.at(0), 'new@tabs.app');
