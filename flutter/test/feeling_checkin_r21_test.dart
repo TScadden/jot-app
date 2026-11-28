@@ -149,7 +149,7 @@ void main() {
     test('by name wins (the pulled set carries no slug)', () {
       expect(
         resolveFeelingCategoryId([_cat('9', 'Mood & Energy'), _cat('6', 'Other')]),
-        9,
+        '9',
       );
     });
 
@@ -171,8 +171,8 @@ void main() {
         id: '42',
         now: DateTime(2026, 10, 12, 11, 0),
       );
-      expect(entry.id, 42);
-      expect(entry.categoryId, 6);
+      expect(entry.id, '42');
+      expect(entry.categoryId, '6');
       expect(entry.body, 'Feeling: 4/5 Today');
       expect(entry.chips, '["Daily Ranking"]');
       expect(entry.manualText, '');
@@ -189,7 +189,7 @@ void main() {
         categoryId: '6',
         id: '1',
       );
-      expect(entry.id, 1);
+      expect(entry.id, '1');
     });
 
     test('an explicit id (the outbox allocation) is carried exactly',
@@ -199,7 +199,7 @@ void main() {
         categoryId: '6',
         id: '99',
       );
-      expect(entry.id, 99);
+      expect(entry.id, '99');
     });
 
     test("feelingRankingOf parses the body; feeling words are Juno's", () {

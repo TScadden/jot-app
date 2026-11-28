@@ -79,7 +79,7 @@ void main() {
   group('R36 parsing (real server shapes)', () {
     test('parseTrendsCategories parses string int8 ids, keeps names', () {
       final cats = parseTrendsCategories(sCategories());
-      expect(cats.map((c) => c.id), [1, 2, 3]);
+      expect(cats.map((c) => c.id), ['1', '2', '3']);
       expect(cats.map((c) => c.name), ['Symptoms', 'Mood', 'Medication']);
     });
 

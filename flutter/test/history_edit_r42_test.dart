@@ -234,7 +234,7 @@ void main() {
 
     test('text edit keeps id/timestamp, clears manualText', () {
       final edited = editedEntryText(entry, 'New text');
-      expect(edited.id, 42);
+      expect(edited.id, '42');
       expect(edited.timestamp, 123456);
       expect(edited.body, 'New text');
       expect(edited.manualText, '');
@@ -249,8 +249,8 @@ void main() {
 
     test('category edit replaces chips with JSON array of the name', () {
       final edited = editedEntryCategory(entry, general);
-      expect(edited.id, 42);
-      expect(edited.categoryId, 7);
+      expect(edited.id, '42');
+      expect(edited.categoryId, '7');
       expect(edited.chips, '["General"]');
       expect(edited.body, 'Brain fog');
       expect(edited.manualText, 'extra note');
@@ -268,7 +268,7 @@ void main() {
       ];
       expect(
         sortedCategoriesForPicker(cats).map((c) => c.id),
-        [7, 3, 6],
+        ['7', '3', '6'],
       );
     });
 

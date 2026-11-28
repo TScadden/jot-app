@@ -603,8 +603,8 @@ void main() {
             isDefault: true,
             sortOrder: 0,
           );
-      expect(resolveIntakeCategoryId([cat('7', 'Hydration')]), 7);
-      expect(resolveIntakeCategoryId([cat('9', 'hydration')]), 9);
+      expect(resolveIntakeCategoryId([cat('7', 'Hydration')]), '7');
+      expect(resolveIntakeCategoryId([cat('9', 'hydration')]), '9');
       expect(resolveIntakeCategoryId([cat('1', 'Symptoms')]), isNull);
       expect(resolveIntakeCategoryId(const []), isNull);
     });
@@ -1344,7 +1344,7 @@ void main() {
         sortOrder: 0,
       );
       final moved = editedEntryCategory(entry, symptoms);
-      expect(moved.categoryId, 3);
+      expect(moved.categoryId, '3');
       expect(moved.chips, entry.chips);
       expect(moved.manualText, entry.manualText);
       // A NON-intake entry keeps the existing replace-chips rule.

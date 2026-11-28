@@ -311,7 +311,7 @@ void main() {
       // F2 retention: the unconfirmed entry survives, owner-bound,
       // in memory AND on disk — not wiped, not posted.
       expect(LogEntryOutbox.instance.records.map((r) => r.entry.id),
-          contains(42));
+          contains('42'));
       expect(backend.postedIds, isEmpty);
       final blob = disk[LogEntryOutbox.storageKey];
       expect(blob, isNotNull);
@@ -345,7 +345,7 @@ void main() {
         isTrue,
       );
       expect(LogEntryOutbox.instance.records.map((r) => r.entry.id),
-          contains(42));
+          contains('42'));
 
       // H1: the abandoned flush's POST finally lands AFTER the
       // sign-out completed. It must not mutate the retained queue
@@ -464,7 +464,7 @@ void main() {
       expect(backend.postAttempts, 1,
           reason: 'the abandoned run must not post the second entry');
       expect(outbox.records.map((r) => r.entry.id),
-          containsAll([42, 43]),
+          containsAll(['42', '43']),
           reason: 'the abandoned run must not remove or re-mark '
               'the retained entries when its POST lands');
     });

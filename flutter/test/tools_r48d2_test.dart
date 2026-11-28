@@ -198,8 +198,8 @@ void main() {
         now: _now,
       )!;
       final e = out.single;
-      expect(e.id, 58);
-      expect(e.categoryId, 8);
+      expect(e.id, '58');
+      expect(e.categoryId, '8');
       expect(e.body, 'Took Ivabradine 7.5mg');
       // Vera F3 dual-reader payload: the Medication Tab chip +
       // the manualText carrying Body Info's gate phrase, its
@@ -236,7 +236,7 @@ void main() {
         ],
         now: _now,
       )!;
-      expect(out.single.categoryId, 42);
+      expect(out.single.categoryId, '42');
     });
 
     test('category falls back to the seeded Medication id 8', () {
@@ -254,7 +254,7 @@ void main() {
         ],
         now: _now,
       )!;
-      expect(out.single.categoryId, 8);
+      expect(out.single.categoryId, '8');
     });
 
     test('unresolvable category → null (caller posts nothing)', () {
@@ -337,7 +337,7 @@ void main() {
         now: _now,
       )!;
       expect(out.single.body, 'Took Ivabradine 7.5mg');
-      expect(out.single.id, 10);
+      expect(out.single.id, '10');
     });
 
     test('a "Took …" entry in ANOTHER category does NOT dedupe', () {
@@ -390,7 +390,7 @@ void main() {
       )!;
       expect(out.map((e) => e.body),
           ['Took Ivabradine 7.5mg', 'Took Midodrine 5mg']);
-      expect(out.map((e) => e.id), [21, 22]);
+      expect(out.map((e) => e.id), ['21', '22']);
     });
 
     test(

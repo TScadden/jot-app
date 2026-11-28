@@ -509,7 +509,7 @@ void main() {
       first.removeAt(0);
       first.add(first.first);
       final third = await backend.fetchLogEntryDtos();
-      expect(third.map((e) => e.id).toList(), [1, 2],
+      expect(third.map((e) => e.id).toList(), ['1', '2'],
           reason: 'consumer mutation cannot corrupt the memo');
       expect(pullCount, 1,
           reason: 'still the same pull — no refetch needed');
