@@ -443,6 +443,52 @@ void main() {
       expect(server.upsertedIds, contains(42));
       expect(server.entries.map((e) => e['id']), contains(42));
     });
+
+    testWidgets(
+        'Undo with a failing outbox store surfaces the failure and '
+        'does not restore the entry as Synced (Vera Condition 1)',
+        (tester) async {
+      final server = _HistoryServer([
+        _historyEntry(42, 'newest entry'),
+        _historyEntry(7, 'oldest entry'),
+      ]);
+      await tester.pumpWidget(MaterialApp(
+        home: HistoryScreen(
+          backend: server.backend(),
+          outbox: server.failingOutbox(),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text('newest entry'), findsOneWidget);
+      expect(find.text('oldest entry'), findsOneWidget);
+
+      // Delete succeeds server-side; the entry is gone.
+      await tester.tap(find.byTooltip('Delete entry').first);
+      await tester.pumpAndSettle();
+      expect(find.text('newest entry'), findsNothing);
+      expect(server.deletedIds, [42]);
+      expect(find.text('Undo'), findsOneWidget);
+
+      // Undo: the outbox write fails, so stageForBackend returns
+      // false. The failure must be surfaced and the entry must NOT
+      // come back — before the fix it reappeared with a Synced
+      // badge despite having no server row and no outbox record.
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text("Couldn't undo that delete — try again."),
+        findsOneWidget,
+      );
+      expect(find.text('newest entry'), findsNothing);
+      expect(find.text('oldest entry'), findsOneWidget);
+      // The only Synced badge on screen is the oldest entry's:
+      // the deleted entry is not shown as restored/Synced.
+      expect(find.text('Synced'), findsOneWidget);
+      // And nothing was re-created on the server.
+      expect(server.upsertedIds, isNot(contains(42)));
+      expect(server.entries.map((e) => e['id']), isNot(contains(42)));
+    });
   });
 }
 
@@ -523,6 +569,22 @@ class _HistoryServer {
       read: (key) async => disk[key],
       write: (key, value) async => disk[key] = value,
       delete: (key) async => disk.remove(key),
+    );
+    return outbox;
+  }
+
+  /// Vera Condition 1: an outbox whose disk load succeeds (empty
+  /// disk) but whose every WRITE fails, so stage/restore persist
+  /// fails and returns false — the C-01 failure mode.
+  LogEntryOutbox failingOutbox() {
+    final outbox = LogEntryOutbox.instance;
+    outbox.debugReset();
+    outbox.debugSetStore(
+      read: (key) async => null,
+      write: (key, value) async {
+        throw StateError('failing outbox store: write failed');
+      },
+      delete: (key) async {},
     );
     return outbox;
   }
