@@ -5,8 +5,8 @@ import 'package:tabs_lab/src/data/quick_log_models.dart';
 /// `QuickLogViewModel` / `TemplateAndDefaultsRepository` behavior).
 
 QuickLogEntry _entry({
-  int id = 1,
-  int categoryId = 3,
+  String id = '1',
+  String categoryId = '3',
   String body = 'body',
   int? timestamp,
 }) =>

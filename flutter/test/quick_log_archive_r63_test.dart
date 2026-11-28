@@ -195,13 +195,13 @@ void main() {
   });
 
   group('downstream effect: recentSuggestions', () {
-    QuickLogEntry medEntry(int id, String body) => QuickLogEntry(
+    QuickLogEntry medEntry(String id, String body) => QuickLogEntry(
           id: id,
           categoryId: '8',
           body: body,
           chips: '',
           manualText: '',
-          timestamp: id,
+          timestamp: int.parse(id),
         );
 
     test('archived meds (both generations) produce no medication '
@@ -209,17 +209,17 @@ void main() {
       final names =
           activeMedicationNamesFromProfile(profileWith(bothGenerationRows()));
       final entries = [
-        medEntry(1, 'Took Native Ended Med 10mg'),
-        medEntry(2, 'Took Native Current Med 10mg'),
-        medEntry(3, 'Took Flutter Ended Med 5mg'),
-        medEntry(4, 'Took Flutter Current Med 5mg'),
+        medEntry('1', 'Took Native Ended Med 10mg'),
+        medEntry('2', 'Took Native Current Med 10mg'),
+        medEntry('3', 'Took Flutter Ended Med 5mg'),
+        medEntry('4', 'Took Flutter Current Med 5mg'),
       ];
       final out = recentSuggestions(
         entries,
         activeMedicationNames: names,
-        medicationCategoryId: 8,
+        medicationCategoryId: '8',
       );
-      expect(out.map((e) => e.id).toList(), [2, 4]);
+      expect(out.map((e) => e.id).toList(), ['2', '4']);
     });
   });
 }
