@@ -151,7 +151,7 @@ bool isSummaryComplete({
   required DateTime feelingDayStart,
   required AttestedPlan? attestedPlan,
   required List<QuickLogEntry> entries,
-  required int? moodCategoryId,
+  required String? moodCategoryId,
   DateTime? evidenceWindowEnd,
 }) {
   if (attestedPlan == null || !attestedPlan.resolved) return false;
@@ -198,8 +198,8 @@ TodayPlanData buildPlanForFeelingDay({
   required List<HabitDto> habits,
   required TodayPlanLocalState localState,
   required List<QuickLogEntry> entries,
-  required int? medicationCategoryId,
-  int? goalsCategoryId,
+  required String? medicationCategoryId,
+  String? goalsCategoryId,
   DateTime? evidenceWindowEnd,
 }) {
   final planDate = DateTime(
@@ -260,7 +260,7 @@ TodayPlanData buildPlanForFeelingDay({
 class SummaryCompletionContext {
   final AttestedPlan? attestedPlan;
   final List<QuickLogEntry> entries;
-  final int? moodCategoryId;
+  final String? moodCategoryId;
 
   const SummaryCompletionContext({
     required this.attestedPlan,

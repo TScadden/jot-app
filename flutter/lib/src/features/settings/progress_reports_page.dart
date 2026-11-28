@@ -186,7 +186,7 @@ class _ProgressReportsPageState extends State<ProgressReportsPage>
     with WidgetsBindingObserver {
   ReportFocus _focus = ReportFocus.health;
   bool _last30Days = true;
-  Set<int> _customIds = {};
+  Set<String> _customIds = {};
   bool _customSeeded = false;
 
   List<QuickLogCategory> _categories = const [];

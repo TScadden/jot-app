@@ -48,7 +48,7 @@ class MigraineBlock extends StatelessWidget {
   /// in History; the card wires this to push HistoryScreen with
   /// the entry id. Called with the CONFIRMED entry id
   /// (`MigraineAttack.trendsEntryId`).
-  final ValueChanged<int>? onOpenLoggedEntry;
+  final ValueChanged<String>? onOpenLoggedEntry;
 
   const MigraineBlock({
     super.key,
@@ -94,7 +94,7 @@ class MigraineBlock extends StatelessWidget {
 
 class _IdleContent extends StatelessWidget {
   final MigraineController controller;
-  final ValueChanged<int>? onOpenLoggedEntry;
+  final ValueChanged<String>? onOpenLoggedEntry;
   const _IdleContent({required this.controller, this.onOpenLoggedEntry});
 
   @override

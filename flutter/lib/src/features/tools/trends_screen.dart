@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart'
     show feelingCheckInTag;
@@ -41,10 +42,12 @@ class TrendsScreen extends StatefulWidget {
 }
 
 class TrendsEntry {
-  final int id;
+  // GAP-18: entry/category ids are strings (legacy ints in their
+  // decimal form, new rows random v4 UUIDs).
+  final String id;
   final String body;
   final int timestamp;
-  final int categoryId;
+  final String categoryId;
   final String chips;
 
   const TrendsEntry({
@@ -57,10 +60,10 @@ class TrendsEntry {
 
   factory TrendsEntry.fromJson(Map<String, dynamic> json) {
     return TrendsEntry(
-      id: parseLooseInt(json['id']),
+      id: idStringFromJson(json['id']),
       body: '${json['body'] ?? ''}',
       timestamp: parseEpochMs(json['timestamp']),
-      categoryId: parseLooseInt(json['categoryId']),
+      categoryId: idStringFromJson(json['categoryId']),
       chips: '${json['chips'] ?? ''}',
     );
   }
@@ -73,8 +76,8 @@ class _TrendsScreenState extends State<TrendsScreen> {
   String? _error;
   List<TrendsEntry> _entries = const [];
   List<TrendsCategory> _categories = const [];
-  Map<int, String> _categoryNames = const {};
-  Map<int, Color> _categoryColors = const {};
+  Map<String, String> _categoryNames = const {};
+  Map<String, Color> _categoryColors = const {};
 
   /// 0 = today; negative = days in the past.
   int _dayOffset = 0;
@@ -1077,7 +1080,7 @@ List<TrendsEntry> parseTrendsEntries(dynamic raw) {
 }
 
 class TrendsCategory {
-  final int id;
+  final String id;
   final String name;
   final Color color;
 
@@ -1101,11 +1104,12 @@ List<TrendsCategory> parseTrendsCategories(dynamic raw) {
         } catch (_) {}
       }
       out.add(TrendsCategory(
-        // Category ids are int8 too — the server sends them as JSON
-        // strings ("1"), and a num-only parse zeroed every one of
-        // them, collapsing all categories onto id 0 (Round 36 fix:
-        // rows rendered "Category N" with the fallback color).
-        id: parseLooseInt(id),
+        // Category ids arrive as JSON strings ("1"), and a
+        // num-only parse zeroed every one of them, collapsing all
+        // categories onto id 0 (Round 36 fix: rows rendered
+        // "Category N" with the fallback color). GAP-18: UUID
+        // categories carry their id in `clientId` with `id` null.
+        id: idStringFromJson(c['clientId'] ?? id),
         name: '${c['name'] ?? 'Category'}',
         color: color,
       ));
@@ -1123,20 +1127,20 @@ List<TrendsCategory> parseTrendsCategories(dynamic raw) {
 /// the fallback those entries render as a raw "Category N" (fresh-
 /// account audit, Oct 28, 2026). A pulled row — including a user
 /// rename — always wins over this table.
-const Map<int, String> trendsDefaultCategoryNames = {
-  1: 'Symptoms',
-  2: 'Food & Eating',
-  3: 'Weight & Vitals',
-  4: 'Goals & Habits',
-  5: 'Sleep',
-  6: 'Mood & Energy',
-  7: 'General',
-  8: 'Medication',
+const Map<String, String> trendsDefaultCategoryNames = {
+  '1': 'Symptoms',
+  '2': 'Food & Eating',
+  '3': 'Weight & Vitals',
+  '4': 'Goals & Habits',
+  '5': 'Sleep',
+  '6': 'Mood & Energy',
+  '7': 'General',
+  '8': 'Medication',
 };
 
 /// Display name for a Trends category row: pulled name first, then
 /// the built-in default name, then the raw-id fallback.
-String resolveTrendsCategoryName(int id, Map<int, String> pulledNames) =>
+String resolveTrendsCategoryName(String id, Map<String, String> pulledNames) =>
     pulledNames[id] ?? trendsDefaultCategoryNames[id] ?? 'Category $id';
 
 /// Splits an entry's chips field into plain symptom/chip names.

@@ -96,7 +96,7 @@ String flareLoggedAnnouncement(String severity, {String? type}) =>
 /// actually carries it. Null on a double miss — the caller does not
 /// render the button (the check-in's hide-rather-than-misfile
 /// honesty pattern).
-int? resolveFlareCategoryId(List<QuickLogCategory> categories) =>
+String? resolveFlareCategoryId(List<QuickLogCategory> categories) =>
     resolveSummaryCategoryId(
       categories,
       name: flareCategoryName,
@@ -168,7 +168,7 @@ List<String> flareTypesOf(QuickLogEntry entry) => [
 /// happen — one record per day, founder Q2), the newest wins.
 QuickLogEntry? findFlareRecord(
   List<QuickLogEntry> entries, {
-  required int symptomsCategoryId,
+  required String symptomsCategoryId,
   DateTime? now,
 }) {
   final start = feelingDayStart(now ?? DateTime.now());
@@ -187,7 +187,7 @@ QuickLogEntry? findFlareRecord(
 /// Whether a flare record exists for the current energy day.
 bool hasFlareToday(
   List<QuickLogEntry> entries, {
-  required int symptomsCategoryId,
+  required String symptomsCategoryId,
   DateTime? now,
 }) =>
     findFlareRecord(entries,
@@ -213,8 +213,8 @@ String flareChips({required String severity, String? type}) => jsonEncode(
 /// outbox's post-load allocation (VC 100107 mechanism — never a
 /// synchronous max+1 here). Timestamp is the commit time.
 QuickLogEntry buildFlareEntry({
-  required int id,
-  required int categoryId,
+  required String id,
+  required String categoryId,
   required String severity,
   String? type,
   DateTime? now,

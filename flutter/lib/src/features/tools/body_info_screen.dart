@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/body_figure_store.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/data/uuid_v4.dart';
 import 'package:tabs_lab/src/data/voice_input.dart';
 import 'package:tabs_lab/src/data/workout_table.dart';
 import 'package:tabs_lab/src/features/tools/body_workout.dart';
@@ -57,7 +58,7 @@ class BodyImpact {
   final int timestampMs;
   final int durationMinutes;
   final String originalLogText;
-  final int? relatedLogId;
+  final String? relatedLogId;
 
   /// True when the source entry carried mild-severity words
   /// (the engine's `isMild`). The figure renders mild impacts in
@@ -1353,12 +1354,15 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
   /// re-pulled categories: Exercise → Workout → the default
   /// category → the first category → 7 (the Coach note flow's
   /// fallback).
-  int _workoutCategoryId(dynamic rawCategories) {
+  String _workoutCategoryId(dynamic rawCategories) {
     if (rawCategories is List) {
-      int? idOf(Map c) {
-        final id = c['id'];
-        if (id is num) return id.toInt();
-        return int.tryParse('$id');
+      String? idOf(Map c) {
+        // GAP-18: UUID categories carry their id in `clientId`
+        // with `id` null; legacy rows carry the int id.
+        final raw = c['clientId'] ?? c['id'];
+        if (raw == null) return null;
+        final s = idStringFromJson(raw);
+        return s.isEmpty ? null : s;
       }
 
       for (final wanted in const ['exercise', 'workout']) {
@@ -1382,14 +1386,14 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
         }
       }
     }
-    return 7;
+    return '7';
   }
 
   /// Saves a workout as a normal log entry, mirroring the Coach
   /// note flow's discipline: invalidate → re-pull → abort visibly
-  /// on a failed pull (never fall through to id math on stale
-  /// data) → id = maxId + 1 → post. On success the zone state is
-  /// re-derived locally from the pulled entries + the new entry.
+  /// on a failed pull → id = a random v4 UUID (GAP-18; was
+  /// maxId + 1) → post. On success the zone state is re-derived
+  /// locally from the pulled entries + the new entry.
   Future<void> _logWorkout(String text) async {
     if (_loggingWorkout) return;
     setState(() {
@@ -1407,17 +1411,9 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
         );
         return;
       }
-      var maxId = 0;
-      for (final e in rawEntries) {
-        if (e is Map) {
-          final rawId = e['id'];
-          final id = rawId is num ? rawId.toInt() : int.tryParse('$rawId') ?? 0;
-          if (id > maxId) maxId = id;
-        }
-      }
       final now = DateTime.now().millisecondsSinceEpoch;
       final entry = QuickLogEntry(
-        id: maxId + 1,
+        id: generateUuidV4(),
         categoryId: _workoutCategoryId(pull['categories']),
         body: text,
         chips: kWorkoutChip,

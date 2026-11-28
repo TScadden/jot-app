@@ -396,14 +396,14 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// Double-tap guard (native `tapInFlight`): one tap, one entry.
   bool _feelingTapInFlight = false;
-  int? _feelingCategoryId;
+  String? _feelingCategoryId;
 
   // ── Merged check-in flow (Juno ruling Oct 28, 2026) ─────────────
   /// Null until the sync pull resolves the Symptoms category (spec
   /// §4.2 honesty pattern: hide rather than misfile). The good-day
   /// record files under the Mood & Energy category — the check-in's
   /// own category, [_feelingCategoryId].
-  int? _flareCategoryId;
+  String? _flareCategoryId;
 
   /// Today's three records, each DERIVED from the entry set (pulled
   /// entries overlaid with the outbox's pending local entries) —
@@ -435,7 +435,7 @@ class _HomeScreenState extends State<HomeScreen>
   /// Null until the sync pull resolves the Hydration category BY
   /// NAME (no fallback — spec §4.1/Q4): the intake card renders
   /// only once it resolves, and never on a miss.
-  int? _intakeCategoryId;
+  String? _intakeCategoryId;
 
   /// The last known entry set AS MERGED with the outbox overlay —
   /// the local view intake derivation reads, so a just-pushed entry
@@ -1484,7 +1484,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// Ids present in the most recent raw pull (before the outbox
   /// overlay) — refreshed by every intake load/commit re-pull.
-  Set<int> _intakePullIds = const {};
+  Set<String> _intakePullIds = const {};
 
   /// One quick-add tap on [kind]: a configured preset logs one
   /// event with the remembered amounts; an unconfigured kind opens
@@ -1517,8 +1517,9 @@ class _HomeScreenState extends State<HomeScreen>
     _intakeCommitInFlight = true;
     try {
       // Re-check against a FRESH pull before writing (the flare /
-      // check-in precedent): fresh category resolution and the
-      // fresh server max id for the outbox allocator.
+      // check-in precedent): fresh category resolution before the
+      // outbox allocates the new entry's id (a v4 UUID since
+      // GAP-18; the pull no longer feeds allocation).
       _backend.invalidateSyncPull();
       final pull = await _backend.fetchSyncPull();
       List<QuickLogEntry> entries = _intakeEntries;
@@ -1673,7 +1674,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// Removes [id] from the local view and re-derives; clears the
   /// Undo target when it was the removed event.
-  void _applyIntakeRemoval(int id) {
+  void _applyIntakeRemoval(String id) {
     _intakeEntries = _intakeEntries.where((e) => e.id != id).toList();
     if (_intakeLastEntryId == id) {
       setState(() => _intakeLastEntryId = null);

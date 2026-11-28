@@ -114,7 +114,7 @@ String effectiveSlug(QuickLogCategory category) =>
 List<QuickLogCategory> resolveReportCategories(
   List<QuickLogCategory> all,
   ReportFocus focus,
-  Set<int> customIds,
+  Set<String> customIds,
 ) =>
     switch (focus) {
       ReportFocus.health =>
@@ -130,7 +130,7 @@ List<QuickLogCategory> resolveReportCategories(
 /// All Time) whose category is selected.
 List<QuickLogEntry> logsInRange(
   List<QuickLogEntry> all,
-  Set<int> selectedIds, {
+  Set<String> selectedIds, {
   required bool last30Days,
   required int nowMs,
 }) {

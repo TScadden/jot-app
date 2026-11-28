@@ -1382,7 +1382,7 @@ class TabsBackend {
   /// `ClassifyAndCleanRequest{noteText, categories}` (JotApi.kt).
   /// Returns the category id, or null on any failure (native falls
   /// back to category 7, "General").
-  Future<int?> classifyCoachNote(
+  Future<String?> classifyCoachNote(
       String noteText, Map<String, String> categories) async {
     final res = await postAi('/api/ai/classify-coach-note', {
       'noteText': noteText,
@@ -1390,7 +1390,13 @@ class TabsBackend {
     });
     final result = res?['result'];
     if (result is Map<String, dynamic>) {
-      return _asInt(result['categoryId']);
+      // GAP-18: category ids are strings (the request's category
+      // map is keyed by the string id, so the classifier echoes
+      // that form — a UUID for new-scheme categories, the decimal
+      // string for legacy ones).
+      final raw = result['categoryId'];
+      if (raw is num) return '${raw.toInt()}';
+      if (raw is String && raw.isNotEmpty) return raw;
     }
     return null;
   }

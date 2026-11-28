@@ -136,7 +136,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
   List<QuickLogCategory> _categories = const [];
   QuickLogCategory? _selectedCategory;
 
-  final Map<int, List<String>> _chipCache = {};
+  final Map<String, List<String>> _chipCache = {};
   List<String> _chips = const [];
   List<String> _selectedChips = const [];
   bool _chipsLoading = false;
@@ -151,7 +151,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
   String _lastManualText = '';
 
   List<QuickLogEntry> _recentSuggestions = const [];
-  int? _medicationCategoryId;
+  String? _medicationCategoryId;
   Set<String> _activeMedicationNamesCache = const {};
 
   bool _isUnlimited = false;

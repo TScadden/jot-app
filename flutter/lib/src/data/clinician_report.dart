@@ -639,10 +639,10 @@ int deriveMigraineCount(
 /// capped at 3, ties broken by name for determinism.
 List<({String name, int count})> deriveTopCategories(
   List<QuickLogEntry> entries, {
-  required Map<int, String> names,
+  required Map<String, String> names,
   required Set<String> rangeDayKeys,
 }) {
-  final counts = <int, int>{};
+  final counts = <String, int>{};
   for (final e in entries) {
     if (!rangeDayKeys.contains(_dayKey(_dayOf(e.timestamp)))) continue;
     if (!names.containsKey(e.categoryId)) continue;
@@ -985,7 +985,7 @@ class ClinicianReportCollector {
           ),
       ];
     }
-    final names = <int, String>{
+    final names = <String, String>{
       for (final c in categories) c.id: c.name,
       ...snapshot.categoriesMap,
     };

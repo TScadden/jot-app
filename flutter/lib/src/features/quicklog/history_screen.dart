@@ -173,7 +173,7 @@ extension _StringNotBlank on String {
 /// completion notification corrects it immediately.
 class LogEntrySyncBadge extends StatelessWidget {
   final LogEntryOutbox outbox;
-  final int entryId;
+  final String entryId;
 
   const LogEntrySyncBadge({
     super.key,
@@ -281,13 +281,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
   /// Ids present in the most recent raw server pull, before the
   /// outbox overlay. This is how an edit knows whether its row is a
   /// server-known update or a still-local creation.
-  Set<int> _serverEntryIds = const {};
+  Set<String> _serverEntryIds = const {};
   List<QuickLogCategory> _categories = const [];
   DateTime? _lastSyncAt;
 
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
-  int? _categoryFilter;
+  String? _categoryFilter;
   bool _todayOnly = false;
 
   static const _chipInk = Color(0xFF0A0A0E); // native LegacyDarkChipInk

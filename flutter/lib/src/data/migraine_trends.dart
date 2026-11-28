@@ -48,8 +48,8 @@ String buildMigraineTrendsBody(MigraineAttack attack) {
 /// - chips = `["Migraine attack"]`.
 QuickLogEntry buildMigraineTrendsEntry(
   MigraineAttack attack, {
-  required int entryId,
-  required int categoryId,
+  required String entryId,
+  required String categoryId,
 }) {
   final endMs = attack.endTimestamp ?? attack.startTimestamp;
   return QuickLogEntry(

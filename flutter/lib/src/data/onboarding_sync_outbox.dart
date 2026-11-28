@@ -76,6 +76,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'quick_log_models.dart';
 import 'tabs_backend.dart';
+import 'uuid_v4.dart';
 
 /// One staged categories payload: ONLY the categories finalize
 /// added (see the library doc — the kept rows already exist
@@ -658,10 +659,6 @@ class OnboardingSyncOutbox {
     }
 
     final merged = List<QuickLogCategory>.of(current);
-    var maxId = 0;
-    for (final c in merged) {
-      if (c.id > maxId) maxId = c.id;
-    }
     var appended = false;
     for (final staged in slot.addedCategories) {
       final nameKey = staged.name.trim().toLowerCase();
@@ -685,20 +682,20 @@ class OnboardingSyncOutbox {
         // The staged id now belongs to a DIFFERENT (post-
         // onboarding) category: keep the staged category under
         // a fresh id instead of overwriting or being deleted
-        // into it.
-        maxId += 1;
+        // into it. GAP-18: the fresh id is a random v4 UUID
+        // (was maxId + 1 in the integer scheme).
         merged.add(
           QuickLogCategory(
-            id: maxId,
+            id: generateUuidV4(),
             name: staged.name,
             icon: staged.icon,
             colorHex: staged.colorHex,
             isDefault: staged.isDefault,
             sortOrder: staged.sortOrder,
+            updatedAt: staged.updatedAt,
           ),
         );
       } else {
-        if (staged.id > maxId) maxId = staged.id;
         merged.add(staged);
       }
       appended = true;

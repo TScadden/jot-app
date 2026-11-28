@@ -16,6 +16,7 @@ import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
+import 'package:tabs_lab/src/data/uuid_v4.dart';
 import 'package:tabs_lab/src/data/reminder_alarm_sync.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
@@ -3338,27 +3339,18 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
             '${c['id']}': '${c['name'] ?? ''}',
       };
       final categoryId =
-          await _backend.classifyCoachNote(noteText, categories) ?? 7;
+          await _backend.classifyCoachNote(noteText, categories) ?? '7';
       _backend.invalidateSyncPull();
       final pull = await _backend.fetchSyncPull();
       if (pull == null) {
         return const CoachApprovalOutcome.failure(
             coachNotePullFailedMessage);
       }
-      final entries = pull['entries'];
-      var maxId = 0;
-      if (entries is List) {
-        for (final e in entries) {
-          if (e is Map) {
-            final id = _asIntOr(e['id'], 0);
-            if (id > maxId) maxId = id;
-          }
-        }
-      }
       final now = DateTime.now().millisecondsSinceEpoch;
       final saved = await _backend.postLogEntries([
         QuickLogEntry(
-          id: maxId + 1,
+          // GAP-18: fresh id is a random v4 UUID (was maxId + 1).
+          id: generateUuidV4(),
           categoryId: categoryId,
           body: noteText,
           chips: '',
@@ -3403,14 +3395,16 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
       // navigation-time widget.pullCategories.
       final wanted =
           (parsed.logEntryCategory ?? '').trim().toLowerCase();
-      int? categoryId;
+      String? categoryId;
       final pulledCategories = pull['categories'];
       if (wanted.isNotEmpty && pulledCategories is List) {
         for (final c in pulledCategories) {
           if (c is Map &&
               '${c['name'] ?? ''}'.trim().toLowerCase() == wanted) {
-            final id = _asIntOr(c['id'], -999);
-            if (id != -999) categoryId = id;
+            // GAP-18: UUID categories carry their id in
+            // `clientId` with `id` null.
+            final rawId = c['clientId'] ?? c['id'];
+            if (rawId != null) categoryId = idStringFromJson(rawId);
             break;
           }
         }
@@ -3419,16 +3413,10 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
         return const CoachApprovalOutcome.failure(
             coachLogEntryUnknownCategoryMessage);
       }
-      var maxId = 0;
-      for (final e in entries) {
-        if (e is Map) {
-          final id = _asIntOr(e['id'], 0);
-          if (id > maxId) maxId = id;
-        }
-      }
       final saved = await _backend.postLogEntries([
         QuickLogEntry(
-          id: maxId + 1,
+          // GAP-18: fresh id is a random v4 UUID (was maxId + 1).
+          id: generateUuidV4(),
           categoryId: categoryId,
           body: parsed.logEntryText ?? '',
           chips: '',

@@ -80,7 +80,7 @@ List<String> goodOptionsOf(QuickLogEntry entry) => goodOptionsInSheetOrder(
 /// happen — one per energy day).
 QuickLogEntry? findGoodRecord(
   List<QuickLogEntry> entries, {
-  required int moodCategoryId,
+  required String moodCategoryId,
   DateTime? now,
 }) {
   final start = feelingDayStart(now ?? DateTime.now());
@@ -99,8 +99,8 @@ QuickLogEntry? findGoodRecord(
 /// Builds the exact entry a good-day commit writes. [id] comes from
 /// the outbox's post-load allocation. Timestamp is the commit time.
 QuickLogEntry buildGoodEntry({
-  required int id,
-  required int categoryId,
+  required String id,
+  required String categoryId,
   required List<String> options,
   DateTime? now,
 }) {

@@ -126,7 +126,7 @@ bool chipsContainFeelingTag(String chipsJson) {
 /// +24h end exactly.
 bool hasFeelingCheckIn(
   List<QuickLogEntry> entries, {
-  required int moodCategoryId,
+  required String moodCategoryId,
   DateTime? now,
   DateTime? windowEnd,
 }) =>
@@ -146,7 +146,7 @@ bool hasFeelingCheckIn(
 /// [hasFeelingCheckIn]); null = the day's own +24h end.
 QuickLogEntry? findFeelingCheckInEntry(
   List<QuickLogEntry> entries, {
-  required int moodCategoryId,
+  required String moodCategoryId,
   DateTime? now,
   DateTime? windowEnd,
 }) {
