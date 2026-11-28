@@ -210,7 +210,7 @@ void main() {
       final back = await store.read();
       expect(back, isNotNull);
       expect(back!.outcomeKind, JournalOutcomeKind.decision);
-      expect(back.request.categoryIds, [1, 5]);
+      expect(back.request.categoryIds, ['1', '5']);
       expect(back.request.kind, 'standard');
       expect(back.attempts.single.failureClass, AiFailureClass.connection);
       expect(back.failureClass, AiFailureClass.connection);
@@ -355,7 +355,7 @@ void main() {
       final s = serviceOver(mem);
       await s.restoreSettled;
       expect(s.interruptedEntry, isNotNull);
-      expect(s.interruptedEntry!.request.categoryIds, [1, 5]);
+      expect(s.interruptedEntry!.request.categoryIds, ['1', '5']);
       expect(s.isGenerating, isFalse);
       expect(s.pendingShare, isNull);
       expect(s.pendingFailure, isNull);
@@ -931,7 +931,7 @@ void main() {
       expect(stored.request.kind, 'standard');
       expect(stored.request.focusKey, 'health');
       expect(stored.request.last30Days, isFalse);
-      expect(stored.request.categoryIds, [1, 5]);
+      expect(stored.request.categoryIds, ['1', '5']);
     });
 
     test('2. autoRestoreInterrupted: a second call — concurrent '
@@ -1203,7 +1203,7 @@ void main() {
       expect(stored!.generationId, liveGeneration);
       expect(stored.outcomeKind, JournalOutcomeKind.running);
       expect(stored.stage, ReportStage.syncing.name);
-      expect(stored.request.categoryIds, [1, 5]);
+      expect(stored.request.categoryIds, ['1', '5']);
 
       gate.complete();
       await first;
@@ -1258,7 +1258,7 @@ void main() {
       expect(mid.savedPath, isNull);
       expect(mid.finishedAtMs, isNull);
       expect(mid.request.kind, 'standard');
-      expect(mid.request.categoryIds, [1, 5]);
+      expect(mid.request.categoryIds, ['1', '5']);
       expect(mid.request.last30Days, isFalse);
       final rerunGeneration = mid.generationId;
 
@@ -1269,7 +1269,7 @@ void main() {
       await s3.restoreSettled;
       expect(s3.interruptedEntry, isNotNull);
       expect(s3.interruptedEntry!.generationId, rerunGeneration);
-      expect(s3.interruptedEntry!.request.categoryIds, [1, 5]);
+      expect(s3.interruptedEntry!.request.categoryIds, ['1', '5']);
       expect(s3.isGenerating, isFalse);
       expect(s3.pendingShare, isNull);
       expect(s3.pendingFailure, isNull);
