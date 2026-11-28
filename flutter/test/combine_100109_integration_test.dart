@@ -113,7 +113,7 @@ void main() {
         final day = DateTime(2026, 10, 1 + i, 12);
         final hit = i.isEven;
         entries.add(QuickLogEntry(
-          id: 100 + i,
+          id: '${100 + i}',
           categoryId: '7',
           body: 'Water',
           chips: '["Intake", "Water"]',

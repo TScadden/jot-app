@@ -48,7 +48,7 @@ const _cats = [
       id: '4', name: 'Food', icon: '', colorHex: '', isDefault: false, sortOrder: 2),
 ];
 
-QuickLogEntry _entry(int id, int cat, int ts,
+QuickLogEntry _entry(String id, String cat, int ts,
         {String body = '', String chips = ''}) =>
     QuickLogEntry(
         id: id, categoryId: cat, body: body, chips: chips, manualText: '', timestamp: ts);
@@ -175,14 +175,14 @@ Future<ClinicianReportData> _fullData() {
     logEntries: [
       // Two entries on ONE energy day (Oct 26): one at 15:00 and
       // one at 02:30 the next calendar day (before 04:00).
-      _entry(1, 2, _ts(10, 26, hour: 15),
+      _entry('1', '2', _ts(10, 26, hour: 15),
           chips: '["Flare Day", "Bad", "Fog"]'),
-      _entry(2, 2, _ts(10, 27, hour: 2),
+      _entry('2', '2', _ts(10, 27, hour: 2),
           chips: '["Flare Day", "Bad", "Fog"]'),
-      _entry(3, 2, _ts(10, 20), chips: '["Flare Day", "Rough", "Dizzy"]'),
-      _entry(4, 3, _ts(10, 10), body: 'Migraine'),
-      _entry(5, 3, _ts(10, 12), body: 'Migraine'),
-      _entry(6, 4, _ts(10, 11), body: 'Lunch'),
+      _entry('3', '2', _ts(10, 20), chips: '["Flare Day", "Rough", "Dizzy"]'),
+      _entry('4', '3', _ts(10, 10), body: 'Migraine'),
+      _entry('5', '3', _ts(10, 12), body: 'Migraine'),
+      _entry('6', '4', _ts(10, 11), body: 'Lunch'),
     ],
   );
   return _extend(
@@ -441,7 +441,7 @@ void main() {
     test('11. pre-2a declared form; never derived from Took Med entries',
         () async {
       final snapshot = _snapshot(logEntries: [
-        _entry(1, 2, _ts(10, 10), body: 'Took Med — Ivabradine 7.5 mg'),
+        _entry('1', '2', _ts(10, 10), body: 'Took Med — Ivabradine 7.5 mg'),
       ]);
       final data = await _extend(
         snapshot,
@@ -1291,8 +1291,8 @@ void main() {
       final snapshot = _snapshot(
         categoriesMap: const {99: 'Migraine Symptoms & Triggers'},
         logEntries: [
-          _entry(1, 99, _ts(10, 10)),
-          _entry(2, 99, _ts(10, 12)),
+          _entry('1', '99', _ts(10, 10)),
+          _entry('2', '99', _ts(10, 12)),
         ],
       );
       final data = await _extend(snapshot, categoriesFail: true);
