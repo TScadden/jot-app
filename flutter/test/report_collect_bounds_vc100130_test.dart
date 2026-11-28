@@ -471,7 +471,7 @@ void main() {
           kind: 'standard',
           focusKey: 'health',
           last30Days: false,
-          categoryIds: [1, 2, 3, 4, 5],
+          categoryIds: ['1', '2', '3', '4', '5'],
         ),
       );
       final entry = service.journalEntry!;
@@ -534,7 +534,7 @@ void main() {
           kind: 'standard',
           focusKey: 'health',
           last30Days: false,
-          categoryIds: [1, 2, 3, 4, 5],
+          categoryIds: ['1', '2', '3', '4', '5'],
         ),
       );
       final entry = service.journalEntry!;

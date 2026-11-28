@@ -64,7 +64,7 @@ void main() {
 
     test('limit honored', () {
       final entries =
-          List.generate(30, (i) => _entry(id: i, body: 'note $i'));
+          List.generate(30, (i) => _entry(id: '$i', body: 'note $i'));
       final out = recentSuggestions(entries,
           activeMedicationNames: const {},
           medicationCategoryId: null,

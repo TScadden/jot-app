@@ -147,8 +147,8 @@ class _CardMemStore {
 }
 
 Map<String, dynamic> _entry({
-  required int id,
-  required int categoryId,
+  required String id,
+  required String categoryId,
   required String body,
   String chips = '[]',
 }) =>
@@ -587,7 +587,7 @@ void main() {
           physicalSize: size,
           entries: [
             for (var i = 0; i < 10; i++)
-              _entry(id: 100 + i, categoryId: '1', body: 'entry $i'),
+              _entry(id: '${100 + i}', categoryId: '1', body: 'entry $i'),
           ],
         );
 
@@ -634,7 +634,7 @@ void main() {
           physicalSize: size,
           entries: [
             for (var i = 0; i < 10; i++)
-              _entry(id: 100 + i, categoryId: '1', body: 'entry $i'),
+              _entry(id: '${100 + i}', categoryId: '1', body: 'entry $i'),
           ],
         );
 

@@ -143,8 +143,8 @@ void main() {
       List<HabitDto> habits = const [],
       TodayPlanLocalState local = const TodayPlanLocalState(),
       List<QuickLogEntry> entries = const [],
-      int? medCategoryId,
-      int? goalsCategoryId = 4,
+      String? medCategoryId,
+      String? goalsCategoryId = '4',
       DateTime? now,
     }) =>
         buildTodayPlan(

@@ -46,8 +46,8 @@ void main() {
   }
 
   QuickLogEntry entry({
-    required int id,
-    required int cat,
+    required String id,
+    required String cat,
     required String body,
     String chips = '[]',
     required DateTime at,

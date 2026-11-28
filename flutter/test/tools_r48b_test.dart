@@ -236,7 +236,7 @@ void main() {
   // ── Body Info ─────────────────────────────────────────────────────
 
   QuickLogEntry entry({
-    required int id,
+    required String id,
     required String body,
     String chips = '',
     String manualText = '',

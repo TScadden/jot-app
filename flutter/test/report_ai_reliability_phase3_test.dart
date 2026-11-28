@@ -139,7 +139,7 @@ QuickLogCategory cat(int id, String name) => QuickLogCategory(
     isDefault: true,
     sortOrder: int.tryParse(id) ?? 0);
 
-QuickLogEntry entry(int id, int catId, int ts) => QuickLogEntry(
+QuickLogEntry entry(String id, String catId, int ts) => QuickLogEntry(
     id: id, categoryId: catId, body: 'b$id', chips: '', manualText: '', timestamp: ts);
 
 /// Extracts the text a generated PDF actually prints: inflate
@@ -190,7 +190,7 @@ void main() {
 
   FakeBackend backendWithData() => FakeBackend()
     ..categories = [cat(1, 'Symptoms')]
-    ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)];
+    ..entries = [entry('1', '1', DateTime.now().millisecondsSinceEpoch)];
 
   /// A pipeline over the fakes with a scripted AI call and render
   /// capture. [script] is consulted per call (1-based).
@@ -756,7 +756,7 @@ void main() {
         last30Days: false,
         generationTimestampMs:
             DateTime(2026, 11, 9, 20, 20).millisecondsSinceEpoch,
-        logEntries: [entry(1, 1, 1000)],
+        logEntries: [entry('1', '1', 1000)],
         categoriesMap: const {'1': 'Symptoms'},
         conditions: const ['POTS'],
       );
@@ -875,7 +875,7 @@ void main() {
           last30Days: false,
           generationTimestampMs:
               DateTime(2026, 11, 9, 20, 20).millisecondsSinceEpoch,
-          logEntries: [entry(1, 1, 1000)],
+          logEntries: [entry('1', '1', 1000)],
           categoriesMap: const {'1': 'Symptoms'},
           conditions: const ['POTS'],
         );

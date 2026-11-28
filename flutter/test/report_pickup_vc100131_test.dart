@@ -130,7 +130,7 @@ QuickLogCategory cat(int id, String name) => QuickLogCategory(
     isDefault: true,
     sortOrder: int.tryParse(id) ?? 0);
 
-QuickLogEntry entry(int id, int catId, int ts) => QuickLogEntry(
+QuickLogEntry entry(String id, String catId, int ts) => QuickLogEntry(
     id: id,
     categoryId: catId,
     body: 'b$id',
@@ -140,7 +140,7 @@ QuickLogEntry entry(int id, int catId, int ts) => QuickLogEntry(
 
 FakeBackend backendWithData() => FakeBackend()
   ..categories = [cat(1, 'Symptoms')]
-  ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)];
+  ..entries = [entry('1', '1', DateTime.now().millisecondsSinceEpoch)];
 
 /// A scripted pipeline + its call recorders.
 class Script {
@@ -280,7 +280,7 @@ void main() {
     ReportSnapshot snap() => ReportSnapshot(
           last30Days: true,
           generationTimestampMs: 1000,
-          logEntries: [entry(1, 1, 1000)],
+          logEntries: [entry('1', '1', 1000)],
           categoriesMap: const {'1': 'Symptoms'},
         );
 
@@ -810,7 +810,7 @@ void main() {
           snapshot: ReportSnapshot(
             last30Days: true,
             generationTimestampMs: 1000,
-            logEntries: [entry(1, 1, 1000)],
+            logEntries: [entry('1', '1', 1000)],
             categoriesMap: const {'1': 'Symptoms'},
           ),
           pdfBytes: const [1],

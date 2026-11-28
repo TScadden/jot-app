@@ -121,8 +121,8 @@ List<QuickLogEntry> founderEntries() {
       id++;
       final ago = (id * 37) % 180;
       out.add(QuickLogEntry(
-        id: id,
-        categoryId: catId,
+        id: '$id',
+        categoryId: '$catId',
         body: 'entry $id',
         chips: '',
         manualText: '',

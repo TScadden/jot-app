@@ -20,7 +20,7 @@ import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
 void main() {
   const medCat = '8';
   const moodCat = 6;
-  const goalsCat = 4;
+  const goalsCat = '4';
 
   const founderMeds = [
     SummaryMedication(key: 'iva', name: 'Ivabradine', dose: '7.5 mg'),

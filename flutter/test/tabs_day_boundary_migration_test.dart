@@ -223,9 +223,9 @@ void main() {
 
   group('(d) Daily Summary completion on cutover night — real '
       'SummaryCompletionWatcher path', () {
-    const medCat = 8;
+    const medCat = '8';
     const moodCat = '6';
-    const goalsCat = 4;
+    const goalsCat = '4';
 
     late Map<String, String> disk;
     late Map<String, String> markers;

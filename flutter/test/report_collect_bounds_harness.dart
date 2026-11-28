@@ -90,8 +90,8 @@ List<QuickLogEntry> founderEntries() {
     for (var i = 0; i < count; i++) {
       id++;
       out.add(QuickLogEntry(
-        id: id,
-        categoryId: catId,
+        id: '$id',
+        categoryId: '$catId',
         body: 'entry $id',
         chips: '',
         manualText: '',

@@ -117,7 +117,7 @@ const testRequest = ReportRequestIdentity(
   kind: 'standard',
   focusKey: 'health',
   last30Days: false,
-  categoryIds: [1, 5],
+  categoryIds: ['1', '5'],
 );
 
 ReportSnapshot snap() => ReportSnapshot(
@@ -1104,7 +1104,7 @@ void main() {
         kind: 'clinician',
         focusKey: 'clinician',
         last30Days: true,
-        categoryIds: [9],
+        categoryIds: ['9'],
       );
       // No await between construction and start(): the restore
       // is still in flight (its journal read has not landed)
@@ -1191,7 +1191,7 @@ void main() {
           kind: 'clinician',
           focusKey: 'clinician',
           last30Days: true,
-          categoryIds: [9],
+          categoryIds: ['9'],
         ),
       );
       expect(secondCalls, 0);

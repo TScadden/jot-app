@@ -193,7 +193,7 @@ Finder _semantics(String label) => find.byWidgetPredicate(
 // ported verbatim in shape from jotapp-correlation's
 // correlation_engine.dart (deriveFlareDays + its helpers). ────────
 
-int? _resolveCorrelationCategoryId(
+String? _resolveCorrelationCategoryId(
   List<QuickLogCategory> categories, {
   required String name,
   required int fallbackId,
@@ -202,7 +202,7 @@ int? _resolveCorrelationCategoryId(
     if (c.name.trim().toLowerCase() == name.toLowerCase()) return c.id;
   }
   for (final c in categories) {
-    if (c.id == fallbackId) return c.id;
+    if (c.id == '$fallbackId') return c.id;
   }
   return null;
 }

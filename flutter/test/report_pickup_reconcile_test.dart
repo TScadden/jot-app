@@ -129,7 +129,7 @@ const testRequest = ReportRequestIdentity(
   kind: 'standard',
   focusKey: 'health',
   last30Days: true,
-  categoryIds: [1],
+  categoryIds: ['1'],
 );
 
 /// Flushes the microtask queue so an unawaited trigger

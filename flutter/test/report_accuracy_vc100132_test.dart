@@ -26,7 +26,7 @@ import 'test_helpers.dart';
 
 final _now = DateTime(2026, 11, 13, 15);
 
-QuickLogCategory _cat(int id, String name) => QuickLogCategory(
+QuickLogCategory _cat(String id, String name) => QuickLogCategory(
     id: id, name: name, icon: 'x', colorHex: '#FF0000',
     isDefault: true, sortOrder: int.tryParse(id) ?? 0);
 
@@ -94,7 +94,7 @@ Future<ReportSnapshot> _collect(
     scoreLoader:
         useDefaultScoreLoader ? null : (scoreLoader ?? () async => const {}),
   ).collect(
-    selectedCategories: [_cat(1, 'Symptoms')],
+    selectedCategories: [_cat('1', 'Symptoms')],
     last30Days: false,
     profile: profile,
     now: _now,

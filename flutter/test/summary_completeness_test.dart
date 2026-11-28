@@ -26,8 +26,8 @@ void main() {
   DateTime onNov6(int h) => DateTime(2026, 11, 6, h);
 
   QuickLogEntry entry({
-    required int id,
-    required int cat,
+    required String id,
+    required String cat,
     required String body,
     String chips = '[]',
     required DateTime at,

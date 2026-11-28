@@ -194,7 +194,7 @@ void main() {
       // In-window low days: 9, scores 40.
       for (var i = 0; i < 9; i++) {
         final d = addDaysToDayKey('2026-09-10', i);
-        entries.add(feeling(id++, d, 1));
+        entries.add(feeling('${id++}', d, 1));
         rows.add(bio(d, score: 40));
       }
       // In-window high days: only 4, scores 50.
@@ -285,11 +285,11 @@ void main() {
       final rows = <DailyBiometrics>[];
       var id = 0;
       for (var i = 0; i < lowCount; i++) {
-        entries.add(feeling(id++, day(i), 2));
+        entries.add(feeling('${id++}', day(i), 2));
         rows.add(bio(day(i), score: 40));
       }
       for (var i = 0; i < highCount; i++) {
-        entries.add(feeling(id++, day(lowCount + i), 5));
+        entries.add(feeling('${id++}', day(lowCount + i), 5));
         rows.add(bio(day(lowCount + i), score: 80));
       }
       return computeCorrelationInsights(
@@ -335,15 +335,15 @@ void main() {
       final rows = <DailyBiometrics>[];
       var id = 0;
       for (var i = 0; i < 5; i++) {
-        entries.add(feeling(id++, day(i), 2));
+        entries.add(feeling('${id++}', day(i), 2));
         rows.add(bio(day(i), score: 40));
       }
       for (var i = 0; i < 5; i++) {
-        entries.add(feeling(id++, day(5 + i), 3)); // middle: neither group
+        entries.add(feeling('${id++}', day(5 + i), 3)); // middle: neither group
         rows.add(bio(day(5 + i), score: 100));
       }
       for (var i = 0; i < 9; i++) {
-        entries.add(feeling(id++, day(10 + i), 4));
+        entries.add(feeling('${id++}', day(10 + i), 4));
         rows.add(bio(day(10 + i), score: 80));
       }
       rows.add(bio(day(19), score: 1)); // no check-in: absent
