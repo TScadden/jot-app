@@ -1139,12 +1139,12 @@ void main() {
               'as interrupted over a live generation');
       expect(s.pendingShare, isNull);
       expect(s.pendingFailure, isNull);
-      expect(s.journalEntry!.request.categoryIds, [9]);
+      expect(s.journalEntry!.request.categoryIds, ['9']);
       final stored =
           await ReportGenerationJournal.inMemory(mem).read();
       expect(stored!.outcomeKind, JournalOutcomeKind.running);
       expect(stored.request.kind, 'clinician');
-      expect(stored.request.categoryIds, [9]);
+      expect(stored.request.categoryIds, ['9']);
       expect(stored.generationId, s.journalEntry!.generationId);
 
       gate.complete();
