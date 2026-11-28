@@ -65,11 +65,11 @@ class _WorkoutSyncDiagnosticsCardState
   Widget build(BuildContext context) {
     final store = widget._store;
     final run = store.lastRun;
-    const style = TextStyle(color: NotelColors.textSecondary, fontSize: 13);
+    final style = TextStyle(color: NotelColors.textSecondary, fontSize: 13);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Workout sync diagnostics',
           style: TextStyle(
             color: NotelColors.textPrimary,
@@ -79,7 +79,7 @@ class _WorkoutSyncDiagnosticsCardState
         ),
         const SizedBox(height: 6),
         if (run == null)
-          const Text('Last run: no run recorded yet', style: style)
+          Text('Last run: no run recorded yet', style: style)
         else ...[
           Text(_timeLine('Last run', run.finishedAtMs), style: style),
           const SizedBox(height: 4),
