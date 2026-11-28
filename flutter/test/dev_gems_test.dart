@@ -45,7 +45,7 @@ Map<String, dynamic> _pull({bool? devAccess}) {
     'nickname': 'Tyson',
     'tag': '1234',
     'profile': <String, dynamic>{
-      if (devAccess != null) 'dev_access': devAccess,
+      'dev_access': ?devAccess,
     },
     'insights': const [],
   };
