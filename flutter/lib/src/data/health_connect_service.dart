@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert' show utf8;
 
+import 'package:crypto/crypto.dart' show sha256;
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/services.dart';
@@ -1666,6 +1668,61 @@ class HealthConnectService {
     }
   }
 
+  /// Workout sync (Nov 27, 2026) — the RICH exercise-session read
+  /// behind the native sibling method `readExerciseSessionsRich`
+  /// (NATIVE.md §5): per session the full field set (type int,
+  /// title, HC identity, writer package, per-window calorie + HR
+  /// aggregates), sorted ascending by start. Outcome-carrying
+  /// (the [HcReadOutcome] pattern of [readSpikeCountsWithOutcome])
+  /// because the sync service must distinguish a WHOLE-READ error
+  /// (abort, create nothing, stamp nothing) from genuinely zero
+  /// sessions (stamp the sync) and from a PARTIAL enrichment
+  /// (proceed; the missing fields stay missing — a partial is not
+  /// a failure, exactly like the spike-counts contract).
+  ///
+  /// The existing [readExerciseSessions] keeps its signature and
+  /// its `[]`-on-error contract for badges — untouched.
+  Future<HcReadOutcome<List<WorkoutSession>>>
+      readExerciseSessionsRich(int days) async {
+    try {
+      final raw = await _channel.invokeMethod<dynamic>(
+          'readExerciseSessionsRich', {'days': days});
+      List<dynamic> items = const [];
+      String? partialCode;
+      String? partialDetails;
+      if (raw is List) {
+        items = raw;
+      } else if (raw is Map) {
+        final s = raw['items'];
+        if (s is List) items = s;
+        final partial = raw['partialError'];
+        if (partial is String && partial.isNotEmpty) {
+          // Partial enrichment: real sessions, some aggregates
+          // missing. Its own field, never a failure (house
+          // contract, same as SPIKE_COUNTS_PARTIAL).
+          partialCode = 'EXERCISE_SESSIONS_RICH_PARTIAL';
+          partialDetails = partial;
+          lastPartialErrorCode = partialCode;
+          lastReadErrorDetails = partial;
+        }
+      }
+      final out = <WorkoutSession>[];
+      for (final item in items) {
+        final session = WorkoutSession.tryParse(item);
+        if (session != null) out.add(session);
+      }
+      return HcReadOutcome(
+          value: out, errorDetails: partialDetails, partialCode: partialCode);
+    } on PlatformException catch (e) {
+      _notePlatformError(e);
+      return HcReadOutcome(
+          value: const [], errorCode: e.code, errorDetails: _detailsOf(e));
+    } on MissingPluginException {
+      _noteReadError('NO_CHANNEL');
+      return HcReadOutcome(value: const [], errorCode: 'NO_CHANNEL');
+    }
+  }
+
   /// Per-day HR spike counts `[{date, count}]` over the last [days]
   /// days (bridge range read, native spike rule). A count of 0 is
   /// REAL (a sampled day with no spikes) and is kept. Empty when
@@ -2468,3 +2525,217 @@ class FlutterSecureStore implements SecureStore {
   @override
   Future<void> delete(String key) => _storage.delete(key: key);
 }
+
+/// Workout sync (Nov 27, 2026) — one Health Connect exercise
+/// session as shipped by the native `readExerciseSessionsRich`
+/// method (NATIVE.md §5). All enrichment fields are nullable:
+/// null means Health Connect held no such data for the session
+/// window — an aggregate of 0 is a failed/absent read under the
+/// founder's biometric zero-value rule, so 0 parses to null here
+/// and is never rendered downstream.
+class WorkoutSession {
+  final int startMs;
+  final int endMs;
+
+  /// Raw Health Connect `EXERCISE_TYPE_*` int. Labels are a Dart
+  /// presentation concern ([workoutExerciseTypeLabel]); the int
+  /// is the stored truth.
+  final int exerciseType;
+
+  /// Writer-supplied session title (often null from passive
+  /// writers). User health text — never logged.
+  final String? title;
+
+  /// Writer-supplied notes. Parsed for contract completeness;
+  /// v1 displays nothing from it.
+  final String? notes;
+
+  /// HC-assigned record id (`metadata.id`); '' only when the
+  /// bridge shipped none (defense-in-depth — read records carry
+  /// a real id in practice).
+  final String hcId;
+
+  /// Writer-supplied client record id — unique only WITHIN one
+  /// writer app, never globally (NATIVE.md §1).
+  final String? clientRecordId;
+  final int clientRecordVersion;
+
+  /// The writer app's package name (`metadata.dataOrigin`).
+  final String dataOrigin;
+  final int lastModifiedMs;
+
+  /// 0 unknown / 1 actively recorded / 2 automatically recorded /
+  /// 3 manual entry.
+  final int recordingMethod;
+  final int? startZoneOffsetSec;
+  final int? endZoneOffsetSec;
+
+  /// Per-window aggregates (one combined native `aggregate()`
+  /// over `[startMs, endMs)`): active calories, total calories
+  /// (INCLUDES resting burn — see the label rule in
+  /// workout_sync.dart), HR average / maximum.
+  final int? kcalActive;
+  final int? kcalTotal;
+  final int? hrAvg;
+  final int? hrMax;
+
+  const WorkoutSession({
+    required this.startMs,
+    required this.endMs,
+    required this.exerciseType,
+    this.title,
+    this.notes,
+    this.hcId = '',
+    this.clientRecordId,
+    this.clientRecordVersion = 0,
+    this.dataOrigin = '',
+    this.lastModifiedMs = 0,
+    this.recordingMethod = 0,
+    this.startZoneOffsetSec,
+    this.endZoneOffsetSec,
+    this.kcalActive,
+    this.kcalTotal,
+    this.hrAvg,
+    this.hrMax,
+  });
+
+  /// Parses one bridge map (NATIVE.md §5 return shape — all keys
+  /// always present, null = data absent). Returns null when the
+  /// row lacks a usable start/end pair. Aggregate values <= 0
+  /// parse to null (biometric zero-value rule).
+  static WorkoutSession? tryParse(dynamic item) {
+    if (item is! Map) return null;
+    int? asInt(dynamic v) => v is num ? v.toInt() : int.tryParse('$v');
+    int? positiveOrNull(dynamic v) {
+      final n = asInt(v);
+      return (n == null || n <= 0) ? null : n;
+    }
+
+    final startMs = asInt(item['startMs']);
+    final endMs = asInt(item['endMs']);
+    if (startMs == null || endMs == null) return null;
+    final title = item['title'];
+    final notes = item['notes'];
+    final clientRecordId = item['clientRecordId'];
+    return WorkoutSession(
+      startMs: startMs,
+      endMs: endMs,
+      exerciseType: asInt(item['exerciseType']) ?? 0,
+      title: title is String && title.isNotEmpty ? title : null,
+      notes: notes is String && notes.isNotEmpty ? notes : null,
+      hcId: '${item['hcId'] ?? ''}',
+      clientRecordId:
+          clientRecordId is String && clientRecordId.isNotEmpty
+              ? clientRecordId
+              : null,
+      clientRecordVersion: asInt(item['clientRecordVersion']) ?? 0,
+      dataOrigin: '${item['dataOrigin'] ?? ''}',
+      lastModifiedMs: asInt(item['lastModifiedMs']) ?? 0,
+      recordingMethod: asInt(item['recordingMethod']) ?? 0,
+      startZoneOffsetSec: asInt(item['startZoneOffsetSec']),
+      endZoneOffsetSec: asInt(item['endZoneOffsetSec']),
+      kcalActive: positiveOrNull(item['kcalActive']),
+      kcalTotal: positiveOrNull(item['kcalTotal']),
+      hrAvg: positiveOrNull(item['hrAvg']),
+      hrMax: positiveOrNull(item['hrMax']),
+    );
+  }
+
+  /// Display label for [exerciseType] ([workoutExerciseTypeLabel]).
+  String get typeLabel => workoutExerciseTypeLabel(exerciseType);
+
+  /// Wall-clock duration in whole minutes, rounded (DECISIONS
+  /// decision 5: HC alpha09 has no active-duration field; the
+  /// number is never labelled "active").
+  int get durationMinutes => ((endMs - startMs) / 60000).round();
+
+  /// The dedup key (DECISIONS decision 3 — Mason's §1 chain,
+  /// hardened): `hc:` + metadata.id → `hc:cr:` + writer pkg +
+  /// clientRecordId → `hc:fp:` + the sha256 hex of
+  /// `pkg|startMs|endMs|exerciseType`. The tier-3 key is HASHED
+  /// so a stored key never retains readable type/duration
+  /// values (Juno privacy condition).
+  String get dedupKey {
+    if (hcId.isNotEmpty) return 'hc:$hcId';
+    final crid = clientRecordId;
+    if (crid != null && crid.isNotEmpty) return 'hc:cr:$dataOrigin:$crid';
+    final fingerprint =
+        sha256.convert(utf8.encode('$dataOrigin|$startMs|$endMs|$exerciseType'));
+    return 'hc:fp:$fingerprint';
+  }
+}
+
+/// The full Health Connect exercise-type label table (NATIVE.md
+/// §2 — the complete 1.1.0-alpha09 constant list, labels in Dart
+/// so a label fix never needs a native release). Int 0
+/// (OTHER_WORKOUT) is an EXPLICIT entry, not the fallback, and
+/// any int not in the table falls back to 'Workout' — the SDK's
+/// own rule folds unknown future types into 0 anyway.
+const Map<int, String> kWorkoutExerciseTypeLabels = {
+  0: 'Workout',
+  2: 'Badminton',
+  4: 'Baseball',
+  5: 'Basketball',
+  8: 'Cycling',
+  9: 'Stationary Cycling',
+  10: 'Boot Camp',
+  11: 'Boxing',
+  13: 'Calisthenics',
+  14: 'Cricket',
+  16: 'Dancing',
+  25: 'Elliptical',
+  26: 'Exercise Class',
+  27: 'Fencing',
+  28: 'American Football',
+  29: 'Australian Football',
+  31: 'Frisbee',
+  32: 'Golf',
+  33: 'Guided Breathing',
+  34: 'Gymnastics',
+  35: 'Handball',
+  36: 'HIIT',
+  37: 'Hiking',
+  38: 'Ice Hockey',
+  39: 'Ice Skating',
+  44: 'Martial Arts',
+  46: 'Paddling',
+  47: 'Paragliding',
+  48: 'Pilates',
+  50: 'Racquetball',
+  51: 'Rock Climbing',
+  52: 'Roller Hockey',
+  53: 'Rowing',
+  54: 'Rowing Machine',
+  55: 'Rugby',
+  56: 'Running',
+  57: 'Treadmill Running',
+  58: 'Sailing',
+  59: 'Scuba Diving',
+  60: 'Skating',
+  61: 'Skiing',
+  62: 'Snowboarding',
+  63: 'Snowshoeing',
+  64: 'Soccer',
+  65: 'Softball',
+  66: 'Squash',
+  68: 'Stair Climbing',
+  69: 'Stair Climber',
+  70: 'Strength Training',
+  71: 'Stretching',
+  72: 'Surfing',
+  73: 'Open Water Swimming',
+  74: 'Swimming',
+  75: 'Table Tennis',
+  76: 'Tennis',
+  78: 'Volleyball',
+  79: 'Walking',
+  80: 'Water Polo',
+  81: 'Weightlifting',
+  82: 'Wheelchair',
+  83: 'Yoga',
+};
+
+/// Display label for a raw HC exercise-type int; unknown ints
+/// (and 0, explicitly) render 'Workout'.
+String workoutExerciseTypeLabel(int exerciseType) =>
+    kWorkoutExerciseTypeLabels[exerciseType] ?? 'Workout';

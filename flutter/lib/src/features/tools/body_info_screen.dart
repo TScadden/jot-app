@@ -1352,37 +1352,24 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
   /// Category for a workout entry, resolved by name from the
   /// re-pulled categories: Exercise → Workout → the default
   /// category → the first category → 7 (the Coach note flow's
-  /// fallback).
+  /// fallback). The chain itself is the shared [workoutCategoryId]
+  /// helper in body_workout.dart (extracted Nov 27, 2026 so
+  /// WorkoutSyncService files synced workouts identically — no
+  /// behaviour change here).
   int _workoutCategoryId(dynamic rawCategories) {
-    if (rawCategories is List) {
-      int? idOf(Map c) {
-        final id = c['id'];
-        if (id is num) return id.toInt();
-        return int.tryParse('$id');
-      }
-
-      for (final wanted in const ['exercise', 'workout']) {
-        for (final c in rawCategories) {
-          if (c is Map && '${c['name'] ?? ''}'.trim().toLowerCase() == wanted) {
-            final id = idOf(c);
-            if (id != null) return id;
-          }
-        }
-      }
-      for (final c in rawCategories) {
-        if (c is Map && c['isDefault'] == true) {
-          final id = idOf(c);
-          if (id != null) return id;
-        }
-      }
-      for (final c in rawCategories) {
-        if (c is Map) {
-          final id = idOf(c);
-          if (id != null) return id;
+    if (rawCategories is! List) return 7;
+    final categories = <QuickLogCategory>[];
+    for (final c in rawCategories) {
+      if (c is Map) {
+        try {
+          categories
+              .add(QuickLogCategory.fromJson(Map<String, dynamic>.from(c)));
+        } catch (_) {
+          // Skip a malformed row — the chain falls through.
         }
       }
     }
-    return 7;
+    return workoutCategoryId(categories);
   }
 
   /// Saves a workout as a normal log entry, mirroring the Coach

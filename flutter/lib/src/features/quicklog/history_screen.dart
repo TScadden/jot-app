@@ -5,6 +5,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
+import 'package:tabs_lab/src/data/workout_sync_store.dart';
+import 'package:tabs_lab/src/features/tools/body_workout.dart';
 import 'package:tabs_lab/src/features/tools/coach_mascot.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -640,6 +642,38 @@ class _HistoryScreenState extends State<HistoryScreen> {
       if (!mounted) return;
       final index = _entries.indexWhere((e) => e.id == entry.id);
       if (index < 0) return;
+      // Workout-sync tombstone (DESIGN §1.4): there is no server
+      // tombstone, so a deleted synced workout would be
+      // re-created by the next workout sync unless the link is
+      // tombstoned LOCALLY first. Written here — after
+      // markDeleting/settle, before the cancel/DELETE branch —
+      // so a crash mid-delete leaves the safe state (workout
+      // stays gone; a row that later reappears from the pull is
+      // a normal entry whose second delete finds the link
+      // already tombstoned). The tombstone applies the decision-4
+      // strip: the record keeps only {state}. On every failure
+      // exit below that restores the entry, the prior link state
+      // is restored with it, mirroring the cancelledRecord
+      // discipline.
+      //
+      // Warmed-store gate: the store is warmed owner-bound at
+      // bootstrap (main.dart) before any screen exists, so a
+      // live delete always finds it loaded. The hook must never
+      // AWAIT a cold disk warm inline — a storage future that
+      // cannot complete in the caller's async zone would park
+      // the delete forever (the outbox's own deadlock lesson).
+      // An unwarmed store holds no links this process can know
+      // about (a failed warm is the C-01 state: links are
+      // unreadable, and the next capture's warm retries).
+      final priorWorkoutLink = WorkoutSyncStore.instance.isWarmed
+          ? await WorkoutSyncStore.instance.tombstoneForEntry(entry.id)
+          : null;
+      if (!mounted) return;
+      Future<void> restoreWorkoutLink() async {
+        final prior = priorWorkoutLink;
+        if (prior == null) return;
+        await WorkoutSyncStore.instance.restoreLink(prior.key, prior.link);
+      }
       // Pending-outbox interplay: a queued upsert for this row must be
       // cancelled BEFORE any server delete, or a later flush would
       // resurrect the row. A local-only creation never reached the
@@ -653,6 +687,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
             await _outbox.cancelForBackend(entry.id, backend: _backend);
         if (!mounted) return;
         if (cancelledRecord == null) {
+          // The delete did not happen — the entry stays, so its
+          // workout link is restored too.
+          await restoreWorkoutLink();
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text("Couldn't delete that entry — try again."),
@@ -687,6 +725,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
           await _outbox.restoreForBackend(cancelledRecord, backend: _backend);
           if (!mounted) return;
         }
+        // The row is being restored, so the workout link is
+        // restored with it — the entry was never deleted.
+        await restoreWorkoutLink();
+        if (!mounted) return;
         setState(() {
           final restored = [..._entries];
           restored.insert(
@@ -1300,6 +1342,33 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   maxLines: 4,
                   overflow: TextOverflow.ellipsis,
                 ),
+                // Workout sync (Nov 27, 2026): the provenance
+                // marker for entries synced from Health Connect
+                // (Juno-ruled string, JUNO-STRINGS.md §1.1).
+                // Manual entries show nothing.
+                if (isSyncedWorkoutEntry(entry)) ...[
+                  const SizedBox(height: 6),
+                  const Row(
+                    key: ValueKey('synced_workout_marker'),
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.sync,
+                        size: 12,
+                        color: NotelColors.textSecondary,
+                      ),
+                      SizedBox(width: 4),
+                      Text(
+                        kSyncedWorkoutCardMarker,
+                        style: TextStyle(
+                          color: NotelColors.textSecondary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 10),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1597,6 +1666,24 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
                 ),
               )
             else ...[
+              // Workout sync (Nov 27, 2026): provenance banner in
+              // the LOGGED VIA MEDICATIONS TAB slot/register
+              // (Juno-ruled string, JUNO-STRINGS.md §1.2).
+              // Provenance ONLY — the entry stays editable and
+              // deletable like any log entry, so the picker and
+              // Edit affordance below render unchanged.
+              if (isSyncedWorkoutEntry(_entry)) ...[
+                const Text(
+                  kSyncedWorkoutDetailBanner,
+                  style: TextStyle(
+                    color: NotelColors.primary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
               const Text('CHANGE CATEGORY', style: sectionLabelStyle),
               const SizedBox(height: 12),
               // Search field (approved mock): directly under the

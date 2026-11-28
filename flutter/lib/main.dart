@@ -22,6 +22,7 @@ import 'package:tabs_lab/src/data/streak_store.dart';
 import 'package:tabs_lab/src/data/weekly_snapshot_cache.dart';
 import 'package:tabs_lab/src/data/launch_trace.dart';
 import 'package:tabs_lab/src/data/log_entry_outbox.dart';
+import 'package:tabs_lab/src/data/workout_sync_store.dart';
 import 'package:tabs_lab/src/data/medication_change_event_outbox.dart';
 import 'package:tabs_lab/src/data/medication_change_events.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
@@ -130,6 +131,12 @@ Future<void> _bootstrap() async {
     // memory before the first frame, ready to overlay the first
     // pull and retry on the first sync trigger.
     LogEntryOutbox.instance.warmFromDisk(currentEmail: sessionEmail),
+    // Workout sync (Nov 27, 2026) — same account-bound warm for
+    // the workout link/tombstone store: a previous account's
+    // links must never suppress or resurrect this account's
+    // workouts, and the tombstones must be in memory before the
+    // first capture can create entries.
+    WorkoutSyncStore.instance.warmFromDisk(currentEmail: sessionEmail),
     // Home First-Paint package (Nov 24, 2026) — same account-bound
     // warm for the Today Summary cache: its card seed reads memory
     // only, so without this the disk blob could never paint on a
@@ -650,6 +657,12 @@ class _AppFlowState extends State<AppFlow>
       // finalize payload is dropped unsent here, before the
       // gate routes anywhere.
       unawaited(OnboardingSyncOutbox.instance.clearIfOwnerMismatch(email));
+      // Workout sync (Nov 27, 2026): same restore-claim
+      // enforcement for the workout link/tombstone store — a
+      // cold-start restore never passes through the login funnel,
+      // so without this claim a previous account's links could
+      // suppress this session's workout sync.
+      unawaited(WorkoutSyncStore.instance.clearIfOwnerMismatch(email));
       // VC 100134 — verification gate, AFTER the owner claims and
       // BEFORE the onboarding gate is consulted for routing: an
       // explicitly-unverified stored session restores INTO the
@@ -908,6 +921,11 @@ class _AppFlowState extends State<AppFlow>
     // Optimistic logging: a previous account's unconfirmed entries
     // must never render under, or push into, the new account.
     unawaited(LogEntryOutbox.instance.clearIfOwnerMismatch(email));
+    // Workout sync (Nov 27, 2026): same enforcement for the
+    // workout link/tombstone store — retained for the SAME
+    // account across logout (a deleted workout stays deleted
+    // when he signs back in), dropped for a different account.
+    unawaited(WorkoutSyncStore.instance.clearIfOwnerMismatch(email));
     // R70 fix pass (Vera F1 / Juno C1) — same owner-mismatch
     // enforcement for the historical health store.
     unawaited(HealthHistoryStore.instance.clearIfOwnerMismatch(email));

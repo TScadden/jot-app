@@ -10,6 +10,8 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/voice_input.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/quicklog/history_screen.dart';
+import 'package:tabs_lab/src/features/tools/body_workout.dart'
+    show isSyncedWorkoutEntry;
 import 'package:tabs_lab/src/features/tools/trends_screen.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
@@ -243,6 +245,16 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
   }
 
   /// The outbox changed (its disk load landed, an entry was staged,
+  /// Workout sync (Nov 27, 2026): synced entries never become
+  /// recent suggestions — re-logging one from recents would copy
+  /// its chips verbatim and mint a MANUAL entry falsely marked
+  /// Health Connect (DESIGN §2.2). The filter lives here, on the
+  /// suggestions INPUT at every recompute site, not inside the
+  /// pure recentSuggestions function (its native-port contract
+  /// stays clean).
+  List<QuickLogEntry> _recentsInput(List<QuickLogEntry> entries) =>
+      entries.where((e) => !isSyncedWorkoutEntry(e)).toList();
+
   /// or a background push resolved): re-apply the pending overlay
   /// over whatever the last pull put on screen.
   void _onOutboxChanged() {
@@ -251,7 +263,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
       _entries = _outbox.merge(_entries);
       _todayCount = todayEntryCount(_entries);
       _recentSuggestions = recentSuggestions(
-        _entries,
+        _recentsInput(_entries),
         activeMedicationNames: _activeMedicationNamesCache,
         medicationCategoryId: _medicationCategoryId,
       );
@@ -279,7 +291,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
           _entries = _outbox.merge(_entries);
           _todayCount = todayEntryCount(_entries);
           _recentSuggestions = recentSuggestions(
-            _entries,
+            _recentsInput(_entries),
             activeMedicationNames: _activeMedicationNamesCache,
             medicationCategoryId: _medicationCategoryId,
           );
@@ -311,7 +323,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
           .firstOrNull;
       final medNames = _activeMedicationNames(profile);
       final recents = recentSuggestions(
-        entries,
+        _recentsInput(entries),
         activeMedicationNames: medNames,
         medicationCategoryId: medCat?.id,
       );
@@ -587,7 +599,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
       _entries = _outbox.merge([..._entries, entry]);
       _todayCount = todayEntryCount(_entries);
       _recentSuggestions = recentSuggestions(
-        _entries,
+        _recentsInput(_entries),
         activeMedicationNames: _activeMedicationNamesCache,
         medicationCategoryId: _medicationCategoryId,
       );
