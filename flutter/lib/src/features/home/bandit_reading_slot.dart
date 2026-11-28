@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/data/cosmetics_service.dart';
+import 'package:tabs_lab/src/features/home/layered_bandit_view.dart';
 import 'package:tabs_lab/src/features/tools/coach_mascot.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 
@@ -62,6 +64,12 @@ bool _slotMotionEnabled(BuildContext context) {
 /// about 2.0 MB net — the cost of real alpha, which H.264
 /// cannot carry, and of the second animation.)
 ///
+/// Gem Store (Nov 27, 2026) — when the EQUIPPED look is not the
+/// fully-default look, the slot renders [LayeredBanditView] with
+/// the equipped selection instead (layered still composite under
+/// reduced motion), and the tap reaction below does not play.
+/// The default look's paths are unchanged.
+///
 /// Tap reaction (Nov 20, 2026) — tapping Bandit plays a short
 /// one-shot drawn animation ("he notices you": gaze lifts off the
 /// book in two steps, a drawn grin opens, one happy blink at the
@@ -72,7 +80,13 @@ bool _slotMotionEnabled(BuildContext context) {
 /// built from drawn frames and whole-layer rigid translates
 /// only — no warping anywhere (see the package audit).
 class BanditReadingSlot extends StatefulWidget {
-  const BanditReadingSlot({super.key});
+  /// Gem Store cosmetics source. Tests may inject a fake-backed
+  /// service; production leaves null and the slot reads the
+  /// shared [CosmeticsService.instance] (the equipped look the
+  /// profile payload carries).
+  final CosmeticsService? cosmeticsService;
+
+  const BanditReadingSlot({super.key, this.cosmeticsService});
 
   // Asset swap pattern (PR #82 precedent): code + pubspec move to
   // the new versioned filenames together; the previous version's
@@ -113,6 +127,18 @@ class _BanditReadingSlotState extends State<BanditReadingSlot> {
   int _tapEpoch = 0;
   Timer? _tapTimer;
   bool _precached = false;
+  late final CosmeticsService _cosmetics;
+
+  @override
+  void initState() {
+    super.initState();
+    _cosmetics = widget.cosmeticsService ?? CosmeticsService.instance;
+    _cosmetics.addListener(_onCosmeticsChanged);
+  }
+
+  void _onCosmeticsChanged() {
+    if (mounted) setState(() {});
+  }
 
   @override
   void didChangeDependencies() {
@@ -130,6 +156,13 @@ class _BanditReadingSlotState extends State<BanditReadingSlot> {
   }
 
   void _onTap() {
+    // Gem Store (Otto decision, Nov 27, 2026): the tap reaction
+    // is default-look art (bandit_reading_tap_v1). It plays ONLY
+    // when the equipped look is fully default; with any cosmetic
+    // equipped, taps do nothing (the layered loop keeps playing,
+    // layout identical). Layering the tap reaction is a
+    // follow-up, not this package.
+    if (!_cosmetics.equipped.isDefault) return;
     if (_tapPlaying) return; // taps during playback are ignored
     if (!_slotMotionEnabled(context)) return;
     setState(() {
@@ -174,6 +207,7 @@ class _BanditReadingSlotState extends State<BanditReadingSlot> {
   @override
   void dispose() {
     _tapTimer?.cancel();
+    _cosmetics.removeListener(_onCosmeticsChanged);
     super.dispose();
   }
 
@@ -186,6 +220,33 @@ class _BanditReadingSlotState extends State<BanditReadingSlot> {
 
   @override
   Widget build(BuildContext context) {
+    final equipped = _cosmetics.equipped;
+    // Gem Store: a non-default equipped look renders as the
+    // layered composite (motion on: the blink timeline runs;
+    // reduced motion: the state-0 still composite). The fully
+    // default look keeps the shipped v9 WebP path below,
+    // byte-for-byte (poster under reduced motion, loop + tap
+    // reaction with motion).
+    if (!equipped.isDefault) {
+      return Align(
+        key: const ValueKey('bandit_reading_slot'),
+        alignment: Alignment.topCenter,
+        heightFactor: 1,
+        child: GestureDetector(
+          key: const ValueKey('bandit_reading_tap_target'),
+          behavior: HitTestBehavior.opaque,
+          onTap: _onTap,
+          child: SizedBox(
+            width: BanditReadingSlot.slotWidth,
+            height: BanditReadingSlot.slotHeight,
+            child: LayeredBanditView(
+              selection: equipped,
+              animate: _slotMotionEnabled(context),
+            ),
+          ),
+        ),
+      );
+    }
     final stillOnly = !_slotMotionEnabled(context);
     final Widget figure;
     if (stillOnly) {
