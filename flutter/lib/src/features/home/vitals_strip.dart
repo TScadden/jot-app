@@ -136,7 +136,7 @@ class VitalsStrip extends StatelessWidget {
     );
   }
 
-  static final _valueStyle = TextStyle(
+  static TextStyle get _valueStyle => TextStyle(
     fontSize: 14,
     fontWeight: FontWeight.bold,
     color: NotelColors.legacyDarkOnDark,
@@ -145,7 +145,7 @@ class VitalsStrip extends StatelessWidget {
   /// Header alignment package (Nov 10, 2026) — the compact pill's
   /// stepped-up value size (14sp → 15sp), keeping the icon∶text
   /// relationship with the compact icon at 17.
-  static final _valueStyleCompact = TextStyle(
+  static TextStyle get _valueStyleCompact => TextStyle(
     fontSize: 15,
     fontWeight: FontWeight.bold,
     color: NotelColors.legacyDarkOnDark,
