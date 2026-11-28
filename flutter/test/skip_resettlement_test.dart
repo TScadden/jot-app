@@ -47,8 +47,8 @@ void main() {
   ];
 
   QuickLogEntry entry({
-    required int id,
-    required int cat,
+    required String id,
+    required String cat,
     required String body,
     String chips = '[]',
     required DateTime at,
@@ -69,26 +69,26 @@ void main() {
     entry(id: 3, cat: medCat, body: 'Took SS-31 0.05', at: onNov25(8, 2)),
     entry(id: 4, cat: medCat, body: 'Took MOTS-c 0.10', at: onNov25(8, 3)),
     entry(
-      id: 5,
+      id: '5',
       cat: medCat,
       body: '[Corrected to Skipped] Took Desvenlafaxine Succinate ER 100mg',
       at: onNov25(21, 30),
     ),
     entry(
-      id: 6,
+      id: '6',
       cat: goalsCat,
       body: 'Completed reminder: Salt pills',
       at: onNov25(12),
     ),
     entry(
-      id: 7,
+      id: '7',
       cat: goalsCat,
       body: 'Completed habit: Physical therapy exercises',
       at: onNov25(12, 5),
     ),
     if (withCheckIn)
       entry(
-        id: 8,
+        id: '8',
         cat: moodCat,
         body: 'Feeling: 1/5 Today',
         chips: jsonEncode(const [feelingCheckInTag]),
