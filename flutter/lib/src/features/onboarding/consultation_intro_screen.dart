@@ -24,10 +24,25 @@ class ConsultationIntroScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: NotelColors.background,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          child: Column(
-            children: [
+        // Wave A (SCORECARD-5 #1): the fixed ~560dp column overflowed
+        // any viewport shorter than ~600dp (landscape phones,
+        // split-screen panes), pushing Continue off screen. The body
+        // now follows the tree's proven welcome/login pattern —
+        // LayoutBuilder + SingleChildScrollView + a min-height
+        // ConstrainedBox — so the layout is pixel-identical when the
+        // viewport is tall enough and scrolls when it is not.
+        // IntrinsicHeight gives the Column a bounded height inside
+        // the scroll view so its Expanded stage keeps working.
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: IntrinsicHeight(
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  child: Column(
+                    children: [
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: OnboardingHeader(onBack: onBack),
@@ -135,7 +150,11 @@ class ConsultationIntroScreen extends StatelessWidget {
                 label: 'Continue',
                 onPressed: onContinue,
               ),
-            ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       ),
