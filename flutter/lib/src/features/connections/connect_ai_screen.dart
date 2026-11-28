@@ -528,11 +528,24 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
     });
   }
 
-  void _shareErrorSnack() {
+  /// SCORECARD-3 #9 (mobile form): the screen's snackbar-only
+  /// ERRORS route through here — 8s on screen plus a close icon, so
+  /// a failure the user must act on cannot vanish at the 4s default
+  /// while it is still being read. Confirmations and notices keep
+  /// the stock behaviour; only the three error sites use this.
+  void _showErrorSnack(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text(ShareCopy.shareActionError)),
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 8),
+        showCloseIcon: true,
+      ),
     );
+  }
+
+  void _shareErrorSnack() {
+    _showErrorSnack(ShareCopy.shareActionError);
   }
 
   Future<void> _sendShare() async {
@@ -830,9 +843,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
       }
     });
     if (!success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text(ConnectAiCopy.disconnectError)),
-      );
+      _showErrorSnack(ConnectAiCopy.disconnectError);
     }
   }
 
@@ -848,9 +859,7 @@ class _ConnectAiScreenState extends State<ConnectAiScreen> {
       opened = false;
     }
     if (!opened && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text(ConnectAiCopy.helpOpenError)),
-      );
+      _showErrorSnack(ConnectAiCopy.helpOpenError);
     }
   }
 
