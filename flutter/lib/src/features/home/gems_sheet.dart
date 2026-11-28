@@ -290,6 +290,8 @@ class _GemsSheetState extends State<GemsSheet> {
                     fontWeight: FontWeight.w700,
                     height: 1.45,
                     color: NotelColors.textSecondary,
+                    // Wave A (SCORECARD-9 #16): tabular gem balance.
+                    fontFeatures: [FontFeature.tabularFigures()],
                   ),
                 ),
               ],
@@ -329,6 +331,8 @@ class _GemsSheetState extends State<GemsSheet> {
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
                     color: NotelColors.textPrimary,
+                    // Wave A (SCORECARD-9 #16): tabular gem balance.
+                    fontFeatures: [FontFeature.tabularFigures()],
                   ),
                 ),
               ],
