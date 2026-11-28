@@ -661,7 +661,15 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
       setState(() => _saveError =
           "Couldn't save that entry on this device. Try again.");
     } finally {
-      _saveInFlight = false;
+      // Wave A: reset through setState so the details field's
+      // suffix spinner (which reads _saveInFlight) clears promptly —
+      // a bare field write left it up until the next unrelated
+      // rebuild.
+      if (mounted) {
+        setState(() => _saveInFlight = false);
+      } else {
+        _saveInFlight = false;
+      }
     }
   }
 
@@ -1062,6 +1070,11 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: TextField(
         controller: _manualController,
+        // Wave A (SCORECARD-3 #5): Enter saves, through the same
+        // fully-guarded _saveEntry the Log button and the suffix
+        // Add button call.
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => _saveEntry(),
         style: const TextStyle(color: NotelColors.textPrimary, fontSize: 14),
         cursorColor: activeCatColor,
         decoration: InputDecoration(
@@ -1086,7 +1099,22 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
             borderRadius: BorderRadius.circular(16),
             borderSide: BorderSide(color: activeCatColor),
           ),
-          suffixIcon: _hasTypedText
+          // Wave A (SCORECARD-3 #1 cosmetic): while a save is in
+          // flight the suffix shows the spinner the doc comment
+          // above has always promised, ahead of the Add/Mic states.
+          suffixIcon: _saveInFlight
+              ? Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: activeCatColor,
+                    ),
+                  ),
+                )
+              : _hasTypedText
               ? IconButton(
                   onPressed: _saveEntry,
                   icon: const Icon(Icons.add),
