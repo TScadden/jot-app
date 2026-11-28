@@ -93,15 +93,15 @@ const trainingSlugs = {'personal', 'heart_rate', 'calories'};
 
 /// Native `DefaultCategories.slugById` — the canonical slug for each
 /// default category id, native's own fallback for pre-slug rows.
-const slugByIdFallback = <int, String>{
-  1: 'symptoms',
-  2: 'calories',
-  3: 'heart_rate',
-  8: 'medication',
-  4: 'personal',
-  5: 'sleep',
-  6: 'mood',
-  7: 'general',
+const slugByIdFallback = <String, String>{
+  '1': 'symptoms',
+  '2': 'calories',
+  '3': 'heart_rate',
+  '8': 'medication',
+  '4': 'personal',
+  '5': 'sleep',
+  '6': 'mood',
+  '7': 'general',
 };
 
 /// Effective slug for preset matching: the Flutter DTO has no slug,
