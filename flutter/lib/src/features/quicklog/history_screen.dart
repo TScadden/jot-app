@@ -288,6 +288,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
   int? _categoryFilter;
   bool _todayOnly = false;
 
+  /// Vera Wave A Condition 3: fetch generation guard for
+  /// [_fetchIntoState]. Monotonically increasing; only the newest
+  /// fetch may apply its result / setState. A stale in-flight
+  /// revalidate (e.g. a delete's fetch holding a pre-Undo snapshot)
+  /// landing after a newer fetch must not overwrite `_entries`
+  /// with its stale pull and hide a just-restored row.
+  int _fetchGeneration = 0;
+
   static const _chipInk = Color(0xFF0A0A0E); // native LegacyDarkChipInk
 
   @override
@@ -392,10 +400,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
     bool quiet = false,
     bool retryPending = true,
   }) async {
+    // Vera Wave A Condition 3: claim a generation; every apply
+    // point below re-checks it, so only the newest fetch lands.
+    final generation = ++_fetchGeneration;
+    bool isNewest() => generation == _fetchGeneration;
     _primeOutbox();
     try {
       final pull = await _backend.fetchSyncPull();
       if (!mounted) return;
+      if (!isNewest()) return;
       if (pull == null) {
         // Quiet failure keeps the displayed data; only the bare
         // initial load surfaces the error screen — and only when
@@ -423,20 +436,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
       });
       // Categories ride the same cached pull (no extra fetch).
       final cats = await _backend.fetchLogCategories();
-      if (mounted) {
+      if (mounted && isNewest()) {
         setState(() {
           _categories = cats;
         });
       }
-      if (!quiet && mounted) _maybeOpenFocusedEntry();
+      if (!quiet && mounted && isNewest()) _maybeOpenFocusedEntry();
       // History opening is a normal sync trigger: rows staged by an
       // earlier session (including one killed before its push) retry
       // here, behind the already-rendered list.
-      if (retryPending && mounted) {
+      if (retryPending && mounted && isNewest()) {
         unawaited(_flushOutboxThenRevalidate());
       }
     } catch (_) {
       if (!mounted) return;
+      if (!isNewest()) return;
       if (!quiet) {
         setState(() {
           _loading = false;
@@ -618,16 +632,36 @@ class _HistoryScreenState extends State<HistoryScreen> {
     int index,
     LogEntryOutboxRecord? cancelledRecord,
   ) async {
+    // Vera Wave A Condition 1 (BLOCKING, data loss): the outbox
+    // stage/restore bool is the contract — false means the local
+    // write itself failed, no outbox record exists, and the entry
+    // must NOT be presented as restored. Reinserting it anyway
+    // rendered it with no outbox record (read as Synced) while
+    // the server row stayed deleted, so it vanished permanently
+    // on the next load after a visibly successful Undo. On false:
+    // keep it out of `_entries`, do not sync the Home count or
+    // flush, and surface the honest try-again error so the user
+    // knows the entry stays deleted.
+    final bool restoredOk;
     if (cancelledRecord != null) {
-      await _outbox.restoreForBackend(cancelledRecord, backend: _backend);
+      restoredOk =
+          await _outbox.restoreForBackend(cancelledRecord, backend: _backend);
     } else {
-      await _outbox.stageForBackend(
+      restoredOk = await _outbox.stageForBackend(
         entry,
         backend: _backend,
         serverKnown: true,
       );
     }
     if (!mounted) return;
+    if (!restoredOk) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Couldn't undo that delete — try again."),
+        ),
+      );
+      return;
+    }
     setState(() {
       if (_entries.any((e) => e.id == entry.id)) return;
       final restored = [..._entries];
