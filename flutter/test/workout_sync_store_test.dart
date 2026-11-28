@@ -225,4 +225,102 @@ void main() {
       expect(store.warmLoadedUnownedData, isFalse);
     });
   });
+
+  group('run record (ROUND 3 diagnostics)', () {
+    const record = WorkoutSyncRunRecord(
+      startedAtMs: 1000,
+      finishedAtMs: 2000,
+      stage: 'done',
+      grantVerdict: 'granted',
+      sessionsRead: 28,
+      entriesCreated: 27,
+      entriesAdopted: 1,
+      sessionsSkipped: 1,
+      readPartial: true,
+      abortCode: 'StateError',
+    );
+
+    void expectRecord(WorkoutSyncRunRecord? actual) {
+      expect(actual, isNotNull);
+      expect(actual!.startedAtMs, record.startedAtMs);
+      expect(actual.finishedAtMs, record.finishedAtMs);
+      expect(actual.stage, record.stage);
+      expect(actual.grantVerdict, record.grantVerdict);
+      expect(actual.sessionsRead, record.sessionsRead);
+      expect(actual.entriesCreated, record.entriesCreated);
+      expect(actual.entriesAdopted, record.entriesAdopted);
+      expect(actual.sessionsSkipped, record.sessionsSkipped);
+      expect(actual.readPartial, record.readPartial);
+      expect(actual.abortCode, record.abortCode);
+    }
+
+    test('recordRun persists; a fresh instance reads it back '
+        'identically', () async {
+      final disk = <String, String>{};
+      final store = makeStore(disk);
+      await store.warmFromDisk(currentEmail: 'a@example.com');
+      await store.recordRun(record);
+      expectRecord(store.lastRun);
+
+      final fresh = makeStore(disk);
+      await fresh.warmFromDisk(currentEmail: 'a@example.com');
+      expectRecord(fresh.lastRun);
+    });
+
+    test('malformed lastRun blob value loads as null record and '
+        'the store still works', () async {
+      final disk = <String, String>{
+        WorkoutSyncStore.storageKey: jsonEncode({
+          'ownerEmail': 'a@example.com',
+          'lastRun': 'not-a-record',
+          'links': {
+            'hc:uuid-1': {
+              'state': 'linked',
+              'entryId': 581,
+              'origin': 'synced',
+              'hcId': 'uuid-1',
+            },
+          },
+        }),
+      };
+      final store = makeStore(disk);
+      await store.warmFromDisk(currentEmail: 'a@example.com');
+      expect(store.lastRun, isNull);
+      expect(store.links, hasLength(1));
+      // Still fully functional: a new record records + persists.
+      await store.recordRun(record);
+      expectRecord(store.lastRun);
+      final fresh = makeStore(disk);
+      await fresh.warmFromDisk(currentEmail: 'a@example.com');
+      expectRecord(fresh.lastRun);
+      expect(fresh.links, hasLength(1));
+    });
+
+    test('record coexists with links; the tombstone strip is '
+        'untouched by it', () async {
+      final disk = <String, String>{};
+      final store = makeStore(disk);
+      await store.warmFromDisk(currentEmail: 'a@example.com');
+      await store.recordRun(record);
+      await store.recordLink(
+        key: 'hc:uuid-1',
+        entryId: 581,
+        state: WorkoutLinkState.linked,
+        origin: WorkoutLinkOrigin.synced,
+        hcId: 'uuid-1',
+      );
+      await store.tombstoneForEntry(581);
+
+      final blob = blobOf(disk);
+      // The tombstoned link's JSON still carries ONLY {state}.
+      expect(blob['links'], {
+        'hc:uuid-1': {'state': 'tombstoned'},
+      });
+      // And the record rides alongside, counts/codes only.
+      final lastRun = blob['lastRun'] as Map<String, dynamic>;
+      expect(lastRun['stage'], 'done');
+      expect(lastRun['entriesCreated'], 27);
+      expect(lastRun['abortCode'], 'StateError');
+    });
+  });
 }

@@ -1720,6 +1720,19 @@ class HealthConnectService {
     } on MissingPluginException {
       _noteReadError('NO_CHANNEL');
       return HcReadOutcome(value: const [], errorCode: 'NO_CHANNEL');
+    } catch (e) {
+      // ROUND 3 (FM-3): this read's outcome contract is TOTAL —
+      // any other throw (a TimeoutException from the Dart-side
+      // request timeout, a cast error, …) becomes a failed
+      // outcome with a code, never an escape into the sync
+      // service's catch-all. Details carry the exception's
+      // runtimeType only (the J1 class-only rule).
+      _noteReadError('UNEXPECTED');
+      return HcReadOutcome(
+        value: const [],
+        errorCode: 'UNEXPECTED',
+        errorDetails: e.runtimeType.toString(),
+      );
     }
   }
 

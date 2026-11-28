@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
@@ -213,6 +216,13 @@ class _Harness {
   HcAvailability probeResult = fakeHcSnapshot();
   int nowMsValue = 999000;
 
+  // ROUND 3 throw injection (1-based call indices; null = never).
+  int? throwOnAllocateCall;
+  bool throwOnEveryAllocate = false;
+  int? throwOnStageCall;
+  int? stageFalseOnCall;
+  Object? readRichError;
+
   int readCalls = 0;
   int allocateCalls = 0;
   int stageCalls = 0;
@@ -257,17 +267,27 @@ class _Harness {
         readRich: (days) async {
           readCalls++;
           expect(days, WorkoutSyncService.readWindowDays);
+          final err = readRichError;
+          if (err != null) throw err;
           return outcome;
         },
         fetchEntries: () async => pulled,
         fetchCategories: () async => categories,
         allocateId: (serverMaxId) async {
           allocateCalls++;
+          if (throwOnEveryAllocate ||
+              throwOnAllocateCall == allocateCalls) {
+            throw StateError('injected allocate failure');
+          }
           return outbox.allocateEntryId(
               serverMaxId: serverMaxId, ownerEmail: _owner);
         },
         stageEntry: (entry) async {
           stageCalls++;
+          if (throwOnStageCall == stageCalls) {
+            throw StateError('injected stage failure');
+          }
+          if (stageFalseOnCall == stageCalls) return false;
           return outbox.stage(entry, serverKnown: false, ownerEmail: _owner);
         },
         flushOutbox: () async {
@@ -277,6 +297,21 @@ class _Harness {
       );
 
   List<QuickLogEntry> get stagedEntries => outbox.entries;
+}
+
+/// A channel whose invoke throws [error] directly (ROUND 3):
+/// stands in for a Dart-origin failure on the channel call —
+/// the throw the rich read's generic catch must convert into a
+/// failed outcome.
+class _ThrowingChannel extends MethodChannel {
+  _ThrowingChannel(this.error) : super(HealthConnectService.channelName);
+
+  final Object error;
+
+  @override
+  Future<T?> invokeMethod<T>(String method, [dynamic arguments]) async {
+    throw error;
+  }
 }
 
 void main() {
@@ -800,6 +835,284 @@ void main() {
     });
   });
 
+  group('per-session isolation + run record (ROUND 3)', () {
+    List<WorkoutSession> fiveSessions() => [
+          for (var i = 0; i < 5; i++)
+            _s(1000000 + i * 3600000, 1000000 + i * 3600000 + 30 * 60000,
+                79,
+                hrAvg: 100, hrMax: 120, hcId: 'iso-$i'),
+        ];
+
+    test('poison session mid-list: skipped + counted, run completes',
+        () async {
+      final h = _Harness();
+      await h.init();
+      h.outcome = HcReadOutcome(value: fiveSessions());
+      h.throwOnStageCall = 2;
+      expect(await h.service().syncAfterCapture(), isTrue);
+      expect(h.stagedEntries, hasLength(4));
+      expect(h.store.links, hasLength(4));
+      // The skipped session holds NO link — next run retries it.
+      expect(h.store.linkForKey('hc:iso-1'), isNull);
+      final rec = h.store.lastRun!;
+      expect(rec.stage, 'done');
+      expect(rec.grantVerdict, 'granted');
+      expect(rec.sessionsRead, 5);
+      expect(rec.entriesCreated, 4);
+      expect(rec.entriesAdopted, 0);
+      expect(rec.sessionsSkipped, 1);
+      expect(rec.abortCode, 'StateError');
+      expect(h.store.lastSyncMs, h.nowMsValue);
+    });
+
+    test('poison FIRST session over the founder fixture: 27 created',
+        () async {
+      final h = _Harness();
+      await h.init();
+      h.outcome = HcReadOutcome(value: founderFixture());
+      h.throwOnAllocateCall = 1;
+      expect(await h.service().syncAfterCapture(), isTrue);
+      expect(h.stagedEntries, hasLength(27));
+      expect(h.store.links, hasLength(27));
+      final rec = h.store.lastRun!;
+      expect(rec.stage, 'done');
+      expect(rec.sessionsRead, 28);
+      expect(rec.entriesCreated, 27);
+      expect(rec.sessionsSkipped, 1);
+      expect(rec.abortCode, 'StateError');
+    });
+
+    test('every allocate throws (outbox-unloaded shape): 0 created, '
+        '5 skipped, stamped, no links', () async {
+      final h = _Harness();
+      await h.init();
+      h.outcome = HcReadOutcome(value: fiveSessions());
+      h.throwOnEveryAllocate = true;
+      expect(await h.service().syncAfterCapture(), isTrue);
+      expect(h.stagedEntries, isEmpty);
+      expect(h.store.links, isEmpty); // next run retries all five
+      expect(h.store.lastSyncMs, h.nowMsValue);
+      final rec = h.store.lastRun!;
+      expect(rec.stage, 'done');
+      expect(rec.entriesCreated, 0);
+      expect(rec.sessionsSkipped, 5);
+      expect(rec.abortCode, 'StateError');
+    });
+
+    test('stageEntry false counts as a STAGE_FAILED skip (FM-6)',
+        () async {
+      final h = _Harness();
+      await h.init();
+      h.outcome = HcReadOutcome(value: fiveSessions().sublist(0, 3));
+      h.stageFalseOnCall = 2;
+      expect(await h.service().syncAfterCapture(), isTrue);
+      expect(h.stagedEntries, hasLength(2));
+      expect(h.store.links, hasLength(2));
+      final rec = h.store.lastRun!;
+      expect(rec.entriesCreated, 2);
+      expect(rec.sessionsSkipped, 1);
+      expect(rec.abortCode, 'STAGE_FAILED');
+    });
+
+    test('enrichment-missing session imports with base data inside '
+        'a partial outcome', () async {
+      final h = _Harness();
+      await h.init();
+      final bare = _s(1000000, 1000000 + 30 * 60000, 79, hcId: 'bare-1');
+      final rich = _s(2000000, 2000000 + 30 * 60000, 0,
+          kcalActive: 50, hrAvg: 110, hrMax: 140, hcId: 'rich-1');
+      h.outcome = HcReadOutcome(
+        value: [bare, rich],
+        partialCode: 'EXERCISE_SESSIONS_RICH_PARTIAL',
+      );
+      expect(await h.service().syncAfterCapture(), isTrue);
+      expect(h.stagedEntries, hasLength(2));
+      final bareEntry =
+          h.stagedEntries.firstWhere((e) => e.timestamp == 1000000);
+      expect(bareEntry.body, 'Walking · 30 min');
+      expect(bareEntry.manualText, '');
+      final rec = h.store.lastRun!;
+      expect(rec.readPartial, isTrue);
+      expect(rec.entriesCreated, 2);
+      expect(rec.sessionsSkipped, 0);
+    });
+
+    test('record matches a clean founder-fixture run', () async {
+      final h = _Harness();
+      await h.init();
+      h.outcome = HcReadOutcome(value: founderFixture());
+      expect(await h.service().syncAfterCapture(), isTrue);
+      final rec = h.store.lastRun!;
+      expect(rec.stage, 'done');
+      expect(rec.grantVerdict, 'granted');
+      expect(rec.sessionsRead, 28);
+      expect(rec.entriesCreated, 28);
+      expect(rec.entriesAdopted, 0);
+      expect(rec.sessionsSkipped, 0);
+      expect(rec.readPartial, isFalse);
+      expect(rec.abortCode, isNull);
+      expect(rec.startedAtMs, h.nowMsValue);
+      expect(rec.finishedAtMs, h.nowMsValue);
+    });
+
+    test('record matches the abort paths', () async {
+      // Verified denial → gate/denied, no abort code.
+      var h = _Harness();
+      await h.init();
+      h.granted = const {};
+      h.outcome = HcReadOutcome(value: founderFixture());
+      expect(await h.service().syncAfterCapture(), isFalse);
+      var rec = h.store.lastRun!;
+      expect(rec.stage, 'gate');
+      expect(rec.grantVerdict, 'denied');
+      expect(rec.abortCode, isNull);
+      expect(rec.sessionsRead, isNull);
+
+      // Failed read → read stage + the bridge errorCode (FM-5).
+      h = _Harness();
+      await h.init();
+      h.outcome = const HcReadOutcome(
+        value: [],
+        errorCode: 'EXERCISE_SESSIONS_RICH_READ_FAILED',
+      );
+      expect(await h.service().syncAfterCapture(), isFalse);
+      rec = h.store.lastRun!;
+      expect(rec.stage, 'read');
+      expect(rec.grantVerdict, 'granted');
+      expect(rec.abortCode, 'EXERCISE_SESSIONS_RICH_READ_FAILED');
+
+      // Categories null → pull stage + fixed code.
+      h = _Harness();
+      await h.init();
+      h.categories = null;
+      h.outcome = HcReadOutcome(value: founderFixture());
+      expect(await h.service().syncAfterCapture(), isFalse);
+      rec = h.store.lastRun!;
+      expect(rec.stage, 'pull');
+      expect(rec.abortCode, 'CATEGORIES_UNAVAILABLE');
+      expect(rec.sessionsRead, 28);
+
+      // Probe unavailable → probe stage, verdict notChecked.
+      h = _Harness();
+      await h.init();
+      h.probeResult = fakeHcSnapshot(serviceAvailable: false);
+      expect(await h.service().syncAfterCapture(), isFalse);
+      rec = h.store.lastRun!;
+      expect(rec.stage, 'probe');
+      expect(rec.grantVerdict, 'notChecked');
+
+      // Probe grant layer unknown → probe stage, verdict unknown.
+      h = _Harness();
+      await h.init();
+      h.probeResult = const HcAvailability(
+        serviceAvailable: true,
+        grantedPermissions: null,
+        bridgeErrorCode: 'TEST',
+        stepsProbe: null,
+        persistedConnected: false,
+      );
+      expect(await h.service().syncAfterCapture(), isFalse);
+      rec = h.store.lastRun!;
+      expect(rec.stage, 'probe');
+      expect(rec.grantVerdict, 'unknown');
+
+      // Grant read throws → gate stage, verdict unknown.
+      h = _Harness();
+      await h.init();
+      h.grantedThrows = true;
+      expect(await h.service().syncAfterCapture(), isFalse);
+      rec = h.store.lastRun!;
+      expect(rec.stage, 'gate');
+      expect(rec.grantVerdict, 'unknown');
+    });
+
+    test('readRich closure throws (non-outcome) → failed run, '
+        'record names the exception type', () async {
+      final h = _Harness();
+      await h.init();
+      h.readRichError = TimeoutException('bridge stalled');
+      expect(await h.service().syncAfterCapture(), isFalse);
+      expect(h.stageCalls, 0);
+      expect(h.store.lastSyncMs, isNull);
+      final rec = h.store.lastRun!;
+      expect(rec.stage, 'read');
+      expect(rec.abortCode, 'TimeoutException');
+    });
+
+    test('adopted sessions count in entriesAdopted, not created',
+        () async {
+      final h = _Harness();
+      await h.init();
+      final t0 = DateTime(2026, 11, 20, 9).millisecondsSinceEpoch;
+      h.pulled = [
+        QuickLogEntry(
+          id: 900,
+          categoryId: 7,
+          body: 'Legs workout',
+          chips: 'Workout',
+          manualText: '',
+          timestamp: t0 + 5 * 60000,
+        ),
+      ];
+      h.outcome = HcReadOutcome(value: [
+        _s(t0, t0 + 30 * 60000, 79,
+            hrAvg: 100, hrMax: 130, hcId: 'adopt-1'),
+      ]);
+      expect(await h.service().syncAfterCapture(), isTrue);
+      final rec = h.store.lastRun!;
+      expect(rec.stage, 'done');
+      expect(rec.entriesAdopted, 1);
+      expect(rec.entriesCreated, 0);
+      expect(rec.sessionsSkipped, 0);
+    });
+
+    test('owner-unverified store: run aborts and records NOTHING',
+        () async {
+      // An unowned-but-populated blob warmed unbound: the
+      // service must not write the record (persist would
+      // re-stamp the unowned blob).
+      final disk = <String, String>{
+        WorkoutSyncStore.storageKey: jsonEncode({
+          'ownerEmail': null,
+          'links': {
+            'hc:seed': {
+              'state': 'linked',
+              'entryId': 1,
+              'origin': 'synced',
+              'hcId': 'seed',
+            },
+          },
+        }),
+      };
+      final store = WorkoutSyncStore.testInstance();
+      store.debugSetStore(
+        read: (k) async => disk[k],
+        write: (k, v) async => disk[k] = v,
+        delete: (k) async => disk.remove(k),
+      );
+      final outbox = LogEntryOutbox.instance;
+      outbox.debugReset();
+      final svc = WorkoutSyncService.withDeps(
+        store: store,
+        outbox: outbox,
+        probe: () async => fakeHcSnapshot(),
+        grantedPermissions: () async => const {kReadExercisePermission},
+        readRich: (days) async => const HcReadOutcome(value: []),
+        fetchEntries: () async => const [],
+        fetchCategories: () async => const [_exerciseCat, _generalCat],
+        allocateId: (max) async => throw StateError('unreachable'),
+        stageEntry: (e) async => throw StateError('unreachable'),
+        flushOutbox: () async {},
+        nowMs: () => 4242,
+      );
+      expect(await svc.syncAfterCapture(), isFalse);
+      expect(store.lastRun, isNull);
+      final blob = jsonDecode(disk[WorkoutSyncStore.storageKey]!)
+          as Map<String, dynamic>;
+      expect(blob.containsKey('lastRun'), isFalse);
+    });
+  });
+
   group('rich read channel parse (health_connect_service)', () {
     const channel =
         MethodChannel(HealthConnectService.channelName);
@@ -895,6 +1208,24 @@ void main() {
       messenger.setMockMethodCallHandler(channel, (call) async => []);
       final outcome = await svc().readExerciseSessionsRich(400);
       expect(outcome.failed, isFalse);
+      expect(outcome.value, isEmpty);
+    });
+
+    test('non-Platform throw → failed outcome, errorCode UNEXPECTED '
+        '(ROUND 3, FM-3)', () async {
+      // The FM-3 shape is a throw that originates in DART (e.g. a
+      // TimeoutException off a bounded channel call, a cast
+      // error) — it reaches the read unwrapped. (A mock-HANDLER
+      // throw cannot stand in for it: the test messenger rewraps
+      // those as PlatformException with code 'error'.) A channel
+      // whose invokeMethod throws directly is the faithful seam.
+      final throwing = _ThrowingChannel(StateError('bridge exploded'));
+      final outcome = await HealthConnectService(channel: throwing)
+          .readExerciseSessionsRich(400);
+      expect(outcome.failed, isTrue);
+      expect(outcome.errorCode, 'UNEXPECTED');
+      // Details carry the exception CLASS only, never the message.
+      expect(outcome.errorDetails, 'StateError');
       expect(outcome.value, isEmpty);
     });
   });

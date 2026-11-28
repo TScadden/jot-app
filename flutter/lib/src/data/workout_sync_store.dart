@@ -95,6 +95,102 @@ class WorkoutLink {
   }
 }
 
+/// Diagnostics for ONE sync run (ROUND 3, FM-1/FM-4/FM-5): the
+/// stage the run reached, the gate verdict, and the counts —
+/// written on every exit path of `WorkoutSyncService._run` so a
+/// silent fail-closed abort is distinguishable from an empty
+/// read on-device. COUNTS AND CODES ONLY: no health values, no
+/// session content, no exception messages (an exception
+/// contributes its runtimeType string only) — the same privacy
+/// posture as the rest of this blob.
+class WorkoutSyncRunRecord {
+  final int startedAtMs;
+  final int finishedAtMs;
+
+  /// One of warm/probe/gate/read/pull/loop/done — the furthest
+  /// stage the run reached.
+  final String stage;
+
+  /// One of granted/denied/unknown/notChecked.
+  final String grantVerdict;
+
+  /// Sessions the rich read returned; null when the run never
+  /// got a successful read.
+  final int? sessionsRead;
+  final int entriesCreated;
+  final int entriesAdopted;
+  final int sessionsSkipped;
+
+  /// The read succeeded but enrichment was partial.
+  final bool readPartial;
+
+  /// The abort/skip code: a bridge errorCode, a fixed service
+  /// code (CATEGORIES_UNAVAILABLE / STAGE_FAILED / READ_FAILED),
+  /// or an exception's runtimeType string. Null on a clean run.
+  final String? abortCode;
+
+  const WorkoutSyncRunRecord({
+    required this.startedAtMs,
+    required this.finishedAtMs,
+    required this.stage,
+    required this.grantVerdict,
+    required this.sessionsRead,
+    required this.entriesCreated,
+    required this.entriesAdopted,
+    required this.sessionsSkipped,
+    required this.readPartial,
+    required this.abortCode,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'startedAtMs': startedAtMs,
+        'finishedAtMs': finishedAtMs,
+        'stage': stage,
+        'grantVerdict': grantVerdict,
+        if (sessionsRead != null) 'sessionsRead': sessionsRead,
+        'entriesCreated': entriesCreated,
+        'entriesAdopted': entriesAdopted,
+        'sessionsSkipped': sessionsSkipped,
+        'readPartial': readPartial,
+        if (abortCode != null) 'abortCode': abortCode,
+      };
+
+  /// Lenient parse: a bad shape yields NO record (null), never a
+  /// throw and never a half-record.
+  static WorkoutSyncRunRecord? fromJson(dynamic raw) {
+    if (raw is! Map) return null;
+    final started = raw['startedAtMs'];
+    final finished = raw['finishedAtMs'];
+    final stage = raw['stage'];
+    final verdict = raw['grantVerdict'];
+    if (started is! num ||
+        finished is! num ||
+        stage is! String ||
+        verdict is! String) {
+      return null;
+    }
+    int count(String key) {
+      final v = raw[key];
+      return v is num ? v.toInt() : 0;
+    }
+
+    final sessionsReadRaw = raw['sessionsRead'];
+    final abortRaw = raw['abortCode'];
+    return WorkoutSyncRunRecord(
+      startedAtMs: started.toInt(),
+      finishedAtMs: finished.toInt(),
+      stage: stage,
+      grantVerdict: verdict,
+      sessionsRead: sessionsReadRaw is num ? sessionsReadRaw.toInt() : null,
+      entriesCreated: count('entriesCreated'),
+      entriesAdopted: count('entriesAdopted'),
+      sessionsSkipped: count('sessionsSkipped'),
+      readPartial: raw['readPartial'] == true,
+      abortCode: abortRaw is String && abortRaw.isNotEmpty ? abortRaw : null,
+    );
+  }
+}
+
 class WorkoutSyncStore {
   static const String storageKey = 'workout_sync_v1';
 
@@ -132,6 +228,7 @@ class WorkoutSyncStore {
     _reverse.clear();
     _ownerEmail = null;
     _lastSyncMs = null;
+    _lastRun = null;
     _warmed = false;
     _warmLoadedUnownedData = false;
   }
@@ -152,6 +249,12 @@ class WorkoutSyncStore {
   /// read, including a genuinely-empty one). Never stamped on a
   /// failed read or a failed gate (DESIGN §3.3).
   int? get lastSyncMs => _lastSyncMs;
+
+  WorkoutSyncRunRecord? _lastRun;
+
+  /// The most recent sync run's diagnostics record (ROUND 3),
+  /// or null when no run has recorded one yet.
+  WorkoutSyncRunRecord? get lastRun => _lastRun;
 
   bool _warmed = false;
   bool get isWarmed => _warmed;
@@ -264,6 +367,7 @@ class WorkoutSyncStore {
     }
     final ls = map['lastSyncMs'];
     if (ls is num) _lastSyncMs = ls.toInt();
+    _lastRun = WorkoutSyncRunRecord.fromJson(map['lastRun']);
     _ownerEmail = blobOwner;
     if (expected != null) _ownerEmail = expected;
     _warmLoadedUnownedData = _links.isNotEmpty && _ownerEmail == null;
@@ -320,6 +424,7 @@ class WorkoutSyncStore {
         jsonEncode({
           'ownerEmail': _ownerEmail,
           if (_lastSyncMs != null) 'lastSyncMs': _lastSyncMs,
+          if (_lastRun != null) 'lastRun': _lastRun!.toJson(),
           'links': {
             for (final e in _links.entries) e.key: e.value.toJson(),
           },
@@ -388,6 +493,15 @@ class WorkoutSyncStore {
     _links[key] = prior;
     final entryId = prior.entryId;
     if (entryId != null) _reverse[entryId] = key;
+    await persist();
+  }
+
+  /// Records the diagnostics for a finished sync run and
+  /// persists (ROUND 3). Counts/codes only — see
+  /// [WorkoutSyncRunRecord].
+  Future<void> recordRun(WorkoutSyncRunRecord record) async {
+    await _ensureWarmed();
+    _lastRun = record;
     await persist();
   }
 

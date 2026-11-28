@@ -14,8 +14,15 @@
 ///
 /// Fail-closed throughout: any gate failure, read failure, or
 /// pull failure means zero creations and zero stamps — the run
-/// simply didn't happen and the next capture retries. Triggered
-/// fire-and-forget from the capture tail
+/// simply didn't happen and the next capture retries. INSIDE the
+/// per-session loop the unit of failure is the SESSION (ROUND 3,
+/// FM-1/FM-2): one poison session is skipped and counted, never
+/// allowed to abort the run — it holds no link, so the next run
+/// retries it. Every exit path (except the owner-unverified
+/// early return, which must not write) records a
+/// [WorkoutSyncRunRecord] — stage reached, gate verdict, counts,
+/// abort code — so a silent abort is diagnosable on-device.
+/// Triggered fire-and-forget from the capture tail
 /// ([HealthHistorySync] beside DailyBiometricsSync); single-
 /// flight like [DailyBiometricsSync.syncAfterCapture].
 ///
@@ -168,8 +175,9 @@ class WorkoutSyncService {
 
   /// One sync run. Concurrent calls join the in-flight run.
   /// Returns true when the run completed (gate passed, read
-  /// succeeded — including zero sessions); false when it aborted
-  /// fail-closed. Never throws.
+  /// succeeded, loop reached its end — including zero sessions
+  /// and runs where individual sessions were skipped); false
+  /// when it aborted fail-closed before the loop. Never throws.
   Future<bool> syncAfterCapture() {
     final existing = _inFlight;
     if (existing != null) return existing;
@@ -182,6 +190,41 @@ class WorkoutSyncService {
   }
 
   Future<bool> _run() async {
+    // ── Run-record state (ROUND 3) ─────────────────────────────
+    // Tracked as the run advances; EVERY exit path below records
+    // it via [finish] — except the owner-unverified early return,
+    // which records nothing (a persist there would re-stamp an
+    // unowned blob). Counts and codes only.
+    final startedAtMs = _nowMs();
+    var stage = 'warm';
+    var grantVerdict = 'notChecked';
+    int? sessionsRead;
+    var entriesCreated = 0;
+    var entriesAdopted = 0;
+    var sessionsSkipped = 0;
+    var readPartial = false;
+    String? abortCode;
+
+    Future<bool> finish(bool result) async {
+      // Recording must never throw into the run (the store's
+      // persist already never throws; this is belt and braces).
+      try {
+        await store.recordRun(WorkoutSyncRunRecord(
+          startedAtMs: startedAtMs,
+          finishedAtMs: _nowMs(),
+          stage: stage,
+          grantVerdict: grantVerdict,
+          sessionsRead: sessionsRead,
+          entriesCreated: entriesCreated,
+          entriesAdopted: entriesAdopted,
+          sessionsSkipped: sessionsSkipped,
+          readPartial: readPartial,
+          abortCode: abortCode,
+        ));
+      } catch (_) {}
+      return result;
+    }
+
     try {
       // The store must be loaded before any decision reads it;
       // the warm is owner-bound wherever main.dart / the
@@ -190,12 +233,20 @@ class WorkoutSyncService {
       await store.warmFromDisk();
       // Owner-unverified state is read-only (H1-04): never write
       // links derived from data we cannot prove is this
-      // account's.
+      // account's — and never write the run record either.
       if (store.warmLoadedUnownedData) return false;
 
-      // ── Gate (badges pattern verbatim, DESIGN §3.2) ──────────
+      // ── Probe ────────────────────────────────────────────────
+      stage = 'probe';
       final probe = await _probe();
-      if (!probe.serviceAvailable || !probe.grantKnown) return false;
+      if (!probe.serviceAvailable) return await finish(false);
+      if (!probe.grantKnown) {
+        grantVerdict = 'unknown';
+        return await finish(false);
+      }
+
+      // ── Gate (badges pattern verbatim, DESIGN §3.2) ──────────
+      stage = 'gate';
       bool? exerciseGranted;
       try {
         exerciseGranted =
@@ -206,20 +257,49 @@ class WorkoutSyncService {
       // true → read. false → VERIFIED denial: create nothing.
       // null → unknown: no read, no "blocked" claim, retry next
       // capture (§9 rule 1 — unknown is not denied).
-      if (exerciseGranted != true) return false;
+      if (exerciseGranted == null) {
+        grantVerdict = 'unknown';
+        return await finish(false);
+      }
+      if (exerciseGranted != true) {
+        grantVerdict = 'denied';
+        return await finish(false);
+      }
+      grantVerdict = 'granted';
 
       // ── Rich read ────────────────────────────────────────────
-      final outcome = await _readRich(readWindowDays);
-      if (outcome.failed) return false; // abort; stamp nothing
+      stage = 'read';
+      final HcReadOutcome<List<WorkoutSession>> outcome;
+      try {
+        outcome = await _readRich(readWindowDays);
+      } catch (e) {
+        // The read contract is total after ROUND 3 Build 3, but
+        // any throw that still escapes becomes a failed read
+        // here — never a silent whole-run abort.
+        abortCode = e.runtimeType.toString();
+        return await finish(false);
+      }
+      if (outcome.failed) {
+        // Abort; stamp nothing (FM-5: fail-closed by design —
+        // the record names the stage + the bridge errorCode).
+        abortCode = outcome.errorCode ?? 'READ_FAILED';
+        return await finish(false);
+      }
       final sessions = outcome.value.toList()
         ..sort((a, b) => a.startMs.compareTo(b.startMs));
+      sessionsRead = sessions.length;
+      readPartial = outcome.partial;
 
       // ── Pull + categories ────────────────────────────────────
       // A failed pull aborts before creation (DESIGN §5): no
       // categories = no honest filing, and the merge candidates
       // would be fiction. Next capture retries.
+      stage = 'pull';
       final categories = await _fetchCategories();
-      if (categories == null) return false;
+      if (categories == null) {
+        abortCode = 'CATEGORIES_UNAVAILABLE';
+        return await finish(false);
+      }
       final pulled = await _fetchEntries();
       final merged = outbox.merge(pulled);
       final categoryId = workoutCategoryId(categories);
@@ -229,51 +309,74 @@ class WorkoutSyncService {
       }
 
       // ── Per session, oldest first (DESIGN §4) ────────────────
+      // PER-SESSION ISOLATION (ROUND 3, FM-1/FM-2): each
+      // session's processing runs in its own try/catch. A throw
+      // (e.g. the outbox's by-design StateError from
+      // allocateEntryId before its disk load settles) skips ONLY
+      // that session — counted, first skip's code kept — and the
+      // run continues. No link is written for a skipped session,
+      // so the next run retries it.
+      stage = 'loop';
       var createdAny = false;
       for (final session in sessions) {
         final key = session.dedupKey;
-        // 1. Any link state → skip. This alone makes re-syncs,
-        //    400-day windows, and re-installs idempotent, and
-        //    makes deletes permanent.
-        if (store.linkForKey(key) != null) continue;
+        try {
+          // 1. Any link state → skip. This alone makes re-syncs,
+          //    400-day windows, and re-installs idempotent, and
+          //    makes deletes permanent. NOT a failure skip — the
+          //    normal idempotent path; never counted as skipped.
+          if (store.linkForKey(key) != null) continue;
 
-        // 2. Manual-overlap match → link, don't create.
-        final match = _overlapMatch(session, merged);
-        if (match != null) {
+          // 2. Manual-overlap match → link, don't create.
+          final match = _overlapMatch(session, merged);
+          if (match != null) {
+            await store.recordLink(
+              key: key,
+              entryId: match.id,
+              state: WorkoutLinkState.adopted,
+              origin: isSyncedWorkoutEntry(match)
+                  ? WorkoutLinkOrigin.synced
+                  : WorkoutLinkOrigin.manual,
+              hcId: session.hcId.isEmpty ? null : session.hcId,
+            );
+            entriesAdopted++;
+            continue;
+          }
+
+          // 3. Create through the manual path (DESIGN §1.3):
+          //    allocate → stage durably → link → one flush per
+          //    run. Stage-then-link is deliberate: if the link
+          //    write fails, the next run's overlap rule adopts
+          //    the unlinked entry instead of duplicating it.
+          final id = await _allocateId(serverMaxId);
+          if (id > serverMaxId) serverMaxId = id;
+          final entry = buildSyncedWorkoutEntry(
+            session: session,
+            id: id,
+            categoryId: categoryId,
+          );
+          final staged = await _stageEntry(entry);
+          if (!staged) {
+            // FM-6: a quiet false is retry-correct (no link
+            // written) but is now a counted skip with a reason.
+            sessionsSkipped++;
+            abortCode ??= 'STAGE_FAILED';
+            continue;
+          }
           await store.recordLink(
             key: key,
-            entryId: match.id,
-            state: WorkoutLinkState.adopted,
-            origin: isSyncedWorkoutEntry(match)
-                ? WorkoutLinkOrigin.synced
-                : WorkoutLinkOrigin.manual,
+            entryId: id,
+            state: WorkoutLinkState.linked,
+            origin: WorkoutLinkOrigin.synced,
             hcId: session.hcId.isEmpty ? null : session.hcId,
           );
+          entriesCreated++;
+          createdAny = true;
+        } catch (e) {
+          sessionsSkipped++;
+          abortCode ??= e.runtimeType.toString();
           continue;
         }
-
-        // 3. Create through the manual path (DESIGN §1.3):
-        //    allocate → stage durably → link → one flush per run.
-        //    Stage-then-link is deliberate: if the link write
-        //    fails, the next run's overlap rule adopts the
-        //    unlinked entry instead of duplicating it.
-        final id = await _allocateId(serverMaxId);
-        if (id > serverMaxId) serverMaxId = id;
-        final entry = buildSyncedWorkoutEntry(
-          session: session,
-          id: id,
-          categoryId: categoryId,
-        );
-        final staged = await _stageEntry(entry);
-        if (!staged) continue; // no link written; next run retries
-        await store.recordLink(
-          key: key,
-          entryId: id,
-          state: WorkoutLinkState.linked,
-          origin: WorkoutLinkOrigin.synced,
-          hcId: session.hcId.isEmpty ? null : session.hcId,
-        );
-        createdAny = true;
       }
       if (createdAny) {
         // Exactly like a manual save (Quick Log's
@@ -281,16 +384,24 @@ class WorkoutSyncService {
         // queued as failed and retry on the next trigger.
         unawaited(_flushOutbox());
       }
-      // A successful read — even a genuinely empty one — stamps
-      // the sync (DESIGN §3.3). A partial enrichment stamps too:
-      // the read happened; its missing fields stay missing.
+      // The loop reaching its end = the run completed: stamp the
+      // sync (DESIGN §3.3 — lastSyncMs is informational only) and
+      // report success EVEN when some sessions were skipped; the
+      // record carries the counts + the first skip's code, and
+      // skipped sessions retry next capture (they hold no link).
+      // A successful read — even a genuinely empty one — stamps;
+      // a partial enrichment stamps too: the read happened; its
+      // missing fields stay missing.
+      stage = 'done';
       await store.markSynced(_nowMs());
-      return true;
-    } catch (_) {
+      return await finish(true);
+    } catch (e) {
       // Sync must never break a capture. Fail-closed: whatever
       // was staged/linked before the failure is durable and
       // consistent (stage-then-link), and the next run resumes.
-      return false;
+      // The record names the stage reached + the exception type.
+      abortCode ??= e.runtimeType.toString();
+      return await finish(false);
     }
   }
 
