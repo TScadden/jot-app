@@ -19,6 +19,7 @@ import 'package:tabs_lab/src/features/tools/research_screen.dart';
 import 'package:tabs_lab/src/features/tools/tips_tricks_screen.dart';
 import 'package:tabs_lab/src/features/tools/tool_placeholder_screen.dart';
 import 'package:tabs_lab/src/features/tools/trends_screen.dart';
+import 'package:tabs_lab/src/features/shell/tablet_content_shell.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
@@ -351,12 +352,16 @@ class _ToolsScreenState extends State<ToolsScreen>
           Expanded(
             // Tablet width adaptation: column count follows the
             // EFFECTIVE content width (LayoutBuilder constraints, so
-            // split panes behave like phones). <600dp keeps today's
-            // 2-up grid exactly; >=600dp goes 4-up. Tile construction
+            // split panes behave like phones). Below
+            // TabletContentShell.wideBreakpoint keeps today's 2-up
+            // grid exactly; at/above it goes 4-up. Tile construction
             // is unchanged — only the count moves.
             child: LayoutBuilder(
               builder: (context, constraints) => GridView.count(
-                crossAxisCount: constraints.maxWidth >= 600 ? 4 : 2,
+                crossAxisCount:
+                    constraints.maxWidth >= TabletContentShell.wideBreakpoint
+                        ? 4
+                        : 2,
                 mainAxisSpacing: 14,
                 crossAxisSpacing: 14,
                 childAspectRatio: 1.0,

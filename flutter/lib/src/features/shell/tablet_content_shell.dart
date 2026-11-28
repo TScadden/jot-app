@@ -23,6 +23,16 @@ class TabletContentShell extends StatelessWidget {
   /// deliberate gutter; see the package RENDERS.md for the read.
   static const double maxContentWidth = 680;
 
+  /// The effective-width breakpoint at which width-driven layouts
+  /// (the Tools and Badges grid column counts) switch to their wide
+  /// form. This is the Material window-size-class compact→medium
+  /// boundary, applied to the EFFECTIVE (post-cap, LayoutBuilder)
+  /// width — never raw device/MediaQuery width — so a phone-width
+  /// split pane keeps phone counts. Single-sourced here (Vera
+  /// P2-5): Tools and Badges both read this constant; the threshold
+  /// must never be re-inlined at a call site.
+  static const double wideBreakpoint = 600;
+
   @override
   Widget build(BuildContext context) {
     return ColoredBox(

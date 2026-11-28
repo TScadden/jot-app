@@ -8,6 +8,7 @@ import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/features/badges/badge_share_card.dart';
 import 'package:tabs_lab/src/features/badges/badge_strings.dart';
 import 'package:tabs_lab/src/features/badges/badge_widget.dart';
+import 'package:tabs_lab/src/features/shell/tablet_content_shell.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
@@ -409,14 +410,18 @@ class _BadgesScreenState extends State<BadgesScreen> {
     final metrics = BadgeMetrics.inSection(section);
     // Tablet width adaptation: column count follows the EFFECTIVE
     // content width (LayoutBuilder constraints, so split panes behave
-    // like phones). <600dp keeps today's 3-up grid exactly; >=600dp
-    // goes 5-up. Tile construction and aspect are unchanged.
+    // like phones). Below TabletContentShell.wideBreakpoint keeps
+    // today's 3-up grid exactly; at/above it goes 5-up. Tile
+    // construction and aspect are unchanged.
     return LayoutBuilder(
       builder: (context, constraints) => GridView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: constraints.maxWidth >= 600 ? 5 : 3,
+          crossAxisCount:
+              constraints.maxWidth >= TabletContentShell.wideBreakpoint
+                  ? 5
+                  : 3,
           crossAxisSpacing: 8,
           mainAxisSpacing: 8,
           childAspectRatio: 0.55,
