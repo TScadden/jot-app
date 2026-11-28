@@ -35,6 +35,11 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   http: ^1.6.0
+  # Workout sync (Nov 27, 2026) — sha256 for the tier-3 dedup
+  # fingerprint key (DECISIONS decision 3). Already resolved in
+  # the lock as a transitive dep; promoted to direct, no version
+  # change.
+  crypto: ^3.0.3
   # Round 24 — Google sign-in (7.x, Credential Manager-based; see
   # lib/src/data/google_sign_in_service.dart).
   google_sign_in: ^7.2.0

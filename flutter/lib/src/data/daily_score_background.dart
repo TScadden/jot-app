@@ -84,7 +84,9 @@ import 'daily_score_sync.dart';
 import 'health_connect_service.dart';
 import 'health_history_store.dart';
 import 'health_history_sync.dart';
+import 'log_entry_outbox.dart';
 import 'notification_service.dart';
+import 'workout_sync_store.dart';
 import 'session_store.dart';
 import 'tabs_day.dart';
 
@@ -449,6 +451,17 @@ class DailyScoreBackgroundRunner {
   /// wires [SessionStore.readEmail].
   final Future<String?> Function() _readSessionEmail;
 
+  /// Workout sync (Nov 27, 2026, DESIGN §3.1): warms the workout
+  /// link store AND the log-entry outbox owner-bound in THIS
+  /// isolate before the capture runs — the capture tail fires
+  /// WorkoutSyncService here, and an unbound warm is the exact
+  /// H1-04 wipe chain this file's run() doc describes. A seam
+  /// (like [_readSessionEmail]) so unit tests never touch the
+  /// real singletons' storage channels; production wires the
+  /// real warms.
+  final Future<void> Function(String? sessionEmail)
+      _warmWorkoutSyncStores;
+
   factory DailyScoreBackgroundRunner({
     required HealthHistoryStore store,
     required Future<bool> Function() hasBackgroundAccess,
@@ -458,6 +471,7 @@ class DailyScoreBackgroundRunner {
     required DailyScoreReadyNotifier notifier,
     DateTime Function()? now,
     Future<String?> Function()? readSessionEmail,
+    Future<void> Function(String? sessionEmail)? warmWorkoutSyncStores,
   }) =>
       DailyScoreBackgroundRunner._(
         store,
@@ -468,6 +482,7 @@ class DailyScoreBackgroundRunner {
         notifier,
         now ?? DateTime.now,
         readSessionEmail ?? () async => null,
+        warmWorkoutSyncStores ?? (_) async {},
       );
 
   DailyScoreBackgroundRunner._(
@@ -479,6 +494,7 @@ class DailyScoreBackgroundRunner {
     this._notifier,
     this._now,
     this._readSessionEmail,
+    this._warmWorkoutSyncStores,
   );
 
   factory DailyScoreBackgroundRunner.production() {
@@ -513,6 +529,17 @@ class DailyScoreBackgroundRunner {
       // session email exactly like the foreground bootstrap
       // (main.dart) so its warm is account-bound.
       readSessionEmail: () => SessionStore().readEmail(),
+      // Workout sync (Nov 27, 2026): the capture this runner
+      // drives fires WorkoutSyncService at its tail, which stages
+      // through the outbox and links through the workout store —
+      // both must be warmed owner-bound in this isolate first
+      // (DESIGN §3.1 background obligations).
+      warmWorkoutSyncStores: (sessionEmail) async {
+        await WorkoutSyncStore.instance
+            .warmFromDisk(currentEmail: sessionEmail);
+        await LogEntryOutbox.instance
+            .warmFromDisk(currentEmail: sessionEmail);
+      },
     );
   }
 
@@ -568,6 +595,17 @@ class DailyScoreBackgroundRunner {
           skippedReason: 'owner-unverified',
         );
       }
+      // Workout sync (Nov 27, 2026): warm the workout link store
+      // + the log-entry outbox owner-bound in this isolate,
+      // before the capture below can fire the workout sync at
+      // its tail (see [_warmWorkoutSyncStores]). Past the
+      // owner-unverified abort, so an unverifiable owner never
+      // gets a warm that could bind or drop under the wrong
+      // account. A warm failure must not fail the run — the
+      // workout service itself fail-closes on an unwarmed store.
+      try {
+        await _warmWorkoutSyncStores(sessionEmail);
+      } catch (_) {}
       // An empty store (fresh install, post-logout) is NOT an
       // early exit: the first-ever capture is exactly what fills
       // it, and every other path over an empty store is a no-op.

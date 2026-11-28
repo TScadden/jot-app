@@ -11,6 +11,7 @@ import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_queries.dart'
     show HistoryMetric;
 import 'package:tabs_lab/src/data/health_history_store.dart';
+import 'package:tabs_lab/src/data/workout_sync.dart';
 import 'package:tabs_lab/src/data/progress_report.dart'
     show DataSourceStatus, deriveMetricStatus;
 
@@ -202,6 +203,7 @@ class HealthHistorySync {
         _now = DateTime.now,
         _scoreSync = DailyScoreSync.instance,
         _biometricsSync = DailyBiometricsSync.instance,
+        _workoutSync = WorkoutSyncService.instance,
         _readTimeout = HealthConnectService.readTimeout;
 
   /// Injectable for tests / WS2 wiring. [readTimeoutOverride]
@@ -216,6 +218,9 @@ class HealthHistorySync {
   /// server sync (MCP spike-data package, Nov 23, 2026) the same
   /// way: [instance] passes it, test constructions leave it null
   /// and captures stay exactly pre-sync.
+  /// [workoutSync] wires the post-capture workout sync (Nov 27,
+  /// 2026) the same way again: [instance] passes it, test
+  /// constructions leave it null.
   factory HealthHistorySync.withDeps({
     HealthConnectService? hc,
     HealthHistoryStore? store,
@@ -223,6 +228,7 @@ class HealthHistorySync {
     Duration? readTimeoutOverride,
     DailyScoreSync? scoreSync,
     DailyBiometricsSync? biometricsSync,
+    WorkoutSyncService? workoutSync,
   }) =>
       HealthHistorySync._(
           hc ?? HealthConnectService(),
@@ -230,10 +236,11 @@ class HealthHistorySync {
           now ?? DateTime.now,
           readTimeoutOverride ?? HealthConnectService.readTimeout,
           scoreSync,
-          biometricsSync);
+          biometricsSync,
+          workoutSync);
 
   HealthHistorySync._(this._hc, this._store, this._now, this._readTimeout,
-      this._scoreSync, this._biometricsSync);
+      this._scoreSync, this._biometricsSync, this._workoutSync);
 
   HealthConnectService _hc;
   HealthHistoryStore _store;
@@ -246,6 +253,10 @@ class HealthHistorySync {
   /// The daily-biometrics server-sync hook fired after a capture
   /// (see the factory doc). Null = sync off.
   final DailyBiometricsSync? _biometricsSync;
+
+  /// The workout-sync hook fired after a capture (see the
+  /// factory doc). Null = sync off.
+  final WorkoutSyncService? _workoutSync;
 
   /// STATIC — shared across ALL instances, like the flight
   /// state below (Vera Condition 1, sync-settings package):
@@ -1330,6 +1341,17 @@ class HealthHistorySync {
       final biometricsSync = _biometricsSync;
       if (biometricsSync != null) {
         unawaited(biometricsSync.syncAfterCapture());
+      }
+      // Workout sync (Nov 27, 2026, DESIGN §3.1): fire-and-forget
+      // at the same capture tail, so the one hook covers
+      // foreground, post-grant, manual refresh, and background
+      // captures and inherits the capture's throttles — workout
+      // sync can never run more often than the biometrics
+      // capture already does. The service is fail-closed and
+      // never throws into the capture.
+      final workoutSync = _workoutSync;
+      if (workoutSync != null) {
+        unawaited(workoutSync.syncAfterCapture());
       }
       return true;
     } catch (e, st) {
