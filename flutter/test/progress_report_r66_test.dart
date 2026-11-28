@@ -257,7 +257,7 @@ void main() {
               .map((e) => e.id),
           ['1', '3']);
       expect(
-          logsInRange(logs, {1, 5}, last30Days: false, nowMs: now).length, 3);
+          logsInRange(logs, {'1', '5'}, last30Days: false, nowMs: now).length, 3);
     });
   });
 

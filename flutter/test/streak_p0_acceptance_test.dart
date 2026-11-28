@@ -28,7 +28,7 @@ import 'package:tabs_lab/src/features/home/streak_share_card.dart';
 /// tests FAIL on d06593fc and pass with the fix.
 void main() {
   const medCat = 8;
-  const moodCat = 6;
+  const moodCat = '6';
   const goalsCat = 4;
 
   // Wed Nov 18, 2026 — the founder's report day.

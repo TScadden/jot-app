@@ -28,7 +28,7 @@ import 'test_helpers.dart';
 final _week = WeeklyWeekWindow(DateTime(2026, 11, 9), DateTime(2026, 11, 15));
 final _pageNow = DateTime(2026, 11, 18, 12);
 
-QuickLogCategory _cat(int id, String name) => QuickLogCategory(
+QuickLogCategory _cat(String id, String name) => QuickLogCategory(
     id: id,
     name: name,
     icon: 'x',
@@ -56,7 +56,7 @@ ReportSnapshot _snap({
     weekStart: _week.start,
     weekEnd: _week.end,
     generationTimestampMs: _pageNow.millisecondsSinceEpoch,
-    logEntries: [for (var i = 0; i < 5; i++) _entry(i + 1, days[i])],
+    logEntries: [for (var i = 0; i < 5; i++) _entry('${i + 1}', days[i])],
     categoriesMap: const {'1': 'Symptoms'},
     dailyScoreSeries:
         goodWeek ? [for (final d in days) (dateStrOf(d), 60)] : const [],
@@ -79,7 +79,7 @@ class _Backend extends TabsBackend {
 
   @override
   Future<List<QuickLogCategory>> fetchLogCategories() async =>
-      [_cat(1, 'Symptoms')];
+      [_cat('1', 'Symptoms')];
 
   @override
   Future<List<QuickLogEntry>> fetchLogEntryDtos() async => const [];
@@ -450,7 +450,7 @@ void main() {
         weekStart: _week.start,
         weekEnd: _week.end,
         generationTimestampMs: _pageNow.millisecondsSinceEpoch,
-        logEntries: [for (var i = 0; i < 5; i++) _entry(i + 1, days[i])],
+        logEntries: [for (var i = 0; i < 5; i++) _entry('${i + 1}', days[i])],
         categoriesMap: const {'1': 'Symptoms'},
         dailyScoreSeries: [for (final d in days) (dateStrOf(d), 60)],
         sectionMetadata: const {
@@ -553,7 +553,7 @@ void main() {
         backend: backend,
       );
       final outcome = await pipeline.generate(
-        selectedCategories: [_cat(1, 'Symptoms')],
+        selectedCategories: [_cat('1', 'Symptoms')],
         last30Days: true,
         profile: const ReportProfileInput(),
         forceRawFallback: true,

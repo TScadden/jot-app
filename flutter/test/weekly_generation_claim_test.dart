@@ -55,7 +55,7 @@ ReportSnapshot _snap(WeeklyWeekWindow week, {bool barPassing = true}) {
     weekEnd: week.end,
     generationTimestampMs: _now.millisecondsSinceEpoch,
     logEntries: [
-      for (var i = 0; i < (barPassing ? 5 : 2); i++) _entry(i + 1, days[i]),
+      for (var i = 0; i < (barPassing ? 5 : 2); i++) _entry('${i + 1}', days[i]),
     ],
     categoriesMap: const {'1': 'Symptoms'},
     dailyScoreSeries: [for (final d in scoreDays) (dateStrOf(d), 60)],

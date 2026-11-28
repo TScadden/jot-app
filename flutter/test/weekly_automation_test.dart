@@ -55,7 +55,7 @@ ReportSnapshot _goodSnap(WeeklyWeekWindow week) => ReportSnapshot(
       generationTimestampMs:
           DateTime(2026, 11, 15, 21, 30).millisecondsSinceEpoch,
       logEntries: [
-        for (var i = 0; i < 5; i++) _entry(i + 1, week.days[i]),
+        for (var i = 0; i < 5; i++) _entry('${i + 1}', week.days[i]),
       ],
       categoriesMap: const {'1': 'Symptoms'},
       dailyScoreSeries: _seriesOn(week.days, 60),
@@ -317,7 +317,7 @@ void main() {
             generationTimestampMs:
                 DateTime(2026, 11, 15, 21, 30).millisecondsSinceEpoch,
             logEntries: [
-              for (var i = 0; i < 7; i++) _entry(i + 1, days[i]),
+              for (var i = 0; i < 7; i++) _entry('${i + 1}', days[i]),
             ],
             categoriesMap: const {'1': 'Symptoms'},
             dailyScoreSeries: [

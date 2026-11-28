@@ -122,7 +122,7 @@ class FakeHc extends HealthConnectService {
       const [];
 }
 
-QuickLogCategory cat(int id, String name) => QuickLogCategory(
+QuickLogCategory cat(String id, String name) => QuickLogCategory(
     id: id,
     name: name,
     icon: 'x',
@@ -139,7 +139,7 @@ QuickLogEntry entry(String id, String catId, int ts) => QuickLogEntry(
     timestamp: ts);
 
 FakeBackend backendWithData() => FakeBackend()
-  ..categories = [cat(1, 'Symptoms')]
+  ..categories = [cat('1', 'Symptoms')]
   ..entries = [entry('1', '1', DateTime.now().millisecondsSinceEpoch)];
 
 /// A scripted pipeline + its call recorders.
@@ -186,7 +186,7 @@ Future<ReportOutcome> generate(
   void Function(String? summary)? onRender,
 }) {
   return pipeline.generate(
-    selectedCategories: [cat(1, 'Symptoms')],
+    selectedCategories: [cat('1', 'Symptoms')],
     last30Days: true,
     profile: const ReportProfileInput(),
     reportGenerationId: reportGenerationId,
@@ -742,7 +742,7 @@ void main() {
       );
       await svc.start(
         ({required onStage, required isCancelled}) => pipeline.generate(
-          selectedCategories: [cat(1, 'Symptoms')],
+          selectedCategories: [cat('1', 'Symptoms')],
           last30Days: true,
           profile: const ReportProfileInput(),
           onStage: onStage,

@@ -101,7 +101,7 @@ class ThrowingTokenStore extends FakeSessionStore {
       throw StateError('secure storage unavailable');
 }
 
-QuickLogCategory cat(int id, String name) => QuickLogCategory(
+QuickLogCategory cat(String id, String name) => QuickLogCategory(
     id: id, name: name, icon: 'x', colorHex: '#FF0000',
     isDefault: true, sortOrder: int.tryParse(id) ?? 0);
 
@@ -511,7 +511,7 @@ void main() {
       final downloadsGate = Completer<bool>();
       unawaited(s1.start(
         ({required onStage, required isCancelled}) => pipeline.generate(
-          selectedCategories: [cat(1, 'Symptoms')],
+          selectedCategories: [cat('1', 'Symptoms')],
           last30Days: false,
           profile: const ReportProfileInput(),
           onStage: onStage,
@@ -637,7 +637,7 @@ void main() {
         delay: (_) async {},
       );
       final outcome = await pipeline.generate(
-        selectedCategories: [cat(1, 'Symptoms')],
+        selectedCategories: [cat('1', 'Symptoms')],
         last30Days: true,
         profile: const ReportProfileInput(),
         renderPdf: (s, summary,
@@ -722,7 +722,7 @@ void main() {
       );
       await expectLater(
         collector.collect(
-          selectedCategories: [cat(1, 'Symptoms')],
+          selectedCategories: [cat('1', 'Symptoms')],
           last30Days: true,
           profile: const ReportProfileInput(),
         ),
@@ -734,7 +734,7 @@ void main() {
         delay: (_) async {},
       );
       final outcome = await pipeline.generate(
-        selectedCategories: [cat(1, 'Symptoms')],
+        selectedCategories: [cat('1', 'Symptoms')],
         last30Days: true,
         profile: const ReportProfileInput(),
         renderPdf: (s, summary,

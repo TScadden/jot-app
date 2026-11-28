@@ -70,7 +70,7 @@ class _Backend extends TabsBackend {
       ];
 }
 
-QuickLogEntry _entryAt(int id, DateTime at) => QuickLogEntry(
+QuickLogEntry _entryAt(String id, DateTime at) => QuickLogEntry(
       id: id,
       categoryId: '1',
       body: 'entry $id',
@@ -90,10 +90,10 @@ class _DstBackend extends TabsBackend {
 
   @override
   Future<List<QuickLogEntry>> fetchLogEntryDtos() async => [
-        _entryAt(10, DateTime(2026, 10, 25, 23, 30)), // before — out
-        _entryAt(11, DateTime(2026, 10, 26, 0, 30)), // Mon 00:30 — in
-        _entryAt(12, DateTime(2026, 11, 1, 23, 30)), // Sun last hr — in
-        _entryAt(13, DateTime(2026, 11, 2, 0, 30)), // next Mon — out
+        _entryAt('10', DateTime(2026, 10, 25, 23, 30)), // before — out
+        _entryAt('11', DateTime(2026, 10, 26, 0, 30)), // Mon 00:30 — in
+        _entryAt('12', DateTime(2026, 11, 1, 23, 30)), // Sun last hr — in
+        _entryAt('13', DateTime(2026, 11, 2, 0, 30)), // next Mon — out
       ];
 
   @override
@@ -164,7 +164,7 @@ class _FakeHc extends HealthConnectService {
       ];
 }
 
-QuickLogCategory _cat(int id, String name) => QuickLogCategory(
+QuickLogCategory _cat(String id, String name) => QuickLogCategory(
     id: id,
     name: name,
     icon: 'x',
@@ -204,7 +204,7 @@ void main() {
           '2026-11-16': 98, // next Monday — outside
         },
       ).collect(
-        selectedCategories: [_cat(1, 'Symptoms')],
+        selectedCategories: [_cat('1', 'Symptoms')],
         last30Days: false,
         profile: const ReportProfileInput(),
         now: _now,
@@ -261,7 +261,7 @@ void main() {
           '2026-11-02': 99, // next Monday — outside, must not appear
         },
       ).collect(
-        selectedCategories: [_cat(1, 'Symptoms')],
+        selectedCategories: [_cat('1', 'Symptoms')],
         last30Days: false,
         profile: const ReportProfileInput(),
         now: DateTime(2026, 11, 4, 12),
@@ -283,7 +283,7 @@ void main() {
         insightsLoader: () async => const [],
         scoreLoader: () async => {'2026-11-16': 70},
       ).collect(
-        selectedCategories: [_cat(1, 'Symptoms')],
+        selectedCategories: [_cat('1', 'Symptoms')],
         last30Days: false,
         profile: const ReportProfileInput(),
         now: _now,

@@ -35,7 +35,7 @@ QuickLogEntry _entry(String id, DateTime day) => QuickLogEntry(
     );
 
 List<QuickLogEntry> _entriesOn(List<DateTime> days) =>
-    [for (var i = 0; i < days.length; i++) _entry(i + 1, days[i])];
+    [for (var i = 0; i < days.length; i++) _entry('${i + 1}', days[i])];
 
 List<(String, int)> _seriesOn(List<DateTime> days, int value) =>
     [for (final d in days) (dateStrOf(d), value)];

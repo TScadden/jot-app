@@ -32,7 +32,7 @@ const _askBody =
 const _askGuidance =
     'In Health Connect, go to App permissions, then Tabs, then Additional access, and turn on Access data in the background.';
 
-QuickLogCategory _cat(int id, String name) => QuickLogCategory(
+QuickLogCategory _cat(String id, String name) => QuickLogCategory(
   id: id,
   name: name,
   icon: 'x',
@@ -57,7 +57,7 @@ ReportSnapshot _snap({bool blocked = false}) {
     weekStart: _week.start,
     weekEnd: _week.end,
     generationTimestampMs: _sundayNight.millisecondsSinceEpoch,
-    logEntries: [for (var i = 0; i < 5; i++) _entry(i + 1, days[i])],
+    logEntries: [for (var i = 0; i < 5; i++) _entry('${i + 1}', days[i])],
     categoriesMap: const {'1': 'Symptoms'},
     dailyScoreSeries: [for (final d in days) (dateStrOf(d), 60)],
     sleepSeries: [for (final d in days) (dateStrOf(d), 420)],
@@ -85,7 +85,7 @@ class _Backend extends TabsBackend {
 
   @override
   Future<List<QuickLogCategory>> fetchLogCategories() async => [
-    _cat(1, 'Symptoms'),
+    _cat('1', 'Symptoms'),
   ];
 
   @override

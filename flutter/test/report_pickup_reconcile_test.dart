@@ -103,7 +103,7 @@ class FakeHc extends HealthConnectService {
       const [];
 }
 
-QuickLogCategory cat(int id, String name) => QuickLogCategory(
+QuickLogCategory cat(String id, String name) => QuickLogCategory(
     id: id,
     name: name,
     icon: 'x',
@@ -120,7 +120,7 @@ QuickLogEntry entry(int id, int catId, int ts) => QuickLogEntry(
     timestamp: ts);
 
 FakeBackend backendWithData() => FakeBackend()
-  ..categories = [cat(1, 'Symptoms')]
+  ..categories = [cat('1', 'Symptoms')]
   ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)];
 
 const testId = '0123456789abcdef0123456789abcdef';
@@ -194,7 +194,7 @@ class Harness {
 
   ReportGenerationRun get run =>
       ({required onStage, required isCancelled}) => pipeline.generate(
-            selectedCategories: [cat(1, 'Symptoms')],
+            selectedCategories: [cat('1', 'Symptoms')],
             last30Days: true,
             profile: const ReportProfileInput(),
             onStage: onStage,
@@ -582,7 +582,7 @@ void main() {
       );
       String? rendered;
       final outcome = await pipeline.generate(
-        selectedCategories: [cat(1, 'Symptoms')],
+        selectedCategories: [cat('1', 'Symptoms')],
         last30Days: true,
         profile: const ReportProfileInput(),
         reportGenerationId: testId,

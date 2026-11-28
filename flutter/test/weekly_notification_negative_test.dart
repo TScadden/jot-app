@@ -146,7 +146,7 @@ void main() {
         scores: _seriesOn(days, 60),
         sleep: _seriesOn(days.sublist(0, 5), 420),
         entries: [
-          for (var i = 0; i < 5; i++) _entry(i + 1, days[i]),
+          for (var i = 0; i < 5; i++) _entry('${i + 1}', days[i]),
         ],
         meta: const {
           'dailyScore':
@@ -198,7 +198,7 @@ void main() {
       final run = _Run(_snap(
         scores: _seriesOn(two, 55),
         sleep: _seriesOn(two, 400),
-        entries: [for (var i = 0; i < 2; i++) _entry(i + 1, two[i])],
+        entries: [for (var i = 0; i < 2; i++) _entry('${i + 1}', two[i])],
         meta: const {
           'dailyScore':
               SectionMetadata('dailyScore', DataSourceStatus.success, 2),
@@ -266,7 +266,7 @@ void main() {
         scores: _seriesOn(days.sublist(0, 6), 60),
         sleep: _seriesOn(days.sublist(0, 5), 420),
         entries: [
-          for (var i = 0; i < 5; i++) _entry(i + 1, days[i]),
+          for (var i = 0; i < 5; i++) _entry('${i + 1}', days[i]),
         ],
         meta: const {
           'dailyScore':
@@ -300,7 +300,7 @@ void main() {
         scores: _seriesOn(days, 60),
         sleep: _seriesOn(days, 420),
         entries: [
-          for (var i = 0; i < 5; i++) _entry(i + 1, days[i]),
+          for (var i = 0; i < 5; i++) _entry('${i + 1}', days[i]),
         ],
         meta: const {
           'dailyScore':

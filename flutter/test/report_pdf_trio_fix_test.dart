@@ -91,7 +91,7 @@ class FakeHc extends HealthConnectService {
   }
 }
 
-QuickLogCategory cat(int id, String name) => QuickLogCategory(
+QuickLogCategory cat(String id, String name) => QuickLogCategory(
   id: id,
   name: name,
   icon: 'x',
@@ -320,7 +320,7 @@ void main() {
         ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)];
       final snap = await ReportDataCollector(backend: backend, hc: FakeHc())
           .collect(
-            selectedCategories: [cat(1, 'Symptoms')],
+            selectedCategories: [cat('1', 'Symptoms')],
             last30Days: true,
             profile: profile,
           );
@@ -374,7 +374,7 @@ void main() {
         ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)];
       final snap = await ReportDataCollector(backend: backend, hc: FakeHc())
           .collect(
-            selectedCategories: [cat(1, 'Symptoms')],
+            selectedCategories: [cat('1', 'Symptoms')],
             last30Days: true,
             profile: ReportProfileInput(activeMedications: parsed),
           );
@@ -394,7 +394,7 @@ void main() {
           ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)];
         final snap = await ReportDataCollector(backend: backend, hc: FakeHc())
             .collect(
-              selectedCategories: [cat(1, 'Symptoms')],
+              selectedCategories: [cat('1', 'Symptoms')],
               last30Days: true,
               profile: profile,
             );
@@ -608,7 +608,7 @@ void main() {
         delay: (_) async {},
       );
       final outcome = await pipeline.generate(
-        selectedCategories: [cat(1, 'Symptoms')],
+        selectedCategories: [cat('1', 'Symptoms')],
         last30Days: true,
         profile: const ReportProfileInput(),
         renderPdf: (
@@ -807,7 +807,7 @@ void main() {
         delay: (_) async {},
       );
       return pipeline.generate(
-        selectedCategories: [cat(1, 'Symptoms')],
+        selectedCategories: [cat('1', 'Symptoms')],
         last30Days: true,
         profile: const ReportProfileInput(),
         renderPdf: (
@@ -903,7 +903,7 @@ void main() {
         delete: (k) async => mem.remove(k),
       );
       final backend = FakeBackend()
-        ..categories = [cat(1, 'Symptoms'), cat(5, 'Sleep')]
+        ..categories = [cat('1', 'Symptoms'), cat('5', 'Sleep')]
         ..entries = [entry(1, 1, DateTime.now().millisecondsSinceEpoch)];
       await tester.pumpWidget(
         MaterialApp(

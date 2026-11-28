@@ -131,7 +131,7 @@ class FakeNotifier implements ReportReadyNotifier {
   }
 }
 
-QuickLogCategory cat(int id, String name) => QuickLogCategory(
+QuickLogCategory cat(String id, String name) => QuickLogCategory(
     id: id,
     name: name,
     icon: 'x',
@@ -189,7 +189,7 @@ void main() {
   });
 
   FakeBackend backendWithData() => FakeBackend()
-    ..categories = [cat(1, 'Symptoms')]
+    ..categories = [cat('1', 'Symptoms')]
     ..entries = [entry('1', '1', DateTime.now().millisecondsSinceEpoch)];
 
   /// A pipeline over the fakes with a scripted AI call and render
@@ -216,7 +216,7 @@ void main() {
     bool realPdf = false,
   }) {
     return pipeline.generate(
-      selectedCategories: [cat(1, 'Symptoms')],
+      selectedCategories: [cat('1', 'Symptoms')],
       last30Days: true,
       profile: const ReportProfileInput(),
       renderPdf: (snapshot, aiSummary,
@@ -442,7 +442,7 @@ void main() {
           );
       Future<ReportOutcome> gen(ReportGenerationPipeline pipe) =>
           pipe.generate(
-            selectedCategories: [cat(1, 'Symptoms')],
+            selectedCategories: [cat('1', 'Symptoms')],
             last30Days: true,
             profile: const ReportProfileInput(),
             renderPdf: (s, summary,
@@ -669,7 +669,7 @@ void main() {
       final pipeline = pipelineFor(backend, script: script);
       await service.start(
         ({required onStage, required isCancelled}) => pipeline.generate(
-          selectedCategories: [cat(1, 'Symptoms')],
+          selectedCategories: [cat('1', 'Symptoms')],
           last30Days: true,
           profile: const ReportProfileInput(),
           onStage: onStage,
@@ -810,7 +810,7 @@ void main() {
       String? renderedSummary;
       await service.start(
         ({required onStage, required isCancelled}) => pipeline.generate(
-          selectedCategories: [cat(1, 'Symptoms')],
+          selectedCategories: [cat('1', 'Symptoms')],
           last30Days: true,
           profile: const ReportProfileInput(),
           onStage: onStage,

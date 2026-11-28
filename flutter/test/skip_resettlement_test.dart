@@ -19,7 +19,7 @@ import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
 /// and is complete under the resolved rule.
 void main() {
   const medCat = '8';
-  const moodCat = 6;
+  const moodCat = '6';
   const goalsCat = '4';
 
   const founderMeds = [

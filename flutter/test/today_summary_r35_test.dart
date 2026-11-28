@@ -206,7 +206,7 @@ void main() {
         meds: const [
           SummaryMedication(key: 'm1', name: 'MedA', dose: '5mg'),
         ],
-        medCategoryId: 8,
+        medCategoryId: '8',
         entries: [
           entry('1', '8', '[Corrected to Skipped] Took MedA 5mg',
               DateTime(2026, 10, 13, 8)),
@@ -225,7 +225,7 @@ void main() {
           SummaryMedication(key: 'm1', name: 'MedA', dose: '5mg'),
           SummaryMedication(key: 'm2', name: 'MedB', dose: '10mg'),
         ],
-        medCategoryId: 8,
+        medCategoryId: '8',
         entries: [
           entry('1', '8', 'Took MedA 5mg', DateTime(2026, 10, 13, 8)),
           entry('2', '8', '[Corrected to Skipped] Took MedB 10mg',
@@ -245,7 +245,7 @@ void main() {
           SummaryMedication(key: 'm1', name: 'MedA', dose: '5mg'),
           SummaryMedication(key: 'm2', name: 'MedB', dose: '10mg'),
         ],
-        medCategoryId: 8,
+        medCategoryId: '8',
         local: const TodayPlanLocalState(medActions: {
           'm2|Daily': DoseStatus.snoozed,
         }),
@@ -268,7 +268,7 @@ void main() {
           SummaryMedication(key: 'm1', name: 'MedA', dose: '5mg'),
         ],
         habits: [habit('h1', 'Stretch')],
-        medCategoryId: 8,
+        medCategoryId: '8',
         entries: [
           entry('1', '8', '[Corrected to Skipped] Took MedA 5mg',
               DateTime(2026, 10, 13, 8)),
