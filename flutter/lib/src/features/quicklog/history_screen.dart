@@ -701,41 +701,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Future<void> _deleteEntry(QuickLogEntry entry) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: NotelColors.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'Delete entry?',
-          style: TextStyle(
-            color: NotelColors.textPrimary,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        content: const Text(
-          'This cannot be undone.',
-          style: TextStyle(color: NotelColors.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: NotelColors.textSecondary),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              'Delete',
-              style: TextStyle(color: NotelColors.error),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
+    // Juno ruling (PR #190 merge condition): NO confirmation
+    // dialog precedes this delete. Every successful path below
+    // offers Undo via the "Entry removed" snackbar
+    // (_showRemovedSnackBar), so the old dialog's "This cannot be
+    // undone." copy was false on every path that reached it. This
+    // is the only History single-entry delete flow — both entry
+    // points (the card delete button and the intake editor
+    // sheet's delete action, via _EntryDetailDialog.onDeleteEntry)
+    // funnel here, and no non-Undo irreversible variant exists in
+    // this screen — so the dialog is removed entirely and the
+    // delete proceeds directly.
     // In-flight interplay: a push already on the wire may be
     // carrying this very row. Deleting underneath it would let the
     // push resurrect the row server-side after the delete (a
@@ -1347,7 +1323,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   /// Native `EntryCard`: 16dp card, accent-color border,
   /// category chip, body (max 4 lines), timestamp + sync badge,
-  /// delete with confirmation. (Left accent strip removed
+  /// delete (no confirmation dialog — the delete offers Undo;
+  /// Juno ruling, PR #190). (Left accent strip removed
   /// Oct 27, 2026 at the founder's direction; the border stays.)
   Widget _buildEntryCard(QuickLogEntry entry) {
     final cat = _categories.where((c) => c.id == entry.categoryId).firstOrNull;
@@ -1544,8 +1521,9 @@ class _EntryDetailDialog extends StatefulWidget {
   final String Function(int timestamp) formatDateTime;
   final Future<bool> Function(QuickLogEntry updated) onSave;
 
-  /// Phase 1 item 4 — the History delete flow (confirmation +
-  /// outbox-aware delete), handed to the intake editor sheet's
+  /// Phase 1 item 4 — the History delete flow (outbox-aware
+  /// delete, no confirmation dialog — Undo is offered instead;
+  /// Juno ruling, PR #190), handed to the intake editor sheet's
   /// delete action when an intake entry is edited from here.
   final Future<void> Function(QuickLogEntry entry)? onDeleteEntry;
 
@@ -1656,8 +1634,8 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
           : () async {
               final entry = _entry;
               // Close this detail dialog first; the delete flow
-              // (its own confirmation + outbox semantics) runs
-              // against the History list underneath.
+              // (its own outbox semantics, no confirmation dialog)
+              // runs against the History list underneath.
               Navigator.of(context).pop();
               await widget.onDeleteEntry!(entry);
             },

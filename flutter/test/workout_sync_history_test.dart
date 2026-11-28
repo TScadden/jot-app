@@ -167,9 +167,14 @@ Future<void> _pumpHistory(WidgetTester tester, _FakeServer server) async {
   await tester.pumpAndSettle();
 }
 
+/// Juno ruling (PR #190): History single-entry delete has NO
+/// confirm dialog — the delete proceeds directly and offers Undo.
+/// The old helper tapped the dialog's Delete button; now it just
+/// settles the direct delete and pins the dialog's absence.
 Future<void> _confirmDelete(WidgetTester tester) async {
-  await tester.tap(find.text('Delete'));
   await tester.pumpAndSettle();
+  expect(find.byType(AlertDialog), findsNothing);
+  expect(find.text('This cannot be undone.'), findsNothing);
 }
 
 void main() {

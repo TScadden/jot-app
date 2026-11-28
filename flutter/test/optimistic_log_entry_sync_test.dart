@@ -700,13 +700,12 @@ void main() {
       );
       expect(outbox.inFlightIds, contains(77));
 
-      // Ask to delete it and confirm.
+      // Ask to delete it. Juno ruling (PR #190): no confirm
+      // dialog — the delete starts directly (and here joins the
+      // in-flight push).
       await tester.tap(find.byTooltip('Delete entry'));
-      await _pumpUntil(
-        tester,
-        () => find.byType(AlertDialog).evaluate().isNotEmpty,
-      );
-      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+      await tester.pump();
+      expect(find.byType(AlertDialog), findsNothing);
       for (var i = 0; i < 5; i++) {
         await tester.pump(const Duration(milliseconds: 50));
       }
@@ -829,11 +828,10 @@ void main() {
       // server DELETE — a local-only classification would skip it
       // and the server's v1 would resurrect on the next pull.
       await tester.tap(find.byTooltip('Delete entry'));
-      await _pumpUntil(
-        tester,
-        () => find.byType(AlertDialog).evaluate().isNotEmpty,
-      );
-      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+      await tester.pump();
+      // Juno ruling (PR #190): no confirm dialog precedes the
+      // delete.
+      expect(find.byType(AlertDialog), findsNothing);
       await _pumpUntil(
         tester,
         () =>

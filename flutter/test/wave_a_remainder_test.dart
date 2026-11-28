@@ -21,14 +21,18 @@ import 'test_helpers.dart';
 ///   Condition 1 (the outbox stage/restore bool is checked) and
 ///   Condition 3 (fetch generation guard) semantics.
 ///
-/// Ported from PR #187's wave_a_video_lessons_test.dart with ONE
-/// deliberate adaptation: release kept the workout-sync delete
-/// CONFIRM dialog (PR #189), so the delete flow here confirms
-/// first — the old branch's tests asserted the dialog was gone.
-/// The Undo tests below pin the dialog's presence instead, and
-/// the tombstone group pins the Undo ↔ workout-sync interaction:
-/// Undo of a synced-workout delete restores the entry AND lifts
-/// the tombstone via WorkoutSyncStore.restoreLink.
+/// Ported from PR #187's wave_a_video_lessons_test.dart. The port
+/// initially kept release's workout-sync delete CONFIRM dialog
+/// (PR #189) and pinned its presence; Juno's PR #190 ruling
+/// reversed that: the dialog's "This cannot be undone." copy is
+/// false on every path where the delete offers Undo, and every
+/// History single-entry delete path in this screen offers Undo,
+/// so the dialog is removed entirely. The Undo tests below pin
+/// the dialog's ABSENCE before the delete (the original Wave A
+/// assertion), and the tombstone group pins the Undo ↔
+/// workout-sync interaction: Undo of a synced-workout delete
+/// restores the entry AND lifts the tombstone via
+/// WorkoutSyncStore.restoreLink.
 
 void main() {
   setUp(() {
@@ -118,7 +122,7 @@ void main() {
 
   group('History delete Undo (SCORECARD-9 #5)', () {
     testWidgets(
-        'delete keeps the workout-sync confirm dialog; Undo '
+        'delete shows NO confirm dialog (Juno ruling); Undo '
         'restores the entry at its index and re-posts it to the '
         'server', (tester) async {
       final server = _HistoryServer([
@@ -136,14 +140,16 @@ void main() {
       expect(find.text('oldest entry'), findsOneWidget);
 
       // Delete the newest entry via its card delete button.
-      // Release kept the delete confirmation (workout-sync,
-      // PR #189) — the dialog is part of the flow now and Undo
-      // is offered after it.
+      // Juno ruling (PR #190): NO confirm dialog precedes a
+      // deletion that will offer Undo — the delete proceeds
+      // directly to the "Entry removed" snackbar.
       await tester.tap(find.byIcon(Icons.delete).first);
+      await tester.pump();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text('Delete entry?'), findsNothing);
+      expect(find.text('This cannot be undone.'), findsNothing);
       await tester.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsOneWidget);
-      await tester.tap(find.text('Delete'));
-      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
 
       expect(find.text('newest entry'), findsNothing);
       expect(find.text('oldest entry'), findsOneWidget);
@@ -184,11 +190,11 @@ void main() {
       expect(find.text('newest entry'), findsOneWidget);
       expect(find.text('oldest entry'), findsOneWidget);
 
-      // Delete succeeds server-side; the entry is gone.
+      // Delete succeeds server-side with no confirm dialog
+      // (Juno ruling, PR #190); the entry is gone.
       await tester.tap(find.byIcon(Icons.delete).first);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Delete'));
-      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
       expect(find.text('newest entry'), findsNothing);
       expect(server.deletedIds, [42]);
       expect(find.text('Undo'), findsOneWidget);
@@ -249,12 +255,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Walking · 34 min'), findsOneWidget);
 
-      // Delete (with the kept confirm dialog): the link is
-      // tombstoned by the delete hook.
+      // Delete (no confirm dialog — Juno ruling, PR #190): the
+      // link is tombstoned by the delete hook.
       await tester.tap(find.byIcon(Icons.delete).first);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Delete'));
-      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
       expect(server.deletedIds, [581]);
       expect(find.text('Walking · 34 min'), findsNothing);
       expect(
