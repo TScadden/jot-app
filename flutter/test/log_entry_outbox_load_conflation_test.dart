@@ -213,7 +213,7 @@ void main() {
     // first (the ownerless load adopts the records with no owner
     // stamp), then the login hook runs clearIfOwnerMismatch.
     await outbox.load();
-    expect(outbox.records.single.entry.id, 401);
+    expect(outbox.records.single.entry.id, '401');
 
     // Pre-fix, the loaded-owner enforcement wiped the adopted
     // records and deleted the blob. Now the unowned populated

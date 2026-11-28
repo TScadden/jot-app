@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/onboarding_store.dart';
 import 'package:tabs_lab/src/data/onboarding_sync_outbox.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
+import 'package:tabs_lab/src/data/uuid_v4.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/onboarding/setup_loading_screen.dart';
@@ -277,8 +278,8 @@ void main() {
       expect(await outbox.flush(backend), isTrue);
       final byName = {for (final c in backend.serverCategories) c.name: c};
       expect(byName.keys, containsAll(['Focus', 'Journal']));
-      expect(byName['Journal']!.id, 10);
-      expect(byName['Focus']!.id, 8);
+      expect(byName['Journal']!.id, '10');
+      expect(byName['Focus']!.id, '8');
       // The posted payload rode the CURRENT list along.
       expect(
         backend.categoryPayloads.single.map((c) => c.name),
@@ -299,9 +300,12 @@ void main() {
 
       expect(await outbox.flush(backend), isTrue);
       final byName = {for (final c in backend.serverCategories) c.name: c};
-      expect(byName['Journal']!.id, 8);
+      expect(byName['Journal']!.id, '8');
       expect(byName['Focus'], isNotNull);
-      expect(byName['Focus']!.id, isNot(8));
+      // GAP-18: the re-keyed id is a fresh random v4 UUID (was
+      // maxId + 1 in the integer scheme).
+      expect(byName['Focus']!.id, isNot('8'));
+      expect(isUuidV4(byName['Focus']!.id), isTrue);
     });
 
     test('(c) double flush is idempotent: second flush posts '

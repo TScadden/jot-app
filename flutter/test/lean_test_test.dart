@@ -242,7 +242,7 @@ void main() {
       expect(persisted, isNotNull);
       expect(persisted!.allocatedEntryId, '100');
       expect(persisted.pendingEntryJson, isNotNull);
-      expect(persisted.pendingEntryJson!['id'], 100);
+      expect(persisted.pendingEntryJson!['id'], '100');
 
       gateway.stageSucceeds = true;
       final landed = await retryPendingLeanTestEntry(
@@ -251,7 +251,7 @@ void main() {
       );
       expect(landed, isTrue);
       expect(gateway.staged.length, 1);
-      expect(gateway.staged.single.id, 100);
+      expect(gateway.staged.single.id, '100');
       expect(await store.load(), isNull);
     });
 
@@ -649,7 +649,7 @@ void main() {
       );
       expect(landed, isTrue);
       expect(gateway.staged.length, 1);
-      expect(gateway.staged.single.id, 100);
+      expect(gateway.staged.single.id, '100');
       expect(await store.load(), isNull);
     });
 

@@ -190,7 +190,7 @@ void main() {
       final entry = buildLeanTestEntry(id: '3', categoryId: '3', result: result);
       // Filed under Symptoms with the reserved chip, body built
       // from the payload — the shape History renders.
-      expect(entry.categoryId, 3);
+      expect(entry.categoryId, '3');
       expect(leanEntryHasChip(entry), isTrue);
       expect(entry.body, result.bodyText());
       expect(entry.body, contains('Guided lean test recorded'));

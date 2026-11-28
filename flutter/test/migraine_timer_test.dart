@@ -13,6 +13,7 @@ import 'package:tabs_lab/src/data/migraine_pressure.dart';
 import 'package:tabs_lab/src/data/migraine_time_format.dart';
 import 'package:tabs_lab/src/data/migraine_trends.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
+import 'package:tabs_lab/src/data/uuid_v4.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/today_plan_store.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
@@ -179,8 +180,8 @@ void main() {
       expect(entry.manualText, 'Ended Oct 26, 11:27 AM');
       expect(entry.timestamp, attack.startTimestamp);
       expect(entry.chips, '["Migraine attack"]');
-      expect(entry.id, 42);
-      expect(entry.categoryId, 1);
+      expect(entry.id, '42');
+      expect(entry.categoryId, '1');
     });
 
     test('example 2 — dismissed form (relief unset)', () {
@@ -309,8 +310,8 @@ void main() {
       expect(h.notifier.cancelCount, greaterThan(0));
       expect(h.gateway.posted, hasLength(1));
       final first = h.gateway.posted.single;
-      expect(first.id, 100);
-      expect(first.categoryId, 7);
+      expect(first.id, '100');
+      expect(first.categoryId, '7');
       expect(first.body, contains('Relief not rated.'));
       expect(h.controller.hasPendingDetails, isTrue);
 
@@ -462,7 +463,7 @@ void main() {
       stored = (await h.store.loadAll()).single;
       expect(stored.trendsEntryPending, isFalse);
       expect(h.gateway.posted, hasLength(2));
-      expect(h.gateway.posted.last.id, 100,
+      expect(h.gateway.posted.last.id, '100',
           reason: 'retry upserts the same entry id');
     });
 
@@ -532,7 +533,7 @@ void main() {
           200,
         ),
       )));
-      expect(await byName.resolveMigraineCategoryId(), 9);
+      expect(await byName.resolveMigraineCategoryId(), '9');
 
       // Second server body under the same token within this case:
       // drop the shared pull cache so the fallback body is read.
@@ -550,10 +551,11 @@ void main() {
           200,
         ),
       )));
-      expect(await byFallback.resolveMigraineCategoryId(), 1);
+      expect(await byFallback.resolveMigraineCategoryId(), '1');
     });
 
-    test('entry id follows the Quick Log max+1 convention', () async {
+    test('entry id is a fresh random v4 UUID (GAP-18; was the '
+        'Quick Log max+1 convention)', () async {
       final gateway = BackendMigraineTrendsGateway(backendFor(MockClient(
         (_) async => http.Response(
           jsonEncode({
@@ -567,7 +569,10 @@ void main() {
           200,
         ),
       )));
-      expect(await gateway.generateEntryId(), 42);
+      final generated = await gateway.generateEntryId();
+      expect(isUuidV4(generated), isTrue);
+      // And a second allocation differs — no shared counter.
+      expect(await gateway.generateEntryId(), isNot(generated));
     });
   });
 

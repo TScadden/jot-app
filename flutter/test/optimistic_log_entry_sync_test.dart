@@ -245,7 +245,7 @@ void main() {
       expect(blob['ownerEmail'], _owner);
       final records = blob['records'] as List;
       expect(records, hasLength(1));
-      expect((records.single as Map)['entry']['id'], 99);
+      expect((records.single as Map)['entry']['id'], '99');
 
       // Simulate the OS killing the app before the push: all
       // in-memory state is gone, the disk blob survives.
@@ -366,7 +366,7 @@ void main() {
       for (var i = 0; i < 50 && !outbox.inFlightIds.contains('55'); i++) {
         await Future<void>.delayed(Duration.zero);
       }
-      expect(outbox.inFlightIds, contains(55));
+      expect(outbox.inFlightIds, contains('55'));
       var settled = false;
       final settleFuture =
           outbox.settleInFlightPush().then((_) => settled = true);
@@ -420,7 +420,7 @@ void main() {
       );
       gate.complete();
       expect(await stageFuture, isTrue);
-      expect(seenAtNotify.last, contains(56));
+      expect(seenAtNotify.last, contains('56'));
     });
 
     test(
@@ -945,7 +945,7 @@ void main() {
         ownerEmail: _owner,
       );
       // BOTH entries survive in the outbox…
-      expect(outbox.records.map((r) => r.entry.id), containsAll([101, 102]));
+      expect(outbox.records.map((r) => r.entry.id), containsAll(['101', '102']));
       // …and both push.
       final server = _Server([]);
       expect(await outbox.flush(server.backend()), isTrue);

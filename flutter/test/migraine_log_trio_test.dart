@@ -190,7 +190,7 @@ void main() {
           {'id': 1, 'name': 'Symptoms'},
           {'id': 9, 'name': 'Migraine Symptoms & Triggers'},
         ]),
-        9,
+        '9',
       );
     });
 
@@ -200,7 +200,7 @@ void main() {
           {'id': 9, 'name': 'migraine symptoms & triggers'},
           {'id': 1, 'name': 'Symptoms'},
         ]),
-        9,
+        '9',
       );
     });
 
@@ -213,7 +213,7 @@ void main() {
           {'id': 3, 'name': 'Symptoms'},
           {'id': 1, 'name': 'Other'},
         ]),
-        3,
+        '3',
       );
     });
 
@@ -222,7 +222,7 @@ void main() {
         await resolve([
           {'id': 5, 'name': 'Other'},
         ]),
-        1,
+        '1',
       );
     });
 
@@ -233,7 +233,7 @@ void main() {
       await h.controller.startAttack();
       await h.controller.endWithReliefDialog(reliefRating: 3);
       expect(h.gateway.posted, hasLength(1));
-      expect(h.gateway.posted.single.categoryId, 9);
+      expect(h.gateway.posted.single.categoryId, '9');
     });
   });
 
