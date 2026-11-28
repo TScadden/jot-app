@@ -586,7 +586,7 @@ String clinicianEnergyDayKey(int timestampMs) =>
 /// plus the severity mix over those days.
 ({int flareDays, Map<String, int> severityMix}) deriveFlareSummary(
   List<QuickLogEntry> entries, {
-  required int? symptomsCategoryId,
+  required String? symptomsCategoryId,
   required Set<String> rangeDayKeys,
 }) {
   final byDay = <String, QuickLogEntry>{};

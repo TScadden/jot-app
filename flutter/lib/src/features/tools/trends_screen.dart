@@ -33,7 +33,7 @@ import 'package:tabs_lab/src/theme/skeleton.dart';
 /// charted); missing → empty/"--", never invented.
 class TrendsScreen extends StatefulWidget {
   final TabsBackend? backend;
-  final void Function(int entryId)? onNavigateToEntry;
+  final void Function(String entryId)? onNavigateToEntry;
 
   const TrendsScreen({super.key, this.backend, this.onNavigateToEntry});
 
@@ -141,7 +141,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
   }
 
   Map<int, int> get _frequencyByHour {
-    final out = <int, int>{};
+    final out = <String, int>{};
     for (final e in _entries) {
       if (e.timestamp <= 0) continue;
       final dt = DateTime.fromMillisecondsSinceEpoch(e.timestamp);
@@ -223,8 +223,8 @@ class _TrendsScreenState extends State<TrendsScreen> {
   /// all-time mode. (Native counts the selected day's entries; the
   /// Round 20b all-time view extends that scope to all days, so the
   /// Category Focus rows always agree with the chart above them.)
-  Map<int, int> get _frequencyByCategory {
-    final out = <int, int>{};
+  Map<String, int> get _frequencyByCategory {
+    final out = <String, int>{};
     for (final e in _entries) {
       if (e.timestamp <= 0) continue;
       final dt = DateTime.fromMillisecondsSinceEpoch(e.timestamp);
@@ -626,7 +626,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
     // Native iterates the category list (server order) and shows the
     // ones with entries; entries pointing at an unknown category id
     // still get a fallback row after the known ones.
-    final knownIds = <int>{};
+    final knownIds = <String>{};
     for (final cat in _categories) {
       knownIds.add(cat.id);
       final count = freq[cat.id] ?? 0;

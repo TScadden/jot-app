@@ -539,10 +539,10 @@ List<BodyImpact> mapAiBodyImpacts(
   for (final raw in items) {
     if (raw is! Map) continue;
     final logIdRaw = raw['logId'];
-    final logId = logIdRaw is num
-        ? logIdRaw.toInt()
-        : int.tryParse('${logIdRaw ?? ''}');
-    if (logId == null) continue;
+    // GAP-18: entry ids are strings (legacy ints in decimal form,
+    // new rows UUIDs) — the AI payload's logId parses the same way.
+    final logId = logIdRaw == null ? null : idStringFromJson(logIdRaw);
+    if (logId == null || logId.isEmpty) continue;
     final entry = byId[logId];
     final regionRaw = '${raw['region'] ?? ''}'.toUpperCase();
     const known = {

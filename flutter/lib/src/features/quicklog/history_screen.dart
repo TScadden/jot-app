@@ -254,7 +254,7 @@ class HistoryScreen extends StatefulWidget {
   /// set, once the initial load lands, the entry with this id is
   /// opened in its detail dialog — the Today Summary completion
   /// line's tap lands on THAT entry, not the list top.
-  final int? focusEntryId;
+  final String? focusEntryId;
 
   final LogEntryOutbox? outbox;
 

@@ -849,7 +849,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
   /// sync-pull cache first (fix 2), so the entry is present on
   /// arrival, and [HistoryScreen.focusEntryId] opens it directly.
   /// Same SlidePageRoute pattern as Quick Log's history push.
-  void _openLoggedEntry(int entryId) {
+  void _openLoggedEntry(String entryId) {
     Navigator.of(context).push(
       SlidePageRoute(
         reducedMotion: animationsDisabled(context),
