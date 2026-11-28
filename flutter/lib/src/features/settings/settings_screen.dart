@@ -44,6 +44,7 @@ import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/widget_sync.dart';
 import 'package:tabs_lab/src/features/settings/app_background_section.dart';
 import 'package:tabs_lab/src/features/settings/grant_diagnostics.dart';
+import 'package:tabs_lab/src/features/settings/workout_sync_diagnostics.dart';
 import 'package:tabs_lab/src/features/settings/streak_restore.dart';
 import 'package:tabs_lab/src/data/gem_service.dart';
 import 'package:tabs_lab/src/features/settings/chest_sim.dart';
@@ -1587,6 +1588,14 @@ class _SettingsScreenState extends State<SettingsScreen>
         _sectionLabel('GEMS & BADGES'),
         _card([
           const GrantDiagnosticsCard(),
+        ]),
+        const SizedBox(height: 16),
+        _card([
+          // Workout sync diagnostics (ROUND 3): same dev gate —
+          // renders the last sync run's record (stage, verdict,
+          // counts, abort code; no health values). See
+          // workout_sync_diagnostics.dart.
+          const WorkoutSyncDiagnosticsCard(),
         ]),
       ]);
     }
