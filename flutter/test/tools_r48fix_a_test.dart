@@ -428,7 +428,7 @@ void main() {
         habits: const [],
         localState: const TodayPlanLocalState(),
         entries: built,
-        medicationCategoryId: 8,
+        medicationCategoryId: '8',
         now: _now,
       );
       expect(plan.plannedCount, 1);

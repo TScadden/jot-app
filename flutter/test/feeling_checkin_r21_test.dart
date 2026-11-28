@@ -93,7 +93,7 @@ void main() {
           timestamp: ms(DateTime(2026, 10, 12, 9, 15)),
         ),
       ];
-      expect(hasFeelingCheckIn(entries, moodCategoryId: 6, now: now), isTrue);
+      expect(hasFeelingCheckIn(entries, moodCategoryId: '6', now: now), isTrue);
     });
 
     test('entry from the previous energy day does not count', () {
@@ -108,12 +108,12 @@ void main() {
       expect(
         hasFeelingCheckIn(
           entries,
-          moodCategoryId: 6,
+          moodCategoryId: '6',
           now: DateTime(2026, 10, 12, 2, 30),
         ),
         isTrue,
       );
-      expect(hasFeelingCheckIn(entries, moodCategoryId: 6, now: now), isFalse);
+      expect(hasFeelingCheckIn(entries, moodCategoryId: '6', now: now), isFalse);
     });
 
     test('tag in another category does not count', () {
@@ -124,7 +124,7 @@ void main() {
           timestamp: ms(DateTime(2026, 10, 12, 9, 15)),
         ),
       ];
-      expect(hasFeelingCheckIn(entries, moodCategoryId: 6, now: now), isFalse);
+      expect(hasFeelingCheckIn(entries, moodCategoryId: '6', now: now), isFalse);
     });
 
     test('mood entry without the tag does not count', () {
@@ -134,7 +134,7 @@ void main() {
           timestamp: ms(DateTime(2026, 10, 12, 9, 15)),
         ),
       ];
-      expect(hasFeelingCheckIn(entries, moodCategoryId: 6, now: now), isFalse);
+      expect(hasFeelingCheckIn(entries, moodCategoryId: '6', now: now), isFalse);
     });
 
     test('chips parsing tolerates bare-list rendering', () {
@@ -218,7 +218,7 @@ void main() {
         timestamp: DateTime(2026, 10, 12, 9, 0).millisecondsSinceEpoch,
       );
       expect(
-        findFeelingCheckInEntry([e], moodCategoryId: 6, now: now)?.id,
+        findFeelingCheckInEntry([e], moodCategoryId: '6', now: now)?.id,
         e.id,
       );
     });

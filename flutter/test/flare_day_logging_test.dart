@@ -369,15 +369,15 @@ void main() {
         chips: '["Flare Day","Rough","Fog"]',
         ts: ms(DateTime(2026, 10, 28, 9, 0)),
       );
-      expect(hasFlareToday([flare], symptomsCategoryId: 3, now: now), isTrue);
+      expect(hasFlareToday([flare], symptomsCategoryId: '3', now: now), isTrue);
       expect(
-        findFlareRecord([flare], symptomsCategoryId: 3, now: now)?.id,
+        findFlareRecord([flare], symptomsCategoryId: '3', now: now)?.id,
         flare.id,
       );
       expect(
         hasFlareToday(
           [_entry(chips: '["Symptoms"]', ts: flare.timestamp)],
-          symptomsCategoryId: 3,
+          symptomsCategoryId: '3',
           now: now,
         ),
         isFalse,
@@ -391,7 +391,7 @@ void main() {
               ts: flare.timestamp,
             )
           ],
-          symptomsCategoryId: 3,
+          symptomsCategoryId: '3',
           now: now,
         ),
         isFalse,
@@ -404,7 +404,7 @@ void main() {
               ts: ms(DateTime(2026, 10, 27, 12, 0)),
             )
           ],
-          symptomsCategoryId: 3,
+          symptomsCategoryId: '3',
           now: now,
         ),
         isFalse,
@@ -424,16 +424,16 @@ void main() {
       );
       final morning = DateTime(2026, 10, 28, 5, 0);
       expect(
-        hasFlareToday([at0359], symptomsCategoryId: 3, now: morning),
+        hasFlareToday([at0359], symptomsCategoryId: '3', now: morning),
         isFalse,
       );
       expect(
-        hasFlareToday([at0400], symptomsCategoryId: 3, now: morning),
+        hasFlareToday([at0400], symptomsCategoryId: '3', now: morning),
         isTrue,
       );
       final beforeDawn = DateTime(2026, 10, 28, 3, 59);
       expect(
-        hasFlareToday([at0359], symptomsCategoryId: 3, now: beforeDawn),
+        hasFlareToday([at0359], symptomsCategoryId: '3', now: beforeDawn),
         isTrue,
       );
     });
@@ -466,7 +466,7 @@ void main() {
       final ordinary = _entry(chips: 'Headache, Pain', ts: ts);
       expect(parseFlareChips(ordinary.chips), ['Headache', 'Pain']);
       expect(
-        hasFlareToday([ordinary], symptomsCategoryId: 3, now: now),
+        hasFlareToday([ordinary], symptomsCategoryId: '3', now: now),
         isFalse,
       );
       final prose = _entry(chips: 'Not a Flare Day, honestly', ts: ts);
@@ -563,11 +563,11 @@ void main() {
         chips: '["Good Day","Energy"]',
         ts: ts,
       );
-      expect(findGoodRecord([good], moodCategoryId: 6, now: now)?.id, 8);
+      expect(findGoodRecord([good], moodCategoryId: '6', now: now)?.id, 8);
       expect(
         findGoodRecord(
           [_entry(id: 9, categoryId: 3, chips: '["Good Day","Energy"]', ts: ts)],
-          moodCategoryId: 6,
+          moodCategoryId: '6',
           now: now,
         ),
         isNull,
@@ -582,7 +582,7 @@ void main() {
               ts: DateTime(2026, 10, 27, 12, 0).millisecondsSinceEpoch,
             )
           ],
-          moodCategoryId: 6,
+          moodCategoryId: '6',
           now: now,
         ),
         isNull,
@@ -590,7 +590,7 @@ void main() {
       expect(
         findGoodRecord(
           [_entry(id: 11, categoryId: 6, chips: '["Energy"]', ts: ts)],
-          moodCategoryId: 6,
+          moodCategoryId: '6',
           now: now,
         ),
         isNull,

@@ -395,7 +395,7 @@ void main() {
           habits: const [],
           localState: local,
           entries: entries,
-          medicationCategoryId: 8,
+          medicationCategoryId: '8',
           now: _now,
         );
 
@@ -459,7 +459,7 @@ void main() {
         medSkippedFromEntries(
           medName: 'Ivabradine',
           todayEntries: entries,
-          medicationCategoryId: 8,
+          medicationCategoryId: '8',
         ),
         isTrue,
       );
@@ -467,7 +467,7 @@ void main() {
         medTakenFromEntries(
           medName: 'Ivabradine',
           todayEntries: entries,
-          medicationCategoryId: 8,
+          medicationCategoryId: '8',
         ),
         isFalse,
       );
@@ -645,7 +645,7 @@ void main() {
         habits: const [],
         localState: const TodayPlanLocalState(),
         entries: const [],
-        medicationCategoryId: 8,
+        medicationCategoryId: '8',
         now: _now,
       );
       expect(data.items.single.title, 'Ivabradine');
@@ -772,7 +772,7 @@ void main() {
           entry(3, 8, '[Corrected to Skipped] Took M 1',
               DateTime(2026, 10, 13, 8, 0)),
         ],
-        medicationCategoryId: 8,
+        medicationCategoryId: '8',
         now: now,
       );
       expect(data.items, isEmpty);
@@ -955,7 +955,7 @@ void main() {
       ];
       expect(
         countSymptomLogs(
-            entries: entries, symptomsCategoryId: 1, now: now),
+            entries: entries, symptomsCategoryId: '1', now: now),
         3,
       );
     });
@@ -1420,7 +1420,7 @@ void main() {
           entry(55, 8, '[Corrected to Skipped] Took Ivabradine 7.5 mg',
               _now),
         ],
-        medicationCategoryId: 8,
+        medicationCategoryId: '8',
         now: _now,
       );
       expect(plan.items, isEmpty);

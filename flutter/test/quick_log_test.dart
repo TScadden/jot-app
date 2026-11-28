@@ -58,7 +58,7 @@ void main() {
       ];
       final out = recentSuggestions(entries,
           activeMedicationNames: {'escitalopram'},
-          medicationCategoryId: 8);
+          medicationCategoryId: '8');
       expect(out.map((e) => e.id).toList(), [1, 3]);
     });
 
